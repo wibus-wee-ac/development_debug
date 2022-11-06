@@ -1,2 +1,2 @@
 # development_debug
-  sd
+test
