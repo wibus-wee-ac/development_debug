@@ -171,6 +171,7 @@
 
 :root {
   --radius: 0.625rem;
+  --sidebar-width: 260px;
   --background: var(--color-white);
   --foreground: var(--color-neutral-800);
   --card: var(--color-white);
@@ -264,7 +265,16 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background: transparent;
+  }
+
+  html,
+  body,
+  #app {
+    height: 100%;
+    overflow: hidden;
+    margin: 0;
   }
 
   code,
