@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { eq, desc } from 'drizzle-orm'
-import { IpcService, IpcMethod } from '../lib/decorator'
+import { IpcService, IpcMethod } from '@cradle/ipc'
 import { getDb } from '../db'
 import { sessions, messages } from '../db/schema'
 import type { Session, Message } from '../db/schema'

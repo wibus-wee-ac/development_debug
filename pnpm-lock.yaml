@@ -11,6 +11,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.4.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      '@cradle/ipc':
+        specifier: workspace:*
+        version: link:packages/ipc
       '@electron-toolkit/preload':
         specifier: ^3.0.2
         version: 3.0.2(electron@39.8.7)
@@ -162,6 +165,8 @@ importers:
       vitest:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@22.19.17)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.3(@types/node@22.19.17)(typescript@5.9.3))(vite@7.3.2(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0))
+
+  packages/ipc: {}
 
 packages:
 

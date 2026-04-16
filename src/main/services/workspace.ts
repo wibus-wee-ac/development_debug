@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { eq, desc } from 'drizzle-orm'
-import { IpcService, IpcMethod } from '../lib/decorator'
+import { IpcService, IpcMethod } from '@cradle/ipc'
 import { getDb } from '../db'
 import { workspaces } from '../db/schema'
 import type { Workspace } from '../db/schema'
