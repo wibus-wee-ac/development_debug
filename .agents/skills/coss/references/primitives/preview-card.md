@@ -20,12 +20,12 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { Button } from "@/components/ui/button"
+import { Button } from '@/components/ui/button'
 import {
   PreviewCard,
   PreviewCardPopup,
   PreviewCardTrigger,
-} from "@/components/ui/preview-card"
+} from '@/components/ui/preview-card'
 ```
 
 ## Minimal pattern
@@ -39,7 +39,8 @@ import {
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `PreviewCardPopup` → Base UI `PreviewCard.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `PreviewCardPopup` → Base UI `PreviewCard.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 
 ### Key patterns
 

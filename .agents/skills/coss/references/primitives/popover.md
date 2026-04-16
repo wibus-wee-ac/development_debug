@@ -34,7 +34,7 @@ import {
   PopoverPopup,
   PopoverTitle,
   PopoverTrigger,
-} from "@/components/ui/popover"
+} from '@/components/ui/popover'
 ```
 
 ## Minimal pattern
@@ -52,7 +52,8 @@ import {
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `PopoverPopup` → Base UI `Popover.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `PopoverPopup` → Base UI `Popover.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 - **Form-in-popover**: use `PopoverPopup` as a lightweight form container (for example feedback forms with `Form` + `Field` + `Textarea`).
 - **Dismiss controls**: use `PopoverClose` both for footer actions and icon close buttons (`aria-label` + `render={<Button size="icon" .../>}`).
 - **Tooltip-like popovers**: use `tooltipStyle` for info-icon helper content where tooltip density is preferred.

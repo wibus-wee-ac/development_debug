@@ -36,7 +36,7 @@ import {
   DialogPopup,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog'
 ```
 
 ## Minimal pattern
@@ -59,7 +59,8 @@ import {
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `DialogPopup` → Base UI `Dialog.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `DialogPopup` → Base UI `Dialog.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 - **Section structure invariant**: keep `DialogHeader`, `DialogPanel`, and `DialogFooter` as direct sections in `DialogPopup` to preserve built-in layout/styling behavior.
 - **Form in dialog**: wrap with `<Form className="contents">` so header/panel/footer remain direct dialog sections while still supporting submit behavior.
 - **Action buttons**: use `DialogClose` with `render={<Button ... />}` for cancel/close actions and set explicit `type` on submit/action buttons.
@@ -90,4 +91,3 @@ import {
 - long scrollable content in panel: `p-dialog-5`
 - bare footer variant usage: `p-dialog-6`
 - responsive dialog/drawer variant: `p-drawer-12`
-

@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { eq, desc } from 'drizzle-orm'
-import { IpcService, IpcMethod } from '@cradle/ipc'
+
+import { IpcMethod, IpcService } from '@cradle/ipc'
+import { desc, eq } from 'drizzle-orm'
+
 import { getDb } from '../db'
-import { sessions, messages } from '../db/schema'
-import type { Session, Message } from '../db/schema'
+import type { Message, Session } from '../db/schema'
+import { messages, sessions } from '../db/schema'
 
 export class SessionService extends IpcService {
   static readonly groupName = 'session'
@@ -24,7 +26,7 @@ export class SessionService extends IpcService {
   }
 
   @IpcMethod()
-  create(input: { workspaceId: string; title: string; agent: string }): Session {
+  create(input: { workspaceId: string, title: string, agent: string }): Session {
     const db = getDb()
     const id = randomUUID()
     const result = db
@@ -41,7 +43,7 @@ export class SessionService extends IpcService {
   }
 
   @IpcMethod()
-  addMessage(input: { sessionId: string; role: 'user' | 'assistant'; content: string }): Message {
+  addMessage(input: { sessionId: string, role: 'user' | 'assistant', content: string }): Message {
     const db = getDb()
     const result = db
       .insert(messages)

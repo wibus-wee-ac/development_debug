@@ -38,7 +38,7 @@ import {
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
-} from "@/components/ui/sidebar"
+} from '@/components/ui/sidebar'
 ```
 
 ## Minimal pattern
@@ -109,10 +109,12 @@ Sidebar with grouped navigation and footer:
 ```
 
 Key composition rules:
+
 - Wrap app with `SidebarProvider` at the layout level.
 - Use `SidebarContent` (not "SidebarPanel") as the scrollable body between header/footer.
 - Navigation items use `SidebarMenu` > `SidebarMenuItem` > `SidebarMenuButton`.
-- For link items, use `render` composition: `<SidebarMenuButton render={<a href="..." />}>`. Do not use `asChild` -- sidebar follows the same `render` pattern as all other coss primitives.
+- For link items, use `render` composition: `<SidebarMenuButton render={<a href="..." />}>`.
+  Do not use `asChild` -- sidebar follows the same `render` pattern as all other coss primitives.
 - Use `SidebarTrigger` for the collapse/expand toggle.
 - Use `SidebarInset` for the main content area next to the sidebar.
 - `SidebarRail` adds a slim hover-to-expand rail in collapsed state.

@@ -66,16 +66,16 @@ Use these snippets as fast conversion templates when migrating shadcn/Radix code
 ```tsx
 // coss/Base UI
 const items = [
-  { label: "Next.js", value: "next" },
-  { label: "Vite", value: "vite" },
-];
+  { label: 'Next.js', value: 'next' },
+  { label: 'Vite', value: 'vite' },
+]
 
 <Select items={items}>
   <SelectTrigger>
     <SelectValue placeholder="Select a framework" />
   </SelectTrigger>
   <SelectPopup alignItemWithTrigger={false}>
-    {items.map((item) => (
+    {items.map(item => (
       <SelectItem key={item.value} value={item.value}>
         {item.label}
       </SelectItem>
@@ -96,7 +96,7 @@ const items = [
 
 ```tsx
 // coss/Base UI
-<ToggleGroup defaultValue={["daily"]}>
+<ToggleGroup defaultValue={['daily']}>
   <ToggleGroupItem value="daily">Daily</ToggleGroupItem>
   <ToggleGroupItem value="weekly">Weekly</ToggleGroupItem>
 </ToggleGroup>
@@ -125,14 +125,15 @@ const items = [
 
 ```tsx
 // coss/Base UI
-<Accordion defaultValue={["item-1"]}>
+<Accordion defaultValue={['item-1']}>
   <AccordionItem value="item-1">...</AccordionItem>
 </Accordion>
 ```
 
 ### OTP Field: `input-otp` package → `@coss/otp-field`
 
-coss wraps [Base UI OTP Field](https://base-ui.com/react/components/otp-field) (`OTPFieldPreview`). Remove the `input-otp` dependency and align with the new names and root props.
+coss wraps [Base UI OTP Field](https://base-ui.com/react/components/otp-field) (`OTPFieldPreview`).
+Remove the `input-otp` dependency and align with the new names and root props.
 
 ```tsx
 // shadcn / input-otp

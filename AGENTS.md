@@ -10,14 +10,14 @@ This file provides guidance to Agent when working with code in this repository.
 
 ```tsx
 // ❌ WRONG - Dynamic class construction
-const size = 'large'
+// Won't work!
+
+// ✅ CORRECT - Static classes with conditional logic
+import { cn } from '@/lib/utils'  const size = 'large'
 const className = `text-${size}`  // Won't work with Tailwind purging!
 
 const color = 'blue'
-const className = `bg-${color}-500`  // Won't work!
-
-// ✅ CORRECT - Static classes with conditional logic
-import { cn } from '@/lib/utils'
+const className = `bg-${color}-500`
 
 const className = cn({
   'text-base': size === 'small',
@@ -80,7 +80,6 @@ function Button({ className, variant = 'primary', ...props }) {
   - Examples: `features/feed/`, `features/auth/`, `features/user/`
 
 **Placement rule**: If a component is specific to a business domain/feature, place it in the corresponding module directory.
-
 
 ### Creating a Styled Component with Variants
 
@@ -147,6 +146,7 @@ Every directory (except `bindings/`, which is auto-generated) MUST have a `READM
    ```
 
 Example `README.md`:
+
 ```markdown
 <!-- Once this directory changes, update this README.md -->
 
@@ -174,16 +174,19 @@ Every `.ts`, `.tsx`, `.js`, `.jsx` file MUST start with a 3-line header comment:
 ```
 
 After any file modification, you MUST:
+
 1. Update the file's header comment if its role changed
 2. Update the parent directory's `README.md` if files were added/removed/changed
 
 Example file header:
+
 ```typescript
 // Input: useAtomValue from jotai, userAtom from @/atoms/user
 // Output: UserProfile component displaying user information
 // Position: Feature component in user module
 
 import { useAtomValue } from 'jotai'
+
 import { userAtom } from '@/atoms/user'
 
 export function UserProfile() {
@@ -199,6 +202,7 @@ export function UserProfile() {
 - **When refactoring**: Update all affected file headers and directory READMEs
 
 This documentation system ensures every developer can quickly understand:
+
 - What a file does (Output)
 - What it depends on (Input)
 - Where it fits in the architecture (Position)

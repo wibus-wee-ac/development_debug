@@ -39,7 +39,7 @@ import {
   AutocompleteSeparator,
   AutocompleteStatus,
   useAutocompleteFilter,
-} from "@/components/ui/autocomplete"
+} from '@/components/ui/autocomplete'
 ```
 
 ## Minimal pattern
@@ -69,7 +69,8 @@ For form-bound autocomplete controls, prefer `Field` wrappers so label, required
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `AutocompletePopup` → Base UI combobox/autocomplete portal (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `AutocompletePopup` → Base UI combobox/autocomplete portal (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 
 ### Key patterns
 
@@ -87,7 +88,7 @@ Autocomplete with input affordances:
   <AutocompletePopup>
     <AutocompleteEmpty>No results found.</AutocompleteEmpty>
     <AutocompleteList>
-      {(item) => <AutocompleteItem key={item.value} value={item}>{item.label}</AutocompleteItem>}
+      {item => <AutocompleteItem key={item.value} value={item}>{item.label}</AutocompleteItem>}
     </AutocompleteList>
   </AutocompletePopup>
 </Autocomplete>
@@ -100,7 +101,7 @@ Grouped lists:
   <AutocompleteGroup>
     <AutocompleteGroupLabel>Fruits</AutocompleteGroupLabel>
     <AutocompleteCollection>
-      {(item) => <AutocompleteItem key={item.value} value={item}>{item.label}</AutocompleteItem>}
+      {item => <AutocompleteItem key={item.value} value={item}>{item.label}</AutocompleteItem>}
     </AutocompleteCollection>
   </AutocompleteGroup>
 </AutocompleteList>

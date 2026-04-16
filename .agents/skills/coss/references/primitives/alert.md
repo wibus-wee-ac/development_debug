@@ -26,7 +26,7 @@ Manual deps from docs:
 ## Canonical imports
 
 ```tsx
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert'
 ```
 
 ## Minimal pattern

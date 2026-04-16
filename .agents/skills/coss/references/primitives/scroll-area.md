@@ -20,7 +20,7 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { ScrollArea } from '@/components/ui/scroll-area'
 ```
 
 ## Minimal pattern
@@ -49,7 +49,7 @@ Horizontal scrolling (use wide inner content, not an `orientation` prop):
 ```tsx
 <ScrollArea className="max-w-96 rounded-lg border">
   <div className="flex w-max gap-4 p-4">
-    {items.map((item) => (
+    {items.map(item => (
       <div key={item} className="w-32 shrink-0">{item}</div>
     ))}
   </div>
@@ -64,7 +64,8 @@ Scroll fade edges:
 </ScrollArea>
 ```
 
-`ScrollArea` always renders both scrollbars internally -- horizontal scroll is driven by inner content width exceeding the container, not by a prop. Also supports `scrollbarGutter` for reserving scrollbar space.
+`ScrollArea` always renders both scrollbars internally -- horizontal scroll is driven by inner content width exceeding the container, not by a prop.
+Also supports `scrollbarGutter` for reserving scrollbar space.
 
 ### More examples
 

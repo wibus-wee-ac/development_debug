@@ -20,7 +20,7 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { Button } from "@/components/ui/button"
+import { Button } from '@/components/ui/button'
 ```
 
 ## Minimal pattern
@@ -29,7 +29,8 @@ import { Button } from "@/components/ui/button"
 <Button type="button">Button</Button>
 ```
 
-`Button` defaults to `type="button"` when rendered as the native button part. In form flows, set `type` explicitly (`button` / `submit` / `reset`) to match intent, especially when using `render` composition.
+`Button` defaults to `type="button"` when rendered as the native button part.
+In form flows, set `type` explicitly (`button` / `submit` / `reset`) to match intent, especially when using `render` composition.
 
 ## Patterns from coss particles
 
@@ -82,7 +83,8 @@ Composite approach (manual `Spinner` + `disabled`):
 </Button>
 ```
 
-Prefer the `loading` prop for typical async actions. Use the composite approach when you need custom spinner placement or label.
+Prefer the `loading` prop for typical async actions.
+Use the composite approach when you need custom spinner placement or label.
 
 ### More examples
 

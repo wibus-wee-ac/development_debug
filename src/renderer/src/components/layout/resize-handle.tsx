@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { cn } from '@renderer/lib/cn'
+import { useState } from 'react'
 
 interface ResizeHandleProps {
   direction: 'horizontal' | 'vertical'
@@ -29,7 +29,7 @@ export function ResizeHandle({
   min = 0,
   max = Infinity,
   inverted = false,
-  className
+  className,
 }: ResizeHandleProps) {
   const [active, setActive] = useState(false)
 
@@ -67,7 +67,7 @@ export function ResizeHandle({
       className={cn(
         'group relative shrink-0 select-none touch-none z-10',
         isH ? 'w-1.25 cursor-col-resize' : 'h-1.25 cursor-row-resize',
-        className
+        className,
       )}
     >
       {/* Invisible hit area — only a hairline appears on hover / drag */}
@@ -75,7 +75,7 @@ export function ResizeHandle({
         className={cn(
           'absolute rounded-full transition-all duration-300',
           isH ? 'inset-y-[10%] inset-x-0.5' : 'inset-x-[10%] inset-y-0.5',
-          active ? 'bg-border/40' : 'bg-transparent group-hover:bg-border/20'
+          active ? 'bg-border/40' : 'bg-transparent group-hover:bg-border/20',
         )}
       />
     </div>

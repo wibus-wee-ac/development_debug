@@ -1,4 +1,5 @@
-import { screen, type BrowserWindow } from 'electron'
+import type { BrowserWindow } from 'electron'
+import { screen } from 'electron'
 import Store from 'electron-store'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -35,10 +36,10 @@ export const appStore = new Store<AppPreferences>({
 function isBoundsVisible(bounds: WindowBounds): boolean {
   return screen.getAllDisplays().some(({ workArea: wa }) => {
     return (
-      bounds.x < wa.x + wa.width &&
-      bounds.x + bounds.width > wa.x &&
-      bounds.y < wa.y + wa.height &&
-      bounds.y + bounds.height > wa.y
+      bounds.x < wa.x + wa.width
+      && bounds.x + bounds.width > wa.x
+      && bounds.y < wa.y + wa.height
+      && bounds.y + bounds.height > wa.y
     )
   })
 }
@@ -64,9 +65,15 @@ export function saveWindowState(windowId: string, win: BrowserWindow): void {
  */
 export function restoreWindowState(windowId: string, win: BrowserWindow): void {
   const saved = appStore.get(`windows.${windowId}`)
-  if (!saved) return
-  if (!isBoundsVisible(saved)) return
+  if (!saved) {
+    return
+  }
+  if (!isBoundsVisible(saved)) {
+    return
+  }
 
   win.setBounds({ x: saved.x, y: saved.y, width: saved.width, height: saved.height })
-  if (saved.isMaximized) win.maximize()
+  if (saved.isMaximized) {
+    win.maximize()
+  }
 }

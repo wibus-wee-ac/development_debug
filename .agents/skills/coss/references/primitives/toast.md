@@ -34,7 +34,7 @@ npm install @base-ui/react
 Add providers in app layout:
 
 ```tsx
-import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast"
+import { AnchoredToastProvider, ToastProvider } from '@/components/ui/toast'
 ```
 
 Wrap app content with both:
@@ -49,19 +49,19 @@ Wrap app content with both:
 
 ```tsx
 import {
-  AnchoredToastProvider,
-  ToastProvider,
   anchoredToastManager,
+  AnchoredToastProvider,
   toastManager,
-} from "@/components/ui/toast"
+  ToastProvider,
+} from '@/components/ui/toast'
 ```
 
 ## Minimal pattern
 
 ```tsx
 toastManager.add({
-  title: "Saved",
-  description: "Your changes have been updated.",
+  title: 'Saved',
+  description: 'Your changes have been updated.',
 })
 ```
 
@@ -70,36 +70,37 @@ toastManager.add({
 - **Stacked notifications**: use `toastManager.add(...)` for global app feedback with typed variants and optional actions.
 - **Anchored notifications**: use `anchoredToastManager.add(...)` with `positionerProps.anchor` for contextual, element-tied toasts.
 - **Lifecycle-driven flows**: use loading/promise patterns and explicit close/update handling for async operations.
-- **Deduplication / upsert**: pass a stable `id` on `toastManager.add`. If that `id` is already shown, Base UI updates the toast in place and the UI replays a short re-notify animation via `updateKey` instead of adding another surface.
+- **Deduplication / upsert**: pass a stable `id` on `toastManager.add`.
+  If that `id` is already shown, Base UI updates the toast in place and the UI replays a short re-notify animation via `updateKey` instead of adding another surface.
 
 ## Deduplicated (same `id`) usage
 
 ```tsx
 toastManager.add({
-  id: "autosave",
-  title: "Saved",
-  description: "Draft updated.",
+  id: 'autosave',
+  title: 'Saved',
+  description: 'Draft updated.',
 })
 ```
 
 ## Stacked usage
 
 ```tsx
-import { toastManager } from "@/components/ui/toast"
+import { toastManager } from '@/components/ui/toast'
 
 toastManager.add({
-  title: "Event has been created",
-  description: "Monday, January 3rd at 6:00pm",
+  title: 'Event has been created',
+  description: 'Monday, January 3rd at 6:00pm',
 })
 ```
 
 ## Anchored usage
 
 ```tsx
-import { anchoredToastManager } from "@/components/ui/toast"
+import { anchoredToastManager } from '@/components/ui/toast'
 
 anchoredToastManager.add({
-  title: "Copied!",
+  title: 'Copied!',
   positionerProps: { anchor: buttonRef.current },
 })
 ```
@@ -122,4 +123,3 @@ anchoredToastManager.add({
 - anchored tooltip-style confirmation: `p-toast-7`
 - anchored error toast with manual lifecycle handling: `p-toast-8`
 - anchored toast pattern in a non-toast primitive: `p-toggle-8`
-

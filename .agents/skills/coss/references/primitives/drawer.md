@@ -28,9 +28,9 @@ npm install @base-ui/react
 ```tsx
 import {
   Drawer,
-  DrawerCreateHandle,
   DrawerClose,
   DrawerContent,
+  DrawerCreateHandle,
   DrawerDescription,
   DrawerFooter,
   DrawerHeader,
@@ -42,12 +42,12 @@ import {
   DrawerMenuRadioGroup,
   DrawerMenuRadioItem,
   DrawerMenuSeparator,
+  DrawerMenuTrigger,
   DrawerPanel,
   DrawerPopup,
-  DrawerMenuTrigger,
   DrawerTitle,
   DrawerTrigger,
-} from "@/components/ui/drawer"
+} from '@/components/ui/drawer'
 ```
 
 ## Minimal pattern
@@ -70,7 +70,8 @@ import {
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `DrawerPopup` → Base UI `Drawer.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `DrawerPopup` → Base UI `Drawer.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 
 ### Key patterns
 

@@ -26,8 +26,8 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { Label } from "@/components/ui/label"
-import { Radio, RadioGroup } from "@/components/ui/radio-group"
+import { Label } from '@/components/ui/label'
+import { Radio, RadioGroup } from '@/components/ui/radio-group'
 ```
 
 ## Minimal pattern
@@ -35,13 +35,19 @@ import { Radio, RadioGroup } from "@/components/ui/radio-group"
 ```tsx
 <RadioGroup defaultValue="next">
   <Label>
-    <Radio value="next" /> Next.js
+    <Radio value="next" />
+    {' '}
+    Next.js
   </Label>
   <Label>
-    <Radio value="vite" /> Vite
+    <Radio value="vite" />
+    {' '}
+    Vite
   </Label>
   <Label>
-    <Radio value="astro" /> Astro
+    <Radio value="astro" />
+    {' '}
+    Astro
   </Label>
 </RadioGroup>
 ```

@@ -20,7 +20,7 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { Badge } from "@/components/ui/badge"
+import { Badge } from '@/components/ui/badge'
 ```
 
 ## Minimal pattern

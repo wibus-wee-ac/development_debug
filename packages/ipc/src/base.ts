@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { ipcMain } from 'electron'
 
@@ -21,11 +22,11 @@ export function getIpcContext(): IpcContext {
 
 // ── Decorator metadata ────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// eslint-disable-next-line ts/no-explicit-any
 const methodMetadata = new WeakMap<any, Map<string, string>>()
 
 export function IpcMethod() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line ts/no-explicit-any
   return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
     const { constructor } = target
     if (!methodMetadata.has(constructor)) {
@@ -51,17 +52,20 @@ export class IpcHandler {
 
   registerMethod<TOutput>(
     channel: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handler: (...args: any[]) => Promise<TOutput> | TOutput
+    // eslint-disable-next-line ts/no-explicit-any
+    handler: (...args: any[]) => Promise<TOutput> | TOutput,
   ): void {
-    if (this.registeredChannels.has(channel)) return
+    if (this.registeredChannels.has(channel)) {
+      return
+    }
     this.registeredChannels.add(channel)
 
     ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
       const context: IpcContext = { sender: event.sender, event }
       try {
         return await contextStorage.run(context, () => handler(...args))
-      } catch (error) {
+      }
+      catch (error) {
         console.error(`Error in IPC method ${channel}:`, error)
         throw error
       }
@@ -85,9 +89,11 @@ export abstract class IpcService {
 
   protected registerMethods(): void {
     const methods = methodMetadata.get(this.constructor)
-    if (!methods) return
+    if (!methods) {
+      return
+    }
     methods.forEach((methodName, propertyKey) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line ts/no-explicit-any
       const method = (this as any)[propertyKey]
       if (typeof method === 'function') {
         this.registerMethod(methodName, method.bind(this))
@@ -97,8 +103,8 @@ export abstract class IpcService {
 
   protected registerMethod<TOutput>(
     methodName: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handler: (...args: any[]) => Promise<TOutput> | TOutput
+    // eslint-disable-next-line ts/no-explicit-any
+    handler: (...args: any[]) => Promise<TOutput> | TOutput,
   ): void {
     const groupName = (this.constructor as typeof IpcService).groupName
     this.handler.registerMethod(`${groupName}.${methodName}`, handler)
@@ -117,9 +123,9 @@ type CreateServicesResult<T extends readonly IpcServiceConstructor[]> = {
 }
 
 export function createServices<T extends readonly IpcServiceConstructor[]>(
-  serviceConstructors: T
+  serviceConstructors: T,
 ): CreateServicesResult<T> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line ts/no-explicit-any
   const services = {} as any
   for (const ServiceConstructor of serviceConstructors) {
     if (!ServiceConstructor.groupName) {

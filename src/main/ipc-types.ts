@@ -1,6 +1,7 @@
 import type { MergeIpcService } from '@cradle/ipc'
-import type { WorkspaceService } from './services/workspace'
+
 import type { SessionService } from './services/session'
+import type { WorkspaceService } from './services/workspace'
 
 /**
  * Full type map of all exposed IPC services.
@@ -12,4 +13,4 @@ export type IpcServices = MergeIpcService<{
 }>
 
 // Convenience re-exports so the renderer imports from one place
-export type { Workspace, Session, Message } from './db/schema'
+export type { Message, Session, Workspace } from './db/schema'

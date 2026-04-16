@@ -1,34 +1,46 @@
-import { defineConfig } from 'eslint/config'
-import tseslint from '@electron-toolkit/eslint-config-ts'
-import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
-import eslintPluginReact from 'eslint-plugin-react'
-import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
-import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
+// @ts-check
+import { defineConfig } from 'eslint-config-hyoban'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out'] },
-  tseslint.configs.recommended,
-  eslintPluginReact.configs.flat.recommended,
-  eslintPluginReact.configs.flat['jsx-runtime'],
+  {
+    lessOpinionated: true,
+    react: true,
+    tailwindcss: false,
+    ignores: [
+      '**/components/ui/**',
+      '**/routeTree.gen.ts',
+      '.agents/**',
+      '*.md',
+    ],
+  },
   {
     settings: {
-      react: {
-        version: 'detect'
-      }
-    }
-  },
-  {
-    files: ['**/*.{ts,tsx}'],
-    plugins: {
-      'react-hooks': eslintPluginReactHooks,
-      'react-refresh': eslintPluginReactRefresh
+      tailwindcss: {
+        whitelist: ['center'],
+      },
     },
     rules: {
-      ...eslintPluginReactHooks.configs.recommended.rules,
-      ...eslintPluginReactRefresh.configs.vite.rules,
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/explicit-function-return-type': 'off'
-    }
+      'unicorn/prefer-math-trunc': 'off',
+      '@eslint-react/no-clone-element': 0,
+      '@eslint-react/hooks-extra/no-direct-set-state-in-use-effect': 0,
+      'no-restricted-syntax': 0,
+      'react-google-translate/no-conditional-text-nodes-with-siblings': 0,
+      // Electron: process / Buffer are always available as globals
+      'node/prefer-global/process': 'off',
+      'node/prefer-global/buffer': 'off',
+    },
   },
-  eslintConfigPrettier
+  {
+    files: ['**/*.tsx'],
+    rules: {
+      '@stylistic/jsx-self-closing-comp': 'error',
+    },
+  },
+  {
+    // TanStack Router writes both Route config and component in the same file
+    files: ['**/routes/**/*.tsx', '**/routes/**/*.ts'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 )

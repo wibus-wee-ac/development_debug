@@ -26,6 +26,7 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
+import { Button } from '@/components/ui/button'
 import {
   Command,
   CommandCollection,
@@ -42,8 +43,7 @@ import {
   CommandPanel,
   CommandSeparator,
   CommandShortcut,
-} from "@/components/ui/command"
-import { Button } from "@/components/ui/button"
+} from '@/components/ui/command'
 ```
 
 ## Minimal pattern
@@ -78,7 +78,8 @@ const items = [
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `CommandDialogPopup` → Base UI `Dialog.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `CommandDialogPopup` → Base UI `Dialog.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 
 ### Key patterns
 
@@ -92,7 +93,7 @@ Command with grouped sections:
     <CommandGroup>
       <CommandGroupLabel>Suggestions</CommandGroupLabel>
       <CommandCollection>
-        {(item) => (
+        {item => (
           <CommandItem key={item.value} value={item.value}>
             {item.label}
           </CommandItem>
@@ -103,7 +104,8 @@ Command with grouped sections:
 </Command>
 ```
 
-Use `CommandDialog` + `CommandDialogTrigger` + `CommandDialogPopup` to wrap `Command` in a dialog overlay. Use controlled `open`/`onOpenChange` state for keyboard-shortcut activation.
+Use `CommandDialog` + `CommandDialogTrigger` + `CommandDialogPopup` to wrap `Command` in a dialog overlay.
+Use controlled `open`/`onOpenChange` state for keyboard-shortcut activation.
 
 ### More examples
 

@@ -6,7 +6,7 @@ import type { Transition } from 'motion/react'
 const smoothPreset: Transition = {
   type: 'spring',
   duration: 0.4,
-  bounce: 0
+  bounce: 0,
 }
 
 /**
@@ -15,7 +15,7 @@ const smoothPreset: Transition = {
 const snappyPreset: Transition = {
   type: 'spring',
   duration: 0.4,
-  bounce: 0.15
+  bounce: 0.15,
 }
 
 /**
@@ -24,7 +24,7 @@ const snappyPreset: Transition = {
 const bouncyPreset: Transition = {
   type: 'spring',
   duration: 0.4,
-  bounce: 0.3
+  bounce: 0.3,
 }
 class SpringPresets {
   smooth = smoothPreset
@@ -44,7 +44,7 @@ class SpringStatic {
     return {
       type: 'spring',
       duration,
-      bounce: extraBounce
+      bounce: extraBounce,
     }
   }
 
@@ -55,7 +55,7 @@ class SpringStatic {
     return {
       type: 'spring',
       duration,
-      bounce: 0.15 + extraBounce
+      bounce: 0.15 + extraBounce,
     }
   }
 
@@ -66,7 +66,7 @@ class SpringStatic {
     return {
       type: 'spring',
       duration,
-      bounce: 0.3 + extraBounce
+      bounce: 0.3 + extraBounce,
     }
   }
 }

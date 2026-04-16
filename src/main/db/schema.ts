@@ -1,5 +1,5 @@
-import { int, text, sqliteTable } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
+import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 // ── Shared column fragments ───────────────────────────────────────────────────
 

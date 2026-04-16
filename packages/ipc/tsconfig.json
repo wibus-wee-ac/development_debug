@@ -1,16 +1,16 @@
 {
   "compilerOptions": {
+    "composite": true,
     "target": "esnext",
+    "experimentalDecorators": true,
+    "rootDir": "./src",
     "module": "esnext",
     "moduleResolution": "bundler",
     "strict": true,
-    "isolatedModules": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "experimentalDecorators": true,
-    "composite": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"]
 }

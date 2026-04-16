@@ -32,7 +32,7 @@ import {
   TooltipPopup,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip"
+} from '@/components/ui/tooltip'
 ```
 
 ## Minimal pattern
@@ -48,7 +48,8 @@ import {
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `TooltipPopup` → Base UI `Tooltip.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `TooltipPopup` → Base UI `Tooltip.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 
 ### Key patterns
 

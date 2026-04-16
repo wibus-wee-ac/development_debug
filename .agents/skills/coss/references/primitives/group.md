@@ -20,8 +20,8 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { Button } from "@/components/ui/button"
-import { Group, GroupSeparator } from "@/components/ui/group"
+import { Button } from '@/components/ui/button'
+import { Group, GroupSeparator } from '@/components/ui/group'
 ```
 
 ## Minimal pattern
@@ -60,7 +60,8 @@ Group with input and button:
 </Group>
 ```
 
-Sizes: `sm`, `default`, `lg`. Orientation: vertical via `orientation="vertical"`.
+Sizes: `sm`, `default`, `lg`.
+Orientation: vertical via `orientation="vertical"`.
 
 ### More examples
 

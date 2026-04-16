@@ -1,15 +1,17 @@
 ---
+
 name: coss-particles
 description: Index of all COSS UI particle examples. Use when implementing UI features to find copy-paste-ready component patterns built on coss primitives. Each particle has a description and a JSON URL for easy installation.
 compatibility: Requires coss UI components installed in the project.
 license: MIT
 metadata:
-  author: cosscom
----
+author: cosscom
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # COSS UI Particles Index
 
-Particles are copy-paste-ready UI patterns built on [coss](https://coss.com/ui) primitives. Browse them visually at <https://coss.com/ui/particles>.
+Particles are copy-paste-ready UI patterns built on [coss](https://coss.com/ui) primitives.
+Browse them visually at <https://coss.com/ui/particles>.
 
 ## How to use this skill
 
@@ -21,9 +23,11 @@ Particles are copy-paste-ready UI patterns built on [coss](https://coss.com/ui) 
 ## JSON URL pattern
 
 Each particle has a JSON manifest at:
+
 ```
 https://coss.com/ui/r/<particle-name>.json
 ```
+
 For example: `https://coss.com/ui/r/p-accordion-1.json`
 
 ## Source code
@@ -33,6 +37,7 @@ Particle source files live in this repo at `apps/ui/registry/default/particles/`
 ## Updating this index
 
 Run the generator script from the coss repo root:
+
 ```bash
 node apps/ui/scripts/generate-particle-index.cjs
 ```

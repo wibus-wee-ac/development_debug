@@ -20,7 +20,7 @@ Manual deps from docs:
 ## Canonical imports
 
 ```tsx
-import { Tabs, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/ui/tabs'
 ```
 
 ## Minimal pattern
@@ -83,4 +83,5 @@ Underline variant:
 
 ## Useful particle references
 
-See `p-tabs-1` through `p-tabs-4` for variants and orientations. Related: `p-toolbar-1`, `p-card-1`.
+See `p-tabs-1` through `p-tabs-4` for variants and orientations.
+Related: `p-toolbar-1`, `p-card-1`.

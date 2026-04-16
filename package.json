@@ -2,9 +2,9 @@
   "name": "cradle",
   "version": "1.0.0",
   "description": "An Electron application with React and TypeScript",
-  "main": "./out/main/index.js",
   "author": "example.com",
   "homepage": "https://electron-vite.org",
+  "main": "./out/main/index.js",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -21,8 +21,8 @@
     "build:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
-    "@cradle/ipc": "workspace:*",
     "@base-ui/react": "^1.4.0",
+    "@cradle/ipc": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@fontsource-variable/inter": "^5.2.8",
@@ -47,8 +47,6 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@electron-toolkit/eslint-config-prettier": "^3.0.0",
-    "@electron-toolkit/eslint-config-ts": "^3.1.0",
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tanstack/devtools-vite": "^0.6.0",
@@ -64,9 +62,7 @@
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
+    "eslint-config-hyoban": "^7.0.3",
     "jsdom": "^29.0.2",
     "prettier": "^3.7.4",
     "react": "^19.2.1",

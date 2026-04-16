@@ -1,6 +1,7 @@
 # Portal forwarding (`portalProps`)
 
-Several composed coss primitives wrap Base UI **`Portal`** inside `*Popup` (or dialog-style) components. Those wrappers accept an optional **`portalProps`** object, which is spread onto the internal portal.
+Several composed coss primitives wrap Base UI **`Portal`** inside `*Popup` (or dialog-style) components.
+Those wrappers accept an optional **`portalProps`** object, which is spread onto the internal portal.
 
 Use it when you need portal-level behavior from Base UI, for example:
 
@@ -13,8 +14,10 @@ Use it when you need portal-level behavior from Base UI, for example:
 - **Modals / overlays:** `DialogPopup`, `AlertDialogPopup`, `SheetPopup`, `DrawerPopup`, `CommandDialogPopup`
 - **Floating layers:** `MenuPopup`, `PopoverPopup`, `TooltipPopup`, `PreviewCardPopup`, `AutocompletePopup`, `ComboboxPopup`
 
-Only these composed wrappers accept `portalProps`. Any other registry component that portals content but is not listed here keeps the portal internal and is out of scope for this prop—compose Base UI parts yourself if you need direct portal control.
+Only these composed wrappers accept `portalProps`.
+Any other registry component that portals content but is not listed here keeps the portal internal and is out of scope for this prop—compose Base UI parts yourself if you need direct portal control.
 
 ## Positioner vs portal
 
-`portalProps` only affects the **portal** node. To tweak **placement** or **positioner** styling, use the existing `side`, `align`, `sideOffset`, etc., or compose Base UI **`Positioner`** / pass through future **`positionerProps`** if the wrapper adds them.
+`portalProps` only affects the **portal** node.
+To tweak **placement** or **positioner** styling, use the existing `side`, `align`, `sideOffset`, etc., or compose Base UI **`Positioner`** / pass through future **`positionerProps`** if the wrapper adds them.

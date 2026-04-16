@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { ResizeHandle } from '@renderer/components/layout/resize-handle'
+import { useLayoutStore } from '@renderer/store/layout'
 import { createFileRoute } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { useLayoutStore } from '@renderer/store/layout'
-import { ResizeHandle } from '@renderer/components/layout/resize-handle'
+import { useState } from 'react'
 
 export const Route = createFileRoute('/')({ component: App })
 

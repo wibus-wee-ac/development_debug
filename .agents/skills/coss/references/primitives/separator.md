@@ -20,7 +20,7 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { Separator } from "@/components/ui/separator"
+import { Separator } from '@/components/ui/separator'
 ```
 
 ## Minimal pattern
@@ -55,7 +55,8 @@ Vertical separator inline:
 
 ### More examples
 
-See `p-separator-1` for the core pattern. Also used within `p-menu-1`, `p-group-1`, and `p-input-group-7`.
+See `p-separator-1` for the core pattern.
+Also used within `p-menu-1`, `p-group-1`, and `p-input-group-7`.
 
 ## Common pitfalls
 

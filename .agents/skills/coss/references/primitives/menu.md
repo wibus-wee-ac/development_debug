@@ -43,7 +43,7 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
-} from "@/components/ui/menu"
+} from '@/components/ui/menu'
 ```
 
 ## Minimal pattern
@@ -63,7 +63,8 @@ Use popup positioning props like `align` / `sideOffset` only when a layout needs
 
 ## Patterns from coss particles
 
-- **Portal forwarding**: optional `portalProps` on `MenuPopup` → Base UI `Menu.Portal` (`keepMounted`, `container`, …). See [portal-props.md](../portal-props.md).
+- **Portal forwarding**: optional `portalProps` on `MenuPopup` → Base UI `Menu.Portal` (`keepMounted`, `container`, …).
+  See [portal-props.md](../portal-props.md).
 - Use `MenuTrigger render={<Button ... />}` as the default trigger composition.
 - Use `openOnHover` on `MenuTrigger` only for explicit hover-driven UX.
 - Use `MenuItem render={<Link ... />}` for navigational entries.
@@ -94,4 +95,3 @@ Use popup positioning props like `align` / `sideOffset` only when a layout needs
 - switch-style checkbox items: `p-menu-9`
 - cross-component example: `p-dialog-2` (menu opening dialog)
 - responsive menu/drawer variant: `p-drawer-13`
-

@@ -1,11 +1,12 @@
 ---
+
 name: coss
 description: Helps implement coss UI components correctly. Use when building UIs with coss primitives (buttons, dialogs, selects, forms, menus, tabs, inputs, toasts, etc.), migrating from shadcn/Radix to coss/Base UI, composing trigger-based overlays, or troubleshooting coss component behavior. Covers imports, accessibility, Tailwind styling, and common pitfalls.
 compatibility: Requires Tailwind CSS v4 and @base-ui/react. Designed for React projects using the coss component registry.
 license: MIT
 metadata:
-  author: cosscom
----
+author: cosscom
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 # coss ui
 
@@ -47,7 +48,8 @@ Use this skill to:
 
 Always apply before returning coss code:
 
-- Do not invent coss APIs. Verify against component docs first.
+- Do not invent coss APIs.
+  Verify against component docs first.
 - For trigger-based primitives (Dialog, Menu, Select, Popover, Tooltip), follow each primitive's documented trigger/content hierarchy and composition API; do not mix patterns across components.
 - Preserve accessibility labels and error semantics.
 - Consult primitive-specific guides for component invariants and edge cases.
@@ -64,7 +66,8 @@ Rule references (read on demand when the task touches these areas):
 
 ## Component discovery
 
-All 53 primitives have dedicated reference guides at `./references/primitives/<name>.md`. To find the right one for a task, consult the component registry index:
+All 53 primitives have dedicated reference guides at `./references/primitives/<name>.md`.
+To find the right one for a task, consult the component registry index:
 
 - `./references/component-registry.md`
 
@@ -73,7 +76,8 @@ All 53 primitives have dedicated reference guides at `./references/primitives/<n
 1. Identify user intent (single primitive, composed flow, form flow, overlay flow, feedback flow).
 2. Consult `references/component-registry.md` to identify candidate primitives.
 3. Select primitives from coss docs first; avoid custom fallback unless needed.
-4. Check at least one particle example for practical composition patterns. Particle files live at `apps/ui/registry/default/particles/p-<name>-<N>.tsx` (e.g. `p-dialog-1.tsx`).
+4. Check at least one particle example for practical composition patterns.
+   Particle files live at `apps/ui/registry/default/particles/p-<name>-<N>.tsx` (e.g. `p-dialog-1.tsx`).
 5. Write minimal code using documented imports/props.
 6. Self-check accessibility and composition invariants.
 
@@ -95,7 +99,8 @@ Quick manual pattern:
 
 ## Primitive Guidance
 
-Every primitive has a reference guide at `./references/primitives/<name>.md` with imports, minimal patterns, inline code examples, pitfalls, and particle references. Use the component registry to find the right file.
+Every primitive has a reference guide at `./references/primitives/<name>.md` with imports, minimal patterns, inline code examples, pitfalls, and particle references.
+Use the component registry to find the right file.
 
 High-risk primitives (read these guides first -- they have the most composition gotchas):
 
@@ -114,4 +119,3 @@ Before returning code:
 - composition structure is valid for selected primitive(s)
 - accessibility and explicit control types (`button`, `input`, etc.) are present
 - migration-sensitive flows are verified (type/lint, keyboard/a11y behavior, and SSR-sensitive primitives like Select/Command)
-

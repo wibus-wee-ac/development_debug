@@ -20,7 +20,7 @@ npm install @base-ui/react
 ## Canonical imports
 
 ```tsx
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 ```
 
 ## Minimal pattern
@@ -40,7 +40,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 Toggle group with icon buttons:
 
 ```tsx
-<ToggleGroup defaultValue={["bold"]}>
+<ToggleGroup defaultValue={['bold']}>
   <ToggleGroupItem aria-label="Toggle bold" value="bold">
     <BoldIcon aria-hidden="true" />
   </ToggleGroupItem>
@@ -53,7 +53,8 @@ Toggle group with icon buttons:
 </ToggleGroup>
 ```
 
-Multiple selection (default). For single selection use `type="single"`.
+Multiple selection (default).
+For single selection use `type="single"`.
 
 Controlled toggle group:
 
