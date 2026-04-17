@@ -1,8 +1,9 @@
-// Input: AppLayout from layout components, TanStack Router
-// Output: Index route — composes AppLayout with page-specific aside/panel content
+// Input: AppLayout from layout components, NewChatHome from workspace feature, TanStack Router
+// Output: Index route — composes AppLayout with NewChatHome as main content
 // Position: Root page route, demonstrates composition-based slot pattern
 
 import { AppLayout } from '@renderer/components/layout/app-layout'
+import { NewChatHome } from '@renderer/features/workspace'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({ component: App })
@@ -13,7 +14,7 @@ function App() {
       aside={undefined}
       panel={undefined}
     >
-      {/* Main content area — will hold workspace view later */}
+      <NewChatHome />
     </AppLayout>
   )
 }

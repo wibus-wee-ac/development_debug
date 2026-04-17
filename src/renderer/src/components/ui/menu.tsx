@@ -36,6 +36,7 @@ export function MenuPopup({
   alignOffset,
   side = "bottom",
   anchor,
+  collisionAvoidance,
   portalProps,
   ...props
 }: MenuPrimitive.Popup.Props & {
@@ -44,6 +45,7 @@ export function MenuPopup({
   alignOffset?: MenuPrimitive.Positioner.Props["alignOffset"];
   side?: MenuPrimitive.Positioner.Props["side"];
   anchor?: MenuPrimitive.Positioner.Props["anchor"];
+  collisionAvoidance?: MenuPrimitive.Positioner.Props["collisionAvoidance"];
   portalProps?: MenuPrimitive.Portal.Props;
 }): React.ReactElement {
   return (
@@ -53,6 +55,7 @@ export function MenuPopup({
         alignOffset={alignOffset}
         anchor={anchor}
         className="z-50"
+        collisionAvoidance={collisionAvoidance}
         data-slot="menu-positioner"
         side={side}
         sideOffset={sideOffset}

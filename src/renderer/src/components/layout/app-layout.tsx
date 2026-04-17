@@ -60,8 +60,6 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
     bottomPanelHeight,
     setBottomPanelHeight,
     bottomPanelOpen,
-    toggleAside,
-    toggleBottomPanel,
   } = useLayoutStore()
 
   const isMain = sidebarView === 'main'
@@ -95,28 +93,15 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
                 >
                   <WorkspaceSidebar />
 
-                  <div className="shrink-0 border-t border-sidebar-border px-2 py-2 flex items-center gap-1.5">
+                  <div className="shrink-0 border-t border-sidebar-border px-3 py-2 flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => navigateTo('settings')}
                       data-testid="settings-btn"
-                      className="flex items-center justify-center rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                      className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors"
                     >
-                      <SettingsIcon className="size-3.5" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={toggleBottomPanel}
-                      className="flex-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                    >
-                      Panel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={toggleAside}
-                      className="flex-1 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                    >
-                      Aside
+                      <SettingsIcon className="size-4" aria-hidden="true" />
+                      <span>设置</span>
                     </button>
                   </div>
                 </motion.div>
@@ -154,9 +139,9 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
           {isMain ? children : <SettingsContent />}
         </main>
 
-        {/* Bottom panel — frozen (not unmounted) when in sub-pages */}
+        {/* Bottom panel — only renders if content is provided AND panel is open */}
         <div style={{ display: isMain ? undefined : 'none' }}>
-          {bottomPanelOpen && (
+          {bottomPanelOpen && panel !== undefined && (
             <ResizeHandle
               direction="vertical"
               value={bottomPanelHeight}
@@ -170,7 +155,7 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
             />
           )}
           <AnimatePresence initial={false}>
-            {bottomPanelOpen && (
+            {bottomPanelOpen && panel !== undefined && (
               <motion.div
                 key="bottom-panel"
                 initial={{ height: 0, opacity: 0 }}
@@ -180,9 +165,7 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
                 className="bg-background border-t border-border overflow-hidden shrink-0"
               >
                 <div style={{ height: bottomPanelHeight }}>
-                  {panel ?? (
-                    <p className="px-3 py-2 text-xs text-muted-foreground select-none">Bottom Panel</p>
-                  )}
+                  {panel}
                 </div>
               </motion.div>
             )}
@@ -190,10 +173,10 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
         </div>
       </div>
 
-      {/* ── Right Aside — frozen when in sub-pages ── */}
+      {/* ── Right Aside — only renders if content is provided AND aside is open ── */}
       <div className="flex" style={{ display: isMain ? 'flex' : 'none' }}>
         <AnimatePresence initial={false}>
-          {asideOpen && (
+          {asideOpen && aside !== undefined && (
             <>
               <ResizeHandle
                 direction="horizontal"
@@ -215,9 +198,7 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
                 className="flex shrink-0 overflow-hidden border-l border-border bg-background"
               >
                 <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
-                  {aside ?? (
-                    <p className="px-3 py-2 text-xs text-muted-foreground select-none">Aside</p>
-                  )}
+                  {aside}
                 </div>
               </motion.aside>
             </>

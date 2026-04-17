@@ -1,16 +1,23 @@
 // Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives
-// Output: WorkspaceSidebar component with workspace groups and session items
+// Output: WorkspaceSidebar component with top nav, workspace groups and session items
 // Position: Main sidebar feature component for workspace navigation
 
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
 import { ipc } from '@renderer/lib/ipc'
 import {
+  AlignJustifyIcon,
   FolderClosedIcon,
   FolderOpenIcon,
+  GitBranchIcon,
+  MessageSquarePlusIcon,
   MoreHorizontalIcon,
+  PencilIcon,
   PlusIcon,
+  SearchIcon,
+  SlidersHorizontalIcon,
   Trash2Icon,
+  ZapIcon,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useState } from 'react'
@@ -45,7 +52,7 @@ function SessionItem({ session }: { session: Session }) {
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-sm transition-colors hover:bg-accent/60"
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-xs transition-colors hover:bg-accent/60"
       data-testid={`session-item-${session.id}`}
     >
       <span className="flex-1 truncate text-sidebar-foreground/80">{session.title}</span>
@@ -84,7 +91,7 @@ function WorkspaceGroup({
             : <FolderClosedIcon className="size-4" aria-hidden="true" />}
         </span>
 
-        <span className="flex-1 truncate text-sm font-medium text-sidebar-foreground/90">
+        <span className="flex-1 truncate text-xs font-medium text-sidebar-foreground/90">
           {workspace.name}
         </span>
 
@@ -146,12 +153,35 @@ function WorkspaceGroup({
   )
 }
 
+// ── Top nav items ─────────────────────────────────────────────────────────────
+
+interface TopNavItemProps {
+  icon: React.ReactNode
+  label: string
+  onClick?: () => void
+}
+
+function TopNavItem({ icon, label, onClick }: TopNavItemProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground"
+    >
+      <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
+        {icon}
+      </span>
+      <span>{label}</span>
+    </button>
+  )
+}
+
 // ── Main sidebar content ──────────────────────────────────────────────────────
 
 export function WorkspaceSidebar() {
-  const { workspaces, refresh } = useWorkspaces()
-  const { addFromPicker, adding } = useAddWorkspace(refresh)
-  const { remove } = useDeleteWorkspace(refresh)
+  const { workspaces } = useWorkspaces()
+  const { addFromPicker, adding } = useAddWorkspace()
+  const { remove } = useDeleteWorkspace()
 
   const handleDelete = useCallback((id: string) => {
     remove(id)
@@ -159,58 +189,127 @@ export function WorkspaceSidebar() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header area */}
-      <div className="flex items-center justify-between px-3.5 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 select-none">
-          工作区
-        </span>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={addFromPicker}
-          disabled={adding}
-          data-testid="add-workspace-btn"
-        >
-          <PlusIcon />
-        </Button>
-      </div>
+      {/* ── Top navigation ── */}
+      <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
+        <TopNavItem
+          icon={<MessageSquarePlusIcon className="size-4" />}
+          label="新建聊天"
+        />
+        <TopNavItem
+          icon={<SearchIcon className="size-4" />}
+          label="搜索"
+        />
+        <TopNavItem
+          icon={<AlignJustifyIcon className="size-4" />}
+          label="插件"
+        />
+        <TopNavItem
+          icon={<ZapIcon className="size-4" />}
+          label="自动化"
+        />
+      </nav>
 
-      {/* Workspace list */}
-      <nav className="flex-1 flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2" data-testid="workspace-list">
-        {workspaces.length === 0 && (
-          <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60">
-              <FolderOpenIcon className="size-6 text-muted-foreground/50" aria-hidden="true" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-muted-foreground/70">
-                还没有工作区
-              </p>
-              <p className="text-xs text-muted-foreground/50">
-                添加一个本地仓库开始使用
-              </p>
-            </div>
+      {/* ── Projects section ── */}
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex items-center px-3.5 py-1.5">
+          <span className="flex-1 text-xs font-semibold tracking-wider text-muted-foreground/60 select-none uppercase">
+            项目
+          </span>
+          <div className="flex items-center gap-0.5">
             <Button
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              title="排列"
+            >
+              <SlidersHorizontalIcon className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              title="筛选"
+            >
+              <GitBranchIcon className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 text-muted-foreground/60 hover:text-foreground"
               onClick={addFromPicker}
               disabled={adding}
-              className="mt-1 border-dashed"
-              data-testid="add-workspace-empty-btn"
+              title="添加项目"
+              data-testid="add-workspace-btn"
             >
-              <PlusIcon />
-              添加工作区
+              <PlusIcon className="size-3" />
             </Button>
           </div>
-        )}
-        {workspaces.map(workspace => (
-          <WorkspaceGroup
-            key={workspace.id}
-            workspace={workspace}
-            onDelete={handleDelete}
-          />
-        ))}
-      </nav>
+        </div>
+
+        {/* Workspace list */}
+        <nav className="flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2" data-testid="workspace-list">
+          {workspaces.length === 0 && (
+            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
+                <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium text-muted-foreground/70">还没有项目</p>
+                <p className="text-[11px] text-muted-foreground/50">添加一个本地仓库开始使用</p>
+              </div>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={addFromPicker}
+                disabled={adding}
+                className="mt-1 border-dashed"
+                data-testid="add-workspace-empty-btn"
+              >
+                <PlusIcon />
+                添加项目
+              </Button>
+            </div>
+          )}
+          {workspaces.map(workspace => (
+            <WorkspaceGroup
+              key={workspace.id}
+              workspace={workspace}
+              onDelete={handleDelete}
+            />
+          ))}
+        </nav>
+      </div>
+
+      {/* ── Chats section ── */}
+      <div className="flex flex-col border-t border-sidebar-border/50">
+        <div className="flex items-center px-3.5 py-2">
+          <span className="flex-1 text-xs font-semibold tracking-wider text-muted-foreground/60 select-none uppercase">
+            聊天
+          </span>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              title="筛选"
+            >
+              <SlidersHorizontalIcon className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              title="编辑"
+            >
+              <PencilIcon className="size-3" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="px-3 pb-2">
+          <p className="text-xs text-muted-foreground/40 select-none">智无聊天</p>
+        </div>
+      </div>
     </div>
   )
 }

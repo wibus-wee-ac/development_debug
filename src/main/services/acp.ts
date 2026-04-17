@@ -261,6 +261,40 @@ export class AcpService extends IpcService {
     await AcpConnectionManager.getInstance().cancel(agentId, sessionId)
   }
 
+  // ── Runtime: Session model / config ───────────────────────────────────────
+
+  /**
+   * Return the current model + config option state for a session.
+   * Returns null if the agent doesn't expose model selection.
+   */
+  @IpcMethod()
+  getSessionState(agentId: string, sessionId: string): import('../lib/acp-connection').AcpSessionState | null {
+    return AcpConnectionManager.getInstance().getSessionState(agentId, sessionId)
+  }
+
+  /**
+   * Switch the model for a running session.
+   * The agent must support the `unstable_setSessionModel` capability.
+   */
+  @IpcMethod()
+  async setSessionModel(agentId: string, sessionId: string, modelId: string): Promise<void> {
+    await AcpConnectionManager.getInstance().setSessionModel(agentId, sessionId, modelId)
+  }
+
+  /**
+   * Update a session config option (e.g. thought_level / thinking effort).
+   * `value` is the new `SessionConfigValueId` (string) or boolean for boolean options.
+   */
+  @IpcMethod()
+  async setSessionConfigOption(
+    agentId: string,
+    sessionId: string,
+    configId: string,
+    value: string | boolean,
+  ): Promise<void> {
+    await AcpConnectionManager.getInstance().setSessionConfigOption(agentId, sessionId, configId, value)
+  }
+
   // ── Runtime: Metrics (for Dev mode) ───────────────────────────────────────
 
   /** Return process metrics for all running agents. */

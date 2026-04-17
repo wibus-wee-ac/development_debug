@@ -11,6 +11,8 @@ import type {
   InitializeResponse,
   NewSessionResponse,
   PromptResponse,
+  SessionConfigOption,
+  SessionModelState,
   SessionNotification,
 } from '@agentclientprotocol/sdk'
 import {
@@ -23,12 +25,21 @@ import type { WebContents } from 'electron'
 import type { ProcessEntry } from './acp-process-manager'
 import { AcpProcessManager } from './acp-process-manager'
 
+// ── Session state ─────────────────────────────────────────────────────────────
+
+export interface AcpSessionState {
+  models: SessionModelState | null
+  configOptions: SessionConfigOption[]
+}
+
 // ── Connection entry ──────────────────────────────────────────────────────────
 
 interface ConnectionEntry {
   agentId: string
   connection: ClientSideConnection
   initResult: InitializeResponse | null
+  /** Per-session runtime state (models + configOptions). Keyed by ACP sessionId. */
+  sessionStates: Map<string, AcpSessionState>
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -111,6 +122,7 @@ export class AcpConnectionManager {
       agentId,
       connection,
       initResult,
+      sessionStates: new Map(),
     })
 
     // Clean up when the connection closes
@@ -125,7 +137,48 @@ export class AcpConnectionManager {
 
   async newSession(agentId: string, cwd: string): Promise<NewSessionResponse> {
     const conn = this.getConnection(agentId)
-    return conn.connection.newSession({ cwd, mcpServers: [] })
+    const resp = await conn.connection.newSession({ cwd, mcpServers: [] })
+
+    // Cache the initial session state returned by the agent
+    conn.sessionStates.set(resp.sessionId, {
+      models: resp.models ?? null,
+      configOptions: resp.configOptions ?? [],
+    })
+
+    return resp
+  }
+
+  getSessionState(agentId: string, sessionId: string): AcpSessionState | null {
+    const conn = this.connections.get(agentId)
+    return conn?.sessionStates.get(sessionId) ?? null
+  }
+
+  async setSessionModel(agentId: string, sessionId: string, modelId: string): Promise<void> {
+    const conn = this.getConnection(agentId)
+    await conn.connection.unstable_setSessionModel({ sessionId, modelId })
+    // Optimistically update the cached currentModelId
+    const state = conn.sessionStates.get(sessionId)
+    if (state?.models) {
+      state.models.currentModelId = modelId
+    }
+  }
+
+  async setSessionConfigOption(
+    agentId: string,
+    sessionId: string,
+    configId: string,
+    value: string | boolean,
+  ): Promise<void> {
+    const conn = this.getConnection(agentId)
+    const params = typeof value === 'boolean'
+      ? { sessionId, configId, type: 'boolean' as const, value }
+      : { sessionId, configId, value }
+    const resp = await conn.connection.setSessionConfigOption(params)
+    // Replace configOptions with the full updated set from the response
+    const state = conn.sessionStates.get(sessionId)
+    if (state && resp?.configOptions) {
+      state.configOptions = resp.configOptions
+    }
   }
 
   async prompt(

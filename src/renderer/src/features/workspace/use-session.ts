@@ -1,33 +1,19 @@
-// Input: ipc proxy from @renderer/lib/ipc, React hooks
+// Input: ipc proxy from @renderer/lib/ipc, TanStack Query
 // Output: useSessions hook
 // Position: Data-fetching hooks for session feature under workspace
 
 import { ipc } from '@renderer/lib/ipc'
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
-type Session = Awaited<ReturnType<typeof window.ipc.session.list>>[number]
+export const sessionsQueryKey = (workspaceId: string | null) =>
+  ['sessions', workspaceId] as const
 
 export function useSessions(workspaceId: string | null) {
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [loading, setLoading] = useState(false)
+  const { data: sessions = [], isPending: loading } = useQuery({
+    queryKey: sessionsQueryKey(workspaceId),
+    queryFn: () => ipc && workspaceId ? ipc.session.list(workspaceId) : Promise.resolve([]),
+    enabled: !!workspaceId,
+  })
 
-  const refresh = useCallback(async () => {
-    if (!workspaceId) {
-      setSessions([])
-      return
-    }
-    if (!ipc) {
-      return
-    }
-    setLoading(true)
-    const list = await ipc.session.list(workspaceId)
-    setSessions(list)
-    setLoading(false)
-  }, [workspaceId])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
-
-  return { sessions, loading, refresh }
+  return { sessions, loading }
 }
