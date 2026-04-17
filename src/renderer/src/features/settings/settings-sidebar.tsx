@@ -47,6 +47,7 @@ export function SettingsSidebar() {
             key={id}
             type="button"
             onClick={() => setSection(id)}
+            data-testid={`settings-nav-${id}`}
             className={cn(
               'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
               activeSection === id

@@ -17,4 +17,5 @@ export type IpcServices = MergeIpcService<{
 // Convenience re-exports so the renderer imports from one place
 export type { Message, Session, Workspace } from './db/schema'
 export type { AcpAgent, AcpAuditEntry } from './db/schema'
+export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'

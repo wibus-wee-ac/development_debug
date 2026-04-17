@@ -131,16 +131,16 @@ function AuditLogView({ agentId, onBack }: { agentId: string, onBack: () => void
     })
   }
 
-  const actionLabels: Record<string, { label: string, color: string }> = {
-    install_start: { label: '开始安装', color: 'text-blue-500' },
-    file_download: { label: '文件下载', color: 'text-blue-400' },
-    file_extract: { label: '文件解压', color: 'text-blue-400' },
-    file_chmod: { label: '权限设置', color: 'text-blue-400' },
-    install_complete: { label: '安装完成', color: 'text-emerald-500' },
-    install_failed: { label: '安装失败', color: 'text-red-500' },
-    uninstall_start: { label: '开始卸载', color: 'text-amber-500' },
-    file_delete: { label: '文件删除', color: 'text-amber-400' },
-    uninstall_complete: { label: '卸载完成', color: 'text-emerald-500' },
+  const actionLabels: Record<string, string> = {
+    install_start: '开始安装',
+    file_download: '文件下载',
+    file_extract: '文件解压',
+    file_chmod: '权限设置',
+    install_complete: '安装完成',
+    install_failed: '安装失败',
+    uninstall_start: '开始卸载',
+    file_delete: '文件删除',
+    uninstall_complete: '卸载完成',
   }
 
   return (
@@ -155,60 +155,62 @@ function AuditLogView({ agentId, onBack }: { agentId: string, onBack: () => void
         </button>
         <Separator orientation="vertical" className="h-4" />
         <span className="text-sm font-medium">
-          审计日志 ·
-          {agentId}
+          审计日志
+          {agentId ? ` · ${agentId}` : ''}
         </span>
       </div>
 
       {loading
         ? (
-            <div className="flex items-center justify-center py-12">
-              <Spinner className="size-4 text-muted-foreground" />
-            </div>
-          )
+          <div className="flex items-center justify-center py-12">
+            <Spinner className="size-4 text-muted-foreground" />
+          </div>
+        )
         : entries.length === 0
           ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">暂无审计记录</p>
-            )
+            <p className="py-12 text-center text-sm text-muted-foreground">暂无审计记录</p>
+          )
           : (
-              <div className="relative flex flex-col">
-                {/* Timeline */}
-                {entries.map((entry, i) => {
-                  const info = actionLabels[entry.action] ?? { label: entry.action, color: 'text-muted-foreground' }
-                  const isLast = i === entries.length - 1
-                  let details: Record<string, unknown> = {}
-                  try {
-                    details = JSON.parse(entry.details)
-                  }
-                  catch { /* noop */ }
+            <div className="overflow-hidden rounded-lg border">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">操作</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">路径</th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">详情</th>
+                    <th className="px-3 py-2 text-right font-medium text-muted-foreground">时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map((entry) => {
+                    const label = actionLabels[entry.action] ?? entry.action
+                    let details: Record<string, unknown> = {}
+                    try {
+                      details = JSON.parse(entry.details)
+                    }
+                    catch { /* noop */ }
 
-                  return (
-                    <div key={entry.id} className="relative flex gap-3 pb-4">
-                      {/* Timeline line */}
-                      {!isLast && (
-                        <div className="absolute top-5 left-1.75 h-[calc(100%-12px)] w-px bg-border" />
-                      )}
-                      {/* Dot */}
-                      <div className={cn('mt-1.5 size-3.75 shrink-0 rounded-full border-2 border-background', info.color === 'text-emerald-500' ? 'bg-emerald-500' : info.color === 'text-red-500' ? 'bg-red-500' : info.color === 'text-amber-500' ? 'bg-amber-500' : 'bg-muted-foreground')} />
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className={cn('text-sm font-medium', info.color)}>{info.label}</span>
-                          <span className="text-xs text-muted-foreground">{formatTime(entry.createdAt)}</span>
-                        </div>
-                        {entry.path && (
-                          <p className="truncate font-mono text-xs text-muted-foreground">{entry.path}</p>
-                        )}
-                        {Object.keys(details).length > 0 && (
-                          <p className="truncate text-xs text-muted-foreground/70">
-                            {Object.entries(details).map(([k, v]) => `${k}: ${v}`).join(' · ')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                    return (
+                      <tr key={entry.id} className="border-b last:border-b-0 transition-colors hover:bg-muted/20">
+                        <td className="whitespace-nowrap px-3 py-2 font-mono text-xs">{label}</td>
+                        <td className="max-w-48 truncate px-3 py-2 font-mono text-xs text-muted-foreground">
+                          {entry.path ?? '—'}
+                        </td>
+                        <td className="max-w-56 truncate px-3 py-2 font-mono text-xs text-muted-foreground">
+                          {Object.keys(details).length > 0
+                            ? Object.entries(details).map(([k, v]) => `${k}: ${v}`).join(', ')
+                            : '—'}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-xs text-muted-foreground">
+                          {formatTime(entry.createdAt)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
     </div>
   )
 }
@@ -252,29 +254,29 @@ function AgentCard({
 
   const statusNode = isInstalled
     ? (
-        <Badge size="sm" variant="success">
-          <CheckCircle2Icon className="size-3" />
-          已安装
-        </Badge>
-      )
+      <Badge size="sm" variant="success">
+        <CheckCircle2Icon className="size-3" />
+        已安装
+      </Badge>
+    )
     : isInstalling
       ? (
-          <Badge size="sm" variant="info">
-            <ClockIcon className="size-3" />
-            安装中
-          </Badge>
-        )
+        <Badge size="sm" variant="info">
+          <ClockIcon className="size-3" />
+          安装中
+        </Badge>
+      )
       : isFailed
         ? (
-            <Badge size="sm" variant="error">
-              <XCircleIcon className="size-3" />
-              失败
-            </Badge>
-          )
+          <Badge size="sm" variant="error">
+            <XCircleIcon className="size-3" />
+            失败
+          </Badge>
+        )
         : null
 
   return (
-    <div className="group relative rounded-xl border bg-card/50 transition-colors hover:bg-card">
+    <div className="group relative rounded-xl border bg-card/50 transition-colors hover:bg-card" data-testid={`acp-agent-card-${agent.id}`}>
       {/* Header row */}
       <div className="flex items-start gap-3 p-4">
         {/* Icon */}
@@ -326,53 +328,53 @@ function AgentCard({
         <div className="flex shrink-0 items-center gap-1">
           {isInstalled
             ? (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={onAudit}
-                  >
-                    <FileTextIcon className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="destructive-outline"
-                    size="xs"
-                    onClick={onUninstall}
-                    loading={busy}
-                  >
-                    <Trash2Icon className="size-3" />
-                    卸载
-                  </Button>
-                </>
-              )
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={onAudit}
+                >
+                  <FileTextIcon className="size-3.5" />
+                </Button>
+                <Button
+                  variant="destructive-outline"
+                  size="xs"
+                  onClick={onUninstall}
+                  loading={busy}
+                >
+                  <Trash2Icon className="size-3" />
+                  卸载
+                </Button>
+              </>
+            )
             : (
-                <>
-                  {distTypes.length === 1
-                    ? (
-                        <Button
-                          variant="default"
-                          size="xs"
-                          onClick={() => onInstall(distTypes[0])}
-                          loading={busy || isInstalling}
-                        >
-                          <DownloadIcon className="size-3" />
-                          安装
-                        </Button>
-                      )
-                    : (
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() => setExpanded(!expanded)}
-                          loading={busy || isInstalling}
-                        >
-                          <DownloadIcon className="size-3" />
-                          安装
-                          <ChevronDownIcon className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
-                        </Button>
-                      )}
-                </>
-              )}
+              <>
+                {distTypes.length === 1
+                  ? (
+                    <Button
+                      variant="default"
+                      size="xs"
+                      onClick={() => onInstall(distTypes[0])}
+                      loading={busy || isInstalling}
+                    >
+                      <DownloadIcon className="size-3" />
+                      安装
+                    </Button>
+                  )
+                  : (
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setExpanded(!expanded)}
+                      loading={busy || isInstalling}
+                    >
+                      <DownloadIcon className="size-3" />
+                      安装
+                      <ChevronDownIcon className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
+                    </Button>
+                  )}
+              </>
+            )}
 
           {(agent.repository || agent.website) && (
             <Button
@@ -510,7 +512,7 @@ export function AcpSettings() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-5" data-testid="acp-settings">
       {/* Header */}
       <div className="flex flex-col gap-1">
         <h3 className="font-heading text-base font-semibold">代理 (ACP)</h3>
@@ -529,6 +531,7 @@ export function AcpSettings() {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="搜索代理…"
+            data-testid="acp-search-input"
             className="h-8 w-full rounded-lg border bg-background pl-8 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 focus:ring-1 focus:ring-ring"
           />
         </div>
@@ -566,43 +569,43 @@ export function AcpSettings() {
       {/* Content */}
       {loading
         ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16">
-              <Spinner className="size-5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">正在加载注册表…</span>
-            </div>
-          )
+          <div className="flex flex-col items-center justify-center gap-2 py-16">
+            <Spinner className="size-5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">正在加载注册表…</span>
+          </div>
+        )
         : error
           ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-16">
-                <XCircleIcon className="size-6 text-destructive" />
-                <p className="max-w-xs text-center text-sm text-muted-foreground">{error}</p>
-                <Button variant="outline" size="xs" onClick={refresh}>重试</Button>
-              </div>
-            )
+            <div className="flex flex-col items-center justify-center gap-3 py-16">
+              <XCircleIcon className="size-6 text-destructive" />
+              <p className="max-w-xs text-center text-sm text-muted-foreground">{error}</p>
+              <Button variant="outline" size="xs" onClick={refresh}>重试</Button>
+            </div>
+          )
           : filteredAgents.length === 0
             ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-16">
-                  <PackageIcon className="size-6 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">
-                    {query ? '没有找到匹配的代理' : '注册表为空'}
-                  </p>
-                </div>
-              )
+              <div className="flex flex-col items-center justify-center gap-2 py-16">
+                <PackageIcon className="size-6 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">
+                  {query ? '没有找到匹配的代理' : '注册表为空'}
+                </p>
+              </div>
+            )
             : (
-                <div className="flex flex-col gap-2">
-                  {filteredAgents.map(agent => (
-                    <AgentCard
-                      key={agent.id}
-                      agent={agent}
-                      installedRecord={installedMap.get(agent.id)}
-                      onInstall={type => handleInstall(agent.id, type)}
-                      onUninstall={() => handleUninstall(agent.id)}
-                      onAudit={() => setViewState({ view: 'audit', agentId: agent.id })}
-                      busy={busyAgent === agent.id}
-                    />
-                  ))}
-                </div>
-              )}
+              <div className="flex flex-col gap-2" data-testid="acp-agent-list">
+                {filteredAgents.map(agent => (
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    installedRecord={installedMap.get(agent.id)}
+                    onInstall={type => handleInstall(agent.id, type)}
+                    onUninstall={() => handleUninstall(agent.id)}
+                    onAudit={() => setViewState({ view: 'audit', agentId: agent.id })}
+                    busy={busyAgent === agent.id}
+                  />
+                ))}
+              </div>
+            )}
 
       {/* Footer: audit log link for all */}
       {!loading && installed.length > 0 && (

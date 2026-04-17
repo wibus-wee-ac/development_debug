@@ -1,6 +1,6 @@
-// Input: IpcService base, acp-registry, acp-installer, drizzle DB, electron app
+// Input: IpcService base, acp-registry, acp-installer, acp-connection, acp-process-manager
 // Output: AcpService IPC handler — registry browsing, agent install/uninstall,
-//         audit log retrieval
+//         runtime start/stop, session management, audit log, metrics
 // Position: Main-process service registered in src/main/index.ts
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
@@ -10,6 +10,7 @@ import { app } from 'electron'
 import { getDb } from '../db'
 import type { AcpAgent, AcpAuditEntry } from '../db/schema'
 import { acpAgents, acpAuditLog } from '../db/schema'
+import { AcpConnectionManager } from '../lib/acp-connection'
 import {
   getAgentInstallDir,
   installBinaryAgent,
@@ -18,6 +19,8 @@ import {
   persistInstalled,
   uninstallBinaryAgent,
 } from '../lib/acp-installer'
+import type { ProcessMetrics } from '../lib/acp-process-manager'
+import { AcpProcessManager } from '../lib/acp-process-manager'
 import type { RegistryAgent } from '../lib/acp-registry'
 import { fetchRegistry, getSupportedDistributionTypes } from '../lib/acp-registry'
 
@@ -201,5 +204,68 @@ export class AcpService extends IpcService {
   @IpcMethod()
   getAgentInstallPath(agentId: string): string {
     return getAgentInstallDir(app.getPath('userData'), agentId)
+  }
+
+  // ── Runtime: Start / Stop ─────────────────────────────────────────────────
+
+  /**
+   * Start an installed agent process and establish an ACP connection.
+   * Returns a serializable summary of the InitializeResponse.
+   */
+  @IpcMethod()
+  async startAgent(agentId: string): Promise<Record<string, unknown>> {
+    const record = getDb().select().from(acpAgents).where(eq(acpAgents.id, agentId)).get()
+    if (!record || record.status !== 'installed') {
+      throw new Error(`Agent not installed or not ready: ${agentId}`)
+    }
+
+    const connMgr = AcpConnectionManager.getInstance()
+    const initResult = await connMgr.connect(agentId, record)
+    return initResult as unknown as Record<string, unknown>
+  }
+
+  /** Stop a running agent process. */
+  @IpcMethod()
+  async stopAgent(agentId: string): Promise<void> {
+    await AcpConnectionManager.getInstance().disconnect(agentId)
+  }
+
+  /** Check if an agent is currently running. */
+  @IpcMethod()
+  isAgentRunning(agentId: string): boolean {
+    return AcpConnectionManager.getInstance().isConnected(agentId)
+  }
+
+  // ── Runtime: Sessions ─────────────────────────────────────────────────────
+
+  /**
+   * Create a new ACP session on a running agent.
+   * `cwd` is the workspace path the agent will operate in.
+   */
+  @IpcMethod()
+  async createSession(agentId: string, cwd: string): Promise<Record<string, unknown>> {
+    const result = await AcpConnectionManager.getInstance().newSession(agentId, cwd)
+    return result as unknown as Record<string, unknown>
+  }
+
+  /** Send a prompt to a running agent session. */
+  @IpcMethod()
+  async sendPrompt(agentId: string, sessionId: string, message: string): Promise<Record<string, unknown>> {
+    const result = await AcpConnectionManager.getInstance().prompt(agentId, sessionId, message)
+    return result as unknown as Record<string, unknown>
+  }
+
+  /** Cancel an in-progress prompt. */
+  @IpcMethod()
+  async cancelPrompt(agentId: string, sessionId: string): Promise<void> {
+    await AcpConnectionManager.getInstance().cancel(agentId, sessionId)
+  }
+
+  // ── Runtime: Metrics (for Dev mode) ───────────────────────────────────────
+
+  /** Return process metrics for all running agents. */
+  @IpcMethod()
+  getRunningAgentMetrics(): ProcessMetrics[] {
+    return AcpProcessManager.getInstance().getMetrics()
   }
 }

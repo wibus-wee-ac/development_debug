@@ -21,9 +21,12 @@
     "build:linux": "electron-vite build && electron-builder --linux",
     "e2e": "electron-vite build && cucumber-js --config e2e/cucumber.mjs",
     "e2e:test": "cucumber-js --config e2e/cucumber.mjs",
-    "e2e:cleanup": "tsx e2e/scripts/cleanup.ts"
+    "e2e:cleanup": "tsx e2e/scripts/cleanup.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.19.0",
     "@base-ui/react": "^1.4.0",
     "@cradle/ipc": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",

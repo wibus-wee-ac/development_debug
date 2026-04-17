@@ -99,6 +99,7 @@ export function AppLayout({ children, aside, panel }: AppLayoutProps) {
                     <button
                       type="button"
                       onClick={() => navigateTo('settings')}
+                      data-testid="settings-btn"
                       className="flex items-center justify-center rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
                       <SettingsIcon className="size-3.5" aria-hidden="true" />

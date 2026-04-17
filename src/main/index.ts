@@ -6,12 +6,13 @@ import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
+import { AcpConnectionManager } from './lib/acp-connection'
 import { AcpService } from './services/acp'
 import { SessionService } from './services/session'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 1000,
@@ -55,6 +56,8 @@ function createWindow(): void {
   else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
 // This method will be called when Electron has finished
@@ -78,13 +81,15 @@ app.whenReady().then(() => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  createWindow()
+  const mainWindow = createWindow()
+  AcpConnectionManager.getInstance().setWebContents(mainWindow.webContents)
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+      const win = createWindow()
+      AcpConnectionManager.getInstance().setWebContents(win.webContents)
     }
   })
 })
