@@ -1,6 +1,6 @@
 "use client";
 
-import { PreviewCard as PreviewCardPrimitive } from "@renderer/components/ui/preview-card";
+import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 

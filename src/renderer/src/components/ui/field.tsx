@@ -1,6 +1,6 @@
 "use client";
 
-import { Field as FieldPrimitive } from "@renderer/components/ui/field";
+import { Field as FieldPrimitive } from "@base-ui/react/field";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 

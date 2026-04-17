@@ -1,6 +1,6 @@
 "use client";
 
-import { Tabs as TabsPrimitive } from "@renderer/components/ui/tabs";
+import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 

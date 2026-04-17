@@ -1,7 +1,7 @@
 "use client";
 
-import type { Toggle as TogglePrimitive } from "@renderer/components/ui/toggle";
-import { ToggleGroup as ToggleGroupPrimitive } from "@renderer/components/ui/toggle-group";
+import type { Toggle as TogglePrimitive } from "@base-ui/react/toggle";
+import { ToggleGroup as ToggleGroupPrimitive } from "@base-ui/react/toggle-group";
 import type { VariantProps } from "class-variance-authority";
 import * as React from "react";
 import { cn } from "@renderer/lib/utils";

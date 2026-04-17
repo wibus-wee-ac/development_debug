@@ -1,10 +1,10 @@
 "use client";
 
-import { Checkbox as CheckboxPrimitive } from "@renderer/components/ui/checkbox";
-import { Drawer as DrawerPrimitive } from "@renderer/components/ui/drawer";
+import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
+import { Drawer as DrawerPrimitive } from "@base-ui/react/drawer";
 import { mergeProps } from "@base-ui/react/merge-props";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { RadioGroup as RadioGroupPrimitive } from "@renderer/components/ui/radio-group";
+import { RadioGroup as RadioGroupPrimitive } from "@base-ui/react/radio-group";
 import { useRender } from "@base-ui/react/use-render";
 import { ChevronRightIcon, XIcon } from "lucide-react";
 import type React from "react";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Meter as MeterPrimitive } from "@renderer/components/ui/meter";
+import { Meter as MeterPrimitive } from "@base-ui/react/meter";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Tooltip as TooltipPrimitive } from "@renderer/components/ui/tooltip";
+import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 

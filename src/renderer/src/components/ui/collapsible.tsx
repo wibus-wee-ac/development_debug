@@ -1,6 +1,6 @@
 "use client";
 
-import { Collapsible as CollapsiblePrimitive } from "@renderer/components/ui/collapsible";
+import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 

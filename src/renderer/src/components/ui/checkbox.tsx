@@ -1,6 +1,6 @@
 "use client";
 
-import { Checkbox as CheckboxPrimitive } from "@renderer/components/ui/checkbox";
+import { Checkbox as CheckboxPrimitive } from "@base-ui/react/checkbox";
 import type React from "react";
 import { cn } from "@renderer/lib/utils";
 
