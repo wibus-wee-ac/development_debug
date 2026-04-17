@@ -5,14 +5,14 @@
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
 import {
-  ChevronRightIcon,
+  FolderClosedIcon,
   FolderOpenIcon,
   MoreHorizontalIcon,
   PlusIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useState } from 'react'
 
 import { useSessions } from './use-session'
@@ -45,11 +45,11 @@ function SessionItem({ session }: { session: Session }) {
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-sidebar-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+      className="flex w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-sm transition-colors hover:bg-accent/60"
       data-testid={`session-item-${session.id}`}
     >
-      <span className="flex-1 truncate">{session.title}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">
+      <span className="flex-1 truncate text-sidebar-foreground/80">{session.title}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground/50">
         {formatRelativeTime(session.updatedAt)}
       </span>
     </button>
@@ -69,25 +69,22 @@ function WorkspaceGroup({
   const { sessions } = useSessions(expanded ? workspace.id : null)
 
   return (
-    <div data-testid={`workspace-group-${workspace.id}`}>
-      {/* Group header */}
-      <div className="group flex items-center gap-1 px-2 py-1">
-        <button
-          type="button"
-          onClick={() => setExpanded(prev => !prev)}
-          className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronRightIcon
-            className={cn(
-              'size-3.5 transition-transform duration-150',
-              expanded && 'rotate-90',
-            )}
-          />
-        </button>
+    <div className="flex flex-col" data-testid={`workspace-group-${workspace.id}`}>
+      {/* Group header — entire row is clickable */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded(prev => !prev)}
+        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setExpanded(prev => !prev)}
+        className="group flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-accent/40 transition-colors"
+      >
+        <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/70">
+          {expanded
+            ? <FolderOpenIcon className="size-4" aria-hidden="true" />
+            : <FolderClosedIcon className="size-4" aria-hidden="true" />}
+        </span>
 
-        <FolderOpenIcon className="size-3.5 shrink-0 text-muted-foreground" />
-
-        <span className="flex-1 truncate text-xs font-medium text-muted-foreground">
+        <span className="flex-1 truncate text-sm font-medium text-sidebar-foreground/90">
           {workspace.name}
         </span>
 
@@ -97,7 +94,8 @@ function WorkspaceGroup({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                className="opacity-0 group-hover:opacity-100"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={e => e.stopPropagation()}
               />
             )}
           >
@@ -122,17 +120,28 @@ function WorkspaceGroup({
         </Menu>
       </div>
 
-      {/* Session list */}
-      {expanded && (
-        <div className="ml-3 space-y-0.5 border-l border-sidebar-border pl-2">
-          {sessions.length === 0 && (
-            <p className="px-2 py-1 text-xs text-muted-foreground/60">暂无会话</p>
-          )}
-          {sessions.map(session => (
-            <SessionItem key={session.id} session={session} />
-          ))}
-        </div>
-      )}
+      {/* Session list with expand/collapse animation */}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="sessions"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+            className="overflow-hidden"
+          >
+            <div className="ml-5 flex flex-col gap-0.5 border-l border-sidebar-border/50 pl-2.5 py-0.5">
+              {sessions.length === 0 && (
+                <p className="px-2.5 py-1.5 text-xs text-muted-foreground/50">暂无会话</p>
+              )}
+              {sessions.map(session => (
+                <SessionItem key={session.id} session={session} />
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -151,8 +160,10 @@ export function WorkspaceSidebar() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header area */}
-      <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-xs font-medium text-muted-foreground select-none">工作区</span>
+      <div className="flex items-center justify-between px-3.5 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 select-none">
+          工作区
+        </span>
         <Button
           variant="ghost"
           size="icon-xs"
@@ -165,21 +176,29 @@ export function WorkspaceSidebar() {
       </div>
 
       {/* Workspace list */}
-      <nav className="flex-1 space-y-1 overflow-y-auto px-1 pb-2" data-testid="workspace-list">
+      <nav className="flex-1 flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2" data-testid="workspace-list">
         {workspaces.length === 0 && (
-          <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-            <FolderOpenIcon className="size-8 text-muted-foreground/40" />
-            <p className="text-xs text-muted-foreground/60">
-              还没有工作区
-            </p>
+          <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60">
+              <FolderOpenIcon className="size-6 text-muted-foreground/50" aria-hidden="true" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-medium text-muted-foreground/70">
+                还没有工作区
+              </p>
+              <p className="text-xs text-muted-foreground/50">
+                添加一个本地仓库开始使用
+              </p>
+            </div>
             <Button
               variant="outline"
-              size="xs"
+              size="sm"
               onClick={addFromPicker}
               disabled={adding}
-              className="border-dashed"
+              className="mt-1 border-dashed"
               data-testid="add-workspace-empty-btn"
             >
+              <PlusIcon />
               添加工作区
             </Button>
           </div>
