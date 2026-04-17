@@ -5,7 +5,6 @@ import Database from 'better-sqlite3'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { app } from 'electron'
 
 import * as schema from './schema'
 
@@ -19,7 +18,7 @@ export function initDb(dbPath: string): void {
   db = drizzle(sqlite, { schema })
 
   const migrationsFolder = is.dev
-    ? join(app.getAppPath(), 'drizzle')
+    ? join(__dirname, '../../drizzle')
     : join(process.resourcesPath, 'drizzle')
 
   migrate(db, { migrationsFolder })

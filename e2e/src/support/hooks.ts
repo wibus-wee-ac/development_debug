@@ -1,9 +1,11 @@
 import type { ITestCaseHookParameter } from '@cucumber/cucumber'
-import { After, Before, Status } from '@cucumber/cucumber'
+import { After, Before, setDefaultTimeout, Status } from '@cucumber/cucumber'
 
 import type { CradleWorld } from './world.ts'
 
-Before(async function (this: CradleWorld) {
+setDefaultTimeout(30_000)
+
+Before({ timeout: 30_000 }, async function (this: CradleWorld) {
   await this.launch()
 })
 

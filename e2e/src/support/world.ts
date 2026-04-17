@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -45,6 +45,12 @@ export class CradleWorld extends World {
     const userDataPath = CradleWorld.e2eUserDataPath
     if (!existsSync(userDataPath)) {
       mkdirSync(userDataPath, { recursive: true })
+    }
+
+    // Delete the database before each test to ensure a clean slate
+    const dbPath = join(userDataPath, 'cradle.db')
+    if (existsSync(dbPath)) {
+      rmSync(dbPath)
     }
 
     this.app = await electron.launch({

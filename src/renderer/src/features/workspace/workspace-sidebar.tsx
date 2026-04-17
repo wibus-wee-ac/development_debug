@@ -105,8 +105,7 @@ function WorkspaceGroup({
           </MenuTrigger>
           <MenuPopup align="start" side="bottom" sideOffset={4}>
             <MenuItem
-              closeOnClick
-              onSelect={() => ipc?.workspace.openInFinder(workspace.path)}
+              onClick={() => ipc?.workspace.openInFinder(workspace.path)}
             >
               <FolderOpenIcon />
               在 Finder 中打开
@@ -114,8 +113,7 @@ function WorkspaceGroup({
             <MenuSeparator />
             <MenuItem
               variant="destructive"
-              closeOnClick
-              onSelect={() => onDelete(workspace.id)}
+              onClick={() => onDelete(workspace.id)}
             >
               <Trash2Icon />
               移除工作区

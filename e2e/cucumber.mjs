@@ -4,7 +4,7 @@ export default {
   import: ['e2e/src/steps/**/*.ts', 'e2e/src/support/**/*.ts'],
   format: ['progress-bar', 'html:e2e/artifacts/cucumber-report.html'],
   formatOptions: { snippetInterface: 'async-await' },
-  loader: ['tsx/esm'],
+  requireModule: ['tsx'],
   parallel: 1,
   publishQuiet: true,
   retry: 0,
