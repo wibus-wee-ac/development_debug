@@ -5,8 +5,6 @@ import type { IpcServices } from '../main/ipc-types'
 declare global {
   interface Window {
     electron: ElectronAPI
-    api: {
-      ipc: IpcServices
-    }
+    ipc: IpcServices
   }
 }

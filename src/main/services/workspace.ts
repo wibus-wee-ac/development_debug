@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
+import { basename } from 'node:path'
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
+import { dialog, shell } from 'electron'
 import { desc, eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
@@ -9,6 +11,32 @@ import { workspaces } from '../db/schema'
 
 export class WorkspaceService extends IpcService {
   static readonly groupName = 'workspace'
+
+  @IpcMethod()
+  async selectDirectory(): Promise<string | null> {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory'],
+      title: 'Select Workspace Directory',
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  }
+
+  @IpcMethod()
+  async addFromDirectory(dirPath: string): Promise<Workspace> {
+    const name = basename(dirPath)
+    return this.create({ name, path: dirPath })
+  }
+
+  @IpcMethod()
+  openInFinder(dirPath: string): void {
+    shell.showItemInFolder(dirPath)
+  }
+
+  @IpcMethod()
+  async openInDefaultApp(dirPath: string): Promise<void> {
+    await shell.openPath(dirPath)
+  }
 
   @IpcMethod()
   list(): Workspace[] {

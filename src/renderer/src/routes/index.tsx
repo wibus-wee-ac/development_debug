@@ -1,4 +1,5 @@
 import { ResizeHandle } from '@renderer/components/layout/resize-handle'
+import { WorkspaceSidebar } from '@renderer/features/workspace'
 import { useLayoutStore } from '@renderer/store/layout'
 import { createFileRoute } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
@@ -46,9 +47,7 @@ function App() {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {/* Scrollable nav area */}
-          <nav className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5">
-            <p className="px-2 py-1 text-xs text-muted-foreground select-none">Workspaces</p>
-          </nav>
+          <WorkspaceSidebar />
 
           {/* Bottom controls */}
           <div className="shrink-0 border-t border-sidebar-border px-2 py-2 flex items-center gap-1.5">
