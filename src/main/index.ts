@@ -6,6 +6,7 @@ import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
+import { AcpService } from './services/acp'
 import { SessionService } from './services/session'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
@@ -65,7 +66,7 @@ app.whenReady().then(() => {
   initDb(dbPath)
 
   // Register IPC services
-  createServices([WorkspaceService, SessionService] as const)
+  createServices([WorkspaceService, SessionService, AcpService] as const)
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')

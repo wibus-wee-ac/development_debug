@@ -5,10 +5,12 @@
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
 
+import { AcpSettings } from './acp-settings'
 import { AppearanceSettings } from './appearance-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
+  acp: AcpSettings,
 }
 
 export function SettingsContent() {
@@ -17,7 +19,7 @@ export function SettingsContent() {
 
   return (
     <ScrollArea className="flex-1">
-      <div className="mx-auto max-w-xl px-8 py-6">
+      <div className="mx-auto max-w-2xl px-8 pt-10 pb-6">
         <ActiveSection />
       </div>
     </ScrollArea>

@@ -5,3 +5,4 @@
 export { SettingsSidebar } from './settings-sidebar'
 export { SettingsContent } from './settings-content'
 export { AppearanceSettings } from './appearance-settings'
+export { AcpSettings } from './acp-settings'
