@@ -1,6 +1,6 @@
-// Input: @agentclientprotocol/sdk, AcpProcessManager, Electron BrowserWindow
+// Input: @agentclientprotocol/sdk, AcpProcessManager, AcpStreamConverter, Electron BrowserWindow
 // Output: AcpConnectionManager singleton — manages ACP ClientSideConnection
-//         instances and forwards session updates to the renderer
+//         instances, converts session updates to UIMessageChunk, and streams to renderer via IPC
 // Position: Main-process bridge between spawned agents and the Electron UI
 
 import { promises as fsp } from 'node:fs'
@@ -24,6 +24,7 @@ import type { WebContents } from 'electron'
 
 import type { ProcessEntry } from './acp-process-manager'
 import { AcpProcessManager } from './acp-process-manager'
+import { AcpStreamConverter } from './acp-stream-converter'
 
 // ── Session state ─────────────────────────────────────────────────────────────
 
@@ -40,6 +41,8 @@ interface ConnectionEntry {
   initResult: InitializeResponse | null
   /** Per-session runtime state (models + configOptions). Keyed by ACP sessionId. */
   sessionStates: Map<string, AcpSessionState>
+  /** Per-session stream converter. Keyed by ACP sessionId. */
+  converters: Map<string, AcpStreamConverter>
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -123,6 +126,7 @@ export class AcpConnectionManager {
       connection,
       initResult,
       sessionStates: new Map(),
+      converters: new Map(),
     })
 
     // Clean up when the connection closes
@@ -187,10 +191,46 @@ export class AcpConnectionManager {
     message: string,
   ): Promise<PromptResponse> {
     const conn = this.getConnection(agentId)
-    return conn.connection.prompt({
-      sessionId,
-      prompt: [{ type: 'text', text: message }],
-    })
+
+    // Create a fresh converter for this prompt turn
+    const converter = new AcpStreamConverter()
+    conn.converters.set(sessionId, converter)
+
+    try {
+      const result = await conn.connection.prompt({
+        sessionId,
+        prompt: [{ type: 'text', text: message }],
+      })
+
+      // Flush any remaining open spans
+      const flushChunks = converter.flush()
+      const wc = this.webContents
+      if (wc && !wc.isDestroyed()) {
+        for (const chunk of flushChunks) {
+          wc.send('acp:session-chunk', { sessionId, chunk })
+        }
+        wc.send('acp:session-done', { sessionId })
+      }
+
+      return result
+    }
+    catch (err) {
+      const flushChunks = converter.flush()
+      const wc = this.webContents
+      if (wc && !wc.isDestroyed()) {
+        for (const chunk of flushChunks) {
+          wc.send('acp:session-chunk', { sessionId, chunk })
+        }
+        wc.send('acp:session-error', {
+          sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+      throw err
+    }
+    finally {
+      conn.converters.delete(sessionId)
+    }
   }
 
   async cancel(agentId: string, sessionId: string): Promise<void> {
@@ -247,9 +287,16 @@ export class AcpConnectionManager {
       },
 
       async sessionUpdate(params: SessionNotification) {
-        // Forward the notification to the renderer over IPC
+        // Convert ACP update to UIMessageChunk and forward via IPC
         if (wc && !wc.isDestroyed()) {
-          wc.send('acp:session-update', { agentId, ...params })
+          const connEntry = AcpConnectionManager.getInstance().connections.get(agentId)
+          const converter = connEntry?.converters.get(params.sessionId)
+          if (converter) {
+            const chunks = converter.convert(params.update)
+            for (const chunk of chunks) {
+              wc.send('acp:session-chunk', { sessionId: params.sessionId, chunk })
+            }
+          }
         }
       },
 
