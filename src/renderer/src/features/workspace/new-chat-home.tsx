@@ -26,9 +26,9 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { sessionsQueryKey } from './use-session'
 import { useInstalledAcpAgents } from './use-acp-agents'
 import { useAcpSessionState } from './use-acp-session-state'
+import { sessionsQueryKey } from './use-session'
 import { useWorkspaces } from './use-workspace'
 import { useWorkspaceFiles } from './use-workspace-files'
 
@@ -81,7 +81,9 @@ export function NewChatHome() {
     if (storeSessionId && storeAgentId) {
       setSessionId(storeSessionId)
       setAgentId(storeAgentId)
-      if (storeWorkspaceId) setWorkspaceId(storeWorkspaceId)
+      if (storeWorkspaceId) {
+        setWorkspaceId(storeWorkspaceId)
+      }
       setChatActive(true)
       setAgentStatus('ready')
     }
@@ -163,7 +165,9 @@ export function NewChatHome() {
 
   // Effect 3: listen for ACP session title updates
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId) {
+      return
+    }
 
     const handler = (_event: unknown, data: { sessionId: string, title: string }) => {
       if (data.sessionId === sessionId) {
@@ -218,19 +222,19 @@ export function NewChatHome() {
           <MenuTrigger render={<Button variant="ghost" size="xs" />}>
             {agentStatus === 'connecting'
               ? (
-                <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-              )
+                  <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+                )
               : agentStatus === 'error'
                 ? (
-                  <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
-                )
+                    <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
+                  )
                 : (
-                  <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                    {selectedAgent
-                      ? agentInitials(selectedAgent.name)
-                      : <BotIcon className="size-3" aria-hidden="true" />}
-                  </span>
-                )}
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                      {selectedAgent
+                        ? agentInitials(selectedAgent.name)
+                        : <BotIcon className="size-3" aria-hidden="true" />}
+                    </span>
+                  )}
             {selectedAgent?.name ?? '选择 Agent'}
             <ChevronDownIcon aria-hidden="true" />
           </MenuTrigger>
@@ -332,25 +336,25 @@ export function NewChatHome() {
         <div className="flex items-center gap-1 p-1">
           {workspaces.length > 0
             ? (
-              <Menu>
-                <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground gap-2" />}>
-                  <FolderIcon aria-hidden="true" />
-                  {selectedWorkspace?.name ?? '选择项目'}
-                  <ChevronDownIcon aria-hidden="true" />
-                </MenuTrigger>
-                <MenuPopup>
-                  {workspaces.map(w => (
-                    <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>{w.name}</MenuItem>
-                  ))}
-                </MenuPopup>
-              </Menu>
-            )
+                <Menu>
+                  <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground gap-2" />}>
+                    <FolderIcon aria-hidden="true" />
+                    {selectedWorkspace?.name ?? '选择项目'}
+                    <ChevronDownIcon aria-hidden="true" />
+                  </MenuTrigger>
+                  <MenuPopup>
+                    {workspaces.map(w => (
+                      <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>{w.name}</MenuItem>
+                    ))}
+                  </MenuPopup>
+                </Menu>
+              )
             : (
-              <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
-                <FolderIcon aria-hidden="true" />
-                无项目
-              </Button>
-            )}
+                <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
+                  <FolderIcon aria-hidden="true" />
+                  无项目
+                </Button>
+              )}
         </div>
       </div>
     </div>

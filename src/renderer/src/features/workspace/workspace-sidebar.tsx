@@ -212,7 +212,9 @@ function AllSessionsList({ workspaces }: { workspaces: Workspace[] }) {
 
 function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
   const { sessions } = useSessions(workspaceId)
-  if (sessions.length === 0) return null
+  if (sessions.length === 0) {
+    return null
+  }
   return (
     <>
       {sessions.map(session => (

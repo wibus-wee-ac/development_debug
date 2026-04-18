@@ -209,26 +209,26 @@ export function Composer({
             {contextBar}
             {isStreaming
               ? (
-                <Button
-                  variant="outline"
-                  size="icon-xs"
-                  onClick={onStop}
-                  aria-label="停止生成"
-                >
-                  <SquareIcon className="size-3" aria-hidden="true" />
-                </Button>
-              )
+                  <Button
+                    variant="outline"
+                    size="icon-xs"
+                    onClick={onStop}
+                    aria-label="停止生成"
+                  >
+                    <SquareIcon className="size-3" aria-hidden="true" />
+                  </Button>
+                )
               : (
-                <Button
-                  variant="default"
-                  size="icon-xs"
-                  disabled={disabled || !inputValue.trim()}
-                  onClick={handleSend}
-                  aria-label="发送"
-                >
-                  <SendHorizonalIcon aria-hidden="true" />
-                </Button>
-              )}
+                  <Button
+                    variant="default"
+                    size="icon-xs"
+                    disabled={disabled || !inputValue.trim()}
+                    onClick={handleSend}
+                    aria-label="发送"
+                  >
+                    <SendHorizonalIcon aria-hidden="true" />
+                  </Button>
+                )}
           </div>
         </div>
       </div>

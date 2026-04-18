@@ -142,7 +142,8 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
           <div className={cn(
             'mt-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150',
             isUser && 'justify-end',
-          )}>
+          )}
+          >
             <button
               type="button"
               onClick={handleCopy}

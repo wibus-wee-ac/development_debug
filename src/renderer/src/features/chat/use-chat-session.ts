@@ -67,14 +67,18 @@ export function useChatSession({ agentId, sessionId }: UseChatSessionOptions) {
 
   // Load persisted messages from DB when session changes
   useEffect(() => {
-    if (!sessionId) return
+    if (!sessionId) {
+      return
+    }
 
     let cancelled = false
 
     async function loadMessages() {
       try {
-        const rows = await ipc.session.getMessages(sessionId!)
-        if (cancelled || rows.length === 0) return
+        const rows = await ipc!.session.getMessages(sessionId!)
+        if (cancelled || rows.length === 0) {
+          return
+        }
 
         const restored: UIMessage[] = rows
           .map(row => deserializeMessage(row.content, row.role as 'user' | 'assistant'))
@@ -95,22 +99,30 @@ export function useChatSession({ agentId, sessionId }: UseChatSessionOptions) {
     persistedIdsRef.current.clear()
     loadMessages()
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [sessionId, setMessages])
 
   // Persist new messages to DB
   const persistMessages = useCallback(
     async (msgs: UIMessage[]) => {
-      if (!sessionId) return
+      if (!sessionId) {
+        return
+      }
 
       for (const msg of msgs) {
-        if (persistedIdsRef.current.has(msg.id)) continue
+        if (persistedIdsRef.current.has(msg.id)) {
+          continue
+        }
 
         // Only persist user + assistant messages
-        if (msg.role !== 'user' && msg.role !== 'assistant') continue
+        if (msg.role !== 'user' && msg.role !== 'assistant') {
+          continue
+        }
 
         try {
-          await ipc.session.addMessage({
+          await ipc!.session.addMessage({
             sessionId,
             role: msg.role,
             content: serializeMessage(msg),
