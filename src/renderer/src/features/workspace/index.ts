@@ -5,6 +5,7 @@
 export { WorkspaceSidebar } from './workspace-sidebar'
 export { NewChatHome } from './new-chat-home'
 export { useWorkspaces, useAddWorkspace, useDeleteWorkspace } from './use-workspace'
+export { useWorkspaceFiles } from './use-workspace-files'
 export { useSessions } from './use-session'
 export { useInstalledAcpAgents } from './use-acp-agents'
 export { useAcpSessionState } from './use-acp-session-state'

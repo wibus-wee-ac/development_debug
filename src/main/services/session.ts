@@ -26,9 +26,9 @@ export class SessionService extends IpcService {
   }
 
   @IpcMethod()
-  create(input: { workspaceId: string, title: string, agent: string }): Session {
+  create(input: { workspaceId: string, title: string, agent: string, id?: string }): Session {
     const db = getDb()
-    const id = randomUUID()
+    const id = input.id ?? randomUUID()
     const result = db
       .insert(sessions)
       .values({ id, workspaceId: input.workspaceId, title: input.title, agent: input.agent })
@@ -40,6 +40,15 @@ export class SessionService extends IpcService {
   @IpcMethod()
   delete(id: string): void {
     getDb().delete(sessions).where(eq(sessions.id, id)).run()
+  }
+
+  @IpcMethod()
+  updateTitle(input: { id: string, title: string }): void {
+    getDb()
+      .update(sessions)
+      .set({ title: input.title, updatedAt: Math.floor(Date.now() / 1000) })
+      .where(eq(sessions.id, input.id))
+      .run()
   }
 
   @IpcMethod()

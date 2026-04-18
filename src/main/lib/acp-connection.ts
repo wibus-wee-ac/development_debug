@@ -287,15 +287,27 @@ export class AcpConnectionManager {
       },
 
       async sessionUpdate(params: SessionNotification) {
+        if (!wc || wc.isDestroyed()) return
+
+        // Handle session info updates (title, etc.) separately
+        if (params.update.sessionUpdate === 'session_info_update') {
+          const infoUpdate = params.update as { title?: string | null }
+          if (infoUpdate.title) {
+            wc.send('acp:session-title', {
+              sessionId: params.sessionId,
+              title: infoUpdate.title,
+            })
+          }
+          return
+        }
+
         // Convert ACP update to UIMessageChunk and forward via IPC
-        if (wc && !wc.isDestroyed()) {
-          const connEntry = AcpConnectionManager.getInstance().connections.get(agentId)
-          const converter = connEntry?.converters.get(params.sessionId)
-          if (converter) {
-            const chunks = converter.convert(params.update)
-            for (const chunk of chunks) {
-              wc.send('acp:session-chunk', { sessionId: params.sessionId, chunk })
-            }
+        const connEntry = AcpConnectionManager.getInstance().connections.get(agentId)
+        const converter = connEntry?.converters.get(params.sessionId)
+        if (converter) {
+          const chunks = converter.convert(params.update)
+          for (const chunk of chunks) {
+            wc.send('acp:session-chunk', { sessionId: params.sessionId, chunk })
           }
         }
       },

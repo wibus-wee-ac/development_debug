@@ -1,10 +1,13 @@
-// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives
+// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives, active chat store
 // Output: WorkspaceSidebar component with top nav, workspace groups and session items
 // Position: Main sidebar feature component for workspace navigation
 
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
+import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
+import { useActiveChatStore } from '@renderer/store/active-chat'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlignJustifyIcon,
   FolderClosedIcon,
@@ -12,7 +15,6 @@ import {
   GitBranchIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
-  PencilIcon,
   PlusIcon,
   SearchIcon,
   SlidersHorizontalIcon,
@@ -22,7 +24,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useState } from 'react'
 
-import { useSessions } from './use-session'
+import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
 
 type Workspace = Awaited<ReturnType<typeof window.ipc.workspace.list>>[number]
@@ -48,18 +50,54 @@ function formatRelativeTime(unixTimestamp: number): string {
 
 // ── Session item ──────────────────────────────────────────────────────────────
 
-function SessionItem({ session }: { session: Session }) {
+function SessionItem({ session, workspaceId }: { session: Session, workspaceId: string }) {
+  const openSession = useActiveChatStore(s => s.openSession)
+  const activeSessionId = useActiveChatStore(s => s.sessionId)
+  const isActive = activeSessionId === session.id
+  const queryClient = useQueryClient()
+
+  const handleDelete = useCallback(async () => {
+    await ipc?.session.delete(session.id)
+    queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+  }, [session.id, workspaceId, queryClient])
+
   return (
-    <button
-      type="button"
-      className="flex w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-xs transition-colors hover:bg-accent/60"
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => openSession({ sessionId: session.id, agentId: session.agent, workspaceId })}
+      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && openSession({ sessionId: session.id, agentId: session.agent, workspaceId })}
+      className={cn(
+        'group flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-accent/60',
+        isActive && 'bg-accent/80 text-sidebar-foreground',
+      )}
       data-testid={`session-item-${session.id}`}
     >
       <span className="flex-1 truncate text-sidebar-foreground/80">{session.title}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground/50">
+      <span className="shrink-0 text-[11px] text-muted-foreground/50 group-hover:hidden">
         {formatRelativeTime(session.updatedAt)}
       </span>
-    </button>
+      <Menu>
+        <MenuTrigger
+          render={(
+            <button
+              type="button"
+              className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
+              onClick={e => e.stopPropagation()}
+              aria-label="会话菜单"
+            />
+          )}
+        >
+          <MoreHorizontalIcon className="size-3" aria-hidden="true" />
+        </MenuTrigger>
+        <MenuPopup align="start" side="bottom" sideOffset={4}>
+          <MenuItem variant="destructive" onClick={handleDelete}>
+            <Trash2Icon />
+            删除会话
+          </MenuItem>
+        </MenuPopup>
+      </Menu>
+    </div>
   )
 }
 
@@ -143,13 +181,44 @@ function WorkspaceGroup({
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground/50">暂无会话</p>
               )}
               {sessions.map(session => (
-                <SessionItem key={session.id} session={session} />
+                <SessionItem key={session.id} session={session} workspaceId={workspace.id} />
               ))}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+// ── All sessions list (across workspaces) ─────────────────────────────────────
+
+function AllSessionsList({ workspaces }: { workspaces: Workspace[] }) {
+  // Load sessions for all workspaces
+  const allWorkspaceIds = workspaces.map(w => w.id)
+  // Use the first workspace to get sessions — for multiple workspaces we merge
+  // Currently load sessions for all workspaces (simple approach: query each)
+  return (
+    <>
+      {allWorkspaceIds.map(wId => (
+        <WorkspaceSessions key={wId} workspaceId={wId} />
+      ))}
+      {allWorkspaceIds.length === 0 && (
+        <p className="px-2.5 py-1.5 text-xs text-muted-foreground/40 select-none">暂无聊天</p>
+      )}
+    </>
+  )
+}
+
+function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
+  const { sessions } = useSessions(workspaceId)
+  if (sessions.length === 0) return null
+  return (
+    <>
+      {sessions.map(session => (
+        <SessionItem key={session.id} session={session} workspaceId={workspaceId} />
+      ))}
+    </>
   )
 }
 
@@ -182,6 +251,7 @@ export function WorkspaceSidebar() {
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
+  const resetChat = useActiveChatStore(s => s.resetChat)
 
   const handleDelete = useCallback((id: string) => {
     remove(id)
@@ -194,6 +264,7 @@ export function WorkspaceSidebar() {
         <TopNavItem
           icon={<MessageSquarePlusIcon className="size-4" />}
           label="新建聊天"
+          onClick={resetChat}
         />
         <TopNavItem
           icon={<SearchIcon className="size-4" />}
@@ -210,7 +281,7 @@ export function WorkspaceSidebar() {
       </nav>
 
       {/* ── Projects section ── */}
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center px-3.5 py-1.5">
           <span className="flex-1 text-xs font-semibold tracking-wider text-muted-foreground/60 select-none uppercase">
             项目
@@ -280,35 +351,17 @@ export function WorkspaceSidebar() {
         </nav>
       </div>
 
-      {/* ── Chats section ── */}
-      <div className="flex flex-col border-t border-sidebar-border/50">
-        <div className="flex items-center px-3.5 py-2">
+      {/* ── Chats section — all sessions across workspaces ── */}
+      <div className="flex flex-1 flex-col overflow-hidden border-t border-sidebar-border/50">
+        <div className="flex items-center px-3.5 py-1.5">
           <span className="flex-1 text-xs font-semibold tracking-wider text-muted-foreground/60 select-none uppercase">
             聊天
           </span>
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-5 text-muted-foreground/60 hover:text-foreground"
-              title="筛选"
-            >
-              <SlidersHorizontalIcon className="size-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-5 text-muted-foreground/60 hover:text-foreground"
-              title="编辑"
-            >
-              <PencilIcon className="size-3" />
-            </Button>
-          </div>
         </div>
 
-        <div className="px-3 pb-2">
-          <p className="text-xs text-muted-foreground/40 select-none">智无聊天</p>
-        </div>
+        <nav className="flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
+          <AllSessionsList workspaces={workspaces} />
+        </nav>
       </div>
     </div>
   )

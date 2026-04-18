@@ -1,5 +1,5 @@
-// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, Button/Menu from coss
-// Output: NewChatHome — new chat empty-state page with custom Composer widget
+// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, ChatView, Composer, active chat store
+// Output: NewChatHome — shell that shows empty-state composer or active ChatView
 // Position: Main content area component for the workspace feature
 
 import { Button } from '@renderer/components/ui/button'
@@ -12,21 +12,25 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '@renderer/components/ui/menu'
+import { ChatView, Composer } from '@renderer/features/chat'
 import { ipc } from '@renderer/lib/ipc'
+import { useActiveChatStore } from '@renderer/store/active-chat'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   BotIcon,
   ChevronDownIcon,
   FolderIcon,
   LoaderCircleIcon,
   PlusIcon,
-  SendHorizonalIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { sessionsQueryKey } from './use-session'
 import { useInstalledAcpAgents } from './use-acp-agents'
 import { useAcpSessionState } from './use-acp-session-state'
 import { useWorkspaces } from './use-workspace'
+import { useWorkspaceFiles } from './use-workspace-files'
 
 const WORD_SPLIT = /\s+/
 
@@ -58,17 +62,41 @@ function agentInitials(name: string): string {
 type AgentStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
 export function NewChatHome() {
-  const [inputValue, setInputValue] = useState('')
   const [agentId, setAgentId] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [chatActive, setChatActive] = useState(false)
+  const pendingMessageRef = useRef<string | null>(null)
   const { workspaces } = useWorkspaces()
   const { agents } = useInstalledAcpAgents()
+  const queryClient = useQueryClient()
+
+  // Listen for sidebar session clicks
+  const storeSessionId = useActiveChatStore(s => s.sessionId)
+  const storeAgentId = useActiveChatStore(s => s.agentId)
+  const storeWorkspaceId = useActiveChatStore(s => s.workspaceId)
+
+  useEffect(() => {
+    if (storeSessionId && storeAgentId) {
+      setSessionId(storeSessionId)
+      setAgentId(storeAgentId)
+      if (storeWorkspaceId) setWorkspaceId(storeWorkspaceId)
+      setChatActive(true)
+      setAgentStatus('ready')
+    }
+  }, [storeSessionId, storeAgentId, storeWorkspaceId])
 
   const selectedAgent = agents.find(a => a.id === agentId) ?? null
   const selectedWorkspace = workspaces.find(w => w.id === workspaceId) ?? workspaces[0] ?? null
+  const effectiveWorkspaceId = selectedWorkspace?.id ?? null
+  const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
+
+  // Map workspace files to MentionItems for the @ picker
+  const availableFiles = useMemo(
+    () => workspaceFiles.map(f => ({ type: f.type, name: f.name, path: f.path })),
+    [workspaceFiles],
+  )
 
   // Session-level model + config (only available once a session is started)
   const { models, configOptions, setModel, setConfigOption } = useAcpSessionState(
@@ -93,6 +121,10 @@ export function NewChatHome() {
     if (agentId === null) {
       return
     }
+    // Skip re-connecting if this was triggered by sidebar session restore
+    if (storeSessionId && sessionId === storeSessionId) {
+      return
+    }
     let cancelled = false
     setSessionId(null)
     setAgentStatus('connecting')
@@ -109,8 +141,10 @@ export function NewChatHome() {
         const cwd = selectedWorkspace?.path ?? workspaces[0]?.path ?? '.'
         const resp = await ipc.acp.createSession(agentId!, cwd)
         if (!cancelled) {
-          setSessionId((resp as { sessionId: string }).sessionId)
+          const acpSessionId = (resp as { sessionId: string }).sessionId
+          setSessionId(acpSessionId)
           setAgentStatus('ready')
+          // DB session NOT created here — only created on first user message
         }
       }
       catch {
@@ -121,154 +155,180 @@ export function NewChatHome() {
     }
 
     connect()
-    // Return cleanup — uses assignment, not block statement
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId])
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      // TODO: send prompt using sessionId
+  // Effect 3: listen for ACP session title updates
+  useEffect(() => {
+    if (!sessionId) return
+
+    const handler = (_event: unknown, data: { sessionId: string, title: string }) => {
+      if (data.sessionId === sessionId) {
+        ipc?.session.updateTitle({ id: sessionId, title: data.title })
+        if (effectiveWorkspaceId) {
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+        }
+      }
     }
+
+    window.electron.ipcRenderer.on('acp:session-title', handler)
+    return () => {
+      window.electron.ipcRenderer.removeListener('acp:session-title', handler)
+    }
+  }, [sessionId, effectiveWorkspaceId, queryClient])
+
+  const handleFirstSend = useCallback(async (text: string) => {
+    pendingMessageRef.current = text
+    setChatActive(true)
+
+    // Create DB session on first message — use first message as fallback title
+    if (sessionId && effectiveWorkspaceId && agentId) {
+      const fallbackTitle = text.length > 50 ? `${text.slice(0, 50)}...` : text
+      try {
+        await ipc?.session.create({
+          id: sessionId,
+          workspaceId: effectiveWorkspaceId,
+          title: fallbackTitle,
+          agent: agentId,
+        })
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+      }
+      catch {
+        // Session may already exist if restored from sidebar — ignore
+      }
+    }
+  }, [sessionId, effectiveWorkspaceId, agentId, queryClient])
+
+  // ── Shared toolbar pieces (used in both empty-state and ChatView composers) ──
+
+  const composerToolbar = useMemo(() => (
+    <Button variant="ghost" size="icon-xs" aria-label="添加文件">
+      <PlusIcon aria-hidden="true" />
+    </Button>
+  ), [])
+
+  const composerContextBar = useMemo(() => (
+    <>
+      {/* Provider (ACP agent picker) */}
+      {agents.length > 0 && (
+        <Menu>
+          <MenuTrigger render={<Button variant="ghost" size="xs" />}>
+            {agentStatus === 'connecting'
+              ? (
+                <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+              )
+              : agentStatus === 'error'
+                ? (
+                  <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
+                )
+                : (
+                  <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                    {selectedAgent
+                      ? agentInitials(selectedAgent.name)
+                      : <BotIcon className="size-3" aria-hidden="true" />}
+                  </span>
+                )}
+            {selectedAgent?.name ?? '选择 Agent'}
+            <ChevronDownIcon aria-hidden="true" />
+          </MenuTrigger>
+          <MenuPopup>
+            <MenuGroup>
+              <MenuGroupLabel>ACP Agents</MenuGroupLabel>
+              <MenuSeparator />
+              {agents.map(a => (
+                <MenuItem key={a.id} onClick={() => setAgentId(a.id)}>
+                  <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                    {agentInitials(a.name)}
+                  </span>
+                  {a.name}
+                </MenuItem>
+              ))}
+            </MenuGroup>
+          </MenuPopup>
+        </Menu>
+      )}
+
+      {/* Model picker */}
+      {agentStatus === 'ready' && models && models.availableModels.length > 0 && (
+        <Menu>
+          <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />}>
+            {models.currentModelId}
+            <ChevronDownIcon aria-hidden="true" />
+          </MenuTrigger>
+          <MenuPopup>
+            {models.availableModels.map(m => (
+              <MenuItem key={m.modelId} onClick={() => setModel(m.modelId)}>
+                {m.name}
+              </MenuItem>
+            ))}
+          </MenuPopup>
+        </Menu>
+      )}
+
+      {/* Thinking effort */}
+      {agentStatus === 'ready' && thoughtLevelOpts.length > 0 && thoughtLevelOption && (
+        <Menu>
+          <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />}>
+            {thoughtLevelOption.type === 'select' ? thoughtLevelOption.currentValue : thoughtLevelOption.name}
+            <ChevronDownIcon aria-hidden="true" />
+          </MenuTrigger>
+          <MenuPopup>
+            <MenuGroup>
+              <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
+              <MenuSeparator />
+              {thoughtLevelOpts.map(opt => (
+                <MenuItem
+                  key={opt.value}
+                  onClick={() => setConfigOption({ configId: thoughtLevelOption.id, value: opt.value })}
+                >
+                  {opt.name}
+                </MenuItem>
+              ))}
+            </MenuGroup>
+          </MenuPopup>
+        </Menu>
+      )}
+    </>
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [agents, agentStatus, selectedAgent, models, thoughtLevelOpts, thoughtLevelOption])
+
+  // ── Active chat mode ──
+  if (chatActive) {
+    return (
+      <ChatView
+        agentId={agentId}
+        sessionId={sessionId}
+        initialMessage={pendingMessageRef.current ?? undefined}
+        availableFiles={availableFiles}
+        composerToolbar={composerToolbar}
+        composerContextBar={composerContextBar}
+        placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件`}
+      />
+    )
   }
 
-  function autoResize(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setInputValue(e.target.value)
-    const el = e.target
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`
-  }
-
+  // ── Empty state ──
   return (
     <div className="flex h-full flex-col items-center justify-center px-1 pt-1 pb-8">
       <h1 className="mb-6 text-2xl font-semibold tracking-tight text-foreground/90 select-none">
         我们今天要构建什么？
       </h1>
 
-      {/* ── Composer tray ── */}
+      {/* Composer tray */}
       <div className="w-full max-w-2xl rounded-2xl bg-muted/60 p-1">
+        <Composer
+          onSend={handleFirstSend}
+          disabled={agentStatus !== 'ready'}
+          placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件，/ 输入命令，$ 使用技能`}
+          availableFiles={availableFiles}
+          toolbar={composerToolbar}
+          contextBar={composerContextBar}
+        />
 
-        {/* ── Input card ── */}
-        <div className="rounded-xl bg-background shadow-xs border border-border/50 focus-within:ring-2 focus-within:ring-ring/30 focus-within:border-ring/50 transition-shadow">
-          {/* Textarea */}
-          <textarea
-            ref={textareaRef}
-            value={inputValue}
-            onChange={autoResize}
-            onKeyDown={handleKeyDown}
-            placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件，/ 输入命令，$ 使用技能`}
-            rows={2}
-            className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none min-h-25 max-h-60 rounded-t-xl"
-          />
-
-          {/* Action toolbar */}
-          <div className="flex items-center justify-between gap-2 border-t border-border/50 px-3 py-2">
-            {/* Left: attach */}
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="icon-xs" aria-label="添加文件">
-                <PlusIcon aria-hidden="true" />
-              </Button>
-            </div>
-
-            {/* Right: Provider → Model → Thinking → send */}
-            <div className="flex items-center gap-1">
-
-              {/* Provider (ACP agent picker) */}
-              {agents.length > 0 && (
-                <Menu>
-                  <MenuTrigger render={<Button variant="ghost" size="xs" />}>
-                    {agentStatus === 'connecting'
-                      ? (
-                        <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-                      )
-                      : agentStatus === 'error'
-                        ? (
-                          <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
-                        )
-                        : (
-                          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                            {selectedAgent
-                              ? agentInitials(selectedAgent.name)
-                              : <BotIcon className="size-3" aria-hidden="true" />}
-                          </span>
-                        )}
-                    {selectedAgent?.name ?? '选择 Agent'}
-                    <ChevronDownIcon aria-hidden="true" />
-                  </MenuTrigger>
-                  <MenuPopup side="bottom" align="end" collisionAvoidance={{ side: 'none' }}>
-                    <MenuGroup>
-                      <MenuGroupLabel>ACP Agents</MenuGroupLabel>
-                      <MenuSeparator />
-                      {agents.map(a => (
-                        <MenuItem key={a.id} onClick={() => setAgentId(a.id)}>
-                          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                            {agentInitials(a.name)}
-                          </span>
-                          {a.name}
-                        </MenuItem>
-                      ))}
-                    </MenuGroup>
-                  </MenuPopup>
-                </Menu>
-              )}
-
-              {/* Model picker — only visible when session is ready and agent exposes models */}
-              {agentStatus === 'ready' && models && models.availableModels.length > 0 && (
-                <Menu>
-                  <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />}>
-                    {models.currentModelId}
-                    <ChevronDownIcon aria-hidden="true" />
-                  </MenuTrigger>
-                  <MenuPopup side="bottom" align="end" collisionAvoidance={{ side: 'none' }}>
-                    {models.availableModels.map(m => (
-                      <MenuItem key={m.modelId} onClick={() => setModel(m.modelId)}>
-                        {m.name}
-                      </MenuItem>
-                    ))}
-                  </MenuPopup>
-                </Menu>
-              )}
-
-              {/* Thinking effort — only visible when session exposes thought_level config */}
-              {agentStatus === 'ready' && thoughtLevelOpts.length > 0 && thoughtLevelOption && (
-                <Menu>
-                  <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />}>
-                    {thoughtLevelOption.type === 'select' ? thoughtLevelOption.currentValue : thoughtLevelOption.name}
-                    <ChevronDownIcon aria-hidden="true" />
-                  </MenuTrigger>
-                  <MenuPopup side="bottom" align="end" collisionAvoidance={{ side: 'none' }}>
-                    <MenuGroup>
-                      <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
-                      <MenuSeparator />
-                      {thoughtLevelOpts.map(opt => (
-                        <MenuItem
-                          key={opt.value}
-                          onClick={() => setConfigOption({ configId: thoughtLevelOption.id, value: opt.value })}
-                        >
-                          {opt.name}
-                        </MenuItem>
-                      ))}
-                    </MenuGroup>
-                  </MenuPopup>
-                </Menu>
-              )}
-
-              <Button
-                variant="default"
-                size="icon-xs"
-                disabled={!inputValue.trim()}
-                aria-label="发送"
-              >
-                <SendHorizonalIcon aria-hidden="true" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Context pill: workspace selector ── */}
+        {/* Context pill: workspace selector */}
         <div className="flex items-center gap-1 p-1">
           {workspaces.length > 0
             ? (
@@ -278,7 +338,7 @@ export function NewChatHome() {
                   {selectedWorkspace?.name ?? '选择项目'}
                   <ChevronDownIcon aria-hidden="true" />
                 </MenuTrigger>
-                <MenuPopup side="bottom" align="start" collisionAvoidance={{ side: 'none' }}>
+                <MenuPopup>
                   {workspaces.map(w => (
                     <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>{w.name}</MenuItem>
                   ))}

@@ -12,3 +12,4 @@ Store naming convention: `use<Domain>Store`.
 - **layout-slots.ts**: Layout slot registry — pages inject content into aside/panel regions
 - **theme.ts**: Theme preference state — light/dark/system mode
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)
+- **active-chat.ts**: Active chat session state — bridges sidebar session navigation and chat content area

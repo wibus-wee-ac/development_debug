@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
-import { basename } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { basename, join } from 'node:path'
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
-import { dialog, shell } from 'electron'
 import { desc, eq } from 'drizzle-orm'
+import { dialog, shell } from 'electron'
+import fg from 'fast-glob'
+import ignore from 'ignore'
 
 import { getDb } from '../db'
 import type { Workspace } from '../db/schema'
@@ -18,7 +21,7 @@ export class WorkspaceService extends IpcService {
       properties: ['openDirectory'],
       title: 'Select Workspace Directory',
     })
-    if (result.canceled || result.filePaths.length === 0) return null
+    if (result.canceled || result.filePaths.length === 0) { return null }
     return result.filePaths[0]
   }
 
@@ -76,5 +79,49 @@ export class WorkspaceService extends IpcService {
   @IpcMethod()
   delete(id: string): void {
     getDb().delete(workspaces).where(eq(workspaces.id, id)).run()
+  }
+
+  /**
+   * Recursively list files in a workspace for @ mention suggestions.
+   * Respects .gitignore and skips hidden files / node_modules.
+   * Returns relative paths from workspace root.
+   */
+  @IpcMethod()
+  async listFiles(workspaceId: string): Promise<Array<{ type: 'file' | 'directory', name: string, path: string }>> {
+    const ws = getDb().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
+    if (!ws) {
+      return []
+    }
+
+    // Read .gitignore if present
+    const ig = ignore()
+    try {
+      const gitignoreContent = await readFile(join(ws.path, '.gitignore'), 'utf8')
+      ig.add(gitignoreContent)
+    }
+    catch {
+      // No .gitignore, continue without it
+    }
+    // Always ignore these
+    ig.add(['node_modules', '.git', '.DS_Store'])
+
+    const entries = await fg('**/*', {
+      cwd: ws.path,
+      dot: false,
+      onlyFiles: false,
+      markDirectories: true,
+    })
+
+    const filtered = entries.filter(ig.createFilter())
+
+    return filtered.map((entry) => {
+      const isDir = entry.endsWith('/')
+      const cleanPath = isDir ? entry.slice(0, -1) : entry
+      return {
+        type: isDir ? 'directory' as const : 'file' as const,
+        name: basename(cleanPath),
+        path: cleanPath,
+      }
+    })
   }
 }
