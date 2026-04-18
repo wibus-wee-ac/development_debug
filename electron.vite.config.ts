@@ -10,42 +10,44 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
-        '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
-      },
+        '@cradle/ipc': resolve('packages/ipc/src/index.ts')
+      }
     },
     build: {
       externalizeDeps: {
-        exclude: ['@cradle/ipc', 'electron-store'],
+        exclude: ['@cradle/ipc', 'electron-store']
       },
       rollupOptions: {
-        external: ['better-sqlite3'],
-      },
-    },
+        external: ['better-sqlite3']
+      }
+    }
   },
   preload: {
     resolve: {
       alias: {
-        '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
-      },
+        '@cradle/ipc': resolve('packages/ipc/src/index.ts')
+      }
     },
     build: {
       externalizeDeps: {
-        exclude: ['@cradle/ipc', 'electron-store'],
-      },
-    },
+        exclude: ['@cradle/ipc', 'electron-store']
+      }
+    }
   },
   renderer: {
     resolve: {
       alias: {
+        '@main': resolve('src/main'),
         '@renderer': resolve('src/renderer/src'),
-        '@cradle/ipc/client': resolve('packages/ipc/src/client.ts'),
-      },
+        '@shared': resolve('src/shared'),
+        '@cradle/ipc/client': resolve('packages/ipc/src/client.ts')
+      }
     },
     plugins: [
       devtools(),
       tailwindcss(),
       tanstackRouter({ target: 'react', autoCodeSplitting: true }),
-      viteReact(),
-    ],
-  },
+      viteReact()
+    ]
+  }
 })

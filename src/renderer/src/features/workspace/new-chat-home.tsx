@@ -1,6 +1,6 @@
-// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, ChatView, Composer, active chat store
-// Output: NewChatHome — shell that shows empty-state composer or active ChatView
-// Position: Main content area component for the workspace feature
+// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, Composer, ChatSessionManager, useNavigate
+// Output: NewChatHome — empty-state composer with model/thinking pickers, calls manager.createAndSend + navigates
+// Position: Main content area component for the home page (/ route)
 
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -10,24 +10,31 @@ import {
   MenuItem,
   MenuPopup,
   MenuSeparator,
-  MenuTrigger,
+  MenuTrigger
 } from '@renderer/components/ui/menu'
-import { ChatView, Composer } from '@renderer/features/chat'
+import { Composer } from '@renderer/features/chat'
+import { useChatSessionManager } from '@renderer/features/chat/chat-session-manager'
+import {
+  acpSessionStateQueryKey,
+  setAcpSessionConfigOption,
+  setAcpSessionModel,
+  useAcpSessionState
+} from '@renderer/features/workspace/use-acp-session-state'
 import { ipc } from '@renderer/lib/ipc'
-import { useActiveChatStore } from '@renderer/store/active-chat'
+import { applyStoredChatPreferences, buildStoredChatPreferences } from '@shared/chat-preferences'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import {
   BotIcon,
   ChevronDownIcon,
   FolderIcon,
   LoaderCircleIcon,
   PlusIcon,
-  TriangleAlertIcon,
+  TriangleAlertIcon
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useInstalledAcpAgents } from './use-acp-agents'
-import { useAcpSessionState } from './use-acp-session-state'
 import { sessionsQueryKey } from './use-session'
 import { useWorkspaces } from './use-workspace'
 import { useWorkspaceFiles } from './use-workspace-files'
@@ -39,14 +46,12 @@ interface FlatConfigOpt {
   name: string
 }
 
-/** Runtime-safe flatten — drops grouped options, keeps flat { value, name } entries */
 function flatConfigOptions(opts: unknown): FlatConfigOpt[] {
   if (!Array.isArray(opts)) {
     return []
   }
   return opts.filter(
-    (o): o is FlatConfigOpt =>
-      typeof o === 'object' && o !== null && 'value' in o && 'name' in o,
+    (o): o is FlatConfigOpt => typeof o === 'object' && o !== null && 'value' in o && 'name' in o
   )
 }
 
@@ -59,77 +64,129 @@ function agentInitials(name: string): string {
   return name.slice(0, 2).toUpperCase()
 }
 
-type AgentStatus = 'idle' | 'connecting' | 'ready' | 'error'
+type ProbeStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
 export function NewChatHome() {
   const [agentId, setAgentId] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [agentStatus, setAgentStatus] = useState<AgentStatus>('idle')
-  const [chatActive, setChatActive] = useState(false)
-  const pendingMessageRef = useRef<string | null>(null)
+  // Probe session: created eagerly when agentId changes, for model/thinking picker UI
+  const [probeSessionId, setProbeSessionId] = useState<string | null>(null)
+  const [probeStatus, setProbeStatus] = useState<ProbeStatus>('idle')
+  const [sending, setSending] = useState(false)
   const { workspaces } = useWorkspaces()
   const { agents } = useInstalledAcpAgents()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const { createAndSend } = useChatSessionManager()
+  const appliedProbeSessionIdRef = useRef<string | null>(null)
 
-  // Listen for sidebar session clicks
-  const storeSessionId = useActiveChatStore(s => s.sessionId)
-  const storeAgentId = useActiveChatStore(s => s.agentId)
-  const storeWorkspaceId = useActiveChatStore(s => s.workspaceId)
-
-  useEffect(() => {
-    if (storeSessionId && storeAgentId) {
-      setSessionId(storeSessionId)
-      setAgentId(storeAgentId)
-      if (storeWorkspaceId) {
-        setWorkspaceId(storeWorkspaceId)
-      }
-      setChatActive(true)
-      setAgentStatus('ready')
-    }
-  }, [storeSessionId, storeAgentId, storeWorkspaceId])
-
-  const selectedAgent = agents.find(a => a.id === agentId) ?? null
-  const selectedWorkspace = workspaces.find(w => w.id === workspaceId) ?? workspaces[0] ?? null
+  const selectedAgent = agents.find((a) => a.id === agentId) ?? null
+  const selectedWorkspace = workspaces.find((w) => w.id === workspaceId) ?? workspaces[0] ?? null
   const effectiveWorkspaceId = selectedWorkspace?.id ?? null
   const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
 
   // Map workspace files to MentionItems for the @ picker
   const availableFiles = useMemo(
-    () => workspaceFiles.map(f => ({ type: f.type, name: f.name, path: f.path })),
-    [workspaceFiles],
+    () => workspaceFiles.map((f) => ({ type: f.type, name: f.name, path: f.path })),
+    [workspaceFiles]
   )
 
-  // Session-level model + config (only available once a session is started)
+  // Model + config pickers from the probe session
   const { models, configOptions, setModel, setConfigOption } = useAcpSessionState(
-    selectedAgent?.id ?? null,
-    sessionId,
+    agentId,
+    probeSessionId
   )
-
-  const thoughtLevelOption = configOptions.find(o => o.category === 'thought_level')
+  const currentPreferences = useMemo(
+    () =>
+      buildStoredChatPreferences({
+        models,
+        configOptions
+      }),
+    [models, configOptions]
+  )
+  const persistChatPreferences = useCallback(
+    async (preferences = currentPreferences) => {
+      await ipc!.preferences.setChatPreferences(preferences)
+    },
+    [currentPreferences]
+  )
+  const thoughtLevelOption = configOptions.find((o) => o.category === 'thought_level')
   const thoughtLevelOpts = flatConfigOptions(
-    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null,
+    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null
   )
 
-  // Effect 1: when agents load and no selection yet, pick the first one
+  useEffect(() => {
+    if (
+      !agentId ||
+      !probeSessionId ||
+      !models ||
+      appliedProbeSessionIdRef.current === probeSessionId
+    ) {
+      return
+    }
+
+    const stableAgentId = agentId
+    const stableProbeSessionId = probeSessionId
+
+    let cancelled = false
+
+    async function applyPreferencesToProbeSession() {
+      const preferences = await ipc!.preferences.getChatPreferences().catch(() => null)
+      if (!preferences) {
+        if (!cancelled) {
+          appliedProbeSessionIdRef.current = stableProbeSessionId
+        }
+        return
+      }
+
+      await applyStoredChatPreferences({
+        preferences,
+        state: {
+          models,
+          configOptions
+        },
+        setModel: (modelId) => setAcpSessionModel(stableAgentId, stableProbeSessionId, modelId),
+        setConfigOption: (configId, value) =>
+          setAcpSessionConfigOption(stableAgentId, stableProbeSessionId, configId, value)
+      })
+
+      await queryClient.invalidateQueries({
+        queryKey: acpSessionStateQueryKey(stableAgentId, stableProbeSessionId)
+      })
+
+      if (!cancelled) {
+        appliedProbeSessionIdRef.current = stableProbeSessionId
+      }
+    }
+
+    applyPreferencesToProbeSession().catch(() => {
+      if (!cancelled) {
+        appliedProbeSessionIdRef.current = stableProbeSessionId
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [agentId, probeSessionId, models, configOptions, queryClient])
+
+  // Auto-select first agent on load
   useEffect(() => {
     if (agentId === null && agents.length > 0) {
       setAgentId(agents[0].id)
     }
   }, [agents, agentId])
 
-  // Effect 2: whenever agentId changes, start agent process + create session
+  // Probe connection: start agent + create a session for model/thinking picker UI
   useEffect(() => {
-    if (agentId === null) {
+    if (!agentId) {
       return
     }
-    // Skip re-connecting if this was triggered by sidebar session restore
-    if (storeSessionId && sessionId === storeSessionId) {
-      return
-    }
+
     let cancelled = false
-    setSessionId(null)
-    setAgentStatus('connecting')
+    setProbeSessionId(null)
+    setProbeStatus('connecting')
+    appliedProbeSessionIdRef.current = null
 
     async function connect() {
       try {
@@ -143,15 +200,12 @@ export function NewChatHome() {
         const cwd = selectedWorkspace?.path ?? workspaces[0]?.path ?? '.'
         const resp = await ipc.acp.createSession(agentId!, cwd)
         if (!cancelled) {
-          const acpSessionId = (resp as { sessionId: string }).sessionId
-          setSessionId(acpSessionId)
-          setAgentStatus('ready')
-          // DB session NOT created here — only created on first user message
+          setProbeSessionId((resp as { sessionId: string }).sessionId)
+          setProbeStatus('ready')
         }
-      }
-      catch {
+      } catch {
         if (!cancelled) {
-          setAgentStatus('error')
+          setProbeStatus('error')
         }
       }
     }
@@ -163,156 +217,181 @@ export function NewChatHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId])
 
-  // Effect 3: listen for ACP session title updates
-  useEffect(() => {
-    if (!sessionId) {
-      return
-    }
-
-    const handler = (_event: unknown, data: { sessionId: string, title: string }) => {
-      if (data.sessionId === sessionId) {
-        ipc?.session.updateTitle({ id: sessionId, title: data.title })
-        if (effectiveWorkspaceId) {
-          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
-        }
+  // Protocol-driven: reuse probe session, let manager own the lifecycle from here
+  const handleFirstSend = useCallback(
+    async (text: string) => {
+      if (!agentId || !effectiveWorkspaceId || !probeSessionId) {
+        return
       }
-    }
 
-    window.electron.ipcRenderer.on('acp:session-title', handler)
-    return () => {
-      window.electron.ipcRenderer.removeListener('acp:session-title', handler)
-    }
-  }, [sessionId, effectiveWorkspaceId, queryClient])
-
-  const handleFirstSend = useCallback(async (text: string) => {
-    pendingMessageRef.current = text
-    setChatActive(true)
-
-    // Create DB session on first message — use first message as fallback title
-    if (sessionId && effectiveWorkspaceId && agentId) {
-      const fallbackTitle = text.length > 50 ? `${text.slice(0, 50)}...` : text
+      setSending(true)
       try {
-        await ipc?.session.create({
-          id: sessionId,
+        const sessionId = await createAndSend({
+          agentId,
           workspaceId: effectiveWorkspaceId,
-          title: fallbackTitle,
-          agent: agentId,
+          cwd: selectedWorkspace?.path ?? '.',
+          text
         })
+
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+        navigate({ to: '/chat/$sessionId', params: { sessionId } })
+      } catch (err) {
+        console.error('[NewChatHome] createAndSend failed:', err)
+        setSending(false)
       }
-      catch {
-        // Session may already exist if restored from sidebar — ignore
-      }
-    }
-  }, [sessionId, effectiveWorkspaceId, agentId, queryClient])
+    },
+    [
+      agentId,
+      effectiveWorkspaceId,
+      probeSessionId,
+      selectedWorkspace,
+      createAndSend,
+      queryClient,
+      navigate
+    ]
+  )
 
-  // ── Shared toolbar pieces (used in both empty-state and ChatView composers) ──
+  // ── Toolbar ──
 
-  const composerToolbar = useMemo(() => (
-    <Button variant="ghost" size="icon-xs" aria-label="添加文件">
-      <PlusIcon aria-hidden="true" />
-    </Button>
-  ), [])
+  const composerToolbar = useMemo(
+    () => (
+      <Button variant="ghost" size="icon-xs" aria-label="添加文件">
+        <PlusIcon aria-hidden="true" />
+      </Button>
+    ),
+    []
+  )
 
-  const composerContextBar = useMemo(() => (
-    <>
-      {/* Provider (ACP agent picker) */}
-      {agents.length > 0 && (
-        <Menu>
-          <MenuTrigger render={<Button variant="ghost" size="xs" />}>
-            {agentStatus === 'connecting'
-              ? (
-                  <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-                )
-              : agentStatus === 'error'
-                ? (
-                    <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
-                  )
-                : (
-                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                      {selectedAgent
-                        ? agentInitials(selectedAgent.name)
-                        : <BotIcon className="size-3" aria-hidden="true" />}
-                    </span>
+  const composerContextBar = useMemo(
+    () => (
+      <>
+        {/* Agent picker */}
+        {agents.length > 0 && (
+          <Menu>
+            <MenuTrigger render={<Button variant="ghost" size="xs" />}>
+              {probeStatus === 'connecting' ? (
+                <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+              ) : probeStatus === 'error' ? (
+                <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
+              ) : (
+                <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                  {selectedAgent ? (
+                    agentInitials(selectedAgent.name)
+                  ) : (
+                    <BotIcon className="size-3" aria-hidden="true" />
                   )}
-            {selectedAgent?.name ?? '选择 Agent'}
-            <ChevronDownIcon aria-hidden="true" />
-          </MenuTrigger>
-          <MenuPopup>
-            <MenuGroup>
-              <MenuGroupLabel>ACP Agents</MenuGroupLabel>
-              <MenuSeparator />
-              {agents.map(a => (
-                <MenuItem key={a.id} onClick={() => setAgentId(a.id)}>
-                  <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                    {agentInitials(a.name)}
-                  </span>
-                  {a.name}
-                </MenuItem>
-              ))}
-            </MenuGroup>
-          </MenuPopup>
-        </Menu>
-      )}
+                </span>
+              )}
+              {selectedAgent?.name ?? '选择 Agent'}
+              <ChevronDownIcon aria-hidden="true" />
+            </MenuTrigger>
+            <MenuPopup>
+              <MenuGroup>
+                <MenuGroupLabel>ACP Agents</MenuGroupLabel>
+                <MenuSeparator />
+                {agents.map((a) => (
+                  <MenuItem key={a.id} onClick={() => setAgentId(a.id)}>
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                      {agentInitials(a.name)}
+                    </span>
+                    {a.name}
+                  </MenuItem>
+                ))}
+              </MenuGroup>
+            </MenuPopup>
+          </Menu>
+        )}
 
-      {/* Model picker */}
-      {agentStatus === 'ready' && models && models.availableModels.length > 0 && (
-        <Menu>
-          <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />}>
-            {models.currentModelId}
-            <ChevronDownIcon aria-hidden="true" />
-          </MenuTrigger>
-          <MenuPopup>
-            {models.availableModels.map(m => (
-              <MenuItem key={m.modelId} onClick={() => setModel(m.modelId)}>
-                {m.name}
-              </MenuItem>
-            ))}
-          </MenuPopup>
-        </Menu>
-      )}
-
-      {/* Thinking effort */}
-      {agentStatus === 'ready' && thoughtLevelOpts.length > 0 && thoughtLevelOption && (
-        <Menu>
-          <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />}>
-            {thoughtLevelOption.type === 'select' ? thoughtLevelOption.currentValue : thoughtLevelOption.name}
-            <ChevronDownIcon aria-hidden="true" />
-          </MenuTrigger>
-          <MenuPopup>
-            <MenuGroup>
-              <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
-              <MenuSeparator />
-              {thoughtLevelOpts.map(opt => (
+        {/* Model picker */}
+        {probeStatus === 'ready' && models && models.availableModels.length > 0 && (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground/70 hover:text-foreground"
+                />
+              }
+            >
+              {models.currentModelId}
+              <ChevronDownIcon aria-hidden="true" />
+            </MenuTrigger>
+            <MenuPopup>
+              {models.availableModels.map((m) => (
                 <MenuItem
-                  key={opt.value}
-                  onClick={() => setConfigOption({ configId: thoughtLevelOption.id, value: opt.value })}
+                  key={m.modelId}
+                  onClick={async () => {
+                    setModel(m.modelId)
+                    await persistChatPreferences({
+                      ...currentPreferences,
+                      modelId: m.modelId
+                    })
+                  }}
                 >
-                  {opt.name}
+                  {m.name}
                 </MenuItem>
               ))}
-            </MenuGroup>
-          </MenuPopup>
-        </Menu>
-      )}
-    </>
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [agents, agentStatus, selectedAgent, models, thoughtLevelOpts, thoughtLevelOption])
+            </MenuPopup>
+          </Menu>
+        )}
 
-  // ── Active chat mode ──
-  if (chatActive) {
-    return (
-      <ChatView
-        agentId={agentId}
-        sessionId={sessionId}
-        initialMessage={pendingMessageRef.current ?? undefined}
-        availableFiles={availableFiles}
-        composerToolbar={composerToolbar}
-        composerContextBar={composerContextBar}
-        placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件`}
-      />
-    )
-  }
+        {/* Thinking effort */}
+        {probeStatus === 'ready' && thoughtLevelOpts.length > 0 && thoughtLevelOption && (
+          <Menu>
+            <MenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="text-muted-foreground/70 hover:text-foreground"
+                />
+              }
+            >
+              {thoughtLevelOption.type === 'select'
+                ? thoughtLevelOption.currentValue
+                : thoughtLevelOption.name}
+              <ChevronDownIcon aria-hidden="true" />
+            </MenuTrigger>
+            <MenuPopup>
+              <MenuGroup>
+                <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
+                <MenuSeparator />
+                {thoughtLevelOpts.map((opt) => (
+                  <MenuItem
+                    key={opt.value}
+                    onClick={async () => {
+                      setConfigOption({ configId: thoughtLevelOption.id, value: opt.value })
+                      await persistChatPreferences({
+                        ...currentPreferences,
+                        configSelections: {
+                          ...currentPreferences.configSelections,
+                          [thoughtLevelOption.id]: opt.value
+                        }
+                      })
+                    }}
+                  >
+                    {opt.name}
+                  </MenuItem>
+                ))}
+              </MenuGroup>
+            </MenuPopup>
+          </Menu>
+        )}
+      </>
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    ),
+    [
+      agents,
+      probeStatus,
+      selectedAgent,
+      models,
+      thoughtLevelOpts,
+      thoughtLevelOption,
+      currentPreferences,
+      persistChatPreferences
+    ]
+  )
 
   // ── Empty state ──
   return (
@@ -325,7 +404,7 @@ export function NewChatHome() {
       <div className="w-full max-w-2xl rounded-2xl bg-muted/60 p-1">
         <Composer
           onSend={handleFirstSend}
-          disabled={agentStatus !== 'ready'}
+          disabled={probeStatus !== 'ready' || sending}
           placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件，/ 输入命令，$ 使用技能`}
           availableFiles={availableFiles}
           toolbar={composerToolbar}
@@ -334,27 +413,35 @@ export function NewChatHome() {
 
         {/* Context pill: workspace selector */}
         <div className="flex items-center gap-1 p-1">
-          {workspaces.length > 0
-            ? (
-                <Menu>
-                  <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground gap-2" />}>
-                    <FolderIcon aria-hidden="true" />
-                    {selectedWorkspace?.name ?? '选择项目'}
-                    <ChevronDownIcon aria-hidden="true" />
-                  </MenuTrigger>
-                  <MenuPopup>
-                    {workspaces.map(w => (
-                      <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>{w.name}</MenuItem>
-                    ))}
-                  </MenuPopup>
-                </Menu>
-              )
-            : (
-                <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
-                  <FolderIcon aria-hidden="true" />
-                  无项目
-                </Button>
-              )}
+          {workspaces.length > 0 ? (
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-muted-foreground/70 hover:text-foreground gap-2"
+                  />
+                }
+              >
+                <FolderIcon aria-hidden="true" />
+                {selectedWorkspace?.name ?? '选择项目'}
+                <ChevronDownIcon aria-hidden="true" />
+              </MenuTrigger>
+              <MenuPopup>
+                {workspaces.map((w) => (
+                  <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>
+                    {w.name}
+                  </MenuItem>
+                ))}
+              </MenuPopup>
+            </Menu>
+          ) : (
+            <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
+              <FolderIcon aria-hidden="true" />
+              无项目
+            </Button>
+          )}
         </div>
       </div>
     </div>

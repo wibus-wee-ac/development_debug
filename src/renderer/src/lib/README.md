@@ -3,12 +3,11 @@
 # src/renderer/src/lib
 
 Shared utilities and services for the renderer process.
-Contains IPC wrappers, styling helpers, keyboard shortcut logic, and chat transport.
+Contains IPC wrappers, styling helpers, and keyboard shortcut logic.
 Used across features and components in the renderer.
 
 ## Files
 
-- **acp-chat-transport.ts**: AcpChatTransport — custom ChatTransport bridging Electron IPC to AI SDK useChat
 - **cn.ts**: Tailwind class merging utility (`cn`) using clsx + tailwind-merge
 - **ipc.ts**: Typed IPC proxy for renderer-to-main communication
 - **shortcut-context.ts**: React context for keyboard shortcut management

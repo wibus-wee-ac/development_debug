@@ -30,6 +30,12 @@ export const sessions = sqliteTable('sessions', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   agent: text('agent').notNull().default('claude'),
+  /** Active ACP transport session ID. Null for historical sessions with no live connection. */
+  acpSessionId: text('acp_session_id'),
+  /** Model ID snapshot captured at session creation. Shown when no active ACP session. */
+  modelId: text('model_id'),
+  /** JSON array of SessionConfigOption snapshots captured at creation. */
+  configSnapshot: text('config_snapshot'),
   ...timestamps(),
 })
 

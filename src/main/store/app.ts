@@ -1,6 +1,12 @@
+// Input: electron screen/window APIs and electron-store persistence
+// Output: appStore plus helpers for persisting window bounds and app preferences
+// Position: Main-process persistent preference store for native application state
+
 import type { BrowserWindow } from 'electron'
 import { screen } from 'electron'
 import Store from 'electron-store'
+
+import type { StoredChatPreferences } from '@shared/chat-preferences'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -14,6 +20,7 @@ interface WindowBounds {
 
 interface AppPreferences {
   lastWorkspaceId?: string
+  chatPreferences: StoredChatPreferences
   /** Persisted bounds keyed by a stable window identifier (e.g. "main"). */
   windows: Record<string, WindowBounds>
 }
@@ -23,9 +30,21 @@ interface AppPreferences {
 export const appStore = new Store<AppPreferences>({
   name: 'app-preferences',
   defaults: {
-    windows: {},
-  },
+    chatPreferences: {
+      modelId: null,
+      configSelections: {}
+    },
+    windows: {}
+  }
 })
+
+export function getChatPreferences(): StoredChatPreferences {
+  return appStore.get('chatPreferences')
+}
+
+export function setChatPreferences(preferences: StoredChatPreferences): void {
+  appStore.set('chatPreferences', preferences)
+}
 
 // ── Window state helpers ──────────────────────────────────────────────────────
 
@@ -36,10 +55,10 @@ export const appStore = new Store<AppPreferences>({
 function isBoundsVisible(bounds: WindowBounds): boolean {
   return screen.getAllDisplays().some(({ workArea: wa }) => {
     return (
-      bounds.x < wa.x + wa.width
-      && bounds.x + bounds.width > wa.x
-      && bounds.y < wa.y + wa.height
-      && bounds.y + bounds.height > wa.y
+      bounds.x < wa.x + wa.width &&
+      bounds.x + bounds.width > wa.x &&
+      bounds.y < wa.y + wa.height &&
+      bounds.y + bounds.height > wa.y
     )
   })
 }
@@ -55,7 +74,7 @@ export function saveWindowState(windowId: string, win: BrowserWindow): void {
     y,
     width,
     height,
-    isMaximized: win.isMaximized(),
+    isMaximized: win.isMaximized()
   })
 }
 

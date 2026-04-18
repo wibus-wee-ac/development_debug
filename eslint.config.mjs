@@ -28,6 +28,7 @@ export default defineConfig(
       // Electron: process / Buffer are always available as globals
       'node/prefer-global/process': 'off',
       'node/prefer-global/buffer': 'off',
+      'style/indent': 'off',
     },
   },
   {

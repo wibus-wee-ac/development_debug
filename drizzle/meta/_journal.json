@@ -15,6 +15,13 @@
       "when": 1776417110278,
       "tag": "0001_busy_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1776511841199,
+      "tag": "0002_real_ben_grimm",
+      "breakpoints": true
     }
   ]
 }

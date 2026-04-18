@@ -26,12 +26,31 @@ export class SessionService extends IpcService {
   }
 
   @IpcMethod()
-  create(input: { workspaceId: string, title: string, agent: string, id?: string }): Session {
+  create(input: {
+    workspaceId: string
+    title: string
+    agent: string
+    id?: string
+    /** ACP transport session ID to associate. */
+    acpSessionId?: string
+    /** Snapshot of the initial model ID. */
+    modelId?: string
+    /** JSON snapshot of initial config options. */
+    configSnapshot?: string
+  }): Session {
     const db = getDb()
     const id = input.id ?? randomUUID()
     const result = db
       .insert(sessions)
-      .values({ id, workspaceId: input.workspaceId, title: input.title, agent: input.agent })
+      .values({
+        id,
+        workspaceId: input.workspaceId,
+        title: input.title,
+        agent: input.agent,
+        acpSessionId: input.acpSessionId ?? null,
+        modelId: input.modelId ?? null,
+        configSnapshot: input.configSnapshot ?? null,
+      })
       .returning()
       .get()
     return result

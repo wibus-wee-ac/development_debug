@@ -8,6 +8,7 @@ import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
 import { AcpConnectionManager } from './lib/acp-connection'
 import { AcpService } from './services/acp'
+import { PreferencesService } from './services/preferences'
 import { SessionService } from './services/session'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
@@ -25,13 +26,13 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hiddenInset',
-          vibrancy: 'sidebar',
+          vibrancy: 'sidebar'
         }
       : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-    },
+      sandbox: false
+    }
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -52,8 +53,7 @@ function createWindow(): BrowserWindow {
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  }
-  else {
+  } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
@@ -69,7 +69,7 @@ app.whenReady().then(() => {
   initDb(dbPath)
 
   // Register IPC services
-  createServices([WorkspaceService, SessionService, AcpService] as const)
+  createServices([WorkspaceService, SessionService, AcpService, PreferencesService] as const)
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')

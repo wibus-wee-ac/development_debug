@@ -1,9 +1,9 @@
-// Input: useChatSession hook, MessageBubble, Composer, ScrollArea, AnimatePresence
-// Output: ChatView — main chat interface with animated message list and composer
-// Position: Primary chat feature view, displays conversation with ACP agent
+// Input: useChatSession hook (thin subscriber), MessageBubble, Composer, ScrollArea, AnimatePresence
+// Output: ChatView — read-only chat view: reads messages, subscribes to stream, renders results
+// Position: Primary chat feature view — does NOT own message sending lifecycle
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
-import { LoaderCircleIcon } from 'lucide-react'
+import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef } from 'react'
 
@@ -13,10 +13,7 @@ import { MessageBubble } from './message-bubble'
 import { useChatSession } from './use-chat-session'
 
 interface ChatViewProps {
-  agentId: string | null
   sessionId: string | null
-  /** Initial message to send on mount (from empty-state composer) */
-  initialMessage?: string
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
   /** Custom toolbar rendered in the composer left slot */
@@ -28,27 +25,16 @@ interface ChatViewProps {
 }
 
 export function ChatView({
-  agentId,
   sessionId,
-  initialMessage,
   availableFiles = [],
   composerToolbar,
   composerContextBar,
   placeholder,
 }: ChatViewProps) {
-  const { messages, status, sendMessage, stop, isReady } = useChatSession({ agentId, sessionId })
+  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId)
   const scrollEndRef = useRef<HTMLDivElement>(null)
-  const initialSentRef = useRef(false)
 
-  const isStreaming = status === 'streaming' || status === 'submitted'
-
-  // Send initial message on first mount when ready
-  useEffect(() => {
-    if (initialMessage && isReady && !initialSentRef.current) {
-      initialSentRef.current = true
-      sendMessage({ text: initialMessage })
-    }
-  }, [initialMessage, isReady, sendMessage])
+  const isStreaming = status === 'streaming'
 
   // Auto-scroll to bottom on new messages or streaming updates
   useEffect(() => {
@@ -60,7 +46,7 @@ export function ChatView({
       if (!isReady || !text.trim()) {
         return
       }
-      sendMessage({ text })
+      sendMessage(text)
     },
     [isReady, sendMessage],
   )
@@ -88,8 +74,24 @@ export function ChatView({
             ))}
           </AnimatePresence>
 
-          {/* Waiting indicator */}
-          {status === 'submitted' && (
+          {/* Error / failed-to-start indicator */}
+          {(status === 'error' || status === 'failed_to_start') && (
+            <motion.div
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+              className="flex items-center gap-2 pt-4 pl-1"
+            >
+              <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
+              <span className="text-xs text-destructive/70">
+                {error ?? (status === 'failed_to_start' ? '未收到响应，请重试' : '发送失败，请重试')}
+              </span>
+            </motion.div>
+          )}
+
+          {/* Waiting indicator — shown when streaming but assistant hasn't started yet */}
+          {status === 'streaming' && messages.at(-1)?.role === 'user' && (
             <motion.div
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}

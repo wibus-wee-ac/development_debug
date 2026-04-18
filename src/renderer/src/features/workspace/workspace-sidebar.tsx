@@ -1,4 +1,4 @@
-// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives, active chat store
+// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives, router Link
 // Output: WorkspaceSidebar component with top nav, workspace groups and session items
 // Position: Main sidebar feature component for workspace navigation
 
@@ -6,8 +6,8 @@ import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
-import { useActiveChatStore } from '@renderer/store/active-chat'
 import { useQueryClient } from '@tanstack/react-query'
+import { Link, useMatchRoute, useNavigate } from '@tanstack/react-router'
 import {
   AlignJustifyIcon,
   FolderClosedIcon,
@@ -51,9 +51,8 @@ function formatRelativeTime(unixTimestamp: number): string {
 // ── Session item ──────────────────────────────────────────────────────────────
 
 function SessionItem({ session, workspaceId }: { session: Session, workspaceId: string }) {
-  const openSession = useActiveChatStore(s => s.openSession)
-  const activeSessionId = useActiveChatStore(s => s.sessionId)
-  const isActive = activeSessionId === session.id
+  const matchRoute = useMatchRoute()
+  const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId: session.id } })
   const queryClient = useQueryClient()
 
   const handleDelete = useCallback(async () => {
@@ -63,20 +62,22 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => openSession({ sessionId: session.id, agentId: session.agent, workspaceId })}
-      onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && openSession({ sessionId: session.id, agentId: session.agent, workspaceId })}
       className={cn(
-        'group flex w-full cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors hover:bg-accent/60',
+        'group flex w-full items-center gap-1.5 rounded-md text-left text-xs transition-colors hover:bg-accent/60',
         isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
       data-testid={`session-item-${session.id}`}
     >
-      <span className="flex-1 truncate text-sidebar-foreground/80">{session.title}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground/50 group-hover:hidden">
-        {formatRelativeTime(session.updatedAt)}
-      </span>
+      <Link
+        to="/chat/$sessionId"
+        params={{ sessionId: session.id }}
+        className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 truncate text-sidebar-foreground/80"
+      >
+        <span className="flex-1 truncate">{session.title}</span>
+        <span className="shrink-0 text-[11px] text-muted-foreground/50 group-hover:hidden">
+          {formatRelativeTime(session.updatedAt)}
+        </span>
+      </Link>
       <Menu>
         <MenuTrigger
           render={(
@@ -253,7 +254,7 @@ export function WorkspaceSidebar() {
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
-  const resetChat = useActiveChatStore(s => s.resetChat)
+  const navigate = useNavigate()
 
   const handleDelete = useCallback((id: string) => {
     remove(id)
@@ -266,7 +267,7 @@ export function WorkspaceSidebar() {
         <TopNavItem
           icon={<MessageSquarePlusIcon className="size-4" />}
           label="新建聊天"
-          onClick={resetChat}
+          onClick={() => navigate({ to: '/' })}
         />
         <TopNavItem
           icon={<SearchIcon className="size-4" />}
