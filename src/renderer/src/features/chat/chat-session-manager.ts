@@ -8,7 +8,10 @@ import {
   setAcpSessionModel
 } from '@renderer/features/workspace/use-acp-session-state'
 import { ipc } from '@renderer/lib/ipc'
-import { applyStoredChatPreferences } from '@shared/chat-preferences'
+import {
+  applyStoredChatPreferences,
+  buildStoredChatPreferencesFromSnapshot
+} from '@shared/chat-preferences'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
 import { create } from 'zustand'
@@ -333,6 +336,18 @@ export const useChatSessionManager = create<ChatSessionManagerState>((set, get) 
     if (!acpSessionId) {
       throw new Error('Failed to reconnect ACP session.')
     }
+
+    const initialState = await getAcpSessionState(session.agentId, acpSessionId).catch(() => null)
+    await applyStoredChatPreferences({
+      preferences: buildStoredChatPreferencesFromSnapshot({
+        modelId: session.modelId,
+        configSnapshot: session.configSnapshot
+      }),
+      state: initialState,
+      setModel: (modelId) => setAcpSessionModel(session.agentId, acpSessionId, modelId),
+      setConfigOption: (configId, value) =>
+        setAcpSessionConfigOption(session.agentId, acpSessionId, configId, value)
+    })
 
     set((s) => ({
       sessions: {

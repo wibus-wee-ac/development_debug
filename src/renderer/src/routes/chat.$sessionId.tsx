@@ -19,11 +19,17 @@ import { useInstalledAcpAgents } from '@renderer/features/workspace/use-acp-agen
 import {
   acpSessionStateQueryKey,
   getAcpSessionState,
+  setAcpSessionConfigOption,
+  setAcpSessionModel,
   useAcpSessionState
 } from '@renderer/features/workspace/use-acp-session-state'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
+import {
+  buildStoredChatPreferencesFromSnapshot,
+  mergeChatPreferencesWithState
+} from '@shared/chat-preferences'
 import { useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronDownIcon, LoaderCircleIcon, PlusIcon } from 'lucide-react'
@@ -70,6 +76,8 @@ function getThoughtLevelSnapshot(configSnapshot: string | null | undefined): str
   }
 }
 
+type MenuKind = 'model' | 'thinking'
+
 export const Route = createFileRoute('/chat/$sessionId')({
   component: ChatSessionPage
 })
@@ -106,16 +114,65 @@ function ChatSessionPage() {
   const selectedAgent = agents.find((a) => a.id === agentId) ?? null
 
   // Model + config pickers — keyed against acpSessionId (null = no live ACP session)
-  const { models, configOptions, setModel, setConfigOption } = useAcpSessionState(
-    agentId,
-    acpSessionId
-  )
+  const { models, configOptions } = useAcpSessionState(agentId, acpSessionId)
 
   const thoughtLevelOption = configOptions.find((o) => o.category === 'thought_level')
   const thoughtLevelOpts = flatConfigOptions(
     thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null
   )
   const thoughtLevelSnapshot = getThoughtLevelSnapshot(session?.configSnapshot)
+
+  async function fetchLiveSessionState(targetAcpSessionId: string) {
+    return queryClient.fetchQuery({
+      queryKey: acpSessionStateQueryKey(agentId, targetAcpSessionId),
+      queryFn: () => getAcpSessionState(agentId!, targetAcpSessionId)
+    })
+  }
+
+  async function updateSessionConfigFromLiveState(nextModelId?: string | null) {
+    if (!session) {
+      return
+    }
+
+    const liveState = acpSessionId
+      ? await getAcpSessionState(agentId!, acpSessionId).catch(() => null)
+      : null
+
+    const mergedPreferences = mergeChatPreferencesWithState(
+      buildStoredChatPreferencesFromSnapshot({
+        modelId: nextModelId ?? session.modelId,
+        configSnapshot: session.configSnapshot
+      }),
+      liveState
+    )
+
+    const nextConfigSnapshot = liveState?.configOptions
+      ? JSON.stringify(liveState.configOptions)
+      : session.configSnapshot
+
+    await ipc?.session.updateConfig({
+      id: sessionId,
+      modelId: mergedPreferences.modelId,
+      configSnapshot: nextConfigSnapshot ?? null
+    })
+  }
+
+  async function reconnectAndOpenMenu(kind: MenuKind) {
+    setReconnectingModel(true)
+    try {
+      const nextAcpSessionId = await ensureLiveSession(sessionId)
+      await fetchLiveSessionState(nextAcpSessionId)
+
+      if (kind === 'model') {
+        setModelMenuOpen(true)
+        return
+      }
+
+      setThinkingMenuOpen(true)
+    } finally {
+      setReconnectingModel(false)
+    }
+  }
 
   // Listen for ACP session title updates (events carry the ACP session ID)
   useEffect(() => {
@@ -174,7 +231,14 @@ function ChatSessionPage() {
             </MenuTrigger>
             <MenuPopup>
               {models.availableModels.map((m) => (
-                <MenuItem key={m.modelId} onClick={() => setModel(m.modelId)}>
+                <MenuItem
+                  key={m.modelId}
+                  onClick={async () => {
+                    await setAcpSessionModel(agentId!, acpSessionId!, m.modelId)
+                    await fetchLiveSessionState(acpSessionId!)
+                    await updateSessionConfigFromLiveState(m.modelId)
+                  }}
+                >
                   {m.name}
                 </MenuItem>
               ))}
@@ -186,19 +250,7 @@ function ChatSessionPage() {
             size="xs"
             disabled={reconnectingModel}
             className="text-muted-foreground/60 hover:text-foreground"
-            onClick={async () => {
-              setReconnectingModel(true)
-              try {
-                const nextAcpSessionId = await ensureLiveSession(sessionId)
-                await queryClient.fetchQuery({
-                  queryKey: acpSessionStateQueryKey(agentId, nextAcpSessionId),
-                  queryFn: () => getAcpSessionState(agentId!, nextAcpSessionId)
-                })
-                setModelMenuOpen(true)
-              } finally {
-                setReconnectingModel(false)
-              }
-            }}
+            onClick={() => reconnectAndOpenMenu('model')}
           >
             {reconnectingModel ? (
               <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
@@ -232,9 +284,16 @@ function ChatSessionPage() {
                 {thoughtLevelOpts.map((opt) => (
                   <MenuItem
                     key={opt.value}
-                    onClick={() =>
-                      setConfigOption({ configId: thoughtLevelOption.id, value: opt.value })
-                    }
+                    onClick={async () => {
+                      await setAcpSessionConfigOption(
+                        agentId!,
+                        acpSessionId!,
+                        thoughtLevelOption.id,
+                        opt.value
+                      )
+                      await fetchLiveSessionState(acpSessionId!)
+                      await updateSessionConfigFromLiveState()
+                    }}
                   >
                     {opt.name}
                   </MenuItem>
@@ -248,19 +307,7 @@ function ChatSessionPage() {
             size="xs"
             disabled={reconnectingModel}
             className="text-muted-foreground/60 hover:text-foreground"
-            onClick={async () => {
-              setReconnectingModel(true)
-              try {
-                const nextAcpSessionId = await ensureLiveSession(sessionId)
-                await queryClient.fetchQuery({
-                  queryKey: acpSessionStateQueryKey(agentId, nextAcpSessionId),
-                  queryFn: () => getAcpSessionState(agentId!, nextAcpSessionId)
-                })
-                setThinkingMenuOpen(true)
-              } finally {
-                setReconnectingModel(false)
-              }
-            }}
+            onClick={() => reconnectAndOpenMenu('thinking')}
           >
             {reconnectingModel ? (
               <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
@@ -278,8 +325,7 @@ function ChatSessionPage() {
       thoughtLevelOpts,
       thoughtLevelOption,
       thoughtLevelSnapshot,
-      setModel,
-      setConfigOption,
+      acpSessionId,
       reconnectingModel,
       modelMenuOpen,
       thinkingMenuOpen,

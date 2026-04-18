@@ -49,7 +49,7 @@ export class SessionService extends IpcService {
         agent: input.agent,
         acpSessionId: input.acpSessionId ?? null,
         modelId: input.modelId ?? null,
-        configSnapshot: input.configSnapshot ?? null,
+        configSnapshot: input.configSnapshot ?? null
       })
       .returning()
       .get()
@@ -62,7 +62,7 @@ export class SessionService extends IpcService {
   }
 
   @IpcMethod()
-  updateTitle(input: { id: string, title: string }): void {
+  updateTitle(input: { id: string; title: string }): void {
     getDb()
       .update(sessions)
       .set({ title: input.title, updatedAt: Math.floor(Date.now() / 1000) })
@@ -71,7 +71,20 @@ export class SessionService extends IpcService {
   }
 
   @IpcMethod()
-  addMessage(input: { sessionId: string, role: 'user' | 'assistant', content: string }): Message {
+  updateConfig(input: { id: string; modelId: string | null; configSnapshot: string | null }): void {
+    getDb()
+      .update(sessions)
+      .set({
+        modelId: input.modelId,
+        configSnapshot: input.configSnapshot,
+        updatedAt: Math.floor(Date.now() / 1000)
+      })
+      .where(eq(sessions.id, input.id))
+      .run()
+  }
+
+  @IpcMethod()
+  addMessage(input: { sessionId: string; role: 'user' | 'assistant'; content: string }): Message {
     const db = getDb()
     const result = db
       .insert(messages)
