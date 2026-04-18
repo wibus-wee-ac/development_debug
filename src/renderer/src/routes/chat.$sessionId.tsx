@@ -2,6 +2,7 @@
 // Output: Chat session route — thin page that reads session from manager and renders ChatView
 // Position: Route page for /chat/$sessionId, protocol-driven (no session creation here)
 
+import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { Button } from '@renderer/components/ui/button'
 import {
@@ -15,6 +16,7 @@ import {
 } from '@renderer/components/ui/menu'
 import { ChatView } from '@renderer/features/chat'
 import { useChatSessionManager } from '@renderer/features/chat/chat-session-manager'
+import { ModelPicker } from '@renderer/features/chat/model-picker'
 import { useInstalledAcpAgents } from '@renderer/features/workspace/use-acp-agents'
 import {
   acpSessionStateQueryKey,
@@ -88,18 +90,37 @@ function ChatSessionPage() {
   const [reconnectingModel, setReconnectingModel] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false)
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null)
 
   // Read session metadata from the protocol-driven manager
   const { sessions, ensureLiveSession, loadSession } = useChatSessionManager()
   const session = sessions[sessionId]
+
+  const agentId = session?.agentId ?? null
+  const workspaceId = session?.workspaceId ?? null
 
   // Ensure session is loaded (from DB if needed)
   useEffect(() => {
     loadSession(sessionId)
   }, [sessionId, loadSession])
 
-  const agentId = session?.agentId ?? null
-  const workspaceId = session?.workspaceId ?? null
+  // Fetch workspace name when workspaceId is available
+  useEffect(() => {
+    if (!workspaceId) return
+    ipc?.workspace.get(workspaceId).then((ws) => {
+      setWorkspaceName(ws?.name ?? null)
+    })
+  }, [workspaceId])
+
+  // Fetch session title from DB
+  useEffect(() => {
+    if (!sessionId) return
+    ipc?.session.get(sessionId).then((s) => {
+      setSessionTitle(s?.title ?? null)
+    })
+  }, [sessionId])
+
   // ACP transport session ID — separate from the stable chat session ID
   const acpSessionId = session?.acpSessionId ?? null
 
@@ -216,34 +237,16 @@ function ChatSessionPage() {
 
         {/* Model picker — live when active ACP session, else read-only snapshot */}
         {models && models.availableModels.length > 0 ? (
-          <Menu open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
-            <MenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="text-muted-foreground/70 hover:text-foreground"
-                />
-              }
-            >
-              {models.currentModelId}
-              <ChevronDownIcon aria-hidden="true" />
-            </MenuTrigger>
-            <MenuPopup>
-              {models.availableModels.map((m) => (
-                <MenuItem
-                  key={m.modelId}
-                  onClick={async () => {
-                    await setAcpSessionModel(agentId!, acpSessionId!, m.modelId)
-                    await fetchLiveSessionState(acpSessionId!)
-                    await updateSessionConfigFromLiveState(m.modelId)
-                  }}
-                >
-                  {m.name}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
+          <ModelPicker
+            models={models}
+            open={modelMenuOpen}
+            onOpenChange={setModelMenuOpen}
+            onSelect={async (modelId) => {
+              await setAcpSessionModel(agentId!, acpSessionId!, modelId)
+              await fetchLiveSessionState(acpSessionId!)
+              await updateSessionConfigFromLiveState(modelId)
+            }}
+          />
         ) : session?.modelId ? (
           <Button
             variant="ghost"
@@ -347,7 +350,7 @@ function ChatSessionPage() {
   }
 
   return (
-    <AppLayout>
+    <AppLayout header={<AppHeader title={sessionTitle} workspace={workspaceName} />}>
       <ChatView
         sessionId={sessionId}
         availableFiles={availableFiles}

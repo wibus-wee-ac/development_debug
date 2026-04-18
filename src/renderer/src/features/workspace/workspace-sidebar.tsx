@@ -74,7 +74,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
         className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 truncate text-sidebar-foreground/80"
       >
         <span className="flex-1 truncate">{session.title}</span>
-        <span className="shrink-0 text-[11px] text-muted-foreground/50 group-hover:hidden">
+        <span className="shrink-0 text-[11px] text-muted-foreground/50">
           {formatRelativeTime(session.updatedAt)}
         </span>
       </Link>
@@ -83,7 +83,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
           render={(
             <button
               type="button"
-              className="shrink-0 rounded p-0.5 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
+              className="shrink-0 rounded p-0.5 mr-2 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
               onClick={e => e.stopPropagation()}
               aria-label="会话菜单"
             />
@@ -189,39 +189,6 @@ function WorkspaceGroup({
         )}
       </AnimatePresence>
     </div>
-  )
-}
-
-// ── All sessions list (across workspaces) ─────────────────────────────────────
-
-function AllSessionsList({ workspaces }: { workspaces: Workspace[] }) {
-  // Load sessions for all workspaces
-  const allWorkspaceIds = workspaces.map(w => w.id)
-  // Use the first workspace to get sessions — for multiple workspaces we merge
-  // Currently load sessions for all workspaces (simple approach: query each)
-  return (
-    <>
-      {allWorkspaceIds.map(wId => (
-        <WorkspaceSessions key={wId} workspaceId={wId} />
-      ))}
-      {allWorkspaceIds.length === 0 && (
-        <p className="px-2.5 py-1.5 text-xs text-muted-foreground/40 select-none">暂无聊天</p>
-      )}
-    </>
-  )
-}
-
-function WorkspaceSessions({ workspaceId }: { workspaceId: string }) {
-  const { sessions } = useSessions(workspaceId)
-  if (sessions.length === 0) {
-    return null
-  }
-  return (
-    <>
-      {sessions.map(session => (
-        <SessionItem key={session.id} session={session} workspaceId={workspaceId} />
-      ))}
-    </>
   )
 }
 
@@ -351,19 +318,6 @@ export function WorkspaceSidebar() {
               onDelete={handleDelete}
             />
           ))}
-        </nav>
-      </div>
-
-      {/* ── Chats section — all sessions across workspaces ── */}
-      <div className="flex flex-1 flex-col overflow-hidden border-t border-sidebar-border/50">
-        <div className="flex items-center px-3.5 py-1.5">
-          <span className="flex-1 text-xs font-semibold tracking-wider text-muted-foreground/60 select-none uppercase">
-            聊天
-          </span>
-        </div>
-
-        <nav className="flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2">
-          <AllSessionsList workspaces={workspaces} />
         </nav>
       </div>
     </div>

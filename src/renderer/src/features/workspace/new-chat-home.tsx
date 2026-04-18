@@ -14,6 +14,7 @@ import {
 } from '@renderer/components/ui/menu'
 import { Composer } from '@renderer/features/chat'
 import { useChatSessionManager } from '@renderer/features/chat/chat-session-manager'
+import { ModelPicker } from '@renderer/features/chat/model-picker'
 import {
   acpSessionStateQueryKey,
   setAcpSessionConfigOption,
@@ -304,36 +305,16 @@ export function NewChatHome() {
 
         {/* Model picker */}
         {probeStatus === 'ready' && models && models.availableModels.length > 0 && (
-          <Menu>
-            <MenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="text-muted-foreground/70 hover:text-foreground"
-                />
-              }
-            >
-              {models.currentModelId}
-              <ChevronDownIcon aria-hidden="true" />
-            </MenuTrigger>
-            <MenuPopup>
-              {models.availableModels.map((m) => (
-                <MenuItem
-                  key={m.modelId}
-                  onClick={async () => {
-                    setModel(m.modelId)
-                    await persistChatPreferences({
-                      ...currentPreferences,
-                      modelId: m.modelId
-                    })
-                  }}
-                >
-                  {m.name}
-                </MenuItem>
-              ))}
-            </MenuPopup>
-          </Menu>
+          <ModelPicker
+            models={models}
+            onSelect={async (modelId) => {
+              setModel(modelId)
+              await persistChatPreferences({
+                ...currentPreferences,
+                modelId
+              })
+            }}
+          />
         )}
 
         {/* Thinking effort */}
