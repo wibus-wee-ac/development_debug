@@ -27,6 +27,8 @@ interface ManagedSession {
   workspaceId: string
   /** Model ID snapshot from DB — shown when no active ACP session. */
   modelId: string | null
+  /** Config snapshot from DB — shown when no active ACP session. */
+  configSnapshot: string | null
   messages: UIMessage[]
   status: 'idle' | 'streaming' | 'error' | 'failed_to_start'
   error?: string
@@ -48,6 +50,9 @@ interface ChatSessionManagerState {
 
   /** Send a follow-up message. Reconnects ACP session automatically if needed. */
   sendMessage: (sessionId: string, text: string, cwd?: string) => Promise<void>
+
+  /** Ensure a chat session has an active ACP transport session, reconnecting if needed. */
+  ensureLiveSession: (sessionId: string) => Promise<string>
 
   /** Load session + messages from DB (idempotent). */
   loadSession: (sessionId: string) => Promise<void>
@@ -293,6 +298,52 @@ export const useChatSessionManager = create<ChatSessionManagerState>((set, get) 
     processStream(chatSessionId, stream, ac)
   }
 
+  async function ensureLiveSessionInternal(sessionId: string): Promise<string> {
+    if (!ipc) {
+      throw new Error('IPC not available')
+    }
+
+    const session = get().sessions[sessionId]
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`)
+    }
+
+    if (session.acpSessionId) {
+      const existingState = await getAcpSessionState(session.agentId, session.acpSessionId).catch(
+        () => null
+      )
+      if (existingState) {
+        return session.acpSessionId
+      }
+    }
+
+    const workspace = await ipc.workspace.get(session.workspaceId)
+    const cwd = workspace?.path
+    if (!cwd) {
+      throw new Error('Workspace path not available for ACP reconnect.')
+    }
+
+    const isRunning = await ipc.acp.isAgentRunning(session.agentId)
+    if (!isRunning) {
+      await ipc.acp.startAgent(session.agentId)
+    }
+
+    const resp = await ipc.acp.createSession(session.agentId, cwd)
+    const acpSessionId = (resp as { sessionId: string } | undefined)?.sessionId ?? null
+    if (!acpSessionId) {
+      throw new Error('Failed to reconnect ACP session.')
+    }
+
+    set((s) => ({
+      sessions: {
+        ...s.sessions,
+        [sessionId]: { ...s.sessions[sessionId], acpSessionId }
+      }
+    }))
+
+    return acpSessionId
+  }
+
   return {
     sessions: {},
 
@@ -367,6 +418,7 @@ export const useChatSessionManager = create<ChatSessionManagerState>((set, get) 
             agentId,
             workspaceId,
             modelId,
+            configSnapshot,
             messages: [userMsg],
             status: 'streaming'
           }
@@ -389,6 +441,11 @@ export const useChatSessionManager = create<ChatSessionManagerState>((set, get) 
 
       // If no active ACP session, create a new one (reconnect)
       if (!acpSessionId && cwd) {
+        const isRunning = await ipc?.acp.isAgentRunning(session.agentId)
+        if (!isRunning) {
+          await ipc?.acp.startAgent(session.agentId)
+        }
+
         const resp = await ipc?.acp.createSession(session.agentId, cwd)
         acpSessionId = (resp as { sessionId: string } | undefined)?.sessionId ?? null
         if (acpSessionId) {
@@ -432,6 +489,10 @@ export const useChatSessionManager = create<ChatSessionManagerState>((set, get) 
       await firePrompt(sessionId, acpSessionId, session.agentId, text)
     },
 
+    async ensureLiveSession(sessionId) {
+      return ensureLiveSessionInternal(sessionId)
+    },
+
     async loadSession(sessionId) {
       if (!ipc) {
         return
@@ -461,6 +522,7 @@ export const useChatSessionManager = create<ChatSessionManagerState>((set, get) 
             agentId: dbSession.agent,
             workspaceId: dbSession.workspaceId,
             modelId: dbSession.modelId ?? null,
+            configSnapshot: dbSession.configSnapshot ?? null,
             messages,
             status: 'idle'
           }
