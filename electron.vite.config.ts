@@ -10,7 +10,8 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
-        '@cradle/ipc': resolve('packages/ipc/src/index.ts')
+        '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
+        '@shared': resolve('src/shared')
       }
     },
     build: {
@@ -25,7 +26,8 @@ export default defineConfig({
   preload: {
     resolve: {
       alias: {
-        '@cradle/ipc': resolve('packages/ipc/src/index.ts')
+        '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
+        '@shared': resolve('src/shared')
       }
     },
     build: {

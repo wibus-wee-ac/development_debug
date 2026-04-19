@@ -1,7 +1,8 @@
-// Input: @agentclientprotocol/sdk, AcpProcessManager, AcpStreamConverter, Electron BrowserWindow
-// Output: AcpConnectionManager singleton — manages ACP ClientSideConnection
-//         instances, converts session updates to UIMessageChunk, and streams to renderer via IPC
-// Position: Main-process bridge between spawned agents and the Electron UI
+// Input: @agentclientprotocol/sdk, AcpProcessManager, AcpStreamConverter, Electron WebContents
+// Output: AcpConnectionManager singleton — manages ACP ClientSideConnection instances,
+//         exposes prompt() as AsyncGenerator<UIMessageChunk>, broadcasts title events
+//         to subscriber set (supports multiple windows)
+// Position: Main-process transport bridge between spawned agents and upper layers (ChatEngine)
 
 import { promises as fsp } from 'node:fs'
 
@@ -20,7 +21,7 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
-import type { WebContents } from 'electron'
+import type { UIMessageChunk } from 'ai'
 
 import type { ProcessEntry } from './acp-process-manager'
 import { AcpProcessManager } from './acp-process-manager'
@@ -33,7 +34,74 @@ export interface AcpSessionState {
   configOptions: SessionConfigOption[]
 }
 
+// ── Chunk queue (async pipe for prompt generator) ─────────────────────────────
+
+class ChunkQueue {
+  private buffered: UIMessageChunk[] = []
+  private waiters: Array<{
+    resolve: (value: UIMessageChunk | null) => void
+    reject: (err: Error) => void
+  }> = []
+
+  private closed = false
+  private failure: Error | null = null
+
+  push(chunk: UIMessageChunk): void {
+    if (this.closed) {
+      return
+    }
+    const waiter = this.waiters.shift()
+    if (waiter) {
+      waiter.resolve(chunk)
+    }
+    else {
+      this.buffered.push(chunk)
+    }
+  }
+
+  close(): void {
+    if (this.closed) {
+      return
+    }
+    this.closed = true
+    while (this.waiters.length) {
+      this.waiters.shift()!.resolve(null)
+    }
+  }
+
+  fail(err: Error): void {
+    if (this.closed) {
+      return
+    }
+    this.failure = err
+    this.closed = true
+    while (this.waiters.length) {
+      this.waiters.shift()!.reject(err)
+    }
+  }
+
+  async next(): Promise<UIMessageChunk | null> {
+    if (this.buffered.length > 0) {
+      return this.buffered.shift()!
+    }
+    if (this.failure) {
+      throw this.failure
+    }
+    if (this.closed) {
+      return null
+    }
+    return new Promise<UIMessageChunk | null>((resolve, reject) => {
+      this.waiters.push({ resolve, reject })
+    })
+  }
+}
+
 // ── Connection entry ──────────────────────────────────────────────────────────
+
+interface SessionChannel {
+  converter: AcpStreamConverter
+  queue: ChunkQueue
+}
 
 interface ConnectionEntry {
   agentId: string
@@ -41,8 +109,8 @@ interface ConnectionEntry {
   initResult: InitializeResponse | null
   /** Per-session runtime state (models + configOptions). Keyed by ACP sessionId. */
   sessionStates: Map<string, AcpSessionState>
-  /** Per-session stream converter. Keyed by ACP sessionId. */
-  converters: Map<string, AcpStreamConverter>
+  /** Per-session in-flight prompt channel. Keyed by ACP sessionId. */
+  channels: Map<string, SessionChannel>
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -50,9 +118,7 @@ interface ConnectionEntry {
 export class AcpConnectionManager {
   private static instance: AcpConnectionManager
   private readonly connections = new Map<string, ConnectionEntry>()
-
-  /** WebContents to forward session/update notifications to the renderer. */
-  private webContents: WebContents | null = null
+  private readonly sessionTitleHandlers = new Set<(acpSessionId: string, title: string) => void>()
 
   static getInstance(): AcpConnectionManager {
     if (!AcpConnectionManager.instance) {
@@ -61,17 +127,16 @@ export class AcpConnectionManager {
     return AcpConnectionManager.instance
   }
 
-  /** Call once from the main window to set the target renderer. */
-  setWebContents(wc: WebContents): void {
-    this.webContents = wc
+  /** Register a callback for agent-pushed session title updates (used by ChatEngine). */
+  onSessionTitle(cb: (acpSessionId: string, title: string) => void): () => void {
+    this.sessionTitleHandlers.add(cb)
+    return () => {
+      this.sessionTitleHandlers.delete(cb)
+    }
   }
 
   // ── Connect ───────────────────────────────────────────────────────────────
 
-  /**
-   * Start an agent process and establish an ACP connection.
-   * Returns the `InitializeResponse` from the agent.
-   */
   async connect(
     agentId: string,
     record: {
@@ -86,12 +151,10 @@ export class AcpConnectionManager {
       throw new Error(`Agent ${agentId} is already connected`)
     }
 
-    // Parse stored JSON fields
     const args: string[] = JSON.parse(record.args || '[]')
     const env: Record<string, string> = JSON.parse(record.env || '{}')
     const distType = record.distributionType as 'binary' | 'npx' | 'uvx'
 
-    // 1. Spawn process
     const procMgr = AcpProcessManager.getInstance()
     const entry: ProcessEntry = procMgr.spawn({
       agentId,
@@ -102,23 +165,16 @@ export class AcpConnectionManager {
       installPath: record.installPath,
     })
 
-    // 2. Create ACP stream from the process's Web streams
     const stream = ndJsonStream(entry.stdinWeb, entry.stdoutWeb)
 
-    // 3. Create the ClientSideConnection with our Client implementation
-    const wc = this.webContents
     const connection = new ClientSideConnection(
-      (agent: Agent): Client => this.createClient(agentId, agent, wc),
+      (agent: Agent): Client => this.createClient(agentId, agent),
       stream,
     )
 
-    // 4. Initialize the connection
     const initResult = await connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
-      clientInfo: {
-        name: 'Cradle',
-        version: '1.0.0',
-      },
+      clientInfo: { name: 'Cradle', version: '1.0.0' },
     })
 
     this.connections.set(agentId, {
@@ -126,10 +182,9 @@ export class AcpConnectionManager {
       connection,
       initResult,
       sessionStates: new Map(),
-      converters: new Map(),
+      channels: new Map(),
     })
 
-    // Clean up when the connection closes
     connection.closed.then(() => {
       this.connections.delete(agentId)
     })
@@ -142,13 +197,10 @@ export class AcpConnectionManager {
   async newSession(agentId: string, cwd: string): Promise<NewSessionResponse> {
     const conn = this.getConnection(agentId)
     const resp = await conn.connection.newSession({ cwd, mcpServers: [] })
-
-    // Cache the initial session state returned by the agent
     conn.sessionStates.set(resp.sessionId, {
       models: resp.models ?? null,
       configOptions: resp.configOptions ?? [],
     })
-
     return resp
   }
 
@@ -160,7 +212,6 @@ export class AcpConnectionManager {
   async setSessionModel(agentId: string, sessionId: string, modelId: string): Promise<void> {
     const conn = this.getConnection(agentId)
     await conn.connection.unstable_setSessionModel({ sessionId, modelId })
-    // Optimistically update the cached currentModelId
     const state = conn.sessionStates.get(sessionId)
     if (state?.models) {
       state.models.currentModelId = modelId
@@ -178,58 +229,73 @@ export class AcpConnectionManager {
       ? { sessionId, configId, type: 'boolean' as const, value }
       : { sessionId, configId, value }
     const resp = await conn.connection.setSessionConfigOption(params)
-    // Replace configOptions with the full updated set from the response
     const state = conn.sessionStates.get(sessionId)
     if (state && resp?.configOptions) {
       state.configOptions = resp.configOptions
     }
   }
 
-  async prompt(
+  /**
+   * Send a prompt and yield UIMessageChunk values as they arrive.
+   *
+   * Generator semantics:
+   *  - Yields every chunk produced by the AcpStreamConverter (text/reasoning/tool deltas)
+   *  - Yields trailing flush chunks on normal completion, then returns
+   *  - Throws if the underlying ACP connection errors (caller's for-await rethrows)
+   *  - Safe to `break` from the generator: the active ACP prompt is *not* auto-cancelled —
+   *    callers must call `cancel()` explicitly to stop generation
+   */
+  async* prompt(
     agentId: string,
     sessionId: string,
     message: string,
-  ): Promise<PromptResponse> {
+  ): AsyncGenerator<UIMessageChunk, void, void> {
     const conn = this.getConnection(agentId)
-
-    // Create a fresh converter for this prompt turn
     const converter = new AcpStreamConverter()
-    conn.converters.set(sessionId, converter)
+    const queue = new ChunkQueue()
+    conn.channels.set(sessionId, { converter, queue })
 
-    try {
-      const result = await conn.connection.prompt({
-        sessionId,
-        prompt: [{ type: 'text', text: message }],
+    let promptResult: PromptResponse | null = null
+    let promptError: Error | null = null
+
+    const promptDone = conn.connection
+      .prompt({ sessionId, prompt: [{ type: 'text', text: message }] })
+      .then((result) => {
+        promptResult = result
+        for (const c of converter.flush()) {
+          queue.push(c)
+        }
+        queue.close()
+      })
+      .catch((err: unknown) => {
+        promptError = err instanceof Error ? err : new Error(String(err))
+        for (const c of converter.flush()) {
+          queue.push(c)
+        }
+        queue.fail(promptError)
+      })
+      .finally(() => {
+        conn.channels.delete(sessionId)
       })
 
-      // Flush any remaining open spans
-      const flushChunks = converter.flush()
-      const wc = this.webContents
-      if (wc && !wc.isDestroyed()) {
-        for (const chunk of flushChunks) {
-          wc.send('acp:session-chunk', { sessionId, chunk })
+    try {
+      while (true) {
+        const chunk = await queue.next()
+        if (chunk === null) {
+          break
         }
-        wc.send('acp:session-done', { sessionId })
+        yield chunk
       }
-
-      return result
+      await promptDone
+      if (promptError) {
+        throw promptError
+      }
+      // `promptResult` is discarded — stop_reason is already embedded in the chunks
+      void promptResult
     }
-    catch (err) {
-      const flushChunks = converter.flush()
-      const wc = this.webContents
-      if (wc && !wc.isDestroyed()) {
-        for (const chunk of flushChunks) {
-          wc.send('acp:session-chunk', { sessionId, chunk })
-        }
-        wc.send('acp:session-error', {
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
+ catch (err) {
+      await promptDone.catch(() => {})
       throw err
-    }
-    finally {
-      conn.converters.delete(sessionId)
     }
   }
 
@@ -267,16 +333,9 @@ export class AcpConnectionManager {
    * Create the `Client` that handles agent-side requests
    * (permissions, session updates, file ops, etc.).
    */
-  private createClient(
-    agentId: string,
-    _agent: Agent,
-    wc: WebContents | null,
-  ): Client {
+  private createClient(agentId: string, _agent: Agent): Client {
     return {
-      // ── Required ────────────────────────────────────────────────────────
-
-      async requestPermission(params) {
-        // Auto-allow for now; the UI can be extended to prompt the user.
+      requestPermission: async (params) => {
         const firstOption = params.options?.[0]
         return {
           outcome: {
@@ -286,40 +345,38 @@ export class AcpConnectionManager {
         }
       },
 
-      async sessionUpdate(params: SessionNotification) {
-        if (!wc || wc.isDestroyed()) return
-
-        // Handle session info updates (title, etc.) separately
+      sessionUpdate: async (params: SessionNotification) => {
         if (params.update.sessionUpdate === 'session_info_update') {
           const infoUpdate = params.update as { title?: string | null }
           if (infoUpdate.title) {
-            wc.send('acp:session-title', {
-              sessionId: params.sessionId,
-              title: infoUpdate.title,
-            })
+            for (const handler of [...this.sessionTitleHandlers]) {
+              try {
+                handler(params.sessionId, infoUpdate.title)
+              }
+              catch {
+                // swallow — handlers must not break the session update loop
+              }
+            }
           }
           return
         }
 
-        // Convert ACP update to UIMessageChunk and forward via IPC
-        const connEntry = AcpConnectionManager.getInstance().connections.get(agentId)
-        const converter = connEntry?.converters.get(params.sessionId)
-        if (converter) {
-          const chunks = converter.convert(params.update)
+        const connEntry = this.connections.get(agentId)
+        const channel = connEntry?.channels.get(params.sessionId)
+        if (channel) {
+          const chunks = channel.converter.convert(params.update)
           for (const chunk of chunks) {
-            wc.send('acp:session-chunk', { sessionId: params.sessionId, chunk })
+            channel.queue.push(chunk)
           }
         }
       },
 
-      // ── Optional: File system ───────────────────────────────────────────
-
-      async readTextFile(params) {
+      readTextFile: async (params) => {
         const content = await fsp.readFile(params.path, 'utf-8')
         return { content }
       },
 
-      async writeTextFile(params) {
+      writeTextFile: async (params) => {
         await fsp.writeFile(params.path, params.content, 'utf-8')
         return {}
       },

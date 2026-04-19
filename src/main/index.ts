@@ -6,9 +6,10 @@ import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
-import { AcpConnectionManager } from './lib/acp-connection'
+import { ChatEngine } from './lib/chat-engine'
 import { initializeIpcDevtool, subscribeIpcDevtool } from './lib/ipc-devtool'
 import { AcpService } from './services/acp'
+import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
 import { IpcDevtoolService } from './services/ipc-devtool'
 import { PreferencesService } from './services/preferences'
@@ -29,13 +30,13 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hiddenInset',
-          vibrancy: 'sidebar'
+          vibrancy: 'sidebar',
         }
       : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
+      sandbox: false,
+    },
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -56,7 +57,8 @@ function createWindow(): BrowserWindow {
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
+  }
+ else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
@@ -73,6 +75,9 @@ app.whenReady().then(() => {
 
   initializeIpcDevtool()
 
+  // Bootstrap chat engine (crash recovery + transport hooks)
+  ChatEngine.getInstance().initialize()
+
   // Register IPC services
   createServices([
     WorkspaceService,
@@ -80,7 +85,8 @@ app.whenReady().then(() => {
     AcpService,
     PreferencesService,
     IpcDevtoolService,
-    DevService
+    DevService,
+    ChatService,
   ] as const)
 
   // Set app user model id for windows
@@ -94,7 +100,7 @@ app.whenReady().then(() => {
   })
 
   const mainWindow = createWindow()
-  AcpConnectionManager.getInstance().setWebContents(mainWindow.webContents)
+  ChatEngine.getInstance().subscribe(mainWindow.webContents)
   subscribeIpcDevtool(mainWindow.webContents)
 
   app.on('activate', () => {
@@ -102,7 +108,7 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow()
-      AcpConnectionManager.getInstance().setWebContents(win.webContents)
+      ChatEngine.getInstance().subscribe(win.webContents)
       subscribeIpcDevtool(win.webContents)
     }
   })

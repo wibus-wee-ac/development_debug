@@ -1,6 +1,7 @@
 import type { MergeIpcService } from '@cradle/ipc'
 
 import type { AcpService } from './services/acp'
+import type { ChatService } from './services/chat'
 import type { DevService } from './services/dev'
 import type { IpcDevtoolService } from './services/ipc-devtool'
 import type { PreferencesService } from './services/preferences'
@@ -18,12 +19,14 @@ export type IpcServices = MergeIpcService<{
   preferences: typeof PreferencesService
   ipcDevtool: typeof IpcDevtoolService
   dev: typeof DevService
+  chat: typeof ChatService
 }>
 
 // Convenience re-exports so the renderer imports from one place
 export type { Message, Session, Workspace } from './db/schema'
 export type { AcpAgent, AcpAuditEntry } from './db/schema'
+export type { AcpSessionState } from './lib/acp-connection'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'
-export type { AcpSessionState } from './lib/acp-connection'
-export type { SessionConfigOption, SessionModelState, ModelInfo } from '@agentclientprotocol/sdk'
+export type { ChatMessage } from './lib/chat-engine'
+export type { ModelInfo, SessionConfigOption, SessionModelState } from '@agentclientprotocol/sdk'

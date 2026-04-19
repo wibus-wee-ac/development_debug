@@ -1,6 +1,6 @@
-// Input: ChatView from chat feature, ChatSessionManager, AppLayout, TanStack Router
-// Output: Chat session route — thin page that reads session from manager and renders ChatView
-// Position: Route page for /chat/$sessionId, protocol-driven (no session creation here)
+// Input: ChatView from chat feature, ipc.chat, ipc.session, AppLayout, TanStack Router
+// Output: Chat session route — thin page that reads session from DB and renders ChatView
+// Position: Route page for /chat/$sessionId, data driven by main-process ChatEngine
 
 import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
@@ -12,10 +12,9 @@ import {
   MenuItem,
   MenuPopup,
   MenuSeparator,
-  MenuTrigger
+  MenuTrigger,
 } from '@renderer/components/ui/menu'
 import { ChatView } from '@renderer/features/chat'
-import { useChatSessionManager } from '@renderer/features/chat/chat-session-manager'
 import { ModelPicker } from '@renderer/features/chat/model-picker'
 import { useInstalledAcpAgents } from '@renderer/features/workspace/use-acp-agents'
 import {
@@ -23,16 +22,16 @@ import {
   getAcpSessionState,
   setAcpSessionConfigOption,
   setAcpSessionModel,
-  useAcpSessionState
+  useAcpSessionState,
 } from '@renderer/features/workspace/use-acp-session-state'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
 import {
   buildStoredChatPreferencesFromSnapshot,
-  mergeChatPreferencesWithState
+  mergeChatPreferencesWithState,
 } from '@shared/chat-preferences'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { ChevronDownIcon, LoaderCircleIcon, PlusIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -57,7 +56,7 @@ function flatConfigOptions(opts: unknown): FlatConfigOpt[] {
     return []
   }
   return opts.filter(
-    (o): o is FlatConfigOpt => typeof o === 'object' && o !== null && 'value' in o && 'name' in o
+    (o): o is FlatConfigOpt => typeof o === 'object' && o !== null && 'value' in o && 'name' in o,
   )
 }
 
@@ -71,9 +70,10 @@ function getThoughtLevelSnapshot(configSnapshot: string | null | undefined): str
       category?: string
       currentValue?: string | boolean
     }>
-    const option = parsed.find((item) => item.category === 'thought_level')
+    const option = parsed.find(item => item.category === 'thought_level')
     return typeof option?.currentValue === 'string' ? option.currentValue : null
-  } catch {
+  }
+ catch {
     return null
   }
 }
@@ -81,7 +81,7 @@ function getThoughtLevelSnapshot(configSnapshot: string | null | undefined): str
 type MenuKind = 'model' | 'thinking'
 
 export const Route = createFileRoute('/chat/$sessionId')({
-  component: ChatSessionPage
+  component: ChatSessionPage,
 })
 
 function ChatSessionPage() {
@@ -91,62 +91,61 @@ function ChatSessionPage() {
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false)
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
-  const [sessionTitle, setSessionTitle] = useState<string | null>(null)
+  const [liveAcpSessionId, setLiveAcpSessionId] = useState<string | null>(null)
 
-  // Read session metadata from the protocol-driven manager
-  const { sessions, ensureLiveSession, loadSession } = useChatSessionManager()
-  const session = sessions[sessionId]
+  // Session metadata — sole source of truth is the DB row.
+  const { data: session } = useQuery({
+    queryKey: ['chat-session', sessionId],
+    queryFn: () => (ipc ? ipc.session.get(sessionId) : Promise.resolve(undefined)),
+    enabled: !!sessionId,
+  })
 
-  const agentId = session?.agentId ?? null
+  const agentId = session?.agent ?? null
   const workspaceId = session?.workspaceId ?? null
+  const sessionTitle = session?.title ?? null
 
-  // Ensure session is loaded (from DB if needed)
+  // Seed liveAcpSessionId from DB on first read
   useEffect(() => {
-    loadSession(sessionId)
-  }, [sessionId, loadSession])
+    if (session?.acpSessionId && !liveAcpSessionId) {
+      setLiveAcpSessionId(session.acpSessionId)
+    }
+  }, [session?.acpSessionId, liveAcpSessionId])
 
   // Fetch workspace name when workspaceId is available
   useEffect(() => {
-    if (!workspaceId) return
+    if (!workspaceId) {
+      return
+    }
     ipc?.workspace.get(workspaceId).then((ws) => {
       setWorkspaceName(ws?.name ?? null)
     })
   }, [workspaceId])
 
-  // Fetch session title from DB
-  useEffect(() => {
-    if (!sessionId) return
-    ipc?.session.get(sessionId).then((s) => {
-      setSessionTitle(s?.title ?? null)
-    })
-  }, [sessionId])
-
-  // ACP transport session ID — separate from the stable chat session ID
-  const acpSessionId = session?.acpSessionId ?? null
+  const acpSessionId = liveAcpSessionId
 
   const { agents } = useInstalledAcpAgents()
   const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
 
   const availableFiles = useMemo(
-    () => workspaceFiles.map((f) => ({ type: f.type, name: f.name, path: f.path })),
-    [workspaceFiles]
+    () => workspaceFiles.map(f => ({ type: f.type, name: f.name, path: f.path })),
+    [workspaceFiles],
   )
 
-  const selectedAgent = agents.find((a) => a.id === agentId) ?? null
+  const selectedAgent = agents.find(a => a.id === agentId) ?? null
 
   // Model + config pickers — keyed against acpSessionId (null = no live ACP session)
   const { models, configOptions } = useAcpSessionState(agentId, acpSessionId)
 
-  const thoughtLevelOption = configOptions.find((o) => o.category === 'thought_level')
+  const thoughtLevelOption = configOptions.find(o => o.category === 'thought_level')
   const thoughtLevelOpts = flatConfigOptions(
-    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null
+    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null,
   )
   const thoughtLevelSnapshot = getThoughtLevelSnapshot(session?.configSnapshot)
 
   async function fetchLiveSessionState(targetAcpSessionId: string) {
     return queryClient.fetchQuery({
       queryKey: acpSessionStateQueryKey(agentId, targetAcpSessionId),
-      queryFn: () => getAcpSessionState(agentId!, targetAcpSessionId)
+      queryFn: () => getAcpSessionState(agentId!, targetAcpSessionId),
     })
   }
 
@@ -162,9 +161,9 @@ function ChatSessionPage() {
     const mergedPreferences = mergeChatPreferencesWithState(
       buildStoredChatPreferencesFromSnapshot({
         modelId: nextModelId ?? session.modelId,
-        configSnapshot: session.configSnapshot
+        configSnapshot: session.configSnapshot,
       }),
-      liveState
+      liveState,
     )
 
     const nextConfigSnapshot = liveState?.configOptions
@@ -174,14 +173,19 @@ function ChatSessionPage() {
     await ipc?.session.updateConfig({
       id: sessionId,
       modelId: mergedPreferences.modelId,
-      configSnapshot: nextConfigSnapshot ?? null
+      configSnapshot: nextConfigSnapshot ?? null,
     })
+    queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] })
   }
 
   async function reconnectAndOpenMenu(kind: MenuKind) {
+    if (!ipc) {
+      return
+    }
     setReconnectingModel(true)
     try {
-      const nextAcpSessionId = await ensureLiveSession(sessionId)
+      const { acpSessionId: nextAcpSessionId } = await ipc.chat.ensureLive(sessionId)
+      setLiveAcpSessionId(nextAcpSessionId)
       await fetchLiveSessionState(nextAcpSessionId)
 
       if (kind === 'model') {
@@ -190,28 +194,29 @@ function ChatSessionPage() {
       }
 
       setThinkingMenuOpen(true)
-    } finally {
+    }
+ finally {
       setReconnectingModel(false)
     }
   }
 
-  // Listen for ACP session title updates (events carry the ACP session ID)
+  // Engine forwards ACP title updates as chat:session-title with chatSessionId.
   useEffect(() => {
-    if (!acpSessionId) {
-      return
-    }
-    const handler = (_event: unknown, data: { sessionId: string; title: string }) => {
-      if (data.sessionId === acpSessionId && workspaceId) {
-        ipc?.session.updateTitle({ id: sessionId, title: data.title })
+    const handler = (_event: unknown, data: { chatSessionId: string, title: string }) => {
+      if (data.chatSessionId !== sessionId) {
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] })
+      if (workspaceId) {
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
       }
     }
 
-    window.electron.ipcRenderer.on('acp:session-title', handler)
+    window.electron.ipcRenderer.on('chat:session-title', handler)
     return () => {
-      window.electron.ipcRenderer.removeListener('acp:session-title', handler)
+      window.electron.ipcRenderer.removeListener('chat:session-title', handler)
     }
-  }, [sessionId, acpSessionId, workspaceId, queryClient])
+  }, [sessionId, workspaceId, queryClient])
 
   const composerToolbar = useMemo(
     () => (
@@ -219,7 +224,7 @@ function ChatSessionPage() {
         <PlusIcon aria-hidden="true" />
       </Button>
     ),
-    []
+    [],
   )
 
   const composerContextBar = useMemo(
@@ -236,7 +241,8 @@ function ChatSessionPage() {
         )}
 
         {/* Model picker — live when active ACP session, else read-only snapshot */}
-        {models && models.availableModels.length > 0 ? (
+        {models && models.availableModels.length > 0
+? (
           <ModelPicker
             models={models}
             open={modelMenuOpen}
@@ -247,7 +253,9 @@ function ChatSessionPage() {
               await updateSessionConfigFromLiveState(modelId)
             }}
           />
-        ) : session?.modelId ? (
+        )
+: session?.modelId
+? (
           <Button
             variant="ghost"
             size="xs"
@@ -255,25 +263,29 @@ function ChatSessionPage() {
             className="text-muted-foreground/60 hover:text-foreground"
             onClick={() => reconnectAndOpenMenu('model')}
           >
-            {reconnectingModel ? (
+            {reconnectingModel
+? (
               <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-            ) : null}
+            )
+: null}
             {session.modelId}
             <ChevronDownIcon aria-hidden="true" />
           </Button>
-        ) : null}
+        )
+: null}
 
         {/* Thinking effort — only available with active ACP session */}
-        {thoughtLevelOpts.length > 0 && thoughtLevelOption ? (
+        {thoughtLevelOpts.length > 0 && thoughtLevelOption
+? (
           <Menu open={thinkingMenuOpen} onOpenChange={setThinkingMenuOpen}>
             <MenuTrigger
-              render={
+              render={(
                 <Button
                   variant="ghost"
                   size="xs"
                   className="text-muted-foreground/70 hover:text-foreground"
                 />
-              }
+              )}
             >
               {thoughtLevelOption.type === 'select'
                 ? thoughtLevelOption.currentValue
@@ -284,7 +296,7 @@ function ChatSessionPage() {
               <MenuGroup>
                 <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
                 <MenuSeparator />
-                {thoughtLevelOpts.map((opt) => (
+                {thoughtLevelOpts.map(opt => (
                   <MenuItem
                     key={opt.value}
                     onClick={async () => {
@@ -292,7 +304,7 @@ function ChatSessionPage() {
                         agentId!,
                         acpSessionId!,
                         thoughtLevelOption.id,
-                        opt.value
+                        opt.value,
                       )
                       await fetchLiveSessionState(acpSessionId!)
                       await updateSessionConfigFromLiveState()
@@ -304,7 +316,9 @@ function ChatSessionPage() {
               </MenuGroup>
             </MenuPopup>
           </Menu>
-        ) : thoughtLevelSnapshot ? (
+        )
+: thoughtLevelSnapshot
+? (
           <Button
             variant="ghost"
             size="xs"
@@ -312,13 +326,16 @@ function ChatSessionPage() {
             className="text-muted-foreground/60 hover:text-foreground"
             onClick={() => reconnectAndOpenMenu('thinking')}
           >
-            {reconnectingModel ? (
+            {reconnectingModel
+? (
               <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-            ) : null}
+            )
+: null}
             {thoughtLevelSnapshot}
             <ChevronDownIcon aria-hidden="true" />
           </Button>
-        ) : null}
+        )
+: null}
       </>
     ),
     [
@@ -332,11 +349,10 @@ function ChatSessionPage() {
       reconnectingModel,
       modelMenuOpen,
       thinkingMenuOpen,
-      ensureLiveSession,
       queryClient,
       agentId,
-      sessionId
-    ]
+      sessionId,
+    ],
   )
 
   if (!session) {

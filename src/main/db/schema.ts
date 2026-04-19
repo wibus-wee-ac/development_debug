@@ -40,13 +40,19 @@ export const sessions = sqliteTable('sessions', {
 })
 
 export const messages = sqliteTable('messages', {
-  id: int('id').primaryKey({ autoIncrement: true }),
+  id: textPk(),
   sessionId: text('session_id')
     .notNull()
     .references(() => sessions.id, { onDelete: 'cascade' }),
   role: text('role', { enum: ['user', 'assistant'] }).notNull(),
+  status: text('status', {
+    enum: ['streaming', 'complete', 'aborted', 'failed'],
+  })
+    .notNull()
+    .default('complete'),
   content: text('content').notNull(),
-  ...createdAt(),
+  errorText: text('error_text'),
+  ...timestamps(),
 })
 
 /**

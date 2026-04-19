@@ -1,5 +1,5 @@
-// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, Composer, ChatSessionManager, useNavigate
-// Output: NewChatHome — empty-state composer with model/thinking pickers, calls manager.createAndSend + navigates
+// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, Composer, ipc.chat, useNavigate
+// Output: NewChatHome — empty-state composer with model/thinking pickers, calls ipc.chat.createAndSend + navigates
 // Position: Main content area component for the home page (/ route)
 
 import { Button } from '@renderer/components/ui/button'
@@ -10,16 +10,15 @@ import {
   MenuItem,
   MenuPopup,
   MenuSeparator,
-  MenuTrigger
+  MenuTrigger,
 } from '@renderer/components/ui/menu'
 import { Composer } from '@renderer/features/chat'
-import { useChatSessionManager } from '@renderer/features/chat/chat-session-manager'
 import { ModelPicker } from '@renderer/features/chat/model-picker'
 import {
   acpSessionStateQueryKey,
   setAcpSessionConfigOption,
   setAcpSessionModel,
-  useAcpSessionState
+  useAcpSessionState,
 } from '@renderer/features/workspace/use-acp-session-state'
 import { ipc } from '@renderer/lib/ipc'
 import { applyStoredChatPreferences, buildStoredChatPreferences } from '@shared/chat-preferences'
@@ -31,7 +30,7 @@ import {
   FolderIcon,
   LoaderCircleIcon,
   PlusIcon,
-  TriangleAlertIcon
+  TriangleAlertIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -52,7 +51,7 @@ function flatConfigOptions(opts: unknown): FlatConfigOpt[] {
     return []
   }
   return opts.filter(
-    (o): o is FlatConfigOpt => typeof o === 'object' && o !== null && 'value' in o && 'name' in o
+    (o): o is FlatConfigOpt => typeof o === 'object' && o !== null && 'value' in o && 'name' in o,
   )
 }
 
@@ -78,50 +77,49 @@ export function NewChatHome() {
   const { agents } = useInstalledAcpAgents()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { createAndSend } = useChatSessionManager()
   const appliedProbeSessionIdRef = useRef<string | null>(null)
 
-  const selectedAgent = agents.find((a) => a.id === agentId) ?? null
-  const selectedWorkspace = workspaces.find((w) => w.id === workspaceId) ?? workspaces[0] ?? null
+  const selectedAgent = agents.find(a => a.id === agentId) ?? null
+  const selectedWorkspace = workspaces.find(w => w.id === workspaceId) ?? workspaces[0] ?? null
   const effectiveWorkspaceId = selectedWorkspace?.id ?? null
   const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
 
   // Map workspace files to MentionItems for the @ picker
   const availableFiles = useMemo(
-    () => workspaceFiles.map((f) => ({ type: f.type, name: f.name, path: f.path })),
-    [workspaceFiles]
+    () => workspaceFiles.map(f => ({ type: f.type, name: f.name, path: f.path })),
+    [workspaceFiles],
   )
 
   // Model + config pickers from the probe session
   const { models, configOptions, setModel, setConfigOption } = useAcpSessionState(
     agentId,
-    probeSessionId
+    probeSessionId,
   )
   const currentPreferences = useMemo(
     () =>
       buildStoredChatPreferences({
         models,
-        configOptions
+        configOptions,
       }),
-    [models, configOptions]
+    [models, configOptions],
   )
   const persistChatPreferences = useCallback(
     async (preferences = currentPreferences) => {
       await ipc!.preferences.setChatPreferences(preferences)
     },
-    [currentPreferences]
+    [currentPreferences],
   )
-  const thoughtLevelOption = configOptions.find((o) => o.category === 'thought_level')
+  const thoughtLevelOption = configOptions.find(o => o.category === 'thought_level')
   const thoughtLevelOpts = flatConfigOptions(
-    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null
+    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null,
   )
 
   useEffect(() => {
     if (
-      !agentId ||
-      !probeSessionId ||
-      !models ||
-      appliedProbeSessionIdRef.current === probeSessionId
+      !agentId
+      || !probeSessionId
+      || !models
+      || appliedProbeSessionIdRef.current === probeSessionId
     ) {
       return
     }
@@ -144,15 +142,15 @@ export function NewChatHome() {
         preferences,
         state: {
           models,
-          configOptions
+          configOptions,
         },
-        setModel: (modelId) => setAcpSessionModel(stableAgentId, stableProbeSessionId, modelId),
+        setModel: modelId => setAcpSessionModel(stableAgentId, stableProbeSessionId, modelId),
         setConfigOption: (configId, value) =>
-          setAcpSessionConfigOption(stableAgentId, stableProbeSessionId, configId, value)
+          setAcpSessionConfigOption(stableAgentId, stableProbeSessionId, configId, value),
       })
 
       await queryClient.invalidateQueries({
-        queryKey: acpSessionStateQueryKey(stableAgentId, stableProbeSessionId)
+        queryKey: acpSessionStateQueryKey(stableAgentId, stableProbeSessionId),
       })
 
       if (!cancelled) {
@@ -204,7 +202,8 @@ export function NewChatHome() {
           setProbeSessionId((resp as { sessionId: string }).sessionId)
           setProbeStatus('ready')
         }
-      } catch {
+      }
+ catch {
         if (!cancelled) {
           setProbeStatus('error')
         }
@@ -218,25 +217,26 @@ export function NewChatHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentId])
 
-  // Protocol-driven: reuse probe session, let manager own the lifecycle from here
+  // Protocol-driven: delegate the entire send lifecycle to the main-process ChatEngine
   const handleFirstSend = useCallback(
     async (text: string) => {
-      if (!agentId || !effectiveWorkspaceId || !probeSessionId) {
+      if (!agentId || !effectiveWorkspaceId || !probeSessionId || !ipc) {
         return
       }
 
       setSending(true)
       try {
-        const sessionId = await createAndSend({
+        const sessionId = await ipc.chat.createAndSend({
           agentId,
           workspaceId: effectiveWorkspaceId,
           cwd: selectedWorkspace?.path ?? '.',
-          text
+          text,
         })
 
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
         navigate({ to: '/chat/$sessionId', params: { sessionId } })
-      } catch (err) {
+      }
+ catch (err) {
         console.error('[NewChatHome] createAndSend failed:', err)
         setSending(false)
       }
@@ -246,10 +246,9 @@ export function NewChatHome() {
       effectiveWorkspaceId,
       probeSessionId,
       selectedWorkspace,
-      createAndSend,
       queryClient,
-      navigate
-    ]
+      navigate,
+    ],
   )
 
   // ── Toolbar ──
@@ -260,7 +259,7 @@ export function NewChatHome() {
         <PlusIcon aria-hidden="true" />
       </Button>
     ),
-    []
+    [],
   )
 
   const composerContextBar = useMemo(
@@ -270,15 +269,21 @@ export function NewChatHome() {
         {agents.length > 0 && (
           <Menu>
             <MenuTrigger render={<Button variant="ghost" size="xs" />}>
-              {probeStatus === 'connecting' ? (
+              {probeStatus === 'connecting'
+? (
                 <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-              ) : probeStatus === 'error' ? (
+              )
+: probeStatus === 'error'
+? (
                 <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
-              ) : (
+              )
+: (
                 <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                  {selectedAgent ? (
+                  {selectedAgent
+? (
                     agentInitials(selectedAgent.name)
-                  ) : (
+                  )
+: (
                     <BotIcon className="size-3" aria-hidden="true" />
                   )}
                 </span>
@@ -290,7 +295,7 @@ export function NewChatHome() {
               <MenuGroup>
                 <MenuGroupLabel>ACP Agents</MenuGroupLabel>
                 <MenuSeparator />
-                {agents.map((a) => (
+                {agents.map(a => (
                   <MenuItem key={a.id} onClick={() => setAgentId(a.id)}>
                     <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
                       {agentInitials(a.name)}
@@ -311,7 +316,7 @@ export function NewChatHome() {
               setModel(modelId)
               await persistChatPreferences({
                 ...currentPreferences,
-                modelId
+                modelId,
               })
             }}
           />
@@ -321,13 +326,13 @@ export function NewChatHome() {
         {probeStatus === 'ready' && thoughtLevelOpts.length > 0 && thoughtLevelOption && (
           <Menu>
             <MenuTrigger
-              render={
+              render={(
                 <Button
                   variant="ghost"
                   size="xs"
                   className="text-muted-foreground/70 hover:text-foreground"
                 />
-              }
+              )}
             >
               {thoughtLevelOption.type === 'select'
                 ? thoughtLevelOption.currentValue
@@ -338,7 +343,7 @@ export function NewChatHome() {
               <MenuGroup>
                 <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
                 <MenuSeparator />
-                {thoughtLevelOpts.map((opt) => (
+                {thoughtLevelOpts.map(opt => (
                   <MenuItem
                     key={opt.value}
                     onClick={async () => {
@@ -347,8 +352,8 @@ export function NewChatHome() {
                         ...currentPreferences,
                         configSelections: {
                           ...currentPreferences.configSelections,
-                          [thoughtLevelOption.id]: opt.value
-                        }
+                          [thoughtLevelOption.id]: opt.value,
+                        },
                       })
                     }}
                   >
@@ -360,7 +365,7 @@ export function NewChatHome() {
           </Menu>
         )}
       </>
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+
     ),
     [
       agents,
@@ -370,8 +375,8 @@ export function NewChatHome() {
       thoughtLevelOpts,
       thoughtLevelOption,
       currentPreferences,
-      persistChatPreferences
-    ]
+      persistChatPreferences,
+    ],
   )
 
   // ── Empty state ──
@@ -394,30 +399,32 @@ export function NewChatHome() {
 
         {/* Context pill: workspace selector */}
         <div className="flex items-center gap-1 p-1">
-          {workspaces.length > 0 ? (
+          {workspaces.length > 0
+? (
             <Menu>
               <MenuTrigger
-                render={
+                render={(
                   <Button
                     variant="ghost"
                     size="xs"
                     className="text-muted-foreground/70 hover:text-foreground gap-2"
                   />
-                }
+                )}
               >
                 <FolderIcon aria-hidden="true" />
                 {selectedWorkspace?.name ?? '选择项目'}
                 <ChevronDownIcon aria-hidden="true" />
               </MenuTrigger>
               <MenuPopup>
-                {workspaces.map((w) => (
+                {workspaces.map(w => (
                   <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>
                     {w.name}
                   </MenuItem>
                 ))}
               </MenuPopup>
             </Menu>
-          ) : (
+          )
+: (
             <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
               <FolderIcon aria-hidden="true" />
               无项目

@@ -74,8 +74,8 @@ export function ChatView({
             ))}
           </AnimatePresence>
 
-          {/* Error / failed-to-start indicator */}
-          {(status === 'error' || status === 'failed_to_start') && (
+          {/* Error indicator */}
+          {status === 'error' && (
             <motion.div
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
@@ -85,7 +85,7 @@ export function ChatView({
             >
               <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
               <span className="text-xs text-destructive/70">
-                {error ?? (status === 'failed_to_start' ? '未收到响应，请重试' : '发送失败，请重试')}
+                {error ?? '发送失败，请重试'}
               </span>
             </motion.div>
           )}
