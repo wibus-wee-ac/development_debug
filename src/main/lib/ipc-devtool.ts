@@ -1,0 +1,76 @@
+// Input: @cradle/ipc observer registration, Electron BrowserWindow/WebContents, IpcDevtoolStore, preload path
+// Output: Shared main-process IPC devtool backend — observer wiring, store access, devtool window factory
+// Position: Main-process integration point that connects IPC instrumentation to the devtool window
+
+import { join } from 'node:path'
+
+import type { IpcObservedEvent } from '@cradle/ipc'
+import { setIpcObserver } from '@cradle/ipc'
+import { is } from '@electron-toolkit/utils'
+import type { WebContents } from 'electron'
+import { BrowserWindow } from 'electron'
+
+import { IpcDevtoolStore } from './ipc-devtool-store'
+
+export const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
+
+const store = new IpcDevtoolStore({ eventChannel: IPC_DEVTOOL_EVENT_CHANNEL })
+
+let devtoolWindow: BrowserWindow | null = null
+
+export function initializeIpcDevtool(): IpcDevtoolStore {
+  setIpcObserver((event: IpcObservedEvent) => {
+    store.record(event)
+  })
+
+  return store
+}
+
+export function getIpcDevtoolStore(): IpcDevtoolStore {
+  return store
+}
+
+export function subscribeIpcDevtool(webContents: WebContents): () => void {
+  return store.subscribe(webContents)
+}
+
+export function openDevtoolWindow(): BrowserWindow | null {
+  if (!is.dev) {
+    return null
+  }
+
+  if (devtoolWindow && !devtoolWindow.isDestroyed()) {
+    devtoolWindow.focus()
+    return devtoolWindow
+  }
+
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 680,
+    title: 'IPC Devtool',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  win.on('closed', () => {
+    if (devtoolWindow === win) {
+      devtoolWindow = null
+    }
+  })
+
+  win.webContents.once('did-finish-load', () => {
+    subscribeIpcDevtool(win.webContents)
+  })
+
+  if (process.env.ELECTRON_RENDERER_URL) {
+    win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/devtool`)
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/devtool' })
+  }
+
+  devtoolWindow = win
+  return win
+}

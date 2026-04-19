@@ -1,16 +1,40 @@
+// Input: AsyncLocalStorage, Electron ipcMain, OpenTelemetry trace API, shared event helpers
+// Output: Main-process IPC registration, trace-aware handler context, and observer integration
+// Position: Shared main-process IPC framework for all service methods
+
 import { AsyncLocalStorage } from 'node:async_hooks'
 
+import { context as otelContext, trace } from '@opentelemetry/api'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { ipcMain } from 'electron'
+
+import {
+  createObservedEvent,
+  isTraceEnvelope,
+  markSpanError,
+  markSpanSuccess,
+  serializeError,
+  serializePayload
+} from './events'
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
 export interface IpcContext {
   sender: WebContents
   event: IpcMainInvokeEvent
+  traceId: string | null
+  spanId: string | null
+  parentSpanId: string | null
+  callerStack: string[]
 }
 
 const contextStorage = new AsyncLocalStorage<IpcContext>()
+
+let ipcObserver: ((event: ReturnType<typeof createObservedEvent>) => void) | null = null
+
+export function setIpcObserver(observer: typeof ipcObserver): void {
+  ipcObserver = observer
+}
 
 export function getIpcContext(): IpcContext {
   const context = contextStorage.getStore()
@@ -53,7 +77,7 @@ export class IpcHandler {
   registerMethod<TOutput>(
     channel: string,
     // eslint-disable-next-line ts/no-explicit-any
-    handler: (...args: any[]) => Promise<TOutput> | TOutput,
+    handler: (...args: any[]) => Promise<TOutput> | TOutput
   ): void {
     if (this.registeredChannels.has(channel)) {
       return
@@ -61,11 +85,91 @@ export class IpcHandler {
     this.registeredChannels.add(channel)
 
     ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
-      const context: IpcContext = { sender: event.sender, event }
-      try {
-        return await contextStorage.run(context, () => handler(...args))
+      const maybeEnvelope = args[0]
+      const traceEnvelope = isTraceEnvelope(maybeEnvelope) ? maybeEnvelope : null
+      const handlerArgs = traceEnvelope ? args.slice(1) : args
+      const startedAt = traceEnvelope?.startedAt ?? Date.now()
+      const span = trace.getTracer('cradle.ipc-devtool').startSpan(channel, {
+        attributes: {
+          'ipc.channel': channel,
+          'ipc.side': 'main'
+        }
+      })
+
+      const context: IpcContext = {
+        sender: event.sender,
+        event,
+        traceId: traceEnvelope?.traceId ?? null,
+        spanId: traceEnvelope?.spanId ?? null,
+        parentSpanId: traceEnvelope?.parentSpanId ?? null,
+        callerStack: traceEnvelope?.callerStack ?? []
       }
-      catch (error) {
+
+      ipcObserver?.(
+        createObservedEvent({
+          traceId: traceEnvelope?.traceId ?? 'local',
+          spanId: traceEnvelope?.spanId ?? 'local',
+          parentSpanId: traceEnvelope?.parentSpanId ?? null,
+          channel,
+          side: 'main',
+          phase: 'start',
+          status: 'pending',
+          startedAt,
+          endedAt: null,
+          durationMs: null,
+          args: serializePayload(handlerArgs),
+          result: null,
+          error: null,
+          callerStack: traceEnvelope?.callerStack ?? []
+        })
+      )
+
+      try {
+        const result = await contextStorage.run(context, () =>
+          otelContext.with(trace.setSpan(otelContext.active(), span), () => handler(...handlerArgs))
+        )
+
+        markSpanSuccess()
+        ipcObserver?.(
+          createObservedEvent({
+            traceId: traceEnvelope?.traceId ?? 'local',
+            spanId: traceEnvelope?.spanId ?? 'local',
+            parentSpanId: traceEnvelope?.parentSpanId ?? null,
+            channel,
+            side: 'main',
+            phase: 'finish',
+            status: 'success',
+            startedAt,
+            endedAt: Date.now(),
+            durationMs: Date.now() - startedAt,
+            args: serializePayload(handlerArgs),
+            result: serializePayload(result),
+            error: null,
+            callerStack: traceEnvelope?.callerStack ?? []
+          })
+        )
+
+        return result
+      } catch (error) {
+        markSpanError(error)
+        ipcObserver?.(
+          createObservedEvent({
+            traceId: traceEnvelope?.traceId ?? 'local',
+            spanId: traceEnvelope?.spanId ?? 'local',
+            parentSpanId: traceEnvelope?.parentSpanId ?? null,
+            channel,
+            side: 'main',
+            phase: 'finish',
+            status: 'error',
+            startedAt,
+            endedAt: Date.now(),
+            durationMs: Date.now() - startedAt,
+            args: serializePayload(handlerArgs),
+            result: null,
+            error: serializeError(error),
+            callerStack: traceEnvelope?.callerStack ?? []
+          })
+        )
         console.error(`Error in IPC method ${channel}:`, error)
         throw error
       }
@@ -104,7 +208,7 @@ export abstract class IpcService {
   protected registerMethod<TOutput>(
     methodName: string,
     // eslint-disable-next-line ts/no-explicit-any
-    handler: (...args: any[]) => Promise<TOutput> | TOutput,
+    handler: (...args: any[]) => Promise<TOutput> | TOutput
   ): void {
     const groupName = (this.constructor as typeof IpcService).groupName
     this.handler.registerMethod(`${groupName}.${methodName}`, handler)
@@ -123,7 +227,7 @@ type CreateServicesResult<T extends readonly IpcServiceConstructor[]> = {
 }
 
 export function createServices<T extends readonly IpcServiceConstructor[]>(
-  serviceConstructors: T,
+  serviceConstructors: T
 ): CreateServicesResult<T> {
   // eslint-disable-next-line ts/no-explicit-any
   const services = {} as any

@@ -7,7 +7,9 @@ import { app, BrowserWindow, shell } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
 import { AcpConnectionManager } from './lib/acp-connection'
+import { initializeIpcDevtool, subscribeIpcDevtool } from './lib/ipc-devtool'
 import { AcpService } from './services/acp'
+import { IpcDevtoolService } from './services/ipc-devtool'
 import { PreferencesService } from './services/preferences'
 import { SessionService } from './services/session'
 import { WorkspaceService } from './services/workspace'
@@ -68,8 +70,16 @@ app.whenReady().then(() => {
   const dbPath = join(app.getPath('userData'), 'cradle.db')
   initDb(dbPath)
 
+  initializeIpcDevtool()
+
   // Register IPC services
-  createServices([WorkspaceService, SessionService, AcpService, PreferencesService] as const)
+  createServices([
+    WorkspaceService,
+    SessionService,
+    AcpService,
+    PreferencesService,
+    IpcDevtoolService
+  ] as const)
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
@@ -83,6 +93,7 @@ app.whenReady().then(() => {
 
   const mainWindow = createWindow()
   AcpConnectionManager.getInstance().setWebContents(mainWindow.webContents)
+  subscribeIpcDevtool(mainWindow.webContents)
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
@@ -90,6 +101,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow()
       AcpConnectionManager.getInstance().setWebContents(win.webContents)
+      subscribeIpcDevtool(win.webContents)
     }
   })
 })

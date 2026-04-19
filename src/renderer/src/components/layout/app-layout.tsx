@@ -1,7 +1,8 @@
-// Input: ResizeHandle, layout store, sidebar-nav store, motion/react, page slot props
+// Input: ResizeHandle, layout store, sidebar-nav store, motion/react, page slot props, DevBottomBar
 // Output: AppLayout component — the main three-column layout shell
 // Position: Core layout component, receives aside/panel content as children props
 
+import { DevBottomBar } from '@renderer/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '@renderer/components/layout/resize-handle'
 import { SettingsContent, SettingsSidebar } from '@renderer/features/settings'
 import { WorkspaceSidebar } from '@renderer/features/workspace'
@@ -65,9 +66,10 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   const isMain = sidebarView === 'main'
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden text-foreground">
-      {/* ── Sidebar ─────────────────────────────────── */}
-      <aside
+    <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground">
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* ── Sidebar ─────────────────────────────────── */}
+        <aside
         className="flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden"
         style={{ width: sidebarWidth }}
       >
@@ -199,6 +201,8 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
           )}
         </AnimatePresence>
       </div>
+      </div>
+      {import.meta.env.DEV && <DevBottomBar />}
     </div>
   )
 }
