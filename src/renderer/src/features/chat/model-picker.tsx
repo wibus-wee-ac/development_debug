@@ -11,7 +11,7 @@ import {
   ComboboxItem,
   ComboboxList,
   ComboboxPopup,
-  ComboboxPrimitive
+  ComboboxPrimitive,
 } from '@renderer/components/ui/combobox'
 import { cn } from '@renderer/lib/utils'
 import { ChevronDownIcon, SearchIcon } from 'lucide-react'
@@ -32,11 +32,11 @@ export function ModelPicker({
   disabled,
   className,
   open,
-  onOpenChange
+  onOpenChange,
 }: ModelPickerProps) {
   const currentModel = useMemo(
-    () => models.availableModels.find((m) => m.modelId === models.currentModelId) ?? null,
-    [models.availableModels, models.currentModelId]
+    () => models.availableModels.find(m => m.modelId === models.currentModelId) ?? null,
+    [models.availableModels, models.currentModelId],
   )
 
   const triggerLabel = currentModel?.name ?? models.currentModelId
@@ -45,10 +45,10 @@ export function ModelPicker({
     <Combobox<ModelInfo>
       items={models.availableModels}
       value={currentModel}
-      itemToStringLabel={(m) => m.name}
+      itemToStringLabel={m => m.name}
       isItemEqualToValue={(a, b) => a.modelId === b.modelId}
       open={open}
-      onOpenChange={onOpenChange ? (next) => onOpenChange(next) : undefined}
+      onOpenChange={onOpenChange ? next => onOpenChange(next) : undefined}
       onValueChange={(next) => {
         if (next && next.modelId !== models.currentModelId) {
           void onSelect(next.modelId)
@@ -57,13 +57,13 @@ export function ModelPicker({
     >
       <ComboboxPrimitive.Trigger
         disabled={disabled}
-        render={
+        render={(
           <Button
             variant="ghost"
             size="xs"
             className={cn('text-muted-foreground/70 hover:text-foreground', className)}
           />
-        }
+        )}
       >
         {triggerLabel}
         <ChevronDownIcon aria-hidden="true" />
@@ -84,11 +84,13 @@ export function ModelPicker({
             <ComboboxItem key={item.modelId} value={item}>
               <div className="flex min-w-0 flex-col">
                 <span className="truncate">{item.name}</span>
-                {item.description ? (
+                {item.description
+? (
                   <span className="truncate text-xs text-muted-foreground">
                     {item.description}
                   </span>
-                ) : null}
+                )
+: null}
               </div>
             </ComboboxItem>
           )}

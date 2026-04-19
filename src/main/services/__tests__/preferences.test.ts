@@ -11,20 +11,20 @@ const mockSetChatPreferences = vi.fn()
 
 vi.mock('electron', () => ({
   ipcMain: {
-    handle: vi.fn()
-  }
+    handle: vi.fn(),
+  },
 }))
 
 vi.mock('../../store/app', () => ({
   getChatPreferences: (...args: unknown[]) => mockGetChatPreferences(...args),
-  setChatPreferences: (...args: unknown[]) => mockSetChatPreferences(...args)
+  setChatPreferences: (...args: unknown[]) => mockSetChatPreferences(...args),
 }))
 
 vi.mock('node:async_hooks', () => ({
   AsyncLocalStorage: class {
     getStore = vi.fn()
     run = vi.fn()
-  }
+  },
 }))
 
 describe('preferencesService', () => {
@@ -38,19 +38,19 @@ describe('preferencesService', () => {
   it('returns global chat preferences', () => {
     mockGetChatPreferences.mockReturnValueOnce({
       modelId: 'claude-4',
-      configSelections: { 'thought-level': 'high' }
+      configSelections: { 'thought-level': 'high' },
     })
 
     expect(service.getChatPreferences()).toEqual({
       modelId: 'claude-4',
-      configSelections: { 'thought-level': 'high' }
+      configSelections: { 'thought-level': 'high' },
     })
   })
 
   it('persists global chat preferences', () => {
     const input = {
       modelId: 'gpt-5',
-      configSelections: { 'thought-level': 'medium' }
+      configSelections: { 'thought-level': 'medium' },
     }
 
     service.setChatPreferences(input)

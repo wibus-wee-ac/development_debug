@@ -1,10 +1,9 @@
 import '../styles.css'
 
-import { createRootRoute, Outlet } from '@tanstack/react-router'
-import { useEffect } from 'react'
-
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useThemeStore } from '@renderer/store/theme'
+import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { useEffect } from 'react'
 
 export const Route = createRootRoute({
   component: RootComponent,

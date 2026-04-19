@@ -4,7 +4,7 @@
 
 export interface SessionModelLike {
   currentModelId?: string | null
-  availableModels?: Array<{ modelId: string; name?: string }>
+  availableModels?: Array<{ modelId: string, name?: string }>
 }
 
 export interface SessionConfigSelectOptionLike {
@@ -43,8 +43,8 @@ export function buildStoredChatPreferences(state: SessionStateLike | null): Stor
     configSelections: Object.fromEntries(
       (state?.configOptions ?? [])
         .filter(hasPersistableValue)
-        .map((option) => [option.id, option.currentValue])
-    )
+        .map(option => [option.id, option.currentValue]),
+    ),
   }
 }
 
@@ -58,14 +58,14 @@ export function buildStoredChatPreferencesFromSnapshot(args: {
   return {
     modelId,
     configSelections: Object.fromEntries(
-      parsedOptions.filter(hasPersistableValue).map((option) => [option.id, option.currentValue])
-    )
+      parsedOptions.filter(hasPersistableValue).map(option => [option.id, option.currentValue]),
+    ),
   }
 }
 
 export function mergeChatPreferencesWithState(
   preferences: StoredChatPreferences,
-  state: SessionStateLike | null
+  state: SessionStateLike | null,
 ): StoredChatPreferences {
   return {
     modelId: state?.models?.currentModelId ?? preferences.modelId,
@@ -74,9 +74,9 @@ export function mergeChatPreferencesWithState(
       ...Object.fromEntries(
         (state?.configOptions ?? [])
           .filter(hasPersistableValue)
-          .map((option) => [option.id, option.currentValue])
-      )
-    }
+          .map(option => [option.id, option.currentValue]),
+      ),
+    },
   }
 }
 
@@ -92,12 +92,12 @@ export async function applyStoredChatPreferences(args: {
   }
 
   const availableModelIds = new Set(
-    state.models?.availableModels?.map((model) => model.modelId) ?? []
+    state.models?.availableModels?.map(model => model.modelId) ?? [],
   )
   if (
-    preferences.modelId &&
-    preferences.modelId !== state.models?.currentModelId &&
-    availableModelIds.has(preferences.modelId)
+    preferences.modelId
+    && preferences.modelId !== state.models?.currentModelId
+    && availableModelIds.has(preferences.modelId)
   ) {
     await setModel(preferences.modelId)
   }
@@ -118,7 +118,7 @@ export async function applyStoredChatPreferences(args: {
 }
 
 function hasPersistableValue(
-  option: SessionConfigOptionLike
+  option: SessionConfigOptionLike,
 ): option is SessionConfigOptionLike & { currentValue: string | boolean } {
   return typeof option.currentValue === 'string' || typeof option.currentValue === 'boolean'
 }
@@ -141,7 +141,7 @@ function flattenOptionValues(options: SessionConfigOptionLike['options']): strin
     if ('value' in option) {
       return [option.value]
     }
-    return option.options.map((groupOption) => groupOption.value)
+    return option.options.map(groupOption => groupOption.value)
   })
 }
 
@@ -153,7 +153,8 @@ function parseConfigSnapshot(configSnapshot: string | null): SessionConfigOption
   try {
     const parsed = JSON.parse(configSnapshot)
     return Array.isArray(parsed) ? (parsed as SessionConfigOptionLike[]) : []
-  } catch {
+  }
+ catch {
     return []
   }
 }

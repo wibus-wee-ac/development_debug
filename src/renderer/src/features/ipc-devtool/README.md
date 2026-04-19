@@ -8,7 +8,8 @@ IPC calls grouped by `traceId` (renderer:start → main:start → main:finish �
 UI intentionally does not follow the main app's Base-UI style — it uses plain Tailwind
 primitives tuned for density and developer ergonomics.
 
-Theme follows the main window via the persisted `useThemeStore`. Runtime theme
+Theme follows the main window via the persisted `useThemeStore`.
+Runtime theme
 changes in the main window do not propagate live to an already-open devtool window;
 re-open the devtool window to sync.
 

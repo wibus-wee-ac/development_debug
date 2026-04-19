@@ -2,10 +2,9 @@
 // Output: useShortcut hook for registering keyboard shortcuts
 // Position: Hook for components to register shortcuts with ShortcutProvider
 
-import { useContext, useEffect, useRef } from 'react'
-
 import { ShortcutContext } from '@renderer/lib/shortcut-context'
 import type { ShortcutDefinition } from '@renderer/lib/shortcut-utils'
+import { useContext, useEffect, useRef } from 'react'
 
 /**
  * Register a keyboard shortcut. Automatically unregisters on unmount.

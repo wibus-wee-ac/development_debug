@@ -11,7 +11,7 @@ export function useInstalledAcpAgents() {
   const { data: agents = [] } = useQuery({
     queryKey: ACP_AGENTS_QUERY_KEY,
     queryFn: async () => {
-      if (!ipc) return []
+      if (!ipc) { return [] }
       const all = await ipc.acp.listInstalled()
       return all.filter(a => a.status === 'installed')
     },
@@ -19,4 +19,3 @@ export function useInstalledAcpAgents() {
 
   return { agents }
 }
-

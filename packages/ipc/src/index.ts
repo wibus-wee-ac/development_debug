@@ -6,7 +6,7 @@ export {
   IpcHandler,
   IpcMethod,
   IpcService,
-  setIpcObserver
+  setIpcObserver,
 } from './base'
 
 // Renderer / preload export
@@ -22,14 +22,14 @@ export type {
   IpcObservedPhase,
   IpcObservedSide,
   IpcObservedStatus,
-  IpcTraceEnvelope
+  IpcTraceEnvelope,
 } from './events'
 export {
-  IPC_DEVTOOL_METADATA_KEY,
   captureCallerStack,
   createObservedEvent,
   createTraceEnvelope,
+  IPC_DEVTOOL_METADATA_KEY,
   isTraceEnvelope,
   serializeError,
-  serializePayload
+  serializePayload,
 } from './events'

@@ -11,30 +11,30 @@ export default defineConfig({
     resolve: {
       alias: {
         '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
-        '@shared': resolve('src/shared')
-      }
+        '@shared': resolve('src/shared'),
+      },
     },
     build: {
       externalizeDeps: {
-        exclude: ['@cradle/ipc', 'electron-store']
+        exclude: ['@cradle/ipc', 'electron-store'],
       },
       rollupOptions: {
-        external: ['better-sqlite3']
-      }
-    }
+        external: ['better-sqlite3'],
+      },
+    },
   },
   preload: {
     resolve: {
       alias: {
         '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
-        '@shared': resolve('src/shared')
-      }
+        '@shared': resolve('src/shared'),
+      },
     },
     build: {
       externalizeDeps: {
-        exclude: ['@cradle/ipc', 'electron-store']
-      }
-    }
+        exclude: ['@cradle/ipc', 'electron-store'],
+      },
+    },
   },
   renderer: {
     resolve: {
@@ -42,8 +42,8 @@ export default defineConfig({
         '@main': resolve('src/main'),
         '@renderer': resolve('src/renderer/src'),
         '@shared': resolve('src/shared'),
-        '@cradle/ipc/client': resolve('packages/ipc/src/client.ts')
-      }
+        '@cradle/ipc/client': resolve('packages/ipc/src/client.ts'),
+      },
     },
     plugins: [
       devtools(),
@@ -53,7 +53,7 @@ export default defineConfig({
         babel: {
           plugins: ['babel-plugin-react-compiler'],
         },
-      })
-    ]
-  }
+      }),
+    ],
+  },
 })

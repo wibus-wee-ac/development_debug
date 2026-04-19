@@ -3,7 +3,6 @@
 // Position: Main-process test suite covering shared IPC instrumentation and backend storage
 
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 function createStoreEvent(id: string, channel: string, status: 'pending' | 'success' | 'error') {
@@ -22,7 +21,7 @@ function createStoreEvent(id: string, channel: string, status: 'pending' | 'succ
     args: null,
     result: null,
     error: null,
-    callerStack: []
+    callerStack: [],
   }
 }
 
@@ -36,12 +35,12 @@ vi.mock('electron', () => ({
     handle: vi.fn(
       (
         channel: string,
-        handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+        handler: (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>,
       ) => {
         registeredHandlers.set(channel, handler)
-      }
-    )
-  }
+      },
+    ),
+  },
 }))
 
 describe('createIpcProxy instrumentation', () => {
@@ -58,14 +57,14 @@ describe('createIpcProxy instrumentation', () => {
 
     const ipc = createIpcProxy<{
       workspace: {
-        list: () => Promise<{ ok: boolean; rows: Array<{ id: string }> }>
+        list: () => Promise<{ ok: boolean, rows: Array<{ id: string }> }>
       }
     }>(
       { invoke },
       {
         captureStack: true,
-        emit: (event) => events.push(event)
-      }
+        emit: event => events.push(event),
+      },
     )
 
     await ipc!.workspace.list()
@@ -76,13 +75,13 @@ describe('createIpcProxy instrumentation', () => {
       side: 'renderer',
       phase: 'start',
       channel: 'workspace.list',
-      status: 'pending'
+      status: 'pending',
     })
     expect(events[1]).toMatchObject({
       side: 'renderer',
       phase: 'finish',
       channel: 'workspace.list',
-      status: 'success'
+      status: 'success',
     })
   })
 })
@@ -98,7 +97,7 @@ describe('main IPC instrumentation', () => {
 
     const ipc = await import('@cradle/ipc')
 
-    ipc.setIpcObserver((event) => events.push(event))
+    ipc.setIpcObserver(event => events.push(event))
 
     class TestService extends ipc.IpcService {
       static readonly groupName = 'test'
@@ -122,10 +121,10 @@ describe('main IPC instrumentation', () => {
         traceId: 'trace-1',
         parentId: null,
         callerStack: ['at renderer.tsx:10:1'],
-        startedAt: 100
+        startedAt: 100,
       },
       2,
-      3
+      3,
     )
 
     expect(result).toBe(5)
@@ -135,19 +134,19 @@ describe('main IPC instrumentation', () => {
       phase: 'start',
       channel: 'test.sum',
       traceId: 'trace-1',
-      status: 'pending'
+      status: 'pending',
     })
     expect(events[1]).toMatchObject({
       side: 'main',
       phase: 'finish',
       channel: 'test.sum',
       traceId: 'trace-1',
-      status: 'success'
+      status: 'success',
     })
   })
 })
 
-describe('IpcDevtoolStore', () => {
+describe('ipcDevtoolStore', () => {
   beforeEach(() => {
     vi.resetModules()
     registeredHandlers.clear()
@@ -160,7 +159,7 @@ describe('IpcDevtoolStore', () => {
     const subscriber = {
       isDestroyed: vi.fn().mockReturnValue(false),
       send,
-      once: vi.fn()
+      once: vi.fn(),
     } as unknown as WebContents
 
     const store = new IpcDevtoolStore({ maxEvents: 2 })
@@ -170,11 +169,11 @@ describe('IpcDevtoolStore', () => {
     store.record(createStoreEvent('evt-2', 'workspace.get', 'success'))
     store.record(createStoreEvent('evt-3', 'session.get', 'error'))
 
-    expect(store.getSnapshot().map((event) => event.id)).toEqual(['evt-2', 'evt-3'])
+    expect(store.getSnapshot().map(event => event.id)).toEqual(['evt-2', 'evt-3'])
     expect(send).toHaveBeenCalledTimes(3)
     expect(send).toHaveBeenLastCalledWith(
       'ipc-devtool:event',
-      expect.objectContaining({ id: 'evt-3' })
+      expect.objectContaining({ id: 'evt-3' }),
     )
   })
 })

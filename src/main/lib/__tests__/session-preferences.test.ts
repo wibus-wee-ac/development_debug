@@ -4,18 +4,18 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
-import type { AcpSessionState } from '../../lib/acp-connection'
 import {
   applyStoredChatPreferences,
-  buildStoredChatPreferences
+  buildStoredChatPreferences,
 } from '../../../shared/chat-preferences'
+import type { AcpSessionState } from '../../lib/acp-connection'
 
 describe('chat preferences', () => {
   it('captures current model and config selections from session state', () => {
     const state: AcpSessionState = {
       models: {
         currentModelId: 'claude-4',
-        availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }]
+        availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
       },
       configOptions: [
         {
@@ -27,17 +27,17 @@ describe('chat preferences', () => {
           currentValue: 'high',
           options: [
             { value: 'low', name: 'Low' },
-            { value: 'high', name: 'High' }
-          ]
-        }
-      ]
+            { value: 'high', name: 'High' },
+          ],
+        },
+      ],
     }
 
     expect(buildStoredChatPreferences(state)).toEqual({
       modelId: 'claude-4',
       configSelections: {
-        'thought-level': 'high'
-      }
+        'thought-level': 'high',
+      },
     })
   })
 
@@ -51,16 +51,16 @@ describe('chat preferences', () => {
       preferences: {
         modelId: 'claude-4',
         configSelections: {
-          'thought-level': 'high'
-        }
+          'thought-level': 'high',
+        },
       },
       state: {
         models: {
           currentModelId: 'claude-3.7',
           availableModels: [
             { modelId: 'claude-3.7', name: 'Claude 3.7' },
-            { modelId: 'claude-4', name: 'Claude 4' }
-          ]
+            { modelId: 'claude-4', name: 'Claude 4' },
+          ],
         },
         configOptions: [
           {
@@ -72,13 +72,13 @@ describe('chat preferences', () => {
             currentValue: 'medium',
             options: [
               { value: 'medium', name: 'Medium' },
-              { value: 'high', name: 'High' }
-            ]
-          }
-        ]
+              { value: 'high', name: 'High' },
+            ],
+          },
+        ],
       },
       setModel,
-      setConfigOption
+      setConfigOption,
     })
 
     expect(setModel).toHaveBeenCalledWith('claude-4')
@@ -95,13 +95,13 @@ describe('chat preferences', () => {
       preferences: {
         modelId: 'claude-4',
         configSelections: {
-          'thought-level': 'ultra'
-        }
+          'thought-level': 'ultra',
+        },
       },
       state: {
         models: {
           currentModelId: 'claude-3.7',
-          availableModels: [{ modelId: 'claude-3.7', name: 'Claude 3.7' }]
+          availableModels: [{ modelId: 'claude-3.7', name: 'Claude 3.7' }],
         },
         configOptions: [
           {
@@ -113,13 +113,13 @@ describe('chat preferences', () => {
             currentValue: 'medium',
             options: [
               { value: 'medium', name: 'Medium' },
-              { value: 'high', name: 'High' }
-            ]
-          }
-        ]
+              { value: 'high', name: 'High' },
+            ],
+          },
+        ],
       },
       setModel,
-      setConfigOption
+      setConfigOption,
     })
 
     expect(setModel).not.toHaveBeenCalled()

@@ -8,16 +8,14 @@
 
 ```ts
 import { Jieba } from '@node-rs/jieba'
-import { dict } from '@node-rs/jieba/dict'
+// ["我们", "中", "出", "了", "一个", "叛徒"]
+import { Jieba, TfIdf } from '@node-rs/jieba'
+import { dict, idf } from '@node-rs/jieba/dict'
 
 // load jieba with the default dict
 const jieba = Jieba.withDict(dict)
 
 console.info(jieba.cut('我们中出了一个叛徒', false))
-
-// ["我们", "中", "出", "了", "一个", "叛徒"]
-import { Jieba, TfIdf } from '@node-rs/jieba'
-import { dict, idf } from '@node-rs/jieba/dict'
 
 const jieba = Jieba.withDict(dict)
 const tfIdf = TfIdf.withDict(idf)

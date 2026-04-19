@@ -2,9 +2,8 @@
 // Output: /devtool route rendering the standalone IPC devtool page
 // Position: Top-level route loaded in the dev-only second BrowserWindow
 
-import { createFileRoute } from '@tanstack/react-router'
-
 import { IpcDevtoolPage } from '@renderer/features/ipc-devtool'
+import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/devtool')({
   component: DevtoolRoute,

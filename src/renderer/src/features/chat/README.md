@@ -2,9 +2,11 @@
 
 # Features/Chat
 
-Renderer-side view layer for chat. All orchestration lives in the main-process `ChatEngine`
+Renderer-side view layer for chat.
+All orchestration lives in the main-process `ChatEngine`
 (`src/main/lib/chat-engine.ts`); this directory only subscribes to chat:* broadcasts and
-sends one-shot commands via `ipc.chat`. Streaming is driven by `UIMessageChunk` events
+sends one-shot commands via `ipc.chat`.
+Streaming is driven by `UIMessageChunk` events
 assembled locally with AI SDK's `readUIMessageStream`.
 
 ## Files

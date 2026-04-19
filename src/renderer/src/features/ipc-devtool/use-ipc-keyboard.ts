@@ -10,7 +10,7 @@ const SEARCH_INPUT_ATTR = 'data-ipc-devtool-search'
 const ROW_ID_ATTR = 'data-ipc-trace-id'
 
 function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
+  if (!(target instanceof HTMLElement)) { return false }
   const tag = target.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable
 }
@@ -33,12 +33,12 @@ const PAGE_STEP = 10
 
 export function useIpcKeyboard(): void {
   const traces = useIpcFilteredTraces()
-  const selectedTraceId = useIpcDevtoolStore((s) => s.selectedTraceId)
-  const selectTrace = useIpcDevtoolStore((s) => s.selectTrace)
-  const paused = useIpcDevtoolStore((s) => s.paused)
-  const setPaused = useIpcDevtoolStore((s) => s.setPaused)
-  const clear = useIpcDevtoolStore((s) => s.clear)
-  const cycleDetailTab = useIpcDevtoolStore((s) => s.cycleDetailTab)
+  const selectedTraceId = useIpcDevtoolStore(s => s.selectedTraceId)
+  const selectTrace = useIpcDevtoolStore(s => s.selectTrace)
+  const paused = useIpcDevtoolStore(s => s.paused)
+  const setPaused = useIpcDevtoolStore(s => s.setPaused)
+  const clear = useIpcDevtoolStore(s => s.clear)
+  const cycleDetailTab = useIpcDevtoolStore(s => s.cycleDetailTab)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -81,25 +81,26 @@ export function useIpcKeyboard(): void {
       }
 
       if (!editable && !mod && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        if (selectedTraceId === null) return
+        if (selectedTraceId === null) { return }
         event.preventDefault()
         cycleDetailTab(event.key === 'ArrowRight' ? 1 : -1)
         return
       }
 
       if (!editable && NAV_KEYS.has(event.key)) {
-        if (traces.length === 0) return
+        if (traces.length === 0) { return }
         event.preventDefault()
 
         const currentIndex = selectedTraceId
-          ? traces.findIndex((t) => t.traceId === selectedTraceId)
+          ? traces.findIndex(t => t.traceId === selectedTraceId)
           : -1
 
         let nextIndex: number
 
         if (currentIndex < 0) {
           nextIndex = event.key === 'End' ? traces.length - 1 : 0
-        } else {
+        }
+ else {
           switch (event.key) {
             case 'ArrowUp':
               nextIndex = Math.max(0, currentIndex - 1)

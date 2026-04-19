@@ -61,7 +61,7 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
   initialized: false,
 
   initialize: async () => {
-    if (get().initialized) return
+    if (get().initialized) { return }
     set({ initialized: true })
 
     try {
@@ -69,7 +69,8 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
       if (Array.isArray(snapshot)) {
         set({ events: snapshot.slice(-MAX_EVENTS) })
       }
-    } catch (error) {
+    }
+ catch (error) {
       console.error('[ipc-devtool] getSnapshot failed:', error)
     }
 
@@ -79,7 +80,9 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
   },
 
   append: (event) => {
-    if (get().paused) return
+    if (get().paused) {
+      return
+    }
     const existing = get().events
     const next = existing.length >= MAX_EVENTS
       ? [...existing.slice(existing.length - MAX_EVENTS + 1), event]
@@ -87,16 +90,16 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
     set({ events: next })
   },
 
-  setPaused: (paused) => set({ paused }),
+  setPaused: paused => set({ paused }),
 
   clear: () => {
     void window.ipcDevtool.clear()
     set({ events: [], selectedTraceId: null })
   },
 
-  selectTrace: (traceId) => set({ selectedTraceId: traceId }),
+  selectTrace: traceId => set({ selectedTraceId: traceId }),
 
-  setDetailTab: (tab) => set({ detailTab: tab }),
+  setDetailTab: tab => set({ detailTab: tab }),
 
   cycleDetailTab: (direction) => {
     const idx = IPC_DETAIL_TAB_ORDER.indexOf(get().detailTab)
@@ -124,7 +127,7 @@ export const useIpcFiltersStore = create<IpcFiltersState>((set, get) => ({
     statuses: { pending: true, success: true, error: true },
     sides: { renderer: true, main: true },
   },
-  setSearch: (search) => set({ filters: { ...get().filters, search } }),
+  setSearch: search => set({ filters: { ...get().filters, search } }),
   toggleStatus: (status) => {
     const current = get().filters
     set({
@@ -166,7 +169,7 @@ function emptyPhases(): IpcTracePhases {
 }
 
 export function useIpcTraces(): IpcTrace[] {
-  const events = useIpcDevtoolStore((s) => s.events)
+  const events = useIpcDevtoolStore(s => s.events)
 
   return useMemo(() => {
     const map = new Map<string, IpcTrace>()
@@ -199,10 +202,10 @@ export function useIpcTraces(): IpcTrace[] {
         trace.endedAt = trace.endedAt === null ? event.endedAt : Math.max(trace.endedAt, event.endedAt)
       }
 
-      if (event.args) trace.args = event.args
-      if (event.result) trace.result = event.result
-      if (event.error) trace.error = event.error
-      if (event.callerStack.length > 0) trace.callerStack = event.callerStack
+      if (event.args) { trace.args = event.args }
+      if (event.result) { trace.result = event.result }
+      if (event.error) { trace.error = event.error }
+      if (event.callerStack.length > 0) { trace.callerStack = event.callerStack }
     }
 
     for (const trace of map.values()) {
@@ -219,29 +222,29 @@ export function useIpcTraces(): IpcTrace[] {
 function deriveStatus(trace: IpcTrace): IpcObservedStatus {
   for (const key of PHASE_KEYS) {
     const ev = trace.phases[key]
-    if (ev?.status === 'error') return 'error'
+    if (ev?.status === 'error') { return 'error' }
   }
   const rendererFinish = trace.phases['renderer:finish']
-  if (rendererFinish) return rendererFinish.status
+  if (rendererFinish) { return rendererFinish.status }
   const mainFinish = trace.phases['main:finish']
-  if (mainFinish) return mainFinish.status
+  if (mainFinish) { return mainFinish.status }
   return 'pending'
 }
 
 export function useIpcFilteredTraces(): IpcTrace[] {
   const traces = useIpcTraces()
-  const filters = useIpcFiltersStore((s) => s.filters)
+  const filters = useIpcFiltersStore(s => s.filters)
 
   return useMemo(() => {
     const query = filters.search.trim().toLowerCase()
     return traces.filter((trace) => {
-      if (!filters.statuses[trace.status]) return false
+      if (!filters.statuses[trace.status]) { return false }
 
       const hasIncludedSide = PHASE_KEYS.some((key) => {
         const ev = trace.phases[key]
         return ev !== null && filters.sides[ev.side]
       })
-      if (!hasIncludedSide) return false
+      if (!hasIncludedSide) { return false }
 
       if (query) {
         const haystack = [
@@ -252,7 +255,7 @@ export function useIpcFilteredTraces(): IpcTrace[] {
         ]
           .join(' ')
           .toLowerCase()
-        if (!haystack.includes(query)) return false
+        if (!haystack.includes(query)) { return false }
       }
       return true
     })

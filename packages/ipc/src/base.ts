@@ -14,7 +14,7 @@ import {
   markSpanError,
   markSpanSuccess,
   serializeError,
-  serializePayload
+  serializePayload,
 } from './events'
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ export class IpcHandler {
   registerMethod<TOutput>(
     channel: string,
     // eslint-disable-next-line ts/no-explicit-any
-    handler: (...args: any[]) => Promise<TOutput> | TOutput
+    handler: (...args: any[]) => Promise<TOutput> | TOutput,
   ): void {
     if (this.registeredChannels.has(channel)) {
       return
@@ -92,8 +92,8 @@ export class IpcHandler {
       const span = trace.getTracer('cradle.ipc-devtool').startSpan(channel, {
         attributes: {
           'ipc.channel': channel,
-          'ipc.side': 'main'
-        }
+          'ipc.side': 'main',
+        },
       })
 
       const context: IpcContext = {
@@ -102,7 +102,7 @@ export class IpcHandler {
         traceId: traceEnvelope?.traceId ?? null,
         spanId: traceEnvelope?.spanId ?? null,
         parentSpanId: traceEnvelope?.parentSpanId ?? null,
-        callerStack: traceEnvelope?.callerStack ?? []
+        callerStack: traceEnvelope?.callerStack ?? [],
       }
 
       ipcObserver?.(
@@ -120,14 +120,13 @@ export class IpcHandler {
           args: serializePayload(handlerArgs),
           result: null,
           error: null,
-          callerStack: traceEnvelope?.callerStack ?? []
-        })
+          callerStack: traceEnvelope?.callerStack ?? [],
+        }),
       )
 
       try {
         const result = await contextStorage.run(context, () =>
-          otelContext.with(trace.setSpan(otelContext.active(), span), () => handler(...handlerArgs))
-        )
+          otelContext.with(trace.setSpan(otelContext.active(), span), () => handler(...handlerArgs)))
 
         markSpanSuccess()
         ipcObserver?.(
@@ -145,12 +144,13 @@ export class IpcHandler {
             args: serializePayload(handlerArgs),
             result: serializePayload(result),
             error: null,
-            callerStack: traceEnvelope?.callerStack ?? []
-          })
+            callerStack: traceEnvelope?.callerStack ?? [],
+          }),
         )
 
         return result
-      } catch (error) {
+      }
+ catch (error) {
         markSpanError(error)
         ipcObserver?.(
           createObservedEvent({
@@ -167,8 +167,8 @@ export class IpcHandler {
             args: serializePayload(handlerArgs),
             result: null,
             error: serializeError(error),
-            callerStack: traceEnvelope?.callerStack ?? []
-          })
+            callerStack: traceEnvelope?.callerStack ?? [],
+          }),
         )
         console.error(`Error in IPC method ${channel}:`, error)
         throw error
@@ -208,7 +208,7 @@ export abstract class IpcService {
   protected registerMethod<TOutput>(
     methodName: string,
     // eslint-disable-next-line ts/no-explicit-any
-    handler: (...args: any[]) => Promise<TOutput> | TOutput
+    handler: (...args: any[]) => Promise<TOutput> | TOutput,
   ): void {
     const groupName = (this.constructor as typeof IpcService).groupName
     this.handler.registerMethod(`${groupName}.${methodName}`, handler)
@@ -227,7 +227,7 @@ type CreateServicesResult<T extends readonly IpcServiceConstructor[]> = {
 }
 
 export function createServices<T extends readonly IpcServiceConstructor[]>(
-  serviceConstructors: T
+  serviceConstructors: T,
 ): CreateServicesResult<T> {
   // eslint-disable-next-line ts/no-explicit-any
   const services = {} as any

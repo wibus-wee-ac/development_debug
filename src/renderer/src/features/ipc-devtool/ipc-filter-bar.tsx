@@ -3,47 +3,46 @@
 // Position: Top toolbar inside the IPC devtool page
 
 import type { IpcObservedSide, IpcObservedStatus } from '@cradle/ipc'
-
 import { cn } from '@renderer/lib/utils'
 
 import { useIpcDevtoolStore, useIpcFiltersStore, useIpcTraces } from './use-ipc-events'
 
-const STATUSES: Array<{ key: IpcObservedStatus; label: string; color: string }> = [
+const STATUSES: Array<{ key: IpcObservedStatus, label: string, color: string }> = [
   { key: 'pending', label: 'pending', color: 'bg-amber-500' },
   { key: 'success', label: 'success', color: 'bg-emerald-500' },
   { key: 'error', label: 'error', color: 'bg-rose-500' },
 ]
 
-const SIDES: Array<{ key: IpcObservedSide; label: string }> = [
+const SIDES: Array<{ key: IpcObservedSide, label: string }> = [
   { key: 'renderer', label: 'R' },
   { key: 'main', label: 'M' },
 ]
 
 export function IpcFilterBar() {
-  const events = useIpcDevtoolStore((s) => s.events)
-  const paused = useIpcDevtoolStore((s) => s.paused)
-  const setPaused = useIpcDevtoolStore((s) => s.setPaused)
-  const clear = useIpcDevtoolStore((s) => s.clear)
+  const events = useIpcDevtoolStore(s => s.events)
+  const paused = useIpcDevtoolStore(s => s.paused)
+  const setPaused = useIpcDevtoolStore(s => s.setPaused)
+  const clear = useIpcDevtoolStore(s => s.clear)
   const traces = useIpcTraces()
 
-  const filters = useIpcFiltersStore((s) => s.filters)
-  const setSearch = useIpcFiltersStore((s) => s.setSearch)
-  const toggleStatus = useIpcFiltersStore((s) => s.toggleStatus)
-  const toggleSide = useIpcFiltersStore((s) => s.toggleSide)
+  const filters = useIpcFiltersStore(s => s.filters)
+  const setSearch = useIpcFiltersStore(s => s.setSearch)
+  const toggleStatus = useIpcFiltersStore(s => s.toggleStatus)
+  const toggleSide = useIpcFiltersStore(s => s.toggleSide)
 
   return (
     <div className="flex shrink-0 items-center gap-3 border-b border-border bg-muted/20 px-3 py-2 font-mono text-[11px]">
       <input
         type="text"
         value={filters.search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={e => setSearch(e.target.value)}
         placeholder="Filter channel / args / error... ( / to focus )"
         data-ipc-devtool-search
         className="h-7 w-72 rounded border border-border bg-background px-2 text-[11px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
       />
 
       <div className="flex items-center gap-1">
-        {STATUSES.map((s) => (
+        {STATUSES.map(s => (
           <button
             key={s.key}
             type="button"
@@ -62,7 +61,7 @@ export function IpcFilterBar() {
       </div>
 
       <div className="flex items-center gap-1">
-        {SIDES.map((s) => (
+        {SIDES.map(s => (
           <button
             key={s.key}
             type="button"
@@ -102,7 +101,10 @@ export function IpcFilterBar() {
       </button>
 
       <div className="tabular-nums text-muted-foreground">
-        {traces.length} / {events.length}
+        {traces.length}
+{' '}
+/
+{events.length}
       </div>
     </div>
   )

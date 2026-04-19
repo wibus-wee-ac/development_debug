@@ -20,18 +20,18 @@ interface LayoutState {
 
 export const useLayoutStore = create<LayoutState>()(
   persist(
-    (set) => ({
+    set => ({
       sidebarWidth: 260,
       asideWidth: 280,
       bottomPanelHeight: 200,
       asideOpen: false,
       bottomPanelOpen: false,
-      setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
-      setAsideWidth: (asideWidth) => set({ asideWidth }),
-      setBottomPanelHeight: (bottomPanelHeight) => set({ bottomPanelHeight }),
-      toggleAside: () => set((s) => ({ asideOpen: !s.asideOpen })),
-      toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen }))
+      setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
+      setAsideWidth: asideWidth => set({ asideWidth }),
+      setBottomPanelHeight: bottomPanelHeight => set({ bottomPanelHeight }),
+      toggleAside: () => set(s => ({ asideOpen: !s.asideOpen })),
+      toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
     }),
-    { name: 'cradle-layout' }
-  )
+    { name: 'cradle-layout' },
+  ),
 )

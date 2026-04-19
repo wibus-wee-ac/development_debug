@@ -51,8 +51,8 @@ export function openDevtoolWindow(): BrowserWindow | null {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
+      sandbox: false,
+    },
   })
 
   win.on('closed', () => {
@@ -67,7 +67,8 @@ export function openDevtoolWindow(): BrowserWindow | null {
 
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/#/devtool`)
-  } else {
+  }
+ else {
     win.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/devtool' })
   }
 

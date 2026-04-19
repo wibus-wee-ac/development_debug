@@ -17,17 +17,19 @@ const ipcDevtool = {
     return () => {
       electronAPI.ipcRenderer.removeListener(IPC_DEVTOOL_EVENT_CHANNEL, wrapped)
     }
-  }
+  },
 }
 
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('ipcDevtool', ipcDevtool)
-  } catch (error) {
+  }
+ catch (error) {
     console.error(error)
   }
-} else {
+}
+ else {
   // @ts-expect-error global assignment outside contextBridge
   window.electron = electronAPI
   // @ts-expect-error global assignment outside contextBridge

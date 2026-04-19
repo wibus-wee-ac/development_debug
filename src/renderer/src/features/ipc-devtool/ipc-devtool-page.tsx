@@ -11,7 +11,7 @@ import { useIpcDevtoolStore } from './use-ipc-events'
 import { useIpcKeyboard } from './use-ipc-keyboard'
 
 export function IpcDevtoolPage() {
-  const initialize = useIpcDevtoolStore((s) => s.initialize)
+  const initialize = useIpcDevtoolStore(s => s.initialize)
 
   useEffect(() => {
     void initialize()

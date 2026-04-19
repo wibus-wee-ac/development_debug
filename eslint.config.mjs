@@ -10,7 +10,7 @@ export default defineConfig(
       '**/components/ui/**',
       '**/routeTree.gen.ts',
       '.agents/**',
-      '*.md',
+      '**/*.md',
     ],
   },
   {

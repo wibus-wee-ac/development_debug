@@ -1,6 +1,5 @@
-import type { ElectronAPI } from '@electron-toolkit/preload'
-
 import type { IpcObservedEvent } from '@cradle/ipc'
+import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
 

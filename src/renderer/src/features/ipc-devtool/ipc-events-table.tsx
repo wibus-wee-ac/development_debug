@@ -2,6 +2,7 @@
 // Output: IpcEventsTable — sortable, selectable table of IPC traces grouped by traceId
 // Position: Left/main pane inside the IPC devtool page
 
+import { cn } from '@renderer/lib/utils'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
   flexRender,
@@ -10,8 +11,6 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { useMemo, useState } from 'react'
-
-import { cn } from '@renderer/lib/utils'
 
 import type { IpcTrace } from './use-ipc-events'
 import { useIpcDevtoolStore, useIpcFilteredTraces } from './use-ipc-events'
@@ -33,8 +32,8 @@ const STATUS_STYLES: Record<IpcTrace['status'], string> = {
 
 export function IpcEventsTable() {
   const traces = useIpcFilteredTraces()
-  const selectedTraceId = useIpcDevtoolStore((s) => s.selectedTraceId)
-  const selectTrace = useIpcDevtoolStore((s) => s.selectTrace)
+  const selectedTraceId = useIpcDevtoolStore(s => s.selectedTraceId)
+  const selectTrace = useIpcDevtoolStore(s => s.selectTrace)
   const [sorting, setSorting] = useState<SortingState>([{ id: 'startedAt', desc: true }])
 
   const columns = useMemo<ColumnDef<IpcTrace>[]>(
@@ -95,20 +94,23 @@ export function IpcEventsTable() {
           if (ms === null) {
             return <span className="text-muted-foreground">…</span>
           }
-          const color =
-            row.original.status === 'error'
+          const color
+            = row.original.status === 'error'
               ? 'text-rose-500'
               : ms > 100
                 ? 'text-amber-500 dark:text-amber-400'
                 : 'text-muted-foreground'
           return (
-            <span className={cn('block text-right tabular-nums', color)}>{ms}ms</span>
+            <span className={cn('block text-right tabular-nums', color)}>
+{ms}
+ms
+            </span>
           )
         },
       },
       {
         id: 'preview',
-        accessorFn: (row) => row.args?.summary ?? '',
+        accessorFn: row => row.args?.summary ?? '',
         header: 'Args',
         enableSorting: false,
         cell: ({ getValue }) => (
@@ -132,7 +134,7 @@ export function IpcEventsTable() {
     <div className="relative h-full overflow-auto font-mono text-[11px]">
       <table className="w-full border-separate border-spacing-0 text-left">
         <thead className="sticky top-0 z-10 bg-muted/70 backdrop-blur">
-          {table.getHeaderGroups().map((hg) => (
+          {table.getHeaderGroups().map(hg => (
             <tr key={hg.id}>
               {hg.headers.map((header) => {
                 const canSort = header.column.getCanSort()
@@ -168,7 +170,7 @@ export function IpcEventsTable() {
                   selected && 'bg-primary/10 hover:bg-primary/10',
                 )}
               >
-                {row.getVisibleCells().map((cell) => (
+                {row.getVisibleCells().map(cell => (
                   <td
                     key={cell.id}
                     className="truncate border-b border-border/40 px-2 py-1 align-middle"

@@ -37,7 +37,7 @@ export function AppHeader({ title, workspace }: AppHeaderProps) {
           <span
             className={cn(
               'truncate',
-              hasTitle ? 'text-muted-foreground' : 'text-foreground font-medium'
+              hasTitle ? 'text-muted-foreground' : 'text-foreground font-medium',
             )}
           >
             {workspace}
@@ -96,7 +96,7 @@ function HeaderToggle({ icon, label, active, onClick }: HeaderToggleProps) {
         'transition-colors',
         active
           ? 'bg-accent/40 text-foreground'
-          : 'text-muted-foreground/60 hover:text-foreground'
+          : 'text-muted-foreground/60 hover:text-foreground',
       )}
     >
       {icon}

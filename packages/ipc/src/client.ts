@@ -7,7 +7,7 @@ import {
   createObservedEvent,
   createTraceEnvelope,
   serializeError,
-  serializePayload
+  serializePayload,
 } from './events'
 
 /** Minimal interface — only `invoke` is required for the proxy. */
@@ -23,7 +23,7 @@ export interface IpcClientObserverOptions {
 // eslint-disable-next-line ts/no-explicit-any
 export function createIpcProxy<IpcServices extends Record<string, any>>(
   ipc: InvokableIpc | null,
-  options: IpcClientObserverOptions = {}
+  options: IpcClientObserverOptions = {},
 ): IpcServices | null {
   if (!ipc) {
     return null
@@ -55,8 +55,8 @@ export function createIpcProxy<IpcServices extends Record<string, any>>(
                   args: serializePayload(args),
                   result: null,
                   error: null,
-                  callerStack
-                })
+                  callerStack,
+                }),
               )
 
               try {
@@ -76,11 +76,12 @@ export function createIpcProxy<IpcServices extends Record<string, any>>(
                     args: serializePayload(args),
                     result: serializePayload(result),
                     error: null,
-                    callerStack
-                  })
+                    callerStack,
+                  }),
                 )
                 return result
-              } catch (error) {
+              }
+ catch (error) {
                 options.emit?.(
                   createObservedEvent({
                     traceId: envelope.traceId,
@@ -96,15 +97,15 @@ export function createIpcProxy<IpcServices extends Record<string, any>>(
                     args: serializePayload(args),
                     result: null,
                     error: serializeError(error),
-                    callerStack
-                  })
+                    callerStack,
+                  }),
                 )
                 throw error
               }
             }
-          }
-        }
+          },
+        },
       )
-    }
+    },
   })
 }

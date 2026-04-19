@@ -22,11 +22,11 @@ export function useAddWorkspace() {
   const [adding, setAdding] = useState(false)
 
   const addFromPicker = useCallback(async () => {
-    if (!ipc) return
+    if (!ipc) { return }
     setAdding(true)
     try {
       const dirPath = await ipc.workspace.selectDirectory()
-      if (!dirPath) return
+      if (!dirPath) { return }
       await ipc.workspace.addFromDirectory(dirPath)
       await queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
     }

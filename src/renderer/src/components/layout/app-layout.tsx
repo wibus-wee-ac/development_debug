@@ -25,7 +25,7 @@ const DRILL_TRANSITION = {
   type: 'spring',
   stiffness: 500,
   damping: 35,
-  mass: 0.8
+  mass: 0.8,
 } as const
 
 interface AppLayoutProps {
@@ -37,14 +37,15 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
-  const sidebarView = useSidebarNavStore((s) => s.view)
-  const navigateTo = useSidebarNavStore((s) => s.navigateTo)
-  const back = useSidebarNavStore((s) => s.back)
+  const sidebarView = useSidebarNavStore(s => s.view)
+  const navigateTo = useSidebarNavStore(s => s.navigateTo)
+  const back = useSidebarNavStore(s => s.back)
 
   const toggleSettings = useCallback(() => {
     if (sidebarView === 'settings') {
       back()
-    } else {
+    }
+ else {
       navigateTo('settings')
     }
   }, [sidebarView, navigateTo, back])
@@ -60,7 +61,7 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
     asideOpen,
     bottomPanelHeight,
     setBottomPanelHeight,
-    bottomPanelOpen
+    bottomPanelOpen,
   } = useLayoutStore()
 
   const isMain = sidebarView === 'main'
@@ -70,9 +71,9 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* ── Sidebar ─────────────────────────────────── */}
         <aside
-        className="flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden"
-        style={{ width: sidebarWidth }}
-      >
+          className="flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden"
+          style={{ width: sidebarWidth }}
+        >
         <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
 
         <div
@@ -80,7 +81,8 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <AnimatePresence mode="popLayout" initial={false}>
-            {isMain ? (
+            {isMain
+? (
               <motion.div
                 key="main-nav"
                 className="flex flex-1 flex-col overflow-hidden"
@@ -103,7 +105,8 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
                   </button>
                 </div>
               </motion.div>
-            ) : (
+            )
+: (
               <motion.div
                 key="settings-nav"
                 className="flex flex-1 flex-col overflow-hidden"
@@ -117,7 +120,7 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
             )}
           </AnimatePresence>
         </div>
-      </aside>
+        </aside>
 
       <ResizeHandle
         direction="horizontal"

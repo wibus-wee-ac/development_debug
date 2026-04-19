@@ -13,27 +13,27 @@ const mockUpdate = vi.fn(() => ({ set: mockSet }))
 
 vi.mock('electron', () => ({
   ipcMain: {
-    handle: vi.fn()
-  }
+    handle: vi.fn(),
+  },
 }))
 
 vi.mock('@electron-toolkit/utils', () => ({
   is: {
-    dev: true
-  }
+    dev: true,
+  },
 }))
 
 vi.mock('node:async_hooks', () => ({
   AsyncLocalStorage: class {
     getStore = vi.fn()
     run = vi.fn()
-  }
+  },
 }))
 
 vi.mock('../../db', () => ({
   getDb: () => ({
-    update: mockUpdate
-  })
+    update: mockUpdate,
+  }),
 }))
 
 describe('sessionService', () => {
@@ -48,15 +48,15 @@ describe('sessionService', () => {
     service.updateConfig({
       id: 'session-1',
       modelId: 'claude-4',
-      configSnapshot: '[{"id":"thought-level","currentValue":"high"}]'
+      configSnapshot: '[{"id":"thought-level","currentValue":"high"}]',
     })
 
     expect(mockUpdate).toHaveBeenCalled()
     expect(mockSet).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: 'claude-4',
-        configSnapshot: '[{"id":"thought-level","currentValue":"high"}]'
-      })
+        configSnapshot: '[{"id":"thought-level","currentValue":"high"}]',
+      }),
     )
     expect(mockRun).toHaveBeenCalled()
   })

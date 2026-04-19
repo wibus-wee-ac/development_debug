@@ -3,7 +3,6 @@
 // Position: Main-process service exposing persisted app preferences to renderer
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
-
 import type { StoredChatPreferences } from '@shared/chat-preferences'
 
 import { getChatPreferences, setChatPreferences } from '../store/app'

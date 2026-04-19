@@ -6,8 +6,8 @@ import {
   context as otelContext,
   propagation,
   ROOT_CONTEXT,
+  SpanStatusCode,
   trace,
-  SpanStatusCode
 } from '@opentelemetry/api'
 import superjson from 'superjson'
 
@@ -62,7 +62,7 @@ function createUuid(): string {
 
 export function createTraceEnvelope(
   parentSpanId: string | null = null,
-  callerStack: string[] = []
+  callerStack: string[] = [],
 ): IpcTraceEnvelope {
   const traceId = createUuid().replace(/-/g, '')
   const spanId = createUuid().replace(/-/g, '').slice(0, 16)
@@ -72,7 +72,7 @@ export function createTraceEnvelope(
     traceId,
     spanId,
     traceFlags: 1,
-    isRemote: false
+    isRemote: false,
   }
 
   propagation.inject(trace.setSpanContext(ROOT_CONTEXT, spanContext), carrier)
@@ -83,7 +83,7 @@ export function createTraceEnvelope(
     spanId: carrier.traceparent?.split('-')[2] ?? spanId,
     parentSpanId,
     callerStack,
-    startedAt: Date.now()
+    startedAt: Date.now(),
   }
 }
 
@@ -96,23 +96,24 @@ export function captureCallerStack(): string[] {
   return stack
     .split('\n')
     .slice(2)
-    .map((line) => line.trim())
+    .map(line => line.trim())
     .filter(Boolean)
 }
 
 export function serializePayload(
   value: unknown,
-  options: SerializeValueOptions = {}
+  options: SerializeValueOptions = {},
 ): IpcObservedPayload {
   const maxLength = options.maxLength ?? DEFAULT_MAX_LENGTH
   let json = ''
 
   try {
     json = superjson.stringify(value)
-  } catch (error) {
+  }
+ catch (error) {
     json = superjson.stringify({
       unserializable: true,
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     })
   }
 
@@ -123,7 +124,7 @@ export function serializePayload(
   return {
     json: preview,
     summary,
-    truncated
+    truncated,
   }
 }
 
@@ -132,7 +133,7 @@ export function serializeError(error: unknown): IpcObservedPayload {
     return serializePayload({
       name: error.name,
       message: error.message,
-      stack: error.stack
+      stack: error.stack,
     })
   }
 
@@ -142,7 +143,7 @@ export function serializeError(error: unknown): IpcObservedPayload {
 export function createObservedEvent(input: Omit<IpcObservedEvent, 'id'>): IpcObservedEvent {
   return {
     id: createUuid(),
-    ...input
+    ...input,
   }
 }
 
@@ -185,7 +186,7 @@ export function markSpanError(error: unknown): void {
   }
   span?.setStatus({
     code: SpanStatusCode.ERROR,
-    message: error instanceof Error ? error.message : String(error)
+    message: error instanceof Error ? error.message : String(error),
   })
   span?.end()
 }

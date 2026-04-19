@@ -3,15 +3,14 @@
 // Position: Right pane inside the IPC devtool page
 
 import type { IpcObservedPayload } from '@cradle/ipc'
+import { cn } from '@renderer/lib/utils'
 import { useMemo } from 'react'
 import superjson from 'superjson'
-
-import { cn } from '@renderer/lib/utils'
 
 import type { IpcDetailTab, IpcTracePhases } from './use-ipc-events'
 import { useIpcDevtoolStore, useIpcTraces } from './use-ipc-events'
 
-const TABS: Array<{ key: IpcDetailTab; label: string }> = [
+const TABS: Array<{ key: IpcDetailTab, label: string }> = [
   { key: 'args', label: 'Args' },
   { key: 'result', label: 'Result' },
   { key: 'error', label: 'Error' },
@@ -26,24 +25,25 @@ const PHASE_ORDER: Array<keyof IpcTracePhases> = [
 ]
 
 function formatPayload(payload: IpcObservedPayload | null): string {
-  if (!payload) return ''
+  if (!payload) { return '' }
   try {
     const value = superjson.parse(payload.json)
     return JSON.stringify(value, null, 2)
-  } catch {
+  }
+ catch {
     return payload.json
   }
 }
 
 export function IpcEventDetail() {
-  const selectedTraceId = useIpcDevtoolStore((s) => s.selectedTraceId)
+  const selectedTraceId = useIpcDevtoolStore(s => s.selectedTraceId)
   const traces = useIpcTraces()
   const trace = useMemo(
-    () => traces.find((t) => t.traceId === selectedTraceId) ?? null,
+    () => traces.find(t => t.traceId === selectedTraceId) ?? null,
     [traces, selectedTraceId],
   )
-  const tab = useIpcDevtoolStore((s) => s.detailTab)
-  const setTab = useIpcDevtoolStore((s) => s.setDetailTab)
+  const tab = useIpcDevtoolStore(s => s.detailTab)
+  const setTab = useIpcDevtoolStore(s => s.setDetailTab)
 
   if (!trace) {
     return (
@@ -115,7 +115,7 @@ export function IpcEventDetail() {
       </div>
 
       <div className="flex shrink-0 items-center gap-1 border-b border-border bg-muted/10 px-2 py-1">
-        {TABS.map((t) => (
+        {TABS.map(t => (
           <button
             key={t.key}
             type="button"
@@ -145,7 +145,7 @@ export function IpcEventDetail() {
       </div>
 
       <pre className="flex-1 overflow-auto whitespace-pre-wrap break-all p-3 text-[11px] leading-5">
-        {payloadText ? payloadText : <span className="text-muted-foreground">(empty)</span>}
+        {payloadText || <span className="text-muted-foreground">(empty)</span>}
       </pre>
     </div>
   )
