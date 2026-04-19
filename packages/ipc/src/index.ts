@@ -6,6 +6,7 @@ export {
   IpcHandler,
   IpcMethod,
   IpcService,
+  observePush,
   setIpcObserver,
 } from './base'
 

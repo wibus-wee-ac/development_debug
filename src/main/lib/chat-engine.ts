@@ -11,6 +11,7 @@ import {
 } from '@shared/chat-preferences'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
+import { observePush } from '@cradle/ipc'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 
@@ -614,7 +615,10 @@ export class ChatEngine {
     })
   }
 
-  private broadcast(channel: string, payload: unknown): void {
+  private broadcast(channel: string, payload: { chatSessionId: string, [k: string]: unknown }): void {
+    // Surface the push in the IPC devtool feed (single-event trace, grouped by chatSessionId).
+    observePush(channel, payload, { flowId: payload.chatSessionId })
+
     for (const wc of [...this.subscribers]) {
       if (wc.isDestroyed()) {
         this.subscribers.delete(wc)

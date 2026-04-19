@@ -48,6 +48,12 @@ export interface IpcObservedEvent {
   result: IpcObservedPayload | null
   error: IpcObservedPayload | null
   callerStack: string[]
+  /**
+   * Optional logical flow identifier for one-way push streams
+   * (e.g. chat session id). All events sharing a flowId belong
+   * to the same ordered sequence and can be grouped by the devtool UI.
+   */
+  flowId?: string
 }
 
 export interface SerializeValueOptions {

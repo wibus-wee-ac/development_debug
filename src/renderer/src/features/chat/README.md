@@ -4,14 +4,15 @@
 
 Renderer-side view layer for chat.
 All orchestration lives in the main-process `ChatEngine`
-(`src/main/lib/chat-engine.ts`); this directory only subscribes to chat:* broadcasts and
-sends one-shot commands via `ipc.chat`.
-Streaming is driven by `UIMessageChunk` events
-assembled locally with AI SDK's `readUIMessageStream`.
+(`src/main/lib/chat-engine.ts`); this directory is a thin view that drives
+AI SDK's `useChat` through a custom `ChatTransport` which forwards to `ipc.chat`.
+Streaming is assembled by `useChat` internally from the `UIMessageChunk`
+events our engine broadcasts.
 
 ## Files
 
-- **use-chat-session.ts**: Hook — loads initial snapshot via `ipc.chat.getMessages`, subscribes to `chat:message-created|chunk|finalized` events, assembles streaming drafts with `readUIMessageStream`, exposes `{ messages, status, error, sendMessage, stop, isReady }`
+- **use-chat-session.ts**: Hook wrapping `useChat` — loads initial snapshot via `ipc.chat.getMessages`, resumes in-flight drafts via `chat.resumeStream()`, refetches on finalize from other windows, exposes `{ messages, status, error, sendMessage, stop, isReady }`
+- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + subscribe to `chat:message-chunk`/`-finalized`; `reconnectToStream` resumes a streaming draft
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls
 - **composer.tsx**: Rich input with @ path autocomplete, inline send/stop toggle, fzf fuzzy file search
 - **mention-panel.tsx**: Fuzzy file picker above composer using fzf with highlighted matches

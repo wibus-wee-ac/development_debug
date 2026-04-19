@@ -36,6 +36,18 @@ export function ChatView({
 
   const isStreaming = status === 'streaming'
 
+  // Show the "thinking" indicator whenever we're streaming but the user can't
+  // yet see any assistant text output — this covers:
+  //  - pre-first-chunk (assistant message not created yet, last msg is user)
+  //  - reasoning-only phase (reasoning block collapsed by default, visually silent)
+  //  - tool-call-only phase (no user-facing text yet)
+  const lastMsg = messages.at(-1)
+  const assistantHasVisibleText = lastMsg?.role === 'assistant'
+    && lastMsg.parts.some(
+      p => p.type === 'text' && (p as { text: string }).text.trim().length > 0,
+    )
+  const showThinking = isStreaming && !assistantHasVisibleText
+
   // Auto-scroll to bottom on new messages or streaming updates
   useEffect(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: status === 'streaming' ? 'auto' : 'smooth' })
@@ -90,8 +102,10 @@ export function ChatView({
             </motion.div>
           )}
 
-          {/* Waiting indicator — shown when streaming but assistant hasn't started yet */}
-          {status === 'streaming' && messages.at(-1)?.role === 'user' && (
+          {/* Thinking indicator — anchored below the last message whenever the
+              assistant has no visible text yet (pre-first-chunk, reasoning only,
+              or tool-call only). Hides as soon as text starts streaming. */}
+          {showThinking && (
             <motion.div
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}

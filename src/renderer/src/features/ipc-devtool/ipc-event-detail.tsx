@@ -1,5 +1,5 @@
 // Input: superjson for payload decoding, @cradle/ipc payload type, Zustand selection store, cn utility
-// Output: IpcEventDetail — selected trace metadata + args/result/error/stack tabs with copy-to-clipboard
+// Output: IpcEventDetail — selected trace metadata + args/result/error/stack tabs + flow timeline for push streams
 // Position: Right pane inside the IPC devtool page
 
 import type { IpcObservedPayload } from '@cradle/ipc'
@@ -7,8 +7,9 @@ import { cn } from '@renderer/lib/utils'
 import { useMemo } from 'react'
 import superjson from 'superjson'
 
-import type { IpcDetailTab, IpcTracePhases } from './use-ipc-events'
-import { useIpcDevtoolStore, useIpcTraces } from './use-ipc-events'
+import { flowColor } from './flow-color'
+import type { IpcDetailTab, IpcTrace, IpcTracePhases } from './use-ipc-events'
+import { useIpcDevtoolStore, useIpcFlowTraces, useIpcTraces } from './use-ipc-events'
 
 const TABS: Array<{ key: IpcDetailTab, label: string }> = [
   { key: 'args', label: 'Args' },
@@ -30,9 +31,23 @@ function formatPayload(payload: IpcObservedPayload | null): string {
     const value = superjson.parse(payload.json)
     return JSON.stringify(value, null, 2)
   }
- catch {
+  catch {
     return payload.json
   }
+}
+
+function pad(n: number, w: number): string {
+  return String(n).padStart(w, '0')
+}
+
+function formatTime(ts: number): string {
+  const d = new Date(ts)
+  return `${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}:${pad(d.getSeconds(), 2)}.${pad(d.getMilliseconds(), 3)}`
+}
+
+function formatDelta(ms: number): string {
+  if (ms < 1000) { return `+${ms}ms` }
+  return `+${(ms / 1000).toFixed(2)}s`
 }
 
 export function IpcEventDetail() {
@@ -42,6 +57,7 @@ export function IpcEventDetail() {
     () => traces.find(t => t.traceId === selectedTraceId) ?? null,
     [traces, selectedTraceId],
   )
+  const flowTraces = useIpcFlowTraces(trace?.flowId ?? null)
   const tab = useIpcDevtoolStore(s => s.detailTab)
   const setTab = useIpcDevtoolStore(s => s.setDetailTab)
 
@@ -82,6 +98,12 @@ export function IpcEventDetail() {
           <div className="text-foreground">{new Date(trace.startedAt).toISOString()}</div>
           <div>status</div>
           <div className="text-foreground">{trace.status}</div>
+          {trace.flowId && (
+            <>
+              <div>flow</div>
+              <div className="truncate text-foreground">{trace.flowId}</div>
+            </>
+          )}
         </div>
         <div className="mt-2 grid grid-cols-4 gap-1">
           {PHASE_ORDER.map((key) => {
@@ -147,6 +169,86 @@ export function IpcEventDetail() {
       <pre className="flex-1 overflow-auto whitespace-pre-wrap break-all p-3 text-[11px] leading-5">
         {payloadText || <span className="text-muted-foreground">(empty)</span>}
       </pre>
+
+      {flowTraces.length > 1 && (
+        <FlowTimeline traces={flowTraces} selectedTraceId={selectedTraceId} flowId={trace.flowId} />
+      )}
+    </div>
+  )
+}
+
+interface FlowTimelineProps {
+  traces: IpcTrace[]
+  selectedTraceId: string | null
+  flowId: string | undefined
+}
+
+function FlowTimeline({ traces, selectedTraceId, flowId }: FlowTimelineProps) {
+  const selectTrace = useIpcDevtoolStore(s => s.selectTrace)
+  const t0 = traces[0]?.startedAt ?? 0
+  const totalMs = (traces.at(-1)?.startedAt ?? t0) - t0
+  const color = flowColor(flowId)
+
+  return (
+    <div className="shrink-0 max-h-[40%] overflow-auto border-t border-border bg-muted/10">
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-muted/60 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur">
+        {color && (
+          <span className={cn('h-2 w-2 shrink-0 rounded-full', color)} aria-hidden="true" />
+        )}
+        <span className="shrink-0">Flow</span>
+        <span className="shrink-0 text-muted-foreground/70">·</span>
+        <span className="shrink-0 tabular-nums">
+          {traces.length}
+          {' '}
+          events
+        </span>
+        {flowId && (
+          <span className="min-w-0 truncate normal-case text-muted-foreground/80" title={flowId}>
+            {flowId}
+          </span>
+        )}
+        <span className="ml-auto shrink-0 tabular-nums normal-case text-muted-foreground">
+          total
+          {' '}
+          {totalMs}
+          ms
+        </span>
+      </div>
+      <div className="sticky top-[25px] z-10 grid grid-cols-[96px_72px_1fr_1fr] gap-2 border-b border-border bg-muted/40 px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span>Time</span>
+        <span className="text-right">Δ</span>
+        <span>Channel</span>
+        <span>Payload</span>
+      </div>
+      <ul className="divide-y divide-border/40 text-[11px]">
+        {traces.map((t) => {
+          const selected = t.traceId === selectedTraceId
+          const delta = t.startedAt - t0
+          return (
+            <li key={t.traceId}>
+              <button
+                type="button"
+                onClick={() => selectTrace(t.traceId)}
+                className={cn(
+                  'grid w-full grid-cols-[96px_72px_1fr_1fr] items-center gap-2 px-2 py-1 text-left hover:bg-muted/40',
+                  selected && 'bg-primary/10 hover:bg-primary/10',
+                )}
+              >
+                <span className="truncate tabular-nums text-muted-foreground">
+                  {formatTime(t.startedAt)}
+                </span>
+                <span className="truncate text-right tabular-nums text-muted-foreground">
+                  {formatDelta(delta)}
+                </span>
+                <span className="truncate font-mono text-foreground">{t.channel}</span>
+                <span className="truncate text-muted-foreground">
+                  {t.result?.summary ?? t.args?.summary ?? t.error?.summary ?? ''}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

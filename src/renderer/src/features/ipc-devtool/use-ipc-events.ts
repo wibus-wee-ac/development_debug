@@ -32,6 +32,8 @@ export interface IpcTrace {
   result: IpcObservedPayload | null
   error: IpcObservedPayload | null
   callerStack: string[]
+  /** Optional logical flow id (e.g. chat session id) propagated from observePush. */
+  flowId?: string
 }
 
 export type IpcDetailTab = 'args' | 'result' | 'error' | 'stack'
@@ -206,6 +208,7 @@ export function useIpcTraces(): IpcTrace[] {
       if (event.result) { trace.result = event.result }
       if (event.error) { trace.error = event.error }
       if (event.callerStack.length > 0) { trace.callerStack = event.callerStack }
+      if (event.flowId !== undefined) { trace.flowId = event.flowId }
     }
 
     for (const trace of map.values()) {
@@ -217,6 +220,21 @@ export function useIpcTraces(): IpcTrace[] {
 
     return [...map.values()].sort((a, b) => b.startedAt - a.startedAt)
   }, [events])
+}
+
+/**
+ * Return all traces that share the same flowId, in chronological order.
+ * Used by the devtool to render a selected one-way push stream (e.g. the
+ * sequence of chat:message-chunk events for a single session) as a timeline.
+ */
+export function useIpcFlowTraces(flowId: string | null | undefined): IpcTrace[] {
+  const traces = useIpcTraces()
+  return useMemo(() => {
+    if (!flowId) { return [] }
+    return traces
+      .filter(t => t.flowId === flowId)
+      .sort((a, b) => a.startedAt - b.startedAt)
+  }, [traces, flowId])
 }
 
 function deriveStatus(trace: IpcTrace): IpcObservedStatus {

@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-table'
 import { useMemo, useState } from 'react'
 
+import { flowColor } from './flow-color'
 import type { IpcTrace } from './use-ipc-events'
 import { useIpcDevtoolStore, useIpcFilteredTraces } from './use-ipc-events'
 
@@ -53,10 +54,26 @@ export function IpcEventsTable() {
         id: 'channel',
         accessorKey: 'channel',
         header: 'Channel',
-        size: 240,
-        cell: ({ getValue }) => (
-          <span className="truncate font-mono">{getValue<string>()}</span>
-        ),
+        size: 260,
+        cell: ({ row, getValue }) => {
+          const color = flowColor(row.original.flowId)
+          return (
+            <span className="flex min-w-0 items-center gap-1.5 font-mono">
+              {color
+                ? (
+                    <span
+                      className={cn('h-2 w-2 shrink-0 rounded-full', color)}
+                      title={`flow: ${row.original.flowId}`}
+                      aria-hidden="true"
+                    />
+                  )
+                : (
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-transparent" aria-hidden="true" />
+                  )}
+              <span className="truncate">{getValue<string>()}</span>
+            </span>
+          )
+        },
       },
       {
         id: 'flow',

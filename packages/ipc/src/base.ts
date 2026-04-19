@@ -44,6 +44,50 @@ export function getIpcContext(): IpcContext {
   return context
 }
 
+/**
+ * Instrument a one-way main → renderer push so it shows up in the IPC devtool
+ * alongside request/response traces. Call this immediately before (or after)
+ * `webContents.send(channel, payload)`. Safe no-op when no observer is attached.
+ *
+ * `flowId` is an optional logical grouping (e.g. chat session id) — events
+ * that share a flowId are rendered as an ordered sequence in the devtool.
+ */
+export function observePush(
+  channel: string,
+  payload: unknown,
+  options: {
+    flowId?: string
+    status?: 'success' | 'error'
+  } = {},
+): void {
+  if (!ipcObserver) {
+    return
+  }
+  const now = Date.now()
+  const traceId = (typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${now}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '')
+  const spanId = traceId.slice(0, 16)
+  ipcObserver({
+    id: traceId.slice(16, 32) || traceId,
+    traceId,
+    spanId,
+    parentSpanId: null,
+    channel,
+    side: 'main',
+    phase: 'finish',
+    status: options.status ?? 'success',
+    startedAt: now,
+    endedAt: now,
+    durationMs: 0,
+    args: null,
+    result: serializePayload(payload),
+    error: null,
+    callerStack: [],
+    flowId: options.flowId,
+  })
+}
+
 // ── Decorator metadata ────────────────────────────────────────────────────────
 
 // eslint-disable-next-line ts/no-explicit-any
