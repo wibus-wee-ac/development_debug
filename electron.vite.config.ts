@@ -47,7 +47,11 @@ export default defineConfig({
       devtools(),
       tailwindcss(),
       tanstackRouter({ target: 'react', autoCodeSplitting: true }),
-      viteReact()
+      viteReact({
+        babel: {
+          plugins: ['babel-plugin-react-compiler'],
+        },
+      })
     ]
   }
 })

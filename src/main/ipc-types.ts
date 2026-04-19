@@ -1,6 +1,7 @@
 import type { MergeIpcService } from '@cradle/ipc'
 
 import type { AcpService } from './services/acp'
+import type { DevService } from './services/dev'
 import type { IpcDevtoolService } from './services/ipc-devtool'
 import type { PreferencesService } from './services/preferences'
 import type { SessionService } from './services/session'
@@ -16,6 +17,7 @@ export type IpcServices = MergeIpcService<{
   acp: typeof AcpService
   preferences: typeof PreferencesService
   ipcDevtool: typeof IpcDevtoolService
+  dev: typeof DevService
 }>
 
 // Convenience re-exports so the renderer imports from one place

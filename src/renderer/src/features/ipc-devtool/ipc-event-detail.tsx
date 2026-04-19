@@ -3,17 +3,15 @@
 // Position: Right pane inside the IPC devtool page
 
 import type { IpcObservedPayload } from '@cradle/ipc'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import superjson from 'superjson'
 
 import { cn } from '@renderer/lib/utils'
 
-import type { IpcTracePhases } from './use-ipc-events'
+import type { IpcDetailTab, IpcTracePhases } from './use-ipc-events'
 import { useIpcDevtoolStore, useIpcTraces } from './use-ipc-events'
 
-type TabKey = 'args' | 'result' | 'error' | 'stack'
-
-const TABS: Array<{ key: TabKey; label: string }> = [
+const TABS: Array<{ key: IpcDetailTab; label: string }> = [
   { key: 'args', label: 'Args' },
   { key: 'result', label: 'Result' },
   { key: 'error', label: 'Error' },
@@ -44,7 +42,8 @@ export function IpcEventDetail() {
     () => traces.find((t) => t.traceId === selectedTraceId) ?? null,
     [traces, selectedTraceId],
   )
-  const [tab, setTab] = useState<TabKey>('args')
+  const tab = useIpcDevtoolStore((s) => s.detailTab)
+  const setTab = useIpcDevtoolStore((s) => s.setDetailTab)
 
   if (!trace) {
     return (

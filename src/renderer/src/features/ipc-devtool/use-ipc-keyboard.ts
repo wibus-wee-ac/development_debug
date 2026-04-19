@@ -38,6 +38,7 @@ export function useIpcKeyboard(): void {
   const paused = useIpcDevtoolStore((s) => s.paused)
   const setPaused = useIpcDevtoolStore((s) => s.setPaused)
   const clear = useIpcDevtoolStore((s) => s.clear)
+  const cycleDetailTab = useIpcDevtoolStore((s) => s.cycleDetailTab)
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -76,6 +77,13 @@ export function useIpcKeyboard(): void {
       if (event.key === ' ' && !editable && !mod) {
         event.preventDefault()
         setPaused(!paused)
+        return
+      }
+
+      if (!editable && !mod && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+        if (selectedTraceId === null) return
+        event.preventDefault()
+        cycleDetailTab(event.key === 'ArrowRight' ? 1 : -1)
         return
       }
 
@@ -130,5 +138,5 @@ export function useIpcKeyboard(): void {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [traces, selectedTraceId, selectTrace, paused, setPaused, clear])
+  }, [traces, selectedTraceId, selectTrace, paused, setPaused, clear, cycleDetailTab])
 }

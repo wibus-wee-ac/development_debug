@@ -34,22 +34,30 @@ export interface IpcTrace {
   callerStack: string[]
 }
 
+export type IpcDetailTab = 'args' | 'result' | 'error' | 'stack'
+
+export const IPC_DETAIL_TAB_ORDER: IpcDetailTab[] = ['args', 'result', 'error', 'stack']
+
 interface IpcDevtoolState {
   events: IpcObservedEvent[]
   paused: boolean
   selectedTraceId: string | null
+  detailTab: IpcDetailTab
   initialized: boolean
   initialize: () => Promise<void>
   append: (event: IpcObservedEvent) => void
   setPaused: (paused: boolean) => void
   clear: () => void
   selectTrace: (traceId: string | null) => void
+  setDetailTab: (tab: IpcDetailTab) => void
+  cycleDetailTab: (direction: 1 | -1) => void
 }
 
 export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
   events: [],
   paused: false,
   selectedTraceId: null,
+  detailTab: 'args',
   initialized: false,
 
   initialize: async () => {
@@ -87,6 +95,14 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
   },
 
   selectTrace: (traceId) => set({ selectedTraceId: traceId }),
+
+  setDetailTab: (tab) => set({ detailTab: tab }),
+
+  cycleDetailTab: (direction) => {
+    const idx = IPC_DETAIL_TAB_ORDER.indexOf(get().detailTab)
+    const nextIdx = (idx + direction + IPC_DETAIL_TAB_ORDER.length) % IPC_DETAIL_TAB_ORDER.length
+    set({ detailTab: IPC_DETAIL_TAB_ORDER[nextIdx] })
+  },
 }))
 
 export interface IpcFilters {

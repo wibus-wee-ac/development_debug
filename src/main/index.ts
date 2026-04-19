@@ -9,6 +9,7 @@ import { initDb } from './db'
 import { AcpConnectionManager } from './lib/acp-connection'
 import { initializeIpcDevtool, subscribeIpcDevtool } from './lib/ipc-devtool'
 import { AcpService } from './services/acp'
+import { DevService } from './services/dev'
 import { IpcDevtoolService } from './services/ipc-devtool'
 import { PreferencesService } from './services/preferences'
 import { SessionService } from './services/session'
@@ -78,7 +79,8 @@ app.whenReady().then(() => {
     SessionService,
     AcpService,
     PreferencesService,
-    IpcDevtoolService
+    IpcDevtoolService,
+    DevService
   ] as const)
 
   // Set app user model id for windows

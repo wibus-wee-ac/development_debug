@@ -1,8 +1,6 @@
 import '../styles.css'
 
-import { TanStackDevtools } from '@tanstack/react-devtools'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { useEffect } from 'react'
 
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
@@ -35,7 +33,7 @@ function RootComponent() {
   return (
     <ShortcutProvider>
       <Outlet />
-      <TanStackDevtools
+      {/* <TanStackDevtools
         config={{
           position: 'bottom-right',
         }}
@@ -45,7 +43,7 @@ function RootComponent() {
             render: <TanStackRouterDevtoolsPanel />,
           },
         ]}
-      />
+      /> */}
     </ShortcutProvider>
   )
 }
