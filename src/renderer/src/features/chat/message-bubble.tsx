@@ -6,7 +6,7 @@ import { cn } from '@renderer/lib/utils'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { Streamdown } from 'streamdown'
 
 import { ReasoningBlock } from './reasoning-block'
@@ -19,7 +19,7 @@ interface MessageBubbleProps {
   isStreaming: boolean
 }
 
-export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
+function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const [copied, setCopied] = useState(false)
@@ -160,3 +160,10 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
     </motion.div>
   )
 }
+
+export const MessageBubble = memo(
+  MessageBubbleView,
+  (prevProps, nextProps) =>
+    prevProps.message === nextProps.message
+    && prevProps.isStreaming === nextProps.isStreaming,
+)

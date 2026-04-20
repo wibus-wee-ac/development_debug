@@ -53,6 +53,7 @@ function formatRelativeTime(unixTimestamp: number): string {
 // ── Session item ──────────────────────────────────────────────────────────────
 
 function SessionItem({ session, workspaceId }: { session: Session, workspaceId: string }) {
+  'use no memo'
   const matchRoute = useMatchRoute()
   const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId: session.id } })
   const queryClient = useQueryClient()
@@ -216,10 +217,10 @@ function TopNavItem({ icon, label, shortcut, onClick }: TopNavItemProps) {
       <span className="flex-1 text-left">{label}</span>
       {shortcut
         ? (
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
-              {shortcut}
-            </span>
-          )
+          <span className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
+            {shortcut}
+          </span>
+        )
         : null}
     </button>
   )

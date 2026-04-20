@@ -52,6 +52,7 @@ function mapStatus(status: ChatStatus): PublicStatus {
  * that would cause internal regeneration each render.
  */
 const EMPTY_CHAT_ID = '__cradle_empty_chat__'
+const STREAM_RENDER_THROTTLE_MS = 50
 
 export function useChatSession(chatSessionId: string | null) {
   const transport = useMemo(
@@ -62,12 +63,25 @@ export function useChatSession(chatSessionId: string | null) {
   const chat = useChat<UIMessage>({
     id: chatSessionId ?? EMPTY_CHAT_ID,
     transport,
+    // AI SDK emits one React update per chunk by default. Our chat view renders
+    // markdown, motion, and tool blocks, so throttling prevents render storms.
+    experimental_throttle: STREAM_RENDER_THROTTLE_MS,
+    onError: (error) => {
+      console.error('[useChatSession] useChat stream failed', {
+        chatSessionId,
+        error,
+        message: error.message,
+        stack: error.stack,
+      })
+    },
   })
 
   // useChat's helpers close over the latest state; stash in a ref so background
   // IPC callbacks always call the current versions without stale closures.
   const chatRef = useRef(chat)
-  chatRef.current = chat
+  useEffect(() => {
+    chatRef.current = chat
+  }, [chat])
 
   const [isReady, setIsReady] = useState(false)
 
@@ -132,6 +146,18 @@ export function useChatSession(chatSessionId: string | null) {
       off()
     }
   }, [chatSessionId])
+
+  useEffect(() => {
+    if (!chat.error) {
+      return
+    }
+    console.error('[useChatSession] chat.error updated', {
+      chatSessionId,
+      error: chat.error,
+      message: chat.error.message,
+      stack: chat.error.stack,
+    })
+  }, [chatSessionId, chat.error])
 
   const sendMessage = useCallback(
     async (text: string) => {

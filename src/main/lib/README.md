@@ -13,7 +13,7 @@ They are consumed by `src/main/services/` IPC handlers.
 - **acp-process-manager.ts**: Spawns and manages child processes for ACP agents
 - **acp-registry.ts**: Fetches the remote ACP agent registry and filters by platform support
 - **acp-stream-converter.ts**: AcpStreamConverter — converts ACP SessionUpdate events to AI SDK UIMessageChunk arrays for IPC streaming
-- **chat-engine.ts**: ChatEngine singleton — sole orchestrator for chat sessions; owns transactional user+assistant writes, per-chunk IPC broadcast, debounced DB flush, abort/failure semantics, and crash-recovery on init
+- **chat-engine.ts**: ChatEngine singleton — sole orchestrator for chat sessions; owns transactional user+assistant writes, per-chunk IPC broadcast, debounced DB flush, abort/failure semantics, crash-recovery on init, and ACP error detail expansion for chat failures
 - **ipc-devtool-store.ts**: Ring buffer and live subscriber fan-out for observed IPC events
 - **ipc-devtool.ts**: Main-process integration that wires the shared IPC observer into the store, exposes `subscribeIpcDevtool(webContents)` so any BrowserWindow can receive live events, and hosts the dev-only `openDevtoolWindow()` factory for the second `/devtool` window
 - **safe-storage.ts**: Electron safeStorage wrapper for storing secrets

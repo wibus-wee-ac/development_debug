@@ -23,7 +23,6 @@ import { AcpConnectionManager } from './acp-connection'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 const FLUSH_DEBOUNCE_MS = 200
-const FIRST_CHUNK_TIMEOUT_MS = 15_000
 
 type MessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
@@ -67,6 +66,17 @@ interface PrepareTurnArgs {
     title: string
     modelId: string | null
     configSnapshot: string | null
+  }
+}
+
+interface SerializedChatError {
+  text: string
+  payload: {
+    name?: string
+    message: string
+    code?: number | string
+    data?: unknown
+    stack?: string
   }
 }
 
@@ -125,11 +135,7 @@ export class ChatEngine {
     // Forward agent title updates → chat:session-title with chatSessionId mapping.
     this.titleUnsubscribe = AcpConnectionManager.getInstance().onSessionTitle(
       (acpSessionId, title) => {
-        const rows = db
-          .select()
-          .from(sessions)
-          .where(eq(sessions.acpSessionId, acpSessionId))
-          .all()
+        const rows = db.select().from(sessions).where(eq(sessions.acpSessionId, acpSessionId)).all()
         for (const row of rows) {
           db.update(sessions)
             .set({ title, updatedAt: nowUnix() })
@@ -240,7 +246,7 @@ export class ChatEngine {
     try {
       await AcpConnectionManager.getInstance().cancel(draft.agentId, draft.acpSessionId)
     }
-    catch (err) {
+ catch (err) {
       console.warn('[ChatEngine] cancel failed (will still finalize as aborted):', err)
     }
   }
@@ -513,20 +519,10 @@ export class ChatEngine {
           this.scheduleFlush(draft)
         }
       }
-      catch {
+ catch {
         // readUIMessageStream throwing is fine here — main loop handles it
       }
     })()
-
-    let firstChunkReceived = false
-    const timeoutId = setTimeout(() => {
-      if (firstChunkReceived || !this.drafts.has(draft.chatSessionId)) {
-        return
-      }
-      AcpConnectionManager.getInstance()
-        .cancel(draft.agentId, draft.acpSessionId)
-        .catch(() => {})
-    }, FIRST_CHUNK_TIMEOUT_MS)
 
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
@@ -537,7 +533,6 @@ export class ChatEngine {
         draft.acpSessionId,
         userText,
       )) {
-        firstChunkReceived = true
         this.broadcast('chat:message-chunk', {
           chatSessionId: draft.chatSessionId,
           messageId: draft.messageId,
@@ -547,19 +542,21 @@ export class ChatEngine {
       }
       await writer.close()
     }
-    catch (err) {
+ catch (err) {
       await writer.abort(err).catch(() => {})
       finalStatus = draft.cancelled ? 'aborted' : 'failed'
-      finalError = err instanceof Error ? err.message : String(err)
-    }
-    finally {
-      clearTimeout(timeoutId)
-    }
+      const serializedError = serializeChatError(err)
+      finalError = serializedError.text
 
-    if (!firstChunkReceived && finalStatus === 'complete') {
-      // Stream closed with zero chunks without a user-triggered cancel — timeout
-      finalStatus = 'failed'
-      finalError = `Agent did not respond within ${FIRST_CHUNK_TIMEOUT_MS / 1000}s`
+      if (!draft.cancelled) {
+        console.error('[ChatEngine] prompt failed', {
+          chatSessionId: draft.chatSessionId,
+          messageId: draft.messageId,
+          agentId: draft.agentId,
+          acpSessionId: draft.acpSessionId,
+          error: serializedError.payload,
+        })
+      }
     }
 
     await dbTask
@@ -615,7 +612,10 @@ export class ChatEngine {
     })
   }
 
-  private broadcast(channel: string, payload: { chatSessionId: string, [k: string]: unknown }): void {
+  private broadcast(
+    channel: string,
+    payload: { chatSessionId: string, [k: string]: unknown },
+  ): void {
     // Surface the push in the IPC devtool feed (single-event trace, grouped by chatSessionId).
     observePush(channel, payload, { flowId: payload.chatSessionId })
 
@@ -627,7 +627,7 @@ export class ChatEngine {
       try {
         wc.send(channel, payload)
       }
-      catch {
+ catch {
         this.subscribers.delete(wc)
       }
     }
@@ -650,5 +650,62 @@ function rowToChatMessage(row: Message): ChatMessage {
     errorText: row.errorText,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  }
+}
+
+function serializeChatError(error: unknown): SerializedChatError {
+  const payload: SerializedChatError['payload'] = {
+    message: error instanceof Error ? error.message : String(error),
+  }
+
+  if (error instanceof Error) {
+    payload.name = error.name
+    payload.stack = error.stack
+  }
+
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as Record<string, unknown>
+    if (typeof candidate.code === 'number' || typeof candidate.code === 'string') {
+      payload.code = candidate.code
+    }
+    if ('data' in candidate) {
+      payload.data = candidate.data
+    }
+  }
+
+  const detailText = formatErrorDetails(payload.data)
+  const codePrefix = payload.code !== undefined ? `[code ${String(payload.code)}] ` : ''
+  const text = detailText
+    ? `${codePrefix}${payload.message}: ${detailText}`
+    : `${codePrefix}${payload.message}`
+
+  return { text, payload }
+}
+
+function formatErrorDetails(data: unknown): string | null {
+  if (data === null || data === undefined) {
+    return null
+  }
+
+  if (typeof data === 'object' && data !== null && 'details' in data) {
+    const details = (data as Record<string, unknown>).details
+    return stringifyErrorValue(details)
+  }
+
+  return stringifyErrorValue(data)
+}
+
+function stringifyErrorValue(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  try {
+    return JSON.stringify(value)
+  }
+  catch {
+    return String(value)
   }
 }

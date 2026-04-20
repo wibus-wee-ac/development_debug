@@ -38,12 +38,12 @@ function getToolIcon(toolName: string) {
 
 type ToolState
   = 'input-streaming'
-    | 'input-available'
-    | 'approval-requested'
-    | 'approval-responded'
-    | 'output-available'
-    | 'output-error'
-    | 'output-denied'
+  | 'input-available'
+  | 'approval-requested'
+  | 'approval-responded'
+  | 'output-available'
+  | 'output-error'
+  | 'output-denied'
 
 interface ToolCallBlockProps {
   toolName: string
