@@ -17,3 +17,4 @@ They are consumed by `src/main/services/` IPC handlers.
 - **ipc-devtool-store.ts**: Ring buffer and live subscriber fan-out for observed IPC events
 - **ipc-devtool.ts**: Main-process integration that wires the shared IPC observer into the store, exposes `subscribeIpcDevtool(webContents)` so any BrowserWindow can receive live events, and hosts the dev-only `openDevtoolWindow()` factory for the second `/devtool` window
 - **safe-storage.ts**: Electron safeStorage wrapper for storing secrets
+- **thread-search.ts**: ThreadSearchEngine singleton — lazy-loaded jieba tokenizer + in-memory scored search over sessions/messages; returns hits with title/snippet match ranges for renderer highlighting

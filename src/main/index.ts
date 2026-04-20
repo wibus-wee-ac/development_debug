@@ -13,6 +13,7 @@ import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
 import { IpcDevtoolService } from './services/ipc-devtool'
 import { PreferencesService } from './services/preferences'
+import { SearchService } from './services/search'
 import { SessionService } from './services/session'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
@@ -87,6 +88,7 @@ app.whenReady().then(() => {
     IpcDevtoolService,
     DevService,
     ChatService,
+    SearchService,
   ] as const)
 
   // Set app user model id for windows

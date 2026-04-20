@@ -1,9 +1,11 @@
-// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives, router Link
+// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives, router Link, ThreadSearchDialog
 // Output: WorkspaceSidebar component with top nav, workspace groups and session items
 // Position: Main sidebar feature component for workspace navigation
 
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
+import { ThreadSearchDialog } from '@renderer/features/search'
+import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import { useQueryClient } from '@tanstack/react-query'
@@ -197,20 +199,28 @@ function WorkspaceGroup({
 interface TopNavItemProps {
   icon: React.ReactNode
   label: string
+  shortcut?: string
   onClick?: () => void
 }
 
-function TopNavItem({ icon, label, onClick }: TopNavItemProps) {
+function TopNavItem({ icon, label, shortcut, onClick }: TopNavItemProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground"
+      className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground"
     >
       <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
         {icon}
       </span>
-      <span>{label}</span>
+      <span className="flex-1 text-left">{label}</span>
+      {shortcut
+        ? (
+            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
+              {shortcut}
+            </span>
+          )
+        : null}
     </button>
   )
 }
@@ -222,10 +232,16 @@ export function WorkspaceSidebar() {
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
   const navigate = useNavigate()
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const handleDelete = useCallback((id: string) => {
     remove(id)
   }, [remove])
+
+  const openSearch = useCallback(() => setSearchOpen(true), [])
+
+  useShortcut('open-thread-search', { meta: true, key: 'k' }, openSearch)
+  useShortcut('open-thread-search-ctrl', { ctrl: true, key: 'k' }, openSearch)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -239,6 +255,8 @@ export function WorkspaceSidebar() {
         <TopNavItem
           icon={<SearchIcon className="size-4" />}
           label="搜索"
+          shortcut="⌘K"
+          onClick={openSearch}
         />
         <TopNavItem
           icon={<AlignJustifyIcon className="size-4" />}
@@ -320,6 +338,8 @@ export function WorkspaceSidebar() {
           ))}
         </nav>
       </div>
+
+      <ThreadSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

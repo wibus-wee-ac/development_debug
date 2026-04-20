@@ -9,5 +9,7 @@ Components, hooks, and utilities specific to a feature live together.
 ## Directories
 
 - **workspace/**: Workspace management — sidebar listing, directory picker, session grouping
+- **chat/**: Chat view, composer, and streaming transport bridging AI SDK's useChat to main-process ChatEngine
+- **search/**: Global thread search — command-palette dialog backed by jieba tokenization on the main process
 - **settings/**: Application settings — theme switching, user preferences dialog
 - **ipc-devtool/**: Developer-only IPC observability panel rendered in the second (`/devtool`) BrowserWindow

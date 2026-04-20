@@ -5,13 +5,13 @@
 
 import { randomUUID } from 'node:crypto'
 
+import { observePush } from '@cradle/ipc'
 import {
   applyStoredChatPreferences,
   buildStoredChatPreferencesFromSnapshot,
 } from '@shared/chat-preferences'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
-import { observePush } from '@cradle/ipc'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 

@@ -5,6 +5,7 @@ import type { ChatService } from './services/chat'
 import type { DevService } from './services/dev'
 import type { IpcDevtoolService } from './services/ipc-devtool'
 import type { PreferencesService } from './services/preferences'
+import type { SearchService } from './services/search'
 import type { SessionService } from './services/session'
 import type { WorkspaceService } from './services/workspace'
 
@@ -20,6 +21,7 @@ export type IpcServices = MergeIpcService<{
   ipcDevtool: typeof IpcDevtoolService
   dev: typeof DevService
   chat: typeof ChatService
+  search: typeof SearchService
 }>
 
 // Convenience re-exports so the renderer imports from one place
@@ -29,4 +31,10 @@ export type { AcpSessionState } from './lib/acp-connection'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'
 export type { ChatMessage } from './lib/chat-engine'
+export type {
+  MatchRange,
+  ThreadSearchHit,
+  ThreadSearchParams,
+  ThreadSearchSnippet,
+} from './lib/thread-search'
 export type { ModelInfo, SessionConfigOption, SessionModelState } from '@agentclientprotocol/sdk'
