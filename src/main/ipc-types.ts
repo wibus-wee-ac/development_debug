@@ -1,3 +1,7 @@
+// Input: IPC service classes, DB schema row types, ACP/runtime support types
+// Output: Shared IPC type surface for preload and renderer consumers
+// Position: Main-process type aggregation module bridging service signatures across process boundaries
+
 import type { MergeIpcService } from '@cradle/ipc'
 
 import type { AcpService } from './services/acp'
@@ -30,7 +34,7 @@ export type { AcpAgent, AcpAuditEntry } from './db/schema'
 export type { AcpSessionState } from './lib/acp-connection'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'
-export type { ChatMessage } from './lib/chat-engine'
+export type { ChatMessage, EnsureLiveResult } from './lib/chat-engine'
 export type { ChatResponseEventPayload, ResponseStreamEvent } from './lib/chat-provider'
 export type {
   MatchRange,

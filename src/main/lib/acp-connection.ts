@@ -1,6 +1,6 @@
 // Input: @agentclientprotocol/sdk, AcpProcessManager, AcpResponsesConverter, Electron WebContents
 // Output: AcpConnectionManager singleton — manages ACP ClientSideConnection instances,
-//         exposes prompt() as AsyncGenerator<ResponseStreamEvent>, broadcasts title events
+//         exposes prompt() and session restore helpers, broadcasts title events
 //         to subscriber set (supports multiple windows)
 // Position: Main-process transport bridge between spawned agents and upper layers (ChatEngine)
 
@@ -10,8 +10,10 @@ import type {
   Agent,
   Client,
   InitializeResponse,
+  LoadSessionResponse,
   NewSessionResponse,
   PromptResponse,
+  ResumeSessionResponse,
   SessionConfigOption,
   SessionModelState,
   SessionNotification,
@@ -110,6 +112,11 @@ interface ConnectionEntry {
   sessionStates: Map<string, AcpSessionState>
   /** Per-session in-flight prompt channel. Keyed by ACP sessionId. */
   channels: Map<string, SessionChannel>
+  /**
+   * ACP `session/load` replays historical chunks, but Cradle already persists
+   * transcript history in SQLite, so those replay notifications are discarded.
+   */
+  restoringSessionLoads: Set<string>
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -182,6 +189,7 @@ export class AcpConnectionManager {
       initResult,
       sessionStates: new Map(),
       channels: new Map(),
+      restoringSessionLoads: new Set(),
     })
 
     connection.closed.then(() => {
@@ -196,10 +204,51 @@ export class AcpConnectionManager {
   async newSession(agentId: string, cwd: string): Promise<NewSessionResponse> {
     const conn = this.getConnection(agentId)
     const resp = await conn.connection.newSession({ cwd, mcpServers: [] })
-    conn.sessionStates.set(resp.sessionId, {
-      models: resp.models ?? null,
-      configOptions: resp.configOptions ?? [],
-    })
+    this.cacheSessionState(conn, resp.sessionId, resp)
+    return resp
+  }
+
+  supportsLoadSession(agentId: string): boolean {
+    return !!this.getConnection(agentId).initResult?.agentCapabilities?.loadSession
+  }
+
+  supportsResumeSession(agentId: string): boolean {
+    return !!this.getConnection(agentId).initResult?.agentCapabilities?.sessionCapabilities?.resume
+  }
+
+  async loadSession(
+    agentId: string,
+    sessionId: string,
+    cwd: string,
+  ): Promise<LoadSessionResponse> {
+    const conn = this.getConnection(agentId)
+    if (!this.supportsLoadSession(agentId)) {
+      throw new Error(`Agent ${agentId} does not support session/load`)
+    }
+
+    conn.restoringSessionLoads.add(sessionId)
+    try {
+      const resp = await conn.connection.loadSession({ sessionId, cwd, mcpServers: [] })
+      this.cacheSessionState(conn, sessionId, resp)
+      return resp
+    }
+    finally {
+      conn.restoringSessionLoads.delete(sessionId)
+    }
+  }
+
+  async resumeSession(
+    agentId: string,
+    sessionId: string,
+    cwd: string,
+  ): Promise<ResumeSessionResponse> {
+    const conn = this.getConnection(agentId)
+    if (!this.supportsResumeSession(agentId)) {
+      throw new Error(`Agent ${agentId} does not support session/resume`)
+    }
+
+    const resp = await conn.connection.unstable_resumeSession({ sessionId, cwd, mcpServers: [] })
+    this.cacheSessionState(conn, sessionId, resp)
     return resp
   }
 
@@ -328,6 +377,17 @@ export class AcpConnectionManager {
     return entry
   }
 
+  private cacheSessionState(
+    conn: ConnectionEntry,
+    sessionId: string,
+    resp: { models?: SessionModelState | null, configOptions?: SessionConfigOption[] | null },
+  ): void {
+    conn.sessionStates.set(sessionId, {
+      models: resp.models ?? null,
+      configOptions: resp.configOptions ?? [],
+    })
+  }
+
   /**
    * Create the `Client` that handles agent-side requests
    * (permissions, session updates, file ops, etc.).
@@ -361,6 +421,9 @@ export class AcpConnectionManager {
         }
 
         const connEntry = this.connections.get(agentId)
+        if (connEntry?.restoringSessionLoads.has(params.sessionId)) {
+          return
+        }
         const channel = connEntry?.channels.get(params.sessionId)
         if (channel) {
           const chunks = channel.converter.convert(params.update)

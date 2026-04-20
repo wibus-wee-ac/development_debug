@@ -18,6 +18,7 @@ import type { WebContents } from 'electron'
 import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
 import { messages, sessions, workspaces } from '../db/schema'
+import type { AcpSessionState } from './acp-connection'
 import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
 
@@ -54,6 +55,13 @@ export interface ChatMessage {
   errorText: string | null
   createdAt: number
   updatedAt: number
+}
+
+export type ChatSessionContinuity = 'active' | 'resumed' | 'loaded' | 'reset'
+
+export interface EnsureLiveResult {
+  liveAcpSessionId: string
+  continuity: ChatSessionContinuity
 }
 
 interface PrepareTurnArgs {
@@ -136,7 +144,7 @@ export class ChatEngine {
     // Forward agent title updates → chat:session-title with chatSessionId mapping.
     this.titleUnsubscribe = AcpConnectionManager.getInstance().onSessionTitle(
       (acpSessionId, title) => {
-        const rows = db.select().from(sessions).where(eq(sessions.acpSessionId, acpSessionId)).all()
+        const rows = db.select().from(sessions).where(eq(sessions.recoverableAcpSessionId, acpSessionId)).all()
         for (const row of rows) {
           db.update(sessions)
             .set({ title, updatedAt: nowUnix() })
@@ -222,14 +230,14 @@ export class ChatEngine {
       throw new Error(`Chat session ${chatSessionId} not found`)
     }
 
-    const { acpSessionId } = await this.ensureLive(chatSessionId)
+    const { liveAcpSessionId } = await this.ensureLive(chatSessionId)
 
     // prepareTurn re-checks the draft map atomically (sync), so any race
     // between this line and the fail-fast guard above is still rejected.
     const draft = this.prepareTurn({
       chatSessionId,
       agentId: session.agent,
-      acpSessionId,
+      acpSessionId: liveAcpSessionId,
       userText: text,
     })
 
@@ -296,7 +304,7 @@ export class ChatEngine {
     })
   }
 
-  async ensureLive(chatSessionId: string): Promise<{ acpSessionId: string }> {
+  async ensureLive(chatSessionId: string): Promise<EnsureLiveResult> {
     const session = this.getSessionRow(chatSessionId)
     if (!session) {
       throw new Error(`Chat session ${chatSessionId} not found`)
@@ -305,10 +313,10 @@ export class ChatEngine {
     const connMgr = AcpConnectionManager.getInstance()
 
     // Existing ACP session still live?
-    if (session.acpSessionId) {
-      const state = connMgr.getSessionState(session.agent, session.acpSessionId)
+    if (session.recoverableAcpSessionId) {
+      const state = connMgr.getSessionState(session.agent, session.recoverableAcpSessionId)
       if (state) {
-        return { acpSessionId: session.acpSessionId }
+        return { liveAcpSessionId: session.recoverableAcpSessionId, continuity: 'active' }
       }
     }
 
@@ -324,6 +332,19 @@ export class ChatEngine {
     }
 
     await this.ensureAgentRunning(session.agent)
+
+    if (session.recoverableAcpSessionId) {
+      const restored = await this.tryRestoreAcpSession({
+        agentId: session.agent,
+        storedAcpSessionId: session.recoverableAcpSessionId,
+        cwd,
+        chatSessionId,
+      })
+      if (restored) {
+        return restored
+      }
+    }
+
     const { acpSessionId, modelId, configSnapshot } = await this.bootstrapAcpSession({
       agentId: session.agent,
       cwd,
@@ -338,7 +359,7 @@ export class ChatEngine {
     getDb()
       .update(sessions)
       .set({
-        acpSessionId,
+        recoverableAcpSessionId: acpSessionId,
         modelId,
         configSnapshot,
         updatedAt: nowUnix(),
@@ -346,7 +367,7 @@ export class ChatEngine {
       .where(eq(sessions.id, chatSessionId))
       .run()
 
-    return { acpSessionId }
+    return { liveAcpSessionId: acpSessionId, continuity: 'reset' }
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────
@@ -363,6 +384,62 @@ export class ChatEngine {
       throw new Error(`Agent not installed or not ready: ${agentId}`)
     }
     await connMgr.connect(agentId, record)
+  }
+
+  private async tryRestoreAcpSession(args: {
+    agentId: string
+    storedAcpSessionId: string
+    cwd: string
+    chatSessionId: string
+  }): Promise<EnsureLiveResult | null> {
+    const connMgr = AcpConnectionManager.getInstance()
+    const attempts: Array<{
+      continuity: Extract<ChatSessionContinuity, 'resumed' | 'loaded'>
+      run: () => Promise<{
+        models?: AcpSessionState['models'] | null
+        configOptions?: AcpSessionState['configOptions'] | null
+      }>
+    }> = []
+
+    if (connMgr.supportsResumeSession(args.agentId)) {
+      attempts.push({
+        continuity: 'resumed',
+        run: () => connMgr.resumeSession(args.agentId, args.storedAcpSessionId, args.cwd),
+      })
+    }
+
+    if (connMgr.supportsLoadSession(args.agentId)) {
+      attempts.push({
+        continuity: 'loaded',
+        run: () => connMgr.loadSession(args.agentId, args.storedAcpSessionId, args.cwd),
+      })
+    }
+
+    for (const attempt of attempts) {
+      try {
+        const response = await attempt.run()
+        this.persistRecoveredSessionState({
+          chatSessionId: args.chatSessionId,
+          acpSessionId: args.storedAcpSessionId,
+          state: {
+            models: response.models ?? null,
+            configOptions: response.configOptions ?? [],
+          },
+        })
+        return {
+          liveAcpSessionId: args.storedAcpSessionId,
+          continuity: attempt.continuity,
+        }
+      }
+      catch (error) {
+        console.warn(
+          `[ChatEngine] ${attempt.continuity} failed for chat ${args.chatSessionId}; falling back if possible`,
+          error,
+        )
+      }
+    }
+
+    return null
   }
 
   private async bootstrapAcpSession(args: {
@@ -393,6 +470,23 @@ export class ChatEngine {
 
   private getSessionRow(chatSessionId: string): Session | undefined {
     return getDb().select().from(sessions).where(eq(sessions.id, chatSessionId)).get()
+  }
+
+  private persistRecoveredSessionState(args: {
+    chatSessionId: string
+    acpSessionId: string
+    state: AcpSessionState
+  }): void {
+    getDb()
+      .update(sessions)
+      .set({
+        recoverableAcpSessionId: args.acpSessionId,
+        modelId: args.state.models?.currentModelId ?? null,
+        configSnapshot: JSON.stringify(args.state.configOptions ?? []),
+        updatedAt: nowUnix(),
+      })
+      .where(eq(sessions.id, args.chatSessionId))
+      .run()
   }
 
   /**
@@ -433,7 +527,7 @@ export class ChatEngine {
             workspaceId: newSession.workspaceId,
             title: newSession.title,
             agent: agentId,
-            acpSessionId,
+            recoverableAcpSessionId: acpSessionId,
             modelId: newSession.modelId,
             configSnapshot: newSession.configSnapshot,
           })

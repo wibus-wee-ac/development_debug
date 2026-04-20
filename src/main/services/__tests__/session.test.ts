@@ -1,11 +1,14 @@
 // Input: vi mocks for database calls and SessionService methods
-// Output: Unit tests for session metadata persistence updates
+// Output: Unit tests for session metadata persistence updates and recovery handle storage
 // Position: Unit test file for src/main/services/session.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SessionService } from '../session'
 
+const mockReturningGet = vi.fn()
+const mockInsertValues = vi.fn(() => ({ returning: vi.fn(() => ({ get: mockReturningGet })) }))
+const mockInsert = vi.fn(() => ({ values: mockInsertValues }))
 const mockRun = vi.fn()
 const mockWhere = vi.fn(() => ({ run: mockRun }))
 const mockSet = vi.fn(() => ({ where: mockWhere }))
@@ -32,6 +35,7 @@ vi.mock('node:async_hooks', () => ({
 
 vi.mock('../../db', () => ({
   getDb: () => ({
+    insert: mockInsert,
     update: mockUpdate,
   }),
 }))
@@ -42,6 +46,30 @@ describe('sessionService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     service = new SessionService()
+  })
+
+  it('stores the recoverable ACP session handle on create', () => {
+    mockReturningGet.mockReturnValueOnce({
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      title: 'Chat',
+      agent: 'test-agent',
+      recoverableAcpSessionId: 'acp-1',
+    })
+
+    service.create({
+      id: 'session-1',
+      workspaceId: 'workspace-1',
+      title: 'Chat',
+      agent: 'test-agent',
+      recoverableAcpSessionId: 'acp-1',
+    })
+
+    expect(mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recoverableAcpSessionId: 'acp-1',
+      }),
+    )
   })
 
   it('updates persisted model and config snapshot for a session', () => {

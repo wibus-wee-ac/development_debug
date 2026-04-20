@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` RENAME COLUMN "acp_session_id" TO "recoverable_acp_session_id";

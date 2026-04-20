@@ -35,8 +35,8 @@ export class SessionService extends IpcService {
     title: string
     agent: string
     id?: string
-    /** ACP transport session ID to associate. */
-    acpSessionId?: string
+    /** Recoverable ACP session ID to associate with this persisted thread. */
+    recoverableAcpSessionId?: string
     /** Snapshot of the initial model ID. */
     modelId?: string
     /** JSON snapshot of initial config options. */
@@ -51,7 +51,7 @@ export class SessionService extends IpcService {
         workspaceId: input.workspaceId,
         title: input.title,
         agent: input.agent,
-        acpSessionId: input.acpSessionId ?? null,
+        recoverableAcpSessionId: input.recoverableAcpSessionId ?? null,
         modelId: input.modelId ?? null,
         configSnapshot: input.configSnapshot ?? null,
       })

@@ -11,12 +11,24 @@ import { AcpConnectionManager } from '../acp-connection'
 const mocks = vi.hoisted(() => {
   const mockInitialize = vi.fn()
   const mockNewSession = vi.fn()
+  const mockLoadSession = vi.fn()
+  const mockResumeSession = vi.fn()
   const mockPrompt = vi.fn()
   const mockCancel = vi.fn()
   const mockSpawn = vi.fn()
   const mockStop = vi.fn()
   const mockClosed = new Promise<void>(() => {})
-  return { mockInitialize, mockNewSession, mockPrompt, mockCancel, mockSpawn, mockStop, mockClosed }
+  return {
+    mockInitialize,
+    mockNewSession,
+    mockLoadSession,
+    mockResumeSession,
+    mockPrompt,
+    mockCancel,
+    mockSpawn,
+    mockStop,
+    mockClosed,
+  }
 })
 
 vi.mock('@agentclientprotocol/sdk', () => {
@@ -24,6 +36,8 @@ vi.mock('@agentclientprotocol/sdk', () => {
   class FakeClientSideConnection {
     initialize = (...args: unknown[]) => mocks.mockInitialize(...args)
     newSession = (...args: unknown[]) => mocks.mockNewSession(...args)
+    loadSession = (...args: unknown[]) => mocks.mockLoadSession(...args)
+    unstable_resumeSession = (...args: unknown[]) => mocks.mockResumeSession(...args)
     prompt = (...args: unknown[]) => mocks.mockPrompt(...args)
     cancel = (...args: unknown[]) => mocks.mockCancel(...args)
     closed = mocks.mockClosed
@@ -76,6 +90,8 @@ describe('acpConnectionManager', () => {
   beforeEach(() => {
     mocks.mockInitialize.mockResolvedValue({ protocolVersion: '1.0' })
     mocks.mockNewSession.mockResolvedValue({ sessionId: 'sess-1' })
+    mocks.mockLoadSession.mockResolvedValue({ models: null, configOptions: [] })
+    mocks.mockResumeSession.mockResolvedValue({ models: null, configOptions: [] })
     mocks.mockPrompt.mockResolvedValue({ response: 'ok' })
     mocks.mockCancel.mockResolvedValue(undefined)
     mocks.mockSpawn.mockReturnValue({
@@ -118,6 +134,88 @@ describe('acpConnectionManager', () => {
       expect(result).toEqual({ sessionId: 'sess-1' })
     })
 
+    it('loads a stored session when agent advertises loadSession', async () => {
+      manager = freshManager()
+      mocks.mockInitialize.mockResolvedValueOnce({
+        protocolVersion: '1.0',
+        agentCapabilities: { loadSession: true },
+      })
+      mocks.mockLoadSession.mockResolvedValueOnce({
+        models: {
+          currentModelId: 'claude-4',
+          availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
+        },
+        configOptions: [],
+      })
+
+      await manager.connect('test-agent', fakeRecord)
+
+      const result = await manager.loadSession('test-agent', 'sess-1', '/tmp/workspace')
+
+      expect(mocks.mockLoadSession).toHaveBeenCalledWith({
+        sessionId: 'sess-1',
+        cwd: '/tmp/workspace',
+        mcpServers: [],
+      })
+      expect(result).toEqual({
+        models: {
+          currentModelId: 'claude-4',
+          availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
+        },
+        configOptions: [],
+      })
+      expect(manager.getSessionState('test-agent', 'sess-1')).toEqual({
+        models: {
+          currentModelId: 'claude-4',
+          availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
+        },
+        configOptions: [],
+      })
+    })
+
+    it('resumes a stored session when agent advertises session/resume', async () => {
+      manager = freshManager()
+      mocks.mockInitialize.mockResolvedValueOnce({
+        protocolVersion: '1.0',
+        agentCapabilities: {
+          sessionCapabilities: {
+            resume: {},
+          },
+        },
+      })
+      mocks.mockResumeSession.mockResolvedValueOnce({
+        models: {
+          currentModelId: 'claude-4',
+          availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
+        },
+        configOptions: [],
+      })
+
+      await manager.connect('test-agent', fakeRecord)
+
+      const result = await manager.resumeSession('test-agent', 'sess-1', '/tmp/workspace')
+
+      expect(mocks.mockResumeSession).toHaveBeenCalledWith({
+        sessionId: 'sess-1',
+        cwd: '/tmp/workspace',
+        mcpServers: [],
+      })
+      expect(result).toEqual({
+        models: {
+          currentModelId: 'claude-4',
+          availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
+        },
+        configOptions: [],
+      })
+      expect(manager.getSessionState('test-agent', 'sess-1')).toEqual({
+        models: {
+          currentModelId: 'claude-4',
+          availableModels: [{ modelId: 'claude-4', name: 'Claude 4' }],
+        },
+        configOptions: [],
+      })
+    })
+
     it('prompt returns an async generator that calls underlying prompt', async () => {
       const gen = manager.prompt('test-agent', 'sess-1', 'hello')
       const chunks = await drain(gen)
@@ -138,6 +236,18 @@ describe('acpConnectionManager', () => {
     it('cancels a prompt', async () => {
       await manager.cancel('test-agent', 'sess-1')
       expect(mocks.mockCancel).toHaveBeenCalledWith({ sessionId: 'sess-1' })
+    })
+
+    it('rejects loadSession when agent does not advertise support', async () => {
+      await expect(manager.loadSession('test-agent', 'sess-1', '/tmp/workspace')).rejects.toThrow(
+        'does not support session/load',
+      )
+    })
+
+    it('rejects resumeSession when agent does not advertise support', async () => {
+      await expect(manager.resumeSession('test-agent', 'sess-1', '/tmp/workspace')).rejects.toThrow(
+        'does not support session/resume',
+      )
     })
   })
 

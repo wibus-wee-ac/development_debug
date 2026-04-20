@@ -11,6 +11,13 @@ import type {
   ToolCall,
   ToolCallUpdate,
 } from '@agentclientprotocol/sdk'
+import type {
+  ResponseFunctionToolCallItem,
+  ResponseOutputMessage,
+  ResponseOutputText,
+  ResponseReasoningSummaryPartAddedEvent,
+  ResponseReasoningSummaryPartDoneEvent,
+} from 'openai/resources/responses/responses'
 
 import type { ResponseStreamEvent } from './chat-provider'
 
@@ -44,9 +51,13 @@ function extractText(block: ContentBlock): string | null {
  */
 export class AcpResponsesConverter {
   private currentTextItemId: string | null = null
+  private currentTextValue = ''
   private currentReasoningItemId: string | null = null
+  private currentReasoningText = ''
   private currentReasoningSummaryIndex = 0
+  private currentReasoningOutputIndex: number | null = null
   private outputIndex = 0
+  private sequenceNumber = 0
 
   convert(update: SessionUpdate): ResponseStreamEvent[] {
     switch (update.sessionUpdate) {
@@ -70,21 +81,25 @@ export class AcpResponsesConverter {
       chunks.push({
         type: 'response.reasoning_summary_part.done',
         item_id: this.currentReasoningItemId,
+        output_index: this.currentReasoningOutputIndex ?? this.outputIndex,
+        part: this.buildReasoningPart('done'),
+        sequence_number: this.nextSequenceNumber(),
         summary_index: this.currentReasoningSummaryIndex - 1,
       })
       this.currentReasoningItemId = null
+      this.currentReasoningText = ''
+      this.currentReasoningOutputIndex = null
     }
 
     if (this.currentTextItemId) {
       chunks.push({
         type: 'response.output_item.done',
         output_index: this.outputIndex,
-        item: {
-          type: 'message',
-          id: this.currentTextItemId,
-        },
+        item: this.buildMessageItem('completed'),
+        sequence_number: this.nextSequenceNumber(),
       })
       this.currentTextItemId = null
+      this.currentTextValue = ''
     }
 
     return chunks
@@ -102,28 +117,37 @@ export class AcpResponsesConverter {
       chunks.push({
         type: 'response.reasoning_summary_part.done',
         item_id: this.currentReasoningItemId,
+        output_index: this.currentReasoningOutputIndex ?? this.outputIndex,
+        part: this.buildReasoningPart('done'),
+        sequence_number: this.nextSequenceNumber(),
         summary_index: this.currentReasoningSummaryIndex - 1,
       })
       this.currentReasoningItemId = null
+      this.currentReasoningText = ''
+      this.currentReasoningOutputIndex = null
     }
 
     if (!this.currentTextItemId) {
       this.currentTextItemId = randomUUID()
+      this.currentTextValue = ''
       this.outputIndex++
       chunks.push({
         type: 'response.output_item.added',
         output_index: this.outputIndex,
-        item: {
-          type: 'message',
-          id: this.currentTextItemId,
-        },
+        item: this.buildMessageItem('in_progress'),
+        sequence_number: this.nextSequenceNumber(),
       })
     }
 
+    this.currentTextValue += text
     chunks.push({
       type: 'response.output_text.delta',
       item_id: this.currentTextItemId,
+      content_index: 0,
       delta: text,
+      logprobs: [],
+      output_index: this.outputIndex,
+      sequence_number: this.nextSequenceNumber(),
     })
 
     return chunks
@@ -141,28 +165,35 @@ export class AcpResponsesConverter {
       chunks.push({
         type: 'response.output_item.done',
         output_index: this.outputIndex,
-        item: {
-          type: 'message',
-          id: this.currentTextItemId,
-        },
+        item: this.buildMessageItem('completed'),
+        sequence_number: this.nextSequenceNumber(),
       })
       this.currentTextItemId = null
+      this.currentTextValue = ''
     }
 
     if (!this.currentReasoningItemId) {
       this.currentReasoningItemId = randomUUID()
+      this.currentReasoningText = ''
       this.currentReasoningSummaryIndex = 0
+      this.currentReasoningOutputIndex = this.outputIndex + 1
       chunks.push({
         type: 'response.reasoning_summary_part.added',
         item_id: this.currentReasoningItemId,
+        output_index: this.currentReasoningOutputIndex,
+        part: this.buildReasoningPart('added'),
+        sequence_number: this.nextSequenceNumber(),
         summary_index: this.currentReasoningSummaryIndex,
       })
       this.currentReasoningSummaryIndex++
     }
 
+    this.currentReasoningText += text
     chunks.push({
       type: 'response.reasoning_summary_text.delta',
       item_id: this.currentReasoningItemId,
+      output_index: this.currentReasoningOutputIndex ?? this.outputIndex,
+      sequence_number: this.nextSequenceNumber(),
       summary_index: this.currentReasoningSummaryIndex - 1,
       delta: text,
     })
@@ -182,13 +213,14 @@ export class AcpResponsesConverter {
     chunks.push({
       type: 'response.output_item.added',
       output_index: this.outputIndex,
-      item: {
-        type: 'function_call',
+      item: this.buildFunctionCallItem({
         id: callId,
-        call_id: callId,
+        callId,
         name: update.title,
-        arguments: '',
-      },
+        argumentsText: '',
+        status: 'in_progress',
+      }),
+      sequence_number: this.nextSequenceNumber(),
     })
 
     if (update.status === 'completed') {
@@ -200,14 +232,14 @@ export class AcpResponsesConverter {
       chunks.push({
         type: 'response.output_item.done',
         output_index: this.outputIndex,
-        item: {
-          type: 'function_call',
+        item: this.buildFunctionCallItem({
           id: callId,
-          call_id: callId,
+          callId,
           name: update.title,
-          arguments: encodedArgs,
+          argumentsText: encodedArgs,
           status: 'completed',
-        },
+        }),
+        sequence_number: this.nextSequenceNumber(),
       })
     }
 
@@ -225,14 +257,14 @@ export class AcpResponsesConverter {
       chunks.push({
         type: 'response.output_item.done',
         output_index: this.outputIndex,
-        item: {
-          type: 'function_call',
+        item: this.buildFunctionCallItem({
           id: update.toolCallId,
-          call_id: update.toolCallId,
+          callId: update.toolCallId,
           name: '',
-          arguments: encodedArgs,
+          argumentsText: encodedArgs,
           status: 'completed',
-        },
+        }),
+        sequence_number: this.nextSequenceNumber(),
       })
     }
 
@@ -246,23 +278,81 @@ export class AcpResponsesConverter {
       chunks.push({
         type: 'response.reasoning_summary_part.done',
         item_id: this.currentReasoningItemId,
+        output_index: this.currentReasoningOutputIndex ?? this.outputIndex,
+        part: this.buildReasoningPart('done'),
+        sequence_number: this.nextSequenceNumber(),
         summary_index: this.currentReasoningSummaryIndex - 1,
       })
       this.currentReasoningItemId = null
+      this.currentReasoningText = ''
+      this.currentReasoningOutputIndex = null
     }
 
     if (this.currentTextItemId) {
       chunks.push({
         type: 'response.output_item.done',
         output_index: this.outputIndex,
-        item: {
-          type: 'message',
-          id: this.currentTextItemId,
-        },
+        item: this.buildMessageItem('completed'),
+        sequence_number: this.nextSequenceNumber(),
       })
       this.currentTextItemId = null
+      this.currentTextValue = ''
     }
 
     return chunks
+  }
+
+  private nextSequenceNumber(): number {
+    const next = this.sequenceNumber
+    this.sequenceNumber += 1
+    return next
+  }
+
+  private buildMessageItem(status: ResponseOutputMessage['status']): ResponseOutputMessage {
+    const content: ResponseOutputMessage['content'] = this.currentTextValue.length > 0
+      ? [this.buildOutputTextPart(this.currentTextValue)]
+      : []
+
+    return {
+      type: 'message',
+      id: this.currentTextItemId!,
+      role: 'assistant',
+      status,
+      content,
+    }
+  }
+
+  private buildOutputTextPart(text: string): ResponseOutputText {
+    return {
+      type: 'output_text',
+      text,
+      annotations: [],
+    }
+  }
+
+  private buildReasoningPart(
+    _phase: 'added' | 'done',
+  ): ResponseReasoningSummaryPartAddedEvent.Part | ResponseReasoningSummaryPartDoneEvent.Part {
+    return {
+      type: 'summary_text',
+      text: this.currentReasoningText,
+    }
+  }
+
+  private buildFunctionCallItem(args: {
+    id: string
+    callId: string
+    name: string
+    argumentsText: string
+    status: ResponseFunctionToolCallItem['status']
+  }): ResponseFunctionToolCallItem {
+    return {
+      type: 'function_call',
+      id: args.id,
+      call_id: args.callId,
+      name: args.name,
+      arguments: args.argumentsText,
+      status: args.status,
+    }
   }
 }

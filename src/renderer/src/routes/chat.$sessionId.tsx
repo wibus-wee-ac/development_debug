@@ -104,12 +104,12 @@ function ChatSessionPage() {
   const workspaceId = session?.workspaceId ?? null
   const sessionTitle = session?.title ?? null
 
-  // Seed liveAcpSessionId from DB on first read
+  // Seed liveAcpSessionId from the recoverable ACP handle persisted on the thread row
   useEffect(() => {
-    if (session?.acpSessionId && !liveAcpSessionId) {
-      setLiveAcpSessionId(session.acpSessionId)
+    if (session?.recoverableAcpSessionId && !liveAcpSessionId) {
+      setLiveAcpSessionId(session.recoverableAcpSessionId)
     }
-  }, [session?.acpSessionId, liveAcpSessionId])
+  }, [session?.recoverableAcpSessionId, liveAcpSessionId])
 
   // Fetch workspace name when workspaceId is available
   useEffect(() => {
@@ -184,8 +184,9 @@ function ChatSessionPage() {
     }
     setReconnectingModel(true)
     try {
-      const { acpSessionId: nextAcpSessionId } = await ipc.chat.ensureLive(sessionId)
+      const { liveAcpSessionId: nextAcpSessionId } = await ipc.chat.ensureLive(sessionId)
       setLiveAcpSessionId(nextAcpSessionId)
+      queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] })
       await fetchLiveSessionState(nextAcpSessionId)
 
       if (kind === 'model') {

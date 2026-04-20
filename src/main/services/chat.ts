@@ -4,7 +4,7 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import type { ChatMessage } from '../lib/chat-engine'
+import type { ChatMessage, EnsureLiveResult } from '../lib/chat-engine'
 import { ChatEngine } from '../lib/chat-engine'
 
 export class ChatService extends IpcService {
@@ -39,7 +39,7 @@ export class ChatService extends IpcService {
   }
 
   @IpcMethod()
-  async ensureLive(chatSessionId: string): Promise<{ acpSessionId: string }> {
+  async ensureLive(chatSessionId: string): Promise<EnsureLiveResult> {
     return this.engine.ensureLive(chatSessionId)
   }
 }

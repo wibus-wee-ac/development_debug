@@ -1,3 +1,7 @@
+// Input: drizzle-orm sqlite schema builders
+// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, ACP agents, and audit log
+// Position: Main-process persistence schema shared by DB initialization and services
+
 import { sql } from 'drizzle-orm'
 import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
@@ -30,8 +34,11 @@ export const sessions = sqliteTable('sessions', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   agent: text('agent').notNull().default('claude'),
-  /** Active ACP transport session ID. Null for historical sessions with no live connection. */
-  acpSessionId: text('acp_session_id'),
+  /**
+   * Last attached ACP agent session ID.
+   * Used as the recovery handle across restarts; may be offline until `ensureLive()` reattaches it.
+   */
+  recoverableAcpSessionId: text('recoverable_acp_session_id'),
   /** Model ID snapshot captured at session creation. Shown when no active ACP session. */
   modelId: text('model_id'),
   /** JSON array of SessionConfigOption snapshots captured at creation. */
