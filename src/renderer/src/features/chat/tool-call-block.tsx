@@ -14,30 +14,47 @@ import {
   TerminalIcon,
   WrenchIcon,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useState } from 'react'
 
-const TOOL_ICONS: Record<string, typeof WrenchIcon> = {
-  read_file: FileSearchIcon,
-  write_file: FileEditIcon,
-  edit_file: FileEditIcon,
-  search: SearchIcon,
-  grep: SearchIcon,
-  bash: TerminalIcon,
-  shell: TerminalIcon,
-  terminal: TerminalIcon,
-}
+type ToolIconKind = 'file-search' | 'file-edit' | 'search' | 'terminal' | 'wrench'
 
-function getToolIcon(toolName: string) {
-  for (const [key, icon] of Object.entries(TOOL_ICONS)) {
-    if (toolName.toLowerCase().includes(key)) {
-      return icon
+const TOOL_ICON_MATCHERS: Array<{ keyword: string, iconKind: ToolIconKind }> = [
+  { keyword: 'read_file', iconKind: 'file-search' },
+  { keyword: 'write_file', iconKind: 'file-edit' },
+  { keyword: 'edit_file', iconKind: 'file-edit' },
+  { keyword: 'search', iconKind: 'search' },
+  { keyword: 'grep', iconKind: 'search' },
+  { keyword: 'bash', iconKind: 'terminal' },
+  { keyword: 'shell', iconKind: 'terminal' },
+  { keyword: 'terminal', iconKind: 'terminal' },
+]
+
+function getToolIconKind(toolName: string): ToolIconKind {
+  for (const { keyword, iconKind } of TOOL_ICON_MATCHERS) {
+    if (toolName.toLowerCase().includes(keyword)) {
+      return iconKind
     }
   }
-  return WrenchIcon
+  return 'wrench'
 }
 
-type ToolState
-  = 'input-streaming'
+function renderToolIcon(toolName: string, className?: string): ReactNode {
+  switch (getToolIconKind(toolName)) {
+    case 'file-search':
+      return <FileSearchIcon className={className} aria-hidden="true" />
+    case 'file-edit':
+      return <FileEditIcon className={className} aria-hidden="true" />
+    case 'search':
+      return <SearchIcon className={className} aria-hidden="true" />
+    case 'terminal':
+      return <TerminalIcon className={className} aria-hidden="true" />
+    default:
+      return <WrenchIcon className={className} aria-hidden="true" />
+  }
+}
+
+type ToolState = 'input-streaming'
   | 'input-available'
   | 'approval-requested'
   | 'approval-responded'
@@ -62,7 +79,6 @@ export function ToolCallBlock({
   errorText,
 }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(false)
-  const Icon = getToolIcon(toolName)
 
   const isRunning = state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
   const isDone = state === 'output-available'
@@ -82,12 +98,12 @@ export function ToolCallBlock({
         type="button"
         onClick={() => setExpanded(v => !v)}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors',
+          'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors w-full text-left',
           'text-muted-foreground/70 hover:text-foreground hover:bg-muted/50',
         )}
       >
-        <Icon className="size-3.5" aria-hidden="true" />
-        <span className="font-medium">{toolName}</span>
+        {renderToolIcon(toolName, 'size-3.5')}
+        <span className="font-medium flex-1 w-full truncate">{toolName}</span>
         <StatusIcon
           className={cn(
             'size-3',

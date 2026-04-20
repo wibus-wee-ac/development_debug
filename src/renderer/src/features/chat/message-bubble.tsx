@@ -6,7 +6,7 @@ import { cn } from '@renderer/lib/utils'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { motion } from 'motion/react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Streamdown } from 'streamdown'
 
 import { ReasoningBlock } from './reasoning-block'
@@ -23,6 +23,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const [copied, setCopied] = useState(false)
+  const copyFeedbackTimerRef = useRef<number | null>(null)
 
   // Extract plain text only (no reasoning/thinking) for copy
   const plainText = useMemo(() => {
@@ -32,11 +33,26 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
       .join('\n')
   }, [message.parts])
 
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimerRef.current)
+      }
+    }
+  }, [])
+
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(plainText)
     setCopied(true)
-    const timer = setTimeout(setCopied, 1500, false)
-    return () => clearTimeout(timer)
+
+    if (copyFeedbackTimerRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimerRef.current)
+    }
+
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopied(false)
+      copyFeedbackTimerRef.current = null
+    }, 1500)
   }, [plainText])
 
   return (
@@ -148,7 +164,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
               type="button"
               onClick={handleCopy}
               className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 transition-colors"
-              aria-label="复制"
+              aria-label="Copy message"
             >
               {copied
                 ? <CheckIcon className="size-3 text-emerald-500" aria-hidden="true" />

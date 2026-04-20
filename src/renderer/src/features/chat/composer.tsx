@@ -194,7 +194,7 @@ export function Composer({
           placeholder={placeholder}
           disabled={disabled}
           rows={2}
-          className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
+          className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
         />
 
         {/* Action bar — subtle, blends with the card */}
@@ -209,26 +209,26 @@ export function Composer({
             {contextBar}
             {isStreaming
               ? (
-                  <Button
-                    variant="outline"
-                    size="icon-xs"
-                    onClick={onStop}
-                    aria-label="停止生成"
-                  >
-                    <SquareIcon className="size-3" aria-hidden="true" />
-                  </Button>
-                )
+                <Button
+                  variant="outline"
+                  size="icon-xs"
+                  onClick={onStop}
+                  aria-label="停止生成"
+                >
+                  <SquareIcon className="size-3" aria-hidden="true" />
+                </Button>
+              )
               : (
-                  <Button
-                    variant="default"
-                    size="icon-xs"
-                    disabled={disabled || !inputValue.trim()}
-                    onClick={handleSend}
-                    aria-label="发送"
-                  >
-                    <SendHorizonalIcon aria-hidden="true" />
-                  </Button>
-                )}
+                <Button
+                  variant="default"
+                  size="icon-xs"
+                  disabled={disabled || !inputValue.trim()}
+                  onClick={handleSend}
+                  aria-label="发送"
+                >
+                  <SendHorizonalIcon aria-hidden="true" />
+                </Button>
+              )}
           </div>
         </div>
       </div>

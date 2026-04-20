@@ -246,7 +246,7 @@ export class ChatEngine {
     try {
       await AcpConnectionManager.getInstance().cancel(draft.agentId, draft.acpSessionId)
     }
- catch (err) {
+    catch (err) {
       console.warn('[ChatEngine] cancel failed (will still finalize as aborted):', err)
     }
   }
@@ -519,7 +519,7 @@ export class ChatEngine {
           this.scheduleFlush(draft)
         }
       }
- catch {
+      catch {
         // readUIMessageStream throwing is fine here — main loop handles it
       }
     })()
@@ -542,7 +542,7 @@ export class ChatEngine {
       }
       await writer.close()
     }
- catch (err) {
+    catch (err) {
       await writer.abort(err).catch(() => {})
       finalStatus = draft.cancelled ? 'aborted' : 'failed'
       const serializedError = serializeChatError(err)
@@ -627,7 +627,7 @@ export class ChatEngine {
       try {
         wc.send(channel, payload)
       }
- catch {
+      catch {
         this.subscribers.delete(wc)
       }
     }
