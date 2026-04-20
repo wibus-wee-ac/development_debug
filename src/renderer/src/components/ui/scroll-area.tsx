@@ -9,10 +9,13 @@ export function ScrollArea({
   children,
   scrollFade = false,
   scrollbarGutter = false,
+  viewportRef,
   ...props
 }: ScrollAreaPrimitive.Root.Props & {
   scrollFade?: boolean;
   scrollbarGutter?: boolean;
+  /** Ref forwarded to the inner scrollable Viewport element (useful for Virtualizer.scrollRef). */
+  viewportRef?: React.Ref<HTMLElement>;
 }) {
   return (
     <ScrollAreaPrimitive.Root
@@ -20,6 +23,7 @@ export function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        ref={viewportRef as React.Ref<HTMLDivElement>}
         className={cn(
           "h-full rounded-[inherit] outline-none transition-shadows focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background data-has-overflow-y:overscroll-y-contain data-has-overflow-x:overscroll-x-contain",
           scrollFade &&

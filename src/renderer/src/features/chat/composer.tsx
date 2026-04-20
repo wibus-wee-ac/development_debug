@@ -11,6 +11,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { MentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
 
+/** Shrinks the textarea to content height, capped at 240 px. */
+function autoResize(el: HTMLTextAreaElement) {
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+}
+
 interface ComposerProps {
   onSend: (text: string) => void
   onStop?: () => void
@@ -41,11 +47,6 @@ export function Composer({
 
   // Track @ trigger position for path completion
   const mentionStartRef = useRef<number>(-1)
-
-  function autoResize(el: HTMLTextAreaElement) {
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`
-  }
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value

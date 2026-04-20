@@ -1,11 +1,13 @@
-// Input: useChatSession hook (thin subscriber), MessageBubble, Composer, ScrollArea, AnimatePresence
-// Output: ChatView — read-only chat view: reads messages, subscribes to stream, renders results
+// Input: useChatSession hook, MessageBubble, Composer, ScrollArea, Virtualizer (virtua)
+// Output: ChatView — virtualized chat view: only renders visible messages, instant-to-bottom scroll
 // Position: Primary chat feature view — does NOT own message sending lifecycle
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { motion } from 'motion/react'
+import { useCallback, useEffect, useRef } from 'react'
+import type { VirtualizerHandle } from 'virtua'
+import { Virtualizer } from 'virtua'
 
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
@@ -36,18 +38,19 @@ export function ChatView({
   placeholder,
 }: ChatViewProps) {
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialMessageRows })
-  const scrollEndRef = useRef<HTMLDivElement>(null)
 
-  // Tracks which sessionId has already received its initial instant-to-bottom scroll.
-  const initializedSessionRef = useRef<string | null>(null)
+  /**
+   * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
+   * it can track scroll position without a separate listener.
+   */
+  const viewportRef = useRef<HTMLElement>(null)
+  const virtualizerRef = useRef<VirtualizerHandle>(null)
+
+  /** True when the user is near the bottom (<= 200 px away). Auto-scroll only fires when true. */
+  const isAtBottomRef = useRef(true)
 
   const isStreaming = status === 'streaming'
 
-  // Show the "thinking" indicator whenever we're streaming but the user can't
-  // yet see any assistant text output — this covers:
-  //  - pre-first-chunk (assistant message not created yet, last msg is user)
-  //  - reasoning-only phase (reasoning block collapsed by default, visually silent)
-  //  - tool-call-only phase (no user-facing text yet)
   const lastMsg = messages.at(-1)
   const assistantHasVisibleText = lastMsg?.role === 'assistant'
     && lastMsg.parts.some(
@@ -55,26 +58,56 @@ export function ChatView({
     )
   const showThinking = isStreaming && !assistantHasVisibleText
 
-  // Scroll to the bottom instantly on first render per session (before paint —
-  // no animation, user lands directly on latest messages).
-  useLayoutEffect(() => {
-    if (messages.length === 0) {
-      return
+  const scrollToBottom = useCallback(() => {
+    const vp = viewportRef.current
+    if (vp) {
+      vp.scrollTop = vp.scrollHeight
+      isAtBottomRef.current = true
     }
-    if (initializedSessionRef.current === sessionId) {
-      return
-    }
-    initializedSessionRef.current = sessionId ?? null
-    scrollEndRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [messages, sessionId])
+  }, [])
 
-  // Ongoing auto-scroll for streaming updates and newly appended messages.
+  // When the session changes, jump to the bottom after virtua has had a chance
+  // to render its first batch of items.  requestAnimationFrame delays the scroll
+  // until after the browser has painted, at which point scrollHeight reflects the
+  // actual rendered content and vp.scrollTop = vp.scrollHeight works correctly.
+  const prevSessionIdRef = useRef<string | null | undefined>(undefined)
   useEffect(() => {
-    if (initializedSessionRef.current !== sessionId) {
+    if (prevSessionIdRef.current === sessionId) {
       return
     }
-    scrollEndRef.current?.scrollIntoView({ behavior: status === 'streaming' ? 'auto' : 'smooth' })
-  }, [messages, status, sessionId])
+    prevSessionIdRef.current = sessionId
+    isAtBottomRef.current = true
+    if (messages.length > 0) {
+      // First: tell virtua which index to anchor to so it renders the bottom items
+      virtualizerRef.current?.scrollToIndex(messages.length - 1, { align: 'end' })
+      // Then: after the browser paints, force the viewport all the way down
+      // (handles any remaining offset gap from unresolved item heights)
+      requestAnimationFrame(() => {
+        const vp = viewportRef.current
+        if (vp) {
+          vp.scrollTop = vp.scrollHeight
+        }
+      })
+    }
+  })
+
+  // Ongoing auto-scroll during streaming and after new messages are appended —
+  // but only when the user was already near the bottom (respect manual scroll-up).
+  useEffect(() => {
+    if (!isAtBottomRef.current) {
+      return
+    }
+    scrollToBottom()
+  }, [messages, status, scrollToBottom])
+
+  // Track whether the user is near the bottom. Fires on every scroll offset from virtua.
+  const handleVirtScroll = useCallback((offset: number) => {
+    const vp = viewportRef.current
+    if (!vp) {
+      return
+    }
+    isAtBottomRef.current = offset + vp.offsetHeight >= vp.scrollHeight - 200
+  }, [])
 
   const handleSend = useCallback(
     (text: string) => {
@@ -88,9 +121,9 @@ export function ChatView({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Message list */}
-      <ScrollArea className="flex-1">
-        <div className="mx-auto max-w-2xl px-4 py-6">
+      {/* Virtualized message list */}
+      <ScrollArea className="flex-1" viewportRef={viewportRef}>
+        <div className="mx-auto max-w-2xl px-4">
           {messages.length === 0 && isReady && (
             <div className="flex items-center justify-center py-20">
               <p className="text-sm text-muted-foreground/50 select-none">
@@ -99,11 +132,15 @@ export function ChatView({
             </div>
           )}
 
-          {/* AnimatePresence key: stable while messages are present (> 0), so
-              new messages animate normally. Resets when a session first loads
-              (0 → 1) so that initial batch is never animated.
-              Works for both first-visit (async load) and return-visit cases. */}
-          <AnimatePresence key={`${sessionId ?? ''}-${messages.length > 0}`} initial={false}>
+          {/* Virtualizer only renders items intersecting the visible viewport +
+              a 200 px over-scan buffer. Items outside that range are unmounted,
+              keeping DOM node count constant regardless of conversation length. */}
+          <Virtualizer
+            ref={virtualizerRef}
+            scrollRef={viewportRef}
+            startMargin={24}
+            onScroll={handleVirtScroll}
+          >
             {messages.map(message => (
               <MessageBubble
                 key={message.id}
@@ -111,9 +148,9 @@ export function ChatView({
                 isStreaming={status === 'streaming' && message === messages.at(-1)}
               />
             ))}
-          </AnimatePresence>
+          </Virtualizer>
 
-          {/* Error indicator */}
+          {/* Status indicators live outside the virtualizer so they always render. */}
           {status === 'error' && (
             <motion.div
               initial={{ opacity: 0, y: 4 }}
@@ -129,9 +166,6 @@ export function ChatView({
             </motion.div>
           )}
 
-          {/* Thinking indicator — anchored below the last message whenever the
-              assistant has no visible text yet (pre-first-chunk, reasoning only,
-              or tool-call only). Hides as soon as text starts streaming. */}
           {showThinking && (
             <motion.div
               initial={{ opacity: 0, y: 4 }}
@@ -145,11 +179,12 @@ export function ChatView({
             </motion.div>
           )}
 
-          <div ref={scrollEndRef} />
+          {/* Bottom padding */}
+          <div className="h-6" aria-hidden="true" />
         </div>
       </ScrollArea>
 
-      {/* Composer — pinned to bottom, no border-t */}
+      {/* Composer — pinned to bottom */}
       <div className="shrink-0 bg-background/80 backdrop-blur-sm px-4 py-3">
         <div className="mx-auto max-w-2xl">
           <Composer

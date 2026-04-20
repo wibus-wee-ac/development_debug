@@ -14,6 +14,14 @@ import { ToolCallBlock } from './tool-call-block'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 
+/**
+ * Module-level set of message IDs that have already been rendered at least once.
+ * Used to suppress Framer Motion entrance animation when a virtualizer remounts
+ * an item that scrolled out of view — we only want the animation on the true
+ * first appearance of each message.
+ */
+const seenMessageIds = new Set<string>()
+
 interface MessageBubbleProps {
   message: UIMessage
   isStreaming: boolean
@@ -24,6 +32,13 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const isAssistant = message.role === 'assistant'
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
+
+  // Only animate on the true first appearance — skip if the virtualizer is
+  // remounting an item that simply scrolled out of view.
+  const isFirstAppearance = !seenMessageIds.has(message.id)
+  if (isFirstAppearance) {
+    seenMessageIds.add(message.id)
+  }
 
   // Extract plain text only (no reasoning/thinking) for copy
   const plainText = useMemo(() => {
@@ -57,7 +72,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={BUBBLE_TRANSITION}
       className={cn(
@@ -67,8 +82,9 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
     >
       <div
         className={cn(
-          'max-w-[85%] min-w-0',
-          isUser && 'max-w-[70%]',
+          'min-w-0',
+          isUser && 'max-w-[70%] ',
+          !isUser && 'w-full',
         )}
       >
         {/* Bubble */}

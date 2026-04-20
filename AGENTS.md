@@ -2,6 +2,15 @@
 
 This file provides guidance to Agent when working with code in this repository.
 
+## Stacks
+
+- **Frontend**: React, TypeScript, Tailwind CSS
+- **State Management**: Zustand
+- **Routing**: TanStack Router
+- **Desktop App**: Electron
+- **Documentation**: JSDoc, Markdown
+- **Code Quality**: ESLint
+
 ## CRITICAL RULES
 
 ### 1. Styling - NO Dynamic Tailwind Classes

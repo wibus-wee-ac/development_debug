@@ -10,11 +10,11 @@ import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
+import { useMatchRoute } from '@tanstack/react-router'
 import { SettingsIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
-import { useMatchRoute } from '@tanstack/react-router'
 
 const SIDEBAR = { min: 160, max: 480 }
 const ASIDE = { min: 200, max: 560 }
@@ -73,7 +73,7 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
     if (sidebarView === 'settings') {
       back()
     }
- else {
+    else {
       navigateTo('settings')
     }
   }, [sidebarView, navigateTo, back])
@@ -102,136 +102,138 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
           className="flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden"
           style={{ width: sidebarWidth }}
         >
-        <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+          <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
 
-        <div
-          className="relative flex flex-col flex-1 overflow-hidden"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <AnimatePresence mode="popLayout" initial={false}>
-            {isMain
-? (
-              <motion.div
-                key="main-nav"
-                className="flex flex-1 flex-col overflow-hidden"
-                initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                transition={DRILL_TRANSITION}
-              >
-                <WorkspaceSidebar />
-
-                <div className="shrink-0 border-t border-sidebar-border px-3 py-2 flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => navigateTo('settings')}
-                    data-testid="settings-btn"
-                    className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors"
+          <div
+            className="relative flex flex-col flex-1 overflow-hidden"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            <AnimatePresence mode="popLayout" initial={false}>
+              {isMain
+                ? (
+                  <motion.div
+                    key="main-nav"
+                    className="flex flex-1 flex-col overflow-hidden"
+                    initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                    transition={DRILL_TRANSITION}
                   >
-                    <SettingsIcon className="size-4" aria-hidden="true" />
-                    <span>设置</span>
-                  </button>
-                </div>
-              </motion.div>
-            )
-: (
-              <motion.div
-                key="settings-nav"
-                className="flex flex-1 flex-col overflow-hidden"
-                initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                transition={DRILL_TRANSITION}
-              >
-                <SettingsSidebar />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+                    <WorkspaceSidebar />
+
+                    <div className="shrink-0 border-t border-sidebar-border px-3 py-2 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => navigateTo('settings')}
+                        data-testid="settings-btn"
+                        className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors"
+                      >
+                        <SettingsIcon className="size-4" aria-hidden="true" />
+                        <span>设置</span>
+                      </button>
+                    </div>
+                  </motion.div>
+                )
+                : (
+                  <motion.div
+                    key="settings-nav"
+                    className="flex flex-1 flex-col overflow-hidden"
+                    initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
+                    transition={DRILL_TRANSITION}
+                  >
+                    <SettingsSidebar />
+                  </motion.div>
+                )}
+            </AnimatePresence>
+          </div>
         </aside>
 
-      <ResizeHandle
-        direction="horizontal"
-        value={sidebarWidth}
-        onChange={setSidebarWidth}
-        onDragStart={() => setDragging('sidebar')}
-        onDragEnd={() => setDragging(null)}
-        min={SIDEBAR.min}
-        max={SIDEBAR.max}
-        className="bg-background"
-      />
+        <ResizeHandle
+          direction="horizontal"
+          value={sidebarWidth}
+          onChange={setSidebarWidth}
+          onDragStart={() => setDragging('sidebar')}
+          onDragEnd={() => setDragging(null)}
+          min={SIDEBAR.min}
+          max={SIDEBAR.max}
+          className="bg-background"
+        />
 
-      {/* ── Center column ────────────────────────────── */}
-      <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-        {header}
-        <main className="flex-1 bg-background overflow-hidden">
-          {isMain ? children : <SettingsContent />}
-        </main>
+        {/* ── Center column ────────────────────────────── */}
+        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+          <div style={{ display: isMain ? undefined : 'none' }}>
+            {header}
+          </div>
+          <main className="flex-1 bg-background overflow-hidden">
+            {isMain ? children : <SettingsContent />}
+          </main>
 
-        {/* Bottom panel — only renders if content is provided AND panel is open */}
-        <div style={{ display: isMain ? undefined : 'none' }}>
-          {bottomPanelOpen && panel !== undefined && (
-            <ResizeHandle
-              direction="vertical"
-              value={bottomPanelHeight}
-              onChange={setBottomPanelHeight}
-              onDragStart={() => setDragging('panel')}
-              onDragEnd={() => setDragging(null)}
-              min={PANEL.min}
-              max={PANEL.max}
-              inverted
-              className="bg-background"
-            />
-          )}
-          <AnimatePresence initial={false}>
+          {/* Bottom panel — only renders if content is provided AND panel is open */}
+          <div style={{ display: isMain ? undefined : 'none' }}>
             {bottomPanelOpen && panel !== undefined && (
-              <motion.div
-                key="bottom-panel"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: bottomPanelHeight, opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={dragging === 'panel' ? INSTANT : SPRING}
-                className="bg-background border-t border-border overflow-hidden shrink-0"
-              >
-                <div style={{ height: bottomPanelHeight }}>{panel}</div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-
-      {/* ── Right Aside — only renders if content is provided AND aside is open ── */}
-      <div className="flex" style={{ display: isMain ? 'flex' : 'none' }}>
-        <AnimatePresence initial={false}>
-          {asideOpen && aside !== undefined && (
-            <>
               <ResizeHandle
-                direction="horizontal"
-                value={asideWidth}
-                onChange={setAsideWidth}
-                onDragStart={() => setDragging('aside')}
+                direction="vertical"
+                value={bottomPanelHeight}
+                onChange={setBottomPanelHeight}
+                onDragStart={() => setDragging('panel')}
                 onDragEnd={() => setDragging(null)}
-                min={ASIDE.min}
-                max={ASIDE.max}
+                min={PANEL.min}
+                max={PANEL.max}
                 inverted
                 className="bg-background"
               />
-              <motion.aside
-                key="aside"
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: asideWidth, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={dragging === 'aside' ? INSTANT : SPRING}
-                className="flex shrink-0 overflow-hidden border-l border-border bg-background"
-              >
-                <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
-                  {aside}
-                </div>
-              </motion.aside>
-            </>
-          )}
-        </AnimatePresence>
-      </div>
+            )}
+            <AnimatePresence initial={false}>
+              {bottomPanelOpen && panel !== undefined && (
+                <motion.div
+                  key="bottom-panel"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: bottomPanelHeight, opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={dragging === 'panel' ? INSTANT : SPRING}
+                  className="bg-background border-t border-border overflow-hidden shrink-0"
+                >
+                  <div style={{ height: bottomPanelHeight }}>{panel}</div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* ── Right Aside — only renders if content is provided AND aside is open ── */}
+        <div className="flex" style={{ display: isMain ? 'flex' : 'none' }}>
+          <AnimatePresence initial={false}>
+            {asideOpen && aside !== undefined && (
+              <>
+                <ResizeHandle
+                  direction="horizontal"
+                  value={asideWidth}
+                  onChange={setAsideWidth}
+                  onDragStart={() => setDragging('aside')}
+                  onDragEnd={() => setDragging(null)}
+                  min={ASIDE.min}
+                  max={ASIDE.max}
+                  inverted
+                  className="bg-background"
+                />
+                <motion.aside
+                  key="aside"
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: asideWidth, opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={dragging === 'aside' ? INSTANT : SPRING}
+                  className="flex shrink-0 overflow-hidden border-l border-border bg-background"
+                >
+                  <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
+                    {aside}
+                  </div>
+                </motion.aside>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
       {import.meta.env.DEV && <DevBottomBar />}
     </div>

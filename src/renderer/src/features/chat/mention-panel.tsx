@@ -63,17 +63,19 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
   const [activeIndex, setActiveIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
 
+  // Build the fzf index once per items change; reuse for each query.
+  const fzfIndex = useMemo(
+    () => new Fzf(items, { selector: (item: MentionItem) => item.path, limit: MAX_RESULTS }),
+    [items],
+  )
+
   // Fuzzy search with fzf
   const results = useMemo(() => {
     if (!query) {
       return items.slice(0, MAX_RESULTS).map(item => ({ item, positions: new Set<number>() }))
     }
-    const fzf = new Fzf(items, {
-      selector: item => item.path,
-      limit: MAX_RESULTS,
-    })
-    return fzf.find(query)
-  }, [items, query])
+    return fzfIndex.find(query)
+  }, [fzfIndex, query, items])
 
   // Reset active index when results change
   useEffect(() => {

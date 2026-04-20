@@ -105,12 +105,14 @@ export function useChatSession(chatSessionId: string | null, options?: {
     chatRef.current = chat
   }, [chat])
 
-  const [isReady, setIsReady] = useState(false)
+  // Lazily initialise — if a loader already provided rows for THIS session, we
+  // are ready before the first paint.  useState's initialiser runs exactly once
+  // so this never causes an extra re-render when chatSessionId later changes.
+  const [isReady, setIsReady] = useState(() => !!(chatSessionId && initialMessageRows?.length))
 
   // Initial load + resume if a draft is in flight.
-  // If initialMessageRows were pre-loaded (e.g. from a route loader), mark
-  // ready immediately so the UI shows content without waiting for this fetch.
-  // The fetch still runs to hydrate fresh data and check for active streams.
+  // When initialMessageRows were pre-loaded we stay ready throughout; the IPC
+  // fetch runs only to hydrate fresher data and resume any in-flight stream.
   useEffect(() => {
     if (!chatSessionId || !ipc) {
       chatRef.current.setMessages([])
@@ -118,10 +120,11 @@ export function useChatSession(chatSessionId: string | null, options?: {
       return
     }
 
-    // Pre-loaded data → already ready. No flash.
-    // No pre-loaded data → reset so the UI shows the loading state until fetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- initialMessageRows changes with chatSessionId
-    setIsReady(!!initialMessageRows)
+    // If we have pre-loaded rows for this exact session we are already ready —
+    // do NOT reset to false before the fetch completes (that is the flash).
+    if (!initialMessageRows?.length) {
+      setIsReady(false)
+    }
 
     let cancelled = false
     ipc.chat
