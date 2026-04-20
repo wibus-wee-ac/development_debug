@@ -1,21 +1,16 @@
-// Input: ipc.chat IPC surface, chat:message-chunk / chat:message-finalized events
+// Input: ipc.chat IPC surface, chat:response-event (ResponseStreamEvent envelope)
 // Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by our main-process ChatEngine
 // Position: Feature helper for chat feature, bridges AI SDK's useChat to Electron IPC
 
-import { ipc } from '@renderer/lib/ipc'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
+import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
 
-interface ChunkPayload {
+import { ipc } from '@renderer/lib/ipc'
+
+interface ChatResponseEventPayload {
   chatSessionId: string
   messageId: string
-  chunk: UIMessageChunk
-}
-
-interface FinalizedPayload {
-  chatSessionId: string
-  messageId: string
-  status: 'streaming' | 'complete' | 'aborted' | 'failed'
-  errorText: string | null
+  event: ResponseStreamEvent
 }
 
 function extractText(parts: UIMessage['parts']): string {
@@ -26,10 +21,110 @@ function extractText(parts: UIMessage['parts']): string {
 }
 
 /**
- * Build a ReadableStream that bridges chat:message-chunk / chat:message-finalized
- * IPC events for a given chat session. `onReady` is invoked after subscriptions
- * are attached — callers use it to kick off the action that causes the engine to
- * emit events (e.g. `ipc.chat.send`), guaranteeing no chunk is missed.
+ * Convert a single `ResponseStreamEvent` into zero or more AI SDK
+ * `UIMessageChunk` objects for `useChat` consumption.
+ *
+ * State is kept across calls via the `state` object so we can track open
+ * text / reasoning spans (needed for start/end pairs).
+ */
+interface ConverterState {
+  textItemId: string | null
+  reasoningItemId: string | null
+}
+
+function responsesEventToUIMessageChunks(
+  event: ResponseStreamEvent,
+  state: ConverterState,
+): UIMessageChunk[] {
+  const chunks: UIMessageChunk[] = []
+
+  switch (event.type) {
+    case 'response.output_item.added': {
+      if (event.item.type === 'message') {
+        state.textItemId = event.item.id
+        chunks.push({ type: 'text-start', id: event.item.id })
+      }
+      else if (event.item.type === 'function_call') {
+        chunks.push({
+          type: 'tool-input-start',
+          toolCallId: event.item.call_id,
+          toolName: event.item.name,
+        })
+      }
+      break
+    }
+    case 'response.output_text.delta': {
+      chunks.push({ type: 'text-delta', id: event.item_id, delta: event.delta })
+      break
+    }
+    case 'response.output_item.done': {
+      if (event.item.type === 'message') {
+        chunks.push({ type: 'text-end', id: event.item.id })
+        state.textItemId = null
+      }
+      else if (event.item.type === 'function_call' && event.item.status === 'completed') {
+        // arguments encodes { input, output } as JSON (ACP extension)
+        try {
+          const decoded = JSON.parse(event.item.arguments) as { input: unknown, output: unknown }
+          if (decoded.input !== undefined) {
+            chunks.push({
+              type: 'tool-input-available',
+              toolCallId: event.item.call_id,
+              toolName: event.item.name,
+              input: typeof decoded.input === 'string' ? decoded.input : JSON.stringify(decoded.input),
+            })
+          }
+          if (decoded.output !== null && decoded.output !== undefined) {
+            chunks.push({
+              type: 'tool-output-available',
+              toolCallId: event.item.call_id,
+              output: typeof decoded.output === 'string' ? decoded.output : JSON.stringify(decoded.output),
+            })
+          }
+        }
+        catch {
+          chunks.push({
+            type: 'tool-input-available',
+            toolCallId: event.item.call_id,
+            toolName: event.item.name,
+            input: event.item.arguments,
+          })
+        }
+      }
+      break
+    }
+    case 'response.reasoning_summary_part.added': {
+      state.reasoningItemId = event.item_id
+      chunks.push({ type: 'reasoning-start', id: event.item_id })
+      break
+    }
+    case 'response.reasoning_summary_text.delta': {
+      chunks.push({ type: 'reasoning-delta', id: event.item_id, delta: event.delta })
+      break
+    }
+    case 'response.reasoning_summary_part.done': {
+      chunks.push({ type: 'reasoning-end', id: event.item_id })
+      state.reasoningItemId = null
+      break
+    }
+    case 'response.completed': {
+      chunks.push({ type: 'finish', finishReason: 'stop' })
+      break
+    }
+    default:
+      break
+  }
+
+  return chunks
+}
+
+/**
+ * Build a ReadableStream bridging `chat:response-event` IPC events for a given
+ * chat session into a `UIMessageChunk` stream for AI SDK's `useChat`.
+ *
+ * `onReady` is invoked after subscriptions are attached — callers use it to
+ * kick off the action that causes the engine to emit events, guaranteeing no
+ * event is missed.
  */
 function buildChunkStream(
   chatSessionId: string,
@@ -38,47 +133,56 @@ function buildChunkStream(
 ): ReadableStream<UIMessageChunk> {
   const { readable, writable } = new TransformStream<UIMessageChunk, UIMessageChunk>()
   const writer = writable.getWriter()
+  const state: ConverterState = { textItemId: null, reasoningItemId: null }
 
   let closed = false
   const closeCleanly = () => {
-    if (closed) { return }
+    if (closed) {
+      return
+    }
     closed = true
     writer.close().catch(() => {})
   }
   const closeWithError = (err: unknown) => {
-    if (closed) { return }
+    if (closed) {
+      return
+    }
     closed = true
     writer.abort(err).catch(() => {})
   }
 
-  const offChunk = window.electron.ipcRenderer.on(
-    'chat:message-chunk',
-    (_: unknown, data: ChunkPayload) => {
-      if (data.chatSessionId !== chatSessionId || closed) { return }
-      writer.write(data.chunk).catch(() => {})
-    },
-  )
-
-  const offFinal = window.electron.ipcRenderer.on(
-    'chat:message-finalized',
-    (_: unknown, data: FinalizedPayload) => {
-      if (data.chatSessionId !== chatSessionId || closed) { return }
-      offChunk()
-      offFinal()
-      if (data.status === 'failed') {
-        closeWithError(new Error(data.errorText ?? 'chat failed'))
+  const offEvent = window.electron.ipcRenderer.on(
+    'chat:response-event',
+    (_: unknown, data: ChatResponseEventPayload) => {
+      if (data.chatSessionId !== chatSessionId || closed) {
+        return
       }
-      else {
+      const { event } = data
+
+      for (const chunk of responsesEventToUIMessageChunks(event, state)) {
+        writer.write(chunk).catch(() => {})
+      }
+
+      if (event.type === 'response.completed') {
+        offEvent()
         closeCleanly()
+      }
+      else if (event.type === 'response.failed') {
+        offEvent()
+        const msg = 'error' in event.response && event.response.error?.message
+          ? event.response.error.message
+          : 'chat failed'
+        closeWithError(new Error(msg))
       }
     },
   )
 
   if (abortSignal) {
     const onAbort = () => {
-      if (closed) { return }
-      offChunk()
-      offFinal()
+      if (closed) {
+        return
+      }
+      offEvent()
       ipc?.chat.abort(chatSessionId).catch(() => {})
       closeCleanly()
     }
@@ -93,8 +197,7 @@ function buildChunkStream(
   Promise.resolve()
     .then(() => onReady())
     .catch((err) => {
-      offChunk()
-      offFinal()
+      offEvent()
       closeWithError(err)
     })
 
@@ -103,9 +206,9 @@ function buildChunkStream(
 
 /**
  * Transport that pipes AI SDK's useChat through our ChatEngine IPC surface.
- * sendMessages → `ipc.chat.send`; chunks/finalize events are converted back
- * into a `UIMessageChunk` ReadableStream that useChat's assembler consumes.
- * reconnectToStream resumes the in-flight draft after navigation/reload.
+ * sendMessages → `ipc.chat.send`; response events are converted to a
+ * `UIMessageChunk` ReadableStream that useChat's assembler consumes.
+ * reconnectToStream resumes an in-flight draft after navigation/reload.
  */
 export function createIpcChatTransport(chatSessionId: string): ChatTransport<UIMessage> {
   return {

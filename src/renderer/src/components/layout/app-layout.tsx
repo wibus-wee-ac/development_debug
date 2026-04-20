@@ -8,11 +8,13 @@ import { SettingsContent, SettingsSidebar } from '@renderer/features/settings'
 import { WorkspaceSidebar } from '@renderer/features/workspace'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { useLayoutStore } from '@renderer/store/layout'
+import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
 import { SettingsIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { ReactNode } from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useMatchRoute } from '@tanstack/react-router'
 
 const SIDEBAR = { min: 160, max: 480 }
 const ASIDE = { min: 200, max: 560 }
@@ -40,6 +42,32 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   const sidebarView = useSidebarNavStore(s => s.view)
   const navigateTo = useSidebarNavStore(s => s.navigateTo)
   const back = useSidebarNavStore(s => s.back)
+  const markUnread = useSessionActivityStore(s => s.markUnread)
+  const matchRoute = useMatchRoute()
+
+  // Global listener: mark sessions with finished responses as unread
+  // when they are not the currently active session
+  useEffect(() => {
+    const off = window.electron.ipcRenderer.on(
+      'chat:response-event',
+      (_: unknown, data: { chatSessionId: string, event: { type: string } }) => {
+        if (
+          data.event.type !== 'response.completed'
+          && data.event.type !== 'response.failed'
+        ) {
+          return
+        }
+        const isActive = !!matchRoute({
+          to: '/chat/$sessionId',
+          params: { sessionId: data.chatSessionId },
+        })
+        if (!isActive) {
+          markUnread(data.chatSessionId)
+        }
+      },
+    )
+    return () => { off() }
+  }, [markUnread, matchRoute])
 
   const toggleSettings = useCallback(() => {
     if (sidebarView === 'settings') {

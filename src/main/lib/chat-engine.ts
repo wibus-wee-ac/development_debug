@@ -1,6 +1,6 @@
 // Input: AcpConnectionManager (transport), drizzle-orm DB, ai/readUIMessageStream, @shared preferences
 // Output: ChatEngine singleton — sole orchestrator for chat sessions; owns transactional
-//         session+user+assistant writes, chunk broadcast, debounced DB flush, abort/failure semantics
+//         session+user+assistant writes, OpenAI-style response-event broadcast, debounced DB flush, abort/failure semantics
 // Position: Main-process core service (L2) used by ChatService IPC layer
 
 import { randomUUID } from 'node:crypto'
@@ -19,6 +19,7 @@ import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
 import { messages, sessions, workspaces } from '../db/schema'
 import { AcpConnectionManager } from './acp-connection'
+import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -475,36 +476,18 @@ export class ChatEngine {
     }
     this.drafts.set(chatSessionId, draft)
 
-    // Broadcasts happen after commit so subscribers see durable state
-    this.broadcast('chat:message-created', {
-      chatSessionId,
-      message: {
-        id: userMsgId,
-        role: 'user',
-        status: 'complete',
-        content: JSON.stringify(userMessage),
-      },
-    })
-    this.broadcast('chat:message-created', {
-      chatSessionId,
-      message: {
-        id: assistantMsgId,
-        role: 'assistant',
-        status: 'streaming',
-        content: JSON.stringify(assistantMessage),
-      },
-    })
-
     return draft
   }
 
   /**
    * Drive the transport chunk stream for a prepared draft.
    *
-   *  - Forwards each chunk to renderer subscribers as `chat:message-chunk`
+   *  - Emits `response.created` before streaming starts
+   *  - Broadcasts each `ResponseStreamEvent` on `chat:response-event`
    *  - Feeds an internal `readUIMessageStream` to maintain the DB snapshot
-   *  - On completion / error / cancel: flushes final status, broadcasts
-   *    `chat:message-finalized`, clears the draft slot
+   *  - On completion: broadcasts `response.completed`
+   *  - On error/cancel: broadcasts `response.failed` or `response.completed`
+   *    (with appropriate status), then clears the draft slot
    */
   private async runStream(draft: Draft, userText: string): Promise<void> {
     const pipe = new TransformStream<UIMessageChunk, UIMessageChunk>()
@@ -527,18 +510,25 @@ export class ChatEngine {
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
 
+    // Announce the start of this response turn
+    this.broadcastResponseEvent(draft, {
+      type: 'response.created',
+      sequence_number: 0,
+      // `response` below satisfies the shape expected by the renderer
+      // (which only reads `type`); not sent to OpenAI, only over local IPC
+      response: { id: draft.messageId } as ResponseStreamEvent extends { type: 'response.created', response: infer R } ? R : never,
+    } as Extract<ResponseStreamEvent, { type: 'response.created' }>)
+
     try {
-      for await (const chunk of AcpConnectionManager.getInstance().prompt(
+      for await (const event of AcpConnectionManager.getInstance().prompt(
         draft.agentId,
         draft.acpSessionId,
         userText,
       )) {
-        this.broadcast('chat:message-chunk', {
-          chatSessionId: draft.chatSessionId,
-          messageId: draft.messageId,
-          chunk,
-        })
-        await writer.write(chunk)
+        this.broadcastResponseEvent(draft, event)
+        for (const chunk of responsesEventToUIMessageChunks(event)) {
+          await writer.write(chunk)
+        }
       }
       await writer.close()
     }
@@ -563,12 +553,25 @@ export class ChatEngine {
     await this.flushNow(draft, finalStatus, finalError)
     this.drafts.delete(draft.chatSessionId)
 
-    this.broadcast('chat:message-finalized', {
-      chatSessionId: draft.chatSessionId,
-      messageId: draft.messageId,
-      status: finalStatus,
-      errorText: finalError,
-    })
+    // Broadcast Turn-end event
+    if (finalStatus === 'complete' || finalStatus === 'aborted') {
+      this.broadcastResponseEvent(draft, {
+        type: 'response.completed',
+        sequence_number: 0,
+        response: {} as Extract<ResponseStreamEvent, { type: 'response.completed' }>['response'],
+      } as Extract<ResponseStreamEvent, { type: 'response.completed' }>)
+    }
+    else {
+      this.broadcastResponseEvent(draft, {
+        type: 'response.failed',
+        sequence_number: 0,
+        response: {
+          error: finalError
+            ? ({ type: 'server_error', code: 'chat_failed', message: finalError } as unknown as Extract<ResponseStreamEvent, { type: 'response.failed' }>['response']['error'])
+            : null,
+        } as Extract<ResponseStreamEvent, { type: 'response.failed' }>['response'],
+      } as Extract<ResponseStreamEvent, { type: 'response.failed' }>)
+    }
   }
 
   private scheduleFlush(draft: Draft): void {
@@ -612,6 +615,15 @@ export class ChatEngine {
     })
   }
 
+  private broadcastResponseEvent(draft: Draft, event: ResponseStreamEvent): void {
+    const payload: ChatResponseEventPayload = {
+      chatSessionId: draft.chatSessionId,
+      messageId: draft.messageId,
+      event,
+    }
+    this.broadcast('chat:response-event', payload as unknown as { chatSessionId: string, [k: string]: unknown })
+  }
+
   private broadcast(
     channel: string,
     payload: { chatSessionId: string, [k: string]: unknown },
@@ -638,6 +650,99 @@ export class ChatEngine {
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000)
+}
+
+/**
+ * Convert a single `ResponseStreamEvent` event into zero or more AI SDK
+ * `UIMessageChunk` objects for internal DB-persistence use only.
+ *
+ * This keeps the existing `readUIMessageStream` pipeline working without
+ * any dependency on the IPC wire format.
+ */
+function responsesEventToUIMessageChunks(event: ResponseStreamEvent): UIMessageChunk[] {
+  const chunks: UIMessageChunk[] = []
+
+  switch (event.type) {
+    case 'response.output_item.added': {
+      if (event.item.type === 'message') {
+        chunks.push({ type: 'text-start', id: event.item.id })
+      }
+      else if (event.item.type === 'function_call') {
+        chunks.push({
+          type: 'tool-input-start',
+          toolCallId: event.item.call_id,
+          toolName: event.item.name,
+        })
+      }
+      break
+    }
+    case 'response.output_text.delta': {
+      chunks.push({ type: 'text-delta', id: event.item_id, delta: event.delta })
+      break
+    }
+    case 'response.output_item.done': {
+      if (event.item.type === 'message') {
+        chunks.push({ type: 'text-end', id: event.item.id })
+      }
+      else if (event.item.type === 'function_call' && event.item.status === 'completed') {
+        // arguments encodes { input, output } as JSON (ACP extension)
+        try {
+          const decoded = JSON.parse(event.item.arguments) as { input: unknown, output: unknown }
+          if (decoded.input !== undefined) {
+            chunks.push({
+              type: 'tool-input-available',
+              toolCallId: event.item.call_id,
+              toolName: event.item.name,
+              input: typeof decoded.input === 'string' ? decoded.input : JSON.stringify(decoded.input),
+            })
+          }
+          if (decoded.output !== null && decoded.output !== undefined) {
+            chunks.push({
+              type: 'tool-output-available',
+              toolCallId: event.item.call_id,
+              output: typeof decoded.output === 'string' ? decoded.output : JSON.stringify(decoded.output),
+            })
+          }
+        }
+        catch {
+          chunks.push({
+            type: 'tool-input-available',
+            toolCallId: event.item.call_id,
+            toolName: event.item.name,
+            input: event.item.arguments,
+          })
+        }
+      }
+      break
+    }
+    case 'response.reasoning_summary_part.added': {
+      chunks.push({ type: 'reasoning-start', id: event.item_id })
+      break
+    }
+    case 'response.reasoning_summary_text.delta': {
+      chunks.push({ type: 'reasoning-delta', id: event.item_id, delta: event.delta })
+      break
+    }
+    case 'response.reasoning_summary_part.done': {
+      chunks.push({ type: 'reasoning-end', id: event.item_id })
+      break
+    }
+    case 'response.completed': {
+      chunks.push({
+        type: 'finish',
+        finishReason: 'stop',
+      })
+      break
+    }
+    case 'response.failed': {
+      // failure handled at the caller level; no UI chunk needed
+      break
+    }
+    default:
+      break
+  }
+
+  return chunks
 }
 
 function rowToChatMessage(row: Message): ChatMessage {

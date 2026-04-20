@@ -1,6 +1,6 @@
-// Input: @agentclientprotocol/sdk, AcpProcessManager, AcpStreamConverter, Electron WebContents
+// Input: @agentclientprotocol/sdk, AcpProcessManager, AcpResponsesConverter, Electron WebContents
 // Output: AcpConnectionManager singleton — manages ACP ClientSideConnection instances,
-//         exposes prompt() as AsyncGenerator<UIMessageChunk>, broadcasts title events
+//         exposes prompt() as AsyncGenerator<ResponseStreamEvent>, broadcasts title events
 //         to subscriber set (supports multiple windows)
 // Position: Main-process transport bridge between spawned agents and upper layers (ChatEngine)
 
@@ -21,11 +21,10 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
-import type { UIMessageChunk } from 'ai'
-
+import type { ResponseStreamEvent } from './chat-provider'
 import type { ProcessEntry } from './acp-process-manager'
 import { AcpProcessManager } from './acp-process-manager'
-import { AcpStreamConverter } from './acp-stream-converter'
+import { AcpResponsesConverter } from './acp-responses-converter'
 
 // ── Session state ─────────────────────────────────────────────────────────────
 
@@ -37,16 +36,16 @@ export interface AcpSessionState {
 // ── Chunk queue (async pipe for prompt generator) ─────────────────────────────
 
 class ChunkQueue {
-  private buffered: UIMessageChunk[] = []
+  private buffered: ResponseStreamEvent[] = []
   private waiters: Array<{
-    resolve: (value: UIMessageChunk | null) => void
+    resolve: (value: ResponseStreamEvent | null) => void
     reject: (err: Error) => void
   }> = []
 
   private closed = false
   private failure: Error | null = null
 
-  push(chunk: UIMessageChunk): void {
+  push(chunk: ResponseStreamEvent): void {
     if (this.closed) {
       return
     }
@@ -80,7 +79,7 @@ class ChunkQueue {
     }
   }
 
-  async next(): Promise<UIMessageChunk | null> {
+  async next(): Promise<ResponseStreamEvent | null> {
     if (this.buffered.length > 0) {
       return this.buffered.shift()!
     }
@@ -90,7 +89,7 @@ class ChunkQueue {
     if (this.closed) {
       return null
     }
-    return new Promise<UIMessageChunk | null>((resolve, reject) => {
+    return new Promise<ResponseStreamEvent | null>((resolve, reject) => {
       this.waiters.push({ resolve, reject })
     })
   }
@@ -99,7 +98,7 @@ class ChunkQueue {
 // ── Connection entry ──────────────────────────────────────────────────────────
 
 interface SessionChannel {
-  converter: AcpStreamConverter
+  converter: AcpResponsesConverter
   queue: ChunkQueue
 }
 
@@ -249,9 +248,9 @@ export class AcpConnectionManager {
     agentId: string,
     sessionId: string,
     message: string,
-  ): AsyncGenerator<UIMessageChunk, void, void> {
+  ): AsyncGenerator<ResponseStreamEvent, void, void> {
     const conn = this.getConnection(agentId)
-    const converter = new AcpStreamConverter()
+    const converter = new AcpResponsesConverter()
     const queue = new ChunkQueue()
     conn.channels.set(sessionId, { converter, queue })
 

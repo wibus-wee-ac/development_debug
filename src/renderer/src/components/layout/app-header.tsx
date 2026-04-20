@@ -30,7 +30,7 @@ export function AppHeader({ title, workspace }: AppHeaderProps) {
     >
       <nav
         aria-label="Breadcrumb"
-        className="flex min-w-0 flex-1 items-center text-sm"
+        className="flex min-w-0 flex-1 items-center text-xs"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         {hasWorkspace && (

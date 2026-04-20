@@ -119,16 +119,19 @@ export function useChatSession(chatSessionId: string | null) {
   }, [chatSessionId])
 
   // Covers the "another window finishes a stream we weren't locally driving" case:
-  // on any finalize for this session while we're idle, resync from DB so content
+  // on any Turn-end for this session while we're idle, resync from DB so content
   // matches the backend snapshot.
   useEffect(() => {
     if (!chatSessionId || !ipc) {
       return
     }
     const off = window.electron.ipcRenderer.on(
-      'chat:message-finalized',
-      (_: unknown, data: { chatSessionId: string }) => {
+      'chat:response-event',
+      (_: unknown, data: { chatSessionId: string, event: { type: string } }) => {
         if (data.chatSessionId !== chatSessionId) {
+          return
+        }
+        if (data.event.type !== 'response.completed' && data.event.type !== 'response.failed') {
           return
         }
         const currentStatus = chatRef.current.status

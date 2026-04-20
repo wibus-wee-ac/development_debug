@@ -24,10 +24,11 @@ import {
   ZapIcon,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
+import { useSessionActivityStore } from '@renderer/store/session-activity'
 
 type Workspace = Awaited<ReturnType<typeof window.ipc.workspace.list>>[number]
 type Session = Awaited<ReturnType<typeof window.ipc.session.list>>[number]
@@ -57,6 +58,15 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   const matchRoute = useMatchRoute()
   const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId: session.id } })
   const queryClient = useQueryClient()
+  const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
+  const clearUnread = useSessionActivityStore(s => s.clearUnread)
+
+  // Clear unread badge when user navigates to this session
+  useEffect(() => {
+    if (isActive && isUnread) {
+      clearUnread(session.id)
+    }
+  }, [isActive, isUnread, clearUnread, session.id])
 
   const handleDelete = useCallback(async () => {
     await ipc?.session.delete(session.id)
@@ -77,6 +87,9 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
         className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 truncate text-sidebar-foreground/80"
       >
         <span className="flex-1 truncate">{session.title}</span>
+        {isUnread && !isActive && (
+          <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
+        )}
         <span className="shrink-0 text-[11px] text-muted-foreground/50">
           {formatRelativeTime(session.updatedAt)}
         </span>

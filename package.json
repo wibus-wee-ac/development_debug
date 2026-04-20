@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",
+    "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/react": "^3.0.170",
     "@base-ui/react": "^1.4.0",
     "@cradle/ipc": "workspace:*",
@@ -57,6 +58,7 @@
     "ignore": "^7.0.5",
     "lucide-react": "^1.8.0",
     "motion": "^12.38.0",
+    "openai": "^6.34.0",
     "react-day-picker": "^9.14.0",
     "shadcn": "^4.2.0",
     "streamdown": "^2.5.0",
