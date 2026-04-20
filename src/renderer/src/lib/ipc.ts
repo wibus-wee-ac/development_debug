@@ -6,4 +6,6 @@ import { createIpcProxy } from '@cradle/ipc/client'
 
 type IpcServices = typeof window.ipc
 
-export const ipc = createIpcProxy<IpcServices>(window.electron.ipcRenderer)
+export const ipc = createIpcProxy<IpcServices>(window.electron.ipcRenderer, {
+  captureStack: true,
+})

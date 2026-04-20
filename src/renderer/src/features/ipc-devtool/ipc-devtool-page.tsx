@@ -1,33 +1,62 @@
-// Input: ipc-devtool sub-components (filter bar, table, detail), initialisation hook, keyboard hook
-// Output: IpcDevtoolPage — full-screen shell that wires preload subscriptions and shortcuts to the three panes
+// Input: IPC/ACP devtool sub-components, initialization hooks, keyboard hook
+// Output: IpcDevtoolPage — full-screen shell that switches between IPC traces and ACP runtime output
 // Position: Top-level component rendered by the /devtool TanStack Router route
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
+import { AcpEventDetail } from './acp-event-detail'
+import { AcpEventsTable } from './acp-events-table'
+import { AcpFilterBar } from './acp-filter-bar'
 import { IpcEventDetail } from './ipc-event-detail'
 import { IpcEventsTable } from './ipc-events-table'
 import { IpcFilterBar } from './ipc-filter-bar'
+import { useAcpDevtoolStore } from './use-acp-events'
+import { useAcpKeyboard } from './use-acp-keyboard'
 import { useIpcDevtoolStore } from './use-ipc-events'
 import { useIpcKeyboard } from './use-ipc-keyboard'
 
 export function IpcDevtoolPage() {
-  const initialize = useIpcDevtoolStore(s => s.initialize)
+  const initializeIpc = useIpcDevtoolStore(s => s.initialize)
+  const initializeAcp = useAcpDevtoolStore(s => s.initialize)
+  const [mode, setMode] = useState<'ipc' | 'acp'>('ipc')
 
   useEffect(() => {
-    void initialize()
-  }, [initialize])
+    void Promise.all([initializeIpc(), initializeAcp()])
+  }, [initializeAcp, initializeIpc])
 
-  useIpcKeyboard()
+  useIpcKeyboard(mode === 'ipc')
+  useAcpKeyboard(mode === 'acp')
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <IpcFilterBar />
+      <div className="flex shrink-0 items-center gap-1 border-b border-border bg-background px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+        <button
+          type="button"
+          onClick={() => setMode('ipc')}
+          className={mode === 'ipc'
+            ? 'rounded border border-border bg-muted px-2 py-1 text-foreground'
+            : 'rounded border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40'}
+        >
+          IPC
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('acp')}
+          className={mode === 'acp'
+            ? 'rounded border border-border bg-muted px-2 py-1 text-foreground'
+            : 'rounded border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40'}
+        >
+          ACP
+        </button>
+        <div className="ml-auto">/devtool</div>
+      </div>
+      {mode === 'ipc' ? <IpcFilterBar /> : <AcpFilterBar />}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-[3] overflow-hidden border-r border-border">
-          <IpcEventsTable />
+          {mode === 'ipc' ? <IpcEventsTable /> : <AcpEventsTable />}
         </div>
         <div className="flex-[2] overflow-hidden">
-          <IpcEventDetail />
+          {mode === 'ipc' ? <IpcEventDetail /> : <AcpEventDetail />}
         </div>
       </div>
     </div>

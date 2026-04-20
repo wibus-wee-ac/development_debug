@@ -32,6 +32,7 @@ export type IpcServices = MergeIpcService<{
 export type { Message, Session, Workspace } from './db/schema'
 export type { AcpAgent, AcpAuditEntry } from './db/schema'
 export type { AcpSessionState } from './lib/acp-connection'
+export type { AcpDevtoolEvent } from '@cradle/ipc'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'
 export type { ChatMessage, EnsureLiveResult } from './lib/chat-engine'

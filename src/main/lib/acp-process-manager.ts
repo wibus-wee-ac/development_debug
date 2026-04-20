@@ -1,14 +1,16 @@
-// Input: child_process.spawn, ACP agent DB records
+// Input: child_process.spawn, ACP agent DB records, ACP devtool store
 // Output: AcpProcessManager singleton — spawn, track, monitor, and kill
-//         agent sub-processes; provides resource metrics for Dev mode
+//         agent sub-processes; provides resource metrics and raw runtime logs in Dev mode
 // Position: Main-process utility; consumed by acp-connection.ts and AcpService
 
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
-import { Readable, Writable } from 'node:stream'
+import { Writable } from 'node:stream'
 
 import { app } from 'electron'
+
+import { getAcpDevtoolStore } from './acp-devtool-store'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -48,9 +50,94 @@ function toWebWritable(nodeWritable: NodeJS.WritableStream): WritableStream<Uint
   return Writable.toWeb(nodeWritable as Writable) as WritableStream<Uint8Array>
 }
 
-/** Convert Node Readable → Web ReadableStream<Uint8Array>. */
-function toWebReadable(nodeReadable: NodeJS.ReadableStream): ReadableStream<Uint8Array> {
-  return Readable.toWeb(nodeReadable as Readable) as ReadableStream<Uint8Array>
+interface LineCollector {
+  consume: (text: string) => void
+  flush: () => void
+}
+
+function createLineCollector(onLine: (line: string) => void): LineCollector {
+  let carry = ''
+
+  const pushLines = (input: string): void => {
+    const normalized = input.replace(/\r/g, '')
+    carry += normalized
+    const lines = carry.split('\n')
+    carry = lines.pop() ?? ''
+    for (const line of lines) {
+      if (line.trim()) {
+        onLine(line)
+      }
+    }
+  }
+
+  return {
+    consume: pushLines,
+    flush: () => {
+      if (carry.trim()) {
+        onLine(carry)
+      }
+      carry = ''
+    },
+  }
+}
+
+/**
+ * Convert a Node readable to a Web ReadableStream while mirroring raw chunks to
+ * an observer callback.
+ */
+function createObservedReadable(
+  nodeReadable: NodeJS.ReadableStream,
+  onChunk: (chunk: Uint8Array) => void,
+): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      let closed = false
+
+      const cleanup = (): void => {
+        nodeReadable.removeListener('data', handleData)
+        nodeReadable.removeListener('end', handleEnd)
+        nodeReadable.removeListener('close', handleEnd)
+        nodeReadable.removeListener('error', handleError)
+      }
+
+      const close = (): void => {
+        if (closed) {
+          return
+        }
+        closed = true
+        cleanup()
+        controller.close()
+      }
+
+      const handleData = (chunk: string | Buffer): void => {
+        if (closed) {
+          return
+        }
+        const bytes = chunk instanceof Uint8Array ? chunk : Buffer.from(chunk)
+        onChunk(bytes)
+        controller.enqueue(new Uint8Array(bytes))
+      }
+
+      const handleEnd = (): void => {
+        close()
+      }
+
+      const handleError = (error: unknown): void => {
+        if (closed) {
+          return
+        }
+        closed = true
+        cleanup()
+        controller.error(error)
+      }
+
+      nodeReadable.on('data', handleData)
+      nodeReadable.on('end', handleEnd)
+      nodeReadable.on('close', handleEnd)
+      nodeReadable.on('error', handleError)
+      nodeReadable.resume?.()
+    },
+  })
 }
 
 // ── Manager ───────────────────────────────────────────────────────────────────
@@ -121,27 +208,66 @@ export class AcpProcessManager {
       ...process.env as Record<string, string>,
       ...opts.env,
     }
+    const cwd = opts.cwd ?? app.getPath('home')
 
     const proc = spawn(command, finalArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: mergedEnv,
-      cwd: opts.cwd ?? app.getPath('home'),
+      cwd,
       // Don't let the child keep the app alive
       detached: false,
     })
 
+    const devtoolStore = getAcpDevtoolStore()
     const stderrBuf: string[] = []
     const stdinWeb = toWebWritable(proc.stdin!)
-    const stdoutWeb = toWebReadable(proc.stdout!)
+    const stdoutCollector = createLineCollector((line) => {
+      devtoolStore.record({
+        id: `${opts.agentId}:${Date.now()}:stdout:${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: Date.now(),
+        agentId: opts.agentId,
+        pid: proc.pid ?? null,
+        kind: 'output',
+        stream: 'stdout',
+        text: line,
+        command: command,
+        args: finalArgs,
+        cwd,
+        exitCode: null,
+        signal: null,
+      })
+    })
+    const stdoutWeb = createObservedReadable(proc.stdout!, (chunk) => {
+      stdoutCollector.consume(Buffer.from(chunk).toString('utf-8'))
+    })
 
     // Collect stderr for logging / Dev diagnostics
     proc.stderr?.setEncoding('utf-8')
+    const stderrCollector = createLineCollector((line) => {
+      pushStderr(stderrBuf, line)
+      devtoolStore.record({
+        id: `${opts.agentId}:${Date.now()}:stderr:${Math.random().toString(36).slice(2, 8)}`,
+        timestamp: Date.now(),
+        agentId: opts.agentId,
+        pid: proc.pid ?? null,
+        kind: 'output',
+        stream: 'stderr',
+        text: line,
+        command: command,
+        args: finalArgs,
+        cwd,
+        exitCode: null,
+        signal: null,
+      })
+    })
     proc.stderr?.on('data', (chunk: string) => {
-      for (const line of chunk.split('\n')) {
-        if (line.trim()) {
-          pushStderr(stderrBuf, line)
-        }
-      }
+      stderrCollector.consume(chunk)
+    })
+    proc.stderr?.on('end', () => {
+      stderrCollector.flush()
+    })
+    proc.stderr?.on('close', () => {
+      stderrCollector.flush()
     })
 
     const entry: ProcessEntry = {
@@ -154,10 +280,40 @@ export class AcpProcessManager {
     }
 
     this.processes.set(opts.agentId, entry)
+    devtoolStore.record({
+      id: `${opts.agentId}:${Date.now()}:spawn`,
+      timestamp: Date.now(),
+      agentId: opts.agentId,
+      pid: proc.pid ?? null,
+      kind: 'spawn',
+      stream: 'lifecycle',
+      text: `${command} ${finalArgs.join(' ')}`.trim(),
+      command,
+      args: finalArgs,
+      cwd,
+      exitCode: null,
+      signal: null,
+    })
 
     // Auto-cleanup on unexpected exit
-    proc.on('exit', () => {
+    proc.on('exit', (exitCode, signal) => {
+      stdoutCollector.flush()
+      stderrCollector.flush()
       this.processes.delete(opts.agentId)
+      devtoolStore.record({
+        id: `${opts.agentId}:${Date.now()}:exit`,
+        timestamp: Date.now(),
+        agentId: opts.agentId,
+        pid: proc.pid ?? null,
+        kind: 'exit',
+        stream: 'lifecycle',
+        text: `exit code=${exitCode ?? 'null'} signal=${signal ?? 'null'}`,
+        command,
+        args: finalArgs,
+        cwd,
+        exitCode,
+        signal,
+      })
     })
 
     return entry

@@ -129,14 +129,14 @@ export function ToolCallBlock({
               </pre>
             </div>
           )}
-          {output !== undefined && (
+          {/* {output !== undefined && (
             <div>
               <span className="text-muted-foreground/50 text-[10px] uppercase tracking-wider">Output</span>
               <pre className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all">
                 {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
               </pre>
             </div>
-          )}
+          )} */}
           {errorText && (
             <div>
               <span className="text-destructive/70 text-[10px] uppercase tracking-wider">Error</span>

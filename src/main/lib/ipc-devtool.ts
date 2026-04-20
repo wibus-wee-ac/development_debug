@@ -1,6 +1,6 @@
-// Input: @cradle/ipc observer registration, Electron BrowserWindow/WebContents, IpcDevtoolStore, preload path
-// Output: Shared main-process IPC devtool backend — observer wiring, store access, devtool window factory
-// Position: Main-process integration point that connects IPC instrumentation to the devtool window
+// Input: @cradle/ipc observer registration, Electron BrowserWindow/WebContents, IPC + ACP devtool stores, preload path
+// Output: Shared main-process devtool backend — observer wiring, store access, and devtool window factory
+// Position: Main-process integration point that connects runtime instrumentation to the devtool window
 
 import { join } from 'node:path'
 
@@ -10,6 +10,7 @@ import { is } from '@electron-toolkit/utils'
 import type { WebContents } from 'electron'
 import { BrowserWindow } from 'electron'
 
+import { subscribeAcpDevtool } from './acp-devtool-store'
 import { IpcDevtoolStore } from './ipc-devtool-store'
 
 export const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
@@ -32,6 +33,13 @@ export function getIpcDevtoolStore(): IpcDevtoolStore {
 
 export function subscribeIpcDevtool(webContents: WebContents): () => void {
   return store.subscribe(webContents)
+}
+
+export function subscribeRuntimeDevtools(webContents: WebContents): Array<() => void> {
+  return [
+    subscribeIpcDevtool(webContents),
+    subscribeAcpDevtool(webContents),
+  ]
 }
 
 export function openDevtoolWindow(): BrowserWindow | null {
@@ -62,7 +70,7 @@ export function openDevtoolWindow(): BrowserWindow | null {
   })
 
   win.webContents.once('did-finish-load', () => {
-    subscribeIpcDevtool(win.webContents)
+    subscribeRuntimeDevtools(win.webContents)
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {

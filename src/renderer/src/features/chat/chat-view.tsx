@@ -123,7 +123,7 @@ export function ChatView({
     <div className="flex h-full flex-col">
       {/* Virtualized message list */}
       <ScrollArea className="flex-1" viewportRef={viewportRef}>
-        <div className="mx-auto max-w-2xl px-4">
+        <div className="mx-auto max-w-2xl px-4 pt-4">
           {messages.length === 0 && isReady && (
             <div className="flex items-center justify-center py-20">
               <p className="text-sm text-muted-foreground/50 select-none">

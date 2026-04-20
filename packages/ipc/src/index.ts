@@ -34,3 +34,10 @@ export {
   serializeError,
   serializePayload,
 } from './events'
+
+// Shared ACP devtool event model
+export type {
+  AcpDevtoolEvent,
+  AcpDevtoolEventKind,
+  AcpDevtoolEventStream,
+} from './acp-events'

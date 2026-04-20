@@ -6,6 +6,7 @@ import EventEmitter from 'node:events'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { getAcpDevtoolStore } from '../acp-devtool-store'
 import { AcpProcessManager } from '../acp-process-manager'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ describe('acpProcessManager', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     manager = freshManager()
+    getAcpDevtoolStore().clear()
   })
 
   afterEach(() => {
@@ -203,6 +205,40 @@ describe('acpProcessManager', () => {
 
     it('returns empty array when no agents running', () => {
       expect(manager.getMetrics()).toEqual([])
+    })
+
+    it('records ACP stdout, stderr, and exit events for the devtool', () => {
+      manager.spawn({
+        agentId: 'metrics-agent',
+        cmd: './a',
+        args: [],
+        env: {},
+        distributionType: 'binary',
+        installPath: '/tmp/agents/m',
+      })
+
+      mockProc.stdout.emit('data', Buffer.from('{"jsonrpc":"2.0"}\n'))
+      mockProc.stderr.emit('data', 'first warning\n')
+      mockProc.emit('exit', 0, null)
+
+      const events = getAcpDevtoolStore().getSnapshot()
+      expect(events.map(event => `${event.stream}:${event.kind}`)).toEqual([
+        'lifecycle:spawn',
+        'stdout:output',
+        'stderr:output',
+        'lifecycle:exit',
+      ])
+      expect(events[1]).toMatchObject({
+        agentId: 'metrics-agent',
+        stream: 'stdout',
+        text: '{"jsonrpc":"2.0"}',
+      })
+      expect(events[3]).toMatchObject({
+        stream: 'lifecycle',
+        kind: 'exit',
+        exitCode: 0,
+        signal: null,
+      })
     })
   })
 

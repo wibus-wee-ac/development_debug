@@ -55,6 +55,10 @@ interface IpcDevtoolState {
   cycleDetailTab: (direction: 1 | -1) => void
 }
 
+// ── RAF batch buffer for high-frequency event ingestion ──────────────────────
+const _ipcBatch: IpcObservedEvent[] = []
+let _ipcRafId: ReturnType<typeof requestAnimationFrame> | null = null
+
 export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
   events: [],
   paused: false,
@@ -63,7 +67,9 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
   initialized: false,
 
   initialize: async () => {
-    if (get().initialized) { return }
+    if (get().initialized) {
+      return
+    }
     set({ initialized: true })
 
     try {
@@ -85,11 +91,26 @@ export const useIpcDevtoolStore = create<IpcDevtoolState>((set, get) => ({
     if (get().paused) {
       return
     }
-    const existing = get().events
-    const next = existing.length >= MAX_EVENTS
-      ? [...existing.slice(existing.length - MAX_EVENTS + 1), event]
-      : [...existing, event]
-    set({ events: next })
+    _ipcBatch.push(event as IpcObservedEvent)
+    if (_ipcRafId !== null) {
+      return
+    }
+    _ipcRafId = requestAnimationFrame(() => {
+      _ipcRafId = null
+      if (_ipcBatch.length === 0) {
+        return
+      }
+      const batch = _ipcBatch.splice(0)
+      if (get().paused) {
+        return
+      }
+      const existing = get().events
+      const combined = [...existing, ...batch]
+      const next = combined.length > MAX_EVENTS
+        ? combined.slice(combined.length - MAX_EVENTS)
+        : combined
+      set({ events: next })
+    })
   },
 
   setPaused: paused => set({ paused }),

@@ -7,7 +7,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
 import { ChatEngine } from './lib/chat-engine'
-import { initializeIpcDevtool, subscribeIpcDevtool } from './lib/ipc-devtool'
+import { initializeIpcDevtool, subscribeRuntimeDevtools } from './lib/ipc-devtool'
 import { AcpService } from './services/acp'
 import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
@@ -103,7 +103,7 @@ app.whenReady().then(() => {
 
   const mainWindow = createWindow()
   ChatEngine.getInstance().subscribe(mainWindow.webContents)
-  subscribeIpcDevtool(mainWindow.webContents)
+  subscribeRuntimeDevtools(mainWindow.webContents)
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
@@ -111,7 +111,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow()
       ChatEngine.getInstance().subscribe(win.webContents)
-      subscribeIpcDevtool(win.webContents)
+      subscribeRuntimeDevtools(win.webContents)
     }
   })
 })

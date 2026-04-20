@@ -1,16 +1,18 @@
-// Input: window keydown events, ipc-devtool stores (selection / paused / clear), filtered traces
-// Output: useIpcKeyboard hook wiring arrow-key row navigation plus pause/clear/search shortcuts
-// Position: Called once from IpcDevtoolPage — owns the devtool window's global keybindings
+// Input: window keydown events, acp-devtool stores (selection / paused / clear), filtered events
+// Output: useAcpKeyboard hook wiring arrow-key row navigation plus pause/clear/search shortcuts
+// Position: Called once from IpcDevtoolPage — owns the ACP pane's global keybindings
 
 import { useEffect } from 'react'
 
-import { useIpcDevtoolStore, useIpcFilteredTraces } from './use-ipc-events'
+import { useAcpDevtoolStore, useAcpFilteredEvents } from './use-acp-events'
 
-const SEARCH_INPUT_ATTR = 'data-ipc-devtool-search'
-const ROW_ID_ATTR = 'data-ipc-trace-id'
+const SEARCH_INPUT_ATTR = 'data-acp-devtool-search'
+const ROW_ID_ATTR = 'data-acp-event-id'
 
 function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) { return false }
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
   const tag = target.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable
 }
@@ -21,9 +23,9 @@ function focusSearch(): void {
   el?.select()
 }
 
-function scrollRowIntoView(traceId: string): void {
+function scrollRowIntoView(eventId: string): void {
   requestAnimationFrame(() => {
-    const row = document.querySelector<HTMLElement>(`[${ROW_ID_ATTR}="${CSS.escape(traceId)}"]`)
+    const row = document.querySelector<HTMLElement>(`[${ROW_ID_ATTR}="${CSS.escape(eventId)}"]`)
     row?.scrollIntoView({ block: 'nearest' })
   })
 }
@@ -31,14 +33,13 @@ function scrollRowIntoView(traceId: string): void {
 const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'])
 const PAGE_STEP = 10
 
-export function useIpcKeyboard(enabled = true): void {
-  const traces = useIpcFilteredTraces()
-  const selectedTraceId = useIpcDevtoolStore(s => s.selectedTraceId)
-  const selectTrace = useIpcDevtoolStore(s => s.selectTrace)
-  const paused = useIpcDevtoolStore(s => s.paused)
-  const setPaused = useIpcDevtoolStore(s => s.setPaused)
-  const clear = useIpcDevtoolStore(s => s.clear)
-  const cycleDetailTab = useIpcDevtoolStore(s => s.cycleDetailTab)
+export function useAcpKeyboard(enabled = true): void {
+  const events = useAcpFilteredEvents()
+  const selectedEventId = useAcpDevtoolStore(s => s.selectedEventId)
+  const selectEvent = useAcpDevtoolStore(s => s.selectEvent)
+  const paused = useAcpDevtoolStore(s => s.paused)
+  const setPaused = useAcpDevtoolStore(s => s.setPaused)
+  const clear = useAcpDevtoolStore(s => s.clear)
 
   useEffect(() => {
     if (!enabled) {
@@ -72,8 +73,8 @@ export function useIpcKeyboard(enabled = true): void {
           event.target.blur()
           return
         }
-        if (selectedTraceId !== null) {
-          selectTrace(null)
+        if (selectedEventId !== null) {
+          selectEvent(null)
         }
         return
       }
@@ -84,57 +85,52 @@ export function useIpcKeyboard(enabled = true): void {
         return
       }
 
-      if (!editable && !mod && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-        if (selectedTraceId === null) { return }
-        event.preventDefault()
-        cycleDetailTab(event.key === 'ArrowRight' ? 1 : -1)
-        return
-      }
-
-      if (!editable && NAV_KEYS.has(event.key)) {
-        if (traces.length === 0) { return }
+      if (!editable && !mod && NAV_KEYS.has(event.key)) {
+        if (events.length === 0) {
+          return
+        }
         event.preventDefault()
 
-        const currentIndex = selectedTraceId
-          ? traces.findIndex(t => t.traceId === selectedTraceId)
+        const currentIndex = selectedEventId
+          ? events.findIndex(e => e.id === selectedEventId)
           : -1
 
         let nextIndex: number
 
         if (currentIndex < 0) {
-          nextIndex = event.key === 'End' ? traces.length - 1 : 0
+          nextIndex = event.key === 'End' ? events.length - 1 : 0
         }
- else {
+        else {
           switch (event.key) {
             case 'ArrowUp':
               nextIndex = Math.max(0, currentIndex - 1)
               break
             case 'ArrowDown':
-              nextIndex = Math.min(traces.length - 1, currentIndex + 1)
+              nextIndex = Math.min(events.length - 1, currentIndex + 1)
               break
             case 'PageUp':
               nextIndex = Math.max(0, currentIndex - PAGE_STEP)
               break
             case 'PageDown':
-              nextIndex = Math.min(traces.length - 1, currentIndex + PAGE_STEP)
+              nextIndex = Math.min(events.length - 1, currentIndex + PAGE_STEP)
               break
             case 'Home':
               nextIndex = 0
               break
             case 'End':
-              nextIndex = traces.length - 1
+              nextIndex = events.length - 1
               break
             default:
               nextIndex = currentIndex
           }
         }
 
-        const next = traces[nextIndex]
-        if (next && next.traceId !== selectedTraceId) {
-          selectTrace(next.traceId)
+        const next = events[nextIndex]
+        if (next && next.id !== selectedEventId) {
+          selectEvent(next.id)
         }
         if (next) {
-          scrollRowIntoView(next.traceId)
+          scrollRowIntoView(next.id)
         }
       }
     }
@@ -143,5 +139,5 @@ export function useIpcKeyboard(enabled = true): void {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [enabled, traces, selectedTraceId, selectTrace, paused, setPaused, clear, cycleDetailTab])
+  }, [enabled, events, selectedEventId, selectEvent, paused, setPaused, clear])
 }

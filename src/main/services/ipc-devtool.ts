@@ -1,9 +1,10 @@
-// Input: @cradle/ipc service decorators, shared IpcDevtoolStore singleton, devtool window factory
-// Output: IpcDevtoolService exposing buffered IPC events and open-window action to renderer consumers
+// Input: @cradle/ipc service decorators, shared IPC/ACP devtool stores, devtool window factory
+// Output: IpcDevtoolService exposing buffered runtime events and open-window action to renderer consumers
 // Position: Main-process IPC service for devtool windows and debugging renderers
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
+import { getAcpDevtoolStore } from '../lib/acp-devtool-store'
 import { getIpcDevtoolStore, openDevtoolWindow } from '../lib/ipc-devtool'
 
 export class IpcDevtoolService extends IpcService {
@@ -17,6 +18,16 @@ export class IpcDevtoolService extends IpcService {
   @IpcMethod()
   clear(): void {
     getIpcDevtoolStore().clear()
+  }
+
+  @IpcMethod()
+  getAcpSnapshot() {
+    return getAcpDevtoolStore().getSnapshot()
+  }
+
+  @IpcMethod()
+  clearAcp(): void {
+    getAcpDevtoolStore().clear()
   }
 
   @IpcMethod()
