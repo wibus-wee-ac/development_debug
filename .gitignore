@@ -5,3 +5,4 @@ out
 .eslintcache
 *.log*
 e2e/artifacts
+.github/copilot-instructions.md

@@ -13,7 +13,7 @@ export function ScrollArea({
 }: ScrollAreaPrimitive.Root.Props & {
   scrollFade?: boolean;
   scrollbarGutter?: boolean;
-}): React.ReactElement {
+}) {
   return (
     <ScrollAreaPrimitive.Root
       className={cn("size-full min-h-0", className)}

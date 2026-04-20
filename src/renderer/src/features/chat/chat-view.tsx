@@ -5,15 +5,18 @@
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
+import type { ChatMessageRow } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 
 interface ChatViewProps {
   sessionId: string | null
+  /** Pre-loaded message rows from a route loader; eliminates empty-state flash on first visit. */
+  initialMessageRows?: ChatMessageRow[]
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
   /** Custom toolbar rendered in the composer left slot */
@@ -26,13 +29,17 @@ interface ChatViewProps {
 
 export function ChatView({
   sessionId,
+  initialMessageRows,
   availableFiles = [],
   composerToolbar,
   composerContextBar,
   placeholder,
 }: ChatViewProps) {
-  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId)
+  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialMessageRows })
   const scrollEndRef = useRef<HTMLDivElement>(null)
+
+  // Tracks which sessionId has already received its initial instant-to-bottom scroll.
+  const initializedSessionRef = useRef<string | null>(null)
 
   const isStreaming = status === 'streaming'
 
@@ -48,10 +55,26 @@ export function ChatView({
     )
   const showThinking = isStreaming && !assistantHasVisibleText
 
-  // Auto-scroll to bottom on new messages or streaming updates
+  // Scroll to the bottom instantly on first render per session (before paint —
+  // no animation, user lands directly on latest messages).
+  useLayoutEffect(() => {
+    if (messages.length === 0) {
+      return
+    }
+    if (initializedSessionRef.current === sessionId) {
+      return
+    }
+    initializedSessionRef.current = sessionId ?? null
+    scrollEndRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [messages, sessionId])
+
+  // Ongoing auto-scroll for streaming updates and newly appended messages.
   useEffect(() => {
+    if (initializedSessionRef.current !== sessionId) {
+      return
+    }
     scrollEndRef.current?.scrollIntoView({ behavior: status === 'streaming' ? 'auto' : 'smooth' })
-  }, [messages, status])
+  }, [messages, status, sessionId])
 
   const handleSend = useCallback(
     (text: string) => {
@@ -68,7 +91,7 @@ export function ChatView({
       {/* Message list */}
       <ScrollArea className="flex-1">
         <div className="mx-auto max-w-2xl px-4 py-6">
-          {messages.length === 0 && (
+          {messages.length === 0 && isReady && (
             <div className="flex items-center justify-center py-20">
               <p className="text-sm text-muted-foreground/50 select-none">
                 发送消息开始对话
@@ -76,7 +99,11 @@ export function ChatView({
             </div>
           )}
 
-          <AnimatePresence initial={false}>
+          {/* AnimatePresence key: stable while messages are present (> 0), so
+              new messages animate normally. Resets when a session first loads
+              (0 → 1) so that initial batch is never animated.
+              Works for both first-visit (async load) and return-visit cases. */}
+          <AnimatePresence key={`${sessionId ?? ''}-${messages.length > 0}`} initial={false}>
             {messages.map(message => (
               <MessageBubble
                 key={message.id}

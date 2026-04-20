@@ -81,11 +81,29 @@ function getThoughtLevelSnapshot(configSnapshot: string | null | undefined): str
 type MenuKind = 'model' | 'thinking'
 
 export const Route = createFileRoute('/chat/$sessionId')({
+  /**
+   * Pre-fetch messages before the route renders so there is no empty-state
+   * flash on first visit.  TanStack Router blocks navigation until the loader
+   * resolves (keeping the previous route visible), then renders the new route
+   * with data already available.  On return visits the cached rows are used
+   * directly, making session switching appear instant.
+   */
+  loader: async ({ params }) => {
+    if (!ipc) {
+      return []
+    }
+    return ipc.chat.getMessages(params.sessionId)
+  },
+  // Keep loader data fresh for 5 minutes; quick session-switching inside that
+  // window reuses the cache without an extra IPC round-trip.
+  staleTime: 5 * 60 * 1_000,
+  gcTime: 10 * 60 * 1_000,
   component: ChatSessionPage,
 })
 
 function ChatSessionPage() {
   const { sessionId } = Route.useParams()
+  const initialMessageRows = Route.useLoaderData()
   const queryClient = useQueryClient()
   const [reconnectingModel, setReconnectingModel] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
@@ -370,6 +388,7 @@ function ChatSessionPage() {
     <AppLayout header={<AppHeader title={sessionTitle} workspace={workspaceName} />}>
       <ChatView
         sessionId={sessionId}
+        initialMessageRows={initialMessageRows}
         availableFiles={availableFiles}
         composerToolbar={composerToolbar}
         composerContextBar={composerContextBar}
