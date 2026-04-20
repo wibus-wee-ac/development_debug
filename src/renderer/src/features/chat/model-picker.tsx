@@ -68,7 +68,7 @@ export function ModelPicker({
         {triggerLabel}
         <ChevronDownIcon aria-hidden="true" />
       </ComboboxPrimitive.Trigger>
-      <ComboboxPopup aria-label="选择模型" className="min-w-60">
+      <ComboboxPopup aria-label="选择模型" className="min-w-60" side='left'>
         <div className="border-b p-2">
           <ComboboxInput
             size="sm"
@@ -82,15 +82,15 @@ export function ModelPicker({
         <ComboboxList>
           {(item: ModelInfo) => (
             <ComboboxItem key={item.modelId} value={item}>
-              <div className="flex min-w-0 flex-col">
-                <span className="truncate">{item.name}</span>
+              <div className="flex min-w-0 flex-col max-w-120">
+                <span className="truncate w-fit">{item.name}</span>
                 {item.description
-? (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {item.description}
-                  </span>
-                )
-: null}
+                  ? (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {item.description}
+                    </span>
+                  )
+                  : null}
               </div>
             </ComboboxItem>
           )}
