@@ -1,5 +1,5 @@
 // Input: drizzle-orm sqlite schema builders
-// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, ACP agents, and audit log
+// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, ACP agents, audit log, and CLI agents
 // Position: Main-process persistence schema shared by DB initialization and services
 
 import { sql } from 'drizzle-orm'
@@ -105,6 +105,20 @@ export const acpAuditLog = sqliteTable('acp_audit_log', {
   ...createdAt(),
 })
 
+/**
+ * CLI agents — system-installed CLI tools (e.g. `claude`, `codex`) that the
+ * user has configured for use in terminal sessions.
+ */
+export const cliAgents = sqliteTable('cli_agents', {
+  id: text('id').primaryKey(), // user-supplied, e.g. "claude-code"
+  name: text('name').notNull(),
+  /** Absolute path or bare executable name (resolved via PATH at PTY start). */
+  executable: text('executable').notNull(),
+  /** JSON array of extra CLI args prepended on start. */
+  args: text('args').notNull().default('[]'),
+  ...timestamps(),
+})
+
 // ── Inferred types ────────────────────────────────────────────────────────────
 
 export type Workspace = typeof workspaces.$inferSelect
@@ -116,3 +130,5 @@ export type NewMessage = typeof messages.$inferInsert
 export type AcpAgent = typeof acpAgents.$inferSelect
 export type NewAcpAgent = typeof acpAgents.$inferInsert
 export type AcpAuditEntry = typeof acpAuditLog.$inferSelect
+export type CliAgent = typeof cliAgents.$inferSelect
+export type NewCliAgent = typeof cliAgents.$inferInsert

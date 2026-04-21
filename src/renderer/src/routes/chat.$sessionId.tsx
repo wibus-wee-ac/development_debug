@@ -1,5 +1,5 @@
-// Input: ChatView from chat feature, ipc.chat, ipc.session, AppLayout, TanStack Router
-// Output: Chat session route — thin page that reads session from DB and renders ChatView
+// Input: ChatView from chat feature, TuiView from tui feature, ipc.chat, ipc.session, ipc.acp, AppLayout, TanStack Router
+// Output: Chat session route — thin page that reads session from DB and renders ChatView or TuiView
 // Position: Route page for /chat/$sessionId, data driven by main-process ChatEngine
 
 import type { Session } from '@main/ipc-types'
@@ -17,6 +17,7 @@ import {
 } from '@renderer/components/ui/menu'
 import { ChatView } from '@renderer/features/chat'
 import { ModelPicker } from '@renderer/features/chat/model-picker'
+import { TuiView } from '@renderer/features/tui/tui-view'
 import { useInstalledAcpAgents } from '@renderer/features/workspace/use-acp-agents'
 import {
   acpSessionStateQueryKey,
@@ -284,13 +285,16 @@ export const Route = createFileRoute('/chat/$sessionId')({
    */
   loader: async ({ params }) => {
     if (!ipc) {
-      return { session: undefined, messages: [] }
+      return { session: undefined, messages: [], agent: undefined }
     }
     const [session, messages] = await Promise.all([
       ipc.session.get(params.sessionId),
       ipc.chat.getMessages(params.sessionId),
     ])
-    return { session, messages }
+    // Determine provider: CLI agent takes precedence; fall back to ACP agent
+    const cliAgent = session ? await ipc.cli.getAgent(session.agent) : undefined
+    const acpAgent = !cliAgent && session ? await ipc.acp.getInstalled(session.agent) : undefined
+    return { session, messages, cliAgent, acpAgent }
   },
   // Keep loader data fresh for 5 minutes; quick session-switching inside that
   // window reuses the cache without an extra IPC round-trip.
@@ -301,7 +305,7 @@ export const Route = createFileRoute('/chat/$sessionId')({
 
 function ChatSessionPage() {
   const { sessionId } = Route.useParams()
-  const { session: loaderSession, messages: initialMessageRows } = Route.useLoaderData()
+  const { session: loaderSession, messages: initialMessageRows, cliAgent: loaderCliAgent } = Route.useLoaderData()
   const queryClient = useQueryClient()
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   const [liveAcpSessionId, setLiveAcpSessionId] = useState<string | null>(null)
@@ -327,12 +331,14 @@ function ChatSessionPage() {
     }
   }, [session?.recoverableAcpSessionId, liveAcpSessionId])
 
-  // Fetch workspace name when workspaceId is available
+  // Fetch workspace name and path when workspaceId is available
   useEffect(() => {
     if (!workspaceId) {
       return
     }
-    ipc?.workspace.get(workspaceId).then(ws => setWorkspaceName(ws?.name ?? null))
+    ipc?.workspace.get(workspaceId).then((ws) => {
+      setWorkspaceName(ws?.name ?? null)
+    })
   }, [workspaceId])
 
   const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
@@ -340,6 +346,24 @@ function ChatSessionPage() {
     () => workspaceFiles.map(f => ({ type: f.type, name: f.name, path: f.path })),
     [workspaceFiles],
   )
+
+  // PTY title updates for cli-tui sessions
+  useEffect(() => {
+    if (!loaderCliAgent) {
+      return
+    }
+    const unsub = window.ptyPush.onTitle((sid, title) => {
+      if (sid !== sessionId) {
+        return
+      }
+      void ipc?.session.updateTitle({ id: sessionId, title })
+      queryClient.invalidateQueries({ queryKey: ['chat-session', sessionId] })
+      if (workspaceId) {
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+      }
+    })
+    return unsub
+  }, [sessionId, loaderCliAgent, workspaceId, queryClient])
 
   // Engine forwards ACP title updates as chat:session-title with chatSessionId.
   useEffect(() => {
@@ -368,20 +392,26 @@ function ChatSessionPage() {
 
   return (
     <AppLayout header={<AppHeader title={sessionTitle} workspace={workspaceName} />}>
-      <ChatView
-        sessionId={sessionId}
-        initialMessageRows={initialMessageRows}
-        availableFiles={availableFiles}
-        composerToolbar={ComposerToolbar}
-        composerContextBar={(
-          <SessionComposerBar
-            session={session}
-            agentId={agentId}
-            acpSessionId={liveAcpSessionId}
-            onAcpSessionConnect={setLiveAcpSessionId}
+      {loaderCliAgent
+        ? (
+          <TuiView sessionId={sessionId} />
+        )
+        : (
+          <ChatView
+            sessionId={sessionId}
+            initialMessageRows={initialMessageRows}
+            availableFiles={availableFiles}
+            composerToolbar={ComposerToolbar}
+            composerContextBar={(
+              <SessionComposerBar
+                session={session}
+                agentId={agentId}
+                acpSessionId={liveAcpSessionId}
+                onAcpSessionConnect={setLiveAcpSessionId}
+              />
+            )}
           />
         )}
-      />
     </AppLayout>
   )
 }

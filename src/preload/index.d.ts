@@ -12,10 +12,19 @@ interface IpcDevtoolApi {
   onAcpEvent: (listener: (event: AcpDevtoolEvent) => void) => () => void
 }
 
+interface PtyPushApi {
+  onData: (listener: (sessionId: string, data: string) => void) => () => void
+  onTitle: (listener: (sessionId: string, title: string) => void) => () => void
+  onExit: (listener: (sessionId: string, exitCode: number, signal: number | null) => void) => () => void
+  onNotification: (listener: (sessionId: string, message: string) => void) => () => void
+  onCommandFinish: (listener: (sessionId: string, exitCode: number) => void) => () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     ipc: IpcServices
     ipcDevtool: IpcDevtoolApi
+    ptyPush: PtyPushApi
   }
 }

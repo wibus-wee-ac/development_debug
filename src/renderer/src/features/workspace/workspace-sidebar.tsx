@@ -58,6 +58,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   const matchRoute = useMatchRoute()
   const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId: session.id } })
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const clearUnread = useSessionActivityStore(s => s.clearUnread)
 
@@ -71,7 +72,10 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   const handleDelete = useCallback(async () => {
     await ipc?.session.delete(session.id)
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
-  }, [session.id, workspaceId, queryClient])
+    if (isActive) {
+      void navigate({ to: '/' })
+    }
+  }, [session.id, workspaceId, queryClient, isActive, navigate])
 
   return (
     <div

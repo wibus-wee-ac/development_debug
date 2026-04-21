@@ -7,10 +7,12 @@ import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
 
 import { AcpSettings } from './acp-settings'
 import { AppearanceSettings } from './appearance-settings'
+import { CliSettings } from './cli-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   acp: AcpSettings,
+  cli: CliSettings,
 }
 
 export function SettingsContent() {

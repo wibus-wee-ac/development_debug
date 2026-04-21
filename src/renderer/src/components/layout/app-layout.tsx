@@ -45,6 +45,41 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   const markUnread = useSessionActivityStore(s => s.markUnread)
   const matchRoute = useMatchRoute()
 
+  // Mark TUI sessions as unread when they send an OSC 9 notification or exit
+  useEffect(() => {
+    const unsubNotify = window.ptyPush.onNotification((sessionId, message) => {
+      const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId } })
+      if (!isActive) {
+        markUnread(sessionId)
+      }
+      // OSC 9 = explicit app notification, always show
+      if ('Notification' in window && Notification.permission === 'granted') {
+        void new Notification('Cradle', { body: message || '通知' })
+      }
+    })
+    const unsubExit = window.ptyPush.onExit((sessionId) => {
+      const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId } })
+      if (!isActive) {
+        markUnread(sessionId)
+      }
+    })
+    // OSC 133;D — command finished (shell integration), notify when unfocused
+    const unsubCommandFinish = window.ptyPush.onCommandFinish((sessionId) => {
+      const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId } })
+      if (!isActive) {
+        markUnread(sessionId)
+        if ('Notification' in window && Notification.permission === 'granted') {
+          void new Notification('Cradle', { body: '命令执行完成' })
+        }
+      }
+    })
+    return () => {
+      unsubNotify()
+      unsubExit()
+      unsubCommandFinish()
+    }
+  }, [markUnread, matchRoute])
+
   // Global listener: mark sessions with finished responses as unread
   // when they are not the currently active session
   useEffect(() => {
@@ -66,7 +101,7 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
         }
       },
     )
-    return () => { off() }
+    return off
   }, [markUnread, matchRoute])
 
   const toggleSettings = useCallback(() => {
@@ -166,7 +201,7 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
           <div style={{ display: isMain ? undefined : 'none' }}>
             {header}
           </div>
-          <main className="flex-1 bg-background overflow-hidden">
+          <main id="main-content" className="flex-1 bg-background overflow-hidden">
             {isMain ? children : <SettingsContent />}
           </main>
 

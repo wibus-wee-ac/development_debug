@@ -10,6 +10,7 @@ import { desc, eq } from 'drizzle-orm'
 import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
 import { messages, sessions } from '../db/schema'
+import { PtyManager } from '../lib/pty-manager'
 
 export class SessionService extends IpcService {
   static readonly groupName = 'session'
@@ -62,6 +63,8 @@ export class SessionService extends IpcService {
 
   @IpcMethod()
   delete(id: string): void {
+    // Stop PTY if this session has an active terminal process
+    PtyManager.getInstance().stop(id)
     getDb().delete(sessions).where(eq(sessions.id, id)).run()
   }
 

@@ -6,7 +6,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/utils'
 import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
-import { ArrowLeftIcon, BotIcon, PaletteIcon } from 'lucide-react'
+import { ArrowLeftIcon, BotIcon, PaletteIcon, TerminalIcon } from 'lucide-react'
 
 interface SettingsNavItem {
   id: string
@@ -17,6 +17,7 @@ interface SettingsNavItem {
 const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'appearance', label: '外观', icon: PaletteIcon },
   { id: 'acp', label: '代理 (ACP)', icon: BotIcon },
+  { id: 'cli', label: 'CLI Agents', icon: TerminalIcon },
 ]
 
 export function SettingsSidebar() {

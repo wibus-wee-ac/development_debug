@@ -1,5 +1,5 @@
-// Input: useWorkspaces + useInstalledAcpAgents + useAcpSessionState hooks, Composer, ipc.chat, useNavigate
-// Output: NewChatHome — empty-state composer with model/thinking pickers, calls ipc.chat.createAndSend + navigates
+// Input: useWorkspaces + useInstalledAcpAgents + useCliAgents + useAcpSessionState hooks, Composer, ipc.chat, ipc.session, useNavigate
+// Output: NewChatHome — empty-state composer with model/thinking pickers, calls ipc.chat.createAndSend or ipc.session.create + navigates
 // Position: Main content area component for the home page (/ route)
 
 import { Button } from '@renderer/components/ui/button'
@@ -30,11 +30,13 @@ import {
   FolderIcon,
   LoaderCircleIcon,
   PlusIcon,
+  TerminalIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useInstalledAcpAgents } from './use-acp-agents'
+import { useCliAgents } from './use-cli-agents'
 import { sessionsQueryKey } from './use-session'
 import { useWorkspaces } from './use-workspace'
 import { useWorkspaceFiles } from './use-workspace-files'
@@ -66,7 +68,10 @@ function agentInitials(name: string): string {
 
 type ProbeStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
+type AgentMode = 'acp' | 'cli'
+
 export function NewChatHome() {
+  const [agentMode, setAgentMode] = useState<AgentMode>('acp')
   const [agentId, setAgentId] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
   // Probe session: created eagerly when agentId changes, for model/thinking picker UI
@@ -75,6 +80,7 @@ export function NewChatHome() {
   const [sending, setSending] = useState(false)
   const { workspaces } = useWorkspaces()
   const { agents } = useInstalledAcpAgents()
+  const { agents: cliAgents } = useCliAgents()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const appliedProbeSessionIdRef = useRef<string | null>(null)
@@ -203,7 +209,7 @@ export function NewChatHome() {
           setProbeStatus('ready')
         }
       }
- catch {
+      catch {
         if (!cancelled) {
           setProbeStatus('error')
         }
@@ -236,7 +242,7 @@ export function NewChatHome() {
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
         navigate({ to: '/chat/$sessionId', params: { sessionId } })
       }
- catch (err) {
+      catch (err) {
         console.error('[NewChatHome] createAndSend failed:', err)
         setSending(false)
       }
@@ -249,6 +255,32 @@ export function NewChatHome() {
       queryClient,
       navigate,
     ],
+  )
+
+  // CLI-TUI: just create a bare session and open it — PTY starts in the route
+  const handleCliStart = useCallback(
+    async () => {
+      if (!agentId || !effectiveWorkspaceId || !ipc) {
+        return
+      }
+      setSending(true)
+      try {
+        const cliAgent = cliAgents.find(a => a.id === agentId)
+        const title = cliAgent?.name ?? agentId
+        const session = await ipc.session.create({
+          workspaceId: effectiveWorkspaceId,
+          title,
+          agent: agentId,
+        })
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+        navigate({ to: '/chat/$sessionId', params: { sessionId: session.id } })
+      }
+      catch (err) {
+        console.error('[NewChatHome] cli start failed:', err)
+        setSending(false)
+      }
+    },
+    [agentId, effectiveWorkspaceId, cliAgents, queryClient, navigate],
   )
 
   // ── Toolbar ──
@@ -266,44 +298,60 @@ export function NewChatHome() {
     () => (
       <>
         {/* Agent picker */}
-        {agents.length > 0 && (
+        {(agents.length > 0 || cliAgents.length > 0) && (
           <Menu>
             <MenuTrigger render={<Button variant="ghost" size="xs" />}>
-              {probeStatus === 'connecting'
-? (
-                <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-              )
-: probeStatus === 'error'
-? (
-                <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
-              )
-: (
-                <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                  {selectedAgent
-? (
-                    agentInitials(selectedAgent.name)
+              {agentMode === 'acp' && probeStatus === 'connecting'
+                ? (
+                  <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+                )
+                : agentMode === 'acp' && probeStatus === 'error'
+                  ? (
+                    <TriangleAlertIcon className="size-3 text-destructive" aria-hidden="true" />
                   )
-: (
-                    <BotIcon className="size-3" aria-hidden="true" />
+                  : (
+                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                      {selectedAgent || agentMode === 'cli'
+                        ? agentMode === 'cli'
+                          ? <TerminalIcon className="size-3" aria-hidden="true" />
+                          : agentInitials(selectedAgent!.name)
+                        : (
+                          <BotIcon className="size-3" aria-hidden="true" />
+                        )}
+                    </span>
                   )}
-                </span>
-              )}
-              {selectedAgent?.name ?? '选择 Agent'}
+              {agentMode === 'cli'
+                ? (cliAgents.find(a => a.id === agentId)?.name ?? '选择 CLI Agent')
+                : (selectedAgent?.name ?? '选择 Agent')}
               <ChevronDownIcon aria-hidden="true" />
             </MenuTrigger>
             <MenuPopup>
-              <MenuGroup>
-                <MenuGroupLabel>ACP Agents</MenuGroupLabel>
-                <MenuSeparator />
-                {agents.map(a => (
-                  <MenuItem key={a.id} onClick={() => setAgentId(a.id)}>
-                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                      {agentInitials(a.name)}
-                    </span>
-                    {a.name}
-                  </MenuItem>
-                ))}
-              </MenuGroup>
+              {agents.length > 0 && (
+                <MenuGroup>
+                  <MenuGroupLabel>ACP Agents</MenuGroupLabel>
+                  <MenuSeparator />
+                  {agents.map(a => (
+                    <MenuItem key={a.id} onClick={() => { setAgentMode('acp'); setAgentId(a.id) }}>
+                      <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                        {agentInitials(a.name)}
+                      </span>
+                      {a.name}
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+              )}
+              {cliAgents.length > 0 && (
+                <MenuGroup>
+                  <MenuGroupLabel>CLI Agents</MenuGroupLabel>
+                  <MenuSeparator />
+                  {cliAgents.map(a => (
+                    <MenuItem key={a.id} onClick={() => { setAgentMode('cli'); setAgentId(a.id) }}>
+                      <TerminalIcon className="size-3.5" aria-hidden="true" />
+                      {a.name}
+                    </MenuItem>
+                  ))}
+                </MenuGroup>
+              )}
             </MenuPopup>
           </Menu>
         )}
@@ -376,6 +424,8 @@ export function NewChatHome() {
       thoughtLevelOption,
       currentPreferences,
       persistChatPreferences,
+      cliAgents,
+      agentMode,
     ],
   )
 
@@ -388,48 +438,68 @@ export function NewChatHome() {
 
       {/* Composer tray */}
       <div className="w-full max-w-2xl rounded-2xl bg-muted/60 p-1">
-        <Composer
-          onSend={handleFirstSend}
-          disabled={probeStatus !== 'ready' || sending}
-          placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件，/ 输入命令，$ 使用技能`}
-          availableFiles={availableFiles}
-          toolbar={composerToolbar}
-          contextBar={composerContextBar}
-        />
+        {agentMode === 'cli'
+          ? (
+            <div className="flex flex-col gap-2 p-2">
+              <div className="flex items-center justify-between px-1">
+                {composerContextBar}
+              </div>
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full"
+                disabled={!agentId || !effectiveWorkspaceId || sending}
+                onClick={handleCliStart}
+              >
+                <TerminalIcon className="size-3.5" aria-hidden="true" />
+                启动终端
+              </Button>
+            </div>
+          )
+          : (
+            <Composer
+              onSend={handleFirstSend}
+              disabled={probeStatus !== 'ready' || sending}
+              placeholder={`向 ${selectedWorkspace?.name ?? '工作区'} 提问，@ 添加文件，/ 输入命令，$ 使用技能`}
+              availableFiles={availableFiles}
+              toolbar={composerToolbar}
+              contextBar={composerContextBar}
+            />
+          )}
 
         {/* Context pill: workspace selector */}
         <div className="flex items-center gap-1 p-1">
           {workspaces.length > 0
-? (
-            <Menu>
-              <MenuTrigger
-                render={(
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-muted-foreground/70 hover:text-foreground gap-2"
-                  />
-                )}
-              >
+            ? (
+              <Menu>
+                <MenuTrigger
+                  render={(
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="text-muted-foreground/70 hover:text-foreground gap-2"
+                    />
+                  )}
+                >
+                  <FolderIcon aria-hidden="true" />
+                  {selectedWorkspace?.name ?? '选择项目'}
+                  <ChevronDownIcon aria-hidden="true" />
+                </MenuTrigger>
+                <MenuPopup>
+                  {workspaces.map(w => (
+                    <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>
+                      {w.name}
+                    </MenuItem>
+                  ))}
+                </MenuPopup>
+              </Menu>
+            )
+            : (
+              <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
                 <FolderIcon aria-hidden="true" />
-                {selectedWorkspace?.name ?? '选择项目'}
-                <ChevronDownIcon aria-hidden="true" />
-              </MenuTrigger>
-              <MenuPopup>
-                {workspaces.map(w => (
-                  <MenuItem key={w.id} onClick={() => setWorkspaceId(w.id)}>
-                    {w.name}
-                  </MenuItem>
-                ))}
-              </MenuPopup>
-            </Menu>
-          )
-: (
-            <Button variant="ghost" size="xs" disabled className="text-muted-foreground/50">
-              <FolderIcon aria-hidden="true" />
-              无项目
-            </Button>
-          )}
+                无项目
+              </Button>
+            )}
         </div>
       </div>
     </div>

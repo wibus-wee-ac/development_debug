@@ -16,6 +16,9 @@ function createStoreEvent(id: string, stream: 'stdout' | 'stderr' | 'lifecycle')
     kind: stream === 'lifecycle' ? 'spawn' : 'output',
     stream,
     text: `${stream}:${id}`,
+    command: null,
+    args: null,
+    cwd: null,
     exitCode: null,
     signal: null,
   } as const

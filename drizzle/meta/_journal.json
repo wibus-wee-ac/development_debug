@@ -36,6 +36,13 @@
       "when": 1776674110263,
       "tag": "0004_peaceful_thaddeus_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1776800000000,
+      "tag": "0005_add_cli_agents",
+      "breakpoints": true
     }
   ]
 }

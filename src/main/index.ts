@@ -8,11 +8,14 @@ import icon from '../../resources/icon.png?asset'
 import { initDb } from './db'
 import { ChatEngine } from './lib/chat-engine'
 import { initializeIpcDevtool, subscribeRuntimeDevtools } from './lib/ipc-devtool'
+import { PtyManager } from './lib/pty-manager'
 import { AcpService } from './services/acp'
 import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
 import { IpcDevtoolService } from './services/ipc-devtool'
 import { PreferencesService } from './services/preferences'
+import { PtyService } from './services/pty'
+import { CliService } from './services/cli'
 import { SearchService } from './services/search'
 import { SessionService } from './services/session'
 import { WorkspaceService } from './services/workspace'
@@ -89,6 +92,8 @@ app.whenReady().then(() => {
     DevService,
     ChatService,
     SearchService,
+    PtyService,
+    CliService,
   ] as const)
 
   // Set app user model id for windows
@@ -104,6 +109,7 @@ app.whenReady().then(() => {
   const mainWindow = createWindow()
   ChatEngine.getInstance().subscribe(mainWindow.webContents)
   subscribeRuntimeDevtools(mainWindow.webContents)
+  PtyManager.getInstance().subscribe(mainWindow.webContents)
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
@@ -112,6 +118,7 @@ app.whenReady().then(() => {
       const win = createWindow()
       ChatEngine.getInstance().subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
+      PtyManager.getInstance().subscribe(win.webContents)
     }
   })
 })
