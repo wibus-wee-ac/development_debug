@@ -111,7 +111,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
   return (
     <div
       ref={containerRef}
-      className="h-full w-full overflow-hidden bg-[#ffffff] dark:bg-[#0d1117]" data-shell-view="true"
+      className="h-full w-full overflow-hidden bg-background" data-shell-view="true"
       style={{ padding: '4px 8px' }}
     />
   )

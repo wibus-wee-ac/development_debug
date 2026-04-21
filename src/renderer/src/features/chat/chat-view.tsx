@@ -5,7 +5,7 @@
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
 
@@ -38,6 +38,7 @@ export function ChatView({
   placeholder,
 }: ChatViewProps) {
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialMessageRows })
+  const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
@@ -120,7 +121,17 @@ export function ChatView({
   )
 
   return (
-    <div className="flex h-full flex-col">
+    <div
+      className="flex h-full flex-col"
+      onDrop={(e) => {
+        e.preventDefault()
+        const path = e.dataTransfer.getData('text/plain')
+        if (path) {
+          setDroppedPath({ text: path, ts: Date.now() })
+        }
+      }}
+      onDragOver={(e) => e.preventDefault()}
+    >
       {/* Virtualized message list */}
       <ScrollArea className="flex-1" viewportRef={viewportRef}>
         <div className="mx-auto max-w-2xl px-4 pt-4">
@@ -196,6 +207,8 @@ export function ChatView({
             availableFiles={availableFiles}
             toolbar={composerToolbar}
             contextBar={composerContextBar}
+            appendText={droppedPath ? `${droppedPath.text}` : undefined}
+            appendTextKey={droppedPath?.ts}
           />
         </div>
       </div>

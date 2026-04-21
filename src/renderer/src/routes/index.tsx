@@ -1,7 +1,8 @@
-// Input: AppLayout, NewChatHome, TanStack Router search state
+// Input: AppLayout, AppHeader, NewChatHome, TanStack Router search state
 // Output: Index route — renders the launcher and forwards the selected workspace from URL search
 // Position: Root page route for the main launcher view
 
+import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { NewChatHome } from '@renderer/features/new-chat'
 import { createFileRoute } from '@tanstack/react-router'
@@ -18,7 +19,7 @@ function App() {
 
   return (
     <AppLayout
-      aside={undefined}
+      header={<AppHeader />}
       panel={undefined}
     >
       <NewChatHome preferredWorkspaceId={workspaceId ?? null} />

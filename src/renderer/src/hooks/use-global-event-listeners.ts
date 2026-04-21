@@ -1,7 +1,8 @@
-// Input: window.ptyPush, window.electron.ipcRenderer, session-activity store, TanStack Router matchRoute
-// Output: useGlobalEventListeners hook — registers PTY and chat event listeners for unread tracking
+// Input: window.ptyPush, window.electron.ipcRenderer, session-activity store, layout store, TanStack Router matchRoute
+// Output: useGlobalEventListeners hook — registers PTY, chat event listeners, and panel keyboard shortcuts
 // Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
 
+import { useLayoutStore } from '@renderer/store/layout'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useMatchRoute } from '@tanstack/react-router'
 import { useEffect } from 'react'
@@ -9,6 +10,27 @@ import { useEffect } from 'react'
 export function useGlobalEventListeners() {
   const markUnread = useSessionActivityStore(s => s.markUnread)
   const matchRoute = useMatchRoute()
+  const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
+  const toggleAside = useLayoutStore(s => s.toggleAside)
+
+  // Panel keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      // Ctrl+` → toggle bottom panel
+      if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === '`') {
+        e.preventDefault()
+        toggleBottomPanel()
+        return
+      }
+      // Cmd+Option+B → toggle right aside (e.key is '∫' on macOS when Option is held)
+      if (e.metaKey && e.altKey && !e.ctrlKey && (e.key === 'b' || e.key === 'B' || e.key === '∫')) {
+        e.preventDefault()
+        toggleAside()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [toggleBottomPanel, toggleAside])
 
   // PTY notifications: OSC 9, exit, OSC 133;D
   useEffect(() => {

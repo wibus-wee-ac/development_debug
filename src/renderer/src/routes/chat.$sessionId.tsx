@@ -1,10 +1,11 @@
-// Input: ChatView from chat feature, TuiView from tui feature, ipc.chat, ipc.session, ipc.acp, AppLayout, TanStack Router
+// Input: ChatView from chat feature, TuiView from tui feature, ipc.chat, ipc.session, ipc.acp, AppLayout, TanStack Router, RightAside
 // Output: Chat session route — thin page that reads session from DB and renders ChatView or TuiView
 // Position: Route page for /chat/$sessionId, data driven by main-process ChatEngine
 
 import type { Session } from '@main/ipc-types'
 import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
+import { RightAside } from '@renderer/components/layout/right-aside'
 import { Button } from '@renderer/components/ui/button'
 import {
   Menu,
@@ -396,7 +397,8 @@ function ChatSessionPage() {
 
   return (
     <AppLayout
-      header={<AppHeader title={sessionTitle} workspace={workspaceName} />}
+      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} />}
+      aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
       panel={workspaceId && workspacePath
         ? (
           <ShellView

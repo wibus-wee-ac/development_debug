@@ -123,15 +123,20 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
               />
               <motion.aside
                 key="aside"
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: asideWidth, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
+                initial={{ width: 0 }}
+                animate={{ width: asideWidth }}
+                exit={{ width: 0 }}
                 transition={dragging === 'aside' ? INSTANT : SPRING}
                 className="flex shrink-0 overflow-hidden border-l border-border bg-background"
               >
-                <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="flex flex-col flex-1 overflow-hidden"
+                  style={{ width: asideWidth }}>
                   {aside}
-                </div>
+                </motion.div>
               </motion.aside>
             </>
           )}

@@ -128,6 +128,14 @@ export function TuiView({ sessionId }: TuiViewProps) {
       ref={containerRef}
       className="h-full w-full overflow-hidden bg-[#ffffff] dark:bg-[#0d1117]"
       style={{ padding: '4px 8px' }}
+      onDrop={(e) => {
+        e.preventDefault()
+        const path = e.dataTransfer.getData('text/plain')
+        if (path) {
+          void ipc?.pty.writePty(sessionId, `${path} `)
+        }
+      }}
+      onDragOver={(e) => e.preventDefault()}
     />
   )
 }

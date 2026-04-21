@@ -27,6 +27,10 @@ interface ComposerProps {
   className?: string
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
+  /** When this value changes, append it to the composer input (used for DnD drop from outside) */
+  appendText?: string
+  /** Used together with appendText — increment this key to re-trigger the append when the same path is dropped again */
+  appendTextKey?: number
 }
 
 export function Composer({
@@ -39,6 +43,8 @@ export function Composer({
   className,
   toolbar,
   contextBar,
+  appendText,
+  appendTextKey,
 }: ComposerProps) {
   const [inputValue, setInputValue] = useState('')
   const [mentionActive, setMentionActive] = useState(false)
@@ -146,6 +152,16 @@ export function Composer({
     }
   }, [mentionActive, handleSend])
 
+  // Append externally-provided text (e.g. from DnD drop on parent container)
+  useEffect(() => {
+    if (!appendText) {
+      return
+    }
+    setInputValue(v => v ? `${v} ${appendText}` : appendText)
+    textareaRef.current?.focus()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendTextKey])
+
   // Close mention on blur after a short delay (to allow click selection)
   useEffect(() => {
     const el = textareaRef.current
@@ -192,6 +208,14 @@ export function Composer({
           value={inputValue}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
+          onDrop={(e) => {
+            e.preventDefault()
+            const path = e.dataTransfer.getData('text/plain')
+            if (path) {
+              setInputValue(v => v ? `${v} ${path}` : path)
+            }
+          }}
+          onDragOver={(e) => e.preventDefault()}
           placeholder={placeholder}
           disabled={disabled}
           rows={2}
