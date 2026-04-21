@@ -16,6 +16,7 @@ interface LayoutState {
   setBottomPanelHeight: (h: number) => void
   toggleAside: () => void
   toggleBottomPanel: () => void
+  setBottomPanelOpen: (open: boolean) => void
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -31,6 +32,7 @@ export const useLayoutStore = create<LayoutState>()(
       setBottomPanelHeight: bottomPanelHeight => set({ bottomPanelHeight }),
       toggleAside: () => set(s => ({ asideOpen: !s.asideOpen })),
       toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
+      setBottomPanelOpen: (open: boolean) => set({ bottomPanelOpen: open }),
     }),
     { name: 'cradle-layout' },
   ),

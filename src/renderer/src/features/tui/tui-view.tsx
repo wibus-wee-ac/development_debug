@@ -1,4 +1,4 @@
-// Input: window.ptyPush push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon, One Dark theme
+// Input: window.ptyPush push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon, GitHub themes
 // Output: TuiView — live terminal rendering for cli-tui sessions
 // Position: Session view rendered when session.agent resolves to a CliAgent
 //
@@ -16,7 +16,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 
-import { oneDarkTheme } from './one-dark-theme'
+import { githubDarkTheme, githubLightTheme } from './github-theme'
 
 interface TuiViewProps {
   sessionId: string
@@ -30,8 +30,9 @@ export function TuiView({ sessionId }: TuiViewProps) {
       return
     }
 
+    const darkMq = window.matchMedia('(prefers-color-scheme: dark)')
     const terminal = new Terminal({
-      theme: oneDarkTheme,
+      theme: darkMq.matches ? githubDarkTheme : githubLightTheme,
       fontFamily: '"GeistMono", "Cascadia Code", "Fira Mono", monospace',
       fontSize: 13,
       lineHeight: 1.4,
@@ -71,6 +72,12 @@ export function TuiView({ sessionId }: TuiViewProps) {
       }
     })()
 
+    // Live theme update on dark/light switch
+    const onColorSchemeChange = (e: MediaQueryListEvent) => {
+      terminal.options.theme = e.matches ? githubDarkTheme : githubLightTheme
+    }
+    darkMq.addEventListener('change', onColorSchemeChange)
+
     // Forward keystrokes to the PTY
     const dataDisposable = terminal.onData((data) => {
       void ipc?.pty.writePty(sessionId, data)
@@ -106,6 +113,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
       unsubData()
       unsubExit()
       resizeObserver.disconnect()
+      darkMq.removeEventListener('change', onColorSchemeChange)
       // DO NOT stopPty — PTY runs independently of this view.
       // Only dispose the xterm instance (which is cheap to recreate).
       terminal.dispose()
@@ -115,7 +123,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
   return (
     <div
       ref={containerRef}
-      className="h-full w-full overflow-hidden bg-[#282c34]"
+      className="h-full w-full overflow-hidden bg-[#ffffff] dark:bg-[#0d1117]"
       style={{ padding: '4px 8px' }}
     />
   )

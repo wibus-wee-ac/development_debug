@@ -17,6 +17,7 @@ import {
 } from '@renderer/components/ui/menu'
 import { ChatView } from '@renderer/features/chat'
 import { ModelPicker } from '@renderer/features/chat/model-picker'
+import { ShellView } from '@renderer/features/tui/shell-view'
 import { TuiView } from '@renderer/features/tui/tui-view'
 import { useInstalledAcpAgents } from '@renderer/features/workspace/use-acp-agents'
 import {
@@ -308,6 +309,8 @@ function ChatSessionPage() {
   const { session: loaderSession, messages: initialMessageRows, cliAgent: loaderCliAgent } = Route.useLoaderData()
   const queryClient = useQueryClient()
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [shellGen, setShellGen] = useState(0)
   const [liveAcpSessionId, setLiveAcpSessionId] = useState<string | null>(null)
 
   // Session metadata: loader provides the initial value synchronously.
@@ -338,6 +341,7 @@ function ChatSessionPage() {
     }
     ipc?.workspace.get(workspaceId).then((ws) => {
       setWorkspaceName(ws?.name ?? null)
+      setWorkspacePath(ws?.path ?? null)
     })
   }, [workspaceId])
 
@@ -391,7 +395,19 @@ function ChatSessionPage() {
   }
 
   return (
-    <AppLayout header={<AppHeader title={sessionTitle} workspace={workspaceName} />}>
+    <AppLayout
+      header={<AppHeader title={sessionTitle} workspace={workspaceName} />}
+      panel={workspaceId && workspacePath
+        ? (
+          <ShellView
+            key={shellGen}
+            ptyId={`shell:${sessionId}:${shellGen}`}
+            cwd={workspacePath}
+            onExited={() => setShellGen(g => g + 1)}
+          />
+        )
+        : undefined}
+    >
       {loaderCliAgent
         ? (
           <TuiView sessionId={sessionId} />

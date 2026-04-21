@@ -62,4 +62,14 @@ export class PtyService extends IpcService {
   getPtyBuffer(sessionId: string): string {
     return PtyManager.getInstance().getBuffer(sessionId)
   }
+
+  /**
+   * Start a plain interactive shell PTY (e.g., for the bottom panel).
+   * Uses $SHELL (falling back to /bin/sh). Idempotent — no-op if already running.
+   */
+  @IpcMethod()
+  startShell(ptyId: string, cwd: string, cols: number, rows: number): void {
+    const shell = process.env.SHELL ?? '/bin/sh'
+    PtyManager.getInstance().start(ptyId, shell, [], cwd, cols, rows)
+  }
 }
