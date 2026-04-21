@@ -4,16 +4,16 @@
 
 import { useEffect, useState } from 'react'
 
-import { AcpEventDetail } from './acp-event-detail'
-import { AcpEventsTable } from './acp-events-table'
-import { AcpFilterBar } from './acp-filter-bar'
-import { IpcEventDetail } from './ipc-event-detail'
-import { IpcEventsTable } from './ipc-events-table'
-import { IpcFilterBar } from './ipc-filter-bar'
-import { useAcpDevtoolStore } from './use-acp-events'
-import { useAcpKeyboard } from './use-acp-keyboard'
-import { useIpcDevtoolStore } from './use-ipc-events'
-import { useIpcKeyboard } from './use-ipc-keyboard'
+import { AcpEventDetail } from './acp/acp-event-detail'
+import { AcpEventsTable } from './acp/acp-events-table'
+import { AcpFilterBar } from './acp/acp-filter-bar'
+import { IpcEventDetail } from './ipc/ipc-event-detail'
+import { IpcEventsTable } from './ipc/ipc-events-table'
+import { IpcFilterBar } from './ipc/ipc-filter-bar'
+import { useAcpDevtoolStore } from './acp/use-acp-events'
+import { useAcpKeyboard } from './acp/use-acp-keyboard'
+import { useIpcDevtoolStore } from './ipc/use-ipc-events'
+import { useIpcKeyboard } from './ipc/use-ipc-keyboard'
 
 export function IpcDevtoolPage() {
   const initializeIpc = useIpcDevtoolStore(s => s.initialize)
@@ -52,10 +52,10 @@ export function IpcDevtoolPage() {
       </div>
       {mode === 'ipc' ? <IpcFilterBar /> : <AcpFilterBar />}
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-[3] overflow-hidden border-r border-border">
+        <div className="flex-3 overflow-hidden border-r border-border">
           {mode === 'ipc' ? <IpcEventsTable /> : <AcpEventsTable />}
         </div>
-        <div className="flex-[2] overflow-hidden">
+        <div className="flex-2 overflow-hidden">
           {mode === 'ipc' ? <IpcEventDetail /> : <AcpEventDetail />}
         </div>
       </div>

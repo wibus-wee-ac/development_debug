@@ -7,7 +7,7 @@ import { cn } from '@renderer/lib/utils'
 import { useMemo } from 'react'
 import superjson from 'superjson'
 
-import { flowColor } from './flow-color'
+import { flowColor } from '../flow-color'
 import type { IpcDetailTab, IpcTrace, IpcTracePhases } from './use-ipc-events'
 import { useIpcDevtoolStore, useIpcFlowTraces, useIpcTraces } from './use-ipc-events'
 
@@ -214,7 +214,7 @@ function FlowTimeline({ traces, selectedTraceId, flowId }: FlowTimelineProps) {
           ms
         </span>
       </div>
-      <div className="sticky top-[25px] z-10 grid grid-cols-[96px_72px_1fr_1fr] gap-2 border-b border-border bg-muted/40 px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="sticky top-6.25 z-10 grid grid-cols-[96px_72px_1fr_1fr] gap-2 border-b border-border bg-muted/40 px-2 py-1 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
         <span>Time</span>
         <span className="text-right">Δ</span>
         <span>Channel</span>

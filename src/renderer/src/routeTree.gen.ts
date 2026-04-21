@@ -9,10 +9,16 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as DevtoolRouteImport } from './routes/devtool'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DevtoolRoute = DevtoolRouteImport.update({
   id: '/devtool',
   path: '/devtool',
@@ -32,35 +38,46 @@ const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
+  '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
+  '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
+  '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/devtool' | '/chat/$sessionId'
+  fullPaths: '/' | '/devtool' | '/settings' | '/chat/$sessionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/devtool' | '/chat/$sessionId'
-  id: '__root__' | '/' | '/devtool' | '/chat/$sessionId'
+  to: '/' | '/devtool' | '/settings' | '/chat/$sessionId'
+  id: '__root__' | '/' | '/devtool' | '/settings' | '/chat/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DevtoolRoute: typeof DevtoolRoute
+  SettingsRoute: typeof SettingsRoute
   ChatSessionIdRoute: typeof ChatSessionIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/devtool': {
       id: '/devtool'
       path: '/devtool'
@@ -88,6 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DevtoolRoute: DevtoolRoute,
+  SettingsRoute: SettingsRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
 }
 export const routeTree = rootRouteImport

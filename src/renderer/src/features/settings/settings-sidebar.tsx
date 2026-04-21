@@ -1,11 +1,11 @@
-// Input: useSidebarNavStore, coss UI primitives (Button, Separator)
-// Output: SettingsSidebar component — section navigation for settings drill-in
-// Position: Sidebar sub-navigation when user drills into settings
+// Input: TanStack Router navigate/search, coss UI primitives (Button, Separator)
+// Output: SettingsSidebar component — section navigation for settings route
+// Position: Sidebar for the /settings route; uses URL search param for active section
 
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/utils'
-import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowLeftIcon, BotIcon, PaletteIcon, TerminalIcon } from 'lucide-react'
 
 interface SettingsNavItem {
@@ -21,9 +21,17 @@ const SETTINGS_NAV: SettingsNavItem[] = [
 ]
 
 export function SettingsSidebar() {
-  const back = useSidebarNavStore(s => s.back)
-  const activeSection = useSidebarNavStore(s => s.settingsSection)
-  const setSection = useSidebarNavStore(s => s.setSettingsSection)
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/settings' })
+  const activeSection = search.section ?? 'appearance'
+
+  function back() {
+    void navigate({ to: '/' })
+  }
+
+  function setSection(id: string) {
+    void navigate({ to: '/settings', search: { section: id } })
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

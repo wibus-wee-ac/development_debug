@@ -19,14 +19,14 @@ import { ChatView } from '@renderer/features/chat'
 import { ModelPicker } from '@renderer/features/chat/model-picker'
 import { ShellView } from '@renderer/features/tui/shell-view'
 import { TuiView } from '@renderer/features/tui/tui-view'
-import { useInstalledAcpAgents } from '@renderer/features/workspace/use-acp-agents'
+import { useInstalledAcpAgents } from '@renderer/features/agent-runtime/use-acp-agents'
 import {
   acpSessionStateQueryKey,
   getAcpSessionState,
   setAcpSessionConfigOption,
   setAcpSessionModel,
   useAcpSessionState,
-} from '@renderer/features/workspace/use-acp-session-state'
+} from '@renderer/features/agent-runtime/use-acp-session-state'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'

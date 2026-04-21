@@ -19,7 +19,7 @@ import {
   setAcpSessionConfigOption,
   setAcpSessionModel,
   useAcpSessionState,
-} from '@renderer/features/workspace/use-acp-session-state'
+} from '@renderer/features/agent-runtime/use-acp-session-state'
 import { ipc } from '@renderer/lib/ipc'
 import { applyStoredChatPreferences, buildStoredChatPreferences } from '@shared/chat-preferences'
 import { useQueryClient } from '@tanstack/react-query'
@@ -35,11 +35,11 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useInstalledAcpAgents } from './use-acp-agents'
-import { useCliAgents } from './use-cli-agents'
-import { sessionsQueryKey } from './use-session'
-import { useWorkspaces } from './use-workspace'
-import { useWorkspaceFiles } from './use-workspace-files'
+import { useInstalledAcpAgents } from '@renderer/features/agent-runtime/use-acp-agents'
+import { useCliAgents } from '@renderer/features/workspace/use-cli-agents'
+import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
+import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
+import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 
 const WORD_SPLIT = /\s+/
 

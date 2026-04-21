@@ -12,7 +12,7 @@ import {
 } from '@tanstack/react-table'
 import { useMemo, useState } from 'react'
 
-import { flowColor } from './flow-color'
+import { flowColor } from '../flow-color'
 import type { IpcTrace } from './use-ipc-events'
 import { useIpcDevtoolStore, useIpcFilteredTraces } from './use-ipc-events'
 

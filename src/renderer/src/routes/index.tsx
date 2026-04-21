@@ -3,7 +3,7 @@
 // Position: Root page route, demonstrates composition-based slot pattern
 
 import { AppLayout } from '@renderer/components/layout/app-layout'
-import { NewChatHome } from '@renderer/features/workspace'
+import { NewChatHome } from '@renderer/features/new-chat'
 import { createFileRoute } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/')({ component: App })

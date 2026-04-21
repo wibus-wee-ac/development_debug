@@ -1,11 +1,11 @@
-// Input: useSidebarNavStore, settings section components
+// Input: TanStack Router useSearch, settings section components
 // Output: SettingsContent component — renders active settings section in main area
-// Position: Main content area when sidebar is in settings view
+// Position: Main content area in /settings route
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
-import { useSidebarNavStore } from '@renderer/store/sidebar-nav'
+import { useSearch } from '@tanstack/react-router'
 
-import { AcpSettings } from './acp-settings'
+import { AcpSettings } from '@renderer/features/acp-management'
 import { AppearanceSettings } from './appearance-settings'
 import { CliSettings } from './cli-settings'
 
@@ -16,7 +16,8 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
 }
 
 export function SettingsContent() {
-  const section = useSidebarNavStore(s => s.settingsSection)
+  const search = useSearch({ from: '/settings' })
+  const section = search.section ?? 'appearance'
   const ActiveSection = SECTION_MAP[section] ?? AppearanceSettings
 
   return (
