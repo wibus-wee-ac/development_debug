@@ -75,7 +75,6 @@ export function ToolCallBlock({
   toolName,
   state,
   input,
-  output,
   errorText,
 }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(false)

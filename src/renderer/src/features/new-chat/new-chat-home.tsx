@@ -41,6 +41,8 @@ import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 
+import { resolveSelectedWorkspaceId } from './workspace-selection'
+
 const WORD_SPLIT = /\s+/
 
 interface FlatConfigOpt {
@@ -70,7 +72,11 @@ type ProbeStatus = 'idle' | 'connecting' | 'ready' | 'error'
 
 type AgentMode = 'acp' | 'cli'
 
-export function NewChatHome() {
+interface NewChatHomeProps {
+  preferredWorkspaceId?: string | null
+}
+
+export function NewChatHome({ preferredWorkspaceId = null }: NewChatHomeProps) {
   const [agentMode, setAgentMode] = useState<AgentMode>('acp')
   const [agentId, setAgentId] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
@@ -86,9 +92,21 @@ export function NewChatHome() {
   const appliedProbeSessionIdRef = useRef<string | null>(null)
 
   const selectedAgent = agents.find(a => a.id === agentId) ?? null
-  const selectedWorkspace = workspaces.find(w => w.id === workspaceId) ?? workspaces[0] ?? null
+  const selectedWorkspace = workspaces.find(w => w.id === workspaceId) ?? null
   const effectiveWorkspaceId = selectedWorkspace?.id ?? null
   const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
+
+  useEffect(() => {
+    setWorkspaceId(currentWorkspaceId => {
+      const nextWorkspaceId = resolveSelectedWorkspaceId(
+        preferredWorkspaceId,
+        currentWorkspaceId,
+        workspaces,
+      )
+
+      return nextWorkspaceId === currentWorkspaceId ? currentWorkspaceId : nextWorkspaceId
+    })
+  }, [preferredWorkspaceId, workspaces])
 
   // Map workspace files to MentionItems for the @ picker
   const availableFiles = useMemo(

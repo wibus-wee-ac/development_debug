@@ -3,16 +3,15 @@
 # features/workspace
 
 Workspace management UI — sidebar listing, directory picker, session grouping.
-Connects to main-process IPC for workspace CRUD and native dialog.
-Used in the index route sidebar area.
+Connects to main-process IPC for workspace CRUD, session listing, and native open actions.
+Also owns the sidebar interaction contract between workspace groups and the launcher route.
 
 ## Files
 
 - **index.ts**: Barrel re-exports for the workspace feature
-- **new-chat-home.tsx**: Home route composer that boots a probe ACP session so agent/model/thinking selectors are available before the first message
-- **use-acp-agents.ts**: Hook for listing installed ACP agents in renderer UI
-- **use-acp-session-state.ts**: Hook and helpers for reading/updating live ACP session model and config state
+- **workspace-sidebar.test.tsx**: Regression tests locking workspace header navigation and folder-only collapse behavior
 - **use-workspace-files.ts**: Hook for listing workspace files for composer mentions
 - **use-workspace.ts**: Hooks for listing, adding (via native directory picker), and deleting workspaces
 - **use-session.ts**: Hook for listing sessions under a workspace
-- **workspace-sidebar.tsx**: Sidebar component with collapsible workspace groups and nested session items
+- **use-cli-agents.ts**: Hook for listing configured CLI agents exposed from the main process
+- **workspace-sidebar.tsx**: Sidebar component whose workspace name opens the launcher for that workspace while the folder icon controls collapse state

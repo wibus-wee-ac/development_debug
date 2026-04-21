@@ -1,10 +1,11 @@
-// Input: AppSidebar, ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners
-// Output: AppLayout component — pure three-column layout shell (sidebar, header/main/panel, aside)
+// Input: AppSidebar, ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent
+// Output: AppLayout component — three-column layout shell with sidebar drill-in settings
 // Position: Core layout component for main-window routes; accepts slot props from route pages
 
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { DevBottomBar } from '@renderer/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '@renderer/components/layout/resize-handle'
+import { SettingsContent } from '@renderer/features/settings/settings-content'
 import { useGlobalEventListeners } from '@renderer/hooks/use-global-event-listeners'
 import { useLayoutStore } from '@renderer/store/layout'
 import { AnimatePresence, motion } from 'motion/react'
@@ -27,6 +28,8 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
+  const [isSettings, setIsSettings] = useState(false)
+  const [settingsSection, setSettingsSection] = useState('appearance')
 
   useGlobalEventListeners()
 
@@ -45,7 +48,13 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
     <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground">
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* ── Sidebar ─────────────────────────────────── */}
-        <AppSidebar />
+        <AppSidebar
+          isSettings={isSettings}
+          settingsSection={settingsSection}
+          onOpenSettings={() => setIsSettings(true)}
+          onCloseSettings={() => setIsSettings(false)}
+          onSetSection={setSettingsSection}
+        />
 
         <ResizeHandle
           direction="horizontal"
@@ -60,13 +69,15 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
 
         {/* ── Center column ────────────────────────────── */}
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-          {header}
+          <div style={{ display: isSettings ? 'none' : undefined }}>
+            {header}
+          </div>
           <main className="flex-1 bg-background overflow-hidden">
-            {children}
+            {isSettings ? <SettingsContent section={settingsSection} /> : children}
           </main>
 
-          {/* Bottom panel — only renders if content is provided AND panel is open */}
-          {bottomPanelOpen && panel !== undefined && (
+          {/* Bottom panel — only renders when not in settings */}
+          {!isSettings && bottomPanelOpen && panel !== undefined && (
             <ResizeHandle
               direction="vertical"
               value={bottomPanelHeight}
@@ -80,7 +91,7 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
             />
           )}
           <AnimatePresence initial={false}>
-            {bottomPanelOpen && panel !== undefined && (
+            {!isSettings && bottomPanelOpen && panel !== undefined && (
               <motion.div
                 key="bottom-panel"
                 initial={{ height: 0, opacity: 0 }}

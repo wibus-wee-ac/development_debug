@@ -1,12 +1,12 @@
-// Input: TanStack Router navigate/search, coss UI primitives (Button, Separator)
-// Output: SettingsSidebar component — section navigation for settings route
-// Position: Sidebar for the /settings route; uses URL search param for active section
+// Input: coss UI primitives (Button, Separator), props: activeSection, onSetSection, onClose
+// Output: SettingsSidebar component — section navigation for settings view
+// Position: Sidebar content shown in AppSidebar when isSettings=true; fully prop-driven
 
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/utils'
-import { useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowLeftIcon, BotIcon, PaletteIcon, TerminalIcon } from 'lucide-react'
+import type { Dispatch, SetStateAction } from 'react'
 
 interface SettingsNavItem {
   id: string
@@ -20,19 +20,13 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'cli', label: 'CLI Agents', icon: TerminalIcon },
 ]
 
-export function SettingsSidebar() {
-  const navigate = useNavigate()
-  const search = useSearch({ from: '/settings' })
-  const activeSection = search.section ?? 'appearance'
+interface SettingsSidebarProps {
+  activeSection: string
+  onSetSection: Dispatch<SetStateAction<string>>
+  onClose: () => void
+}
 
-  function back() {
-    void navigate({ to: '/' })
-  }
-
-  function setSection(id: string) {
-    void navigate({ to: '/settings', search: { section: id } })
-  }
-
+export function SettingsSidebar({ activeSection, onSetSection, onClose }: SettingsSidebarProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Back header */}
@@ -40,7 +34,7 @@ export function SettingsSidebar() {
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={back}
+          onClick={onClose}
         >
           <ArrowLeftIcon />
         </Button>
@@ -55,7 +49,7 @@ export function SettingsSidebar() {
           <button
             key={id}
             type="button"
-            onClick={() => setSection(id)}
+            onClick={() => onSetSection(id)}
             data-testid={`settings-nav-${id}`}
             className={cn(
               'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',

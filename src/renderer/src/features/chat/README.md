@@ -20,5 +20,5 @@ for `useChat` assembly.
 - **message-bubble.tsx**: Renders a single UIMessage with Streamdown markdown, reasoning blocks, tool call blocks, and copy action; memoized so unchanged history rows do not re-render during streaming
 - **model-picker.tsx**: Button-triggered Combobox with searchable list for picking the active ACP model; controlled open state so callers can open it after reconnecting
 - **reasoning-block.tsx**: Collapsible thinking chain display with Streamdown markdown rendering inside
-- **tool-call-block.tsx**: Collapsible tool invocation display with status icons and state machine
+- **tool-call-block.tsx**: Collapsible tool invocation display with status icons and state machine; renders tool input and terminal state without depending on unused output payloads
 - **index.ts**: Barrel file re-exporting public API

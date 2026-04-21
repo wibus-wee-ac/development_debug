@@ -1,9 +1,8 @@
-// Input: TanStack Router useSearch, settings section components
+// Input: section prop (string), settings section components
 // Output: SettingsContent component — renders active settings section in main area
-// Position: Main content area in /settings route
+// Position: Main content area rendered by AppLayout when isSettings=true
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
-import { useSearch } from '@tanstack/react-router'
 
 import { AcpSettings } from '@renderer/features/acp-management'
 import { AppearanceSettings } from './appearance-settings'
@@ -15,9 +14,11 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   cli: CliSettings,
 }
 
-export function SettingsContent() {
-  const search = useSearch({ from: '/settings' })
-  const section = search.section ?? 'appearance'
+interface SettingsContentProps {
+  section: string
+}
+
+export function SettingsContent({ section }: SettingsContentProps) {
   const ActiveSection = SECTION_MAP[section] ?? AppearanceSettings
 
   return (

@@ -73,7 +73,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     await ipc?.session.delete(session.id)
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     if (isActive) {
-      void navigate({ to: '/' })
+      void navigate({ to: '/', search: { workspaceId: undefined } })
     }
   }, [session.id, workspaceId, queryClient, isActive, navigate])
 
@@ -132,27 +132,41 @@ function WorkspaceGroup({
   onDelete: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(true)
+  const navigate = useNavigate()
   const { sessions } = useSessions(expanded ? workspace.id : null)
+  const toggleExpanded = useCallback(() => {
+    setExpanded(prev => !prev)
+  }, [])
+  const openWorkspaceHome = useCallback(() => {
+    void navigate({
+      to: '/',
+      search: { workspaceId: workspace.id },
+    })
+  }, [navigate, workspace.id])
 
   return (
     <div className="flex flex-col" data-testid={`workspace-group-${workspace.id}`}>
-      {/* Group header — entire row is clickable */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => setExpanded(prev => !prev)}
-        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && setExpanded(prev => !prev)}
-        className="group flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-accent/40 transition-colors"
-      >
-        <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/70">
+      <div className="group flex items-center gap-1 rounded-lg px-1 py-0.5 hover:bg-accent/40 transition-colors">
+        <button
+          type="button"
+          onClick={toggleExpanded}
+          aria-label="切换工作区折叠状态"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors"
+        >
           {expanded
             ? <FolderOpenIcon className="size-4" aria-hidden="true" />
             : <FolderClosedIcon className="size-4" aria-hidden="true" />}
-        </span>
+        </button>
 
-        <span className="flex-1 truncate text-xs font-medium text-sidebar-foreground/90">
-          {workspace.name}
-        </span>
+        <button
+          type="button"
+          onClick={openWorkspaceHome}
+          className="flex min-w-0 flex-1 items-center px-1 py-1.5 text-left"
+        >
+          <span className="truncate text-xs font-medium text-sidebar-foreground/90">
+            {workspace.name}
+          </span>
+        </button>
 
         <Menu>
           <MenuTrigger
@@ -268,7 +282,7 @@ export function WorkspaceSidebar() {
         <TopNavItem
           icon={<MessageSquarePlusIcon className="size-4" />}
           label="新建聊天"
-          onClick={() => navigate({ to: '/' })}
+          onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
         />
         <TopNavItem
           icon={<SearchIcon className="size-4" />}

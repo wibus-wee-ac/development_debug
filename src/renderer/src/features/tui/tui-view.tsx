@@ -1,4 +1,4 @@
-// Input: window.ptyPush push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon, GitHub themes
+// Input: window.ptyPush push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon, app CSS theme vars
 // Output: TuiView — live terminal rendering for cli-tui sessions
 // Position: Session view rendered when session.agent resolves to a CliAgent
 //
@@ -16,7 +16,8 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 
-import { githubDarkTheme, githubLightTheme } from './github-theme'
+import { getAppTerminalTheme } from './app-theme'
+import { attachMacKeyboardHandler } from './keyboard-handler'
 
 interface TuiViewProps {
   sessionId: string
@@ -32,7 +33,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
 
     const darkMq = window.matchMedia('(prefers-color-scheme: dark)')
     const terminal = new Terminal({
-      theme: darkMq.matches ? githubDarkTheme : githubLightTheme,
+      theme: getAppTerminalTheme(),
       fontFamily: '"GeistMono", "Cascadia Code", "Fira Mono", monospace',
       fontSize: 13,
       lineHeight: 1.4,
@@ -72,9 +73,11 @@ export function TuiView({ sessionId }: TuiViewProps) {
       }
     })()
 
+    attachMacKeyboardHandler(terminal)
+
     // Live theme update on dark/light switch
-    const onColorSchemeChange = (e: MediaQueryListEvent) => {
-      terminal.options.theme = e.matches ? githubDarkTheme : githubLightTheme
+    const onColorSchemeChange = (_e: MediaQueryListEvent) => {
+      terminal.options.theme = getAppTerminalTheme()
     }
     darkMq.addEventListener('change', onColorSchemeChange)
 
