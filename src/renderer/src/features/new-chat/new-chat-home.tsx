@@ -99,7 +99,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
 
   useEffect(() => {
     onWorkspaceChange?.(selectedWorkspace ? { id: selectedWorkspace.id, path: selectedWorkspace.path } : null)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWorkspace?.id, selectedWorkspace?.path])
 
   useEffect(() => {

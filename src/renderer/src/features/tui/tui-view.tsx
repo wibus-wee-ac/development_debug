@@ -54,6 +54,27 @@ export function TuiView({ sessionId }: TuiViewProps) {
     catch { /* WebGL unavailable — xterm falls back to canvas */ }
 
     // Attach to PTY: start new or replay buffer from existing
+    let lastCols = 0
+    let lastRows = 0
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null
+    let pendingCols = 0
+    let pendingRows = 0
+
+    function applyResize(cols: number, rows: number) {
+      if (cols <= 0 || rows <= 0) return
+      pendingCols = cols
+      pendingRows = rows
+      if (resizeTimer) clearTimeout(resizeTimer)
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null
+        if (pendingCols === lastCols && pendingRows === lastRows) return
+        terminal.resize(pendingCols, pendingRows)
+        lastCols = pendingCols
+        lastRows = pendingRows
+        void ipc?.pty.resizePty(sessionId, lastCols, lastRows)
+      }, 100)
+    }
+
     void (async () => {
       const running = await ipc!.pty.isPtyRunning(sessionId)
       if (running) {
@@ -63,13 +84,23 @@ export function TuiView({ sessionId }: TuiViewProps) {
           terminal.write(buf)
         }
         // Sync terminal size to existing PTY
-        fitAddon.fit()
-        await ipc!.pty.resizePty(sessionId, terminal.cols, terminal.rows)
+        const dims = fitAddon.proposeDimensions()
+        if (dims && dims.cols > 0 && dims.rows > 0) {
+          terminal.resize(dims.cols, dims.rows)
+          lastCols = dims.cols
+          lastRows = dims.rows
+          await ipc!.pty.resizePty(sessionId, dims.cols, dims.rows)
+        }
       }
       else {
         // First mount — start the PTY
-        fitAddon.fit()
-        await ipc!.pty.startPty(sessionId, terminal.cols, terminal.rows)
+        const dims = fitAddon.proposeDimensions()
+        if (dims && dims.cols > 0 && dims.rows > 0) {
+          terminal.resize(dims.cols, dims.rows)
+          lastCols = dims.cols
+          lastRows = dims.rows
+          await ipc!.pty.startPty(sessionId, dims.cols, dims.rows)
+        }
       }
     })()
 
@@ -100,18 +131,17 @@ export function TuiView({ sessionId }: TuiViewProps) {
       }
     })
 
-    // Resize observer: refit on container size change
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) {
-        return
-      }
-      fitAddon.fit()
-      void ipc?.pty.resizePty(sessionId, terminal.cols, terminal.rows)
+    // Resize observer: refit on container size change — unified debounce to prevent
+    // terminal.resize() flicker during route transitions and layout animations.
+    const resizeObserver = new ResizeObserver(() => {
+      const dims = fitAddon.proposeDimensions()
+      if (!dims || dims.cols <= 0 || dims.rows <= 0) return
+      applyResize(dims.cols, dims.rows)
     })
     resizeObserver.observe(containerRef.current)
 
     return () => {
+      if (resizeTimer) clearTimeout(resizeTimer)
       dataDisposable.dispose()
       unsubData()
       unsubExit()
@@ -126,7 +156,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
   return (
     <div
       ref={containerRef}
-      className="h-full w-full overflow-hidden bg-[#ffffff] dark:bg-[#0d1117]"
+      className="h-full w-full overflow-hidden"
       style={{ padding: '4px 8px' }}
       onDrop={(e) => {
         e.preventDefault()

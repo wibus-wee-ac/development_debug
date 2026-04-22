@@ -155,7 +155,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
               <TooltipProvider delay={700}>
                 <VList
                   ref={vListRef}
-                  className="flex-1"
+                  className="flex-1 [&::-webkit-scrollbar]:hidden"
                   itemSize={ROW_HEIGHT}
                   onScroll={handleRangeChange}
                 >
