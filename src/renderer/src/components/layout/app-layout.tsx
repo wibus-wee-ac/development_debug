@@ -8,7 +8,7 @@ import { ResizeHandle } from '@renderer/components/layout/resize-handle'
 import { SettingsContent } from '@renderer/features/settings/settings-content'
 import { useGlobalEventListeners } from '@renderer/hooks/use-global-event-listeners'
 import { useLayoutStore } from '@renderer/store/layout'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -81,7 +81,7 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
             {isSettings ? <SettingsContent section={settingsSection} /> : children}
           </main>
 
-          {/* Bottom panel — only renders when not in settings */}
+          {/* Bottom panel — resize handle only visible when open */}
           {!isSettings && bottomPanelOpen && panel !== undefined && (
             <ResizeHandle
               direction="vertical"
@@ -95,26 +95,32 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
               className="bg-background"
             />
           )}
-          <AnimatePresence initial={false}>
-            {!isSettings && bottomPanelOpen && panel !== undefined && (
-              <motion.div
-                key="bottom-panel"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: bottomPanelHeight, opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={dragging === 'panel' ? INSTANT : SPRING}
-                className="bg-background border-t border-border overflow-hidden shrink-0"
-              >
-                <div style={{ height: bottomPanelHeight }}>{panel}</div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Bottom panel — always mounted when content exists so the terminal xterm
+              instance is never destroyed on close/open, mirroring VS Code's approach.
+              Height animates between 0 (hidden) and bottomPanelHeight (visible). */}
+          {!isSettings && panel !== undefined && (
+            <motion.div
+              initial={{
+                height: bottomPanelOpen ? bottomPanelHeight : 0,
+                opacity: bottomPanelOpen ? 1 : 0,
+              }}
+              animate={{
+                height: bottomPanelOpen ? bottomPanelHeight : 0,
+                opacity: bottomPanelOpen ? 1 : 0,
+              }}
+              transition={dragging === 'panel' ? INSTANT : SPRING}
+              className="bg-background border-t border-border overflow-hidden shrink-0"
+            >
+              <div style={{ height: bottomPanelHeight }}>{panel}</div>
+            </motion.div>
+          )}
         </div>
 
-        {/* ── Right Aside — only renders if content is provided AND aside is open ── */}
-        <AnimatePresence initial={false}>
-          {asideOpen && aside !== undefined && (
-            <>
+        {/* ── Right Aside — always mounted when content exists to preserve internal state
+             (e.g. active tab). Width + opacity animation provides smooth open/close. ── */}
+        {aside !== undefined && (
+          <>
+            {asideOpen && (
               <ResizeHandle
                 direction="horizontal"
                 value={asideWidth}
@@ -126,27 +132,28 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
                 inverted
                 className="bg-background"
               />
-              <motion.aside
-                key="aside"
-                initial={{ width: 0 }}
-                animate={{ width: asideWidth }}
-                exit={{ width: 0 }}
-                transition={dragging === 'aside' ? INSTANT : SPRING}
-                className="flex shrink-0 overflow-hidden border-l border-border bg-background"
+            )}
+            <motion.aside
+              initial={{
+                width: asideOpen ? asideWidth : 0,
+                opacity: asideOpen ? 1 : 0,
+              }}
+              animate={{
+                width: asideOpen ? asideWidth : 0,
+                opacity: asideOpen ? 1 : 0,
+              }}
+              transition={dragging === 'aside' ? INSTANT : SPRING}
+              className="flex shrink-0 overflow-hidden border-l border-border bg-background"
+            >
+              <div
+                className="flex flex-col flex-1 overflow-hidden"
+                style={{ width: asideWidth }}
               >
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="flex flex-col flex-1 overflow-hidden"
-                  style={{ width: asideWidth }}
-                >
-                  {aside}
-                </motion.div>
-              </motion.aside>
-            </>
-          )}
-        </AnimatePresence>
+                {aside}
+              </div>
+            </motion.aside>
+          </>
+        )}
       </div>
       {import.meta.env.DEV && <DevBottomBar />}
     </div>
