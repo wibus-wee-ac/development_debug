@@ -77,10 +77,32 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     }
   }, [session.id, workspaceId, queryClient, isActive, navigate])
 
+  const handleDragStart = useCallback((e: React.DragEvent) => {
+    e.dataTransfer.setData('application/x-cradle-session', session.id)
+    e.dataTransfer.effectAllowed = 'move'
+  }, [session.id])
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    // Detect if cursor dropped outside the current window bounds
+    const { screenX, screenY } = e
+    const outside = (
+      screenX < window.screenX
+      || screenX > window.screenX + window.outerWidth
+      || screenY < window.screenY
+      || screenY > window.screenY + window.outerHeight
+    )
+    if (outside) {
+      ipc?.window.tearOffSession(session.id, screenX, screenY)
+    }
+  }, [session.id])
+
   return (
     <div
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       className={cn(
-        'group flex w-full items-center gap-1.5 rounded-md text-left text-xs transition-colors hover:bg-accent/60',
+        'group flex w-full items-center gap-1.5 rounded-md text-left text-xs transition-colors hover:bg-accent/60 cursor-grab active:cursor-grabbing',
         isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
       data-testid={`session-item-${session.id}`}
@@ -88,6 +110,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       <Link
         to="/chat/$sessionId"
         params={{ sessionId: session.id }}
+        search={{ tearoff: false }}
         className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 truncate text-sidebar-foreground/80"
       >
         <span className="flex-1 truncate">{session.title}</span>

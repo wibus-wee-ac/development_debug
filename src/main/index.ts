@@ -18,6 +18,7 @@ import { PtyService } from './services/pty'
 import { CliService } from './services/cli'
 import { SearchService } from './services/search'
 import { SessionService } from './services/session'
+import { WindowService } from './services/window'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
 
@@ -94,6 +95,7 @@ app.whenReady().then(() => {
     SearchService,
     PtyService,
     CliService,
+    WindowService,
   ] as const)
 
   // Set app user model id for windows

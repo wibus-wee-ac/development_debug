@@ -13,16 +13,18 @@ interface AppHeaderProps {
   workspace?: ReactNode
   hasAside?: boolean
   hasPanel?: boolean
+  /** When true, add left padding to clear macOS Traffic Lights in a hiddenInset tear-off window */
+  trafficLight?: boolean
 }
 
-export function AppHeader({ title, workspace, hasAside = true, hasPanel = true }: AppHeaderProps) {
+export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, trafficLight = false }: AppHeaderProps) {
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside } = useLayoutStore()
 
   if (title === undefined && workspace === undefined) {
     // Even without breadcrumbs, render the header shell for panel toggle buttons
     return (
       <div
-        className="flex h-11 shrink-0 items-center border-b border-border bg-background pe-1 ps-3"
+        className={cn('flex h-11 shrink-0 items-center border-b border-border bg-background pe-1', trafficLight ? 'pl-18.5' : 'ps-3')}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
         <div className="flex-1" />
@@ -60,7 +62,7 @@ export function AppHeader({ title, workspace, hasAside = true, hasPanel = true }
 
   return (
     <div
-      className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-background pe-1 ps-3"
+      className={cn('flex h-11 shrink-0 items-center gap-2 border-b border-border bg-background pe-1', trafficLight ? 'pl-18.5' : 'ps-3')}
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       <nav

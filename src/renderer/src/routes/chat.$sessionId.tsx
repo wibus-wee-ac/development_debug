@@ -16,10 +16,6 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '@renderer/components/ui/menu'
-import { ChatView } from '@renderer/features/chat'
-import { ModelPicker } from '@renderer/features/chat/model-picker'
-import { ShellView } from '@renderer/features/tui/shell-view'
-import { TuiView } from '@renderer/features/tui/tui-view'
 import { useInstalledAcpAgents } from '@renderer/features/agent-runtime/use-acp-agents'
 import {
   acpSessionStateQueryKey,
@@ -28,6 +24,10 @@ import {
   setAcpSessionModel,
   useAcpSessionState,
 } from '@renderer/features/agent-runtime/use-acp-session-state'
+import { ChatView } from '@renderer/features/chat'
+import { ModelPicker } from '@renderer/features/chat/model-picker'
+import { ShellView } from '@renderer/features/tui/shell-view'
+import { TuiView } from '@renderer/features/tui/tui-view'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
@@ -278,6 +278,9 @@ function SessionComposerBar({ session, agentId, acpSessionId, onAcpSessionConnec
 }
 
 export const Route = createFileRoute('/chat/$sessionId')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    tearoff: search.tearoff === 'true' || search.tearoff === true,
+  }),
   /**
    * Pre-fetch both session metadata and messages before the route renders.
    * Both IPC calls run in parallel so the total wait is max(session, messages).
@@ -307,6 +310,7 @@ export const Route = createFileRoute('/chat/$sessionId')({
 
 function ChatSessionPage() {
   const { sessionId } = Route.useParams()
+  const { tearoff } = Route.useSearch()
   const { session: loaderSession, messages: initialMessageRows, cliAgent: loaderCliAgent } = Route.useLoaderData()
   const queryClient = useQueryClient()
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
@@ -387,7 +391,7 @@ function ChatSessionPage() {
 
   if (!session) {
     return (
-      <AppLayout>
+      <AppLayout hideSidebar={tearoff}>
         <div className="flex h-full items-center justify-center">
           <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground/50" />
         </div>
@@ -397,7 +401,8 @@ function ChatSessionPage() {
 
   return (
     <AppLayout
-      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} />}
+      hideSidebar={tearoff}
+      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight={tearoff} />}
       aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
       panel={workspaceId && workspacePath
         ? (

@@ -24,9 +24,10 @@ interface AppLayoutProps {
   header?: ReactNode
   aside?: ReactNode
   panel?: ReactNode
+  hideSidebar?: boolean
 }
 
-export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
+export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [isSettings, setIsSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState('appearance')
@@ -48,24 +49,28 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
     <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground">
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* ── Sidebar ─────────────────────────────────── */}
-        <AppSidebar
-          isSettings={isSettings}
-          settingsSection={settingsSection}
-          onOpenSettings={() => setIsSettings(true)}
-          onCloseSettings={() => setIsSettings(false)}
-          onSetSection={setSettingsSection}
-        />
+        {!hideSidebar && (
+          <AppSidebar
+            isSettings={isSettings}
+            settingsSection={settingsSection}
+            onOpenSettings={() => setIsSettings(true)}
+            onCloseSettings={() => setIsSettings(false)}
+            onSetSection={setSettingsSection}
+          />
+        )}
 
-        <ResizeHandle
-          direction="horizontal"
-          value={sidebarWidth}
-          onChange={setSidebarWidth}
-          onDragStart={() => setDragging('sidebar')}
-          onDragEnd={() => setDragging(null)}
-          min={SIDEBAR.min}
-          max={SIDEBAR.max}
-          className="bg-background"
-        />
+        {!hideSidebar && (
+          <ResizeHandle
+            direction="horizontal"
+            value={sidebarWidth}
+            onChange={setSidebarWidth}
+            onDragStart={() => setDragging('sidebar')}
+            onDragEnd={() => setDragging(null)}
+            min={SIDEBAR.min}
+            max={SIDEBAR.max}
+            className="bg-background"
+          />
+        )}
 
         {/* ── Center column ────────────────────────────── */}
         <div className="flex flex-col flex-1 overflow-hidden min-w-0">
@@ -134,7 +139,8 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   className="flex flex-col flex-1 overflow-hidden"
-                  style={{ width: asideWidth }}>
+                  style={{ width: asideWidth }}
+                >
                   {aside}
                 </motion.div>
               </motion.aside>

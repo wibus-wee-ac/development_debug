@@ -12,6 +12,7 @@ import type { PreferencesService } from './services/preferences'
 import type { PtyService } from './services/pty'
 import type { CliService } from './services/cli'
 import type { SearchService } from './services/search'
+import type { WindowService } from './services/window'
 import type { SessionService } from './services/session'
 import type { WorkspaceService } from './services/workspace'
 
@@ -30,6 +31,7 @@ export type IpcServices = MergeIpcService<{
   search: typeof SearchService
   pty: typeof PtyService
   cli: typeof CliService
+  window: typeof WindowService
 }>
 
 // Convenience re-exports so the renderer imports from one place
