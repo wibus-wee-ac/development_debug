@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "agent-design": {
+      "source": "wibus-wee/SKILL",
+      "sourceType": "github",
+      "computedHash": "56c8031313618d2fff80a8331492a54b443e02899ab5beaee60373ddd17d9fa0"
+    },
     "ai-sdk": {
       "source": "vercel/ai",
       "sourceType": "github",
