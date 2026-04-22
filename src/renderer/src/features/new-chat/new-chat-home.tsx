@@ -74,9 +74,10 @@ type AgentMode = 'acp' | 'cli'
 
 interface NewChatHomeProps {
   preferredWorkspaceId?: string | null
+  onWorkspaceChange?: (workspace: { id: string; path: string } | null) => void
 }
 
-export function NewChatHome({ preferredWorkspaceId = null }: NewChatHomeProps) {
+export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: NewChatHomeProps) {
   const [agentMode, setAgentMode] = useState<AgentMode>('acp')
   const [agentId, setAgentId] = useState<string | null>(null)
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
@@ -95,6 +96,11 @@ export function NewChatHome({ preferredWorkspaceId = null }: NewChatHomeProps) {
   const selectedWorkspace = workspaces.find(w => w.id === workspaceId) ?? null
   const effectiveWorkspaceId = selectedWorkspace?.id ?? null
   const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
+
+  useEffect(() => {
+    onWorkspaceChange?.(selectedWorkspace ? { id: selectedWorkspace.id, path: selectedWorkspace.path } : null)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkspace?.id, selectedWorkspace?.path])
 
   useEffect(() => {
     setWorkspaceId(currentWorkspaceId => {

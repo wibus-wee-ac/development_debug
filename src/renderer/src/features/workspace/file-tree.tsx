@@ -102,12 +102,7 @@ const TreeNodeItem = memo(function TreeNodeItem({ node, depth, workspacePath }: 
         </div>
 
         {open && node.children.length > 0 && (
-          <div className="relative">
-            {/* Indent guide line */}
-            <div
-              className="absolute top-0 bottom-0 w-px bg-border/40"
-              style={{ left: `${10 + indent + 8}px` }}
-            />
+          <div>
             {node.children.map(child => (
               <TreeNodeItem key={child.path} node={child} depth={depth + 1} workspacePath={workspacePath} />
             ))}
