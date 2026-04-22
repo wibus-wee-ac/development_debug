@@ -7,7 +7,7 @@ import { FolderOpenIcon, NetworkIcon, RefreshCwIcon } from 'lucide-react'
 
 export function DevBottomBar() {
   return (
-    <footer className="flex h-7 shrink-0 items-center border-t border-border bg-sidebar/50 px-2 font-mono text-[10px]">
+    <footer className="flex h-7 shrink-0 items-center border-t border-border bg-sidebar px-2 font-mono text-[10px]">
       <span
         className="flex-1 truncate select-all text-muted-foreground/70"
         title={window.location.href}

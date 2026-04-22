@@ -39,7 +39,7 @@ export function AppSidebar({
 
   return (
     <aside
-      className="flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar/50 text-sidebar-foreground overflow-hidden"
+      className="flex flex-col shrink-0 border-r border-sidebar-border bg-sidebar text-sidebar-foreground overflow-hidden"
       style={{ width: sidebarWidth }}
     >
       <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />

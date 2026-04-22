@@ -1,6 +1,7 @@
 import '../styles.css'
 
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
+import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { useThemeStore } from '@renderer/store/theme'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { useEffect } from 'react'
@@ -30,19 +31,12 @@ function RootComponent() {
   }, [mode])
 
   return (
-    <ShortcutProvider>
-      <Outlet />
-      {/* <TanStackDevtools
-        config={{
-          position: 'bottom-right',
-        }}
-        plugins={[
-          {
-            name: 'TanStack Router',
-            render: <TanStackRouterDevtoolsPanel />,
-          },
-        ]}
-      /> */}
-    </ShortcutProvider>
+    <ToastProvider>
+      <AnchoredToastProvider>
+        <ShortcutProvider>
+          <Outlet />
+        </ShortcutProvider>
+      </AnchoredToastProvider>
+    </ToastProvider>
   )
 }

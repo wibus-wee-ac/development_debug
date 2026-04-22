@@ -15,9 +15,11 @@ interface AppHeaderProps {
   hasPanel?: boolean
   /** When true, add left padding to clear macOS Traffic Lights in a hiddenInset tear-off window */
   trafficLight?: boolean
+  /** Optional third breadcrumb segment rendered after workspace/title (e.g. git branch control) */
+  gitBranch?: ReactNode
 }
 
-export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, trafficLight = false }: AppHeaderProps) {
+export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, trafficLight = false, gitBranch }: AppHeaderProps) {
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside } = useLayoutStore()
 
   if (title === undefined && workspace === undefined) {
@@ -90,6 +92,14 @@ export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, 
         )}
         {hasTitle && (
           <span className="truncate font-medium text-foreground">{title}</span>
+        )}
+        {gitBranch && (hasTitle || hasWorkspace) && (
+          <span aria-hidden="true" className="mx-2 shrink-0 select-none text-muted-foreground/40">
+            /
+          </span>
+        )}
+        {gitBranch && (
+          <span style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>{gitBranch}</span>
         )}
       </nav>
 

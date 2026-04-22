@@ -7,6 +7,7 @@ import type { MergeIpcService } from '@cradle/ipc'
 import type { AcpService } from './services/acp'
 import type { ChatService } from './services/chat'
 import type { DevService } from './services/dev'
+import type { GitService } from './services/git'
 import type { IpcDevtoolService } from './services/ipc-devtool'
 import type { PreferencesService } from './services/preferences'
 import type { PtyService } from './services/pty'
@@ -32,6 +33,7 @@ export type IpcServices = MergeIpcService<{
   pty: typeof PtyService
   cli: typeof CliService
   window: typeof WindowService
+  git: typeof GitService
 }>
 
 // Convenience re-exports so the renderer imports from one place
@@ -51,4 +53,5 @@ export type {
   ThreadSearchParams,
   ThreadSearchSnippet,
 } from './lib/thread-search'
-export type { ModelInfo, SessionConfigOption, SessionModelState } from '@agentclientprotocol/sdk'
+export type { GitBranches, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './services/git'
+

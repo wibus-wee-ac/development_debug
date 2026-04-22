@@ -26,6 +26,7 @@ import {
 } from '@renderer/features/agent-runtime/use-acp-session-state'
 import { ChatView } from '@renderer/features/chat'
 import { ModelPicker } from '@renderer/features/chat/model-picker'
+import { GitBranchControl } from '@renderer/features/git'
 import { ShellView } from '@renderer/features/tui/shell-view'
 import { TuiView } from '@renderer/features/tui/tui-view'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
@@ -402,7 +403,7 @@ function ChatSessionPage() {
   return (
     <AppLayout
       hideSidebar={tearoff}
-      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight={tearoff} />}
+      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight={tearoff} gitBranch={<GitBranchControl workspacePath={workspacePath} />} />}
       aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
       panel={workspaceId && workspacePath
         ? (

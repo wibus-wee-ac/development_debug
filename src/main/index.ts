@@ -12,6 +12,7 @@ import { PtyManager } from './lib/pty-manager'
 import { AcpService } from './services/acp'
 import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
+import { GitService } from './services/git'
 import { IpcDevtoolService } from './services/ipc-devtool'
 import { PreferencesService } from './services/preferences'
 import { PtyService } from './services/pty'
@@ -96,6 +97,7 @@ app.whenReady().then(() => {
     PtyService,
     CliService,
     WindowService,
+    GitService,
   ] as const)
 
   // Set app user model id for windows

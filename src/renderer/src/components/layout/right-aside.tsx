@@ -1,10 +1,11 @@
-// Input: FileTree, workspaceId prop, motion/react
-// Output: RightAside component — tabbed right aside panel with File Tree tab
+// Input: FileTree, GitPanel, workspaceId prop, motion/react
+// Output: RightAside component — tabbed right aside panel with File Tree and Git tabs
 // Position: Slot content for AppLayout aside prop; shown when asideOpen=true
 
+import { GitPanel } from '@renderer/features/git'
 import { FileTree } from '@renderer/features/workspace/file-tree'
 import { cn } from '@renderer/lib/utils'
-import { FolderTreeIcon } from 'lucide-react'
+import { FolderTreeIcon, GitBranchIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 
@@ -16,6 +17,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'files', label: '文件', icon: FolderTreeIcon },
+  { id: 'git', label: 'Git', icon: GitBranchIcon },
 ]
 
 const TAB_SPRING = {
@@ -66,6 +68,7 @@ export function RightAside({ workspaceId, workspacePath }: RightAsideProps) {
       {/* ── Tab content ─────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {activeTab === 'files' && <FileTree workspaceId={workspaceId} workspacePath={workspacePath} />}
+        {activeTab === 'git' && <GitPanel workspacePath={workspacePath} />}
       </div>
     </div>
   )
