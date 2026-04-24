@@ -1,5 +1,5 @@
 // Input: drizzle-orm sqlite schema builders
-// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, ACP agents, audit log, CLI agents, and Kanban entities
+// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, unified agent runtime tables, and Kanban entities
 // Position: Main-process persistence schema shared by DB initialization and services
 
 import { sql } from 'drizzle-orm'
@@ -33,12 +33,16 @@ export const sessions = sqliteTable('sessions', {
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
-  agent: text('agent').notNull().default('claude'),
-  /**
-   * Last attached ACP agent session ID.
-   * Used as the recovery handle across restarts; may be offline until `ensureLive()` reattaches it.
-   */
-  recoverableAcpSessionId: text('recoverable_acp_session_id'),
+  agentProfileId: text('agent_profile_id')
+    .notNull()
+    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  providerKind: text('provider_kind', {
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+  }).notNull(),
+  /** Provider-owned session handle such as an ACP session id, Codex thread id, or PTY id. */
+  providerSessionId: text('provider_session_id'),
+  /** JSON object with provider-specific resumable state. */
+  providerStateSnapshot: text('provider_state_snapshot'),
   /** Model ID snapshot captured at session creation. Shown when no active ACP session. */
   modelId: text('model_id'),
   /** JSON array of SessionConfigOption snapshots captured at creation. */
@@ -62,61 +66,78 @@ export const messages = sqliteTable('messages', {
   ...timestamps(),
 })
 
-/**
- * Installed ACP agents. Tracks both binary (file on disk) and
- * package-manager agents (npx / uvx — no binary written).
- */
-export const acpAgents = sqliteTable('acp_agents', {
-  id: text('id').primaryKey(), // registry id, e.g. "claude-acp"
+export const agentProfiles = sqliteTable('agent_profiles', {
+  id: textPk(),
   name: text('name').notNull(),
-  version: text('version').notNull(),
-  /** 'binary' | 'npx' | 'uvx' */
-  distributionType: text('distribution_type').notNull(),
-  /** Absolute path to the extracted directory (binary only, else null). */
-  installPath: text('install_path'),
-  /** Relative cmd inside installPath (binary) or package name (npx/uvx). */
-  cmd: text('cmd'),
-  /** JSON array of extra CLI args. */
-  args: text('args').notNull().default('[]'),
-  /** JSON object of extra env vars. */
-  env: text('env').notNull().default('{}'),
-  /** 'installing' | 'installed' | 'failed' | 'uninstalling' */
-  status: text('status').notNull().default('installing'),
+  providerKind: text('provider_kind', {
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+  }).notNull(),
+  enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
+  configJson: text('config_json').notNull().default('{}'),
+  credentialRef: text('credential_ref'),
   ...timestamps(),
 })
 
-/**
- * Immutable audit log for every file-system write/delete performed by the
- * ACP installer. Entries are append-only so the full history is replayable.
- */
-export const acpAuditLog = sqliteTable('acp_audit_log', {
+export const agentCredentials = sqliteTable('agent_credentials', {
+  id: textPk(),
+  providerKind: text('provider_kind', {
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+  }).notNull(),
+  label: text('label').notNull(),
+  encryptedSecret: text('encrypted_secret').notNull(),
+  ...timestamps(),
+})
+
+export const runtimeSessions = sqliteTable('runtime_sessions', {
+  id: textPk(),
+  chatSessionId: text('chat_session_id')
+    .notNull()
+    .references(() => sessions.id, { onDelete: 'cascade' }),
+  agentProfileId: text('agent_profile_id')
+    .notNull()
+    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  providerKind: text('provider_kind', {
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+  }).notNull(),
+  providerSessionId: text('provider_session_id'),
+  providerStateSnapshot: text('provider_state_snapshot'),
+  ...timestamps(),
+})
+
+export const runtimeAuditLog = sqliteTable('runtime_audit_log', {
   id: int('id').primaryKey({ autoIncrement: true }),
-  agentId: text('agent_id').notNull(),
-  /**
-   * 'install_start' | 'file_download' | 'file_extract' | 'file_chmod'
-   * | 'install_complete' | 'install_failed'
-   * | 'uninstall_start' | 'file_delete' | 'uninstall_complete'
-   */
+  agentProfileId: text('agent_profile_id').references(() => agentProfiles.id, { onDelete: 'set null' }),
+  providerKind: text('provider_kind', {
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+  }).notNull(),
   action: text('action').notNull(),
-  /** Absolute path involved in the operation (may be null for logical events). */
-  path: text('path'),
-  /** JSON blob with extra context (URL, error message, …). */
+  subject: text('subject'),
   details: text('details').notNull().default('{}'),
   ...createdAt(),
 })
 
-/**
- * CLI agents — system-installed CLI tools (e.g. `claude`, `codex`) that the
- * user has configured for use in terminal sessions.
- */
-export const cliAgents = sqliteTable('cli_agents', {
-  id: text('id').primaryKey(), // user-supplied, e.g. "claude-code"
+// ── ACP tables ────────────────────────────────────────────────────────────────
+
+export const acpAgents = sqliteTable('acp_agents', {
+  id: text('id').primaryKey(),
   name: text('name').notNull(),
-  /** Absolute path or bare executable name (resolved via PATH at PTY start). */
-  executable: text('executable').notNull(),
-  /** JSON array of extra CLI args prepended on start. */
+  version: text('version').notNull(),
+  distributionType: text('distribution_type').notNull(),
+  installPath: text('install_path'),
+  cmd: text('cmd'),
   args: text('args').notNull().default('[]'),
+  env: text('env').notNull().default('{}'),
+  status: text('status').notNull().default('installing'),
   ...timestamps(),
+})
+
+export const acpAuditLog = sqliteTable('acp_audit_log', {
+  id: int('id').primaryKey({ autoIncrement: true }),
+  agentId: text('agent_id').notNull(),
+  action: text('action').notNull(),
+  path: text('path'),
+  details: text('details').notNull().default('{}'),
+  ...createdAt(),
 })
 
 // ── Inferred types ────────────────────────────────────────────────────────────
@@ -127,11 +148,15 @@ export type Session = typeof sessions.$inferSelect
 export type NewSession = typeof sessions.$inferInsert
 export type Message = typeof messages.$inferSelect
 export type NewMessage = typeof messages.$inferInsert
+export type AgentProfile = typeof agentProfiles.$inferSelect
+export type NewAgentProfile = typeof agentProfiles.$inferInsert
+export type AgentCredential = typeof agentCredentials.$inferSelect
+export type NewAgentCredential = typeof agentCredentials.$inferInsert
+export type RuntimeSession = typeof runtimeSessions.$inferSelect
+export type NewRuntimeSession = typeof runtimeSessions.$inferInsert
+export type RuntimeAuditEntry = typeof runtimeAuditLog.$inferSelect
 export type AcpAgent = typeof acpAgents.$inferSelect
-export type NewAcpAgent = typeof acpAgents.$inferInsert
 export type AcpAuditEntry = typeof acpAuditLog.$inferSelect
-export type CliAgent = typeof cliAgents.$inferSelect
-export type NewCliAgent = typeof cliAgents.$inferInsert
 
 // ── Kanban tables ─────────────────────────────────────────────────────────────
 

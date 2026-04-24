@@ -34,10 +34,11 @@ export class SessionService extends IpcService {
   create(input: {
     workspaceId: string
     title: string
-    agent: string
+    agentProfileId: string
+    providerKind: Session['providerKind']
     id?: string
-    /** Recoverable ACP session ID to associate with this persisted thread. */
-    recoverableAcpSessionId?: string
+    providerSessionId?: string | null
+    providerStateSnapshot?: string | null
     /** Snapshot of the initial model ID. */
     modelId?: string
     /** JSON snapshot of initial config options. */
@@ -51,8 +52,10 @@ export class SessionService extends IpcService {
         id,
         workspaceId: input.workspaceId,
         title: input.title,
-        agent: input.agent,
-        recoverableAcpSessionId: input.recoverableAcpSessionId ?? null,
+        agentProfileId: input.agentProfileId,
+        providerKind: input.providerKind,
+        providerSessionId: input.providerSessionId ?? null,
+        providerStateSnapshot: input.providerStateSnapshot ?? null,
         modelId: input.modelId ?? null,
         configSnapshot: input.configSnapshot ?? null,
       })

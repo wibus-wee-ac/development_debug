@@ -26,7 +26,6 @@ vi.mock('../../db', () => ({
 }))
 
 vi.mock('../../db/schema', () => ({
-  acpAgents: { id: 'id' },
   acpAuditLog: {},
 }))
 

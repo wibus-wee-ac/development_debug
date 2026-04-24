@@ -1,5 +1,5 @@
 // Input: vi mocks for database calls and SessionService methods
-// Output: Unit tests for session metadata persistence updates and recovery handle storage
+// Output: Unit tests for session metadata persistence updates and provider handle storage
 // Position: Unit test file for src/main/services/session.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,26 +48,28 @@ describe('sessionService', () => {
     service = new SessionService()
   })
 
-  it('stores the recoverable ACP session handle on create', () => {
+  it('stores the provider session handle on create', () => {
     mockReturningGet.mockReturnValueOnce({
       id: 'session-1',
       workspaceId: 'workspace-1',
       title: 'Chat',
-      agent: 'test-agent',
-      recoverableAcpSessionId: 'acp-1',
+      agentProfileId: 'test-agent',
+      providerKind: 'acp-chat',
+      providerSessionId: 'acp-1',
     })
 
     service.create({
       id: 'session-1',
       workspaceId: 'workspace-1',
       title: 'Chat',
-      agent: 'test-agent',
-      recoverableAcpSessionId: 'acp-1',
+      agentProfileId: 'test-agent',
+      providerKind: 'acp-chat',
+      providerSessionId: 'acp-1',
     })
 
     expect(mockInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        recoverableAcpSessionId: 'acp-1',
+        providerSessionId: 'acp-1',
       }),
     )
   })

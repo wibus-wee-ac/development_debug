@@ -3,15 +3,13 @@
 // Position: Main content area rendered by AppLayout when isSettings=true
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
+import { AgentsSettings } from '@renderer/features/agent-management/agents-settings'
 
-import { AcpSettings } from '@renderer/features/acp-management'
 import { AppearanceSettings } from './appearance-settings'
-import { CliSettings } from './cli-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
-  acp: AcpSettings,
-  cli: CliSettings,
+  agents: AgentsSettings,
 }
 
 interface SettingsContentProps {
@@ -23,7 +21,7 @@ export function SettingsContent({ section }: SettingsContentProps) {
 
   return (
     <ScrollArea className="flex-1">
-      <div className="mx-auto max-w-2xl px-8 pt-10 pb-6">
+      <div className="mx-auto max-w-4xl px-8 pt-10 pb-6">
         <ActiveSection />
       </div>
     </ScrollArea>

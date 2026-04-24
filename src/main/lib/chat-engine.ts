@@ -1,4 +1,4 @@
-// Input: AcpConnectionManager (transport), drizzle-orm DB, ai/readUIMessageStream, @shared preferences
+// Input: ProviderCatalog (provider dispatch), drizzle-orm DB, ai/readUIMessageStream
 // Output: ChatEngine singleton — sole orchestrator for chat sessions; owns transactional
 //         session+user+assistant writes, OpenAI-style response-event broadcast, debounced DB flush, abort/failure semantics
 // Position: Main-process core service (L2) used by ChatService IPC layer
@@ -6,19 +6,16 @@
 import { randomUUID } from 'node:crypto'
 
 import { observePush } from '@cradle/ipc'
-import {
-  applyStoredChatPreferences,
-  buildStoredChatPreferencesFromSnapshot,
-} from '@shared/chat-preferences'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 
+import { getProviderCatalog } from '../agent-runtime/catalog-instance'
+import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/types'
 import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
-import { messages, sessions, workspaces } from '../db/schema'
-import type { AcpSessionState } from './acp-connection'
+import { agentProfiles as agentProfilesTable, messages, sessions, workspaces } from '../db/schema'
 import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
 
@@ -32,11 +29,15 @@ interface Draft {
   chatSessionId: string
   messageId: string
   agentId: string
-  acpSessionId: string
+  runtimeSession: ProviderSession
   message: UIMessage
   flushTimer: NodeJS.Timeout | null
   /** User-triggered abort; distinguishes 'aborted' vs 'failed' at finalize time. */
   cancelled: boolean
+  /** Optional model override for this draft's turns. */
+  modelId?: string
+  /** Optional reasoning effort for this draft's turns. */
+  thinkingEffort?: 'low' | 'medium' | 'high'
 }
 
 interface CreateAndSendOpts {
@@ -44,6 +45,8 @@ interface CreateAndSendOpts {
   workspaceId: string
   cwd: string
   text: string
+  modelId?: string
+  thinkingEffort?: 'low' | 'medium' | 'high'
 }
 
 export interface ChatMessage {
@@ -57,18 +60,18 @@ export interface ChatMessage {
   updatedAt: number
 }
 
-export type ChatSessionContinuity = 'active' | 'resumed' | 'loaded' | 'reset'
-
 export interface EnsureLiveResult {
   liveAcpSessionId: string
-  continuity: ChatSessionContinuity
+  continuity: 'active' | 'resumed' | 'reset'
 }
 
 interface PrepareTurnArgs {
   chatSessionId: string
   agentId: string
-  acpSessionId: string
+  runtimeSession: ProviderSession
   userText: string
+  modelId?: string
+  thinkingEffort?: 'low' | 'medium' | 'high'
   /** If present, the session row is created as part of the same transaction (first turn). */
   newSession?: {
     workspaceId: string
@@ -144,7 +147,7 @@ export class ChatEngine {
     // Forward agent title updates → chat:session-title with chatSessionId mapping.
     this.titleUnsubscribe = AcpConnectionManager.getInstance().onSessionTitle(
       (acpSessionId, title) => {
-        const rows = db.select().from(sessions).where(eq(sessions.recoverableAcpSessionId, acpSessionId)).all()
+        const rows = db.select().from(sessions).where(eq(sessions.providerSessionId, acpSessionId)).all()
         for (const row of rows) {
           db.update(sessions)
             .set({ title, updatedAt: nowUnix() })
@@ -187,24 +190,28 @@ export class ChatEngine {
 
   async createAndSend(opts: CreateAndSendOpts): Promise<string> {
     const chatSessionId = randomUUID()
-    const { agentId, workspaceId, cwd, text } = opts
+    const { agentId, workspaceId, cwd, text, modelId: optsModelId, thinkingEffort } = opts
 
-    // Boot agent + create ACP session (external calls, before any DB writes)
-    await this.ensureAgentRunning(agentId)
-    const { acpSessionId, modelId, configSnapshot } = await this.bootstrapAcpSession({
-      agentId,
-      cwd,
-      preferences: null,
+    const profile = this.loadProfile(agentId)
+    const provider = this.getChatProvider(profile.providerKind)
+
+    const runtimeSession = await provider.startChatSession({
+      chatSessionId,
+      profile,
+      workspacePath: cwd,
+      modelId: optsModelId,
     })
 
     const fallbackTitle = text.length > 50 ? `${text.slice(0, 50)}...` : text
+    const { modelId, configSnapshot } = extractSessionMeta(runtimeSession.providerStateSnapshot)
 
-    // Atomic prepare: session row + user (complete) + assistant (streaming) in one tx
     const draft = this.prepareTurn({
       chatSessionId,
       agentId,
-      acpSessionId,
+      runtimeSession,
       userText: text,
+      modelId: optsModelId,
+      thinkingEffort,
       newSession: {
         workspaceId,
         title: fallbackTitle,
@@ -230,15 +237,55 @@ export class ChatEngine {
       throw new Error(`Chat session ${chatSessionId} not found`)
     }
 
-    const { liveAcpSessionId } = await this.ensureLive(chatSessionId)
+    const profile = this.loadProfile(session.agentProfileId)
+    const provider = this.getChatProvider(session.providerKind as ProviderKind)
+
+    const workspace = getDb()
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.id, session.workspaceId))
+      .get()
+    const cwd = workspace?.path
+    if (!cwd) {
+      throw new Error('Workspace path not available')
+    }
+
+    const storedSession: ProviderSession = {
+      id: session.id,
+      chatSessionId: session.id,
+      agentProfileId: session.agentProfileId,
+      providerKind: session.providerKind as ProviderKind,
+      providerSessionId: session.providerSessionId ?? null,
+      providerStateSnapshot: session.providerStateSnapshot ?? null,
+    }
+
+    const runtimeSession = await provider.resumeChatSession({
+      runtimeSession: storedSession,
+      profile,
+      workspacePath: cwd,
+    })
+
+    // Persist any updated session state (e.g., new providerSessionId after reconnect)
+    if (runtimeSession.providerSessionId !== session.providerSessionId) {
+      getDb()
+        .update(sessions)
+        .set({
+          providerSessionId: runtimeSession.providerSessionId,
+          providerStateSnapshot: runtimeSession.providerStateSnapshot,
+          updatedAt: nowUnix(),
+        })
+        .where(eq(sessions.id, chatSessionId))
+        .run()
+    }
 
     // prepareTurn re-checks the draft map atomically (sync), so any race
     // between this line and the fail-fast guard above is still rejected.
     const draft = this.prepareTurn({
       chatSessionId,
-      agentId: session.agent,
-      acpSessionId: liveAcpSessionId,
+      agentId: session.agentProfileId,
+      runtimeSession,
       userText: text,
+      modelId: session.modelId ?? undefined,
     })
 
     this.runStream(draft, text).catch((err) => {
@@ -253,11 +300,61 @@ export class ChatEngine {
     }
     draft.cancelled = true
     try {
-      await AcpConnectionManager.getInstance().cancel(draft.agentId, draft.acpSessionId)
+      const profile = this.loadProfile(draft.agentId)
+      const provider = this.getChatProvider(profile.providerKind)
+      await provider.cancelTurn({ runtimeSession: draft.runtimeSession, profile })
     }
     catch (err) {
       console.warn('[ChatEngine] cancel failed (will still finalize as aborted):', err)
     }
+  }
+
+  /**
+   * Ensures the provider session for a chat session is live (reconnecting if needed).
+   * Returns the live provider session ID for ACP model/config pickers.
+   */
+  async ensureLive(chatSessionId: string): Promise<EnsureLiveResult> {
+    const session = this.getSessionRow(chatSessionId)
+    if (!session) {
+      throw new Error(`Chat session ${chatSessionId} not found`)
+    }
+
+    // If there's already a stored provider session ID, try to verify/resume it
+    if (session.providerSessionId) {
+      return { liveAcpSessionId: session.providerSessionId, continuity: 'active' }
+    }
+
+    // No session ID — need to reconnect via the provider
+    const workspace = getDb()
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.id, session.workspaceId))
+      .get()
+    const cwd = workspace?.path
+    if (!cwd) {
+      throw new Error('Workspace path not available for session reconnect.')
+    }
+
+    const profile = this.loadProfile(session.agentProfileId)
+    const provider = this.getChatProvider(session.providerKind as ProviderKind)
+    const storedSession: ProviderSession = {
+      id: session.id,
+      chatSessionId: session.id,
+      agentProfileId: session.agentProfileId,
+      providerKind: session.providerKind as ProviderKind,
+      providerSessionId: null,
+      providerStateSnapshot: session.providerStateSnapshot ?? null,
+    }
+    const resumed = await provider.resumeChatSession({ runtimeSession: storedSession, profile, workspacePath: cwd })
+    const liveSessionId = resumed.providerSessionId ?? chatSessionId
+
+    getDb()
+      .update(sessions)
+      .set({ providerSessionId: liveSessionId, updatedAt: nowUnix() })
+      .where(eq(sessions.id, chatSessionId))
+      .run()
+
+    return { liveAcpSessionId: liveSessionId, continuity: 'reset' }
   }
 
   /**
@@ -304,189 +401,27 @@ export class ChatEngine {
     })
   }
 
-  async ensureLive(chatSessionId: string): Promise<EnsureLiveResult> {
-    const session = this.getSessionRow(chatSessionId)
-    if (!session) {
-      throw new Error(`Chat session ${chatSessionId} not found`)
-    }
-
-    const connMgr = AcpConnectionManager.getInstance()
-
-    // Existing ACP session still live?
-    if (session.recoverableAcpSessionId) {
-      const state = connMgr.getSessionState(session.agent, session.recoverableAcpSessionId)
-      if (state) {
-        return { liveAcpSessionId: session.recoverableAcpSessionId, continuity: 'active' }
-      }
-    }
-
-    // Need to reconnect — look up cwd from workspace
-    const workspace = getDb()
-      .select()
-      .from(workspaces)
-      .where(eq(workspaces.id, session.workspaceId))
-      .get()
-    const cwd = workspace?.path
-    if (!cwd) {
-      throw new Error('Workspace path not available for ACP reconnect.')
-    }
-
-    await this.ensureAgentRunning(session.agent)
-
-    if (session.recoverableAcpSessionId) {
-      const restored = await this.tryRestoreAcpSession({
-        agentId: session.agent,
-        storedAcpSessionId: session.recoverableAcpSessionId,
-        cwd,
-        chatSessionId,
-      })
-      if (restored) {
-        return restored
-      }
-    }
-
-    const { acpSessionId, modelId, configSnapshot } = await this.bootstrapAcpSession({
-      agentId: session.agent,
-      cwd,
-      preferences: buildStoredChatPreferencesFromSnapshot({
-        modelId: session.modelId,
-        configSnapshot: session.configSnapshot,
-      }),
-    })
-
-    // Persist the reconnected transport id AND the freshly-observed model/config
-    // so the session row stays the sole source of truth for post-reconnect state.
-    getDb()
-      .update(sessions)
-      .set({
-        recoverableAcpSessionId: acpSessionId,
-        modelId,
-        configSnapshot,
-        updatedAt: nowUnix(),
-      })
-      .where(eq(sessions.id, chatSessionId))
-      .run()
-
-    return { liveAcpSessionId: acpSessionId, continuity: 'reset' }
-  }
-
   // ── Internals ─────────────────────────────────────────────────────────────
 
-  private async ensureAgentRunning(agentId: string): Promise<void> {
-    const connMgr = AcpConnectionManager.getInstance()
-    if (connMgr.isConnected(agentId)) {
-      return
+  private loadProfile(agentId: string) {
+    const profile = getDb().select().from(agentProfilesTable).where(eq(agentProfilesTable.id, agentId)).get()
+    if (!profile || !profile.enabled) {
+      throw new Error(`Agent profile not found or not enabled: ${agentId}`)
     }
-
-    const { acpAgents } = await import('../db/schema')
-    const record = getDb().select().from(acpAgents).where(eq(acpAgents.id, agentId)).get()
-    if (!record || record.status !== 'installed') {
-      throw new Error(`Agent not installed or not ready: ${agentId}`)
-    }
-    await connMgr.connect(agentId, record)
+    return profile
   }
 
-  private async tryRestoreAcpSession(args: {
-    agentId: string
-    storedAcpSessionId: string
-    cwd: string
-    chatSessionId: string
-  }): Promise<EnsureLiveResult | null> {
-    const connMgr = AcpConnectionManager.getInstance()
-    const attempts: Array<{
-      continuity: Extract<ChatSessionContinuity, 'resumed' | 'loaded'>
-      run: () => Promise<{
-        models?: AcpSessionState['models'] | null
-        configOptions?: AcpSessionState['configOptions'] | null
-      }>
-    }> = []
-
-    if (connMgr.supportsResumeSession(args.agentId)) {
-      attempts.push({
-        continuity: 'resumed',
-        run: () => connMgr.resumeSession(args.agentId, args.storedAcpSessionId, args.cwd),
-      })
+  private getChatProvider(providerKind: string): ChatRuntimeProvider {
+    const catalog = getProviderCatalog()
+    const provider = catalog.get(providerKind as ProviderKind)
+    if (!('startChatSession' in provider)) {
+      throw new Error(`Provider ${providerKind} does not support chat sessions`)
     }
-
-    if (connMgr.supportsLoadSession(args.agentId)) {
-      attempts.push({
-        continuity: 'loaded',
-        run: () => connMgr.loadSession(args.agentId, args.storedAcpSessionId, args.cwd),
-      })
-    }
-
-    for (const attempt of attempts) {
-      try {
-        const response = await attempt.run()
-        this.persistRecoveredSessionState({
-          chatSessionId: args.chatSessionId,
-          acpSessionId: args.storedAcpSessionId,
-          state: {
-            models: response.models ?? null,
-            configOptions: response.configOptions ?? [],
-          },
-        })
-        return {
-          liveAcpSessionId: args.storedAcpSessionId,
-          continuity: attempt.continuity,
-        }
-      }
-      catch (error) {
-        console.warn(
-          `[ChatEngine] ${attempt.continuity} failed for chat ${args.chatSessionId}; falling back if possible`,
-          error,
-        )
-      }
-    }
-
-    return null
-  }
-
-  private async bootstrapAcpSession(args: {
-    agentId: string
-    cwd: string
-    preferences: ReturnType<typeof buildStoredChatPreferencesFromSnapshot> | null
-  }): Promise<{ acpSessionId: string, modelId: string | null, configSnapshot: string | null }> {
-    const connMgr = AcpConnectionManager.getInstance()
-    const resp = await connMgr.newSession(args.agentId, args.cwd)
-    const acpSessionId = resp.sessionId
-
-    const initialState = connMgr.getSessionState(args.agentId, acpSessionId)
-    await applyStoredChatPreferences({
-      preferences: args.preferences,
-      state: initialState,
-      setModel: modelId => connMgr.setSessionModel(args.agentId, acpSessionId, modelId),
-      setConfigOption: (configId, value) =>
-        connMgr.setSessionConfigOption(args.agentId, acpSessionId, configId, value),
-    })
-
-    const finalState = connMgr.getSessionState(args.agentId, acpSessionId)
-    return {
-      acpSessionId,
-      modelId: finalState?.models?.currentModelId ?? null,
-      configSnapshot: finalState?.configOptions ? JSON.stringify(finalState.configOptions) : null,
-    }
+    return provider as ChatRuntimeProvider
   }
 
   private getSessionRow(chatSessionId: string): Session | undefined {
     return getDb().select().from(sessions).where(eq(sessions.id, chatSessionId)).get()
-  }
-
-  private persistRecoveredSessionState(args: {
-    chatSessionId: string
-    acpSessionId: string
-    state: AcpSessionState
-  }): void {
-    getDb()
-      .update(sessions)
-      .set({
-        recoverableAcpSessionId: args.acpSessionId,
-        modelId: args.state.models?.currentModelId ?? null,
-        configSnapshot: JSON.stringify(args.state.configOptions ?? []),
-        updatedAt: nowUnix(),
-      })
-      .where(eq(sessions.id, args.chatSessionId))
-      .run()
   }
 
   /**
@@ -497,7 +432,7 @@ export class ChatEngine {
    * Returns the draft ready for `runStream` to drive.
    */
   private prepareTurn(args: PrepareTurnArgs): Draft {
-    const { chatSessionId, agentId, acpSessionId, userText, newSession } = args
+    const { chatSessionId, agentId, runtimeSession, userText, newSession, modelId, thinkingEffort } = args
 
     // Atomic single-in-flight-turn claim. JS is single-threaded so this is the
     // authoritative check — any caller that loses the race throws here.
@@ -526,8 +461,10 @@ export class ChatEngine {
             id: chatSessionId,
             workspaceId: newSession.workspaceId,
             title: newSession.title,
-            agent: agentId,
-            recoverableAcpSessionId: acpSessionId,
+            agentProfileId: agentId,
+            providerKind: runtimeSession.providerKind,
+            providerSessionId: runtimeSession.providerSessionId,
+            providerStateSnapshot: runtimeSession.providerStateSnapshot,
             modelId: newSession.modelId,
             configSnapshot: newSession.configSnapshot,
           })
@@ -563,10 +500,12 @@ export class ChatEngine {
       chatSessionId,
       messageId: assistantMsgId,
       agentId,
-      acpSessionId,
+      runtimeSession,
       message: assistantMessage,
       flushTimer: null,
       cancelled: false,
+      modelId,
+      thinkingEffort,
     }
     this.drafts.set(chatSessionId, draft)
 
@@ -614,11 +553,15 @@ export class ChatEngine {
     } as Extract<ResponseStreamEvent, { type: 'response.created' }>)
 
     try {
-      for await (const event of AcpConnectionManager.getInstance().prompt(
-        draft.agentId,
-        draft.acpSessionId,
-        userText,
-      )) {
+      const profile = this.loadProfile(draft.agentId)
+      const provider = this.getChatProvider(profile.providerKind)
+      for await (const event of provider.streamTurn({
+        runtimeSession: draft.runtimeSession,
+        profile,
+        message: userText,
+        modelId: draft.modelId,
+        thinkingEffort: draft.thinkingEffort,
+      })) {
         this.broadcastResponseEvent(draft, event)
         for (const chunk of responsesEventToUIMessageChunks(event)) {
           await writer.write(chunk)
@@ -637,7 +580,7 @@ export class ChatEngine {
           chatSessionId: draft.chatSessionId,
           messageId: draft.messageId,
           agentId: draft.agentId,
-          acpSessionId: draft.acpSessionId,
+          providerSessionId: draft.runtimeSession.providerSessionId,
           error: serializedError.payload,
         })
       }
@@ -744,6 +687,36 @@ export class ChatEngine {
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000)
+}
+
+/**
+ * Extract optional modelId and configSnapshot from a provider state snapshot.
+ * ACP providers store `{ models: SessionModelState, configOptions: [...] }` in the snapshot.
+ */
+function extractSessionMeta(providerStateSnapshot: string | null): {
+  modelId: string | null
+  configSnapshot: string | null
+} {
+  if (!providerStateSnapshot) {
+    return { modelId: null, configSnapshot: null }
+  }
+  try {
+    const state = JSON.parse(providerStateSnapshot) as {
+      models?: { currentModelId?: string }
+      configOptions?: unknown
+    }
+    return {
+      modelId: typeof state?.models?.currentModelId === 'string'
+        ? state.models.currentModelId
+        : null,
+      configSnapshot: state?.configOptions !== undefined
+        ? JSON.stringify(state.configOptions)
+        : null,
+    }
+  }
+  catch {
+    return { modelId: null, configSnapshot: null }
+  }
 }
 
 /**

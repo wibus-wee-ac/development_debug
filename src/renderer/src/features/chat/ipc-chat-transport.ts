@@ -122,6 +122,11 @@ function responsesEventToUIMessageChunks(
  * Build a ReadableStream bridging `chat:response-event` IPC events for a given
  * chat session into a `UIMessageChunk` stream for AI SDK's `useChat`.
  *
+ * Uses a custom ReadableStream with a direct controller reference so that
+ * errors are propagated via `controller.error()` (which puts the stream into
+ * the "errored" state), rather than `writer.abort()` (which only cancels the
+ * stream and is treated as a clean close by the AI SDK).
+ *
  * `onReady` is invoked after subscriptions are attached — callers use it to
  * kick off the action that causes the engine to emit events, guaranteeing no
  * event is missed.
@@ -131,24 +136,32 @@ function buildChunkStream(
   onReady: () => Promise<void> | void,
   abortSignal: AbortSignal | undefined,
 ): ReadableStream<UIMessageChunk> {
-  const { readable, writable } = new TransformStream<UIMessageChunk, UIMessageChunk>()
-  const writer = writable.getWriter()
+  // eslint-disable-next-line ts/no-non-null-assertion
+  let ctrl: ReadableStreamDefaultController<UIMessageChunk> = null!
   const state: ConverterState = { textItemId: null, reasoningItemId: null }
-
   let closed = false
+
+  const readable = new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      ctrl = controller
+    },
+  })
+
   const closeCleanly = () => {
     if (closed) {
       return
     }
     closed = true
-    writer.close().catch(() => {})
+    ctrl.close()
   }
   const closeWithError = (err: unknown) => {
     if (closed) {
       return
     }
     closed = true
-    writer.abort(err).catch(() => {})
+    // controller.error() puts the ReadableStream into "errored" state,
+    // which the AI SDK surfaces as chat.error (status → 'error').
+    ctrl.error(err)
   }
 
   const offEvent = window.electron.ipcRenderer.on(
@@ -160,7 +173,7 @@ function buildChunkStream(
       const { event } = data
 
       for (const chunk of responsesEventToUIMessageChunks(event, state)) {
-        writer.write(chunk).catch(() => {})
+        ctrl.enqueue(chunk)
       }
 
       if (event.type === 'response.completed') {

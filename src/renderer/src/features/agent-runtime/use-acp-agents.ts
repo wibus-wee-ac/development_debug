@@ -1,21 +1,12 @@
-// Input: ipc proxy from @renderer/lib/ipc, TanStack Query
-// Output: useInstalledAcpAgents hook — lists ACP agents with status='installed'
-// Position: Data hook for ACP agent selection in the Composer
+// Input: useAgentProfiles hook
+// Output: useInstalledAcpAgents compatibility hook backed by unified Agent Runtime profiles
+// Position: Transitional data hook for older composer imports during Agent Runtime migration
 
-import { ipc } from '@renderer/lib/ipc'
-import { useQuery } from '@tanstack/react-query'
+import { useAgentProfiles } from './use-agent-profiles'
 
-export const ACP_AGENTS_QUERY_KEY = ['acp-agents'] as const
+export const ACP_AGENTS_QUERY_KEY = ['agent-profiles'] as const
 
 export function useInstalledAcpAgents() {
-  const { data: agents = [] } = useQuery({
-    queryKey: ACP_AGENTS_QUERY_KEY,
-    queryFn: async () => {
-      if (!ipc) { return [] }
-      const all = await ipc.acp.listInstalled()
-      return all.filter(a => a.status === 'installed')
-    },
-  })
-
-  return { agents }
+  const { profiles } = useAgentProfiles()
+  return { agents: profiles.filter(profile => profile.providerKind === 'acp-chat' && profile.enabled) }
 }

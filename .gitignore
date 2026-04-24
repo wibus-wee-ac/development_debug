@@ -6,3 +6,4 @@ out
 *.log*
 e2e/artifacts
 .github/copilot-instructions.md
+*.tsbuildinfo

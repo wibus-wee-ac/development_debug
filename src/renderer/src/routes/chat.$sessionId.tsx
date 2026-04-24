@@ -1,4 +1,4 @@
-// Input: ChatView from chat feature, TuiView from tui feature, ipc.chat, ipc.session, ipc.acp, AppLayout, TanStack Router, RightAside
+// Input: ChatView from chat feature, TuiView from tui feature, ipc.chat, ipc.session, AppLayout, TanStack Router, RightAside
 // Output: Chat session route — thin page that reads session from DB and renders ChatView or TuiView
 // Position: Route page for /chat/$sessionId, data driven by main-process ChatEngine
 
@@ -8,38 +8,27 @@ import { AppLayout } from '@renderer/components/layout/app-layout'
 import { RightAside } from '@renderer/components/layout/right-aside'
 import { Button } from '@renderer/components/ui/button'
 import {
-  Menu,
-  MenuGroup,
-  MenuGroupLabel,
-  MenuItem,
-  MenuPopup,
-  MenuSeparator,
-  MenuTrigger,
-} from '@renderer/components/ui/menu'
-import { useInstalledAcpAgents } from '@renderer/features/agent-runtime/use-acp-agents'
-import {
-  acpSessionStateQueryKey,
-  getAcpSessionState,
-  setAcpSessionConfigOption,
-  setAcpSessionModel,
-  useAcpSessionState,
-} from '@renderer/features/agent-runtime/use-acp-session-state'
+  Combobox,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxPrimitive,
+} from '@renderer/components/ui/combobox'
+import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
+import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { ChatView } from '@renderer/features/chat'
-import { ModelPicker } from '@renderer/features/chat/model-picker'
 import { GitBranchControl } from '@renderer/features/git'
 import { ShellView } from '@renderer/features/tui/shell-view'
 import { TuiView } from '@renderer/features/tui/tui-view'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
-import {
-  buildStoredChatPreferencesFromSnapshot,
-  mergeChatPreferencesWithState,
-} from '@shared/chat-preferences'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ChevronDownIcon, LoaderCircleIcon, PlusIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BotIcon, ChevronDownIcon, CpuIcon, LoaderCircleIcon, PlusIcon, TerminalIcon } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 const WORD_SPLIT = /\s+/
 
@@ -51,39 +40,6 @@ function agentInitials(name: string): string {
   return name.slice(0, 2).toUpperCase()
 }
 
-interface FlatConfigOpt {
-  value: string
-  name: string
-}
-
-function flatConfigOptions(opts: unknown): FlatConfigOpt[] {
-  if (!Array.isArray(opts)) {
-    return []
-  }
-  return opts.filter(
-    (o): o is FlatConfigOpt => typeof o === 'object' && o !== null && 'value' in o && 'name' in o,
-  )
-}
-
-function getThoughtLevelSnapshot(configSnapshot: string | null | undefined): string | null {
-  if (!configSnapshot) {
-    return null
-  }
-  try {
-    const parsed = JSON.parse(configSnapshot) as Array<{
-      category?: string
-      currentValue?: string | boolean
-    }>
-    const option = parsed.find(item => item.category === 'thought_level')
-    return typeof option?.currentValue === 'string' ? option.currentValue : null
-  }
-  catch {
-    return null
-  }
-}
-
-type MenuKind = 'model' | 'thinking'
-
 // ─── Static composer toolbar (never changes) ──────────────────────────────────
 const ComposerToolbar = (
   <Button variant="ghost" size="icon-xs" aria-label="添加文件">
@@ -92,191 +48,103 @@ const ComposerToolbar = (
 )
 
 // ─── Composer context bar ─────────────────────────────────────────────────────
-// Isolated component so its internal state changes (open menus, reconnecting)
-// do NOT trigger re-renders in the parent ChatSessionPage.
 
 interface SessionComposerBarProps {
   session: Session
-  agentId: string | null
-  acpSessionId: string | null
-  onAcpSessionConnect: (nextAcpSessionId: string) => void
 }
 
-function SessionComposerBar({ session, agentId, acpSessionId, onAcpSessionConnect }: SessionComposerBarProps) {
+function SessionComposerBar({ session }: SessionComposerBarProps) {
+  const { profiles } = useAgentProfiles()
+  const { models, isLoading: isLoadingModels } = useAgentModels(session.agentProfileId ?? null)
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(session.modelId ?? null)
   const queryClient = useQueryClient()
-  const { agents } = useInstalledAcpAgents()
-  const [reconnecting, setReconnecting] = useState(false)
-  const [modelMenuOpen, setModelMenuOpen] = useState(false)
-  const [thinkingMenuOpen, setThinkingMenuOpen] = useState(false)
 
-  const selectedAgent = agents.find(a => a.id === agentId) ?? null
-  const { models, configOptions } = useAcpSessionState(agentId, acpSessionId)
+  const selectedProfile = profiles.find(p => p.id === session.agentProfileId) ?? null
+  const selectedModel = models.find(m => m.id === selectedModelId) ?? models[0] ?? null
 
-  const thoughtLevelOption = configOptions.find(o => o.category === 'thought_level')
-  const thoughtLevelOpts = flatConfigOptions(
-    thoughtLevelOption?.type === 'select' ? thoughtLevelOption.options : null,
-  )
-  const thoughtLevelSnapshot = useMemo(
-    () => getThoughtLevelSnapshot(session.configSnapshot),
-    [session.configSnapshot],
-  )
-
-  const fetchLiveState = useCallback(
-    (targetId: string) => queryClient.fetchQuery({
-      queryKey: acpSessionStateQueryKey(agentId, targetId),
-      queryFn: () => getAcpSessionState(agentId!, targetId),
-    }),
-    [queryClient, agentId],
-  )
-
-  const updateSessionConfig = useCallback(
-    async (nextModelId?: string | null) => {
-      const liveState = acpSessionId
-        ? await getAcpSessionState(agentId!, acpSessionId).catch(() => null)
-        : null
-      const mergedPreferences = mergeChatPreferencesWithState(
-        buildStoredChatPreferencesFromSnapshot({
-          modelId: nextModelId ?? session.modelId,
-          configSnapshot: session.configSnapshot,
-        }),
-        liveState,
-      )
-      const nextConfigSnapshot = liveState?.configOptions
-        ? JSON.stringify(liveState.configOptions)
-        : session.configSnapshot
-      await ipc?.session.updateConfig({
-        id: session.id,
-        modelId: mergedPreferences.modelId,
-        configSnapshot: nextConfigSnapshot ?? null,
-      })
-      queryClient.invalidateQueries({ queryKey: ['chat-session', session.id] })
-    },
-    [session, agentId, acpSessionId, queryClient],
-  )
-
-  const reconnectAndOpenMenu = useCallback(
-    async (kind: MenuKind) => {
-      if (!ipc) {
-        return
-      }
-      setReconnecting(true)
-      try {
-        const { liveAcpSessionId: nextId } = await ipc.chat.ensureLive(session.id)
-        onAcpSessionConnect(nextId)
-        queryClient.invalidateQueries({ queryKey: ['chat-session', session.id] })
-        await fetchLiveState(nextId)
-        if (kind === 'model') {
-          setModelMenuOpen(true)
-        }
-        else {
-          setThinkingMenuOpen(true)
-        }
-      }
-      finally {
-        setReconnecting(false)
-      }
-    },
-    [session.id, queryClient, fetchLiveState, onAcpSessionConnect],
-  )
+  const handleModelSelect = async (modelId: string) => {
+    setSelectedModelId(modelId)
+    await ipc?.session.updateConfig({ id: session.id, modelId, configSnapshot: session.configSnapshot ?? null })
+    queryClient.invalidateQueries({ queryKey: ['chat-session', session.id] })
+  }
 
   return (
     <>
-      {/* Agent badge (read-only) */}
-      {selectedAgent && (
+      {/* Agent badge */}
+      {selectedProfile && (
         <Button variant="ghost" size="xs" disabled className="pointer-events-none">
-          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-            {agentInitials(selectedAgent.name)}
-          </span>
-          {selectedAgent.name}
+          {selectedProfile.providerKind === 'cli-tui'
+            ? <TerminalIcon className="size-3" aria-hidden="true" />
+            : (
+              <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                {agentInitials(selectedProfile.name)}
+              </span>
+            )}
+          {selectedProfile.name}
         </Button>
       )}
 
-      {/* Model picker — live when active ACP session, else read-only snapshot */}
-      {models && models.availableModels.length > 0
+      {/* Model picker */}
+      {isLoadingModels
         ? (
-          <ModelPicker
-            models={models}
-            open={modelMenuOpen}
-            onOpenChange={setModelMenuOpen}
-            onSelect={async (modelId) => {
-              await setAcpSessionModel(agentId!, acpSessionId!, modelId)
-              await fetchLiveState(acpSessionId!)
-              await updateSessionConfig(modelId)
-            }}
-          />
+          <Button variant="ghost" size="xs" disabled>
+            <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+            加载模型...
+          </Button>
         )
-        : session.modelId
+        : models.length > 0
           ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              disabled={reconnecting}
-              className="text-muted-foreground/60 hover:text-foreground"
-              onClick={() => reconnectAndOpenMenu('model')}
+            <Combobox
+              items={models}
+              value={selectedModel}
+              itemToStringLabel={m => m.label}
+              isItemEqualToValue={(a, b) => a.id === b.id}
+              onValueChange={(next) => {
+                if (next) {
+                  void handleModelSelect(next.id)
+                }
+              }}
             >
-              {reconnecting && <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />}
-              {session.modelId}
-              <ChevronDownIcon aria-hidden="true" />
-            </Button>
+              <ComboboxPrimitive.Trigger
+                render={(
+                  <Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />
+                )}
+              >
+                <CpuIcon className="size-3" aria-hidden="true" />
+                {selectedModel?.label ?? '默认模型'}
+                <ChevronDownIcon aria-hidden="true" />
+              </ComboboxPrimitive.Trigger>
+              <ComboboxPopup aria-label="选择模型" className="min-w-60" side="left">
+                <div className="border-b p-2">
+                  <ComboboxInput
+                    size="sm"
+                    showTrigger={false}
+                    placeholder="搜索模型..."
+                  />
+                </div>
+                <ComboboxEmpty>未找到匹配的模型</ComboboxEmpty>
+                <ComboboxList>
+                  {(item: import('@main/ipc-types').ModelDescriptor) => (
+                    <ComboboxItem key={item.id} value={item}>
+                      {item.label}
+                    </ComboboxItem>
+                  )}
+                </ComboboxList>
+              </ComboboxPopup>
+            </Combobox>
           )
-          : null}
-
-      {/* Thinking effort — only available with active ACP session */}
-      {thoughtLevelOpts.length > 0 && thoughtLevelOption
-        ? (
-          <Menu open={thinkingMenuOpen} onOpenChange={setThinkingMenuOpen}>
-            <MenuTrigger
-              render={(
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="text-muted-foreground/70 hover:text-foreground"
-                />
-              )}
-            >
-              {thoughtLevelOption.type === 'select'
-                ? thoughtLevelOption.currentValue
-                : thoughtLevelOption.name}
-              <ChevronDownIcon aria-hidden="true" />
-            </MenuTrigger>
-            <MenuPopup>
-              <MenuGroup>
-                <MenuGroupLabel>{thoughtLevelOption.name}</MenuGroupLabel>
-                <MenuSeparator />
-                {thoughtLevelOpts.map(opt => (
-                  <MenuItem
-                    key={opt.value}
-                    onClick={async () => {
-                      await setAcpSessionConfigOption(agentId!, acpSessionId!, thoughtLevelOption.id, opt.value)
-                      await fetchLiveState(acpSessionId!)
-                      await updateSessionConfig()
-                    }}
-                  >
-                    {opt.name}
-                  </MenuItem>
-                ))}
-              </MenuGroup>
-            </MenuPopup>
-          </Menu>
-        )
-        : thoughtLevelSnapshot
-          ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              disabled={reconnecting}
-              className="text-muted-foreground/60 hover:text-foreground"
-              onClick={() => reconnectAndOpenMenu('thinking')}
-            >
-              {reconnecting && <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />}
-              {thoughtLevelSnapshot}
-              <ChevronDownIcon aria-hidden="true" />
-            </Button>
-          )
-          : null}
+          : session.modelId
+            ? (
+              <Button variant="ghost" size="xs" disabled className="text-muted-foreground/60">
+                <BotIcon className="size-3" aria-hidden="true" />
+                {session.modelId}
+              </Button>
+            )
+            : null}
     </>
   )
 }
+
 
 export const Route = createFileRoute('/chat/$sessionId')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -297,10 +165,7 @@ export const Route = createFileRoute('/chat/$sessionId')({
       ipc.session.get(params.sessionId),
       ipc.chat.getMessages(params.sessionId),
     ])
-    // Determine provider: CLI agent takes precedence; fall back to ACP agent
-    const cliAgent = session ? await ipc.cli.getAgent(session.agent) : undefined
-    const acpAgent = !cliAgent && session ? await ipc.acp.getInstalled(session.agent) : undefined
-    return { session, messages, cliAgent, acpAgent }
+    return { session, messages }
   },
   // Keep loader data fresh for 5 minutes; quick session-switching inside that
   // window reuses the cache without an extra IPC round-trip.
@@ -312,12 +177,11 @@ export const Route = createFileRoute('/chat/$sessionId')({
 function ChatSessionPage() {
   const { sessionId } = Route.useParams()
   const { tearoff } = Route.useSearch()
-  const { session: loaderSession, messages: initialMessageRows, cliAgent: loaderCliAgent } = Route.useLoaderData()
+  const { session: loaderSession, messages: initialMessageRows } = Route.useLoaderData()
   const queryClient = useQueryClient()
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [shellGen, setShellGen] = useState(0)
-  const [liveAcpSessionId, setLiveAcpSessionId] = useState<string | null>(null)
 
   // Session metadata: loader provides the initial value synchronously.
   // useQuery keeps it live (title updates, config changes) without an extra
@@ -329,16 +193,9 @@ function ChatSessionPage() {
     enabled: !!sessionId,
   })
 
-  const agentId = session?.agent ?? null
   const workspaceId = session?.workspaceId ?? null
   const sessionTitle = session?.title ?? null
-
-  // Seed liveAcpSessionId from the recoverable ACP handle persisted on the thread row
-  useEffect(() => {
-    if (session?.recoverableAcpSessionId && !liveAcpSessionId) {
-      setLiveAcpSessionId(session.recoverableAcpSessionId)
-    }
-  }, [session?.recoverableAcpSessionId, liveAcpSessionId])
+  const isTerminalSession = session?.providerKind === 'cli-tui'
 
   // Fetch workspace name and path when workspaceId is available
   useEffect(() => {
@@ -359,7 +216,7 @@ function ChatSessionPage() {
 
   // PTY title updates for cli-tui sessions
   useEffect(() => {
-    if (!loaderCliAgent) {
+    if (!isTerminalSession) {
       return
     }
     const unsub = window.ptyPush.onTitle((sid, title) => {
@@ -373,7 +230,7 @@ function ChatSessionPage() {
       }
     })
     return unsub
-  }, [sessionId, loaderCliAgent, workspaceId, queryClient])
+  }, [sessionId, isTerminalSession, workspaceId, queryClient])
 
   // Engine forwards ACP title updates as chat:session-title with chatSessionId.
   useEffect(() => {
@@ -416,7 +273,7 @@ function ChatSessionPage() {
         )
         : undefined}
     >
-      {loaderCliAgent
+      {isTerminalSession
         ? (
           <TuiView sessionId={sessionId} />
         )
@@ -429,9 +286,6 @@ function ChatSessionPage() {
             composerContextBar={(
               <SessionComposerBar
                 session={session}
-                agentId={agentId}
-                acpSessionId={liveAcpSessionId}
-                onAcpSessionConnect={setLiveAcpSessionId}
               />
             )}
           />

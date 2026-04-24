@@ -12,4 +12,3 @@
 - **settings-sidebar.tsx**: 设置侧边栏导航，基于路由 search 切换 section，并返回首页 launcher
 - **settings-content.tsx**: 设置主内容区，根据当前路由选中的 section 渲染对应组件
 - **appearance-settings.tsx**: 外观设置区域，包含主题切换（浅色/深色/跟随系统）
-- **cli-settings.tsx**: CLI agent 配置界面，支持探测、添加、编辑、删除本地 CLI 工具

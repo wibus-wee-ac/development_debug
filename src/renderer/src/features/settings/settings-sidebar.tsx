@@ -5,7 +5,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/utils'
-import { ArrowLeftIcon, BotIcon, PaletteIcon, TerminalIcon } from 'lucide-react'
+import { ArrowLeftIcon, BotIcon, PaletteIcon } from 'lucide-react'
 import type { Dispatch, SetStateAction } from 'react'
 
 interface SettingsNavItem {
@@ -16,8 +16,7 @@ interface SettingsNavItem {
 
 const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'appearance', label: '外观', icon: PaletteIcon },
-  { id: 'acp', label: '代理 (ACP)', icon: BotIcon },
-  { id: 'cli', label: 'CLI Agents', icon: TerminalIcon },
+  { id: 'agents', label: 'Agents', icon: BotIcon },
 ]
 
 interface SettingsSidebarProps {

@@ -5,6 +5,7 @@
 import type { MergeIpcService } from '@cradle/ipc'
 
 import type { AcpService } from './services/acp'
+import type { AgentRuntimeService } from './services/agent-runtime'
 import type { ChatService } from './services/chat'
 import type { DevService } from './services/dev'
 import type { GitService } from './services/git'
@@ -12,10 +13,9 @@ import type { IpcDevtoolService } from './services/ipc-devtool'
 import type { KanbanService } from './services/kanban'
 import type { PreferencesService } from './services/preferences'
 import type { PtyService } from './services/pty'
-import type { CliService } from './services/cli'
 import type { SearchService } from './services/search'
-import type { WindowService } from './services/window'
 import type { SessionService } from './services/session'
+import type { WindowService } from './services/window'
 import type { WorkspaceService } from './services/workspace'
 
 /**
@@ -25,6 +25,7 @@ import type { WorkspaceService } from './services/workspace'
 export type IpcServices = MergeIpcService<{
   workspace: typeof WorkspaceService
   session: typeof SessionService
+  agentRuntime: typeof AgentRuntimeService
   acp: typeof AcpService
   preferences: typeof PreferencesService
   ipcDevtool: typeof IpcDevtoolService
@@ -32,19 +33,25 @@ export type IpcServices = MergeIpcService<{
   chat: typeof ChatService
   search: typeof SearchService
   pty: typeof PtyService
-  cli: typeof CliService
   window: typeof WindowService
   git: typeof GitService
   kanban: typeof KanbanService
 }>
 
 // Convenience re-exports so the renderer imports from one place
+export type { CredentialMetadata } from './agent-runtime/credential-vault'
+export type { ModelDescriptor, ProviderKind, ProviderProbeResult } from './agent-runtime/types'
 export type { Message, Session, Workspace } from './db/schema'
-export type { AcpAgent, AcpAuditEntry } from './db/schema'
-export type { CliAgent } from './db/schema'
-export type { DetectedCli } from './services/cli'
+export type {
+  AcpAgent,
+  AcpAuditEntry,
+  AgentCredential,
+  AgentProfile,
+  RuntimeAuditEntry,
+  RuntimeSession,
+} from './db/schema'
+export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 export type { AcpSessionState } from './lib/acp-connection'
-export type { AcpDevtoolEvent } from '@cradle/ipc'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'
 export type { ChatMessage, EnsureLiveResult } from './lib/chat-engine'
@@ -56,5 +63,4 @@ export type {
   ThreadSearchSnippet,
 } from './lib/thread-search'
 export type { GitBranches, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './services/git'
-export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
-
+export type { AcpDevtoolEvent } from '@cradle/ipc'

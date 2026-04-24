@@ -9,7 +9,7 @@ import { app } from 'electron'
 
 import { getDb } from '../db'
 import type { AcpAgent, AcpAuditEntry } from '../db/schema'
-import { acpAgents, acpAuditLog } from '../db/schema'
+import { acpAgents, acpAuditLog, agentProfiles } from '../db/schema'
 import { AcpConnectionManager } from '../lib/acp-connection'
 import {
   getAgentInstallDir,
@@ -27,24 +27,16 @@ import { fetchRegistry, getSupportedDistributionTypes } from '../lib/acp-registr
 export class AcpService extends IpcService {
   static readonly groupName = 'acp'
 
+  private readonly installAbortControllers = new Map<string, AbortController>()
+
   // ── Registry ──────────────────────────────────────────────────────────────
 
-  /**
-   * Fetch the ACP registry from the CDN and return the full agent list.
-   * The result is not cached — callers that need caching should do so in the
-   * renderer layer.
-   */
   @IpcMethod()
   async fetchRegistry(): Promise<RegistryAgent[]> {
     const registry = await fetchRegistry()
     return registry.agents
   }
 
-  /**
-   * Return the distribution types that are available on the current platform
-   * for a given registry agent id.  Useful for the UI before fetching the full
-   * registry again.
-   */
   @IpcMethod()
   async getDistributionTypes(agentId: string): Promise<Array<'binary' | 'npx' | 'uvx'>> {
     const registry = await fetchRegistry()
@@ -57,13 +49,11 @@ export class AcpService extends IpcService {
 
   // ── Installed agents ──────────────────────────────────────────────────────
 
-  /** List all agents that have been installed (or are pending). */
   @IpcMethod()
   listInstalled(): AcpAgent[] {
     return getDb().select().from(acpAgents).orderBy(desc(acpAgents.updatedAt)).all()
   }
 
-  /** Get a single installed agent record by its registry id. */
   @IpcMethod()
   getInstalled(agentId: string): AcpAgent | undefined {
     return getDb().select().from(acpAgents).where(eq(acpAgents.id, agentId)).get()
@@ -71,18 +61,6 @@ export class AcpService extends IpcService {
 
   // ── Install ───────────────────────────────────────────────────────────────
 
-  /**
-   * Install an agent from the registry.
-   *
-   * `distributionType` must be one of 'binary', 'npx', or 'uvx'.  For
-   * 'npx'/'uvx' agents, no binary is downloaded — only the metadata is stored
-   * in the database.  For 'binary' agents, the archive is downloaded and
-   * extracted to `userData/acp/agents/<agentId>/`.
-   *
-   * The method is intentionally synchronous from the caller's perspective but
-   * runs async work internally; it marks the record as 'installing' first and
-   * updates it on completion so the UI can poll for status changes.
-   */
   @IpcMethod()
   async install(agentId: string, distributionType: 'binary' | 'npx' | 'uvx'): Promise<AcpAgent> {
     const registry = await fetchRegistry()
@@ -92,8 +70,6 @@ export class AcpService extends IpcService {
     }
 
     const userData = app.getPath('userData')
-
-    // Mark as installing in DB immediately so the UI can react
     const now = Math.floor(Date.now() / 1000)
     getDb()
       .insert(acpAgents)
@@ -114,13 +90,42 @@ export class AcpService extends IpcService {
     try {
       let result
       if (distributionType === 'binary') {
-        result = await installBinaryAgent(agent, userData)
+        const controller = new AbortController()
+        this.installAbortControllers.set(agentId, controller)
+        try {
+          result = await installBinaryAgent(agent, userData, controller.signal)
+        }
+        finally {
+          this.installAbortControllers.delete(agentId)
+        }
       }
       else {
         result = installPackageAgent(agent, distributionType)
       }
-
       persistInstalled(agentId, agent.name, agent.version, distributionType, result)
+
+      // Auto-create or update agent profile so the agent appears immediately in chat
+      const configJson = distributionType === 'binary'
+        ? JSON.stringify({ distributionType: 'binary', cmd: result.cmd ?? agentId, args: result.args ?? [], installPath: result.installPath })
+        : distributionType === 'npx'
+          ? JSON.stringify({ distributionType: 'npx', cmd: agent.distribution.npx?.package ?? agentId, args: agent.distribution.npx?.args ?? [] })
+          : JSON.stringify({ distributionType: 'uvx', cmd: agent.distribution.uvx?.package ?? agentId, args: agent.distribution.uvx?.args ?? [] })
+
+      getDb()
+        .insert(agentProfiles)
+        .values({
+          id: `acp:${agentId}`,
+          name: agent.name,
+          providerKind: 'acp-chat',
+          enabled: true,
+          configJson,
+          credentialRef: null,
+        })
+        .onConflictDoUpdate({
+          target: agentProfiles.id,
+          set: { name: agent.name, enabled: true, configJson },
+        })
+        .run()
     }
     catch (err) {
       persistFailed(agentId, err)
@@ -130,13 +135,25 @@ export class AcpService extends IpcService {
     return getDb().select().from(acpAgents).where(eq(acpAgents.id, agentId)).get()!
   }
 
+  // ── Cancel install ────────────────────────────────────────────────────────
+
+  @IpcMethod()
+  cancelInstall(agentId: string): void {
+    const controller = this.installAbortControllers.get(agentId)
+    if (controller) {
+      controller.abort()
+    }
+    // Mark as failed in DB regardless so the UI resets
+    const now = Math.floor(Date.now() / 1000)
+    getDb()
+      .update(acpAgents)
+      .set({ status: 'failed', updatedAt: now })
+      .where(eq(acpAgents.id, agentId))
+      .run()
+  }
+
   // ── Uninstall ─────────────────────────────────────────────────────────────
 
-  /**
-   * Uninstall an agent.  Binary agents have their installation directory
-   * removed; package-manager agents simply have their DB record deleted.
-   * Either way, the audit log retains the history.
-   */
   @IpcMethod()
   async uninstall(agentId: string): Promise<void> {
     const record = getDb().select().from(acpAgents).where(eq(acpAgents.id, agentId)).get()
@@ -150,36 +167,24 @@ export class AcpService extends IpcService {
       await uninstallBinaryAgent(agentId, record.installPath, userData)
     }
     else {
-      // npx / uvx — nothing on disk to remove; just audit the logical operation
       getDb()
         .insert(acpAuditLog)
-        .values({
-          agentId,
-          action: 'uninstall_start',
-          path: null,
-          details: JSON.stringify({ distributionType: record.distributionType }),
-        })
+        .values({ agentId, action: 'uninstall_start', path: null, details: JSON.stringify({ distributionType: record.distributionType }) })
         .run()
       getDb()
         .insert(acpAuditLog)
-        .values({
-          agentId,
-          action: 'uninstall_complete',
-          path: null,
-          details: '{}',
-        })
+        .values({ agentId, action: 'uninstall_complete', path: null, details: '{}' })
         .run()
     }
 
     getDb().delete(acpAgents).where(eq(acpAgents.id, agentId)).run()
+
+    // Remove the auto-created agent profile when uninstalling
+    getDb().delete(agentProfiles).where(eq(agentProfiles.id, `acp:${agentId}`)).run()
   }
 
   // ── Audit log ─────────────────────────────────────────────────────────────
 
-  /**
-   * Return the audit trail for all agents, or for a specific `agentId` when
-   * provided.  Entries are ordered newest-first.
-   */
   @IpcMethod()
   getAuditLog(agentId?: string): AcpAuditEntry[] {
     const db = getDb()
@@ -196,11 +201,6 @@ export class AcpService extends IpcService {
 
   // ── Utilities ─────────────────────────────────────────────────────────────
 
-  /**
-   * Return the absolute path where a binary agent would be installed.
-   * Safe to call before installation — useful for displaying the install
-   * location in the UI.
-   */
   @IpcMethod()
   getAgentInstallPath(agentId: string): string {
     return getAgentInstallDir(app.getPath('userData'), agentId)
@@ -208,29 +208,22 @@ export class AcpService extends IpcService {
 
   // ── Runtime: Start / Stop ─────────────────────────────────────────────────
 
-  /**
-   * Start an installed agent process and establish an ACP connection.
-   * Returns a serializable summary of the InitializeResponse.
-   */
   @IpcMethod()
   async startAgent(agentId: string): Promise<Record<string, unknown>> {
     const record = getDb().select().from(acpAgents).where(eq(acpAgents.id, agentId)).get()
     if (!record || record.status !== 'installed') {
       throw new Error(`Agent not installed or not ready: ${agentId}`)
     }
-
     const connMgr = AcpConnectionManager.getInstance()
     const initResult = await connMgr.connect(agentId, record)
     return initResult as unknown as Record<string, unknown>
   }
 
-  /** Stop a running agent process. */
   @IpcMethod()
   async stopAgent(agentId: string): Promise<void> {
     await AcpConnectionManager.getInstance().disconnect(agentId)
   }
 
-  /** Check if an agent is currently running. */
   @IpcMethod()
   isAgentRunning(agentId: string): boolean {
     return AcpConnectionManager.getInstance().isConnected(agentId)
@@ -238,24 +231,18 @@ export class AcpService extends IpcService {
 
   // ── Runtime: Sessions ─────────────────────────────────────────────────────
 
-  /**
-   * Create a new ACP session on a running agent.
-   * `cwd` is the workspace path the agent will operate in.
-   */
   @IpcMethod()
   async createSession(agentId: string, cwd: string): Promise<Record<string, unknown>> {
     const result = await AcpConnectionManager.getInstance().newSession(agentId, cwd)
     return result as unknown as Record<string, unknown>
   }
 
-  /** Send a prompt to a running agent session. */
   @IpcMethod()
   async sendPrompt(agentId: string, sessionId: string, message: string): Promise<Record<string, unknown>> {
     const result = await AcpConnectionManager.getInstance().prompt(agentId, sessionId, message)
     return result as unknown as Record<string, unknown>
   }
 
-  /** Cancel an in-progress prompt. */
   @IpcMethod()
   async cancelPrompt(agentId: string, sessionId: string): Promise<void> {
     await AcpConnectionManager.getInstance().cancel(agentId, sessionId)
@@ -263,28 +250,16 @@ export class AcpService extends IpcService {
 
   // ── Runtime: Session model / config ───────────────────────────────────────
 
-  /**
-   * Return the current model + config option state for a session.
-   * Returns null if the agent doesn't expose model selection.
-   */
   @IpcMethod()
   getSessionState(agentId: string, sessionId: string): import('../lib/acp-connection').AcpSessionState | null {
     return AcpConnectionManager.getInstance().getSessionState(agentId, sessionId)
   }
 
-  /**
-   * Switch the model for a running session.
-   * The agent must support the `unstable_setSessionModel` capability.
-   */
   @IpcMethod()
   async setSessionModel(agentId: string, sessionId: string, modelId: string): Promise<void> {
     await AcpConnectionManager.getInstance().setSessionModel(agentId, sessionId, modelId)
   }
 
-  /**
-   * Update a session config option (e.g. thought_level / thinking effort).
-   * `value` is the new `SessionConfigValueId` (string) or boolean for boolean options.
-   */
   @IpcMethod()
   async setSessionConfigOption(
     agentId: string,
@@ -295,9 +270,8 @@ export class AcpService extends IpcService {
     await AcpConnectionManager.getInstance().setSessionConfigOption(agentId, sessionId, configId, value)
   }
 
-  // ── Runtime: Metrics (for Dev mode) ───────────────────────────────────────
+  // ── Runtime: Metrics ─────────────────────────────────────────────────────
 
-  /** Return process metrics for all running agents. */
   @IpcMethod()
   getRunningAgentMetrics(): ProcessMetrics[] {
     return AcpProcessManager.getInstance().getMetrics()

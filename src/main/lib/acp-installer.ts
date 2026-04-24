@@ -72,7 +72,12 @@ function audit(
 ): void {
   getDb()
     .insert(acpAuditLog)
-    .values({ agentId, action, path, details: JSON.stringify(details) })
+    .values({
+      agentId,
+      action,
+      path,
+      details: JSON.stringify(details),
+    })
     .run()
 }
 
@@ -82,16 +87,28 @@ function audit(
  * Stream a file from `url` to `destPath`.
  * Only HTTPS URLs are accepted.
  */
-function downloadFile(url: string, destPath: string): Promise<void> {
+function downloadFile(url: string, destPath: string, signal?: AbortSignal): Promise<void> {
   if (!url.startsWith('https://')) {
     throw new Error(`Only HTTPS download URLs are accepted, got: ${url}`)
   }
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Install cancelled', 'AbortError'))
+      return
+    }
+
     const request = net.request({ url, redirect: 'follow' })
+
+    const onAbort = () => {
+      request.abort()
+      reject(new DOMException('Install cancelled', 'AbortError'))
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
 
     request.on('response', (response) => {
       if (response.statusCode !== 200) {
+        signal?.removeEventListener('abort', onAbort)
         reject(new Error(`Download of ${url} failed with HTTP ${response.statusCode}`))
         return
       }
@@ -104,15 +121,20 @@ function downloadFile(url: string, destPath: string): Promise<void> {
         fileStream.write(chunk)
       })
       response.on('end', () => {
+        signal?.removeEventListener('abort', onAbort)
         fileStream.end(() => resolve())
       })
       response.on('error', (err: Error) => {
+        signal?.removeEventListener('abort', onAbort)
         fileStream.destroy()
         reject(err)
       })
     })
 
-    request.on('error', reject)
+    request.on('error', (err) => {
+      signal?.removeEventListener('abort', onAbort)
+      reject(err)
+    })
     request.end()
   })
 }
@@ -178,6 +200,7 @@ export interface InstallResult {
 export async function installBinaryAgent(
   agent: RegistryAgent,
   userData: string,
+  signal?: AbortSignal,
 ): Promise<InstallResult> {
   const platformKey = getPlatformKey()
   if (!platformKey) {
@@ -204,7 +227,10 @@ export async function installBinaryAgent(
 
   try {
     // 1. Download archive to temp location
-    await downloadFile(target.archive, tmpFile)
+    await downloadFile(target.archive, tmpFile, signal)
+    if (signal?.aborted) {
+      throw new DOMException('Install cancelled', 'AbortError')
+    }
     audit(agent.id, 'file_download', tmpFile, { url: target.archive })
 
     // 2. Extract to install directory
@@ -293,10 +319,10 @@ export function persistInstalled(
       name,
       version,
       distributionType,
-      installPath: result.installPath ?? undefined,
-      cmd: result.cmd ?? undefined,
-      args: JSON.stringify(result.args),
-      env: JSON.stringify(result.env),
+      installPath: result.installPath,
+      cmd: result.cmd,
+      args: JSON.stringify(result.args ?? []),
+      env: JSON.stringify(result.env ?? {}),
       status: 'installed',
       updatedAt: now,
     })
@@ -306,10 +332,10 @@ export function persistInstalled(
         name,
         version,
         distributionType,
-        installPath: result.installPath ?? undefined,
-        cmd: result.cmd ?? undefined,
-        args: JSON.stringify(result.args),
-        env: JSON.stringify(result.env),
+        installPath: result.installPath,
+        cmd: result.cmd,
+        args: JSON.stringify(result.args ?? []),
+        env: JSON.stringify(result.env ?? {}),
         status: 'installed',
         updatedAt: now,
       },
@@ -326,8 +352,12 @@ export function persistFailed(agentId: string, error: unknown): void {
     .values({
       id: agentId,
       name: agentId,
-      version: '',
-      distributionType: 'binary',
+      version: '0.0.0',
+      distributionType: 'npx',
+      installPath: null,
+      cmd: null,
+      args: '[]',
+      env: '{}',
       status: 'failed',
       updatedAt: now,
     })

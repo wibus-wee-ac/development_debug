@@ -2,12 +2,13 @@
 
 # Features/Agent-Runtime
 
-Domain for ACP agent runtime management: installed agents, session state, model/config preferences.
-Separated from `features/workspace/` to give agent-runtime concerns their own clear boundary.
-Consumed by chat route, new-chat-home, and model pickers.
+Renderer data hooks for Agent Runtime profiles and transitional session state.
+This feature exposes unified Agent Profile lists to launchers and settings.
+Provider execution and credentials remain in the Electron main process.
 
 ## Files
 
-- **use-acp-agents.ts**: `useInstalledAcpAgents` hook — queries and caches the list of installed ACP agents
-- **use-acp-session-state.ts**: `useAcpSessionState` hook and query helpers — manages ACP session model and config options
+- **use-agent-profiles.ts**: `useAgentProfiles` hook — queries unified Agent Runtime profiles
+- **use-acp-agents.ts**: Transitional `useInstalledAcpAgents` hook backed by unified profiles
+- **use-acp-session-state.ts**: Transitional no-op ACP session state hook retained while provider-level model state is rewired
 - **index.ts**: Barrel export

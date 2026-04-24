@@ -124,6 +124,7 @@ interface ConnectionEntry {
 export class AcpConnectionManager {
   private static instance: AcpConnectionManager
   private readonly connections = new Map<string, ConnectionEntry>()
+  private readonly pendingConnects = new Map<string, Promise<InitializeResponse>>()
   private readonly sessionTitleHandlers = new Set<(acpSessionId: string, title: string) => void>()
 
   static getInstance(): AcpConnectionManager {
@@ -156,7 +157,28 @@ export class AcpConnectionManager {
     if (this.connections.has(agentId)) {
       throw new Error(`Agent ${agentId} is already connected`)
     }
+    // Deduplicate concurrent calls for the same agent
+    const pending = this.pendingConnects.get(agentId)
+    if (pending) {
+      return pending
+    }
+    const promise = this._doConnect(agentId, record).finally(() => {
+      this.pendingConnects.delete(agentId)
+    })
+    this.pendingConnects.set(agentId, promise)
+    return promise
+  }
 
+  private async _doConnect(
+    agentId: string,
+    record: {
+      distributionType: string
+      installPath: string | null
+      cmd: string | null
+      args: string
+      env: string
+    },
+  ): Promise<InitializeResponse> {
     const args: string[] = JSON.parse(record.args || '[]')
     const env: Record<string, string> = JSON.parse(record.env || '{}')
     const distType = record.distributionType as 'binary' | 'npx' | 'uvx'

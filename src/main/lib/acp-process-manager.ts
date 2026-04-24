@@ -148,7 +148,7 @@ export class AcpProcessManager {
   private disposed = false
 
   static getInstance(): AcpProcessManager {
-    if (!AcpProcessManager.instance) {
+    if (!AcpProcessManager.instance || AcpProcessManager.instance.disposed) {
       AcpProcessManager.instance = new AcpProcessManager()
     }
     return AcpProcessManager.instance
@@ -194,7 +194,7 @@ export class AcpProcessManager {
       }
       case 'npx': {
         command = 'npx'
-        finalArgs = [opts.cmd, ...opts.args]
+        finalArgs = ['-y', opts.cmd, ...opts.args]
         break
       }
       case 'uvx': {

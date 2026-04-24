@@ -50,6 +50,20 @@
       "when": 1776916671887,
       "tag": "0006_worried_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1777011300000,
+      "tag": "0007_agent_runtime_provider_layer",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1777100000000,
+      "tag": "0008_restore_acp_tables",
+      "breakpoints": true
     }
   ]
 }

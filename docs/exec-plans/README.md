@@ -12,4 +12,5 @@ Use date-prefixed filenames so contributors can find the latest plan quickly.
 - **20260418-02-ipc-devtool-backend.md**: Execution plan for an IPC-only devtool backend and event pipeline.
 - **20260420-01-stream-provider-refactor.md**: Execution plan for refactoring the chat stream to follow OpenAI Responses API style, introducing a provider abstraction, and adding the sidebar session activity indicator.
 - **20260420-02-cli-tui-provider.md**: Execution plan for adding a `cli-tui` provider kind to support Claude Code CLI, Codex CLI, and similar terminal UI tools as first-class session types rendered via xterm.js.
+- **20260424-01-agent-runtime-provider-layer.md**: Execution plan for a destructive Agent Runtime Provider layer upgrade covering unified agent profiles, provider catalog, credential storage, ACP/CLI adapters, Codex App Server, and OpenAI-compatible providers.
 - **20260423-01-kanban-system.md**: Execution plan for a standalone Kanban system with workspaces as projects, status-based columns, boards, milestones, issues (with sub-issues and comments), and an issue side panel.

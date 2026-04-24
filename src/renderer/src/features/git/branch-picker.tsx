@@ -28,12 +28,14 @@ import {
 interface BranchPickerProps {
   workspacePath: string
   currentBranch: string
+  createDialogRef?: React.RefObject<unknown>
   children: React.ReactNode
 }
 
 export function BranchPicker({
   workspacePath,
   currentBranch,
+  createDialogRef: _createDialogRef,
   children,
 }: BranchPickerProps) {
   const [open, setOpen] = useState(false)
@@ -130,7 +132,7 @@ export function BranchPicker({
 
   return (
     <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) cancelCreating() }}>
-      <PopoverTrigger render={<span />}>
+      <PopoverTrigger render={<button type="button" />}>
         {children}
       </PopoverTrigger>
       <PopoverPopup

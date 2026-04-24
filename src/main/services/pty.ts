@@ -1,4 +1,4 @@
-// Input: IpcService base, PtyManager singleton, cliAgents + sessions + workspaces DB tables
+// Input: IpcService base, PtyManager singleton, agentProfiles + sessions + workspaces DB tables
 // Output: PtyService IPC handler — starts/stops/writes/resizes PTY sessions for cli-tui agents
 // Position: Main-process service registered in src/main/index.ts
 
@@ -6,7 +6,7 @@ import { IpcMethod, IpcService } from '@cradle/ipc'
 import { eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
-import { cliAgents, sessions, workspaces } from '../db/schema'
+import { agentProfiles, sessions, workspaces } from '../db/schema'
 import { PtyManager } from '../lib/pty-manager'
 
 export class PtyService extends IpcService {
@@ -14,7 +14,7 @@ export class PtyService extends IpcService {
 
   /**
    * Start a PTY process for the given Cradle session.
-   * Resolves cwd from the session's workspace. Looks up CLI agent cmd/args.
+   * Resolves cwd from the session's workspace. Looks up CLI-TUI profile cmd/args.
    */
   @IpcMethod()
   startPty(sessionId: string, cols: number, rows: number): void {
@@ -25,12 +25,12 @@ export class PtyService extends IpcService {
     }
     const workspace = db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
     const cwd = workspace?.path ?? process.env.HOME ?? '.'
-    const agent = db.select().from(cliAgents).where(eq(cliAgents.id, session.agent)).get()
-    if (!agent) {
-      throw new Error(`CLI agent not found: ${session.agent}`)
+    const profile = db.select().from(agentProfiles).where(eq(agentProfiles.id, session.agentProfileId)).get()
+    if (!profile || profile.providerKind !== 'cli-tui') {
+      throw new Error(`CLI-TUI agent profile not found: ${session.agentProfileId}`)
     }
-    const extraArgs: string[] = agent.args ? (JSON.parse(agent.args) as string[]) : []
-    PtyManager.getInstance().start(sessionId, agent.executable, extraArgs, cwd, cols, rows)
+    const config = readCliConfig(profile.configJson)
+    PtyManager.getInstance().start(sessionId, config.executable, config.args, cwd, cols, rows)
   }
 
   /** Stop (kill) the PTY process for the given session. No-op if not running. */
@@ -71,5 +71,18 @@ export class PtyService extends IpcService {
   startShell(ptyId: string, cwd: string, cols: number, rows: number): void {
     const shell = process.env.SHELL ?? '/bin/sh'
     PtyManager.getInstance().start(ptyId, shell, [], cwd, cols, rows)
+  }
+}
+
+function readCliConfig(configJson: string): { executable: string, args: string[] } {
+  try {
+    const parsed = JSON.parse(configJson) as { executable?: unknown, args?: unknown }
+    return {
+      executable: typeof parsed.executable === 'string' ? parsed.executable : '/bin/sh',
+      args: Array.isArray(parsed.args) ? parsed.args.filter((arg): arg is string => typeof arg === 'string') : [],
+    }
+  }
+  catch {
+    return { executable: '/bin/sh', args: [] }
   }
 }

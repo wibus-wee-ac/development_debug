@@ -2,14 +2,22 @@ import { join } from 'node:path'
 
 import { createServices } from '@cradle/ipc'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { eq } from 'drizzle-orm'
 import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../resources/icon.png?asset'
-import { initDb } from './db'
+import { initProviderCatalog } from './agent-runtime/catalog-instance'
+import { acpChatProvider } from './agent-runtime/providers/acp-chat-provider'
+import { cliTuiProvider } from './agent-runtime/providers/cli-tui-provider'
+import { OpenAICompatibleProvider } from './agent-runtime/providers/openai-compatible-provider'
+import { getDb, initDb } from './db'
+import { acpAgents, agentCredentials } from './db/schema'
 import { ChatEngine } from './lib/chat-engine'
 import { initializeIpcDevtool, subscribeRuntimeDevtools } from './lib/ipc-devtool'
 import { PtyManager } from './lib/pty-manager'
+import { decryptSecret } from './lib/safe-storage'
 import { AcpService } from './services/acp'
+import { AgentRuntimeService } from './services/agent-runtime'
 import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
 import { GitService } from './services/git'
@@ -17,12 +25,29 @@ import { IpcDevtoolService } from './services/ipc-devtool'
 import { KanbanService } from './services/kanban'
 import { PreferencesService } from './services/preferences'
 import { PtyService } from './services/pty'
-import { CliService } from './services/cli'
 import { SearchService } from './services/search'
 import { SessionService } from './services/session'
 import { WindowService } from './services/window'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
+
+function bootstrapProviderCatalog(): void {
+  const openAIProvider = new OpenAICompatibleProvider({
+    readSecret: (credentialRef) => {
+      const row = getDb()
+        .select()
+        .from(agentCredentials)
+        .where(eq(agentCredentials.id, credentialRef))
+        .get()
+      if (!row) {
+        throw new Error(`Credential not found: ${credentialRef}`)
+      }
+      return decryptSecret(row.encryptedSecret)
+    }
+  })
+
+  initProviderCatalog([acpChatProvider, cliTuiProvider, openAIProvider])
+}
 
 function createWindow(): BrowserWindow {
   // Create the browser window.
@@ -37,13 +62,13 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hiddenInset',
-          vibrancy: 'sidebar',
+          vibrancy: 'sidebar'
         }
       : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
-    },
+      sandbox: false
+    }
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -64,8 +89,7 @@ function createWindow(): BrowserWindow {
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  }
- else {
+  } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
@@ -75,12 +99,24 @@ function createWindow(): BrowserWindow {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
+app.commandLine.appendSwitch('remote-debugging-port', '9222')
+
 app.whenReady().then(() => {
   // Initialise database
   const dbPath = join(app.getPath('userData'), 'cradle.db')
   initDb(dbPath)
 
+  // Reset any ACP agents stuck in 'installing' state from a previous crash/restart
+  getDb()
+    .update(acpAgents)
+    .set({ status: 'failed' })
+    .where(eq(acpAgents.status, 'installing'))
+    .run()
+
   initializeIpcDevtool()
+
+  // Bootstrap provider catalog (must happen after DB init)
+  bootstrapProviderCatalog()
 
   // Bootstrap chat engine (crash recovery + transport hooks)
   ChatEngine.getInstance().initialize()
@@ -89,6 +125,7 @@ app.whenReady().then(() => {
   createServices([
     WorkspaceService,
     SessionService,
+    AgentRuntimeService,
     AcpService,
     PreferencesService,
     IpcDevtoolService,
@@ -96,10 +133,9 @@ app.whenReady().then(() => {
     ChatService,
     SearchService,
     PtyService,
-    CliService,
     WindowService,
     GitService,
-    KanbanService,
+    KanbanService
   ] as const)
 
   // Set app user model id for windows

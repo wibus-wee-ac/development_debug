@@ -13,5 +13,5 @@ Also owns the sidebar interaction contract between workspace groups and the laun
 - **use-workspace-files.ts**: Hook for listing workspace files for composer mentions
 - **use-workspace.ts**: Hooks for listing, adding (via native directory picker), and deleting workspaces
 - **use-session.ts**: Hook for listing sessions under a workspace
-- **use-cli-agents.ts**: Hook for listing configured CLI agents exposed from the main process
+- **use-cli-agents.ts**: Transitional hook for listing CLI-TUI Agent Profiles from the unified Agent Runtime
 - **workspace-sidebar.tsx**: Sidebar component whose workspace name opens the launcher for that workspace while the folder icon controls collapse state

@@ -86,7 +86,7 @@ export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogPro
   const handleSelect = useCallback(
     (hit: ThreadSearchHit) => {
       onOpenChange(false)
-      navigate({ to: '/chat/$sessionId', params: { sessionId: hit.sessionId } })
+      navigate({ to: '/chat/$sessionId', params: { sessionId: hit.sessionId }, search: { tearoff: false } })
     },
     [navigate, onOpenChange],
   )
