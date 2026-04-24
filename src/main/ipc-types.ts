@@ -9,6 +9,7 @@ import type { ChatService } from './services/chat'
 import type { DevService } from './services/dev'
 import type { GitService } from './services/git'
 import type { IpcDevtoolService } from './services/ipc-devtool'
+import type { KanbanService } from './services/kanban'
 import type { PreferencesService } from './services/preferences'
 import type { PtyService } from './services/pty'
 import type { CliService } from './services/cli'
@@ -34,6 +35,7 @@ export type IpcServices = MergeIpcService<{
   cli: typeof CliService
   window: typeof WindowService
   git: typeof GitService
+  kanban: typeof KanbanService
 }>
 
 // Convenience re-exports so the renderer imports from one place
@@ -54,4 +56,5 @@ export type {
   ThreadSearchSnippet,
 } from './lib/thread-search'
 export type { GitBranches, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './services/git'
+export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 

@@ -10,13 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as DevtoolRouteImport } from './routes/devtool'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as KanbanBoardIdRouteImport } from './routes/kanban.$boardId'
 import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KanbanRoute = KanbanRouteImport.update({
+  id: '/kanban',
+  path: '/kanban',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DevtoolRoute = DevtoolRouteImport.update({
@@ -29,6 +36,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const KanbanBoardIdRoute = KanbanBoardIdRouteImport.update({
+  id: '/$boardId',
+  path: '/$boardId',
+  getParentRoute: () => KanbanRoute,
+} as any)
 const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
   id: '/chat/$sessionId',
   path: '/chat/$sessionId',
@@ -38,33 +50,59 @@ const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
+  '/kanban': typeof KanbanRouteWithChildren
   '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
+  '/kanban/$boardId': typeof KanbanBoardIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
+  '/kanban': typeof KanbanRouteWithChildren
   '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
+  '/kanban/$boardId': typeof KanbanBoardIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
+  '/kanban': typeof KanbanRouteWithChildren
   '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
+  '/kanban/$boardId': typeof KanbanBoardIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/devtool' | '/settings' | '/chat/$sessionId'
+  fullPaths:
+    | '/'
+    | '/devtool'
+    | '/kanban'
+    | '/settings'
+    | '/chat/$sessionId'
+    | '/kanban/$boardId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/devtool' | '/settings' | '/chat/$sessionId'
-  id: '__root__' | '/' | '/devtool' | '/settings' | '/chat/$sessionId'
+  to:
+    | '/'
+    | '/devtool'
+    | '/kanban'
+    | '/settings'
+    | '/chat/$sessionId'
+    | '/kanban/$boardId'
+  id:
+    | '__root__'
+    | '/'
+    | '/devtool'
+    | '/kanban'
+    | '/settings'
+    | '/chat/$sessionId'
+    | '/kanban/$boardId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DevtoolRoute: typeof DevtoolRoute
+  KanbanRoute: typeof KanbanRouteWithChildren
   SettingsRoute: typeof SettingsRoute
   ChatSessionIdRoute: typeof ChatSessionIdRoute
 }
@@ -76,6 +114,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kanban': {
+      id: '/kanban'
+      path: '/kanban'
+      fullPath: '/kanban'
+      preLoaderRoute: typeof KanbanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/devtool': {
@@ -92,6 +137,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/kanban/$boardId': {
+      id: '/kanban/$boardId'
+      path: '/$boardId'
+      fullPath: '/kanban/$boardId'
+      preLoaderRoute: typeof KanbanBoardIdRouteImport
+      parentRoute: typeof KanbanRoute
+    }
     '/chat/$sessionId': {
       id: '/chat/$sessionId'
       path: '/chat/$sessionId'
@@ -102,9 +154,21 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface KanbanRouteChildren {
+  KanbanBoardIdRoute: typeof KanbanBoardIdRoute
+}
+
+const KanbanRouteChildren: KanbanRouteChildren = {
+  KanbanBoardIdRoute: KanbanBoardIdRoute,
+}
+
+const KanbanRouteWithChildren =
+  KanbanRoute._addFileChildren(KanbanRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DevtoolRoute: DevtoolRoute,
+  KanbanRoute: KanbanRouteWithChildren,
   SettingsRoute: SettingsRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
 }

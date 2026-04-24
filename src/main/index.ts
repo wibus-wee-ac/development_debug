@@ -14,6 +14,7 @@ import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
 import { GitService } from './services/git'
 import { IpcDevtoolService } from './services/ipc-devtool'
+import { KanbanService } from './services/kanban'
 import { PreferencesService } from './services/preferences'
 import { PtyService } from './services/pty'
 import { CliService } from './services/cli'
@@ -98,6 +99,7 @@ app.whenReady().then(() => {
     CliService,
     WindowService,
     GitService,
+    KanbanService,
   ] as const)
 
   // Set app user model id for windows

@@ -1,5 +1,5 @@
 // Input: drizzle-orm sqlite schema builders
-// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, ACP agents, audit log, and CLI agents
+// Output: SQLite table definitions and inferred row types for workspaces, chat sessions, ACP agents, audit log, CLI agents, and Kanban entities
 // Position: Main-process persistence schema shared by DB initialization and services
 
 import { sql } from 'drizzle-orm'
@@ -132,3 +132,108 @@ export type NewAcpAgent = typeof acpAgents.$inferInsert
 export type AcpAuditEntry = typeof acpAuditLog.$inferSelect
 export type CliAgent = typeof cliAgents.$inferSelect
 export type NewCliAgent = typeof cliAgents.$inferInsert
+
+// ── Kanban tables ─────────────────────────────────────────────────────────────
+
+/** Ordered set of status values for issues within a workspace. Visually renders as board columns. */
+export const kanbanStatuses = sqliteTable('kanban_statuses', {
+  id: textPk(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** CSS hex color for column header tinting, e.g. "#6366f1". */
+  color: text('color'),
+  /** Display order (left-to-right). Lower value = leftmost. */
+  order: int('order').notNull().default(0),
+  ...createdAt(),
+})
+
+/** A named, persisted Kanban view for a workspace. filterConfig is a JSON blob. */
+export const kanbanBoards = sqliteTable('kanban_boards', {
+  id: textPk(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  /** JSON: { milestoneId?, priority?, labels? } — saved board filter defaults. */
+  filterConfig: text('filter_config'),
+  ...timestamps(),
+})
+
+/** A milestone groups issues by deadline within a workspace. */
+export const kanbanMilestones = sqliteTable('kanban_milestones', {
+  id: textPk(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  description: text('description'),
+  /** Unix epoch (seconds). Null = no deadline. */
+  dueDate: int('due_date'),
+  status: text('status', { enum: ['open', 'closed'] }).notNull().default('open'),
+  ...timestamps(),
+})
+
+/** Core issue entity. Belongs to a workspace; optionally tied to a status, milestone, and parent issue. */
+export const kanbanIssues = sqliteTable('kanban_issues', {
+  id: textPk(),
+  workspaceId: text('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  /** Current status column. Null = unassigned / backlog. */
+  statusId: text('status_id').references(() => kanbanStatuses.id, { onDelete: 'set null' }),
+  milestoneId: text('milestone_id').references(() => kanbanMilestones.id, { onDelete: 'set null' }),
+  /**
+   * Parent issue ID for sub-issues. Plain text (no Drizzle .references()) because
+   * Drizzle does not support self-referential FK declarations. Application layer
+   * must set this to null on child issues before deleting the parent.
+   */
+  parentIssueId: text('parent_issue_id'),
+  title: text('title').notNull(),
+  /** Markdown body. */
+  description: text('description'),
+  priority: text('priority', {
+    enum: ['none', 'low', 'medium', 'high', 'urgent'],
+  }).notNull().default('none'),
+  /** JSON array of label strings, e.g. '["bug","frontend"]'. */
+  labels: text('labels').notNull().default('[]'),
+  ...timestamps(),
+})
+
+/** Append-only comments on an issue. */
+export const kanbanIssueComments = sqliteTable('kanban_issue_comments', {
+  id: textPk(),
+  issueId: text('issue_id')
+    .notNull()
+    .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
+  /** Markdown body. */
+  content: text('content').notNull(),
+  ...createdAt(),
+})
+
+/**
+ * Directed relationships between two issues.
+ * type='blocks' means source blocks target; inverse (is_blocked_by) is derived at query time.
+ * type='relates_to' is symmetric; direction is ignored in the UI.
+ */
+export const kanbanIssueRelations = sqliteTable('kanban_issue_relations', {
+  id: textPk(),
+  sourceIssueId: text('source_issue_id')
+    .notNull()
+    .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
+  targetIssueId: text('target_issue_id')
+    .notNull()
+    .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
+  type: text('type', { enum: ['blocks', 'duplicates', 'relates_to'] }).notNull(),
+  ...createdAt(),
+})
+
+// ── Kanban inferred types ─────────────────────────────────────────────────────
+
+export type KanbanStatus = typeof kanbanStatuses.$inferSelect
+export type KanbanBoard = typeof kanbanBoards.$inferSelect
+export type KanbanMilestone = typeof kanbanMilestones.$inferSelect
+export type KanbanIssue = typeof kanbanIssues.$inferSelect
+export type KanbanIssueComment = typeof kanbanIssueComments.$inferSelect
+export type KanbanIssueRelation = typeof kanbanIssueRelations.$inferSelect

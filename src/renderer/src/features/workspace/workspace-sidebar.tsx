@@ -15,6 +15,7 @@ import {
   FolderClosedIcon,
   FolderOpenIcon,
   GitBranchIcon,
+  LayoutDashboardIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PlusIcon,
@@ -320,6 +321,11 @@ export function WorkspaceSidebar() {
         <TopNavItem
           icon={<ZapIcon className="size-4" />}
           label="自动化"
+        />
+        <TopNavItem
+          icon={<LayoutDashboardIcon className="size-4" />}
+          label="看板"
+          onClick={() => navigate({ to: '/kanban' })}
         />
       </nav>
 
