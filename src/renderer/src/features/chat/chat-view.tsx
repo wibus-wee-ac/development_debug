@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
 
+import { ChatMinimap } from './chat-minimap'
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
@@ -49,6 +50,9 @@ export function ChatView({
 
   /** True when the user is near the bottom (<= 200 px away). Auto-scroll only fires when true. */
   const isAtBottomRef = useRef(true)
+
+  /** Scroll metrics for the minimap */
+  const [scrollMetrics, setScrollMetrics] = useState({ offset: 0, scrollHeight: 0, viewportHeight: 0, barProgress: [] as number[] })
 
   const isStreaming = status === 'streaming'
 
@@ -108,7 +112,34 @@ export function ChatView({
       return
     }
     isAtBottomRef.current = offset + vp.offsetHeight >= vp.scrollHeight - 200
-  }, [])
+    const sh = vp.scrollHeight
+    const vh = vp.offsetHeight
+
+    // Compute per-message reading progress from real virtualizer item sizes
+    const virt = virtualizerRef.current
+    let progress: number[] = []
+    if (virt && messages.length > 0) {
+      const vpTop = offset
+      const vpBottom = offset + vh
+      progress = messages.map((_, i) => {
+        const msgTop = virt.getItemOffset(i)
+        const msgSize = virt.getItemSize(i)
+        const msgBottom = msgTop + msgSize
+        if (vpBottom <= msgTop) {
+          return 0
+        }
+        if (vpTop >= msgBottom) {
+          return 1
+        }
+        if (msgSize <= 0) {
+          return 0
+        }
+        return Math.min((Math.max(vpTop, msgTop) - msgTop) / msgSize, 1)
+      })
+    }
+
+    setScrollMetrics({ offset, scrollHeight: sh, viewportHeight: vh, barProgress: progress })
+  }, [messages])
 
   const handleSend = useCallback(
     (text: string) => {
@@ -118,6 +149,30 @@ export function ChatView({
       sendMessage(text)
     },
     [isReady, sendMessage],
+  )
+
+  const handleMinimapScrollToIndex = useCallback(
+    (index: number) => {
+      const virt = virtualizerRef.current
+      const vp = viewportRef.current
+      if (!virt || !vp) {
+        return
+      }
+      // Use real item offset for accurate positioning, then native smooth scroll
+      const targetOffset = virt.getItemOffset(index)
+      vp.scrollTo({ top: targetOffset, behavior: 'smooth' })
+    },
+    [],
+  )
+
+  const handleMinimapScrollTo = useCallback(
+    (offset: number) => {
+      const vp = viewportRef.current
+      if (vp) {
+        vp.scrollTop = offset
+      }
+    },
+    [],
   )
 
   return (
@@ -133,67 +188,74 @@ export function ChatView({
       onDragOver={e => e.preventDefault()}
     >
       {/* Virtualized message list */}
-      <ScrollArea className="flex-1" viewportRef={viewportRef}>
-        <div className="mx-auto max-w-2xl px-4 pt-4">
-          {messages.length === 0 && isReady && (
-            <div className="flex items-center justify-center py-20">
-              <p className="text-sm text-muted-foreground/50 select-none">
-                发送消息开始对话
-              </p>
-            </div>
-          )}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="h-full **:data-[slot=scroll-area-scrollbar]:hidden" viewportRef={viewportRef}>
+          <div className="mx-auto max-w-2xl px-4 pt-4">
+            {messages.length === 0 && isReady && (
+              <div className="flex items-center justify-center py-20">
+                <p className="text-sm text-muted-foreground/50 select-none">
+                  发送消息开始对话
+                </p>
+              </div>
+            )}
 
-          {/* Virtualizer only renders items intersecting the visible viewport +
-              a 200 px over-scan buffer. Items outside that range are unmounted,
-              keeping DOM node count constant regardless of conversation length. */}
-          <Virtualizer
-            ref={virtualizerRef}
-            scrollRef={viewportRef}
-            startMargin={24}
-            onScroll={handleVirtScroll}
-          >
-            {messages.map(message => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isStreaming={status === 'streaming' && message === messages.at(-1)}
-              />
-            ))}
-          </Virtualizer>
-
-          {/* Status indicators live outside the virtualizer so they always render. */}
-          {status === 'error' && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-              className="flex items-center gap-2 pt-4 pl-1"
+            <Virtualizer
+              ref={virtualizerRef}
+              scrollRef={viewportRef}
+              startMargin={24}
+              onScroll={handleVirtScroll}
             >
-              <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
-              <span className="text-xs text-destructive/70">
-                {error ?? '发送失败，请重试'}
-              </span>
-            </motion.div>
-          )}
+              {messages.map(message => (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  isStreaming={status === 'streaming' && message === messages.at(-1)}
+                />
+              ))}
+            </Virtualizer>
 
-          {showThinking && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-              className="flex items-center gap-2 pt-4 pl-1"
-            >
-              <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" aria-hidden="true" />
-              <span className="text-xs text-muted-foreground/50">正在思考...</span>
-            </motion.div>
-          )}
+            {status === 'error' && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+                className="flex items-center gap-2 pt-4 pl-1"
+              >
+                <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
+                <span className="text-xs text-destructive/70">
+                  {error ?? '发送失败，请重试'}
+                </span>
+              </motion.div>
+            )}
 
-          {/* Bottom padding */}
-          <div className="h-6" aria-hidden="true" />
-        </div>
-      </ScrollArea>
+            {showThinking && (
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+                className="flex items-center gap-2 pt-4 pl-1"
+              >
+                <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" aria-hidden="true" />
+                <span className="text-xs text-muted-foreground/50">正在思考...</span>
+              </motion.div>
+            )}
+
+            <div className="h-6" aria-hidden="true" />
+          </div>
+        </ScrollArea>
+
+        <ChatMinimap
+          messages={messages}
+          scrollOffset={scrollMetrics.offset}
+          scrollHeight={scrollMetrics.scrollHeight}
+          viewportHeight={scrollMetrics.viewportHeight}
+          barProgress={scrollMetrics.barProgress}
+          onScrollToIndex={handleMinimapScrollToIndex}
+          onScrollTo={handleMinimapScrollTo}
+        />
+      </div>
 
       {/* Composer — pinned to bottom */}
       <div className="shrink-0 bg-background/80 backdrop-blur-sm px-4 py-3">
