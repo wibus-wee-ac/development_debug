@@ -1,7 +1,7 @@
 import '../styles.css'
 
-import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
+import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useThemeStore } from '@renderer/store/theme'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 import { useEffect } from 'react'

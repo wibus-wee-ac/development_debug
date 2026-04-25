@@ -14,13 +14,13 @@ interface SessionActivityState {
 export const useSessionActivityStore = create<SessionActivityState>()(set => ({
   unread: new Set<string>(),
   markUnread: sessionId =>
-    set(s => {
+    set((s) => {
       const next = new Set(s.unread)
       next.add(sessionId)
       return { unread: next }
     }),
   clearUnread: sessionId =>
-    set(s => {
+    set((s) => {
       if (!s.unread.has(sessionId)) {
         return s
       }

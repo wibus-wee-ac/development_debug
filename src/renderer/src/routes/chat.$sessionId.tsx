@@ -145,7 +145,6 @@ function SessionComposerBar({ session }: SessionComposerBarProps) {
   )
 }
 
-
 export const Route = createFileRoute('/chat/$sessionId')({
   validateSearch: (search: Record<string, unknown>) => ({
     tearoff: search.tearoff === 'true' || search.tearoff === true,
