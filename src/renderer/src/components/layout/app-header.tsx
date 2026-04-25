@@ -48,7 +48,7 @@ export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, 
       {hasBreadcrumb && (
         <nav
           aria-label="Breadcrumb"
-          className="pointer-events-none absolute inset-x-0 flex items-center justify-center text-xs"
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 flex items-center justify-center text-xs max-w-[calc(100%-8rem)]"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <div className="pointer-events-auto flex min-w-0 max-w-xs items-center">

@@ -371,7 +371,7 @@ export function HomeDashboard() {
                   kind="workspace"
                   title={item.ws.name}
                   meta="项目"
-                  onClick={() => navigate({ to: '/', search: { workspaceId: item.ws.id } })}
+                  onClick={() => navigate({ to: '/workspace/$workspaceId', params: { workspaceId: item.ws.id } })}
                 />
               )
             }

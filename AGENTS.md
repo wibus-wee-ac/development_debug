@@ -43,7 +43,7 @@ const sizeClasses = {
 const className = sizeClasses[size]
 ```
 
-**Always use the `cn()` utility from `@/lib/utils` for combining classes:**
+**Always use the** `cn()` **utility from** `@/lib/utils` **for combining classes:**
 
 ```tsx
 import { cn } from '@/lib/utils'
@@ -72,18 +72,21 @@ function Button({ className, variant = 'primary', ...props }) {
 
 **Components are organized by reusability and domain:**
 
-- **`components/ui/`** - Universal base UI components
+- `components/ui/` - Universal base UI components
+
   - Reusable primitives (buttons, inputs, modals)
   - Can be used in any React application
   - Pure UI components without business logic
   - Examples: `Button`, `Input`, `Select`, `Tooltip`
 
-- **`components/common/`** - App-specific shared components
+- `components/common/` - App-specific shared components
+
   - Used across multiple features but specific to this app
   - Contains app-specific logic
   - Examples: `ErrorElement`, `Footer`, `AppHeader`
 
-- **`features/{domain}/`** - Feature-specific components
+- `features/{domain}/` - Feature-specific components
+
   - Components specific to a business domain/feature
   - Contains domain-specific logic or data handling
   - Examples: `features/feed/`, `features/auth/`, `features/user/`
@@ -141,15 +144,18 @@ function Button({ variant = 'primary', size = 'md', className, ...props }: Butto
 Every directory (except `bindings/`, which is auto-generated) MUST have a `README.md` with:
 
 1. **Architecture Summary** (3 lines max):
+
    - Purpose of this directory
    - How it fits in the overall system
    - Key patterns or conventions
 
 2. **File Inventory**:
+
    - List each file with its name, role, and function
    - Format: `- **filename.ext**: Role description`
 
 3. **Update Reminder**:
+
    ```markdown
    <!-- Once this directory changes, update this README.md -->
    ```

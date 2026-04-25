@@ -13,3 +13,4 @@ Components, hooks, and utilities specific to a feature live together.
 - **search/**: Global thread search — command-palette dialog backed by jieba tokenization on the main process
 - **settings/**: Application settings — theme switching, user preferences dialog
 - **ipc-devtool/**: Developer-only IPC observability panel rendered in the second (`/devtool`) BrowserWindow
+- **workspace-detail/**: Project detail page for viewing and editing workspace files (README.md, AGENTS.md) with Tiptap WYSIWYG editor

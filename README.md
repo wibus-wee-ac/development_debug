@@ -1,34 +1,24 @@
-# cradle
+<p align="center">
+  <p align="center">
+    <img src="./.github/Cradle.png" alt="Preview" width="182" />
+  </p>
+  <h1 align="center"><b>Cradle</b></h1>
+  <p align="center">
+    Cradle is a agent management desktop application built with Electron. It provides a unified interface for organizing information, managing AI agents, and facilitating human-AI collaboration.
+    <br />
+    <br />
+    <b>Download for </b>
+    <a href="">Source Code</a>
+    <br />
+  </p>
+</p>
 
-An Electron application with React and TypeScript
+<pre align="center">
+🧪 Working in Progress
+</pre>
 
-## Recommended IDE Setup
+## Author
 
-- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+Cradle © Wibus, Released under AGPLv3. Created on Apr 25, 2026
 
-## Project Setup
-
-### Install
-
-```bash
-$ pnpm install
-```
-
-### Development
-
-```bash
-$ pnpm dev
-```
-
-### Build
-
-```bash
-# For windows
-$ pnpm build:win
-
-# For macOS
-$ pnpm build:mac
-
-# For Linux
-$ pnpm build:linux
-```
+> [Personal Website](http://wibus.ren/) · [Blog](https://blog.wibus.ren/) · GitHub [@wibus-wee](https://github.com/wibus-wee/) · Telegram [@wibus✪](https://t.me/wibus_wee)

@@ -203,7 +203,7 @@ function ChatSessionPage() {
     if (tearoff) {
       setSidebarCollapsed(true)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Fetch workspace name and path when workspaceId is available

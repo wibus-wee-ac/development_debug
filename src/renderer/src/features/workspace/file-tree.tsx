@@ -78,7 +78,7 @@ const TreeNodeItem = memo(function TreeNodeItem({ node, depth, workspacePath }: 
         <div
           draggable
           onDragStart={handleDragStart}
-          className="group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-sidebar-foreground/80 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors active:cursor-grabbing"
+          className="group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-sidebar-foreground/80 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors active:cursor-grabbing"
           style={{ paddingLeft: `${10 + indent}px` }}
           role="button"
           tabIndex={0}
@@ -116,7 +116,7 @@ const TreeNodeItem = memo(function TreeNodeItem({ node, depth, workspacePath }: 
     <div
       draggable
       onDragStart={handleDragStart}
-      className="group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors active:cursor-grabbing"
+      className="group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors active:cursor-grabbing"
       style={{ paddingLeft: `${10 + indent + 20}px` }}
     >
       <FileIcon className={cn('size-3.5 shrink-0', fileColor(node.name))} />

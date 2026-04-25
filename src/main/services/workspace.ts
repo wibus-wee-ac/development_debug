@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
-import { basename, join } from 'node:path'
+import { readFile, writeFile } from 'node:fs/promises'
+import { basename, join, resolve } from 'node:path'
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 import { desc, eq } from 'drizzle-orm'
@@ -123,5 +123,44 @@ export class WorkspaceService extends IpcService {
         path: cleanPath,
       }
     })
+  }
+
+  @IpcMethod()
+  async readTextFile(workspaceId: string, relativePath: string): Promise<string | null> {
+    const ws = getDb().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
+    if (!ws) {
+      return null
+    }
+    // Prevent path traversal
+    const fullPath = resolve(ws.path, relativePath)
+    if (!fullPath.startsWith(ws.path)) {
+      return null
+    }
+    try {
+      return await readFile(fullPath, 'utf8')
+    }
+    catch {
+      return null
+    }
+  }
+
+  @IpcMethod()
+  async writeTextFile(workspaceId: string, relativePath: string, content: string): Promise<boolean> {
+    const ws = getDb().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
+    if (!ws) {
+      return false
+    }
+    // Prevent path traversal
+    const fullPath = resolve(ws.path, relativePath)
+    if (!fullPath.startsWith(ws.path)) {
+      return false
+    }
+    try {
+      await writeFile(fullPath, content, 'utf8')
+      return true
+    }
+    catch {
+      return false
+    }
   }
 }

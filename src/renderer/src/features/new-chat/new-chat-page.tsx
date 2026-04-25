@@ -51,6 +51,8 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useNewChatStore } from '@renderer/store/new-chat'
+
 /* ─── Constants ───────────────────────────────────────────────────────── */
 
 const WORD_SPLIT = /\s+/
@@ -136,10 +138,11 @@ export function NewChatPage() {
   const { profiles } = useAgentProfiles()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const newChatStore = useNewChatStore()
 
   // ── State ──
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
-    () => localStorage.getItem('lastAgentProfileId') ?? null,
+    () => newChatStore.lastAgentProfileId,
   )
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelDescriptor | null>(null)
@@ -159,19 +162,29 @@ export function NewChatPage() {
   const showModelPicker = selectedProfile && selectedProfile.providerKind !== 'cli-tui' && (isLoadingModels || models.length > 0)
   const isCliTui = selectedProfile?.providerKind === 'cli-tui'
 
-  const recentSessions = useMemo(
-    () => [...sessions].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6),
-    [sessions],
-  )
+  const recentSessions = useMemo(() => {
+    const top: typeof sessions = []
+    for (const s of sessions) {
+      if (top.length < 6) {
+        top.push(s)
+        top.sort((a, b) => b.updatedAt - a.updatedAt)
+      }
+      else if (s.updatedAt > top.at(-1)!.updatedAt) {
+        top[top.length - 1] = s
+        top.sort((a, b) => b.updatedAt - a.updatedAt)
+      }
+    }
+    return top
+  }, [sessions])
 
   // ── Effects ──
   useEffect(() => {
     if (selectedProfileId === null && profiles.length > 0) {
-      const lastId = localStorage.getItem('lastAgentProfileId')
+      const lastId = newChatStore.lastAgentProfileId
       const exists = lastId && profiles.some(p => p.id === lastId)
       setSelectedProfileId(exists ? lastId : profiles[0].id)
     }
-  }, [profiles, selectedProfileId])
+  }, [profiles, selectedProfileId, newChatStore.lastAgentProfileId])
 
   useEffect(() => {
     if (selectedWorkspaceId === null && workspaces.length > 0) {
@@ -180,15 +193,23 @@ export function NewChatPage() {
   }, [workspaces, selectedWorkspaceId])
 
   useEffect(() => {
-    setSelectedModel(null)
     setThinkingEffort(null)
-  }, [selectedProfileId])
+    // Restore last selected model for this profile
+    if (selectedProfileId && models.length > 0) {
+      const lastModelId = newChatStore.getLastModelForProfile(selectedProfileId)
+      const found = lastModelId ? models.find(m => m.id === lastModelId) : null
+      setSelectedModel(found ?? null)
+    }
+    else {
+      setSelectedModel(null)
+    }
+  }, [selectedProfileId, models, newChatStore])
 
   useEffect(() => {
     if (selectedProfileId) {
-      localStorage.setItem('lastAgentProfileId', selectedProfileId)
+      newChatStore.setLastAgentProfileId(selectedProfileId)
     }
-  }, [selectedProfileId])
+  }, [selectedProfileId, newChatStore])
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -231,6 +252,8 @@ export function NewChatPage() {
     }
     catch (err) {
       console.error('[NewChatPage] send failed:', err)
+    }
+    finally {
       setSending(false)
     }
   }, [canSend, effectiveModel, input, isCliTui, navigate, queryClient, selectedProfile, selectedWorkspace, selectedWorkspaceId, thinkingEffort])
@@ -383,7 +406,7 @@ export function NewChatPage() {
                       onValueChange={(next) => {
                         setSelectedModel(next ?? null)
                         if (next && selectedProfileId) {
-                          localStorage.setItem(`lastModelId:${selectedProfileId}`, next.id)
+                          newChatStore.setLastModelForProfile(selectedProfileId, next.id)
                         }
                       }}
                     >
@@ -437,16 +460,17 @@ export function NewChatPage() {
                         <span>默认</span>
                         {thinkingEffort === null && <CheckIcon className="size-3 text-foreground/50" />}
                       </MenuItem>
-                      {(Object.entries(THINKING_EFFORTS) as [ThinkingEffort, typeof THINKING_EFFORTS[ThinkingEffort]][]).map(
-                        ([key, { label, description }]) => (
+                      {(Object.keys(THINKING_EFFORTS) as ThinkingEffort[]).map((key) => {
+                        const { label, description } = THINKING_EFFORTS[key]
+                        return (
                           <MenuItem key={key} onClick={() => setThinkingEffort(key)}>
                             <BrainIcon className="size-3" />
                             <span className="flex-1">{label}</span>
                             <span className="text-[11px] text-muted-foreground/40">{description}</span>
                             {thinkingEffort === key && <CheckIcon className="size-3 text-foreground/50" />}
                           </MenuItem>
-                        ),
-                      )}
+                        )
+                      })}
                     </MenuGroup>
                   </MenuPopup>
                 </Menu>
@@ -569,9 +593,9 @@ export function NewChatPage() {
                       {session.title || 'Untitled'}
                     </span>
                   </div>
-                  <span className="text-[11px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors">
+                  <time dateTime={new Date(session.updatedAt).toISOString()} className="text-[11px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors">
                     {timeAgo(session.updatedAt)}
-                  </span>
+                  </time>
                 </motion.button>
               ))}
             </div>

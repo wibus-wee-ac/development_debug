@@ -165,8 +165,8 @@ function WorkspaceGroup({
   }, [])
   const openWorkspaceHome = useCallback(() => {
     void navigate({
-      to: '/',
-      search: { workspaceId: workspace.id },
+      to: '/workspace/$workspaceId',
+      params: { workspaceId: workspace.id },
     })
   }, [navigate, workspace.id])
 
@@ -254,7 +254,7 @@ function WorkspaceGroup({
 
 // ── Top nav items ─────────────────────────────────────────────────────────────
 
-interface TopNavItemProps {
+interface NavItemProps {
   icon: React.ReactNode
   label: string
   shortcut?: string
@@ -262,7 +262,7 @@ interface TopNavItemProps {
   onClick?: () => void
 }
 
-function TopNavItem({ icon, label, shortcut, collapsed, onClick }: TopNavItemProps) {
+function TopNavItem({ icon, label, shortcut, collapsed, onClick }: NavItemProps) {
   return (
     <button
       type="button"

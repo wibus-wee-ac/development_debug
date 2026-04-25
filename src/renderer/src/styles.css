@@ -6,6 +6,8 @@
 @import "@fontsource-variable/geist";
 @import "streamdown/styles.css";
 
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 body {
