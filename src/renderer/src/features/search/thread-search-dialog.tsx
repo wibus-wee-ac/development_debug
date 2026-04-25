@@ -34,8 +34,9 @@ import {
 } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { groupHitsByWorkspace, type GroupedSearchHits } from './thread-search-groups'
 import { HighlightedText } from './highlighted-text'
+import type { GroupedSearchHits } from './thread-search-groups'
+import { groupHitsByWorkspace } from './thread-search-groups'
 import { useThreadSearch } from './use-thread-search'
 
 interface ThreadSearchDialogProps {

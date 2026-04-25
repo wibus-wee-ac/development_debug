@@ -18,8 +18,8 @@ export type { ResponseStreamEvent }
  * is responsible for ensuring only one turn is in flight per session at a time.
  */
 export interface ChatProvider {
-  stream(message: string): AsyncGenerator<ResponseStreamEvent, void, void>
-  cancel(): Promise<void>
+  stream: (message: string) => AsyncGenerator<ResponseStreamEvent, void, void>
+  cancel: () => Promise<void>
 }
 
 /**

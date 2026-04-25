@@ -23,10 +23,11 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
-import type { ResponseStreamEvent } from './chat-provider'
+
 import type { ProcessEntry } from './acp-process-manager'
 import { AcpProcessManager } from './acp-process-manager'
 import { AcpResponsesConverter } from './acp-responses-converter'
+import type { ResponseStreamEvent } from './chat-provider'
 
 // ── Session state ─────────────────────────────────────────────────────────────
 

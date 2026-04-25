@@ -8,7 +8,7 @@
 
 import { describe, it } from 'vitest'
 
-describe('ChatEngine', () => {
+describe('chatEngine', () => {
   it('delegates session recovery to provider catalog', () => {
     // Session recovery is handled by AcpChatProvider.resumeChatSession.
     // Integration tests cover the full flow via ChatService IPC.

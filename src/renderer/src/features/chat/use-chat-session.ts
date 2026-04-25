@@ -7,10 +7,10 @@ import { ipc } from '@renderer/lib/ipc'
 import type { ChatStatus, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { createIpcChatTransport } from './ipc-chat-transport'
+
 /** Raw message row as returned by `ipc.chat.getMessages`. */
 export type ChatMessageRow = Awaited<ReturnType<NonNullable<typeof ipc>['chat']['getMessages']>>[number]
-
-import { createIpcChatTransport } from './ipc-chat-transport'
 
 type PublicStatus = 'idle' | 'streaming' | 'error'
 
@@ -75,7 +75,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
   // Parsed UIMessages for useChat initialisation — captured once per session.
   // Intentionally keyed on chatSessionId (not initialMessageRows) so that the
   // same session's stale loader data doesn't trigger a useChat re-initialisation.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const cachedInitialMessages = useMemo(
     () => initialMessageRows?.map(r => parseMessage(r.content, r.id, r.role)),
     [chatSessionId],

@@ -43,7 +43,7 @@ function bootstrapProviderCatalog(): void {
         throw new Error(`Credential not found: ${credentialRef}`)
       }
       return decryptSecret(row.encryptedSecret)
-    }
+    },
   })
 
   initProviderCatalog([acpChatProvider, cliTuiProvider, openAIProvider])
@@ -62,13 +62,13 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'darwin'
       ? {
           titleBarStyle: 'hiddenInset',
-          vibrancy: 'sidebar'
+          vibrancy: 'sidebar',
         }
       : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
+      sandbox: false,
+    },
   })
 
   mainWindow.on('ready-to-show', () => {
@@ -89,7 +89,8 @@ function createWindow(): BrowserWindow {
   // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
+  }
+ else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
@@ -135,7 +136,7 @@ app.whenReady().then(() => {
     PtyService,
     WindowService,
     GitService,
-    KanbanService
+    KanbanService,
   ] as const)
 
   // Set app user model id for windows

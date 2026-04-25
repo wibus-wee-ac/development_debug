@@ -68,7 +68,7 @@ export function ModelPicker({
         {triggerLabel}
         <ChevronDownIcon aria-hidden="true" />
       </ComboboxPrimitive.Trigger>
-      <ComboboxPopup aria-label="选择模型" className="min-w-60" side='left'>
+      <ComboboxPopup aria-label="选择模型" className="min-w-60" side="left">
         <div className="border-b p-2">
           <ComboboxInput
             size="sm"

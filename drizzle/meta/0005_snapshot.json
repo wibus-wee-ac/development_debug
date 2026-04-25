@@ -19,7 +19,11 @@
         "created_at": { "name": "created_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "(unixepoch())" },
         "updated_at": { "name": "updated_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "(unixepoch())" }
       },
-      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "acp_audit_log": {
       "name": "acp_audit_log",
@@ -31,7 +35,11 @@
         "details": { "name": "details", "type": "text", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "'{}'" },
         "created_at": { "name": "created_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "(unixepoch())" }
       },
-      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "cli_agents": {
       "name": "cli_agents",
@@ -43,7 +51,11 @@
         "created_at": { "name": "created_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "(unixepoch())" },
         "updated_at": { "name": "updated_at", "type": "integer", "primaryKey": false, "notNull": true, "autoincrement": false, "default": "(unixepoch())" }
       },
-      "indexes": {}, "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "messages": {
       "name": "messages",
@@ -61,12 +73,17 @@
       "foreignKeys": {
         "messages_session_id_sessions_id_fk": {
           "name": "messages_session_id_sessions_id_fk",
-          "tableFrom": "messages", "tableTo": "sessions",
-          "columnsFrom": ["session_id"], "columnsTo": ["id"],
-          "onDelete": "cascade", "onUpdate": "no action"
+          "tableFrom": "messages",
+          "tableTo": "sessions",
+          "columnsFrom": ["session_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "sessions": {
       "name": "sessions",
@@ -85,12 +102,17 @@
       "foreignKeys": {
         "sessions_workspace_id_workspaces_id_fk": {
           "name": "sessions_workspace_id_workspaces_id_fk",
-          "tableFrom": "sessions", "tableTo": "workspaces",
-          "columnsFrom": ["workspace_id"], "columnsTo": ["id"],
-          "onDelete": "cascade", "onUpdate": "no action"
+          "tableFrom": "sessions",
+          "tableTo": "workspaces",
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "workspaces": {
       "name": "workspaces",
@@ -104,7 +126,10 @@
       "indexes": {
         "workspaces_path_unique": { "name": "workspaces_path_unique", "columns": ["path"], "isUnique": true }
       },
-      "foreignKeys": {}, "compositePrimaryKeys": {}, "uniqueConstraints": {}, "checkConstraints": {}
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     }
   },
   "views": {},

@@ -376,8 +376,8 @@ interface CliTuiFields { name: string, command: string }
 
 type ProviderFields
   = | { kind: 'openai-compatible', fields: OpenAIFields }
-  | { kind: 'acp-chat', fields: AcpFields }
-  | { kind: 'cli-tui', fields: CliTuiFields }
+    | { kind: 'acp-chat', fields: AcpFields }
+    | { kind: 'cli-tui', fields: CliTuiFields }
 
 const DEFAULT_NAMES: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',

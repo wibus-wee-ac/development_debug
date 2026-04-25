@@ -2,10 +2,9 @@
 // Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by our main-process ChatEngine
 // Position: Feature helper for chat feature, bridges AI SDK's useChat to Electron IPC
 
+import { ipc } from '@renderer/lib/ipc'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
-
-import { ipc } from '@renderer/lib/ipc'
 
 interface ChatResponseEventPayload {
   chatSessionId: string
@@ -136,7 +135,6 @@ function buildChunkStream(
   onReady: () => Promise<void> | void,
   abortSignal: AbortSignal | undefined,
 ): ReadableStream<UIMessageChunk> {
-  // eslint-disable-next-line ts/no-non-null-assertion
   let ctrl: ReadableStreamDefaultController<UIMessageChunk> = null!
   const state: ConverterState = { textItemId: null, reasoningItemId: null }
   let closed = false

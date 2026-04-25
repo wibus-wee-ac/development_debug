@@ -215,7 +215,7 @@ export function Composer({
               setInputValue(v => v ? `${v} ${path}` : path)
             }
           }}
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={e => e.preventDefault()}
           placeholder={placeholder}
           disabled={disabled}
           rows={2}

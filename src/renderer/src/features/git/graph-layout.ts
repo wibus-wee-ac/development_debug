@@ -153,8 +153,7 @@ export function computeGraphLayout(commits: GitGraphCommit[]): LayoutCommit[] {
         c.lane + 1,
         ...c.linesAbove.map(l => Math.max(l.fromLane + 1, l.toLane + 1)),
         ...c.linesBelow.map(l => Math.max(l.fromLane + 1, l.toLane + 1)),
-      ),
-    ),
+      )),
   )
   for (const c of result) {
     c.totalLanes = maxLanes

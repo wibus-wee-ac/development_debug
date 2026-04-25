@@ -2,8 +2,9 @@
 // Output: GitService — IPC surface for git status, branch list, graph log, checkout, createBranch, fetch
 // Position: Main-process IPC layer for git feature; used by renderer GitPanel and GitBranchControl
 
-import { IpcMethod, IpcService } from '@cradle/ipc'
 import { createHash } from 'node:crypto'
+
+import { IpcMethod, IpcService } from '@cradle/ipc'
 import simpleGit from 'simple-git'
 
 export interface GitStatus {

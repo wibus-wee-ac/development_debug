@@ -7,8 +7,8 @@ import { cn } from '@renderer/lib/utils'
 import {
   useAcpAgentIds,
   useAcpDevtoolStore,
-  useAcpFiltersStore,
   useAcpFilteredEvents,
+  useAcpFiltersStore,
 } from './use-acp-events'
 
 const STREAMS = [

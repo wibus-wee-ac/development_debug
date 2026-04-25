@@ -130,7 +130,7 @@ export function ChatView({
           setDroppedPath({ text: path, ts: Date.now() })
         }
       }}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={e => e.preventDefault()}
     >
       {/* Virtualized message list */}
       <ScrollArea className="flex-1" viewportRef={viewportRef}>

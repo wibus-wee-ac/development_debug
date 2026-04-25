@@ -3,7 +3,6 @@
 // Position: Barrel file for agent-runtime domain
 
 export { useInstalledAcpAgents } from './use-acp-agents'
-export { useAgentProfiles } from './use-agent-profiles'
 export {
   acpSessionStateQueryKey,
   getAcpSessionState,
@@ -11,3 +10,4 @@ export {
   setAcpSessionModel,
   useAcpSessionState,
 } from './use-acp-session-state'
+export { useAgentProfiles } from './use-agent-profiles'

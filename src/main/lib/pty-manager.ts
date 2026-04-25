@@ -12,7 +12,8 @@ export const PTY_EXIT_CHANNEL = 'pty:exit'
 export const PTY_NOTIFICATION_CHANNEL = 'pty:notification'
 export const PTY_COMMAND_FINISH_CHANNEL = 'pty:command-finish'
 
-/** Parse OSC 133;D command-finish sequences. Returns exit code (null if not found).
+/**
+ * Parse OSC 133;D command-finish sequences. Returns exit code (null if not found).
  * Format: ESC ] 133 ; D [; <exitcode>] BEL
  */
 function extractOsc133CommandFinish(data: string): number | null {
@@ -20,12 +21,12 @@ function extractOsc133CommandFinish(data: string): number | null {
   const BEL = '\u0007'
   for (const prefix of [`${ESC}]133;D;`, `${ESC}]133;D`]) {
     const start = data.indexOf(prefix)
-    if (start === -1) continue
+    if (start === -1) { continue }
     const afterPrefix = start + prefix.length
     const belEnd = data.indexOf(BEL, afterPrefix)
     const stEnd = data.indexOf(`${ESC}\\`, afterPrefix)
     const end = belEnd === -1 ? stEnd : stEnd === -1 ? belEnd : Math.min(belEnd, stEnd)
-    if (end === -1) continue
+    if (end === -1) { continue }
     const codeStr = data.slice(afterPrefix, end).replace(/^;/, '')
     const code = codeStr === '' ? 0 : Number.parseInt(codeStr, 10)
     return Number.isNaN(code) ? 0 : code
@@ -33,7 +34,8 @@ function extractOsc133CommandFinish(data: string): number | null {
   return null
 }
 
-/** Parse OSC 9 notification escape sequences from a data chunk.
+/**
+ * Parse OSC 9 notification escape sequences from a data chunk.
  * Format: ESC ] 9 ; <message> BEL   (Windows Terminal / ConEmu protocol)
  */
 function extractOsc9Notification(data: string): string | null {
@@ -41,12 +43,12 @@ function extractOsc9Notification(data: string): string | null {
   const BEL = '\u0007'
   const prefix = `${ESC}]9;`
   const start = data.indexOf(prefix)
-  if (start === -1) return null
+  if (start === -1) { return null }
   const msgStart = start + prefix.length
   const belEnd = data.indexOf(BEL, msgStart)
   const stEnd = data.indexOf(`${ESC}\\`, msgStart)
   const end = belEnd === -1 ? stEnd : stEnd === -1 ? belEnd : Math.min(belEnd, stEnd)
-  if (end === -1) return null
+  if (end === -1) { return null }
   return data.slice(msgStart, end)
 }
 

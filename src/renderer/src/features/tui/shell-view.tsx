@@ -34,7 +34,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
   const setBottomPanelOpen = useLayoutStore(s => s.setBottomPanelOpen)
 
   useEffect(() => {
-    if (!containerRef.current || !ipc) return
+    if (!containerRef.current || !ipc) { return }
 
     const el = containerRef.current
     const darkMq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -110,16 +110,16 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
     let initDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
     function applyResize(cols: number, rows: number) {
-      if (cols <= 0 || rows <= 0) return
+      if (cols <= 0 || rows <= 0) { return }
       // Track latest pending dimensions even while debouncing
       pendingCols = cols
       pendingRows = rows
       // Each new event resets the 100ms window; terminal.resize() fires only once
       // after the layout (animation, drag, window resize) stabilises.
-      if (resizeTimer) clearTimeout(resizeTimer)
+      if (resizeTimer) { clearTimeout(resizeTimer) }
       resizeTimer = setTimeout(() => {
         resizeTimer = null
-        if (pendingCols === lastCols && pendingRows === lastRows) return
+        if (pendingCols === lastCols && pendingRows === lastRows) { return }
         terminal.resize(pendingCols, pendingRows)
         lastCols = pendingCols
         lastRows = pendingRows
@@ -136,7 +136,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
       const running = await ipc!.pty.isPtyRunning(ptyId)
       if (running) {
         const buf = await ipc!.pty.getPtyBuffer(ptyId)
-        if (buf) terminal.write(buf)
+        if (buf) { terminal.write(buf) }
         await ipc!.pty.resizePty(ptyId, cols, rows)
       }
       else {
@@ -146,18 +146,18 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
 
     function fitAndNotify() {
       const dims = fitAddon.proposeDimensions()
-      if (!dims || dims.cols <= 0 || dims.rows <= 0) return
+      if (!dims || dims.cols <= 0 || dims.rows <= 0) { return }
 
       if (!shellStarted) {
         // Debounce the initial shell start to let open-animation layout settle,
         // matching VS Code's disableLayout pattern for terminal transitions.
         // Each ResizeObserver callback during animation resets the 100ms window.
-        if (initDebounceTimer) clearTimeout(initDebounceTimer)
+        if (initDebounceTimer) { clearTimeout(initDebounceTimer) }
         initDebounceTimer = setTimeout(() => {
           initDebounceTimer = null
-          if (shellStarted) return // initial async may have won the race
+          if (shellStarted) { return } // initial async may have won the race
           const final = fitAddon.proposeDimensions()
-          if (!final || final.cols <= 0 || final.rows <= 0) return
+          if (!final || final.cols <= 0 || final.rows <= 0) { return }
           shellStarted = true
           void initShell(final.cols, final.rows)
         }, 100)
@@ -202,11 +202,11 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
     })
 
     const unsubData = window.ptyPush.onData((id, data) => {
-      if (id === ptyId) terminal.write(data)
+      if (id === ptyId) { terminal.write(data) }
     })
 
     const unsubExit = window.ptyPush.onExit((id) => {
-      if (id !== ptyId) return
+      if (id !== ptyId) { return }
       terminal.write('\r\n\x1B[2m[Process exited]\x1B[0m\r\n')
       setBottomPanelOpen(false)
       onExited?.()
@@ -218,8 +218,8 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
     resizeObserver.observe(el)
 
     return () => {
-      if (resizeTimer) clearTimeout(resizeTimer)
-      if (initDebounceTimer) clearTimeout(initDebounceTimer)
+      if (resizeTimer) { clearTimeout(resizeTimer) }
+      if (initDebounceTimer) { clearTimeout(initDebounceTimer) }
       dataDisposable.dispose()
       unsubData()
       unsubExit()

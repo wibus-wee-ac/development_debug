@@ -6,7 +6,6 @@ import { SettingsSidebar } from '@renderer/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '@renderer/features/workspace'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { useLayoutStore } from '@renderer/store/layout'
-import { SettingsIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type { Dispatch, SetStateAction } from 'react'
 

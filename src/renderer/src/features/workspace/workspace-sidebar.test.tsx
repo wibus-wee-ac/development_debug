@@ -143,7 +143,7 @@ vi.mock('./use-workspace', () => ({
   }),
 }))
 
-describe('WorkspaceSidebar', () => {
+describe('workspaceSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })

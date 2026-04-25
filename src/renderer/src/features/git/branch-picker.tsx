@@ -131,7 +131,7 @@ export function BranchPicker({
   )
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) cancelCreating() }}>
+    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) { cancelCreating() } }}>
       <PopoverTrigger render={<button type="button" />}>
         {children}
       </PopoverTrigger>
@@ -152,7 +152,7 @@ export function BranchPicker({
                   className="h-7 flex-1 text-xs font-mono"
                   placeholder="feature/my-branch"
                   value={newName}
-                  onChange={e => { setNewName(e.target.value); setCreateError(null) }}
+                  onChange={(e) => { setNewName(e.target.value); setCreateError(null) }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') { void handleCreate() }
                     if (e.key === 'Escape') { cancelCreating() }
