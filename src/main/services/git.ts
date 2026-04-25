@@ -46,6 +46,13 @@ export interface GitGraphCommit {
   timestamp: number
 }
 
+export type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+
+export interface GitFileStatus {
+  path: string
+  status: GitFileStatusKind
+}
+
 // Unit separator — safe delimiter unlikely to appear in git output
 const FIELD_SEP = '\x1F'
 
@@ -66,6 +73,31 @@ export class GitService extends IpcService {
       behind: status.behind,
       isDetached: status.detached,
     }
+  }
+
+  @IpcMethod()
+  async getFileStatuses(workspacePath: string): Promise<GitFileStatus[]> {
+    const git = simpleGit(workspacePath)
+    const status = await git.status()
+    const result: GitFileStatus[] = []
+
+    for (const f of status.created) {
+      result.push({ path: f, status: 'added' })
+    }
+    for (const f of status.modified) {
+      result.push({ path: f, status: 'modified' })
+    }
+    for (const f of status.deleted) {
+      result.push({ path: f, status: 'deleted' })
+    }
+    for (const f of status.not_added) {
+      result.push({ path: f, status: 'untracked' })
+    }
+    for (const r of status.renamed) {
+      result.push({ path: r.to, status: 'renamed' })
+    }
+
+    return result
   }
 
   @IpcMethod()

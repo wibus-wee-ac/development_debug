@@ -1,131 +1,32 @@
-// Input: workspaceId, useWorkspaceTree hook, pathe
-// Output: FileTree component — expandable draggable file tree for workspace
+// Input: workspaceId, workspacePath, @pierre/trees React, ipc.git.getFileStatuses
+// Output: FileTree component — full-feature file tree using @pierre/trees
 // Position: Content for the File Tree tab in the right aside panel
 
-import { ScrollArea } from '@renderer/components/ui/scroll-area'
-import { cn } from '@renderer/lib/utils'
-import {
-  ChevronRightIcon,
-  FileIcon,
-  FolderIcon,
-  FolderOpenIcon,
-  Loader2Icon,
-} from 'lucide-react'
+import type { GitFileStatus } from '@main/services/git'
+import { prepareFileTreeInput } from '@pierre/trees'
+import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
+import { ipc } from '@renderer/lib/ipc'
+import { useQuery } from '@tanstack/react-query'
+import { Loader2Icon } from 'lucide-react'
 import { normalize } from 'pathe'
-import { memo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 
-import type { TreeNode } from './use-workspace-tree'
-import { useWorkspaceTree } from './use-workspace-tree'
+// ── Git status mapper ─────────────────────────────────────────────────────────
 
-// ── File extension → colour accent ───────────────────────────────────────────
+type TreeGitStatus = { path: string, status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'ignored' }
 
-const EXT_COLORS: Record<string, string> = {
-  ts: 'text-blue-500',
-  tsx: 'text-sky-500',
-  js: 'text-yellow-500',
-  jsx: 'text-yellow-400',
-  css: 'text-pink-400',
-  scss: 'text-pink-500',
-  json: 'text-amber-400',
-  md: 'text-neutral-400',
-  yml: 'text-emerald-400',
-  yaml: 'text-emerald-400',
-  toml: 'text-orange-400',
-  py: 'text-green-400',
-  go: 'text-cyan-400',
-  rs: 'text-orange-500',
-  sh: 'text-lime-400',
-  env: 'text-red-400',
-  svg: 'text-violet-400',
-  png: 'text-violet-300',
-  jpg: 'text-violet-300',
-  gif: 'text-violet-300',
-  sql: 'text-amber-300',
+function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
+  return statuses.map(s => ({ path: s.path, status: s.status }))
 }
 
-function fileColor(name: string): string {
-  const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  return EXT_COLORS[ext] ?? 'text-muted-foreground/70'
-}
+// ── Path quoting for drag ─────────────────────────────────────────────────────
 
-/** Quote path for shell insertion — wraps in double quotes if it contains spaces */
 function quotePath(p: string): string {
   const normalized = normalize(p)
   return normalized.includes(' ') ? `"${normalized}"` : normalized
 }
 
-// ── Tree node ─────────────────────────────────────────────────────────────────
-
-interface NodeProps {
-  node: TreeNode
-  depth: number
-  workspacePath?: string
-}
-
-const TreeNodeItem = memo(function TreeNodeItem({ node, depth, workspacePath }: NodeProps) {
-  const [open, setOpen] = useState(depth === 0)
-  const indent = depth * 14
-
-  function handleDragStart(e: React.DragEvent) {
-    const fullPath = workspacePath ? `${workspacePath}/${node.path}` : node.path
-    e.dataTransfer.setData('text/plain', quotePath(fullPath))
-    e.dataTransfer.effectAllowed = 'copy'
-  }
-
-  if (node.type === 'directory') {
-    return (
-      <div>
-        <div
-          draggable
-          onDragStart={handleDragStart}
-          className="group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-sidebar-foreground/80 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors active:cursor-grabbing"
-          style={{ paddingLeft: `${10 + indent}px` }}
-          role="button"
-          tabIndex={0}
-          onClick={() => setOpen(o => !o)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              setOpen(o => !o)
-            }
-          }}
-        >
-          <ChevronRightIcon
-            className={cn(
-              'size-3.5 shrink-0 text-muted-foreground/40 transition-transform duration-150',
-              open && 'rotate-90',
-            )}
-          />
-          {open
-            ? <FolderOpenIcon className="size-4 shrink-0 text-amber-400" />
-            : <FolderIcon className="size-4 shrink-0 text-amber-400/80" />}
-          <span className="truncate font-medium">{node.name}</span>
-        </div>
-
-        {open && node.children.length > 0 && (
-          <div>
-            {node.children.map(child => (
-              <TreeNodeItem key={child.path} node={child} depth={depth + 1} workspacePath={workspacePath} />
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div
-      draggable
-      onDragStart={handleDragStart}
-      className="group flex w-full cursor-grab items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors active:cursor-grabbing"
-      style={{ paddingLeft: `${10 + indent + 20}px` }}
-    >
-      <FileIcon className={cn('size-3.5 shrink-0', fileColor(node.name))} />
-      <span className="truncate">{node.name}</span>
-    </div>
-  )
-})
-
-// ── Main component ─────────────────────────────────────────────────────────────
+// ── Main component ────────────────────────────────────────────────────────────
 
 interface FileTreeProps {
   workspaceId: string | null
@@ -133,7 +34,33 @@ interface FileTreeProps {
 }
 
 export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
-  const { tree, isLoading } = useWorkspaceTree(workspaceId)
+  const { data: files = [], isLoading } = useQuery({
+    queryKey: ['workspace-files', workspaceId],
+    queryFn: () => ipc && workspaceId ? ipc.workspace.listFiles(workspaceId) : Promise.resolve([]),
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  })
+
+  const { data: gitStatuses } = useQuery({
+    queryKey: ['git-file-statuses', workspacePath],
+    queryFn: () => ipc && workspacePath ? ipc.git.getFileStatuses(workspacePath) : Promise.resolve([]),
+    enabled: !!workspacePath,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  })
+
+  // Only pass file paths — @pierre/trees auto-creates directory nodes from path hierarchy
+  const paths = useMemo(() => files.filter(f => f.type === 'file').map(f => f.path), [files])
+
+  const preparedInput = useMemo(
+    () => paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null,
+    [paths],
+  )
+
+  const treeGitStatus = useMemo(
+    () => gitStatuses ? toTreeGitStatus(gitStatuses) : undefined,
+    [gitStatuses],
+  )
 
   if (!workspaceId) {
     return (
@@ -151,7 +78,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
     )
   }
 
-  if (tree.length === 0) {
+  if (!preparedInput) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <p className="text-xs text-muted-foreground/50">工作区为空</p>
@@ -160,12 +87,138 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto px-1 py-1.5">
-      <ScrollArea>
-        {tree.map(node => (
-          <TreeNodeItem key={node.path} node={node} depth={0} workspacePath={workspacePath ?? undefined} />
-        ))}
-      </ScrollArea>
+    <FileTreeInner
+      preparedInput={preparedInput}
+      gitStatus={treeGitStatus}
+      workspacePath={workspacePath ?? undefined}
+    />
+  )
+}
+
+// ── Inner tree (mounted once model exists) ────────────────────────────────────
+
+interface FileTreeInnerProps {
+  preparedInput: ReturnType<typeof prepareFileTreeInput>
+  gitStatus?: TreeGitStatus[]
+  workspacePath?: string
+}
+
+function FileTreeInner({ preparedInput, gitStatus, workspacePath }: FileTreeInnerProps) {
+  const { model } = useFileTree({
+    preparedInput,
+    search: true,
+    fileTreeSearchMode: 'hide-non-matches',
+    icons: { set: 'complete', colored: true },
+    density: 'compact',
+    initialExpansion: 'closed',
+    initialExpandedPaths: ['src'],
+    gitStatus,
+    composition: {
+      contextMenu: {
+        enabled: true,
+        triggerMode: 'both',
+        buttonVisibility: 'when-needed',
+      },
+    },
+  })
+
+  const selectedPaths = useFileTreeSelection(model)
+
+  // Update git status when it changes
+  useEffect(() => {
+    model.setGitStatus(gitStatus)
+  }, [model, gitStatus])
+
+  // Drag handler: copy absolute path for shell insertion
+  useEffect(() => {
+    const container = model.getFileTreeContainer()
+    if (!container || !workspacePath) {
+      return
+    }
+
+    function handleDragStart(e: DragEvent) {
+      const target = (e.target as HTMLElement)?.closest('[data-item-path]') as HTMLElement | null
+      const itemPath = target?.dataset.itemPath
+      if (itemPath) {
+        const absPath = `${workspacePath}/${itemPath}`
+        e.dataTransfer?.setData('text/plain', quotePath(absPath))
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'copy'
+        }
+      }
+    }
+
+    container.addEventListener('dragstart', handleDragStart)
+    return () => container.removeEventListener('dragstart', handleDragStart)
+  }, [model, workspacePath])
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden pt-2">
+      {/* Tree — library handles search UI internally */}
+      <PierreFileTree
+        model={model}
+        className="flex-1"
+        style={{
+          '--trees-theme-list-active-selection-bg': 'color-mix(in oklab, var(--color-accent) 30%, transparent)',
+          '--trees-theme-list-hover-bg': 'color-mix(in oklab, var(--color-accent) 14%, transparent)',
+          '--trees-theme-list-inactive-selection-bg': 'color-mix(in oklab, var(--color-accent) 18%, transparent)',
+          '--trees-theme-focus-ring': 'var(--color-accent)',
+          '--trees-theme-foreground': 'var(--color-sidebar-foreground)',
+          '--trees-theme-background': 'transparent',
+        } as React.CSSProperties}
+        renderContextMenu={(item, context) => (
+          <div className="min-w-40 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md">
+            <ContextMenuItem
+              label="复制路径"
+              onClick={() => {
+                const absPath = workspacePath ? `${workspacePath}/${item.path}` : item.path
+                navigator.clipboard.writeText(absPath)
+                context.close({ restoreFocus: true })
+              }}
+            />
+            <ContextMenuItem
+              label="复制相对路径"
+              onClick={() => {
+                navigator.clipboard.writeText(item.path)
+                context.close({ restoreFocus: true })
+              }}
+            />
+            {workspacePath && (
+              <ContextMenuItem
+                label="在 Finder 中显示"
+                onClick={() => {
+                  const absPath = `${workspacePath}/${item.path}`
+                  ipc?.workspace.openInFinder(absPath)
+                  context.close({ restoreFocus: true })
+                }}
+              />
+            )}
+          </div>
+        )}
+      />
+
+      {/* Status bar */}
+      {selectedPaths.length > 0 && (
+        <div className="shrink-0 border-t border-border px-2.5 py-1">
+          <p className="truncate text-[10px] text-muted-foreground/50">
+            {selectedPaths.length === 1 ? selectedPaths[0] : `${selectedPaths.length} 个文件`}
+          </p>
+        </div>
+      )}
     </div>
+  )
+}
+
+// ── Context menu item ──────────────────────────────────────────────────────────
+
+function ContextMenuItem({ label, onClick }: { label: string, onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center rounded-md px-2 py-1.5 text-xs text-popover-foreground hover:bg-accent transition-colors"
+    >
+      {label}
+    </button>
   )
 }
