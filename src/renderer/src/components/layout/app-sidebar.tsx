@@ -83,26 +83,6 @@ export function AppSidebar({
                 transition={DRILL_TRANSITION}
               >
                 <WorkspaceSidebar collapsed={collapsed} />
-
-                <div className="shrink-0 border-t border-sidebar-border/40 px-3 py-2 flex items-center">
-                  <button
-                    type="button"
-                    onClick={onOpenSettings}
-                    data-testid="settings-btn"
-                    className="flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-accent/50 hover:text-sidebar-foreground transition-colors"
-                  >
-                    <SettingsIcon className="size-4 shrink-0" aria-hidden="true" />
-                    <span
-                      className="overflow-hidden whitespace-nowrap"
-                      style={{
-                        opacity: collapsed ? 0 : 1,
-                        transition: 'opacity 120ms ease',
-                      }}
-                    >
-                      设置
-                    </span>
-                  </button>
-                </div>
               </motion.div>
             )}
         </AnimatePresence>

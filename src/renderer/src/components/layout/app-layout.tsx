@@ -2,6 +2,7 @@
 // Output: AppLayout component — three-column layout shell with collapsible sidebar, unified shell bg
 // Position: Core layout component for main-window routes; accepts slot props from route pages
 
+import { AppFooter } from '@renderer/components/layout/app-footer'
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { DevBottomBar } from '@renderer/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '@renderer/components/layout/resize-handle'
@@ -45,7 +46,7 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground bg-sidebar">
       {/* ── Full-width top header — traffic lights + toggle + breadcrumbs ── */}
-      {!hideSidebar && !isSettings && header}
+      {header}
 
       {/* ── Bottom area: sidebar + content ─────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
@@ -62,8 +63,7 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
 
         {/* Center column */}
         <motion.div
-          className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-tl-xl"
-          animate={{ borderTopRightRadius: aside !== undefined && asideOpen ? '0.75rem' : 0 }}
+          className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
           transition={SPRING}
         >
           {/* Show header in center when sidebar is hidden (e.g. tear-off) */}
@@ -103,7 +103,6 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
               <div style={{ height: bottomPanelHeight }}>{panel}</div>
             </motion.div>
           )}
-          {import.meta.env.DEV && <DevBottomBar />}
         </motion.div>
 
         {/* Right Aside */}
@@ -144,6 +143,10 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
           </>
         )}
       </div>
+
+      {/* Footer */}
+      <AppFooter />
+      {import.meta.env.DEV && <DevBottomBar />}
     </div>
   )
 }
