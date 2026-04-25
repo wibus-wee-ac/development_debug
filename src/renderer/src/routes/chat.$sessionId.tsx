@@ -25,6 +25,7 @@ import { TuiView } from '@renderer/features/tui/tui-view'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
+import { useLayoutStore } from '@renderer/store/layout'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { BotIcon, ChevronDownIcon, CpuIcon, LoaderCircleIcon, PlusIcon, TerminalIcon } from 'lucide-react'
@@ -178,6 +179,7 @@ function ChatSessionPage() {
   const { tearoff } = Route.useSearch()
   const { session: loaderSession, messages: initialMessageRows } = Route.useLoaderData()
   const queryClient = useQueryClient()
+  const setSidebarCollapsed = useLayoutStore(s => s.setSidebarCollapsed)
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [shellGen, setShellGen] = useState(0)
@@ -195,6 +197,14 @@ function ChatSessionPage() {
   const workspaceId = session?.workspaceId ?? null
   const sessionTitle = session?.title ?? null
   const isTerminalSession = session?.providerKind === 'cli-tui'
+
+  // Auto-collapse sidebar in tearoff windows
+  useEffect(() => {
+    if (tearoff) {
+      setSidebarCollapsed(true)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Fetch workspace name and path when workspaceId is available
   useEffect(() => {
@@ -248,7 +258,7 @@ function ChatSessionPage() {
 
   if (!session) {
     return (
-      <AppLayout hideSidebar={tearoff}>
+      <AppLayout>
         <div className="flex h-full items-center justify-center">
           <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground/50" />
         </div>
@@ -258,7 +268,6 @@ function ChatSessionPage() {
 
   return (
     <AppLayout
-      hideSidebar={tearoff}
       header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight gitBranch={<GitBranchControl workspacePath={workspacePath} />} />}
       aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
       panel={workspaceId && workspacePath

@@ -17,6 +17,7 @@ import {
   FolderClosedIcon,
   FolderOpenIcon,
   GitBranchIcon,
+  HomeIcon,
   LayoutDashboardIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
@@ -345,10 +346,16 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       <TooltipProvider delay={collapsed ? 0 : 600}>
         <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
           <TopNavItem
+            icon={<HomeIcon className="size-4" />}
+            label="首页"
+            collapsed={collapsed}
+            onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
+          />
+          <TopNavItem
             icon={<MessageSquarePlusIcon className="size-4" />}
             label="新建聊天"
             collapsed={collapsed}
-            onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
+            onClick={() => navigate({ to: '/new-chat' })}
           />
           <TopNavItem
             icon={<SearchIcon className="size-4" />}

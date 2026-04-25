@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as NewChatRouteImport } from './routes/new-chat'
 import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as DevtoolRouteImport } from './routes/devtool'
 import { Route as IndexRouteImport } from './routes/index'
@@ -19,6 +20,11 @@ import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewChatRoute = NewChatRouteImport.update({
+  id: '/new-chat',
+  path: '/new-chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KanbanRoute = KanbanRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
   '/kanban': typeof KanbanRouteWithChildren
+  '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
   '/kanban': typeof KanbanRouteWithChildren
+  '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/devtool': typeof DevtoolRoute
   '/kanban': typeof KanbanRouteWithChildren
+  '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/devtool'
     | '/kanban'
+    | '/new-chat'
     | '/settings'
     | '/chat/$sessionId'
     | '/kanban/$boardId'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/devtool'
     | '/kanban'
+    | '/new-chat'
     | '/settings'
     | '/chat/$sessionId'
     | '/kanban/$boardId'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/devtool'
     | '/kanban'
+    | '/new-chat'
     | '/settings'
     | '/chat/$sessionId'
     | '/kanban/$boardId'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DevtoolRoute: typeof DevtoolRoute
   KanbanRoute: typeof KanbanRouteWithChildren
+  NewChatRoute: typeof NewChatRoute
   SettingsRoute: typeof SettingsRoute
   ChatSessionIdRoute: typeof ChatSessionIdRoute
 }
@@ -114,6 +127,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new-chat': {
+      id: '/new-chat'
+      path: '/new-chat'
+      fullPath: '/new-chat'
+      preLoaderRoute: typeof NewChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/kanban': {
@@ -169,6 +189,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DevtoolRoute: DevtoolRoute,
   KanbanRoute: KanbanRouteWithChildren,
+  NewChatRoute: NewChatRoute,
   SettingsRoute: SettingsRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
 }

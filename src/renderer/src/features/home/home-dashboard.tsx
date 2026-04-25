@@ -163,12 +163,12 @@ function ActivityCard({ kind, title, meta, onClick }: ActivityCardProps) {
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border hover:bg-accent/30"
+      className="flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border not-disabled:inset-shadow-[0_1px_--theme(--color-white/10%)]"
     >
-      <div className={`flex h-14 w-full items-center justify-center ${theme.bg}`}>
+      <div className={`relative flex h-14 w-full items-center justify-center ${theme.bg}`}>
         {theme.icon}
       </div>
-      <div className="flex flex-col gap-0.5 px-2.5 py-2">
+      <div className="flex flex-col gap-0.5 px-2.5 py-2 bg-background">
         <span className="text-xs font-medium text-foreground line-clamp-1 leading-snug">{title}</span>
         <span className="text-[10px] text-muted-foreground/60 leading-tight">{meta}</span>
       </div>
@@ -281,8 +281,8 @@ function ScheduledRow({ task }: { task: ScheduledTask }) {
 
 type ActivityItem
   = { kind: 'workspace', ws: Workspace }
-    | { kind: 'session', session: Session, workspaceName: string }
-    | { kind: Artifact['type'], artifact: Artifact }
+  | { kind: 'session', session: Session, workspaceName: string }
+  | { kind: Artifact['type'], artifact: Artifact }
 
 export function HomeDashboard() {
   const { workspaces } = useWorkspaces()
@@ -439,7 +439,7 @@ export function HomeDashboard() {
         </div>
 
         {/* Right column — wider */}
-        <div className="flex flex-col w-72 shrink-0 overflow-y-auto px-3 py-2 gap-4">
+        <div className="flex flex-col w-80 shrink-0 overflow-y-auto px-3 py-2 gap-4">
           <section>
             <SectionLabel label="快速派发" />
             <div className="flex flex-col gap-0.5">

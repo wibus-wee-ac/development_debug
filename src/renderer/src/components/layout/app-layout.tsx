@@ -24,10 +24,9 @@ interface AppLayoutProps {
   header?: ReactNode
   aside?: ReactNode
   panel?: ReactNode
-  hideSidebar?: boolean
 }
 
-export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLayoutProps) {
+export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const [isSettings, setIsSettings] = useState(false)
   const [settingsSection, setSettingsSection] = useState('appearance')
@@ -51,23 +50,19 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
       {/* ── Bottom area: sidebar + content ─────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Sidebar */}
-        {!hideSidebar && (
-          <AppSidebar
-            isSettings={isSettings}
-            settingsSection={settingsSection}
-            onOpenSettings={() => setIsSettings(true)}
-            onCloseSettings={() => setIsSettings(false)}
-            onSetSection={setSettingsSection}
-          />
-        )}
+        <AppSidebar
+          isSettings={isSettings}
+          settingsSection={settingsSection}
+          onOpenSettings={() => setIsSettings(true)}
+          onCloseSettings={() => setIsSettings(false)}
+          onSetSection={setSettingsSection}
+        />
 
         {/* Center column */}
         <motion.div
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
           transition={SPRING}
         >
-          {/* Show header in center when sidebar is hidden (e.g. tear-off) */}
-          {(hideSidebar && !isSettings) && header}
           <main className="flex-1 bg-background overflow-hidden">
             {isSettings ? <SettingsContent section={settingsSection} /> : children}
           </main>
