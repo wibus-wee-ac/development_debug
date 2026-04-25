@@ -5,7 +5,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import { useLayoutStore } from '@renderer/store/layout'
-import { PanelBottomIcon, PanelRightIcon } from 'lucide-react'
+import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 interface AppHeaderProps {
@@ -20,15 +20,25 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, trafficLight = false, gitBranch }: AppHeaderProps) {
-  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside } = useLayoutStore()
+  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar } = useLayoutStore()
 
   if (title === undefined && workspace === undefined) {
     // Even without breadcrumbs, render the header shell for panel toggle buttons
     return (
       <div
-        className={cn('flex h-11 shrink-0 items-center border-b border-border bg-background pe-1', trafficLight ? 'pl-18.5' : 'ps-3')}
+        className={cn('flex h-9.5 shrink-0 items-center bg-sidebar pe-1 ps-6', trafficLight ? 'pl-18.5' : '')}
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="text-muted-foreground shrink-0"
+          onClick={toggleSidebar}
+          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {sidebarCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+        </Button>
         <div className="flex-1" />
         <div
           className="flex items-center gap-0.5"
@@ -64,9 +74,19 @@ export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, 
 
   return (
     <div
-      className={cn('flex h-11 shrink-0 items-center gap-2 border-b border-border bg-background pe-1', trafficLight ? 'pl-18.5' : 'ps-3')}
+      className={cn('flex h-11 shrink-0 items-center gap-2 bg-sidebar pe-1 ps-3', trafficLight ? 'pl-18.5' : '')}
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="text-muted-foreground shrink-0"
+        onClick={toggleSidebar}
+        title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        {sidebarCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+      </Button>
       <nav
         aria-label="Breadcrumb"
         className="flex min-w-0 flex-1 items-center text-xs"

@@ -26,6 +26,7 @@ function App() {
     <AppLayout
       header={(
         <AppHeader
+          trafficLight
           hasAside={!!workspace}
           hasPanel={!!workspace}
         />

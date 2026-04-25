@@ -13,7 +13,7 @@ function RouteComponent() {
   const atRoot = pathname === '/kanban'
 
   return (
-    <AppLayout header={<AppHeader title="看板" hasAside={false} hasPanel={false} />}>
+    <AppLayout header={<AppHeader trafficLight title="看板" hasAside={false} hasPanel={false} />}>
       <div className="flex h-full overflow-hidden">
         <KanbanSidebar />
         <div className="flex flex-1 overflow-hidden">

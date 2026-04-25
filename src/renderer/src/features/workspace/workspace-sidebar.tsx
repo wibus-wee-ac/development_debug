@@ -4,10 +4,12 @@
 
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
+import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { ThreadSearchDialog } from '@renderer/features/search'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
+import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useQueryClient } from '@tanstack/react-query'
 import { Link, useMatchRoute, useNavigate } from '@tanstack/react-router'
 import {
@@ -29,7 +31,6 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
-import { useSessionActivityStore } from '@renderer/store/session-activity'
 
 type Workspace = Awaited<ReturnType<typeof window.ipc.workspace.list>>[number]
 type Session = Awaited<ReturnType<typeof window.ipc.session.list>>[number]
@@ -256,34 +257,73 @@ interface TopNavItemProps {
   icon: React.ReactNode
   label: string
   shortcut?: string
+  collapsed?: boolean
   onClick?: () => void
 }
 
-function TopNavItem({ icon, label, shortcut, onClick }: TopNavItemProps) {
+function TopNavItem({ icon, label, shortcut, collapsed, onClick }: TopNavItemProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground"
+      className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
     >
-      <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
-        {icon}
-      </span>
-      <span className="flex-1 text-left">{label}</span>
-      {shortcut
+      {collapsed
         ? (
-          <span className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100">
-            {shortcut}
-          </span>
+          <Tooltip>
+            <TooltipTrigger
+              delay={0}
+              render={<span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70" />}
+            >
+              {icon}
+            </TooltipTrigger>
+            <TooltipPopup side="right" sideOffset={8}>{label}</TooltipPopup>
+          </Tooltip>
         )
-        : null}
+        : (
+          <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
+            {icon}
+          </span>
+        )}
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.span
+            key="label"
+            className="flex-1 text-left whitespace-nowrap"
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: 'auto' }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{ type: 'spring', stiffness: 600, damping: 40 }}
+            style={{ overflow: 'hidden', display: 'block' }}
+          >
+            {label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+      {shortcut && (
+        <AnimatePresence initial={false}>
+          {!collapsed && (
+            <motion.span
+              key="shortcut"
+              className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 whitespace-nowrap"
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: undefined, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ type: 'spring', stiffness: 600, damping: 40 }}
+              style={{ overflow: 'hidden', display: 'block' }}
+            >
+              {shortcut}
+            </motion.span>
+          )}
+        </AnimatePresence>
+      )}
     </button>
   )
 }
 
 // ── Main sidebar content ──────────────────────────────────────────────────────
 
-export function WorkspaceSidebar() {
+export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
@@ -302,35 +342,45 @@ export function WorkspaceSidebar() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* ── Top navigation ── */}
-      <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
-        <TopNavItem
-          icon={<MessageSquarePlusIcon className="size-4" />}
-          label="新建聊天"
-          onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
-        />
-        <TopNavItem
-          icon={<SearchIcon className="size-4" />}
-          label="搜索"
-          shortcut="⌘K"
-          onClick={openSearch}
-        />
-        <TopNavItem
-          icon={<AlignJustifyIcon className="size-4" />}
-          label="插件"
-        />
-        <TopNavItem
-          icon={<ZapIcon className="size-4" />}
-          label="自动化"
-        />
-        <TopNavItem
-          icon={<LayoutDashboardIcon className="size-4" />}
-          label="看板"
-          onClick={() => navigate({ to: '/kanban' })}
-        />
-      </nav>
+      <TooltipProvider delay={collapsed ? 0 : 600}>
+        <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
+          <TopNavItem
+            icon={<MessageSquarePlusIcon className="size-4" />}
+            label="新建聊天"
+            collapsed={collapsed}
+            onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
+          />
+          <TopNavItem
+            icon={<SearchIcon className="size-4" />}
+            label="搜索"
+            shortcut="⌘K"
+            collapsed={collapsed}
+            onClick={openSearch}
+          />
+          <TopNavItem
+            icon={<AlignJustifyIcon className="size-4" />}
+            label="插件"
+            collapsed={collapsed}
+          />
+          <TopNavItem
+            icon={<ZapIcon className="size-4" />}
+            label="自动化"
+            collapsed={collapsed}
+          />
+          <TopNavItem
+            icon={<LayoutDashboardIcon className="size-4" />}
+            label="看板"
+            collapsed={collapsed}
+            onClick={() => navigate({ to: '/kanban' })}
+          />
+        </nav>
+      </TooltipProvider>
 
-      {/* ── Projects section ── */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* ── Projects section — always rendered, opacity fades on collapse ── */}
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
+      >
         <div className="flex items-center px-3.5 py-1.5">
           <span className="flex-1 text-xs font-semibold tracking-wider text-muted-foreground/60 select-none uppercase">
             项目

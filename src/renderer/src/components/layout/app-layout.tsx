@@ -1,5 +1,5 @@
 // Input: AppSidebar, ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent
-// Output: AppLayout component — three-column layout shell with sidebar drill-in settings
+// Output: AppLayout component — three-column layout shell with collapsible sidebar, unified shell bg
 // Position: Core layout component for main-window routes; accepts slot props from route pages
 
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
@@ -12,7 +12,6 @@ import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
-const SIDEBAR = { min: 160, max: 480 }
 const ASIDE = { min: 200, max: 560 }
 const PANEL = { min: 80, max: 480 }
 
@@ -35,8 +34,6 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
   useGlobalEventListeners()
 
   const {
-    sidebarWidth,
-    setSidebarWidth,
     asideWidth,
     setAsideWidth,
     asideOpen,
@@ -46,9 +43,13 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
   } = useLayoutStore()
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground">
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* ── Sidebar ─────────────────────────────────── */}
+    <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground bg-sidebar">
+      {/* ── Full-width top header — traffic lights + toggle + breadcrumbs ── */}
+      {!hideSidebar && !isSettings && header}
+
+      {/* ── Bottom area: sidebar + content ─────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* Sidebar */}
         {!hideSidebar && (
           <AppSidebar
             isSettings={isSettings}
@@ -59,29 +60,19 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
           />
         )}
 
-        {!hideSidebar && (
-          <ResizeHandle
-            direction="horizontal"
-            value={sidebarWidth}
-            onChange={setSidebarWidth}
-            onDragStart={() => setDragging('sidebar')}
-            onDragEnd={() => setDragging(null)}
-            min={SIDEBAR.min}
-            max={SIDEBAR.max}
-            className="bg-background"
-          />
-        )}
-
-        {/* ── Center column ────────────────────────────── */}
-        <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-          <div style={{ display: isSettings ? 'none' : undefined }}>
-            {header}
-          </div>
+        {/* Center column */}
+        <motion.div
+          className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-tl-xl"
+          animate={{ borderTopRightRadius: aside !== undefined && asideOpen ? '0.75rem' : 0 }}
+          transition={SPRING}
+        >
+          {/* Show header in center when sidebar is hidden (e.g. tear-off) */}
+          {(hideSidebar && !isSettings) && header}
           <main className="flex-1 bg-background overflow-hidden">
             {isSettings ? <SettingsContent section={settingsSection} /> : children}
           </main>
 
-          {/* Bottom panel — resize handle only visible when open */}
+          {/* Bottom panel resize handle */}
           {!isSettings && bottomPanelOpen && panel !== undefined && (
             <ResizeHandle
               direction="vertical"
@@ -95,9 +86,7 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
               className="bg-background"
             />
           )}
-          {/* Bottom panel — always mounted when content exists so the terminal xterm
-              instance is never destroyed on close/open, mirroring VS Code's approach.
-              Height animates between 0 (hidden) and bottomPanelHeight (visible). */}
+          {/* Bottom panel — always mounted to preserve xterm state */}
           {!isSettings && panel !== undefined && (
             <motion.div
               initial={{
@@ -114,10 +103,10 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
               <div style={{ height: bottomPanelHeight }}>{panel}</div>
             </motion.div>
           )}
-        </div>
+          {import.meta.env.DEV && <DevBottomBar />}
+        </motion.div>
 
-        {/* ── Right Aside — always mounted when content exists to preserve internal state
-             (e.g. active tab). Width + opacity animation provides smooth open/close. ── */}
+        {/* Right Aside */}
         {aside !== undefined && (
           <>
             {asideOpen && (
@@ -130,7 +119,7 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
                 min={ASIDE.min}
                 max={ASIDE.max}
                 inverted
-                className="bg-background"
+                className="bg-sidebar"
               />
             )}
             <motion.aside
@@ -143,7 +132,7 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
                 opacity: asideOpen ? 1 : 0,
               }}
               transition={dragging === 'aside' ? INSTANT : SPRING}
-              className="flex shrink-0 overflow-hidden border-l border-border bg-background"
+              className="flex shrink-0 overflow-hidden bg-sidebar"
             >
               <div
                 className="flex flex-col flex-1 overflow-hidden"
@@ -155,7 +144,6 @@ export function AppLayout({ children, header, aside, panel, hideSidebar }: AppLa
           </>
         )}
       </div>
-      {import.meta.env.DEV && <DevBottomBar />}
     </div>
   )
 }

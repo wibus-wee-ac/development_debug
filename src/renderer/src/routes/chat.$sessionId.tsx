@@ -260,7 +260,7 @@ function ChatSessionPage() {
   return (
     <AppLayout
       hideSidebar={tearoff}
-      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight={tearoff} gitBranch={<GitBranchControl workspacePath={workspacePath} />} />}
+      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight gitBranch={<GitBranchControl workspacePath={workspacePath} />} />}
       aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
       panel={workspaceId && workspacePath
         ? (
