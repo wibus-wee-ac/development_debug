@@ -7,13 +7,15 @@ All orchestration lives in the main-process `ChatEngine`
 (`src/main/lib/chat-engine.ts`); this directory is a thin view that drives
 AI SDK's `useChat` through a custom `ChatTransport` which forwards to `ipc.chat`.
 Streaming events arrive as OpenAI Responses API-style `ResponseStreamEvent` objects
-on the `chat:response-event` IPC channel; the transport converts them to `UIMessageChunk`
+on the `chat:response-event` IPC channel, consumed through the preload `chatPush` wrapper
+and the unified `useChatEvents` hook. The transport converts them to `UIMessageChunk`
 for `useChat` assembly.
 
 ## Files
 
 - **use-chat-session.ts**: Hook wrapping `useChat` — loads initial snapshot via `ipc.chat.getMessages`, resumes in-flight drafts via `chat.resumeStream()`, refetches on Turn-end from other windows, throttles streamed UI updates to avoid render storms, logs raw `useChat` errors to the renderer console for debugging, exposes `{ messages, status, error, sendMessage, stop, isReady }`
-- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + subscribe to `chat:response-event`; `reconnectToStream` resumes a streaming draft; converts `ResponseStreamEvent` to `UIMessageChunk` via a stateful converter
+- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + subscribe to `chatPush.onResponseEvent`; `reconnectToStream` resumes a streaming draft; converts `ResponseStreamEvent` to `UIMessageChunk` via a stateful converter
+- **use-chat-events.ts**: Unified chat event bridge — single preload subscription, multi-consumer dispatch via `useChatResponseEvent`, `useGlobalChatEvent`, and `useChatSessionTitle` hooks
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls
 - **composer.tsx**: Rich input with @ path autocomplete, inline send/stop toggle, fzf fuzzy file search
 - **mention-panel.tsx**: Fuzzy file picker above composer using fzf with highlighted matches

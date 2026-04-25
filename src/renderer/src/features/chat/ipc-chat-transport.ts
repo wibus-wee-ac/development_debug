@@ -1,16 +1,11 @@
-// Input: ipc.chat IPC surface, chat:response-event (ResponseStreamEvent envelope)
+// Input: ipc.chat IPC surface, chatPush preload API (ResponseStreamEvent envelope)
 // Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by our main-process ChatEngine
 // Position: Feature helper for chat feature, bridges AI SDK's useChat to Electron IPC
 
+import type { ChatResponseEventPayload } from '@shared/chat-events'
 import { ipc } from '@renderer/lib/ipc'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
-
-interface ChatResponseEventPayload {
-  chatSessionId: string
-  messageId: string
-  event: ResponseStreamEvent
-}
 
 function extractText(parts: UIMessage['parts']): string {
   return parts
@@ -162,9 +157,8 @@ function buildChunkStream(
     ctrl.error(err)
   }
 
-  const offEvent = window.electron.ipcRenderer.on(
-    'chat:response-event',
-    (_: unknown, data: ChatResponseEventPayload) => {
+  const offEvent = window.chatPush.onResponseEvent(
+    (data: ChatResponseEventPayload) => {
       if (data.chatSessionId !== chatSessionId || closed) {
         return
       }

@@ -32,7 +32,7 @@ const KanbanRoute = KanbanRouteImport.update({
   id: '/kanban',
   path: '/kanban',
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any).lazy(() => import('./routes/kanban.lazy').then((d) => d.Route))
 const DevtoolRoute = DevtoolRouteImport.update({
   id: '/devtool',
   path: '/devtool',
@@ -47,17 +47,23 @@ const WorkspaceWorkspaceIdRoute = WorkspaceWorkspaceIdRouteImport.update({
   id: '/workspace/$workspaceId',
   path: '/workspace/$workspaceId',
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any).lazy(() =>
+  import('./routes/workspace.$workspaceId.lazy').then((d) => d.Route),
+)
 const KanbanBoardIdRoute = KanbanBoardIdRouteImport.update({
   id: '/$boardId',
   path: '/$boardId',
   getParentRoute: () => KanbanRoute,
-} as any)
+} as any).lazy(() =>
+  import('./routes/kanban.$boardId.lazy').then((d) => d.Route),
+)
 const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
   id: '/chat/$sessionId',
   path: '/chat/$sessionId',
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any).lazy(() =>
+  import('./routes/chat.$sessionId.lazy').then((d) => d.Route),
+)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute

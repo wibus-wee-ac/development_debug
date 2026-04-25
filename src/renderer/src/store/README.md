@@ -14,3 +14,4 @@ Store naming convention: `use<Domain>Store`.
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)
 - **session-activity.ts**: Session activity state — tracks which sessions received a new response while not being viewed, drives the sidebar dot indicator
 - **new-chat.ts**: New chat preferences — persisted last selected agent profile and model per profile
+- **new-chat.test.ts**: Regression tests for idempotent new-chat preference updates

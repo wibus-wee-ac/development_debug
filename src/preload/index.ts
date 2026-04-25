@@ -5,6 +5,8 @@
 import { electronAPI } from '@electron-toolkit/preload'
 import { contextBridge } from 'electron'
 
+import type { ChatResponseEventPayload, ChatSessionTitlePayload } from '../shared/chat-events'
+
 const ACP_DEVTOOL_EVENT_CHANNEL = 'acp-devtool:event'
 const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
 
@@ -59,11 +61,25 @@ const ptyPush = {
   },
 }
 
+const chatPush = {
+  onResponseEvent: (listener: (payload: ChatResponseEventPayload) => void) => {
+    const wrapped = (_event: unknown, payload: ChatResponseEventPayload) => listener(payload)
+    electronAPI.ipcRenderer.on('chat:response-event', wrapped)
+    return () => electronAPI.ipcRenderer.removeListener('chat:response-event', wrapped)
+  },
+  onSessionTitle: (listener: (payload: ChatSessionTitlePayload) => void) => {
+    const wrapped = (_event: unknown, payload: ChatSessionTitlePayload) => listener(payload)
+    electronAPI.ipcRenderer.on('chat:session-title', wrapped)
+    return () => electronAPI.ipcRenderer.removeListener('chat:session-title', wrapped)
+  },
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('ipcDevtool', ipcDevtool)
     contextBridge.exposeInMainWorld('ptyPush', ptyPush)
+    contextBridge.exposeInMainWorld('chatPush', chatPush)
   }
  catch (error) {
     console.error(error)
@@ -76,4 +92,6 @@ if (process.contextIsolated) {
   window.ipcDevtool = ipcDevtool
   // @ts-expect-error global assignment outside contextBridge
   window.ptyPush = ptyPush
+  // @ts-expect-error global assignment outside contextBridge
+  window.chatPush = chatPush
 }

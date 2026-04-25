@@ -2,7 +2,7 @@
 // Output: ThreadSearchEngine singleton — jieba-tokenized title+content search across sessions/messages
 // Position: Main-process core library (L2) used by SearchService IPC layer
 
-import { desc, eq, inArray } from 'drizzle-orm'
+import { desc, eq, inArray, sql } from 'drizzle-orm'
 
 import { getDb } from '../db'
 import { messages, sessions, workspaces } from '../db/schema'
@@ -102,11 +102,141 @@ export class ThreadSearchEngine {
   }
 
   /**
-   * Search sessions + their messages for the given query. Returns one hit per
-   * matching session, ranked by score (title matches weigh 10×, content 1×)
-   * then by recency.
+   * Search sessions + their messages for the given query using FTS5.
+   * Falls back to legacy full-scan search if FTS table is empty or fails.
    */
   search(params: ThreadSearchParams): ThreadSearchHit[] {
+    try {
+      return this.searchFts(params)
+    }
+    catch {
+      // FTS table may not exist yet or be empty — fall back to legacy
+      return this.searchLegacy(params)
+    }
+  }
+
+  /**
+   * FTS5-powered search. Uses SQLite MATCH + BM25 ranking.
+   */
+  private searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
+    const tokens = this.tokenize(params.query)
+    if (tokens.length === 0) {
+      return []
+    }
+
+    const limit = params.limit ?? DEFAULT_LIMIT
+    const snippetsPerHit = params.snippetsPerHit ?? DEFAULT_SNIPPETS_PER_HIT
+    const db = getDb()
+
+    // Segment query for FTS matching
+    const jieba = this.getJieba()
+    const ftsQuery = jieba
+      ? (jieba.cutForSearch(params.query.trim(), true) as string[])
+          .filter((t: string) => t.trim())
+          .join(' ')
+      : params.query.trim()
+
+    if (!ftsQuery) {
+      return []
+    }
+
+    // Query FTS5 table
+    const ftsRows = db.all<{
+      rowid: number
+      session_id: string
+      session_title: string
+      snippet: string
+      rank: number
+    }>(
+      sql`SELECT rowid, session_id, session_title,
+                 snippet(messages_fts, 2, '<mark>', '</mark>', '…', 48) as snippet,
+                 rank
+          FROM messages_fts
+          WHERE messages_fts MATCH ${ftsQuery}
+          ORDER BY rank
+          LIMIT ${limit * 3}`,
+    )
+
+    if (ftsRows.length === 0) {
+      // FTS empty — fall back to legacy
+      return this.searchLegacy(params)
+    }
+
+    // Group by session
+    const sessionMap = new Map<string, {
+      sessionTitle: string
+      snippets: Array<{ text: string, rank: number, rowid: number }>
+      bestRank: number
+    }>()
+
+    for (const row of ftsRows) {
+      if (params.workspaceId) {
+        // Need to filter by workspace — check session
+        const session = db.select().from(sessions).where(eq(sessions.id, row.session_id)).get()
+        if (!session || session.workspaceId !== params.workspaceId) {
+          continue
+        }
+      }
+
+      let entry = sessionMap.get(row.session_id)
+      if (!entry) {
+        entry = { sessionTitle: row.session_title, snippets: [], bestRank: row.rank }
+        sessionMap.set(row.session_id, entry)
+      }
+      entry.snippets.push({ text: row.snippet, rank: row.rank, rowid: row.rowid })
+      if (row.rank < entry.bestRank) {
+        entry.bestRank = row.rank
+      }
+    }
+
+    // Build hits
+    const sessionIds = [...sessionMap.keys()]
+    const sessionRows = db.select().from(sessions).where(inArray(sessions.id, sessionIds)).all()
+    const sessionById = new Map(sessionRows.map(s => [s.id, s]))
+
+    const workspaceIds = [...new Set(sessionRows.map(s => s.workspaceId))]
+    const workspaceRows = db.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)).all()
+    const workspaceNameById = new Map(workspaceRows.map(w => [w.id, w.name]))
+
+    const hits: ThreadSearchHit[] = []
+    for (const [sessionId, entry] of sessionMap) {
+      const session = sessionById.get(sessionId)
+      if (!session) {
+        continue
+      }
+
+      const titleRanges = findMatches(session.title, tokens)
+      const snippets: ThreadSearchSnippet[] = entry.snippets
+        .slice(0, snippetsPerHit)
+        .map((s) => ({
+          text: s.text,
+          ranges: extractMarkRanges(s.text),
+          messageRole: 'assistant' as const,
+          messageId: String(s.rowid),
+          createdAt: session.updatedAt,
+        }))
+
+      hits.push({
+        sessionId,
+        workspaceId: session.workspaceId,
+        workspaceName: workspaceNameById.get(session.workspaceId) ?? null,
+        sessionTitle: session.title,
+        titleRanges,
+        snippets,
+        matchCount: titleRanges.length + entry.snippets.length,
+        score: Math.abs(entry.bestRank) * 100 + titleRanges.length * TITLE_WEIGHT,
+        updatedAt: session.updatedAt,
+      })
+    }
+
+    hits.sort((a, b) => b.score - a.score || b.updatedAt - a.updatedAt)
+    return hits.slice(0, limit)
+  }
+
+  /**
+   * Legacy full-scan search. Used as fallback when FTS table is empty.
+   */
+  private searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
     const tokens = this.tokenize(params.query)
     if (tokens.length === 0) {
       return []
@@ -249,9 +379,106 @@ export class ThreadSearchEngine {
     }
     return this.jieba
   }
+
+  /* ── FTS5 index management ─────────────────────────────── */
+
+  /**
+   * Index or re-index a single message in the FTS5 table.
+   * Should be called after a message reaches `complete` status.
+   */
+  indexMessage(sessionId: string, sessionTitle: string, messageId: string, content: string): void {
+    const text = extractSearchableText(content)
+    if (!text) {
+      return
+    }
+    const jieba = this.getJieba()
+    const segmented = jieba
+      ? (jieba.cutForSearch(text, true) as string[]).join(' ')
+      : text
+    const segmentedTitle = jieba
+      ? (jieba.cutForSearch(sessionTitle, true) as string[]).join(' ')
+      : sessionTitle
+
+    const db = getDb()
+    // Use messageId hash as rowid for upsert. FTS5 contentless tables
+    // require explicit rowid management.
+    const rowid = this.hashId(messageId)
+    db.run(sql`INSERT OR REPLACE INTO messages_fts(rowid, session_id, session_title, searchable_text)
+      VALUES (${rowid}, ${sessionId}, ${segmentedTitle}, ${segmented})`)
+  }
+
+  /**
+   * Remove all FTS entries for a session.
+   */
+  removeSessionFromIndex(sessionId: string): void {
+    const db = getDb()
+    db.run(sql`DELETE FROM messages_fts WHERE session_id = ${sessionId}`)
+  }
+
+  /**
+   * Rebuild the entire FTS index from the messages table.
+   * Useful after migration or for repair.
+   */
+  rebuildIndex(): void {
+    const db = getDb()
+    // Clear existing FTS data
+    db.run(sql`DELETE FROM messages_fts`)
+
+    const sessionRows = db.select().from(sessions).all()
+    const sessionTitleById = new Map(sessionRows.map(s => [s.id, s.title]))
+
+    const messageRows = db
+      .select()
+      .from(messages)
+      .where(eq(messages.status, 'complete'))
+      .all()
+
+    for (const msg of messageRows) {
+      const title = sessionTitleById.get(msg.sessionId) ?? ''
+      this.indexMessage(msg.sessionId, title, msg.id, msg.content)
+    }
+  }
+
+  /** Simple string hash → positive integer for FTS5 rowid */
+  private hashId(id: string): number {
+    let hash = 0
+    for (let i = 0; i < id.length; i++) {
+      hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
+    }
+    return Math.abs(hash)
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Extract match ranges from FTS5 snippet() output that uses <mark>...</mark> tags.
+ * Returns ranges relative to the text with tags stripped.
+ */
+function extractMarkRanges(html: string): MatchRange[] {
+  const ranges: MatchRange[] = []
+  let plainIdx = 0
+  let i = 0
+  while (i < html.length) {
+    if (html.startsWith('<mark>', i)) {
+      i += 6
+      const start = plainIdx
+      while (i < html.length && !html.startsWith('</mark>', i)) {
+        plainIdx++
+        i++
+      }
+      ranges.push({ start, end: plainIdx })
+      if (html.startsWith('</mark>', i)) {
+        i += 7
+      }
+    }
+    else {
+      plainIdx++
+      i++
+    }
+  }
+  return ranges
+}
 
 /**
  * Find every case-insensitive occurrence of each token in `text`, returning

@@ -18,6 +18,7 @@ import type { Message, Session } from '../db/schema'
 import { agentProfiles as agentProfilesTable, messages, sessions, workspaces } from '../db/schema'
 import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
+import { ThreadSearchEngine } from './thread-search'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -589,6 +590,24 @@ export class ChatEngine {
     await dbTask
     await this.flushNow(draft, finalStatus, finalError)
     this.drafts.delete(draft.chatSessionId)
+
+    // Index completed message in FTS
+    if (finalStatus === 'complete') {
+      try {
+        const session = getDb().select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
+        if (session) {
+          ThreadSearchEngine.getInstance().indexMessage(
+            draft.chatSessionId,
+            session.title,
+            draft.messageId,
+            JSON.stringify(draft.message),
+          )
+        }
+      }
+      catch (err) {
+        console.error('[ChatEngine] FTS indexing failed:', err)
+      }
+    }
 
     // Broadcast Turn-end event
     if (finalStatus === 'complete' || finalStatus === 'aborted') {

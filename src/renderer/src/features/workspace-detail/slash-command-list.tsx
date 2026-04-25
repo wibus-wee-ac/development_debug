@@ -121,10 +121,10 @@ export const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandList
                 {Icon
                   ? <Icon className="size-4 shrink-0 text-muted-foreground/60" />
                   : (
-                      <span className="size-4 shrink-0 flex items-center justify-center text-[11px] font-mono text-muted-foreground/50">
-                        {item.icon}
-                      </span>
-                    )}
+                    <span className="size-4 shrink-0 flex items-center justify-center text-[11px] font-mono text-muted-foreground/50">
+                      {item.icon}
+                    </span>
+                  )}
                 <div className="flex-1 min-w-0">
                   <span className="block text-foreground text-[13px]">{item.title}</span>
                   <span className="block text-[11px] text-muted-foreground/50">{item.description}</span>

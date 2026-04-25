@@ -19,13 +19,25 @@ export const useNewChatStore = create<NewChatState>()(
     (set, get) => ({
       lastAgentProfileId: null,
       lastModelByProfile: {},
-      setLastAgentProfileId: (id) => { set({ lastAgentProfileId: id }) },
-      setLastModelForProfile: (profileId, modelId) => {
-        set((s) => ({
-          lastModelByProfile: { ...s.lastModelByProfile, [profileId]: modelId },
-        }))
+      setLastAgentProfileId: (id) => {
+        set((state) => {
+          if (state.lastAgentProfileId === id) {
+            return state
+          }
+          return { lastAgentProfileId: id }
+        })
       },
-      getLastModelForProfile: (profileId) => get().lastModelByProfile[profileId],
+      setLastModelForProfile: (profileId, modelId) => {
+        set((state) => {
+          if (state.lastModelByProfile[profileId] === modelId) {
+            return state
+          }
+          return {
+            lastModelByProfile: { ...state.lastModelByProfile, [profileId]: modelId },
+          }
+        })
+      },
+      getLastModelForProfile: profileId => get().lastModelByProfile[profileId],
     }),
     { name: 'cradle-new-chat' },
   ),

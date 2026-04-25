@@ -30,6 +30,7 @@ import { sessionsQueryKey, useSessions } from '@renderer/features/workspace/use-
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { ipc } from '@renderer/lib/ipc'
 import { cn } from '@renderer/lib/utils'
+import { useNewChatStore } from '@renderer/store/new-chat'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -50,8 +51,6 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-import { useNewChatStore } from '@renderer/store/new-chat'
 
 /* ─── Constants ───────────────────────────────────────────────────────── */
 
@@ -138,11 +137,13 @@ export function NewChatPage() {
   const { profiles } = useAgentProfiles()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const newChatStore = useNewChatStore()
+  const lastAgentProfileId = useNewChatStore(state => state.lastAgentProfileId)
+  const setLastAgentProfileId = useNewChatStore(state => state.setLastAgentProfileId)
+  const setLastModelForProfile = useNewChatStore(state => state.setLastModelForProfile)
 
   // ── State ──
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
-    () => newChatStore.lastAgentProfileId,
+    () => useNewChatStore.getState().lastAgentProfileId,
   )
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<ModelDescriptor | null>(null)
@@ -154,6 +155,9 @@ export function NewChatPage() {
   const { sessions } = useSessions(selectedWorkspaceId)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
+  const lastSelectedModelId = useNewChatStore(
+    state => selectedProfileId ? state.lastModelByProfile[selectedProfileId] : undefined,
+  )
 
   // ── Derived ──
   const selectedProfile = profiles.find(p => p.id === selectedProfileId) ?? null
@@ -180,11 +184,10 @@ export function NewChatPage() {
   // ── Effects ──
   useEffect(() => {
     if (selectedProfileId === null && profiles.length > 0) {
-      const lastId = newChatStore.lastAgentProfileId
-      const exists = lastId && profiles.some(p => p.id === lastId)
-      setSelectedProfileId(exists ? lastId : profiles[0].id)
+      const exists = lastAgentProfileId && profiles.some(p => p.id === lastAgentProfileId)
+      setSelectedProfileId(exists ? lastAgentProfileId : profiles[0].id)
     }
-  }, [profiles, selectedProfileId, newChatStore.lastAgentProfileId])
+  }, [profiles, selectedProfileId, lastAgentProfileId])
 
   useEffect(() => {
     if (selectedWorkspaceId === null && workspaces.length > 0) {
@@ -194,22 +197,28 @@ export function NewChatPage() {
 
   useEffect(() => {
     setThinkingEffort(null)
-    // Restore last selected model for this profile
-    if (selectedProfileId && models.length > 0) {
-      const lastModelId = newChatStore.getLastModelForProfile(selectedProfileId)
-      const found = lastModelId ? models.find(m => m.id === lastModelId) : null
-      setSelectedModel(found ?? null)
-    }
-    else {
-      setSelectedModel(null)
-    }
-  }, [selectedProfileId, models, newChatStore])
+  }, [selectedProfileId])
 
   useEffect(() => {
-    if (selectedProfileId) {
-      newChatStore.setLastAgentProfileId(selectedProfileId)
+    setSelectedModel((currentModel) => {
+      if (!selectedProfileId || models.length === 0 || !lastSelectedModelId) {
+        return currentModel === null ? currentModel : null
+      }
+
+      const restoredModel = models.find(model => model.id === lastSelectedModelId) ?? null
+      if (!restoredModel) {
+        return currentModel === null ? currentModel : null
+      }
+
+      return currentModel?.id === restoredModel.id ? currentModel : restoredModel
+    })
+  }, [selectedProfileId, models, lastSelectedModelId])
+
+  useEffect(() => {
+    if (selectedProfileId && selectedProfileId !== lastAgentProfileId) {
+      setLastAgentProfileId(selectedProfileId)
     }
-  }, [selectedProfileId, newChatStore])
+  }, [selectedProfileId, lastAgentProfileId, setLastAgentProfileId])
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -406,7 +415,7 @@ export function NewChatPage() {
                       onValueChange={(next) => {
                         setSelectedModel(next ?? null)
                         if (next && selectedProfileId) {
-                          newChatStore.setLastModelForProfile(selectedProfileId, next.id)
+                          setLastModelForProfile(selectedProfileId, next.id)
                         }
                       }}
                     >

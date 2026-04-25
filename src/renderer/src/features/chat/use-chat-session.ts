@@ -8,6 +8,7 @@ import type { ChatStatus, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { createIpcChatTransport } from './ipc-chat-transport'
+import { useChatResponseEvent } from './use-chat-events'
 
 /** Raw message row as returned by `ipc.chat.getMessages`. */
 export type ChatMessageRow = Awaited<ReturnType<NonNullable<typeof ipc>['chat']['getMessages']>>[number]
@@ -154,34 +155,20 @@ export function useChatSession(chatSessionId: string | null, options?: {
   // Covers the "another window finishes a stream we weren't locally driving" case:
   // on any Turn-end for this session while we're idle, resync from DB so content
   // matches the backend snapshot.
-  useEffect(() => {
-    if (!chatSessionId || !ipc) {
+  useChatResponseEvent(chatSessionId, (data) => {
+    if (data.event.type !== 'response.completed' && data.event.type !== 'response.failed') {
       return
     }
-    const off = window.electron.ipcRenderer.on(
-      'chat:response-event',
-      (_: unknown, data: { chatSessionId: string, event: { type: string } }) => {
-        if (data.chatSessionId !== chatSessionId) {
-          return
-        }
-        if (data.event.type !== 'response.completed' && data.event.type !== 'response.failed') {
-          return
-        }
-        const currentStatus = chatRef.current.status
-        if (currentStatus === 'streaming' || currentStatus === 'submitted') {
-          // Locally driving — useChat is already assembling this turn
-          return
-        }
-        ipc?.chat.getMessages(chatSessionId).then((rows) => {
-          const hydrated = rows.map(r => parseMessage(r.content, r.id, r.role))
-          chatRef.current.setMessages(hydrated)
-        })
-      },
-    )
-    return () => {
-      off()
+    const currentStatus = chatRef.current.status
+    if (currentStatus === 'streaming' || currentStatus === 'submitted') {
+      // Locally driving — useChat is already assembling this turn
+      return
     }
-  }, [chatSessionId])
+    ipc?.chat.getMessages(chatSessionId!).then((rows) => {
+      const hydrated = rows.map(r => parseMessage(r.content, r.id, r.role))
+      chatRef.current.setMessages(hydrated)
+    })
+  })
 
   useEffect(() => {
     if (!chat.error) {

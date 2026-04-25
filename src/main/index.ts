@@ -2,7 +2,7 @@ import { join } from 'node:path'
 
 import { createServices } from '@cradle/ipc'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../resources/icon.png?asset'
@@ -106,6 +106,18 @@ app.whenReady().then(() => {
   // Initialise database
   const dbPath = join(app.getPath('userData'), 'cradle.db')
   initDb(dbPath)
+
+  // Rebuild FTS index if empty (first run after migration)
+  try {
+    const { ThreadSearchEngine } = require('./lib/thread-search') as typeof import('./lib/thread-search')
+    const ftsCount = getDb().all<{ cnt: number }>(sql`SELECT count(*) as cnt FROM messages_fts`)
+    if (ftsCount[0]?.cnt === 0) {
+      ThreadSearchEngine.getInstance().rebuildIndex()
+    }
+  }
+  catch {
+    // FTS table may not exist yet, will be created by migration on next restart
+  }
 
   // Reset any ACP agents stuck in 'installing' state from a previous crash/restart
   getDb()

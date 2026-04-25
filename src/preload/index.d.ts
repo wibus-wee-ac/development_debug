@@ -2,6 +2,7 @@ import type { AcpDevtoolEvent, IpcObservedEvent } from '@cradle/ipc'
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
+import type { ChatResponseEventPayload, ChatSessionTitlePayload } from '../shared/chat-events'
 
 interface IpcDevtoolApi {
   getSnapshot: () => ReturnType<IpcServices['ipcDevtool']['getSnapshot']>
@@ -20,11 +21,17 @@ interface PtyPushApi {
   onCommandFinish: (listener: (sessionId: string, exitCode: number) => void) => () => void
 }
 
+interface ChatPushApi {
+  onResponseEvent: (listener: (payload: ChatResponseEventPayload) => void) => () => void
+  onSessionTitle: (listener: (payload: ChatSessionTitlePayload) => void) => () => void
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
     ipc: IpcServices
     ipcDevtool: IpcDevtoolApi
     ptyPush: PtyPushApi
+    chatPush: ChatPushApi
   }
 }

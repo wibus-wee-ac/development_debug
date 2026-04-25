@@ -1,7 +1,8 @@
-// Input: window.ptyPush, window.electron.ipcRenderer, session-activity store, layout store, TanStack Router matchRoute
+// Input: window.ptyPush, chatPush (via useGlobalChatEvent), session-activity store, layout store, TanStack Router matchRoute
 // Output: useGlobalEventListeners hook — registers PTY, chat event listeners, and panel keyboard shortcuts
 // Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
 
+import { useGlobalChatEvent } from '@renderer/features/chat/use-chat-events'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useMatchRoute } from '@tanstack/react-router'
@@ -69,25 +70,19 @@ export function useGlobalEventListeners() {
   }, [markUnread, matchRoute])
 
   // Chat response events: mark unread when a response completes in an inactive session
-  useEffect(() => {
-    const off = window.electron.ipcRenderer.on(
-      'chat:response-event',
-      (_: unknown, data: { chatSessionId: string, event: { type: string } }) => {
-        if (
-          data.event.type !== 'response.completed'
-          && data.event.type !== 'response.failed'
-        ) {
-          return
-        }
-        const isActive = !!matchRoute({
-          to: '/chat/$sessionId',
-          params: { sessionId: data.chatSessionId },
-        })
-        if (!isActive) {
-          markUnread(data.chatSessionId)
-        }
-      },
-    )
-    return off
-  }, [markUnread, matchRoute])
+  useGlobalChatEvent((data) => {
+    if (
+      data.event.type !== 'response.completed'
+      && data.event.type !== 'response.failed'
+    ) {
+      return
+    }
+    const isActive = !!matchRoute({
+      to: '/chat/$sessionId',
+      params: { sessionId: data.chatSessionId },
+    })
+    if (!isActive) {
+      markUnread(data.chatSessionId)
+    }
+  })
 }
