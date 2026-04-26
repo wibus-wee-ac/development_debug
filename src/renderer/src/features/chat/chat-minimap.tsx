@@ -166,7 +166,7 @@ function ChatMinimapInner({
       {/* Bar group — pointer events only on the actual bars */}
       <div
         ref={containerRef}
-        className="relative flex w-full cursor-pointer flex-col items-center gap-0.5"
+        className="relative flex w-full cursor-pointer flex-col items-center gap-1"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
