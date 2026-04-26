@@ -150,7 +150,7 @@ export function ChatView({
         if (result) {
           setSessionTokens((result as { totalTokens: number }).totalTokens)
         }
-      }).catch(() => {})
+      }).catch(() => { })
     }
   }, [sessionId, status, messages.length])
 

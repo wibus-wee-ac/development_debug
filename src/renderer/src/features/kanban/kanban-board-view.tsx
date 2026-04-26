@@ -1,125 +1,162 @@
-// Input: KanbanColumn, IssuePanel, StatusManager, useIssues, useStatuses, useMilestones, useBoards, DnD kit
-// Output: KanbanBoardView component — full board layout with status columns, drag-and-drop, and issue panel
-// Position: Main board view; rendered in the /kanban/$boardId route
+// Input: boardId, workspaceId, useStatuses, useIssues, useMoveIssue, dnd-kit
+// Output: KanbanBoardView — horizontally-scrollable column board with DnD (Linear-style)
+// Position: Main board view, mounted by kanban.$boardId.lazy.tsx
 
-import type { DragEndEvent } from '@dnd-kit/core'
-import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
+import {
+  closestCorners,
+  DndContext,
+  DragOverlay,
+  MouseSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import type { KanbanIssue } from '@main/ipc-types'
-import { cn } from '@renderer/lib/cn'
-import { LayoutDashboardIcon, SettingsIcon } from 'lucide-react'
-import { useState } from 'react'
+import { Spinner } from '@renderer/components/ui/spinner'
+import { useNavigate } from '@tanstack/react-router'
+import { useCallback, useMemo, useState } from 'react'
 
-import { IssuePanel } from './issue-panel'
+import { CreateIssueDialog } from './create-issue-dialog'
+import { IssueCard } from './issue-card'
 import { KanbanColumn } from './kanban-column'
-import { StatusManager } from './status-manager'
-import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
+import { useIssues, useMoveIssue, useStatuses } from './use-kanban'
 
 interface KanbanBoardViewProps {
   boardId: string
   workspaceId: string
 }
 
-export function KanbanBoardView({ boardId: _boardId, workspaceId }: KanbanBoardViewProps) {
-  const { data: statuses = [] } = useStatuses(workspaceId)
-  const { data: milestones = [] } = useMilestones(workspaceId)
-  const { data: issues = [] } = useIssues({ workspaceId })
+export function KanbanBoardView({ boardId, workspaceId }: KanbanBoardViewProps) {
+  const { data: statuses = [], isLoading: loadingStatuses } = useStatuses(workspaceId)
+  const { data: allIssues = [], isLoading: loadingIssues } = useIssues({ workspaceId })
   const moveIssue = useMoveIssue()
+  const navigate = useNavigate()
 
-  const [selectedIssue, setSelectedIssue] = useState<KanbanIssue | null>(null)
-  const [statusManagerOpen, setStatusManagerOpen] = useState(false)
+  const [activeIssue, setActiveIssue] = useState<KanbanIssue | null>(null)
+  const [createStatusId, setCreateStatusId] = useState<string | null>(null)
 
-  const milestoneMap = Object.fromEntries(milestones.map(m => [m.id, m]))
+  // Group issues by status
+  const issuesByStatus = useMemo(() => {
+    const map = new Map<string, KanbanIssue[]>()
+    for (const s of statuses) {
+      map.set(s.id, [])
+    }
+    // Also create an "unassigned" bucket for issues with no status
+    map.set('__none__', [])
+    for (const issue of allIssues) {
+      if (!issue.parentIssueId) {
+        const bucket = issue.statusId ? (map.get(issue.statusId) ?? map.get('__none__')!) : map.get('__none__')!
+        bucket.push(issue)
+      }
+    }
+    return map
+  }, [statuses, allIssues])
 
+  // DnD sensors
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
   )
 
-  function handleDragEnd(e: DragEndEvent) {
-    const { active, over } = e
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const { active } = event
+    const issue = active.data.current?.issue as KanbanIssue | undefined
+    if (issue) {
+      setActiveIssue(issue)
+    }
+  }, [])
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setActiveIssue(null)
+    const { active, over } = event
     if (!over) {
       return
     }
+
     const issueId = active.id as string
-    const targetStatusId = (over.data.current as { statusId: string | null } | undefined)?.statusId ?? null
-    const issue = issues.find(i => i.id === issueId)
-    if (!issue || issue.statusId === targetStatusId) {
-      return
+
+    // Determine target status
+    let targetStatusId: string | null = null
+    if (over.data.current?.type === 'column') {
+      targetStatusId = over.data.current.statusId as string
     }
-    moveIssue.mutate({ id: issueId, statusId: targetStatusId })
+    else if (over.data.current?.type === 'issue') {
+      const targetIssue = over.data.current.issue as KanbanIssue
+      targetStatusId = targetIssue.statusId
+    }
+
+    if (targetStatusId && targetStatusId !== '__none__') {
+      const currentIssue = allIssues.find(i => i.id === issueId)
+      if (currentIssue && currentIssue.statusId !== targetStatusId) {
+        moveIssue.mutate({ id: issueId, statusId: targetStatusId })
+      }
+    }
+  }, [allIssues, moveIssue])
+
+  const handleIssueClick = useCallback((issue: KanbanIssue) => {
+    navigate({ to: '/kanban/$boardId/$issueId', params: { boardId, issueId: issue.id } })
+  }, [navigate, boardId])
+
+  if (loadingStatuses || loadingIssues) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner className="size-5 text-muted-foreground" />
+      </div>
+    )
   }
 
-  const unassignedIssues = issues.filter(i => !i.statusId)
-
-  const statusColumns = statuses.map(s => ({
-    status: s,
-    issues: issues.filter(i => i.statusId === s.id),
-  }))
-
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 border-b px-4 py-2 shrink-0">
-        <LayoutDashboardIcon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">Board</span>
-        <div className="ml-auto">
-          <button
-            className={cn(
-              'flex items-center gap-1.5 text-sm px-2.5 py-1.5 rounded-md',
-              'text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors',
-            )}
-            onClick={() => setStatusManagerOpen(v => !v)}
-          >
-            <SettingsIcon className="size-3.5" />
-            管理状态
-          </button>
-        </div>
-      </div>
-
-      <div className="relative flex flex-1 overflow-hidden">
-        {/* Status manager sidebar */}
-        {statusManagerOpen && (
-          <div className="w-72 shrink-0 border-r overflow-y-auto p-4">
-            <StatusManager workspaceId={workspaceId} />
-          </div>
-        )}
-
-        {/* Columns scroll area */}
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-          <div className="flex flex-1 gap-4 overflow-x-auto p-4">
-            {statusColumns.map(({ status, issues: colIssues }) => (
-              <KanbanColumn
-                key={status.id}
-                status={status}
-                issues={colIssues}
-                milestoneMap={milestoneMap}
-                workspaceId={workspaceId}
-                onIssueClick={setSelectedIssue}
-              />
-            ))}
-
-            {/* Unassigned column */}
+    <div className="flex h-full flex-col">
+      <CreateIssueDialog
+        open={createStatusId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCreateStatusId(null)
+          }
+        }}
+        workspaceId={workspaceId}
+        defaultStatusId={createStatusId}
+      />
+      {/* Board columns */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex flex-1 gap-1 overflow-x-auto overflow-y-hidden p-2">
+          {statuses.map(status => (
             <KanbanColumn
-              key="__unassigned__"
-              status={null}
-              issues={unassignedIssues}
-              milestoneMap={milestoneMap}
-              workspaceId={workspaceId}
-              onIssueClick={setSelectedIssue}
+              key={status.id}
+              status={status}
+              issues={issuesByStatus.get(status.id) ?? []}
+              onIssueClick={handleIssueClick}
+              onOpenCreate={setCreateStatusId}
             />
-          </div>
-        </DndContext>
+          ))}
 
-        {/* Issue detail panel overlay */}
-        {selectedIssue && (
-          <div className="absolute inset-y-0 right-0 w-120 border-l bg-background z-10 flex flex-col overflow-hidden shadow-xl">
-            <IssuePanel
-              issueId={selectedIssue.id}
-              workspaceId={workspaceId}
-              onClose={() => setSelectedIssue(null)}
+          {/* Unassigned column */}
+          {(issuesByStatus.get('__none__')?.length ?? 0) > 0 && (
+            <KanbanColumn
+              status={{ id: '__none__', workspaceId, name: '无状态', color: null, order: 999, createdAt: 0 }}
+              issues={issuesByStatus.get('__none__') ?? []}
+              onIssueClick={handleIssueClick}
+              onOpenCreate={setCreateStatusId}
             />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+
+        {/* Drag overlay */}
+        <DragOverlay dropAnimation={null}>
+          {activeIssue && (
+            <div className="w-68 rounded-md bg-card ring-1 ring-border/30 inset-shadow-[0_1px_--theme(--color-white/10%)]">
+              <IssueCard issue={activeIssue} onClick={() => { }} isDragging />
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+
     </div>
   )
 }

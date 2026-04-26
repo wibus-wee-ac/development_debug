@@ -1,5 +1,5 @@
-// Input: useStatuses, useCreateStatus, useUpdateStatus, useDeleteStatus, useReorderStatuses hooks, DnD sortable, Popover, Input, Button
-// Output: StatusManager component — workspace-level status management UI (shared across all boards)
+// Input: useStatuses, useCreateStatus, useUpdateStatus, useDeleteStatus, useReorderStatuses hooks, DnD sortable
+// Output: StatusManager component — workspace-level status management UI
 // Position: Manages status columns for a workspace; opened from the board view toolbar
 
 import type { DragEndEvent } from '@dnd-kit/core'
@@ -8,32 +8,18 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { KanbanStatus } from '@main/ipc-types'
-import { Button } from '@renderer/components/ui/button'
-import { Input } from '@renderer/components/ui/input'
-import { Popover, PopoverPopup, PopoverTrigger } from '@renderer/components/ui/popover'
 import { cn } from '@renderer/lib/cn'
-import { GripVerticalIcon, PencilIcon, PlusIcon, TrashIcon, XIcon } from 'lucide-react'
+import { GripVerticalIcon, PlusIcon, TrashIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useCreateStatus, useDeleteStatus, useReorderStatuses, useStatuses, useUpdateStatus } from './use-kanban'
 
 const PRESET_COLORS = [
-  '#94a3b8', // gray
-  '#60a5fa', // blue
-  '#34d399', // green
-  '#fbbf24', // yellow
-  '#f97316', // orange
-  '#ef4444', // red
-  '#a78bfa', // purple
-  '#f472b6', // pink
+  '#64748b', '#60a5fa', '#34d399', '#fbbf24',
+  '#f97316', '#ef4444', '#a78bfa', '#f472b6',
 ]
 
-interface StatusRowProps {
-  status: KanbanStatus
-  workspaceId: string
-}
-
-function StatusRow({ status, workspaceId }: StatusRowProps) {
+function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id })
   const updateStatus = useUpdateStatus()
   const deleteStatus = useDeleteStatus()
@@ -42,131 +28,100 @@ function StatusRow({ status, workspaceId }: StatusRowProps) {
   const [showColors, setShowColors] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus()
-    }
-  }, [editing])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
 
   function handleNameSave() {
     const trimmed = name.trim()
     if (trimmed && trimmed !== status.name) {
       updateStatus.mutate({ id: status.id, workspaceId, patch: { name: trimmed } })
     }
-    else {
-      setName(status.name)
-    }
+    else { setName(status.name) }
     setEditing(false)
-  }
-
-  function handleColorPick(color: string) {
-    updateStatus.mutate({ id: status.id, workspaceId, patch: { color } })
-    setShowColors(false)
   }
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.4 : 1,
   }
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/50 group"
+      className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/30 group"
     >
-      <button className="cursor-grab text-muted-foreground" {...attributes} {...listeners}>
-        <GripVerticalIcon className="size-3.5" />
+      <button className="cursor-grab text-muted-foreground/30" {...attributes} {...listeners}>
+        <GripVerticalIcon className="size-3" />
       </button>
 
-      {/* Color dot */}
       <div className="relative">
         <button
-          className="size-3.5 rounded-full shrink-0 ring-1 ring-border/50"
-          style={{ backgroundColor: status.color ?? '#94a3b8' }}
+          className="size-3 rounded-full shrink-0"
+          style={{ backgroundColor: status.color ?? '#64748b' }}
           onClick={() => setShowColors(v => !v)}
-          title="Change color"
         />
         {showColors && (
-          <div className="absolute left-0 top-5 z-10 flex flex-wrap w-24 gap-1 rounded-lg border border-border bg-popover p-1.5 shadow-md">
+          <div className="absolute left-0 top-5 z-10 flex flex-wrap w-20 gap-1 rounded-md border border-border/50 bg-popover p-1.5">
             {PRESET_COLORS.map(c => (
               <button
                 key={c}
-                className={cn('size-4 rounded-full ring-1 ring-border/50 hover:ring-2 hover:ring-ring', status.color === c && 'ring-2 ring-ring')}
+                className={cn('size-3.5 rounded-full hover:ring-1 hover:ring-ring', status.color === c && 'ring-1 ring-ring')}
                 style={{ backgroundColor: c }}
-                onClick={() => handleColorPick(c)}
+                onClick={() => {
+                  updateStatus.mutate({ id: status.id, workspaceId, patch: { color: c } })
+                  setShowColors(false)
+                }}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* Name */}
       {editing
         ? (
-          <Input
+          <input
             ref={inputRef}
             value={name}
             onChange={e => setName(e.target.value)}
             onBlur={handleNameSave}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleNameSave()
-              }
-              if (e.key === 'Escape') {
-                setName(status.name)
-                setEditing(false)
-              }
+              if (e.key === 'Enter') handleNameSave()
+              if (e.key === 'Escape') { setName(status.name); setEditing(false) }
             }}
-            className="h-6 flex-1 text-xs"
+            className="flex-1 text-[13px] bg-transparent outline-none"
           />
         )
         : (
-          <span className="flex-1 text-sm truncate">
+          <span
+            className="flex-1 text-[13px] truncate cursor-text"
+            onClick={() => setEditing(true)}
+          >
             {status.name}
           </span>
         )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          className="rounded p-0.5 text-muted-foreground hover:text-foreground"
-          onClick={() => setEditing(v => !v)}
-          title="Rename"
-        >
-          <PencilIcon className="size-3" />
-        </button>
-        <button
-          className="rounded p-0.5 text-muted-foreground hover:text-destructive"
-          onClick={() => deleteStatus.mutate({ id: status.id, workspaceId })}
-          title="Delete status"
-        >
-          <TrashIcon className="size-3" />
-        </button>
-      </div>
+      <button
+        className="text-muted-foreground/20 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+        onClick={() => deleteStatus.mutate({ id: status.id, workspaceId })}
+      >
+        <TrashIcon className="size-3" />
+      </button>
     </div>
   )
 }
 
-interface StatusManagerProps {
-  workspaceId: string
-}
-
-export function StatusManager({ workspaceId }: StatusManagerProps) {
+export function StatusManager({ workspaceId }: { workspaceId: string }) {
   const { data: statuses = [] } = useStatuses(workspaceId)
   const createStatus = useCreateStatus()
   const reorderStatuses = useReorderStatuses()
-  const [open, setOpen] = useState(false)
   const [newName, setNewName] = useState('')
 
   const sensors = useSensors(useSensor(PointerSensor))
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!over || active.id === over.id) {
-      return
-    }
+    if (!over || active.id === over.id) return
     const oldIndex = statuses.findIndex(s => s.id === active.id)
     const newIndex = statuses.findIndex(s => s.id === over.id)
     const reordered = arrayMove(statuses, oldIndex, newIndex)
@@ -175,60 +130,41 @@ export function StatusManager({ workspaceId }: StatusManagerProps) {
 
   async function handleAdd() {
     const name = newName.trim()
-    if (!name) {
-      return
-    }
+    if (!name) return
     await createStatus.mutateAsync({ workspaceId, name })
     setNewName('')
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<span />}>
-        <Button variant="outline" size="sm">
-          Manage statuses
-        </Button>
-      </PopoverTrigger>
-      <PopoverPopup className="w-72 p-3" align="end">
-        <div className="mb-2 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold">Statuses</p>
-            <p className="text-xs text-muted-foreground">
-              Shared across all boards in this workspace.
-            </p>
+    <div>
+      <p className="text-[12px] text-muted-foreground/40 mb-2">Statuses</p>
+
+      <DndContext sensors={sensors} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
+        <SortableContext items={statuses.map(s => s.id)} strategy={verticalListSortingStrategy}>
+          <div className="flex flex-col gap-px">
+            {statuses.map(s => (
+              <StatusRow key={s.id} status={s} workspaceId={workspaceId} />
+            ))}
           </div>
-          <button className="text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>
-            <XIcon className="size-4" />
-          </button>
-        </div>
+        </SortableContext>
+      </DndContext>
 
-        <DndContext sensors={sensors} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
-          <SortableContext items={statuses.map(s => s.id)} strategy={verticalListSortingStrategy}>
-            <div className="flex flex-col gap-0.5">
-              {statuses.map(s => (
-                <StatusRow key={s.id} status={s} workspaceId={workspaceId} />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-
-        <div className="mt-2 flex gap-1.5">
-          <Input
-            placeholder="Add status…"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                void handleAdd()
-              }
-            }}
-            className="h-7 text-sm flex-1"
-          />
-          <Button size="sm" onClick={() => void handleAdd()} disabled={!newName.trim() || createStatus.isPending}>
-            <PlusIcon className="size-3.5" />
-          </Button>
-        </div>
-      </PopoverPopup>
-    </Popover>
+      <div className="mt-2 flex gap-1.5 items-center">
+        <input
+          placeholder="Add status…"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void handleAdd() }}
+          className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/30"
+        />
+        <button
+          className="text-muted-foreground/30 hover:text-foreground transition-colors disabled:opacity-30"
+          onClick={() => void handleAdd()}
+          disabled={!newName.trim() || createStatus.isPending}
+        >
+          <PlusIcon className="size-3.5" />
+        </button>
+      </div>
+    </div>
   )
 }

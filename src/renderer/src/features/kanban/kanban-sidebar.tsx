@@ -1,165 +1,192 @@
-// Input: useBoards, useCreateBoard, useDeleteBoard, useWorkspaces, TanStack Router Link/useNavigate
-// Output: KanbanSidebar component — left navigation panel listing boards grouped by workspace
-// Position: Sidebar companion for all /kanban/* routes; rendered inside AppLayout children
+// Input: useBoards, useCreateBoard, useDeleteBoard, useMilestones, TanStack Router navigation
+// Output: KanbanSidebar — left sidebar with boards list and milestones (Linear-style)
+// Position: Sidebar inside the /kanban layout route
 
-import type { KanbanBoard } from '@main/ipc-types'
-import { useWorkspaces } from '@renderer/features/workspace'
-import { cn } from '@renderer/lib/cn'
-import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { LayoutDashboardIcon, PlusIcon, TrashIcon } from 'lucide-react'
-import type * as React from 'react'
-import { useState } from 'react'
+import { Button } from '@renderer/components/ui/button'
+import { Input } from '@renderer/components/ui/input'
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@renderer/components/ui/menu'
+import { ScrollArea } from '@renderer/components/ui/scroll-area'
+import { Tooltip, TooltipPopup, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { cn } from '@renderer/lib/utils'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
+import {
+  ArrowLeftIcon,
+  FlagIcon,
+  LayoutDashboardIcon,
+  MoreHorizontalIcon,
+  PlusIcon,
+  Trash2Icon,
+} from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
 
-import { useBoards, useCreateBoard, useDeleteBoard } from './use-kanban'
+import {
+  useBoards,
+  useCreateBoard,
+  useDeleteBoard,
+  useMilestones,
+} from './use-kanban'
 
-// ── Per-workspace section ─────────────────────────────────────────────────────
+// Pull workspaceId from the first board or fallback
+function useWorkspaceId() {
+  const { data: boards } = useBoards()
+  return boards?.[0]?.workspaceId ?? null
+}
 
-function WorkspaceSection({
-  workspaceId,
-  workspaceName,
-}: {
-  workspaceId: string
-  workspaceName: string
-}) {
-  const { data: boards = [] } = useBoards(workspaceId)
+export function KanbanSidebar() {
+  const { data: boards = [] } = useBoards()
   const createBoard = useCreateBoard()
   const deleteBoard = useDeleteBoard()
   const navigate = useNavigate()
+  const pathname = useRouterState({ select: s => s.location.pathname })
+  const workspaceId = useWorkspaceId()
+  const { data: milestones = [] } = useMilestones(workspaceId ?? '')
 
-  const [adding, setAdding] = useState(false)
-  const [newName, setNewName] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  async function handleCreate() {
-    const name = newName.trim()
-    if (!name) {
-      return
+  const handleCreate = useCallback(() => {
+    const name = inputRef.current?.value.trim()
+    if (name && workspaceId) {
+      createBoard.mutate(
+        { workspaceId, name },
+        {
+          onSuccess: (board) => {
+            navigate({ to: '/kanban/$boardId', params: { boardId: board.id } })
+          },
+        },
+      )
+      inputRef.current!.value = ''
     }
-    const board = await createBoard.mutateAsync({ workspaceId, name })
-    setNewName('')
-    setAdding(false)
-    void navigate({ to: '/kanban/$boardId', params: { boardId: board.id } })
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      void handleCreate()
-    }
-    if (e.key === 'Escape') {
-      setNewName('')
-      setAdding(false)
-    }
-  }
+    setIsCreating(false)
+  }, [createBoard, workspaceId, navigate])
 
   return (
-    <div className="space-y-0.5">
-      {/* Workspace header */}
-      <div className="flex items-center gap-1.5 px-2 py-1 group/ws">
-        <span className="flex-1 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider truncate">
-          {workspaceName}
-        </span>
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <button
-          className="opacity-0 group-hover/ws:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-          onClick={() => setAdding(v => !v)}
-          title="新建看板"
+          className="text-muted-foreground/50 hover:text-foreground transition-colors"
+          onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
         >
-          <PlusIcon className="size-3.5" />
+          <ArrowLeftIcon className="size-3.5" />
         </button>
+        <span className="text-xs font-medium text-muted-foreground/60">看板</span>
+        <span className="flex-1" />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground/50 hover:text-foreground"
+                  onClick={() => {
+                    setIsCreating(true)
+                    requestAnimationFrame(() => inputRef.current?.focus())
+                  }}
+                >
+                  <PlusIcon />
+                </Button>
+              )
+            }
+          />
+          <TooltipPopup>新建看板</TooltipPopup>
+        </Tooltip>
       </div>
 
-      {/* Inline create input */}
-      {adding && (
-        <div className="px-2 pb-1">
-          <input
-            autoFocus
-            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-2 ring-ring/24 placeholder:text-muted-foreground"
-            placeholder="看板名称…"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={() => {
-              if (!newName.trim()) {
-                setAdding(false)
-              }
-            }}
-          />
+      <ScrollArea className="flex-1 min-h-0">
+        <div className="flex flex-col gap-px px-1.5 pb-4">
+          {/* Board list */}
+          {boards.map((board) => {
+            const isActive = pathname === `/kanban/${board.id}`
+            return (
+              <div key={board.id} className="group flex items-center">
+                <button
+                  type="button"
+                  className={cn(
+                    'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm',
+                    'transition-colors duration-75',
+                    isActive
+                      ? 'bg-accent text-foreground'
+                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                  )}
+                  data-testid={`kanban-board-${board.id}`}
+                  onClick={() => navigate({ to: '/kanban/$boardId', params: { boardId: board.id } })}
+                >
+                  <LayoutDashboardIcon className="size-3.5 shrink-0 opacity-60" />
+                  <span className="truncate">{board.name}</span>
+                </button>
+                <Menu>
+                  <MenuTrigger
+                    className="opacity-0 group-hover:opacity-100 transition-opacity mr-1"
+                  >
+                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/40">
+                      <MoreHorizontalIcon />
+                    </Button>
+                  </MenuTrigger>
+                  <MenuPopup side="right" align="start">
+                    <MenuItem
+                      variant="destructive"
+                      onClick={() => {
+                        deleteBoard.mutate(board.id)
+                        if (isActive) {
+                          navigate({ to: '/kanban' })
+                        }
+                      }}
+                    >
+                      <Trash2Icon />
+                      删除
+                    </MenuItem>
+                  </MenuPopup>
+                </Menu>
+              </div>
+            )
+          })}
+
+          {/* Inline create */}
+          {isCreating && (
+            <div className="px-2 py-1">
+              <Input
+                ref={inputRef}
+                data-testid="kanban-new-board-input"
+                placeholder="看板名称"
+                className="h-7 text-sm"
+                onBlur={handleCreate}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleCreate()
+                  }
+                  if (e.key === 'Escape') {
+                    setIsCreating(false)
+                  }
+                }}
+              />
+            </div>
+          )}
+
+          {/* Milestones section */}
+          {milestones.length > 0 && (
+            <>
+              <div className="mt-4 px-3 pb-1">
+                <span className="text-xs font-medium text-muted-foreground/60">里程碑</span>
+              </div>
+              {milestones.map(ms => (
+                <div
+                  key={ms.id}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
+                >
+                  <FlagIcon className="size-3.5 shrink-0 opacity-60" />
+                  <span className="truncate">{ms.title}</span>
+                  {ms.status === 'closed' && (
+                    <span className="text-xs text-muted-foreground/30 ml-auto">已关闭</span>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
         </div>
-      )}
-
-      {/* Board links */}
-      {boards.map(board => (
-        <BoardItem
-          key={board.id}
-          board={board}
-          onDelete={() => deleteBoard.mutate(board.id)}
-        />
-      ))}
-
-      {boards.length === 0 && !adding && (
-        <p className="px-2 text-xs text-muted-foreground/50 py-0.5">暂无看板</p>
-      )}
-    </div>
-  )
-}
-
-function BoardItem({ board, onDelete }: { board: KanbanBoard, onDelete: () => void }) {
-  const params = useParams({ strict: false })
-  const activeBoardId = (params as Record<string, string>).boardId
-  const isActive = activeBoardId === board.id
-
-  return (
-    <div
-      className={cn(
-        'group/board flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors',
-        isActive ? 'bg-accent text-accent-foreground' : 'hover:bg-muted/50 text-foreground/80 hover:text-foreground',
-      )}
-    >
-      <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <Link
-        to="/kanban/$boardId"
-        params={{ boardId: board.id }}
-        className="flex-1 text-xs truncate"
-      >
-        {board.name}
-      </Link>
-      <button
-        className="opacity-0 group-hover/board:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-        onClick={(e) => {
-          e.stopPropagation()
-          onDelete()
-        }}
-        title="删除看板"
-      >
-        <TrashIcon className="size-3" />
-      </button>
-    </div>
-  )
-}
-
-// ── Main KanbanSidebar ────────────────────────────────────────────────────────
-
-export function KanbanSidebar() {
-  const { workspaces } = useWorkspaces()
-
-  return (
-    <div className="flex h-full w-52 shrink-0 flex-col border-r overflow-hidden bg-sidebar">
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b shrink-0">
-        <LayoutDashboardIcon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">看板</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto py-2 px-1 space-y-3">
-        {workspaces.map(ws => (
-          <WorkspaceSection
-            key={ws.id}
-            workspaceId={ws.id}
-            workspaceName={ws.name}
-          />
-        ))}
-
-        {workspaces.length === 0 && (
-          <p className="px-2 text-xs text-muted-foreground">请先添加工作区</p>
-        )}
-      </div>
+      </ScrollArea>
     </div>
   )
 }

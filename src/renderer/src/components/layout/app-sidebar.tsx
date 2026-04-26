@@ -1,14 +1,14 @@
-// Input: WorkspaceSidebar, SettingsSidebar, layout store, useShortcut hook, motion/react
-// Output: AppSidebar component — collapsible sidebar with spring animation and drill-in navigation
-// Position: Internal child of AppLayout; controlled via isSettings prop + callbacks
+// Input: WorkspaceSidebar, SettingsSidebar, KanbanSidebar, layout store, useShortcut, motion/react
+// Output: AppSidebar — persistent collapsible sidebar with drill-in navigation
+// Position: Rendered in __root.tsx; persists across route changes
 
+import { KanbanSidebar } from '@renderer/features/kanban/kanban-sidebar'
 import { SettingsSidebar } from '@renderer/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '@renderer/features/workspace'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { useLayoutStore } from '@renderer/store/layout'
-import { SettingsIcon } from 'lucide-react'
+import { useRouterState } from '@tanstack/react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import type { Dispatch, SetStateAction } from 'react'
 
 const DRILL_TRANSITION = {
   type: 'spring',
@@ -20,28 +20,28 @@ const DRILL_TRANSITION = {
 const SIDEBAR_SPRING = { type: 'spring', stiffness: 600, damping: 40 } as const
 const COLLAPSED_WIDTH = 48
 
-interface AppSidebarProps {
-  isSettings: boolean
-  settingsSection: string
-  onOpenSettings: () => void
-  onCloseSettings: () => void
-  onSetSection: Dispatch<SetStateAction<string>>
-}
+export function AppSidebar() {
+  const {
+    sidebarWidth,
+    sidebarCollapsed,
+    toggleSidebar,
+    isSettings,
+    settingsSection,
+    openSettings,
+    closeSettings,
+    setSettingsSection,
+  } = useLayoutStore()
+  const pathname = useRouterState({ select: s => s.location.pathname })
+  const isKanban = pathname.startsWith('/kanban')
 
-export function AppSidebar({
-  isSettings,
-  settingsSection,
-  onOpenSettings,
-  onCloseSettings,
-  onSetSection,
-}: AppSidebarProps) {
-  const { sidebarWidth, sidebarCollapsed, toggleSidebar } = useLayoutStore()
-
-  useShortcut('toggle-settings', { meta: true, key: ',' }, isSettings ? onCloseSettings : onOpenSettings)
-  useShortcut('exit-settings', { key: 'Escape' }, onCloseSettings, isSettings)
+  useShortcut('toggle-settings', { meta: true, key: ',' }, isSettings ? closeSettings : openSettings)
+  useShortcut('exit-settings', { key: 'Escape' }, closeSettings, isSettings)
   useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebar)
 
-  const collapsed = sidebarCollapsed && !isSettings
+  const sidebarMode: 'settings' | 'kanban' | 'main' = isSettings ? 'settings' : isKanban ? 'kanban' : 'main'
+  const isDrillIn = sidebarMode !== 'main'
+  // Drill-in modes force sidebar open; only main mode respects user's collapse preference
+  const collapsed = sidebarCollapsed && !isDrillIn
   const currentWidth = collapsed ? COLLAPSED_WIDTH : sidebarWidth
 
   return (
@@ -51,12 +51,14 @@ export function AppSidebar({
       transition={SIDEBAR_SPRING}
       style={{ width: currentWidth }}
     >
+      {/* Traffic light spacer — drag region matching AppHeader height */}
+      <div className="h-9.5 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
       <div
         className="relative flex flex-col flex-1 overflow-hidden"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <AnimatePresence mode="popLayout" initial={false}>
-          {isSettings
+          {sidebarMode === 'settings'
             ? (
               <motion.div
                 key="settings-nav"
@@ -68,23 +70,36 @@ export function AppSidebar({
               >
                 <SettingsSidebar
                   activeSection={settingsSection}
-                  onSetSection={onSetSection}
-                  onClose={onCloseSettings}
+                  onSetSection={setSettingsSection}
+                  onClose={closeSettings}
                 />
               </motion.div>
             )
-            : (
-              <motion.div
-                key="main-nav"
-                className="flex flex-1 flex-col overflow-hidden"
-                initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                transition={DRILL_TRANSITION}
-              >
-                <WorkspaceSidebar collapsed={collapsed} />
-              </motion.div>
-            )}
+            : sidebarMode === 'kanban'
+              ? (
+                <motion.div
+                  key="kanban-nav"
+                  className="flex flex-1 flex-col overflow-hidden"
+                  initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
+                  animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                  exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
+                  transition={DRILL_TRANSITION}
+                >
+                  <KanbanSidebar />
+                </motion.div>
+              )
+              : (
+                <motion.div
+                  key="main-nav"
+                  className="flex flex-1 flex-col overflow-hidden"
+                  initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                  animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                  exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                  transition={DRILL_TRANSITION}
+                >
+                  <WorkspaceSidebar collapsed={collapsed} />
+                </motion.div>
+              )}
         </AnimatePresence>
       </div>
     </motion.aside>

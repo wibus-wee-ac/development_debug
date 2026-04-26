@@ -2,17 +2,17 @@
 
 # Features/Kanban
 
-Full GitHub-Projects-style Kanban system scoped to workspaces.
-Boards are filtered views; columns represent issue statuses defined per-workspace.
-Uses @dnd-kit for drag-and-drop and TanStack Query for all data access.
+Linear-style issue board with drag-and-drop, inline creation, and a side-panel detail view.
+Built on @dnd-kit, TanStack Query, and coss UI primitives.
+All IPC calls go through `use-kanban.ts` → `ipc.kanban.*`.
 
 ## Files
 
-- **use-kanban.ts**: All TanStack Query hooks and mutations for boards, statuses, milestones, issues, comments, and relations
-- **kanban-sidebar.tsx**: Left sidebar listing boards grouped by workspace with create/delete; used in all /kanban/* routes
-- **board-list.tsx**: (Legacy) standalone board list page — superseded by kanban-sidebar
-- **kanban-board-view.tsx**: Main board layout with DnD context, status columns, and issue panel overlay
-- **kanban-column.tsx**: Single status column with droppable zone, issue cards, and inline add-issue form
-- **issue-card.tsx**: Draggable issue card with priority badge, labels, and milestone
-- **issue-panel.tsx**: Sliding right-side detail panel: edit title, status, priority, milestone, labels, sub-issues, comments, relations
-- **status-manager.tsx**: Workspace-level status management UI (add/rename/reorder/delete); embedded as sidebar in board view
+- **use-kanban.ts**: TanStack Query hooks + mutations for all kanban IPC calls (boards, statuses, issues, comments, relations, delegation)
+- **kanban-board-view.tsx**: Main board view — horizontally-scrollable columns grouped by status, DnD context, navigates to issue detail route on click
+- **kanban-column.tsx**: Single status column with droppable zone, sortable cards, inline issue creation
+- **kanban-sidebar.tsx**: Left sidebar — board list, milestones, board creation, back button
+- **issue-card.tsx**: Minimal borderless issue card — priority icon, identifier, title, labels, delegate badge
+- **issue-panel.tsx**: Issue detail page content (IssuePanel) + properties aside (IssueProperties) — used by kanban.$boardId.$issueId route
+- **priority-icon.tsx**: Colored priority icon atom (none/low/medium/high/urgent)
+- **status-icon.tsx**: Colored circle status indicator atom

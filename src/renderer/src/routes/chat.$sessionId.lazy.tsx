@@ -3,7 +3,6 @@
 // Position: Lazy-loaded component chunk — contains heavy deps (xterm, AI SDK, combobox, etc.)
 
 import type { Session } from '@main/ipc-types'
-import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { RightAside } from '@renderer/components/layout/right-aside'
 import { Button } from '@renderer/components/ui/button'
@@ -240,7 +239,11 @@ function ChatSessionPage() {
 
   return (
     <AppLayout
-      header={<AppHeader title={sessionTitle} workspace={workspaceName} hasAside hasPanel={!!(workspaceId && workspacePath)} trafficLight gitBranch={<GitBranchControl workspacePath={workspacePath} />} />}
+      title={sessionTitle}
+      workspace={workspaceName}
+      hasAside
+      hasPanel={!!(workspaceId && workspacePath)}
+      gitBranch={<GitBranchControl workspacePath={workspacePath} />}
       aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
       panel={workspaceId && workspacePath
         ? (

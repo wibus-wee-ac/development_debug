@@ -19,7 +19,7 @@ import {
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { MarkdownEditor } from './markdown-editor'
+import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { useWorkspaceFile } from './use-workspace-file'
 
 /* ─── Types ──────────────────────────────────────────────── */

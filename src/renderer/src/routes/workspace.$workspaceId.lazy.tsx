@@ -1,8 +1,7 @@
-// Input: WorkspaceDetailPage feature, AppLayout, AppHeader, GitBranchControl
+// Input: WorkspaceDetailPage feature, AppLayout, GitBranchControl
 // Output: WorkspaceDetail lazy component for /workspace/$workspaceId
 // Position: Lazy-loaded component chunk — contains Tiptap, Shiki, ProseMirror deps
 
-import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { RouteLoadingFallback } from '@renderer/components/ui/route-loading-fallback'
 import { GitBranchControl } from '@renderer/features/git/git-branch-control'
@@ -27,16 +26,11 @@ function WorkspaceDetail() {
 
   return (
     <AppLayout
-      header={(
-        <AppHeader
-          trafficLight
-          hasAside={false}
-          hasPanel={false}
-          workspace={workspace?.name}
-          title="项目"
-          gitBranch={workspace?.path ? <GitBranchControl workspacePath={workspace.path} /> : undefined}
-        />
-      )}
+      hasAside={false}
+      hasPanel={false}
+      workspace={workspace?.name}
+      title="项目"
+      gitBranch={workspace?.path ? <GitBranchControl workspacePath={workspace.path} /> : undefined}
     >
       <WorkspaceDetailPage workspaceId={workspaceId} />
     </AppLayout>

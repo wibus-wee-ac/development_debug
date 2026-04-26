@@ -1,5 +1,6 @@
 import '../styles.css'
 
+import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useThemeStore } from '@renderer/store/theme'
@@ -34,7 +35,10 @@ function RootComponent() {
     <ToastProvider>
       <AnchoredToastProvider>
         <ShortcutProvider>
-          <Outlet />
+          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+            <AppSidebar />
+            <Outlet />
+          </div>
         </ShortcutProvider>
       </AnchoredToastProvider>
     </ToastProvider>

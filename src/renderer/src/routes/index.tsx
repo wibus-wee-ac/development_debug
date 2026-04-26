@@ -1,8 +1,7 @@
-// Input: AppLayout, AppHeader, HomeDashboard, TanStack Router search state
+// Input: AppLayout, HomeDashboard, TanStack Router search state
 // Output: Index route — renders the dashboard hub
 // Position: Root page route for the main launcher view
 
-import { AppHeader } from '@renderer/components/layout/app-header'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { HomeDashboard } from '@renderer/features/home/home-dashboard'
 import { createFileRoute } from '@tanstack/react-router'
@@ -17,13 +16,8 @@ export const Route = createFileRoute('/')({
 function App() {
   return (
     <AppLayout
-      header={(
-        <AppHeader
-          trafficLight
-          hasAside={false}
-          hasPanel={false}
-        />
-      )}
+      hasAside={false}
+      hasPanel={false}
     >
       <HomeDashboard />
     </AppLayout>

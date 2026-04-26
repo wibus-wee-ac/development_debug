@@ -243,6 +243,14 @@ export const kanbanIssues = sqliteTable('kanban_issues', {
   }).notNull().default('none'),
   /** JSON array of label strings, e.g. '["bug","frontend"]'. */
   labels: text('labels').notNull().default('[]'),
+  /** Assignee kind: 'user' for human, null for unassigned. */
+  assigneeKind: text('assignee_kind'),
+  /** Assignee identifier: '__self__' for the local user. */
+  assigneeId: text('assignee_id'),
+  /** Delegated agent profile ID. When set, an agent is actively working on this issue. */
+  delegateAgentId: text('delegate_agent_id'),
+  /** JSON array of context references: [{ type, id?, path?, url?, text? }]. */
+  contextRefs: text('context_refs').notNull().default('[]'),
   ...timestamps(),
 })
 
@@ -254,6 +262,14 @@ export const kanbanIssueComments = sqliteTable('kanban_issue_comments', {
     .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
   /** Markdown body. */
   content: text('content').notNull(),
+  /** Author kind: 'user' (human), 'agent', or 'system'. */
+  authorKind: text('author_kind', {
+    enum: ['user', 'agent', 'system'],
+  }).notNull().default('user'),
+  /** Author ID: agent profile ID for 'agent', '__self__' for 'user', null for 'system'. */
+  authorId: text('author_id'),
+  /** Optional link to the source agent activity that generated this comment. */
+  agentActivityId: text('agent_activity_id'),
   ...createdAt(),
 })
 
@@ -282,3 +298,46 @@ export type KanbanMilestone = typeof kanbanMilestones.$inferSelect
 export type KanbanIssue = typeof kanbanIssues.$inferSelect
 export type KanbanIssueComment = typeof kanbanIssueComments.$inferSelect
 export type KanbanIssueRelation = typeof kanbanIssueRelations.$inferSelect
+
+// ── Agent Sessions & Activities ───────────────────────────────────────────────
+
+/** An agent session represents one delegation period on an issue. */
+export const agentSessions = sqliteTable('agent_sessions', {
+  id: textPk(),
+  issueId: text('issue_id')
+    .notNull()
+    .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
+  agentProfileId: text('agent_profile_id')
+    .notNull()
+    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  /** Link to the underlying chat session used for agent execution. */
+  chatSessionId: text('chat_session_id')
+    .references(() => sessions.id, { onDelete: 'set null' }),
+  status: text('status', {
+    enum: ['created', 'active', 'completed', 'stopped', 'failed'],
+  }).notNull().default('created'),
+  ...timestamps(),
+})
+
+/** Immutable activity log for an agent session. Typed content, optional signals. */
+export const agentActivities = sqliteTable('agent_activities', {
+  id: textPk(),
+  agentSessionId: text('agent_session_id')
+    .notNull()
+    .references(() => agentSessions.id, { onDelete: 'cascade' }),
+  type: text('type', {
+    enum: ['thought', 'action', 'response', 'elicitation', 'error', 'prompt'],
+  }).notNull(),
+  /** JSON content: { body } for most types; { action, parameter, result } for 'action'. */
+  content: text('content').notNull(),
+  /** Optional signal: 'stop', 'select', etc. */
+  signal: text('signal'),
+  /** Optional JSON metadata for the signal (e.g., select options). */
+  signalMetadata: text('signal_metadata'),
+  ...createdAt(),
+})
+
+export type AgentSession = typeof agentSessions.$inferSelect
+export type NewAgentSession = typeof agentSessions.$inferInsert
+export type AgentActivity = typeof agentActivities.$inferSelect
+export type NewAgentActivity = typeof agentActivities.$inferInsert

@@ -1,128 +1,97 @@
-// Input: IssueCard, useDroppable from @dnd-kit/core, kanban query hooks, Button, Input
-// Output: KanbanColumn component — a status column in the board view with issue cards
-// Position: Board child component; one instance per status/unassigned column
+// Input: KanbanStatus, KanbanIssue[], dnd-kit, IssueCard
+// Output: KanbanColumn — single status column with droppable zone and sortable cards
+// Position: Column component used inside the board view grid
 
 import { useDroppable } from '@dnd-kit/core'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '@main/ipc-types'
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import type { KanbanIssue, KanbanStatus } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
-import { Input } from '@renderer/components/ui/input'
-import { cn } from '@renderer/lib/cn'
+import { ScrollArea } from '@renderer/components/ui/scroll-area'
+import { cn } from '@renderer/lib/utils'
 import { PlusIcon } from 'lucide-react'
-import { useState } from 'react'
 
 import { IssueCard } from './issue-card'
-import { useCreateIssue } from './use-kanban'
+import { StatusIcon } from './status-icon'
 
 interface KanbanColumnProps {
-  status: KanbanStatus | null // null = unassigned column
+  status: KanbanStatus
   issues: KanbanIssue[]
-  milestoneMap: Record<string, KanbanMilestone>
-  workspaceId: string
   onIssueClick: (issue: KanbanIssue) => void
+  onOpenCreate: (statusId: string) => void
 }
 
-export function KanbanColumn({ status, issues, milestoneMap, workspaceId, onIssueClick }: KanbanColumnProps) {
-  const dropId = status ? status.id : '__unassigned__'
-  const { setNodeRef, isOver } = useDroppable({ id: dropId, data: { statusId: status?.id ?? null } })
-  const [adding, setAdding] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const createIssue = useCreateIssue()
+function SortableIssueCard({
+  issue,
+  onClick,
+}: {
+  issue: KanbanIssue
+  onClick: (issue: KanbanIssue) => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: issue.id,
+    data: { type: 'issue', issue },
+  })
 
-  const headerColor = status?.color ?? '#94a3b8'
-
-  async function handleAdd() {
-    const title = newTitle.trim()
-    if (!title) {
-      return
-    }
-    await createIssue.mutateAsync({
-      workspaceId,
-      title,
-      statusId: status?.id ?? null,
-    })
-    setNewTitle('')
-    setAdding(false)
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : undefined,
   }
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-0">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <IssueCard issue={issue} onClick={onClick} isDragging={isDragging} />
+    </div>
+  )
+}
+
+export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate }: KanbanColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `column-${status.id}`,
+    data: { type: 'column', statusId: status.id },
+  })
+
+  return (
+    <div
+      className={cn(
+        'flex h-full w-72 shrink-0 flex-col rounded-lg',
+        isOver && 'bg-accent/15',
+      )}
+    >
       {/* Column header */}
-      <div className="flex items-center gap-2 px-1 pb-2">
-        <span
-          className="size-2.5 rounded-full shrink-0"
-          style={{ backgroundColor: headerColor }}
-        />
-        <span className="text-sm font-semibold text-foreground truncate">
-          {status?.name ?? 'Unassigned'}
-        </span>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {issues.length}
-        </span>
+      <div className="group/header flex items-center gap-2 px-2.5 py-2">
+        <StatusIcon color={status.color} />
+        <span className="text-[13px] font-medium text-foreground">{status.name}</span>
+        <span className="text-[11px] text-muted-foreground/40 tabular-nums">{issues.length}</span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="ml-auto text-muted-foreground/40 opacity-0 transition-opacity duration-75 group-hover/header:opacity-100 hover:text-foreground"
+          onClick={() => onOpenCreate(status.id)}
+        >
+          <PlusIcon />
+        </Button>
       </div>
 
-      {/* Drop zone */}
-      <div
-        ref={setNodeRef}
-        className={cn(
-          'flex flex-col gap-2 rounded-xl p-2 min-h-20 transition-colors',
-          isOver ? 'bg-accent/50' : 'bg-muted/30',
-        )}
-      >
-        {issues.map(issue => (
-          <IssueCard
-            key={issue.id}
-            issue={issue}
-            milestone={issue.milestoneId ? milestoneMap[issue.milestoneId] : undefined}
-            onClick={() => onIssueClick(issue)}
-          />
-        ))}
-
-        {/* Inline add issue form */}
-        {adding
-          ? (
-            <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card p-2">
-              <Input
-                autoFocus
-                placeholder="Issue title…"
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    void handleAdd()
-                  }
-                  if (e.key === 'Escape') {
-                    setAdding(false)
-                    setNewTitle('')
-                  }
-                }}
-                className="h-7 text-sm"
-              />
-              <div className="flex gap-1">
-                <Button size="sm" onClick={() => void handleAdd()} disabled={!newTitle.trim() || createIssue.isPending}>
-                  Add
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setAdding(false)
-                    setNewTitle('')
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
+      {/* Issue list */}
+      <div ref={setNodeRef} className="flex-1 min-h-0">
+        <ScrollArea className="h-full">
+          <SortableContext items={issues.map(i => i.id)} strategy={verticalListSortingStrategy}>
+            <div className="flex flex-col gap-1 px-1 pb-2">
+              {issues.map(issue => (
+                <SortableIssueCard key={issue.id} issue={issue} onClick={onIssueClick} />
+              ))}
             </div>
-          )
-          : (
-            <button
-              className="flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              onClick={() => setAdding(true)}
-            >
-              <PlusIcon className="size-3.5" />
-              Add issue
-            </button>
+          </SortableContext>
+
+          {/* Empty state */}
+          {issues.length === 0 && (
+            <div className="px-2 py-8 text-center">
+              <span className="text-[11px] text-muted-foreground/25">无 issue</span>
+            </div>
           )}
+        </ScrollArea>
       </div>
     </div>
   )

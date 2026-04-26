@@ -13,12 +13,14 @@ import { createFileRoute } from '@tanstack/react-router'
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as NewChatRouteImport } from './routes/new-chat'
-import { Route as KanbanRouteImport } from './routes/kanban'
 import { Route as DevtoolRouteImport } from './routes/devtool'
+import { Route as KanbanRouteRouteImport } from './routes/kanban/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspaceWorkspaceIdRouteImport } from './routes/workspace.$workspaceId'
-import { Route as KanbanBoardIdRouteImport } from './routes/kanban.$boardId'
 import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
+import { Route as KanbanBoardIdRouteRouteImport } from './routes/kanban/$boardId/route'
+import { Route as KanbanBoardIdIndexRouteImport } from './routes/kanban/$boardId/index'
+import { Route as KanbanBoardIdIssueIdRouteRouteImport } from './routes/kanban/$boardId/$issueId/route'
 
 const UsageLazyRouteImport = createFileRoute('/usage')()
 
@@ -37,16 +39,16 @@ const NewChatRoute = NewChatRouteImport.update({
   path: '/new-chat',
   getParentRoute: () => rootRouteImport,
 } as any)
-const KanbanRoute = KanbanRouteImport.update({
-  id: '/kanban',
-  path: '/kanban',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/kanban.lazy').then((d) => d.Route))
 const DevtoolRoute = DevtoolRouteImport.update({
   id: '/devtool',
   path: '/devtool',
   getParentRoute: () => rootRouteImport,
 } as any)
+const KanbanRouteRoute = KanbanRouteRouteImport.update({
+  id: '/kanban',
+  path: '/kanban',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/kanban.lazy').then((d) => d.Route))
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -59,13 +61,6 @@ const WorkspaceWorkspaceIdRoute = WorkspaceWorkspaceIdRouteImport.update({
 } as any).lazy(() =>
   import('./routes/workspace.$workspaceId.lazy').then((d) => d.Route),
 )
-const KanbanBoardIdRoute = KanbanBoardIdRouteImport.update({
-  id: '/$boardId',
-  path: '/$boardId',
-  getParentRoute: () => KanbanRoute,
-} as any).lazy(() =>
-  import('./routes/kanban.$boardId.lazy').then((d) => d.Route),
-)
 const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
   id: '/chat/$sessionId',
   path: '/chat/$sessionId',
@@ -73,81 +68,107 @@ const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
 } as any).lazy(() =>
   import('./routes/chat.$sessionId.lazy').then((d) => d.Route),
 )
+const KanbanBoardIdRouteRoute = KanbanBoardIdRouteRouteImport.update({
+  id: '/$boardId',
+  path: '/$boardId',
+  getParentRoute: () => KanbanRouteRoute,
+} as any)
+const KanbanBoardIdIndexRoute = KanbanBoardIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => KanbanBoardIdRouteRoute,
+} as any)
+const KanbanBoardIdIssueIdRouteRoute =
+  KanbanBoardIdIssueIdRouteRouteImport.update({
+    id: '/$issueId',
+    path: '/$issueId',
+    getParentRoute: () => KanbanBoardIdRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/kanban': typeof KanbanRouteRouteWithChildren
   '/devtool': typeof DevtoolRoute
-  '/kanban': typeof KanbanRouteWithChildren
   '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
   '/usage': typeof UsageLazyRoute
+  '/kanban/$boardId': typeof KanbanBoardIdRouteRouteWithChildren
   '/chat/$sessionId': typeof ChatSessionIdRoute
-  '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/workspace/$workspaceId': typeof WorkspaceWorkspaceIdRoute
+  '/kanban/$boardId/$issueId': typeof KanbanBoardIdIssueIdRouteRoute
+  '/kanban/$boardId/': typeof KanbanBoardIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/kanban': typeof KanbanRouteRouteWithChildren
   '/devtool': typeof DevtoolRoute
-  '/kanban': typeof KanbanRouteWithChildren
   '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
   '/usage': typeof UsageLazyRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
-  '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/workspace/$workspaceId': typeof WorkspaceWorkspaceIdRoute
+  '/kanban/$boardId/$issueId': typeof KanbanBoardIdIssueIdRouteRoute
+  '/kanban/$boardId': typeof KanbanBoardIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/kanban': typeof KanbanRouteRouteWithChildren
   '/devtool': typeof DevtoolRoute
-  '/kanban': typeof KanbanRouteWithChildren
   '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
   '/usage': typeof UsageLazyRoute
+  '/kanban/$boardId': typeof KanbanBoardIdRouteRouteWithChildren
   '/chat/$sessionId': typeof ChatSessionIdRoute
-  '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/workspace/$workspaceId': typeof WorkspaceWorkspaceIdRoute
+  '/kanban/$boardId/$issueId': typeof KanbanBoardIdIssueIdRouteRoute
+  '/kanban/$boardId/': typeof KanbanBoardIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/devtool'
     | '/kanban'
+    | '/devtool'
     | '/new-chat'
     | '/settings'
     | '/usage'
-    | '/chat/$sessionId'
     | '/kanban/$boardId'
+    | '/chat/$sessionId'
     | '/workspace/$workspaceId'
+    | '/kanban/$boardId/$issueId'
+    | '/kanban/$boardId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/devtool'
     | '/kanban'
+    | '/devtool'
     | '/new-chat'
     | '/settings'
     | '/usage'
     | '/chat/$sessionId'
-    | '/kanban/$boardId'
     | '/workspace/$workspaceId'
+    | '/kanban/$boardId/$issueId'
+    | '/kanban/$boardId'
   id:
     | '__root__'
     | '/'
-    | '/devtool'
     | '/kanban'
+    | '/devtool'
     | '/new-chat'
     | '/settings'
     | '/usage'
-    | '/chat/$sessionId'
     | '/kanban/$boardId'
+    | '/chat/$sessionId'
     | '/workspace/$workspaceId'
+    | '/kanban/$boardId/$issueId'
+    | '/kanban/$boardId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  KanbanRouteRoute: typeof KanbanRouteRouteWithChildren
   DevtoolRoute: typeof DevtoolRoute
-  KanbanRoute: typeof KanbanRouteWithChildren
   NewChatRoute: typeof NewChatRoute
   SettingsRoute: typeof SettingsRoute
   UsageLazyRoute: typeof UsageLazyRoute
@@ -178,18 +199,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof NewChatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/kanban': {
-      id: '/kanban'
-      path: '/kanban'
-      fullPath: '/kanban'
-      preLoaderRoute: typeof KanbanRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/devtool': {
       id: '/devtool'
       path: '/devtool'
       fullPath: '/devtool'
       preLoaderRoute: typeof DevtoolRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kanban': {
+      id: '/kanban'
+      path: '/kanban'
+      fullPath: '/kanban'
+      preLoaderRoute: typeof KanbanRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -206,13 +227,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceWorkspaceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/kanban/$boardId': {
-      id: '/kanban/$boardId'
-      path: '/$boardId'
-      fullPath: '/kanban/$boardId'
-      preLoaderRoute: typeof KanbanBoardIdRouteImport
-      parentRoute: typeof KanbanRoute
-    }
     '/chat/$sessionId': {
       id: '/chat/$sessionId'
       path: '/chat/$sessionId'
@@ -220,24 +234,59 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/kanban/$boardId': {
+      id: '/kanban/$boardId'
+      path: '/$boardId'
+      fullPath: '/kanban/$boardId'
+      preLoaderRoute: typeof KanbanBoardIdRouteRouteImport
+      parentRoute: typeof KanbanRouteRoute
+    }
+    '/kanban/$boardId/': {
+      id: '/kanban/$boardId/'
+      path: '/'
+      fullPath: '/kanban/$boardId/'
+      preLoaderRoute: typeof KanbanBoardIdIndexRouteImport
+      parentRoute: typeof KanbanBoardIdRouteRoute
+    }
+    '/kanban/$boardId/$issueId': {
+      id: '/kanban/$boardId/$issueId'
+      path: '/$issueId'
+      fullPath: '/kanban/$boardId/$issueId'
+      preLoaderRoute: typeof KanbanBoardIdIssueIdRouteRouteImport
+      parentRoute: typeof KanbanBoardIdRouteRoute
+    }
   }
 }
 
-interface KanbanRouteChildren {
-  KanbanBoardIdRoute: typeof KanbanBoardIdRoute
+interface KanbanBoardIdRouteRouteChildren {
+  KanbanBoardIdIssueIdRouteRoute: typeof KanbanBoardIdIssueIdRouteRoute
+  KanbanBoardIdIndexRoute: typeof KanbanBoardIdIndexRoute
 }
 
-const KanbanRouteChildren: KanbanRouteChildren = {
-  KanbanBoardIdRoute: KanbanBoardIdRoute,
+const KanbanBoardIdRouteRouteChildren: KanbanBoardIdRouteRouteChildren = {
+  KanbanBoardIdIssueIdRouteRoute: KanbanBoardIdIssueIdRouteRoute,
+  KanbanBoardIdIndexRoute: KanbanBoardIdIndexRoute,
 }
 
-const KanbanRouteWithChildren =
-  KanbanRoute._addFileChildren(KanbanRouteChildren)
+const KanbanBoardIdRouteRouteWithChildren =
+  KanbanBoardIdRouteRoute._addFileChildren(KanbanBoardIdRouteRouteChildren)
+
+interface KanbanRouteRouteChildren {
+  KanbanBoardIdRouteRoute: typeof KanbanBoardIdRouteRouteWithChildren
+}
+
+const KanbanRouteRouteChildren: KanbanRouteRouteChildren = {
+  KanbanBoardIdRouteRoute: KanbanBoardIdRouteRouteWithChildren,
+}
+
+const KanbanRouteRouteWithChildren = KanbanRouteRoute._addFileChildren(
+  KanbanRouteRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  KanbanRouteRoute: KanbanRouteRouteWithChildren,
   DevtoolRoute: DevtoolRoute,
-  KanbanRoute: KanbanRouteWithChildren,
   NewChatRoute: NewChatRoute,
   SettingsRoute: SettingsRoute,
   UsageLazyRoute: UsageLazyRoute,

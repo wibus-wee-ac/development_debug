@@ -261,13 +261,15 @@ interface NavItemProps {
   shortcut?: string
   collapsed?: boolean
   onClick?: () => void
+  'data-testid'?: string
 }
 
-function TopNavItem({ icon, label, shortcut, collapsed, onClick }: NavItemProps) {
+function TopNavItem({ icon, label, shortcut, collapsed, onClick, 'data-testid': testId }: NavItemProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      data-testid={testId}
       className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
     >
       {collapsed
@@ -380,6 +382,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="看板"
             collapsed={collapsed}
             onClick={() => navigate({ to: '/kanban' })}
+            data-testid="nav-kanban"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-4" />}

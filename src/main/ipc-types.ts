@@ -53,6 +53,7 @@ export type {
   RuntimeSession,
 } from './db/schema'
 export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
+export type { AgentActivity, AgentSession } from './db/schema'
 export type { AcpSessionState } from './lib/acp-connection'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'

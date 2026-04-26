@@ -1,15 +1,13 @@
 // Input: AppLayout, TanStack Router Outlet
-// Output: Kanban layout lazy component for /kanban
-// Position: Lazy-loaded layout chunk — sidebar is handled by AppSidebar
+// Output: Kanban layout route for /kanban
+// Position: Layout route — passes through to children, shows placeholder at root
 
 import { AppLayout } from '@renderer/components/layout/app-layout'
-import { RouteLoadingFallback } from '@renderer/components/ui/route-loading-fallback'
-import { createLazyFileRoute, Outlet, useRouterState } from '@tanstack/react-router'
+import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { LayoutDashboardIcon } from 'lucide-react'
 
-export const Route = createLazyFileRoute('/kanban')({
+export const Route = createFileRoute('/kanban')({
   component: KanbanLayout,
-  pendingComponent: RouteLoadingFallback,
 })
 
 function KanbanLayout() {

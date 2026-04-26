@@ -1,38 +1,76 @@
-// Input: KanbanIssue id, use-kanban hooks, Select/Textarea/Badge UI components
-// Output: IssuePanel component — sliding right-side panel for viewing and editing an issue
-// Position: Feature component used in KanbanBoardView as the detail overlay
+// Input: KanbanIssue id, use-kanban hooks, useAgentProfiles, MarkdownEditor, coss UI, motion/react
+// Output: IssuePanel — full-page issue detail + IssueProperties aside (delegate picker, agent session, activity feed)
+// Position: Route page component rendered via kanban/$boardId/$issueId
 
-import type { KanbanIssueRelation } from '@main/ipc-types'
+import type { KanbanIssue, KanbanIssueComment, KanbanIssueRelation } from '@main/ipc-types'
+import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
+import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { Badge } from '@renderer/components/ui/badge'
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { Combobox, ComboboxInput, ComboboxItem, ComboboxPopup } from '@renderer/components/ui/combobox'
+import { Kbd } from '@renderer/components/ui/kbd'
+import { Select, SelectItem, SelectPopup, SelectTrigger } from '@renderer/components/ui/select'
+import { Separator } from '@renderer/components/ui/separator'
 import { Textarea } from '@renderer/components/ui/textarea'
+import { Tooltip, TooltipPopup, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { cn } from '@renderer/lib/cn'
+import { AnimatePresence, motion } from 'motion/react'
+import {
+  AlertCircleIcon,
+  BotIcon,
+  BrainIcon,
+  ChevronRightIcon,
+  CircleStopIcon,
+  FileIcon,
+  GlobeIcon,
+  LinkIcon,
+  MessageSquareIcon,
+  PlusIcon,
+  SettingsIcon,
+  UserIcon,
+  WrenchIcon,
+  XIcon,
+} from 'lucide-react'
 import type * as React from 'react'
 import { useEffect, useRef, useState } from 'react'
 
+import { PriorityIcon } from './priority-icon'
+import { StatusIcon } from './status-icon'
 import {
   useAddComment,
+  useAddContextRef,
   useAddRelation,
+  useAgentActivities,
+  useAgentSessions,
   useComments,
+  useCreateIssue,
+  useDelegateIssue,
   useDeleteComment,
   useDeleteRelation,
   useIssue,
   useIssues,
   useMilestones,
   useRelations,
+  useRemoveContextRef,
+  useStartAgentSession,
   useStatuses,
+  useStopAgentSession,
+  useUndelegateIssue,
   useUpdateIssue,
 } from './use-kanban'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 interface IssuePanelProps {
   issueId: string
   workspaceId: string
-  onClose: () => void
 }
 
-// ── Priority helpers ──────────────────────────────────────────────────────────
+interface ContextRef {
+  type: 'file' | 'url' | 'text'
+  value: string
+  label?: string
+}
 
 const PRIORITY_OPTIONS = [
   { value: 'none', label: 'No priority' },
@@ -42,569 +80,996 @@ const PRIORITY_OPTIONS = [
   { value: 'urgent', label: 'Urgent' },
 ]
 
-const PRIORITY_BADGE: Record<string, string> = {
-  none: 'bg-muted text-muted-foreground',
-  low: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
-  high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  urgent: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function relativeTime(unixTs: number): string {
+  const secs = Math.floor(Date.now() / 1000) - unixTs
+  if (secs < 60) return 'just now'
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
+  return `${Math.floor(secs / 86400)}d ago`
 }
 
-const RELATION_OPTIONS = [
-  { value: 'blocks', label: 'Blocks' },
-  { value: 'duplicates', label: 'Duplicates' },
-  { value: 'relates_to', label: 'Relates to' },
-]
+// ── EditableTitle ─────────────────────────────────────────────────────────────
 
-// ── Sub-component: EditableTitle ──────────────────────────────────────────────
-
-function EditableTitle({
-  value,
-  onSave,
-}: {
-  value: string
-  onSave: (next: string) => void
-}) {
+function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) => void }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const ref = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    setDraft(value)
-  }, [value])
-
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus()
-    }
-  }, [editing])
+  useEffect(() => { setDraft(value) }, [value])
+  useEffect(() => { if (editing) ref.current?.select() }, [editing])
 
   function commit() {
     setEditing(false)
-    const trimmed = draft.trim()
-    if (trimmed && trimmed !== value) {
-      onSave(trimmed)
-    }
-    else {
-      setDraft(value)
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      commit()
-    }
-    if (e.key === 'Escape') {
-      setDraft(value)
-      setEditing(false)
-    }
+    const t = draft.trim()
+    if (t && t !== value) onSave(t)
+    else setDraft(value)
   }
 
   if (editing) {
     return (
       <input
-        ref={inputRef}
-        className="w-full text-xl font-semibold bg-transparent border-b border-ring outline-none pb-0.5"
+        ref={ref}
+        className="w-full text-[22px] font-semibold bg-transparent outline-none text-foreground leading-snug"
         value={draft}
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
-        onKeyDown={handleKeyDown}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit()
+          if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+        }}
       />
     )
   }
 
   return (
-    <h2
-      className="text-xl font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+    <h1
+      className="text-[22px] font-semibold text-foreground leading-snug text-wrap-pretty cursor-text hover:text-foreground/90 transition-colors"
       onClick={() => setEditing(true)}
     >
       {value}
-    </h2>
+    </h1>
   )
 }
 
-// ── Sub-component: LabelEditor ────────────────────────────────────────────────
+// ── ComposeComment ─────────────────────────────────────────────────────────────
 
-function LabelEditor({
-  labels,
-  onAdd,
-  onRemove,
-}: {
-  labels: string[]
-  onAdd: (label: string) => void
-  onRemove: (label: string) => void
-}) {
-  const [input, setInput] = useState('')
+function ComposeComment({ issueId }: { issueId: string }) {
+  const [focused, setFocused] = useState(false)
+  const [draft, setDraft] = useState('')
+  const addComment = useAddComment()
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if ((e.key === 'Enter' || e.key === ',') && input.trim()) {
-      e.preventDefault()
-      onAdd(input.trim())
-      setInput('')
-    }
+  function handleAdd() {
+    const content = draft.trim()
+    if (!content) return
+    addComment.mutate({ issueId, content }, {
+      onSuccess: () => { setDraft(''); setFocused(false) },
+    })
   }
 
   return (
-    <div className="flex flex-wrap gap-1.5 items-center">
-      {labels.map(l => (
-        <Badge
-          key={l}
-          variant="secondary"
-          className="cursor-pointer gap-1"
-          onClick={() => onRemove(l)}
-        >
-          {l}
-          <span className="opacity-60 hover:opacity-100 text-xs">×</span>
-        </Badge>
-      ))}
-      <input
-        className="text-sm outline-none bg-transparent min-w-20 placeholder:text-muted-foreground"
-        placeholder="Add label…"
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-      />
+    <div className="flex gap-3 mt-5">
+      <Avatar className="size-6 mt-1 shrink-0 bg-muted text-foreground">
+        <AvatarFallback className="text-[10px] font-medium">Me</AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <Textarea
+          data-testid="issue-comment-input"
+          placeholder="Leave a comment…"
+          value={draft}
+          rows={focused ? 4 : 1}
+          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraft(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => { if (!draft.trim()) setFocused(false) }}
+          className={cn(
+            'resize-none text-[13px] transition-all duration-200',
+            'border border-border/50 rounded-xl shadow-none',
+            'bg-muted/30 focus:bg-background',
+            focused ? 'min-h-20' : 'min-h-9',
+          )}
+          onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleAdd()
+          }}
+        />
+        <AnimatePresence>
+          {focused && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginTop: 0 }}
+              animate={{ opacity: 1, height: 'auto', marginTop: 8 }}
+              exit={{ opacity: 0, height: 0, marginTop: 0 }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
+              className="flex items-center justify-between overflow-hidden"
+            >
+              <Kbd className="text-[11px]">⌘↵</Kbd>
+              <button
+                data-testid="issue-comment-submit"
+                className={cn(
+                  'h-7 px-3.5 text-[12px] font-medium rounded-lg transition-colors',
+                  'bg-foreground text-background hover:bg-foreground/85',
+                  'disabled:opacity-30',
+                )}
+                disabled={!draft.trim() || addComment.isPending}
+                onClick={handleAdd}
+              >
+                Comment
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }
 
-// ── Sub-component: CommentList ────────────────────────────────────────────────
+// ── Activity timeline ─────────────────────────────────────────────────────────
 
-function CommentList({ issueId }: { issueId: string }) {
-  const { data: comments = [] } = useComments(issueId)
-  const addComment = useAddComment()
+function ActivityEntry({ comment, issueId, isLast }: { comment: KanbanIssueComment, issueId: string, isLast: boolean }) {
   const deleteComment = useDeleteComment()
-  const [draft, setDraft] = useState('')
+  const kind = (comment.authorKind ?? 'user') as 'user' | 'agent' | 'system'
 
-  function handleAdd() {
-    const content = draft.trim()
-    if (!content) {
-      return
+  if (kind === 'system') {
+    return (
+      <div className="flex items-center gap-3 py-2">
+        <div className="h-px flex-1 bg-border/25" />
+        <span className="text-[11px] text-muted-foreground/35 shrink-0 select-none italic">
+          {comment.content}
+        </span>
+        <div className="h-px flex-1 bg-border/25" />
+      </div>
+    )
+  }
+
+  const isAgent = kind === 'agent'
+
+  return (
+    <div className="flex gap-3 group/entry">
+      <div className="flex flex-col items-center">
+        <div className={cn(
+          'flex size-6 shrink-0 items-center justify-center rounded-full',
+          isAgent ? 'bg-blue-500/10' : 'bg-muted',
+        )}>
+          {isAgent
+            ? <BotIcon className="size-3 text-blue-500" />
+            : <UserIcon className="size-3 text-foreground/60" />}
+        </div>
+        {!isLast && <div className="w-px flex-1 mt-1.5 mb-1 bg-border/25" />}
+      </div>
+
+      <div className={cn('min-w-0 flex-1', isLast ? 'pb-0' : 'pb-5')}>
+        <div className="flex items-baseline gap-2 mb-1.5">
+          <span className="text-[12px] font-medium text-foreground">
+            {isAgent ? 'Agent' : 'Me'}
+          </span>
+          <span className="text-[11px] text-muted-foreground/35">
+            {relativeTime(comment.createdAt)}
+          </span>
+          <button
+            className="text-[11px] text-muted-foreground/25 hover:text-red-400 transition-colors opacity-0 group-hover/entry:opacity-100 ml-auto"
+            onClick={() => deleteComment.mutate({ id: comment.id, issueId })}
+          >
+            Delete
+          </button>
+        </div>
+        <p className="text-[13px] leading-relaxed text-foreground whitespace-pre-wrap">
+          {comment.content}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function Activity({ issueId }: { issueId: string }) {
+  const { data: comments = [] } = useComments(issueId)
+
+  return (
+    <div className="mt-2">
+      {comments.map((c: KanbanIssueComment, i: number) => (
+        <ActivityEntry
+          key={c.id}
+          comment={c}
+          issueId={issueId}
+          isLast={i === comments.length - 1}
+        />
+      ))}
+      <ComposeComment issueId={issueId} />
+    </div>
+  )
+}
+
+// ── Agent Activity Feed ───────────────────────────────────────────────────────
+
+const ACTIVITY_STYLE: Record<string, { icon: typeof BrainIcon, textClass: string }> = {
+  thought: { icon: BrainIcon, textClass: 'text-muted-foreground/55' },
+  action: { icon: WrenchIcon, textClass: 'text-muted-foreground/70' },
+  response: { icon: MessageSquareIcon, textClass: 'text-foreground' },
+  elicitation: { icon: SettingsIcon, textClass: 'text-blue-500' },
+  error: { icon: AlertCircleIcon, textClass: 'text-red-500' },
+  prompt: { icon: UserIcon, textClass: 'text-foreground' },
+}
+
+function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
+  const { data: activities = [] } = useAgentActivities(agentSessionId)
+  const [showReasoning, setShowReasoning] = useState(false)
+
+  const reasoning = activities.filter(a => a.type === 'thought' || a.type === 'action')
+  const prominent = activities.filter(a => a.type !== 'thought' && a.type !== 'action')
+
+  function parseBody(activity: typeof activities[number]) {
+    try {
+      const parsed = JSON.parse(activity.content) as Record<string, unknown>
+      if (activity.type === 'action') {
+        return `${parsed.action ?? 'action'}(${typeof parsed.parameter === 'string' ? parsed.parameter : '...'})`
+      }
+      return (parsed.body as string) ?? ''
     }
-    addComment.mutate({ issueId, content }, { onSuccess: () => setDraft('') })
+    catch {
+      return activity.content
+    }
+  }
+
+  if (activities.length === 0) {
+    return <p className="text-[12px] text-muted-foreground/35">No activity yet.</p>
   }
 
   return (
     <div className="space-y-3">
-      {comments.map(c => (
-        <div key={c.id} className="rounded-lg border bg-muted/30 p-3 space-y-1">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{new Date(c.createdAt).toLocaleString()}</span>
-            <button
-              className="hover:text-destructive transition-colors"
-              onClick={() => deleteComment.mutate({ id: c.id, issueId })}
-            >
-              ×
-            </button>
-          </div>
-          <p className="text-sm whitespace-pre-wrap">{c.content}</p>
+      {reasoning.length > 0 && (
+        <div>
+          <button
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground/45 hover:text-muted-foreground transition-colors"
+            onClick={() => setShowReasoning(!showReasoning)}
+          >
+            <ChevronRightIcon className={cn('size-3 transition-transform duration-150', showReasoning && 'rotate-90')} />
+            {reasoning.length} reasoning step{reasoning.length !== 1 ? 's' : ''}
+          </button>
+          <AnimatePresence>
+            {showReasoning && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.15 }}
+                className="mt-2 pl-3 border-l border-border/30 space-y-2 overflow-hidden"
+              >
+                {reasoning.map((a) => {
+                  const def = ACTIVITY_STYLE[a.type] ?? ACTIVITY_STYLE.thought
+                  const Icon = def.icon
+                  return (
+                    <div key={a.id} className={cn('flex items-start gap-2 text-[12px]', def.textClass)}>
+                      <Icon className="mt-0.5 size-3 shrink-0" />
+                      <span className="whitespace-pre-wrap min-w-0">{parseBody(a)}</span>
+                    </div>
+                  )
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      ))}
+      )}
 
-      <div className="space-y-2">
-        <Textarea
-          placeholder="Add a comment…"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          size="sm"
-        />
-        <button
-          className={cn(
-            'text-sm px-3 py-1 rounded-md bg-primary text-primary-foreground',
-            'hover:bg-primary/90 transition-colors disabled:opacity-50',
-          )}
-          disabled={!draft.trim() || addComment.isPending}
-          onClick={handleAdd}
-        >
-          Comment
-        </button>
-      </div>
+      {prominent.map((a) => {
+        const def = ACTIVITY_STYLE[a.type] ?? ACTIVITY_STYLE.response
+        const Icon = def.icon
+        return (
+          <div key={a.id} className={cn('flex items-start gap-2 text-[13px]', def.textClass)}>
+            <Icon className="mt-0.5 size-3.5 shrink-0" />
+            <span className="whitespace-pre-wrap min-w-0 leading-relaxed">{parseBody(a)}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-// ── Sub-component: RelationList ───────────────────────────────────────────────
+// ── SubIssueList ──────────────────────────────────────────────────────────────
 
-function RelationList({ issueId }: { issueId: string }) {
+function SubIssueList({ workspaceId, parentIssueId }: { workspaceId: string, parentIssueId: string }) {
+  const { data: subIssues = [] } = useIssues({ workspaceId, parentIssueId })
+  const createIssue = useCreateIssue()
+  const [open, setOpen] = useState(true)
+  const [composing, setComposing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { if (composing) inputRef.current?.focus() }, [composing])
+
+  function handleCreate() {
+    const title = draft.trim()
+    if (!title) { setComposing(false); return }
+    createIssue.mutate(
+      { workspaceId, title, parentIssueId },
+      { onSuccess: () => { setDraft(''); setComposing(false) } },
+    )
+  }
+
+  const isEmpty = subIssues.length === 0
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        {!isEmpty && (
+          <button
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors"
+            onClick={() => setOpen(!open)}
+          >
+            <ChevronRightIcon className={cn('size-3 transition-transform duration-150', open && 'rotate-90')} />
+            Sub-issues
+            <span className="text-[10px] bg-muted rounded px-1 py-px tabular-nums text-muted-foreground/50">
+              {subIssues.length}
+            </span>
+          </button>
+        )}
+        {isEmpty && (
+          <span className="text-[12px] text-muted-foreground/40 select-none">Sub-issues</span>
+        )}
+        <button
+          className="ml-auto text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+          onClick={() => setComposing(true)}
+        >
+          <PlusIcon className="size-3.5" />
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
+        {(!isEmpty && open) && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden mt-1.5 space-y-px"
+          >
+            {subIssues.map((si: KanbanIssue) => (
+              <div
+                key={si.id}
+                className="flex items-center gap-2 text-[13px] px-2 py-1.5 rounded-md hover:bg-muted/40 transition-colors text-foreground cursor-pointer"
+              >
+                <span className="size-1.5 rounded-full bg-muted-foreground/25 shrink-0" />
+                <span className="truncate flex-1">{si.title}</span>
+              </div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {composing && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.12 }}
+            className="overflow-hidden mt-2"
+          >
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              placeholder="New sub-issue title…"
+              className="w-full text-[13px] bg-muted/30 border border-border/40 rounded-lg px-3 py-1.5 outline-none placeholder:text-muted-foreground/30 focus:border-border/70 transition-colors"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreate()
+                if (e.key === 'Escape') { setDraft(''); setComposing(false) }
+              }}
+              onBlur={() => { if (!draft.trim()) setComposing(false) }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ── RelationList ──────────────────────────────────────────────────────────────
+
+const RELATION_TYPES = [
+  { value: 'relates_to', label: 'Relates to' },
+  { value: 'blocks', label: 'Blocks' },
+  { value: 'duplicates', label: 'Duplicates' },
+] as const
+
+function RelatedIssueTitle({ issueId }: { issueId: string }) {
+  const { data: issue } = useIssue(issueId)
+  return (
+    <span className="text-[12px] truncate flex-1 text-foreground">
+      {issue ? issue.title : issueId.substring(0, 8)}
+    </span>
+  )
+}
+
+function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: string }) {
   const { data: relations = [] } = useRelations(issueId)
+  const { data: allIssues = [] } = useIssues({ workspaceId })
   const addRelation = useAddRelation()
   const deleteRelation = useDeleteRelation()
-  const [targetId, setTargetId] = useState('')
   const [relType, setRelType] = useState<'blocks' | 'duplicates' | 'relates_to'>('relates_to')
+  const [showPicker, setShowPicker] = useState(false)
 
-  function handleAdd() {
-    const t = targetId.trim()
-    if (!t) {
-      return
-    }
+  const relatedIds = new Set(relations.flatMap((r: KanbanIssueRelation) => [r.sourceIssueId, r.targetIssueId]))
+  const candidates = allIssues.filter(i => i.id !== issueId && !relatedIds.has(i.id))
+
+  function handleSelect(targetId: string | null) {
+    if (!targetId) return
     addRelation.mutate(
-      { sourceIssueId: issueId, targetIssueId: t, type: relType },
-      { onSuccess: () => setTargetId('') },
+      { sourceIssueId: issueId, targetIssueId: targetId, type: relType },
+      { onSuccess: () => setShowPicker(false) },
     )
   }
 
   function relationLabel(r: KanbanIssueRelation) {
-    if (r.sourceIssueId === issueId) {
-      return r.type.replace('_', ' ')
-    }
-    if (r.type === 'blocks') {
-      return 'blocked by'
-    }
-    if (r.type === 'duplicates') {
-      return 'duplicated by'
-    }
+    if (r.sourceIssueId === issueId) return r.type.replace('_', ' ')
+    if (r.type === 'blocks') return 'blocked by'
+    if (r.type === 'duplicates') return 'duplicated by'
     return 'relates to'
   }
 
-  function otherIssueId(r: KanbanIssueRelation) {
+  function relatedId(r: KanbanIssueRelation) {
     return r.sourceIssueId === issueId ? r.targetIssueId : r.sourceIssueId
   }
 
   return (
-    <div className="space-y-2">
-      {relations.map(r => (
-        <div key={r.id} className="flex items-center justify-between text-sm gap-2">
-          <span className="text-muted-foreground capitalize">{relationLabel(r)}</span>
-          <span className="font-mono text-xs truncate flex-1">{otherIssueId(r)}</span>
+    <div className="space-y-1.5">
+      {relations.map((r: KanbanIssueRelation) => (
+        <div key={r.id} className="flex items-center gap-2 group/rel">
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 font-normal text-muted-foreground/45 border-border/40">
+            {relationLabel(r)}
+          </Badge>
+          <RelatedIssueTitle issueId={relatedId(r)} />
           <button
-            className="text-muted-foreground hover:text-destructive transition-colors text-xs"
+            className="text-muted-foreground/25 hover:text-red-400 transition-colors opacity-0 group-hover/rel:opacity-100"
             onClick={() => deleteRelation.mutate({ id: r.id, issueId })}
           >
-            ×
+            <XIcon className="size-3" />
           </button>
         </div>
       ))}
 
-      <div className="flex gap-2 items-center pt-1">
-        <Select
-          value={relType}
-          onValueChange={v => setRelType(v as typeof relType)}
-        >
-          <SelectTrigger className="min-w-27.5" size="sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectPopup>
-            {RELATION_OPTIONS.map(o => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectPopup>
-        </Select>
+      {showPicker
+        ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-2"
+          >
+            <div className="flex gap-1 flex-wrap">
+              {RELATION_TYPES.map(t => (
+                <button
+                  key={t.value}
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-md transition-colors',
+                    relType === t.value
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground/35 hover:text-muted-foreground',
+                  )}
+                  onClick={() => setRelType(t.value as typeof relType)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <Combobox<string> value={null} onValueChange={handleSelect}>
+              <ComboboxInput
+                size="sm"
+                placeholder="Search issues…"
+                startAddon={<LinkIcon />}
+                autoFocus
+                onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowPicker(false) } }}
+              />
+              <ComboboxPopup>
+                {candidates.map(i => (
+                  <ComboboxItem key={i.id} value={i.id}>
+                    <span className="truncate">{i.title}</span>
+                  </ComboboxItem>
+                ))}
+                {candidates.length === 0 && (
+                  <div className="px-2 py-3 text-center text-[12px] text-muted-foreground/35">
+                    No issues available
+                  </div>
+                )}
+              </ComboboxPopup>
+            </Combobox>
+            <button
+              className="text-[11px] text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+              onClick={() => setShowPicker(false)}
+            >
+              Cancel
+            </button>
+          </motion.div>
+        )
+        : (
+          <button
+            className="flex items-center gap-1 text-[12px] text-muted-foreground/35 hover:text-muted-foreground transition-colors"
+            onClick={() => setShowPicker(true)}
+          >
+            <PlusIcon className="size-3" />
+            Add relation
+          </button>
+        )}
+    </div>
+  )
+}
 
+// ── ContextRefList ────────────────────────────────────────────────────────────
+
+function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[] }) {
+  const addRef = useAddContextRef()
+  const removeRef = useRemoveContextRef()
+  const [input, setInput] = useState('')
+
+  function handleAdd() {
+    const v = input.trim()
+    if (!v) return
+    const ref: ContextRef = v.startsWith('http') ? { type: 'url', value: v } : { type: 'file', value: v }
+    addRef.mutate({ issueId, ref: JSON.stringify(ref) })
+    setInput('')
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {refs.map(r => (
+        <div key={`${r.type}-${r.value}`} className="flex items-center gap-2 group/ref">
+          {r.type === 'url'
+            ? <GlobeIcon className="size-3 text-muted-foreground/35 shrink-0" />
+            : <FileIcon className="size-3 text-muted-foreground/35 shrink-0" />}
+          <Tooltip>
+            <TooltipTrigger className="flex-1 min-w-0">
+              <span className="text-[12px] text-muted-foreground truncate block">{r.label ?? r.value}</span>
+            </TooltipTrigger>
+            <TooltipPopup>{r.value}</TooltipPopup>
+          </Tooltip>
+          <button
+            className="text-muted-foreground/25 hover:text-red-400 transition-colors opacity-0 group-hover/ref:opacity-100"
+            onClick={() => removeRef.mutate({ issueId, index: refs.indexOf(r) })}
+          >
+            <XIcon className="size-3" />
+          </button>
+        </div>
+      ))}
+      <div className="flex items-center gap-1.5">
         <input
-          className="flex-1 text-xs px-2 h-8 rounded-md border border-input bg-background outline-none focus:ring-2 ring-ring/24"
-          placeholder="Issue ID…"
-          value={targetId}
-          onChange={e => setTargetId(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          placeholder="Add path or URL…"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+          className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-muted-foreground/30"
         />
-        <button
-          className="text-xs px-2 h-8 rounded-md bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
-          disabled={!targetId.trim() || addRelation.isPending}
-          onClick={handleAdd}
-        >
-          Add
-        </button>
+        {input.trim() && (
+          <button className="text-muted-foreground/35 hover:text-foreground transition-colors" onClick={handleAdd}>
+            <PlusIcon className="size-3" />
+          </button>
+        )}
       </div>
     </div>
   )
 }
 
-// ── Sub-component: SubIssueList ───────────────────────────────────────────────
+// ── LabelEditor ───────────────────────────────────────────────────────────────
 
-function SubIssueList({
-  workspaceId,
-  parentIssueId,
-  onSelectIssue,
-}: {
-  workspaceId: string
-  parentIssueId: string
-  onSelectIssue: (id: string) => void
-}) {
-  const { data: subIssues = [] } = useIssues({ workspaceId, parentIssueId })
-
-  if (subIssues.length === 0) {
-    return <p className="text-xs text-muted-foreground">No sub-issues</p>
-  }
+function LabelEditor({ labels, onAdd, onRemove }: { labels: string[], onAdd: (l: string) => void, onRemove: (l: string) => void }) {
+  const [input, setInput] = useState('')
 
   return (
-    <div className="space-y-1">
-      {subIssues.map(si => (
-        <button
-          key={si.id}
-          className="w-full text-left text-sm px-2 py-1.5 rounded-md hover:bg-muted/60 transition-colors truncate"
-          onClick={() => onSelectIssue(si.id)}
-        >
-          {si.title}
-        </button>
+    <div className="flex flex-wrap gap-1.5 items-center">
+      {labels.map(l => (
+        <Badge key={l} variant="secondary" className="text-[11px] gap-1 px-1.5 h-5 group/label cursor-default">
+          {l}
+          <button
+            className="opacity-0 group-hover/label:opacity-100 transition-opacity"
+            onClick={() => onRemove(l)}
+          >
+            <XIcon className="size-2.5" />
+          </button>
+        </Badge>
       ))}
+      <input
+        className="text-[12px] outline-none bg-transparent min-w-14 placeholder:text-muted-foreground/30"
+        placeholder="Add…"
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.key === 'Enter' || e.key === ',') && input.trim()) {
+            e.preventDefault()
+            onAdd(input.trim())
+            setInput('')
+          }
+        }}
+      />
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── PropertyRow ───────────────────────────────────────────────────────────────
 
-export function IssuePanel({ issueId, workspaceId, onClose }: IssuePanelProps) {
+function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
+  return (
+    <div className="flex items-center h-8 gap-2">
+      <span className="text-[11px] text-muted-foreground/45 w-20 shrink-0 select-none">{label}</span>
+      <div className="flex-1 min-w-0 flex justify-start">{children}</div>
+    </div>
+  )
+}
+
+const propertyTriggerCls = 'h-7 border-0 shadow-none text-[12px] px-2 rounded-md bg-transparent hover:bg-muted/50 transition-colors'
+
+// ── SectionHeader ─────────────────────────────────────────────────────────────
+
+function SectionHeader({ label, count }: { label: string, count?: number }) {
+  return (
+    <div className="flex items-center gap-1.5 mb-2">
+      <span className="text-[11px] text-muted-foreground/40 select-none">{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className="text-[10px] text-muted-foreground/30 bg-muted/50 rounded px-1 tabular-nums">{count}</span>
+      )}
+    </div>
+  )
+}
+
+// ── Agent Session Status ──────────────────────────────────────────────────────
+
+const SESSION_STATUS_MAP: Record<string, { label: string, dotClass: string, textClass: string }> = {
+  created: { label: 'Queued', dotClass: 'bg-muted-foreground/50', textClass: 'text-muted-foreground' },
+  active: { label: 'Running', dotClass: 'bg-blue-500 animate-pulse', textClass: 'text-blue-500' },
+  completed: { label: 'Done', dotClass: 'bg-green-600', textClass: 'text-green-600' },
+  stopped: { label: 'Stopped', dotClass: 'bg-amber-500', textClass: 'text-amber-500' },
+  failed: { label: 'Failed', dotClass: 'bg-red-500', textClass: 'text-red-500' },
+}
+
+function AgentSessionStatus({
+  session,
+  activeSession,
+  onStop,
+  onStart,
+}: {
+  session: { id: string, status: string, agentProfileId: string, createdAt: number }
+  activeSession: { id: string } | null
+  onStop: () => void
+  onStart: () => void
+}) {
+  const { profiles = [] } = useAgentProfiles()
+  const agent = profiles.find(p => p.id === session.agentProfileId)
+  const status = SESSION_STATUS_MAP[session.status] ?? SESSION_STATUS_MAP.created
+  const isLive = session.status === 'active'
+
+  return (
+    <div
+      className={cn(
+        'relative overflow-hidden rounded-xl p-3 space-y-3',
+        'bg-card border border-border/50',
+        'inset-shadow-[0_1px_--theme(--color-white/8%)]',
+      )}
+    >
+      {isLive && (
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.035] text-blue-400"
+          style={{
+            background: 'radial-gradient(circle at 30% 30%, currentColor, transparent 65%)',
+            animation: 'agentGlow 5s ease-in-out infinite',
+          }}
+        />
+      )}
+
+      <div className="relative flex items-center justify-between">
+        <span className="flex items-center gap-2 text-[13px]">
+          <BotIcon className="size-3.5 text-muted-foreground/55" />
+          <span className="font-medium">{agent?.name ?? 'Agent'}</span>
+        </span>
+        <span className={cn('flex items-center gap-1.5 text-[11px]', status.textClass)}>
+          <span className={cn('size-1.5 rounded-full shrink-0', status.dotClass)} />
+          {status.label}
+        </span>
+      </div>
+
+      {(session.status === 'created' || activeSession) && (
+        <div className="relative flex items-center gap-2">
+          {session.status === 'created' && (
+            <button
+              className="h-6 px-3 rounded-lg text-[11px] font-medium bg-blue-500/10 text-blue-500 hover:bg-blue-500/15 transition-colors"
+              onClick={onStart}
+            >
+              Start
+            </button>
+          )}
+          {activeSession && (
+            <button
+              className="flex items-center gap-1 h-6 px-3 rounded-lg text-[11px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/15 transition-colors"
+              onClick={onStop}
+            >
+              <CircleStopIcon className="size-3" />
+              Stop
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Main IssuePanel ────────────────────────────────────────────────────────────
+
+export function IssuePanel({ issueId, workspaceId }: IssuePanelProps) {
   const { data: issue, isLoading } = useIssue(issueId)
-  const { data: statuses = [] } = useStatuses(workspaceId)
-  const { data: milestones = [] } = useMilestones(workspaceId)
+  const { data: agentSessions = [] } = useAgentSessions(issueId)
   const updateIssue = useUpdateIssue()
-
-  // local description draft for auto-save-on-blur
-  const [descDraft, setDescDraft] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!issue) {
-      return
-    }
-    setDescDraft(issue.description ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [issueId])
+  const latestSession = agentSessions[0]
 
   function patch(p: Parameters<typeof updateIssue.mutate>[0]['patch']) {
-    if (!issue) {
-      return
-    }
+    if (!issue) return
     updateIssue.mutate({ id: issueId, patch: p })
-  }
-
-  function saveDescription() {
-    if (descDraft === null || !issue) {
-      return
-    }
-    const trimmed = descDraft.trim() || null
-    if (trimmed !== (issue.description ?? null)) {
-      patch({ description: trimmed })
-    }
-  }
-
-  function parseLabels(): string[] {
-    if (!issue) {
-      return []
-    }
-    try {
-      return JSON.parse(issue.labels) as string[]
-    }
-    catch {
-      return []
-    }
-  }
-
-  const labels = parseLabels()
-
-  function addLabel(l: string) {
-    if (labels.includes(l)) {
-      return
-    }
-    patch({ labels: [...labels, l] })
-  }
-
-  function removeLabel(l: string) {
-    patch({ labels: labels.filter(x => x !== l) })
-  }
-
-  // Track stack for sub-issue navigation
-  const [issueStack, setIssueStack] = useState<string[]>([issueId])
-  const currentId = issueStack.at(-1) ?? issueId
-
-  // When issueId prop changes externally reset stack
-  useEffect(() => {
-    setIssueStack([issueId])
-  }, [issueId])
-
-  function openSubIssue(id: string) {
-    setIssueStack(prev => [...prev, id])
-  }
-
-  function goBack() {
-    setIssueStack(prev => prev.slice(0, -1))
-  }
-
-  // When navigated inside panel, use a nested panel for sub-issues
-  if (currentId !== issueId) {
-    return <IssuePanel issueId={currentId} workspaceId={workspaceId} onClose={goBack} />
   }
 
   if (isLoading || !issue) {
     return (
-      <aside className="flex h-full w-105 border-l bg-background z-40 items-center justify-center">
-        <span className="text-muted-foreground text-sm">Loading…</span>
-      </aside>
+      <div className="flex flex-1 items-center justify-center">
+        <span className="text-sm text-muted-foreground/35">Loading…</span>
+      </div>
     )
   }
 
-  const currentStatus = statuses.find(s => s.id === issue.statusId)
-  const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
-  const priority = (issue.priority as string) ?? 'none'
-
   return (
-    <aside className="flex h-full w-120 border-l bg-background z-40 flex-col overflow-hidden shadow-xl">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          {issueStack.length > 1 && (
-            <button
-              className="text-muted-foreground hover:text-foreground transition-colors text-sm"
-              onClick={goBack}
-            >
-              ←
-            </button>
-          )}
-          <span className="text-xs font-mono text-muted-foreground shrink-0">
-            {issue.id.substring(0, 8)}
-          </span>
-        </div>
-        <button
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </div>
+    <div data-testid="issue-detail-panel" className="flex h-full flex-1 flex-col overflow-y-auto">
+      <div className="max-w-170 w-full mx-auto px-8 pb-20 pt-8 space-y-9">
 
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        {/* Title */}
-        <EditableTitle
-          value={issue.title}
-          onSave={title => patch({ title })}
+        <EditableTitle value={issue.title} onSave={title => patch({ title })} />
+
+        <MarkdownEditor
+          content={issue.description ?? ''}
+          onSave={(md) => {
+            const trimmed = md.trim() || null
+            if (trimmed !== issue.description) patch({ description: trimmed })
+          }}
+          placeholder="Add a description…"
+          className="min-h-24"
         />
 
-        {/* Metadata row */}
-        <div className="grid grid-cols-2 gap-3">
-          {/* Status */}
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Status</label>
+        <SubIssueList workspaceId={workspaceId} parentIssueId={issueId} />
+
+        {latestSession && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="size-5 rounded-full flex items-center justify-center bg-blue-500/10">
+                <BotIcon className="size-3 text-blue-500" />
+              </div>
+              <span className="text-[12px] text-muted-foreground/45">Agent reasoning</span>
+            </div>
+            <AgentActivityFeed agentSessionId={latestSession.id} />
+          </div>
+        )}
+
+        <Separator className="opacity-30" />
+
+        <div>
+          <span className="text-[12px] text-muted-foreground/40 block mb-3">Activity</span>
+          <Activity issueId={issueId} />
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ── IssueProperties (AppLayout aside slot) ─────────────────────────────────────
+
+export function IssueProperties({ issueId, workspaceId }: { issueId: string, workspaceId: string }) {
+  const { data: issue } = useIssue(issueId)
+  const { data: statuses = [] } = useStatuses(workspaceId)
+  const { data: milestones = [] } = useMilestones(workspaceId)
+  const { profiles: agentProfiles = [] } = useAgentProfiles()
+  const { data: agentSessions = [] } = useAgentSessions(issueId)
+  const { data: relations = [] } = useRelations(issueId)
+  const updateIssue = useUpdateIssue()
+  const delegateIssue = useDelegateIssue()
+  const undelegateIssue = useUndelegateIssue()
+  const stopAgentSession = useStopAgentSession()
+  const startAgentSession = useStartAgentSession()
+
+  function patch(p: Parameters<typeof updateIssue.mutate>[0]['patch']) {
+    if (!issue) return
+    updateIssue.mutate({ id: issueId, patch: p })
+  }
+
+  function parseLabels(): string[] {
+    try { return JSON.parse(issue?.labels ?? '[]') as string[] }
+    catch { return [] }
+  }
+
+  function parseContextRefs(): ContextRef[] {
+    try { return JSON.parse(issue?.contextRefs ?? '[]') as ContextRef[] }
+    catch { return [] }
+  }
+
+  if (!issue) return null
+
+  const labels = parseLabels()
+  const contextRefs = parseContextRefs()
+  const priority = (issue.priority as string) ?? 'none'
+  const currentStatus = statuses.find(s => s.id === issue.statusId)
+  const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
+  const currentPriority = PRIORITY_OPTIONS.find(o => o.value === priority)
+  const enabledProfiles = agentProfiles.filter(p => p.enabled)
+  const currentDelegate = enabledProfiles.find(p => p.id === issue.delegateAgentId)
+  const activeSession = agentSessions.find(s => s.status === 'active' || s.status === 'created')
+  const latestSession = agentSessions[0]
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="px-4 py-5 space-y-7">
+
+        <div className="space-y-0.5">
+          <PropertyRow label="Status">
             <Select
               value={issue.statusId ?? ''}
               onValueChange={statusId => patch({ statusId: statusId || null })}
             >
-              <SelectTrigger size="sm">
-                <SelectValue placeholder="No status" />
+              <SelectTrigger size="sm" className={propertyTriggerCls}>
+                {currentStatus
+                  ? (
+                    <span className="flex items-center gap-1.5">
+                      <StatusIcon color={currentStatus.color} className="size-2.5" />
+                      <span>{currentStatus.name}</span>
+                    </span>
+                  )
+                  : <span className="text-muted-foreground/35">None</span>}
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value="">
-                  <span className="text-muted-foreground">No status</span>
-                </SelectItem>
+                <SelectItem value=""><span className="text-muted-foreground/35">None</span></SelectItem>
                 {statuses.map(s => (
                   <SelectItem key={s.id} value={s.id}>
                     <span className="flex items-center gap-2">
-                      {s.color && (
-                        <span
-                          className="w-2 h-2 rounded-full shrink-0"
-                          style={{ background: s.color }}
-                        />
-                      )}
+                      <StatusIcon color={s.color} className="size-2.5" />
                       {s.name}
                     </span>
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
-          </div>
+          </PropertyRow>
 
-          {/* Priority */}
-          <div className="space-y-1">
-            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Priority</label>
+          <PropertyRow label="Priority">
             <Select
               value={priority}
               onValueChange={p => patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })}
             >
-              <SelectTrigger size="sm">
-                <SelectValue>
-                  <span className={cn('text-xs px-1.5 py-0.5 rounded font-medium', PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.none)}>
-                    {PRIORITY_OPTIONS.find(o => o.value === priority)?.label ?? 'None'}
-                  </span>
-                </SelectValue>
+              <SelectTrigger size="sm" className={propertyTriggerCls}>
+                <span className="flex items-center gap-1.5">
+                  <PriorityIcon priority={priority} className="size-3" />
+                  <span>{currentPriority?.label ?? 'No priority'}</span>
+                </span>
               </SelectTrigger>
               <SelectPopup>
                 {PRIORITY_OPTIONS.map(o => (
                   <SelectItem key={o.value} value={o.value}>
-                    {o.label}
+                    <span className="flex items-center gap-2">
+                      <PriorityIcon priority={o.value} className="size-3" />
+                      {o.label}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
-          </div>
+          </PropertyRow>
 
-          {/* Milestone */}
-          <div className="space-y-1 col-span-2">
-            <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Milestone</label>
+          <PropertyRow label="Milestone">
             <Select
               value={issue.milestoneId ?? ''}
               onValueChange={milestoneId => patch({ milestoneId: milestoneId || null })}
             >
-              <SelectTrigger size="sm">
-                <SelectValue placeholder="No milestone" />
+              <SelectTrigger size="sm" className={propertyTriggerCls}>
+                {currentMilestone
+                  ? <span className="truncate">{currentMilestone.title}</span>
+                  : <span className="text-muted-foreground/35">None</span>}
               </SelectTrigger>
               <SelectPopup>
-                <SelectItem value="">
-                  <span className="text-muted-foreground">No milestone</span>
-                </SelectItem>
+                <SelectItem value=""><span className="text-muted-foreground/35">None</span></SelectItem>
                 {milestones.map(m => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.title}
-                    {m.dueDate && (
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {'due '}
-                        {new Date(m.dueDate).toLocaleDateString()}
+                  <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
+          </PropertyRow>
+
+          <PropertyRow label="Assignee">
+            <Select
+              value={issue.delegateAgentId ? `agent:${issue.delegateAgentId}` : issue.assigneeKind === 'user' ? 'user:__self__' : ''}
+              onValueChange={(val) => {
+                if (!val) {
+                  undelegateIssue.mutate({ issueId })
+                  patch({ assigneeKind: null, assigneeId: null })
+                }
+                else if (val === 'user:__self__') {
+                  if (issue.delegateAgentId) undelegateIssue.mutate({ issueId })
+                  patch({ assigneeKind: 'user', assigneeId: '__self__' })
+                }
+                else if (val.startsWith('agent:')) {
+                  const agentId = val.slice(6)
+                  patch({ assigneeKind: null, assigneeId: null })
+                  delegateIssue.mutate({ issueId, agentProfileId: agentId })
+                }
+              }}
+            >
+              <SelectTrigger size="sm" className={propertyTriggerCls}>
+                {issue.delegateAgentId
+                  ? (
+                    <span className="flex items-center gap-1.5">
+                      <BotIcon className="size-3" />
+                      <span>{currentDelegate?.name ?? 'Agent'}</span>
+                    </span>
+                  )
+                  : issue.assigneeKind === 'user'
+                    ? (
+                      <span className="flex items-center gap-1.5">
+                        <UserIcon className="size-3" />
+                        <span>Me</span>
                       </span>
-                    )}
+                    )
+                    : <span className="text-muted-foreground/35">Unassigned</span>}
+              </SelectTrigger>
+              <SelectPopup>
+                <SelectItem value=""><span className="text-muted-foreground/35">Unassigned</span></SelectItem>
+                <SelectItem value="user:__self__">
+                  <span className="flex items-center gap-2">
+                    <UserIcon className="size-3" />
+                    Me
+                  </span>
+                </SelectItem>
+                {enabledProfiles.length > 0 && (
+                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground/30 select-none">Agents</div>
+                )}
+                {enabledProfiles.map(p => (
+                  <SelectItem key={p.id} value={`agent:${p.id}`}>
+                    <span className="flex items-center gap-2">
+                      <BotIcon className="size-3" />
+                      {p.name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectPopup>
             </Select>
-            {currentMilestone && (
-              <p className="text-xs text-muted-foreground">
-                {currentStatus?.name ?? 'Backlog'}
-                {' · '}
-                {currentMilestone.title}
-              </p>
-            )}
+          </PropertyRow>
+        </div>
+
+        {latestSession && (
+          <div>
+            <SectionHeader label="Agent session" />
+            <AgentSessionStatus
+              session={latestSession}
+              activeSession={activeSession ?? null}
+              onStop={() => {
+                if (activeSession) stopAgentSession.mutate({ agentSessionId: activeSession.id, issueId })
+              }}
+              onStart={() => {
+                if (latestSession.status === 'created') {
+                  startAgentSession.mutate({
+                    issueId,
+                    agentSessionId: latestSession.id,
+                    agentProfileId: latestSession.agentProfileId,
+                  })
+                }
+              }}
+            />
           </div>
-        </div>
+        )}
 
-        {/* Description */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Description</label>
-          <Textarea
-            placeholder="Add a description…"
-            value={descDraft ?? ''}
-            onChange={e => setDescDraft(e.target.value)}
-            onBlur={saveDescription}
-            size="default"
+        <div>
+          <SectionHeader label="Labels" count={labels.length} />
+          <LabelEditor
+            labels={labels}
+            onAdd={(l) => { if (!labels.includes(l)) patch({ labels: [...labels, l] }) }}
+            onRemove={l => patch({ labels: labels.filter(x => x !== l) })}
           />
         </div>
 
-        {/* Labels */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Labels</label>
-          <LabelEditor labels={labels} onAdd={addLabel} onRemove={removeLabel} />
+        <div>
+          <SectionHeader label="Relations" count={relations.length} />
+          <RelationList issueId={issueId} workspaceId={workspaceId} />
         </div>
 
-        {/* Sub-issues */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Sub-issues</label>
-          <SubIssueList
-            workspaceId={workspaceId}
-            parentIssueId={issueId}
-            onSelectIssue={openSubIssue}
-          />
+        <div>
+          <SectionHeader label="Context" count={contextRefs.length} />
+          <ContextRefList issueId={issueId} refs={contextRefs} />
         </div>
 
-        {/* Relations */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Relations</label>
-          <RelationList issueId={issueId} />
-        </div>
-
-        {/* Comments */}
-        <div className="space-y-1.5">
-          <label className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Comments</label>
-          <CommentList issueId={issueId} />
-        </div>
       </div>
-    </aside>
+    </div>
   )
 }

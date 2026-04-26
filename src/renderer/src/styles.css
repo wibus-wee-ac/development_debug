@@ -14,6 +14,40 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Hide scrollbars globally while keeping scroll functionality */
+* {
+  scrollbar-width: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Agent session glow animation */
+@keyframes agentGlow {
+
+  0%,
+  100% {
+    --x: 20%;
+    --y: 30%;
+  }
+
+  25% {
+    --x: 80%;
+    --y: 20%;
+  }
+
+  50% {
+    --x: 70%;
+    --y: 80%;
+  }
+
+  75% {
+    --x: 30%;
+    --y: 70%;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -1,5 +1,5 @@
 // Input: getDb, kanban schema tables, drizzle-orm operators
-// Output: KanbanService — IPC surface for boards, statuses, milestones, issues, comments, and relations
+// Output: KanbanService — IPC surface for boards, statuses, milestones, issues, comments, relations, delegation, and agent activities
 // Position: Main-process IPC service for the Kanban feature
 
 import { randomUUID } from 'node:crypto'
@@ -9,6 +9,8 @@ import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
 
 import { getDb } from '../db'
 import type {
+  AgentActivity,
+  AgentSession,
   KanbanBoard,
   KanbanIssue,
   KanbanIssueComment,
@@ -17,6 +19,9 @@ import type {
   KanbanStatus,
 } from '../db/schema'
 import {
+  agentActivities,
+  agentProfiles,
+  agentSessions,
   kanbanBoards,
   kanbanIssueComments,
   kanbanIssueRelations,
@@ -316,6 +321,8 @@ export class KanbanService extends IpcService {
     milestoneId: string | null
     parentIssueId: string | null
     statusId: string | null
+    assigneeKind: string | null
+    assigneeId: string | null
   }>): KanbanIssue {
     const db = getDb()
     const updates: Record<string, unknown> = { updatedAt: now() }
@@ -339,6 +346,12 @@ export class KanbanService extends IpcService {
     }
     if ('statusId' in patch) {
       updates.statusId = patch.statusId ?? null
+    }
+    if ('assigneeKind' in patch) {
+      updates.assigneeKind = patch.assigneeKind ?? null
+    }
+    if ('assigneeId' in patch) {
+      updates.assigneeId = patch.assigneeId ?? null
     }
     db.update(kanbanIssues).set(updates).where(eq(kanbanIssues.id, id)).run()
     return db.select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()!
@@ -373,6 +386,8 @@ export class KanbanService extends IpcService {
   addComment(input: {
     issueId: string
     content: string
+    authorKind?: 'user' | 'agent' | 'system'
+    authorId?: string | null
   }): KanbanIssueComment {
     const db = getDb()
     const id = randomUUID()
@@ -380,6 +395,8 @@ export class KanbanService extends IpcService {
       id,
       issueId: input.issueId,
       content: input.content,
+      authorKind: input.authorKind ?? 'user',
+      authorId: input.authorId ?? '__self__',
       createdAt: now(),
     }).run()
     return db.select().from(kanbanIssueComments).where(eq(kanbanIssueComments.id, id)).get()!
@@ -428,5 +445,221 @@ export class KanbanService extends IpcService {
   @IpcMethod()
   deleteRelation(id: string): void {
     getDb().delete(kanbanIssueRelations).where(eq(kanbanIssueRelations.id, id)).run()
+  }
+
+  // ── Delegation ───────────────────────────────────────────────────────────
+
+  @IpcMethod()
+  delegateIssue(issueId: string, agentProfileId: string): AgentSession {
+    const db = getDb()
+    const profile = db.select().from(agentProfiles).where(eq(agentProfiles.id, agentProfileId)).get()
+    if (!profile) {
+      throw new Error(`Agent profile ${agentProfileId} not found`)
+    }
+
+    // Stop any active agent session for this issue
+    db.update(agentSessions)
+      .set({ status: 'stopped', updatedAt: now() })
+      .where(and(
+        eq(agentSessions.issueId, issueId),
+        eq(agentSessions.status, 'active'),
+      ))
+      .run()
+
+    // Update issue delegate
+    db.update(kanbanIssues)
+      .set({ delegateAgentId: agentProfileId, updatedAt: now() })
+      .where(eq(kanbanIssues.id, issueId))
+      .run()
+
+    // Create agent session
+    const sessionId = randomUUID()
+    db.insert(agentSessions).values({
+      id: sessionId,
+      issueId,
+      agentProfileId,
+      status: 'created',
+      createdAt: now(),
+      updatedAt: now(),
+    }).run()
+
+    // System comment
+    db.insert(kanbanIssueComments).values({
+      id: randomUUID(),
+      issueId,
+      content: `Delegated to **${profile.name}**`,
+      authorKind: 'system',
+      authorId: null,
+      createdAt: now(),
+    }).run()
+
+    return db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)).get()!
+  }
+
+  /**
+   * Trigger agent execution for a delegated issue.
+   * Called by the renderer after delegateIssue succeeds.
+   */
+  @IpcMethod()
+  async runDelegatedIssue(issueId: string, agentSessionId: string, agentProfileId: string): Promise<void> {
+    const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
+    await IssueAgentRunner.getInstance().run({ issueId, agentSessionId, agentProfileId })
+  }
+
+  /**
+   * Stop an agent session that's currently executing.
+   */
+  @IpcMethod()
+  async stopAgentSession(agentSessionId: string): Promise<void> {
+    const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
+    await IssueAgentRunner.getInstance().stop(agentSessionId)
+  }
+
+  @IpcMethod()
+  undelegateIssue(issueId: string): void {
+    const db = getDb()
+
+    // Stop active sessions
+    db.update(agentSessions)
+      .set({ status: 'stopped', updatedAt: now() })
+      .where(and(
+        eq(agentSessions.issueId, issueId),
+        eq(agentSessions.status, 'active'),
+      ))
+      .run()
+
+    db.update(kanbanIssues)
+      .set({ delegateAgentId: null, updatedAt: now() })
+      .where(eq(kanbanIssues.id, issueId))
+      .run()
+
+    db.insert(kanbanIssueComments).values({
+      id: randomUUID(),
+      issueId,
+      content: 'Delegation removed',
+      authorKind: 'system',
+      authorId: null,
+      createdAt: now(),
+    }).run()
+  }
+
+  // ── Agent Sessions ──────────────────────────────────────────────────────
+
+  @IpcMethod()
+  getAgentSessions(issueId: string): AgentSession[] {
+    return getDb()
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.issueId, issueId))
+      .orderBy(desc(agentSessions.createdAt))
+      .all()
+  }
+
+  @IpcMethod()
+  updateAgentSessionStatus(sessionId: string, status: AgentSession['status']): void {
+    getDb().update(agentSessions)
+      .set({ status, updatedAt: now() })
+      .where(eq(agentSessions.id, sessionId))
+      .run()
+  }
+
+  @IpcMethod()
+  updateAgentSessionChatSession(sessionId: string, chatSessionId: string): void {
+    getDb().update(agentSessions)
+      .set({ chatSessionId, updatedAt: now() })
+      .where(eq(agentSessions.id, sessionId))
+      .run()
+  }
+
+  // ── Agent Activities ────────────────────────────────────────────────────
+
+  @IpcMethod()
+  getAgentActivities(agentSessionId: string): AgentActivity[] {
+    return getDb()
+      .select()
+      .from(agentActivities)
+      .where(eq(agentActivities.agentSessionId, agentSessionId))
+      .orderBy(asc(agentActivities.createdAt))
+      .all()
+  }
+
+  @IpcMethod()
+  addAgentActivity(input: {
+    agentSessionId: string
+    type: AgentActivity['type']
+    content: string
+    signal?: string | null
+    signalMetadata?: string | null
+  }): AgentActivity {
+    const db = getDb()
+    const id = randomUUID()
+    db.insert(agentActivities).values({
+      id,
+      agentSessionId: input.agentSessionId,
+      type: input.type,
+      content: input.content,
+      signal: input.signal ?? null,
+      signalMetadata: input.signalMetadata ?? null,
+      createdAt: now(),
+    }).run()
+
+    const activity = db.select().from(agentActivities).where(eq(agentActivities.id, id)).get()!
+
+    // Auto-create comment for response and error activities
+    if (input.type === 'response' || input.type === 'error') {
+      const session = db.select().from(agentSessions).where(eq(agentSessions.id, input.agentSessionId)).get()
+      if (session) {
+        const parsed = JSON.parse(input.content) as { body?: string }
+        if (parsed.body) {
+          db.insert(kanbanIssueComments).values({
+            id: randomUUID(),
+            issueId: session.issueId,
+            content: parsed.body,
+            authorKind: 'agent',
+            authorId: session.agentProfileId,
+            agentActivityId: id,
+            createdAt: now(),
+          }).run()
+        }
+      }
+    }
+
+    return activity
+  }
+
+  // ── Context Refs ────────────────────────────────────────────────────────
+
+  @IpcMethod()
+  updateContextRefs(issueId: string, refs: string): void {
+    getDb().update(kanbanIssues)
+      .set({ contextRefs: refs, updatedAt: now() })
+      .where(eq(kanbanIssues.id, issueId))
+      .run()
+  }
+
+  @IpcMethod()
+  addContextRef(issueId: string, ref: string): void {
+    const db = getDb()
+    const issue = db.select({ contextRefs: kanbanIssues.contextRefs }).from(kanbanIssues).where(eq(kanbanIssues.id, issueId)).get()
+    if (!issue) return
+    const refs = JSON.parse(issue.contextRefs) as unknown[]
+    refs.push(JSON.parse(ref))
+    db.update(kanbanIssues)
+      .set({ contextRefs: JSON.stringify(refs), updatedAt: now() })
+      .where(eq(kanbanIssues.id, issueId))
+      .run()
+  }
+
+  @IpcMethod()
+  removeContextRef(issueId: string, index: number): void {
+    const db = getDb()
+    const issue = db.select({ contextRefs: kanbanIssues.contextRefs }).from(kanbanIssues).where(eq(kanbanIssues.id, issueId)).get()
+    if (!issue) return
+    const refs = JSON.parse(issue.contextRefs) as unknown[]
+    refs.splice(index, 1)
+    db.update(kanbanIssues)
+      .set({ contextRefs: JSON.stringify(refs), updatedAt: now() })
+      .where(eq(kanbanIssues.id, issueId))
+      .run()
   }
 }

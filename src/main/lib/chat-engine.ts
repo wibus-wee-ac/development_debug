@@ -294,6 +294,11 @@ export class ChatEngine {
     })
   }
 
+  /** Check whether a draft (in-flight turn) exists for the given session. */
+  hasDraft(chatSessionId: string): boolean {
+    return this.drafts.has(chatSessionId)
+  }
+
   async abort(chatSessionId: string): Promise<void> {
     const draft = this.drafts.get(chatSessionId)
     if (!draft) {

@@ -5,6 +5,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/utils'
 import { useLayoutStore } from '@renderer/store/layout'
+import { useRouterState } from '@tanstack/react-router'
 import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -13,14 +14,15 @@ interface AppHeaderProps {
   workspace?: ReactNode
   hasAside?: boolean
   hasPanel?: boolean
-  /** When true, add left padding to clear macOS Traffic Lights in a hiddenInset tear-off window */
-  trafficLight?: boolean
   /** Optional third breadcrumb segment rendered after workspace/title (e.g. git branch control) */
   gitBranch?: ReactNode
 }
 
-export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, trafficLight = false, gitBranch }: AppHeaderProps) {
-  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar } = useLayoutStore()
+export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, gitBranch }: AppHeaderProps) {
+  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, isSettings } = useLayoutStore()
+  const pathname = useRouterState({ select: s => s.location.pathname })
+  const isKanban = pathname.startsWith('/kanban')
+  const isDrillIn = isSettings || isKanban
 
   const hasBreadcrumb = (workspace !== undefined && workspace !== null && workspace !== '')
     || (title !== undefined && title !== null && title !== '')
@@ -29,20 +31,22 @@ export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, 
 
   return (
     <div
-      className={cn('relative flex h-9.5 shrink-0 items-center bg-sidebar pe-1', trafficLight ? 'pl-18.5' : 'pl-1')}
+      className="relative flex h-9.5 shrink-0 items-center bg-sidebar pe-1 pl-1"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      {/* Left: sidebar toggle */}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        className="text-muted-foreground shrink-0"
-        onClick={toggleSidebar}
-        title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      >
-        {sidebarCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
-      </Button>
+      {/* Left: sidebar toggle (hidden in drill-in modes where sidebar is forced open) */}
+      {!isDrillIn && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={cn('text-muted-foreground shrink-0', sidebarCollapsed && 'ml-6')}
+          onClick={toggleSidebar}
+          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          {sidebarCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+        </Button>
+      )}
 
       {/* Center: breadcrumb — absolutely centered */}
       {hasBreadcrumb && (

@@ -17,3 +17,5 @@ Use date-prefixed filenames so contributors can find the latest plan quickly.
 - **20260425-01-unified-chat-event-bridge.md**: Execution plan for unifying the three independent `chat:response-event` IPC subscribers into a single preload-wrapped event bridge with `useChatEvents` hook.
 - **20260425-02-thread-search-fts5.md**: Execution plan for replacing the full-table-scan thread search with SQLite FTS5 full-text search, including jieba Chinese segmentation and BM25 ranking.
 - **20260425-03-bundle-code-splitting.md**: Execution plan for activating TanStack Router lazy routes to code-split heavy route bundles (chat/xterm, workspace-detail/tiptap, kanban/dnd-kit).
+- **20260426-01-cost-dashboard.md**: Execution plan for token usage tracking pipeline and dashboard with heatmap, sparkline, and stats.
+- **20260426-02-task-system-foundation.md**: Execution plan for a Task System covering pending runs (human-in-the-loop checkpoints), scheduled tasks, and agent-to-agent handoff.

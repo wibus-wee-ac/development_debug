@@ -12,6 +12,8 @@ interface LayoutState {
   bottomPanelHeight: number
   asideOpen: boolean
   bottomPanelOpen: boolean
+  isSettings: boolean
+  settingsSection: string
   setSidebarWidth: (w: number) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
@@ -20,6 +22,9 @@ interface LayoutState {
   toggleAside: () => void
   toggleBottomPanel: () => void
   setBottomPanelOpen: (open: boolean) => void
+  openSettings: () => void
+  closeSettings: () => void
+  setSettingsSection: (section: string) => void
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -31,6 +36,8 @@ export const useLayoutStore = create<LayoutState>()(
       bottomPanelHeight: 200,
       asideOpen: false,
       bottomPanelOpen: false,
+      isSettings: false,
+      settingsSection: 'appearance',
       setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
       setSidebarCollapsed: sidebarCollapsed => set({ sidebarCollapsed }),
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -39,7 +46,20 @@ export const useLayoutStore = create<LayoutState>()(
       toggleAside: () => set(s => ({ asideOpen: !s.asideOpen })),
       toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
       setBottomPanelOpen: (open: boolean) => set({ bottomPanelOpen: open }),
+      openSettings: () => set({ isSettings: true }),
+      closeSettings: () => set({ isSettings: false }),
+      setSettingsSection: (settingsSection: string) => set({ settingsSection }),
     }),
-    { name: 'cradle-layout' },
+    {
+      name: 'cradle-layout',
+      partialize: state => ({
+        sidebarWidth: state.sidebarWidth,
+        sidebarCollapsed: state.sidebarCollapsed,
+        asideWidth: state.asideWidth,
+        bottomPanelHeight: state.bottomPanelHeight,
+        asideOpen: state.asideOpen,
+        bottomPanelOpen: state.bottomPanelOpen,
+      }),
+    },
   ),
 )

@@ -15,6 +15,8 @@ export const kanbanKeys = {
   issue: (id: string) => ['kanban', 'issue', id] as const,
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
+  agentSessions: (issueId: string) => ['kanban', 'agentSessions', issueId] as const,
+  agentActivities: (sessionId: string) => ['kanban', 'agentActivities', sessionId] as const,
 }
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -67,6 +69,8 @@ type UpdateIssueInput = {
     milestoneId: string | null
     parentIssueId: string | null
     statusId: string | null
+    assigneeKind: string | null
+    assigneeId: string | null
   }>
 }
 
@@ -301,5 +305,105 @@ export function useDeleteRelation() {
   return useMutation({
     mutationFn: (vars: DeleteRelationInput) => ipc!.kanban.deleteRelation(vars.id),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.relations(vars.issueId) }),
+  })
+}
+
+// ── Delegation ────────────────────────────────────────────────────────────────
+
+export function useDelegateIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { issueId: string, agentProfileId: string }) => {
+      const session = await ipc!.kanban.delegateIssue(vars.issueId, vars.agentProfileId)
+      return session
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+      qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+    },
+  })
+}
+
+export function useUndelegateIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { issueId: string }) => {
+      // Stop any running agent first
+      await ipc!.kanban.undelegateIssue(vars.issueId)
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+      qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+    },
+  })
+}
+
+export function useStopAgentSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { agentSessionId: string, issueId: string }) =>
+      ipc!.kanban.stopAgentSession(vars.agentSessionId),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
+    },
+  })
+}
+
+export function useStartAgentSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { issueId: string, agentSessionId: string, agentProfileId: string }) => {
+      await ipc!.kanban.runDelegatedIssue(vars.issueId, vars.agentSessionId, vars.agentProfileId)
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+    },
+  })
+}
+
+// ── Agent Sessions & Activities ───────────────────────────────────────────────
+
+export function useAgentSessions(issueId: string) {
+  return useQuery({
+    queryKey: kanbanKeys.agentSessions(issueId),
+    queryFn: () => ipc ? ipc.kanban.getAgentSessions(issueId) : Promise.resolve([]),
+    enabled: !!issueId,
+  })
+}
+
+export function useAgentActivities(agentSessionId: string | null) {
+  return useQuery({
+    queryKey: kanbanKeys.agentActivities(agentSessionId ?? ''),
+    queryFn: () => agentSessionId && ipc ? ipc.kanban.getAgentActivities(agentSessionId) : Promise.resolve([]),
+    enabled: !!agentSessionId,
+  })
+}
+
+// ── Context Refs ──────────────────────────────────────────────────────────────
+
+export function useAddContextRef() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { issueId: string, ref: string }) =>
+      ipc!.kanban.addContextRef(vars.issueId, vars.ref),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+    },
+  })
+}
+
+export function useRemoveContextRef() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { issueId: string, index: number }) =>
+      ipc!.kanban.removeContextRef(vars.issueId, vars.index),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+    },
   })
 }

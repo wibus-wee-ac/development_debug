@@ -6,7 +6,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/utils'
 import { ArrowLeftIcon, BotIcon, PaletteIcon } from 'lucide-react'
-import type { Dispatch, SetStateAction } from 'react'
+
 
 interface SettingsNavItem {
   id: string
@@ -21,7 +21,7 @@ const SETTINGS_NAV: SettingsNavItem[] = [
 
 interface SettingsSidebarProps {
   activeSection: string
-  onSetSection: Dispatch<SetStateAction<string>>
+  onSetSection: (section: string) => void
   onClose: () => void
 }
 

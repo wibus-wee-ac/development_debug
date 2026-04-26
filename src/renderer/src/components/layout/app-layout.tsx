@@ -1,9 +1,9 @@
-// Input: AppSidebar, ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent
-// Output: AppLayout component — three-column layout shell with collapsible sidebar, unified shell bg
-// Position: Core layout component for main-window routes; accepts slot props from route pages
+// Input: ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent
+// Output: AppLayout component — content area layout (header + main + aside + panel)
+// Position: Core layout component; sidebar is rendered separately in __root.tsx
 
 import { AppFooter } from '@renderer/components/layout/app-footer'
-import { AppSidebar } from '@renderer/components/layout/app-sidebar'
+import { AppHeader } from '@renderer/components/layout/app-header'
 import { DevBottomBar } from '@renderer/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '@renderer/components/layout/resize-handle'
 import { SettingsContent } from '@renderer/features/settings/settings-content'
@@ -21,19 +21,30 @@ const INSTANT = { duration: 0 } as const
 
 interface AppLayoutProps {
   children?: ReactNode
-  header?: ReactNode
+  /** Header title breadcrumb segment */
+  title?: ReactNode
+  /** Header workspace breadcrumb segment */
+  workspace?: ReactNode
+  /** Show aside toggle in header */
+  hasAside?: boolean
+  /** Show bottom panel toggle in header */
+  hasPanel?: boolean
+  /** Optional git branch control in header */
+  gitBranch?: ReactNode
+  /** Right aside content */
   aside?: ReactNode
+  /** Bottom panel content */
   panel?: ReactNode
 }
 
-export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
+export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitBranch, aside, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
-  const [isSettings, setIsSettings] = useState(false)
-  const [settingsSection, setSettingsSection] = useState('appearance')
 
   useGlobalEventListeners()
 
   const {
+    isSettings,
+    settingsSection,
     asideWidth,
     setAsideWidth,
     asideOpen,
@@ -43,27 +54,24 @@ export function AppLayout({ children, header, aside, panel }: AppLayoutProps) {
   } = useLayoutStore()
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden text-foreground bg-sidebar">
-      {/* ── Full-width top header — traffic lights + toggle + breadcrumbs ── */}
-      {header}
+    <div className="flex flex-1 flex-col overflow-hidden text-foreground">
+      {/* ── Full-width top header — toggle + breadcrumbs ── */}
+      <AppHeader
+        title={title}
+        workspace={workspace}
+        hasAside={hasAside}
+        hasPanel={hasPanel}
+        gitBranch={gitBranch}
+      />
 
-      {/* ── Bottom area: sidebar + content ─────────────────────────────── */}
+      {/* ── Content area ───────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
-        {/* Sidebar */}
-        <AppSidebar
-          isSettings={isSettings}
-          settingsSection={settingsSection}
-          onOpenSettings={() => setIsSettings(true)}
-          onCloseSettings={() => setIsSettings(false)}
-          onSetSection={setSettingsSection}
-        />
-
         {/* Center column */}
         <motion.div
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
           transition={SPRING}
         >
-          <main className="flex-1 bg-background overflow-hidden">
+          <main className="flex-1 bg-background overflow-hidden rounded-xl">
             {isSettings ? <SettingsContent section={settingsSection} /> : children}
           </main>
 
