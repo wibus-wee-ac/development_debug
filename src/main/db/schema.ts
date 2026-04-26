@@ -140,6 +140,24 @@ export const acpAuditLog = sqliteTable('acp_audit_log', {
   ...createdAt(),
 })
 
+// ── Usage tracking ────────────────────────────────────────────────────────────
+
+/** Per-turn token usage log, tied to a session and optionally a message. */
+export const usageLogs = sqliteTable('usage_logs', {
+  id: textPk(),
+  sessionId: text('session_id')
+    .notNull()
+    .references(() => sessions.id, { onDelete: 'cascade' }),
+  messageId: text('message_id')
+    .references(() => messages.id, { onDelete: 'set null' }),
+  agentProfileId: text('agent_profile_id'),
+  modelId: text('model_id'),
+  promptTokens: int('prompt_tokens').notNull().default(0),
+  completionTokens: int('completion_tokens').notNull().default(0),
+  totalTokens: int('total_tokens').notNull().default(0),
+  ...createdAt(),
+})
+
 // ── Inferred types ────────────────────────────────────────────────────────────
 
 export type Workspace = typeof workspaces.$inferSelect
@@ -157,6 +175,8 @@ export type NewRuntimeSession = typeof runtimeSessions.$inferInsert
 export type RuntimeAuditEntry = typeof runtimeAuditLog.$inferSelect
 export type AcpAgent = typeof acpAgents.$inferSelect
 export type AcpAuditEntry = typeof acpAuditLog.$inferSelect
+export type UsageLog = typeof usageLogs.$inferSelect
+export type NewUsageLog = typeof usageLogs.$inferInsert
 
 // ── Kanban tables ─────────────────────────────────────────────────────────────
 

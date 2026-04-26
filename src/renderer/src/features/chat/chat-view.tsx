@@ -3,6 +3,7 @@
 // Position: Primary chat feature view — does NOT own message sending lifecycle
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
+import { ipc } from '@renderer/lib/ipc'
 import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -40,6 +41,7 @@ export function ChatView({
 }: ChatViewProps) {
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialMessageRows })
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
+  const [sessionTokens, setSessionTokens] = useState(0)
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
@@ -140,6 +142,17 @@ export function ChatView({
 
     setScrollMetrics({ offset, scrollHeight: sh, viewportHeight: vh, barProgress: progress })
   }, [messages])
+
+  // Fetch session token count after each turn completes
+  useEffect(() => {
+    if (sessionId && status !== 'streaming') {
+      ipc?.usage.getSessionUsage(sessionId).then((result) => {
+        if (result) {
+          setSessionTokens((result as { totalTokens: number }).totalTokens)
+        }
+      }).catch(() => {})
+    }
+  }, [sessionId, status, messages.length])
 
   const handleSend = useCallback(
     (text: string) => {
@@ -272,6 +285,15 @@ export function ChatView({
             appendText={droppedPath ? `${droppedPath.text}` : undefined}
             appendTextKey={droppedPath?.ts}
           />
+          {sessionTokens > 0 && (
+            <p className="mt-1.5 text-right text-[10px] tabular-nums text-muted-foreground/30">
+              {sessionTokens >= 1_000
+                ? `${(sessionTokens / 1_000).toFixed(1)}K`
+                : sessionTokens}
+              {' '}
+              tokens
+            </p>
+          )}
         </div>
       </div>
     </div>

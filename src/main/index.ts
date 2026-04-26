@@ -27,6 +27,7 @@ import { PreferencesService } from './services/preferences'
 import { PtyService } from './services/pty'
 import { SearchService } from './services/search'
 import { SessionService } from './services/session'
+import { UsageService } from './services/usage'
 import { WindowService } from './services/window'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
@@ -149,6 +150,7 @@ app.whenReady().then(() => {
     WindowService,
     GitService,
     KanbanService,
+    UsageService,
   ] as const)
 
   // Set app user model id for windows

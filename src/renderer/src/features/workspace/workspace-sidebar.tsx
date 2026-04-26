@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Link, useMatchRoute, useNavigate } from '@tanstack/react-router'
 import {
   AlignJustifyIcon,
+  BarChart3Icon,
   FolderClosedIcon,
   FolderOpenIcon,
   GitBranchIcon,
@@ -379,6 +380,12 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="看板"
             collapsed={collapsed}
             onClick={() => navigate({ to: '/kanban' })}
+          />
+          <TopNavItem
+            icon={<BarChart3Icon className="size-4" />}
+            label="用量"
+            collapsed={collapsed}
+            onClick={() => navigate({ to: '/usage' })}
           />
         </nav>
       </TooltipProvider>

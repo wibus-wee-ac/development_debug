@@ -15,7 +15,7 @@ import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/types'
 import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
-import { agentProfiles as agentProfilesTable, messages, sessions, workspaces } from '../db/schema'
+import { agentProfiles as agentProfilesTable, messages, sessions, usageLogs, workspaces } from '../db/schema'
 import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
 import { ThreadSearchEngine } from './thread-search'
@@ -543,6 +543,7 @@ export class ChatEngine {
 
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
+    let provider: ChatRuntimeProvider | null = null
 
     // Announce the start of this response turn
     this.broadcastResponseEvent(draft, {
@@ -555,7 +556,7 @@ export class ChatEngine {
 
     try {
       const profile = this.loadProfile(draft.agentId)
-      const provider = this.getChatProvider(profile.providerKind)
+      provider = this.getChatProvider(profile.providerKind)
       for await (const event of provider.streamTurn({
         runtimeSession: draft.runtimeSession,
         profile,
@@ -606,6 +607,26 @@ export class ChatEngine {
       }
       catch (err) {
         console.error('[ChatEngine] FTS indexing failed:', err)
+      }
+    }
+
+    // Persist token usage if the provider reported it
+    if (finalStatus === 'complete' && provider?.lastUsage) {
+      try {
+        const session = getDb().select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
+        getDb().insert(usageLogs).values({
+          id: randomUUID(),
+          sessionId: draft.chatSessionId,
+          messageId: draft.messageId,
+          agentProfileId: draft.agentId,
+          modelId: draft.modelId ?? session?.modelId ?? null,
+          promptTokens: provider.lastUsage.promptTokens,
+          completionTokens: provider.lastUsage.completionTokens,
+          totalTokens: provider.lastUsage.totalTokens,
+        }).run()
+      }
+      catch (err) {
+        console.error('[ChatEngine] usage log insert failed:', err)
       }
     }
 

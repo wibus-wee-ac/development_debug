@@ -15,6 +15,7 @@ import type { PreferencesService } from './services/preferences'
 import type { PtyService } from './services/pty'
 import type { SearchService } from './services/search'
 import type { SessionService } from './services/session'
+import type { UsageService } from './services/usage'
 import type { WindowService } from './services/window'
 import type { WorkspaceService } from './services/workspace'
 
@@ -36,6 +37,7 @@ export type IpcServices = MergeIpcService<{
   window: typeof WindowService
   git: typeof GitService
   kanban: typeof KanbanService
+  usage: typeof UsageService
 }>
 
 // Convenience re-exports so the renderer imports from one place
@@ -63,4 +65,5 @@ export type {
   ThreadSearchSnippet,
 } from './lib/thread-search'
 export type { GitBranches, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './services/git'
+export type { DailyUsage, UsageSummary } from './services/usage'
 export type { AcpDevtoolEvent } from '@cradle/ipc'

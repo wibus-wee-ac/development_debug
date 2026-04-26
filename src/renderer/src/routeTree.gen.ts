@@ -8,6 +8,8 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
+import { createFileRoute } from '@tanstack/react-router'
+
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as NewChatRouteImport } from './routes/new-chat'
@@ -18,6 +20,13 @@ import { Route as WorkspaceWorkspaceIdRouteImport } from './routes/workspace.$wo
 import { Route as KanbanBoardIdRouteImport } from './routes/kanban.$boardId'
 import { Route as ChatSessionIdRouteImport } from './routes/chat.$sessionId'
 
+const UsageLazyRouteImport = createFileRoute('/usage')()
+
+const UsageLazyRoute = UsageLazyRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/usage.lazy').then((d) => d.Route))
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -71,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/kanban': typeof KanbanRouteWithChildren
   '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
+  '/usage': typeof UsageLazyRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/workspace/$workspaceId': typeof WorkspaceWorkspaceIdRoute
@@ -81,6 +91,7 @@ export interface FileRoutesByTo {
   '/kanban': typeof KanbanRouteWithChildren
   '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
+  '/usage': typeof UsageLazyRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/workspace/$workspaceId': typeof WorkspaceWorkspaceIdRoute
@@ -92,6 +103,7 @@ export interface FileRoutesById {
   '/kanban': typeof KanbanRouteWithChildren
   '/new-chat': typeof NewChatRoute
   '/settings': typeof SettingsRoute
+  '/usage': typeof UsageLazyRoute
   '/chat/$sessionId': typeof ChatSessionIdRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/workspace/$workspaceId': typeof WorkspaceWorkspaceIdRoute
@@ -104,6 +116,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/new-chat'
     | '/settings'
+    | '/usage'
     | '/chat/$sessionId'
     | '/kanban/$boardId'
     | '/workspace/$workspaceId'
@@ -114,6 +127,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/new-chat'
     | '/settings'
+    | '/usage'
     | '/chat/$sessionId'
     | '/kanban/$boardId'
     | '/workspace/$workspaceId'
@@ -124,6 +138,7 @@ export interface FileRouteTypes {
     | '/kanban'
     | '/new-chat'
     | '/settings'
+    | '/usage'
     | '/chat/$sessionId'
     | '/kanban/$boardId'
     | '/workspace/$workspaceId'
@@ -135,12 +150,20 @@ export interface RootRouteChildren {
   KanbanRoute: typeof KanbanRouteWithChildren
   NewChatRoute: typeof NewChatRoute
   SettingsRoute: typeof SettingsRoute
+  UsageLazyRoute: typeof UsageLazyRoute
   ChatSessionIdRoute: typeof ChatSessionIdRoute
   WorkspaceWorkspaceIdRoute: typeof WorkspaceWorkspaceIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/usage': {
+      id: '/usage'
+      path: '/usage'
+      fullPath: '/usage'
+      preLoaderRoute: typeof UsageLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -217,6 +240,7 @@ const rootRouteChildren: RootRouteChildren = {
   KanbanRoute: KanbanRouteWithChildren,
   NewChatRoute: NewChatRoute,
   SettingsRoute: SettingsRoute,
+  UsageLazyRoute: UsageLazyRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
   WorkspaceWorkspaceIdRoute: WorkspaceWorkspaceIdRoute,
 }

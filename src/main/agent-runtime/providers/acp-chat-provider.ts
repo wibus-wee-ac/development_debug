@@ -15,6 +15,7 @@ import type {
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
+  TokenUsage,
 } from '../types'
 
 interface AcpConfig {
@@ -58,6 +59,10 @@ export class AcpChatProvider implements ChatRuntimeProvider {
 
   private get connMgr(): AcpConnectionManager {
     return AcpConnectionManager.getInstance()
+  }
+
+  get lastUsage(): TokenUsage | null {
+    return this.connMgr.lastUsage ?? null
   }
 
   async probe(profile: AgentProfile): Promise<ProviderProbeResult> {

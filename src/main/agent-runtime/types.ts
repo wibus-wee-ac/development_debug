@@ -98,11 +98,19 @@ export interface AgentProvider {
   listModels: (profile: AgentProfile) => Promise<ModelDescriptor[]>
 }
 
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+}
+
 export interface ChatRuntimeProvider extends AgentProvider {
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
   streamTurn: (input: StreamTurnInput) => AsyncGenerator<ResponseStreamEvent, void, void>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
+  /** Token usage from the most recent streamTurn call, if the provider supports it. */
+  readonly lastUsage?: TokenUsage | null
 }
 
 export interface TerminalRuntimeProvider extends AgentProvider {

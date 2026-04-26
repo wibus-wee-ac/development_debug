@@ -128,6 +128,10 @@ export class AcpConnectionManager {
   private readonly pendingConnects = new Map<string, Promise<InitializeResponse>>()
   private readonly sessionTitleHandlers = new Set<(acpSessionId: string, title: string) => void>()
 
+  /** Token usage from the most recently completed prompt, if reported by the ACP agent. */
+  private _lastUsage: { promptTokens: number, completionTokens: number, totalTokens: number } | null = null
+  get lastUsage() { return this._lastUsage }
+
   static getInstance(): AcpConnectionManager {
     if (!AcpConnectionManager.instance) {
       AcpConnectionManager.instance = new AcpConnectionManager()
@@ -361,8 +365,18 @@ export class AcpConnectionManager {
       if (promptError) {
         throw promptError
       }
-      // `promptResult` is discarded — stop_reason is already embedded in the chunks
-      void promptResult
+      // Capture token usage if the ACP agent reported it
+      if (promptResult?.usage) {
+        const u = promptResult.usage
+        this._lastUsage = {
+          promptTokens: u.inputTokens ?? 0,
+          completionTokens: u.outputTokens ?? 0,
+          totalTokens: u.totalTokens ?? 0,
+        }
+      }
+      else {
+        this._lastUsage = null
+      }
     }
  catch (err) {
       await promptDone.catch(() => {})

@@ -18,3 +18,4 @@ Register new services in `src/main/index.ts`.
 - **search.ts**: IPC service forwarding to ThreadSearchEngine — `searchThreads` returns ranked hits across sessions with jieba-tokenized title + content matches
 - **session.ts**: IPC service for persisted chat sessions, provider session handles, and per-session config snapshots; message writes are owned by ChatEngine (this service only reads)
 - **workspace.ts**: IPC service for workspace CRUD, file listing, and native OS integrations
+- **usage.ts**: IPC service for aggregated token usage analytics — `getDailyUsage` (heatmap data) and `getUsageSummary` (totals + breakdowns by agent/model)

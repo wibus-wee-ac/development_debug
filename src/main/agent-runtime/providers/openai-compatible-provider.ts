@@ -17,6 +17,7 @@ import type {
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
+  TokenUsage,
 } from '../types'
 
 interface OpenAICompatibleProviderDeps {
@@ -33,6 +34,10 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
   /** Active AbortControllers keyed by chatSessionId for in-flight turns. */
   private readonly activeTurns = new Map<string, AbortController>()
+
+  /** Token usage captured from the most recently completed streamTurn. */
+  private _lastUsage: TokenUsage | null = null
+  get lastUsage(): TokenUsage | null { return this._lastUsage }
 
   constructor(private readonly deps: OpenAICompatibleProviderDeps) {}
 
@@ -138,11 +143,14 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         extraParams.reasoning_effort = thinkingEffort
       }
 
+      this._lastUsage = null
+
       const stream = await client.chat.completions.create(
         {
           model: effectiveModel,
           messages: [{ role: 'user', content: message }],
           stream: true,
+          stream_options: { include_usage: true },
           ...extraParams,
         },
         { signal: abortController.signal },
@@ -150,6 +158,15 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
       let firstChunk = true
       for await (const chunk of stream) {
+        // Capture usage from the final chunk (sent when include_usage is true)
+        if (chunk.usage) {
+          this._lastUsage = {
+            promptTokens: chunk.usage.prompt_tokens,
+            completionTokens: chunk.usage.completion_tokens,
+            totalTokens: chunk.usage.total_tokens,
+          }
+        }
+
         const delta = chunk.choices[0]?.delta?.content
         if (!delta) {
           continue
