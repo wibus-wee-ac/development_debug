@@ -14,15 +14,13 @@ function KanbanLayout() {
   const pathname = useRouterState({ select: s => s.location.pathname })
   const atRoot = pathname === '/kanban'
 
-  if (!atRoot) {
-    return <Outlet />
-  }
+  if (!atRoot) return <Outlet />
 
   return (
-    <AppLayout title="看板" hasAside={false} hasPanel={false}>
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
-        <LayoutDashboardIcon className="size-10 opacity-30" />
-        <p className="text-sm">从左侧选择或创建一个看板</p>
+    <AppLayout title="Kanban" hasAside={false} hasPanel={false}>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground/30">
+        <LayoutDashboardIcon className="size-8" />
+        <p className="text-[12px]">Select or create a board</p>
       </div>
     </AppLayout>
   )

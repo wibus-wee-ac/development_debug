@@ -1,6 +1,6 @@
 // Input: useBoards, useCreateBoard, useDeleteBoard, useMilestones, TanStack Router navigation
-// Output: KanbanSidebar — left sidebar with boards list and milestones (Linear-style)
-// Position: Sidebar inside the /kanban layout route
+// Output: KanbanSidebar — left sidebar with board list and milestones
+// Position: Sidebar section inside the /kanban layout route
 
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -26,7 +26,6 @@ import {
   useMilestones,
 } from './use-kanban'
 
-// Pull workspaceId from the first board or fallback
 function useWorkspaceId() {
   const { data: boards } = useBoards()
   return boards?.[0]?.workspaceId ?? null
@@ -65,12 +64,12 @@ export function KanbanSidebar() {
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <button
-          className="text-muted-foreground/50 hover:text-foreground transition-colors"
+          className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100"
           onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
         >
           <ArrowLeftIcon className="size-3.5" />
         </button>
-        <span className="text-xs font-medium text-muted-foreground/60">看板</span>
+        <span className="text-[11px] font-medium text-muted-foreground/50">Boards</span>
         <span className="flex-1" />
         <Tooltip>
           <TooltipTrigger
@@ -79,7 +78,7 @@ export function KanbanSidebar() {
                 <Button
                   variant="ghost"
                   size="icon-xs"
-                  className="text-muted-foreground/50 hover:text-foreground"
+                  className="text-muted-foreground/30 hover:text-foreground"
                   onClick={() => {
                     setIsCreating(true)
                     requestAnimationFrame(() => inputRef.current?.focus())
@@ -90,37 +89,36 @@ export function KanbanSidebar() {
               )
             }
           />
-          <TooltipPopup>新建看板</TooltipPopup>
+          <TooltipPopup>New board</TooltipPopup>
         </Tooltip>
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-px px-1.5 pb-4">
-          {/* Board list */}
           {boards.map((board) => {
-            const isActive = pathname === `/kanban/${board.id}`
+            const isActive = pathname.startsWith(`/kanban/${board.id}`)
             return (
               <div key={board.id} className="group flex items-center">
                 <button
                   type="button"
                   className={cn(
-                    'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm',
-                    'transition-colors duration-75',
+                    'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[12px]',
+                    'transition-colors duration-100',
                     isActive
-                      ? 'bg-accent text-foreground'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                      ? 'bg-foreground/6 text-foreground'
+                      : 'text-muted-foreground/50 hover:bg-foreground/4 hover:text-foreground',
                   )}
                   data-testid={`kanban-board-${board.id}`}
                   onClick={() => navigate({ to: '/kanban/$boardId', params: { boardId: board.id } })}
                 >
-                  <LayoutDashboardIcon className="size-3.5 shrink-0 opacity-60" />
+                  <LayoutDashboardIcon className="size-3.5 shrink-0 opacity-40" />
                   <span className="truncate">{board.name}</span>
                 </button>
                 <Menu>
                   <MenuTrigger
                     className="opacity-0 group-hover:opacity-100 transition-opacity mr-1"
                   >
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/40">
+                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/25">
                       <MoreHorizontalIcon />
                     </Button>
                   </MenuTrigger>
@@ -135,7 +133,7 @@ export function KanbanSidebar() {
                       }}
                     >
                       <Trash2Icon />
-                      删除
+                      Delete
                     </MenuItem>
                   </MenuPopup>
                 </Menu>
@@ -143,14 +141,13 @@ export function KanbanSidebar() {
             )
           })}
 
-          {/* Inline create */}
           {isCreating && (
             <div className="px-2 py-1">
               <Input
                 ref={inputRef}
                 data-testid="kanban-new-board-input"
-                placeholder="看板名称"
-                className="h-7 text-sm"
+                placeholder="Board name"
+                className="h-7 text-[12px]"
                 onBlur={handleCreate}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -165,21 +162,20 @@ export function KanbanSidebar() {
             </div>
           )}
 
-          {/* Milestones section */}
           {milestones.length > 0 && (
             <>
-              <div className="mt-4 px-3 pb-1">
-                <span className="text-xs font-medium text-muted-foreground/60">里程碑</span>
+              <div className="mt-5 px-3 pb-1">
+                <span className="text-[10px] text-muted-foreground/30">Milestones</span>
               </div>
               {milestones.map(ms => (
                 <div
                   key={ms.id}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground"
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground/50"
                 >
-                  <FlagIcon className="size-3.5 shrink-0 opacity-60" />
+                  <FlagIcon className="size-3 shrink-0 opacity-30" />
                   <span className="truncate">{ms.title}</span>
                   {ms.status === 'closed' && (
-                    <span className="text-xs text-muted-foreground/30 ml-auto">已关闭</span>
+                    <span className="text-[10px] text-muted-foreground/20 ml-auto">closed</span>
                   )}
                 </div>
               ))}
