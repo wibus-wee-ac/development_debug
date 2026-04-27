@@ -41,3 +41,8 @@ export type {
   AcpDevtoolEventKind,
   AcpDevtoolEventStream,
 } from './acp-events'
+
+// Shared Agent Context devtool event model
+export type {
+  AgentContextEvent,
+} from './agent-context-events'

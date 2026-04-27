@@ -18,6 +18,11 @@ export class DevService extends IpcService {
   @IpcMethod()
   hardReload(): void {
     if (!is.dev) { return }
-    getIpcContext().sender.reloadIgnoringCache()
+    try {
+      getIpcContext().sender.reloadIgnoringCache()
+    }
+    catch {
+      // Called from socket/CLI — no Electron sender available, ignore
+    }
   }
 }

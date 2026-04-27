@@ -52,6 +52,11 @@ export class WorkspaceService extends IpcService {
   }
 
   @IpcMethod()
+  resolveByPath(path: string): Workspace | undefined {
+    return getDb().select().from(workspaces).where(eq(workspaces.path, path)).get()
+  }
+
+  @IpcMethod()
   create(input: { name: string, path: string }): Workspace {
     const db = getDb()
     const id = randomUUID()

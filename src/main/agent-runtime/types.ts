@@ -68,6 +68,10 @@ export interface StreamTurnInput {
   modelId?: string
   /** Reasoning effort hint for models that support it (e.g., OpenAI o-series). */
   thinkingEffort?: 'low' | 'medium' | 'high'
+  /** System prompt to prepend as a {role:'system'} message. */
+  systemPrompt?: string
+  /** Prior conversation messages for context (excludes the current turn). */
+  history?: Array<{ role: 'user' | 'assistant', content: string }>
 }
 
 export interface CancelTurnInput {

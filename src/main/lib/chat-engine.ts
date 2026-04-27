@@ -15,9 +15,11 @@ import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/types'
 import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
-import { agentProfiles as agentProfilesTable, messages, sessions, usageLogs, workspaces } from '../db/schema'
+import { agentProfiles as agentProfilesTable, agents as agentsTable, messages, sessions, usageLogs, workspaces } from '../db/schema'
 import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
+import { getAgentContextDevtoolStore } from './agent-context-devtool-store'
+import { buildSkillCatalog, scanSkills } from './skills'
 import { ThreadSearchEngine } from './thread-search'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -29,6 +31,7 @@ type MessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 interface Draft {
   chatSessionId: string
   messageId: string
+  userMessageId: string
   agentId: string
   runtimeSession: ProviderSession
   message: UIMessage
@@ -510,6 +513,7 @@ export class ChatEngine {
     const draft: Draft = {
       chatSessionId,
       messageId: assistantMsgId,
+      userMessageId: userMsgId,
       agentId,
       runtimeSession,
       message: assistantMessage,
@@ -567,12 +571,101 @@ export class ChatEngine {
     try {
       const profile = this.loadProfile(draft.agentId)
       provider = this.getChatProvider(profile.providerKind)
+
+      // ── Assemble conversation context (history + system prompt) ──────────
+      let systemPrompt: string | undefined
+      let history: Array<{ role: 'user' | 'assistant', content: string }> | undefined
+      let agentName: string | null = null
+      let skillEntries: ReturnType<typeof scanSkills> = []
+
+      const db = getDb()
+      const session = db.select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
+
+      // Load Agent identity info (name + system prompt) for all providers
+      if (session?.agentId) {
+        const agent = db.select().from(agentsTable).where(eq(agentsTable.id, session.agentId)).get()
+        agentName = agent?.name ?? null
+        if (agent?.configJson) {
+          try {
+            const cfg = JSON.parse(agent.configJson)
+            if (typeof cfg.systemPrompt === 'string' && cfg.systemPrompt.length > 0) {
+              systemPrompt = cfg.systemPrompt
+            }
+          }
+          catch {
+            // Invalid JSON in configJson — ignore
+          }
+        }
+      }
+
+      // For ACP providers, fall back to deriving name from agentId
+      if (profile.providerKind === 'acp-chat' && !agentName && draft.agentId) {
+        agentName = draft.agentId.replace(/^acp:/, '')
+      }
+
+      // Load history + skills only for providers that need it (not ACP — it manages its own state)
+      if (profile.providerKind !== 'acp-chat') {
+        // Load conversation history (exclude current turn's user + assistant messages)
+        const rows = db.select()
+          .from(messages)
+          .where(and(
+            eq(messages.sessionId, draft.chatSessionId),
+            eq(messages.status, 'complete'),
+          ))
+          .orderBy(messages.createdAt)
+          .all()
+          .filter(row => row.id !== draft.userMessageId && row.id !== draft.messageId)
+
+        if (rows.length > 0) {
+          history = rows.map((row) => {
+            let text = ''
+            try {
+              const uiMsg: UIMessage = JSON.parse(row.content)
+              text = uiMsg.parts
+                .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
+                .map(p => p.text)
+                .join('\n')
+            }
+            catch {
+              text = row.content
+            }
+            return { role: row.role as 'user' | 'assistant', content: text }
+          })
+        }
+
+        // Scan skills and append catalog to system prompt
+        const workspace = session?.workspaceId
+          ? db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
+          : undefined
+        const skillEntries_ = scanSkills(workspace?.path)
+        skillEntries = skillEntries_
+        const catalog = buildSkillCatalog(skillEntries_)
+        if (catalog) {
+          systemPrompt = (systemPrompt ?? '') + catalog
+        }
+      }
+
+      // Record agent context for devtool observability (all providers)
+      getAgentContextDevtoolStore().record({
+        id: randomUUID(),
+        timestamp: Date.now(),
+        chatSessionId: draft.chatSessionId,
+        agentId: draft.agentId ?? null,
+        agentName,
+        systemPrompt: systemPrompt ?? null,
+        skillsCatalog: skillEntries,
+        historyLength: history?.length ?? 0,
+        providerKind: profile.providerKind,
+      })
+
       for await (const event of provider.streamTurn({
         runtimeSession: draft.runtimeSession,
         profile,
         message: userText,
         modelId: draft.modelId,
         thinkingEffort: draft.thinkingEffort,
+        systemPrompt,
+        history,
       })) {
         this.broadcastResponseEvent(draft, event)
         for (const chunk of responsesEventToUIMessageChunks(event)) {

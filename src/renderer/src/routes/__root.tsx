@@ -4,7 +4,7 @@ import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useThemeStore } from '@renderer/store/theme'
-import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
 export const Route = createRootRoute({
@@ -30,6 +30,12 @@ function RootComponent() {
     mq.addEventListener('change', listener)
     return () => mq.removeEventListener('change', listener)
   }, [mode])
+
+  const isDevtool = useRouterState({ select: s => s.location.pathname.startsWith('/devtool') })
+
+  if (isDevtool) {
+    return <Outlet />
+  }
 
   return (
     <ToastProvider>

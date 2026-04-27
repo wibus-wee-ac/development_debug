@@ -15,6 +15,7 @@ import { acpAgents, agentCredentials } from './db/schema'
 import { ChatEngine } from './lib/chat-engine'
 import { initializeIpcDevtool, subscribeRuntimeDevtools } from './lib/ipc-devtool'
 import { PtyManager } from './lib/pty-manager'
+import { startSocketServer, stopSocketServer } from './lib/socket-server'
 import { decryptSecret } from './lib/safe-storage'
 import { AcpService } from './services/acp'
 import { AgentService } from './services/agent'
@@ -137,7 +138,7 @@ app.whenReady().then(() => {
   ChatEngine.getInstance().initialize()
 
   // Register IPC services
-  createServices([
+  const services = createServices([
     WorkspaceService,
     SessionService,
     AgentService,
@@ -154,6 +155,9 @@ app.whenReady().then(() => {
     KanbanService,
     UsageService,
   ] as const)
+
+  // Start Unix domain socket server for CLI access
+  startSocketServer(services)
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
@@ -185,6 +189,10 @@ app.whenReady().then(() => {
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
+app.on('before-quit', () => {
+  stopSocketServer()
+})
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()

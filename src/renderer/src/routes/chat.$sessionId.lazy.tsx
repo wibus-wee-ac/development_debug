@@ -58,11 +58,13 @@ interface SessionComposerBarProps {
 
 function SessionComposerBar({ session }: SessionComposerBarProps) {
   const { profiles } = useAgentProfiles()
+  const { agents } = useAgents()
   const { models, isLoading: isLoadingModels } = useAgentModels(session.agentProfileId ?? null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(session.modelId ?? null)
   const queryClient = useQueryClient()
 
   const selectedProfile = profiles.find(p => p.id === session.agentProfileId) ?? null
+  const sessionAgent = session.agentId ? agents.find(a => a.id === session.agentId) ?? null : null
   const selectedModel = models.find(m => m.id === selectedModelId) ?? models[0] ?? null
 
   const handleModelSelect = async (modelId: string) => {
@@ -73,22 +75,33 @@ function SessionComposerBar({ session }: SessionComposerBarProps) {
 
   return (
     <>
-      {/* Agent badge */}
-      {selectedProfile && (
-        <Button variant="ghost" size="xs" disabled className="pointer-events-none">
-          {selectedProfile.providerKind === 'cli-tui'
-            ? <TerminalIcon className="size-3" aria-hidden="true" />
-            : (
-              <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
-                {agentInitials(selectedProfile.name)}
-              </span>
-            )}
-          {selectedProfile.name}
-        </Button>
-      )}
+      {/* Agent / Provider badge */}
+      {sessionAgent
+        ? (
+          <Button variant="ghost" size="xs" disabled className="pointer-events-none">
+            <img
+              src={sessionAgent.avatarUrl!}
+              alt=""
+              className="size-4 rounded-full"
+            />
+            {sessionAgent.name}
+          </Button>
+        )
+        : selectedProfile && (
+          <Button variant="ghost" size="xs" disabled className="pointer-events-none">
+            {selectedProfile.providerKind === 'cli-tui'
+              ? <TerminalIcon className="size-3" aria-hidden="true" />
+              : (
+                <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-primary/15 text-[9px] font-semibold text-primary leading-none">
+                  {agentInitials(selectedProfile.name)}
+                </span>
+              )}
+            {selectedProfile.name}
+          </Button>
+        )}
 
-      {/* Model picker */}
-      {isLoadingModels
+      {/* Model picker — hidden when session belongs to an Agent (model is fixed) */}
+      {!session.agentId && (isLoadingModels
         ? (
           <Button variant="ghost" size="xs" disabled>
             <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
@@ -143,7 +156,7 @@ function SessionComposerBar({ session }: SessionComposerBarProps) {
                 {session.modelId}
               </Button>
             )
-            : null}
+            : null)}
     </>
   )
 }

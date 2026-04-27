@@ -145,10 +145,19 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
       this._lastUsage = null
 
+      const chatMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = []
+      if (input.systemPrompt) {
+        chatMessages.push({ role: 'system', content: input.systemPrompt })
+      }
+      for (const msg of input.history ?? []) {
+        chatMessages.push({ role: msg.role, content: msg.content })
+      }
+      chatMessages.push({ role: 'user', content: message })
+
       const stream = await client.chat.completions.create(
         {
           model: effectiveModel,
-          messages: [{ role: 'user', content: message }],
+          messages: chatMessages,
           stream: true,
           stream_options: { include_usage: true },
           ...extraParams,

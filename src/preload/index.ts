@@ -9,6 +9,7 @@ import type { ChatResponseEventPayload, ChatSessionTitlePayload } from '../share
 
 const ACP_DEVTOOL_EVENT_CHANNEL = 'acp-devtool:event'
 const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
+const AGENT_CONTEXT_DEVTOOL_EVENT_CHANNEL = 'agent-context-devtool:event'
 
 const ipcDevtool = {
   getSnapshot: () => electronAPI.ipcRenderer.invoke('ipcDevtool.getSnapshot'),
@@ -29,6 +30,16 @@ const ipcDevtool = {
 
     return () => {
       electronAPI.ipcRenderer.removeListener(ACP_DEVTOOL_EVENT_CHANNEL, wrapped)
+    }
+  },
+  getAgentContextSnapshot: () => electronAPI.ipcRenderer.invoke('ipcDevtool.getAgentContextSnapshot'),
+  clearAgentContext: () => electronAPI.ipcRenderer.invoke('ipcDevtool.clearAgentContext'),
+  onAgentContextEvent: (listener: (event: unknown) => void) => {
+    const wrapped = (_event: unknown, payload: unknown) => listener(payload)
+    electronAPI.ipcRenderer.on(AGENT_CONTEXT_DEVTOOL_EVENT_CHANNEL, wrapped)
+
+    return () => {
+      electronAPI.ipcRenderer.removeListener(AGENT_CONTEXT_DEVTOOL_EVENT_CHANNEL, wrapped)
     }
   },
 }

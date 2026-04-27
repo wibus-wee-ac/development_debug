@@ -1,4 +1,4 @@
-import type { AcpDevtoolEvent, IpcObservedEvent } from '@cradle/ipc'
+import type { AcpDevtoolEvent, AgentContextEvent, IpcObservedEvent } from '@cradle/ipc'
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
@@ -11,6 +11,9 @@ interface IpcDevtoolApi {
   clearAcp: () => ReturnType<IpcServices['ipcDevtool']['clearAcp']>
   onEvent: (listener: (event: IpcObservedEvent) => void) => () => void
   onAcpEvent: (listener: (event: AcpDevtoolEvent) => void) => () => void
+  getAgentContextSnapshot: () => ReturnType<IpcServices['ipcDevtool']['getAgentContextSnapshot']>
+  clearAgentContext: () => ReturnType<IpcServices['ipcDevtool']['clearAgentContext']>
+  onAgentContextEvent: (listener: (event: AgentContextEvent) => void) => () => void
 }
 
 interface PtyPushApi {

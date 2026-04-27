@@ -4,6 +4,9 @@
 
 import { useEffect, useState } from 'react'
 
+import { AgentContextEventDetail } from './agent-context/agent-context-event-detail'
+import { AgentContextEventsTable } from './agent-context/agent-context-events-table'
+import { useAgentContextDevtoolStore } from './agent-context/use-agent-context-events'
 import { AcpEventDetail } from './acp/acp-event-detail'
 import { AcpEventsTable } from './acp/acp-events-table'
 import { AcpFilterBar } from './acp/acp-filter-bar'
@@ -18,11 +21,12 @@ import { useIpcKeyboard } from './ipc/use-ipc-keyboard'
 export function IpcDevtoolPage() {
   const initializeIpc = useIpcDevtoolStore(s => s.initialize)
   const initializeAcp = useAcpDevtoolStore(s => s.initialize)
-  const [mode, setMode] = useState<'ipc' | 'acp'>('ipc')
+  const initializeAgentContext = useAgentContextDevtoolStore(s => s.initialize)
+  const [mode, setMode] = useState<'ipc' | 'acp' | 'agent-context'>('ipc')
 
   useEffect(() => {
-    void Promise.all([initializeIpc(), initializeAcp()])
-  }, [initializeAcp, initializeIpc])
+    void Promise.all([initializeIpc(), initializeAcp(), initializeAgentContext()])
+  }, [initializeAcp, initializeAgentContext, initializeIpc])
 
   useIpcKeyboard(mode === 'ipc')
   useAcpKeyboard(mode === 'acp')
@@ -48,15 +52,29 @@ export function IpcDevtoolPage() {
         >
           ACP
         </button>
+        <button
+          type="button"
+          onClick={() => setMode('agent-context')}
+          className={mode === 'agent-context'
+            ? 'rounded border border-border bg-muted px-2 py-1 text-foreground'
+            : 'rounded border border-transparent px-2 py-1 hover:border-border hover:bg-muted/40'}
+        >
+          Agent Context
+        </button>
         <div className="ml-auto">/devtool</div>
       </div>
-      {mode === 'ipc' ? <IpcFilterBar /> : <AcpFilterBar />}
+      {mode === 'ipc' && <IpcFilterBar />}
+      {mode === 'acp' && <AcpFilterBar />}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-3 overflow-hidden border-r border-border">
-          {mode === 'ipc' ? <IpcEventsTable /> : <AcpEventsTable />}
+          {mode === 'ipc' && <IpcEventsTable />}
+          {mode === 'acp' && <AcpEventsTable />}
+          {mode === 'agent-context' && <AgentContextEventsTable />}
         </div>
         <div className="flex-2 overflow-hidden">
-          {mode === 'ipc' ? <IpcEventDetail /> : <AcpEventDetail />}
+          {mode === 'ipc' && <IpcEventDetail />}
+          {mode === 'acp' && <AcpEventDetail />}
+          {mode === 'agent-context' && <AgentContextEventDetail />}
         </div>
       </div>
     </div>

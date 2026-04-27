@@ -5,6 +5,7 @@
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
 import { getAcpDevtoolStore } from '../lib/acp-devtool-store'
+import { getAgentContextDevtoolStore } from '../lib/agent-context-devtool-store'
 import { getIpcDevtoolStore, openDevtoolWindow } from '../lib/ipc-devtool'
 
 export class IpcDevtoolService extends IpcService {
@@ -28,6 +29,16 @@ export class IpcDevtoolService extends IpcService {
   @IpcMethod()
   clearAcp(): void {
     getAcpDevtoolStore().clear()
+  }
+
+  @IpcMethod()
+  getAgentContextSnapshot() {
+    return getAgentContextDevtoolStore().getSnapshot()
+  }
+
+  @IpcMethod()
+  clearAgentContext(): void {
+    getAgentContextDevtoolStore().clear()
   }
 
   @IpcMethod()

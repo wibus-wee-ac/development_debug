@@ -73,6 +73,15 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(
     (initial?.thinkingEffort as ThinkingEffort) ?? 'auto',
   )
+  const [systemPrompt, setSystemPrompt] = useState(() => {
+    try {
+      const cfg = JSON.parse(initial?.configJson ?? '{}')
+      return typeof cfg.systemPrompt === 'string' ? cfg.systemPrompt : ''
+    }
+    catch {
+      return ''
+    }
+  })
   const [avatarSpinKey, setAvatarSpinKey] = useState(0)
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -97,8 +106,9 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
       providerId: providerId!,
       modelId,
       thinkingEffort,
+      configJson: JSON.stringify({ systemPrompt: systemPrompt.trim() || undefined }),
     })
-  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, onSave])
+  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, systemPrompt, onSave])
 
   const isAuto = thinkingEffort === 'auto'
 
@@ -274,6 +284,22 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* System Prompt */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] text-muted-foreground">System Prompt</span>
+                <textarea
+                  value={systemPrompt}
+                  onChange={e => setSystemPrompt(e.target.value)}
+                  placeholder="Optional instructions for this agent..."
+                  rows={3}
+                  className={cn(
+                    'w-full resize-none rounded-md bg-foreground/3 px-2.5 py-2 text-xs outline-none',
+                    'text-foreground placeholder:text-muted-foreground/20',
+                    'focus:ring-1 focus:ring-foreground/10',
+                  )}
+                />
               </div>
             </div>
 
