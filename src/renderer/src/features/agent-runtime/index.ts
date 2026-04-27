@@ -11,3 +11,4 @@ export {
   useAcpSessionState,
 } from './use-acp-session-state'
 export { useAgentProfiles } from './use-agent-profiles'
+export { useAgents } from './use-agents'

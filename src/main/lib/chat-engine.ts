@@ -48,6 +48,8 @@ interface CreateAndSendOpts {
   text: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
+  /** Agent identity ID (agents table) — optional, set when chat is started from an Agent. */
+  agentIdentityId?: string
 }
 
 export interface ChatMessage {
@@ -69,6 +71,7 @@ export interface EnsureLiveResult {
 interface PrepareTurnArgs {
   chatSessionId: string
   agentId: string
+  agentIdentityId?: string
   runtimeSession: ProviderSession
   userText: string
   modelId?: string
@@ -209,6 +212,7 @@ export class ChatEngine {
     const draft = this.prepareTurn({
       chatSessionId,
       agentId,
+      agentIdentityId: opts.agentIdentityId,
       runtimeSession,
       userText: text,
       modelId: optsModelId,
@@ -438,7 +442,7 @@ export class ChatEngine {
    * Returns the draft ready for `runStream` to drive.
    */
   private prepareTurn(args: PrepareTurnArgs): Draft {
-    const { chatSessionId, agentId, runtimeSession, userText, newSession, modelId, thinkingEffort } = args
+    const { chatSessionId, agentId, agentIdentityId, runtimeSession, userText, newSession, modelId, thinkingEffort } = args
 
     // Atomic single-in-flight-turn claim. JS is single-threaded so this is the
     // authoritative check — any caller that loses the race throws here.
@@ -468,6 +472,7 @@ export class ChatEngine {
             workspaceId: newSession.workspaceId,
             title: newSession.title,
             agentProfileId: agentId,
+            agentId: agentIdentityId ?? null,
             providerKind: runtimeSession.providerKind,
             providerSessionId: runtimeSession.providerSessionId,
             providerStateSnapshot: runtimeSession.providerStateSnapshot,

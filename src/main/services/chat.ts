@@ -21,6 +21,7 @@ export class ChatService extends IpcService {
     text: string
     modelId?: string
     thinkingEffort?: 'low' | 'medium' | 'high'
+    agentIdentityId?: string
   }): Promise<string> {
     return this.engine.createAndSend(opts)
   }

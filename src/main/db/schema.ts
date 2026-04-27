@@ -36,6 +36,9 @@ export const sessions = sqliteTable('sessions', {
   agentProfileId: text('agent_profile_id')
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  /** Optional Agent identity ID — set when a chat is started from an Agent (vs. raw Provider). */
+  agentId: text('agent_id')
+    .references(() => agents.id, { onDelete: 'set null' }),
   providerKind: text('provider_kind', {
     enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
   }).notNull(),
@@ -341,3 +344,35 @@ export type AgentSession = typeof agentSessions.$inferSelect
 export type NewAgentSession = typeof agentSessions.$inferInsert
 export type AgentActivity = typeof agentActivities.$inferSelect
 export type NewAgentActivity = typeof agentActivities.$inferInsert
+
+// ── Agents (identity layer) ───────────────────────────────────────────────────
+
+/** An Agent is a named AI identity bound to a Provider (agent_profiles) with its own avatar, model preference, and config. */
+export const agents = sqliteTable('agents', {
+  id: textPk(),
+  name: text('name').notNull(),
+  description: text('description'),
+  /** DiceBear avatar URL, e.g. https://api.dicebear.com/9.x/{style}/svg?seed={seed} */
+  avatarUrl: text('avatar_url'),
+  /** DiceBear style name, e.g. 'bottts-neutral', 'thumbs', 'shapes' */
+  avatarStyle: text('avatar_style').notNull().default('bottts-neutral'),
+  /** Seed string for deterministic avatar generation */
+  avatarSeed: text('avatar_seed').notNull(),
+  /** FK → agent_profiles.id — the underlying provider connection */
+  providerId: text('provider_id')
+    .notNull()
+    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  /** Selected model identifier from the provider's model list */
+  modelId: text('model_id'),
+  /** Thinking effort: 'low' | 'medium' | 'high' | 'auto' */
+  thinkingEffort: text('thinking_effort', {
+    enum: ['low', 'medium', 'high', 'auto'],
+  }).notNull().default('auto'),
+  /** Extensible JSON config (future: system prompt, tools, memory, etc.) */
+  configJson: text('config_json').notNull().default('{}'),
+  enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
+  ...timestamps(),
+})
+
+export type Agent = typeof agents.$inferSelect
+export type NewAgent = typeof agents.$inferInsert

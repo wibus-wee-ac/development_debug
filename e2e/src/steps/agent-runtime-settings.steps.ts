@@ -12,9 +12,9 @@ When('我点击设置按钮', async function (this: CradleWorld) {
   await btn.click()
 })
 
-When('我点击"Agents"导航项', async function (this: CradleWorld) {
-  console.warn('[step] click Agents nav item')
-  const navItem = this.page.locator('[data-testid="settings-nav-agents"]')
+When('我点击"Providers"导航项', async function (this: CradleWorld) {
+  console.warn('[step] click Providers nav item')
+  const navItem = this.page.locator('[data-testid="settings-nav-providers"]')
   await expect(navItem).toBeVisible({ timeout: 5000 })
   await navItem.click()
 })
@@ -25,17 +25,17 @@ Given('我已进入 Agent Runtime 设置页面', async function (this: CradleWor
   await expect(settingsBtn).toBeVisible({ timeout: 15000 })
   await settingsBtn.click()
 
-  const navItem = this.page.locator('[data-testid="settings-nav-agents"]')
+  const navItem = this.page.locator('[data-testid="settings-nav-providers"]')
   await expect(navItem).toBeVisible({ timeout: 5000 })
   await navItem.click()
 
-  const settings = this.page.locator('[data-testid="agent-runtime-settings"]')
+  const settings = this.page.locator('[data-testid="agents-settings"]')
   await expect(settings).toBeVisible({ timeout: 5000 })
 })
 
 Then('我应该看到 Agent Runtime 设置页面', async function (this: CradleWorld) {
   console.warn('[step] assert Agent Runtime settings visible')
-  const settings = this.page.locator('[data-testid="agent-runtime-settings"]')
+  const settings = this.page.locator('[data-testid="agents-settings"]')
   await expect(settings).toBeVisible({ timeout: 10000 })
 })
 

@@ -2,7 +2,7 @@
 // Output: NewChatPage — premium task Composer inspired by Linear/Vercel/Devin design language
 // Position: Feature component for the /new-chat route
 
-import type { ModelDescriptor } from '@main/ipc-types'
+import type { Agent, ModelDescriptor } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import {
   Combobox,
@@ -26,6 +26,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
+import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { sessionsQueryKey, useSessions } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { ipc } from '@renderer/lib/ipc'
@@ -135,6 +136,7 @@ function useRotatingPlaceholder(hints: string[], interval = 4000): string {
 export function NewChatPage() {
   const { workspaces } = useWorkspaces()
   const { profiles } = useAgentProfiles()
+  const { agents } = useAgents()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const lastAgentProfileId = useNewChatStore(state => state.lastAgentProfileId)
@@ -142,6 +144,8 @@ export function NewChatPage() {
   const setLastModelForProfile = useNewChatStore(state => state.setLastModelForProfile)
 
   // ── State ──
+  // selectedAgentId: when set, overrides profile/model from the Agent entity
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
     () => useNewChatStore.getState().lastAgentProfileId,
   )
@@ -151,16 +155,23 @@ export function NewChatPage() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
 
-  const { models, isLoading: isLoadingModels } = useAgentModels(selectedProfileId)
+  // When an Agent is selected, resolve its underlying profile
+  const selectedAgent: Agent | null = useMemo(
+    () => agents.find(a => a.id === selectedAgentId) ?? null,
+    [agents, selectedAgentId],
+  )
+  const effectiveProfileId = selectedAgent?.providerId ?? selectedProfileId
+
+  const { models, isLoading: isLoadingModels } = useAgentModels(effectiveProfileId)
   const { sessions } = useSessions(selectedWorkspaceId)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
   const lastSelectedModelId = useNewChatStore(
-    state => selectedProfileId ? state.lastModelByProfile[selectedProfileId] : undefined,
+    state => effectiveProfileId ? state.lastModelByProfile[effectiveProfileId] : undefined,
   )
 
   // ── Derived ──
-  const selectedProfile = profiles.find(p => p.id === selectedProfileId) ?? null
+  const selectedProfile = profiles.find(p => p.id === effectiveProfileId) ?? null
   const selectedWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) ?? null
   const effectiveModel = useMemo(() => selectedModel ?? models[0] ?? null, [selectedModel, models])
   const showModelPicker = selectedProfile && selectedProfile.providerKind !== 'cli-tui' && (isLoadingModels || models.length > 0)
@@ -183,11 +194,17 @@ export function NewChatPage() {
 
   // ── Effects ──
   useEffect(() => {
-    if (selectedProfileId === null && profiles.length > 0) {
-      const exists = lastAgentProfileId && profiles.some(p => p.id === lastAgentProfileId)
-      setSelectedProfileId(exists ? lastAgentProfileId : profiles[0].id)
+    if (selectedProfileId === null && selectedAgentId === null && profiles.length > 0) {
+      // Prefer agents first, fall back to profiles
+      if (agents.length > 0) {
+        setSelectedAgentId(agents[0].id)
+      }
+      else {
+        const exists = lastAgentProfileId && profiles.some(p => p.id === lastAgentProfileId)
+        setSelectedProfileId(exists ? lastAgentProfileId : profiles[0].id)
+      }
     }
-  }, [profiles, selectedProfileId, lastAgentProfileId])
+  }, [profiles, agents, selectedProfileId, selectedAgentId, lastAgentProfileId])
 
   useEffect(() => {
     if (selectedWorkspaceId === null && workspaces.length > 0) {
@@ -197,11 +214,11 @@ export function NewChatPage() {
 
   useEffect(() => {
     setThinkingEffort(null)
-  }, [selectedProfileId])
+  }, [effectiveProfileId])
 
   useEffect(() => {
     setSelectedModel((currentModel) => {
-      if (!selectedProfileId || models.length === 0 || !lastSelectedModelId) {
+      if (!effectiveProfileId || models.length === 0 || !lastSelectedModelId) {
         return currentModel === null ? currentModel : null
       }
 
@@ -212,13 +229,13 @@ export function NewChatPage() {
 
       return currentModel?.id === restoredModel.id ? currentModel : restoredModel
     })
-  }, [selectedProfileId, models, lastSelectedModelId])
+  }, [effectiveProfileId, models, lastSelectedModelId])
 
   useEffect(() => {
-    if (selectedProfileId && selectedProfileId !== lastAgentProfileId) {
-      setLastAgentProfileId(selectedProfileId)
+    if (effectiveProfileId && effectiveProfileId !== lastAgentProfileId) {
+      setLastAgentProfileId(effectiveProfileId)
     }
-  }, [selectedProfileId, lastAgentProfileId, setLastAgentProfileId])
+  }, [effectiveProfileId, lastAgentProfileId, setLastAgentProfileId])
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -254,6 +271,7 @@ export function NewChatPage() {
         text: input.trim(),
         modelId: effectiveModel?.id ?? undefined,
         thinkingEffort: thinkingEffort ?? undefined,
+        agentIdentityId: selectedAgent?.id ?? undefined,
       })
 
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(selectedWorkspaceId) })
@@ -265,7 +283,7 @@ export function NewChatPage() {
     finally {
       setSending(false)
     }
-  }, [canSend, effectiveModel, input, isCliTui, navigate, queryClient, selectedProfile, selectedWorkspace, selectedWorkspaceId, thinkingEffort])
+  }, [canSend, effectiveModel, input, isCliTui, navigate, queryClient, selectedAgent, selectedProfile, selectedWorkspace, selectedWorkspaceId, thinkingEffort])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -361,34 +379,74 @@ export function NewChatPage() {
               {/* Agent selector */}
               <Menu>
                 <MenuTrigger render={<Button variant="ghost" size="xs" />}>
-                  {isCliTui
-                    ? <TerminalIcon className="size-3 shrink-0" />
-                    : selectedProfile
-                      ? (
-                        <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-foreground/10 text-[8px] font-bold text-foreground/70 leading-none">
-                          {profileInitials(selectedProfile.name)}
-                        </span>
-                      )
-                      : <BotIcon className="size-3 shrink-0" />}
-                  <span className="max-w-24 truncate">{selectedProfile?.name ?? 'Agent'}</span>
+                  {selectedAgent
+                    ? (
+                      <img
+                        src={selectedAgent.avatarUrl || `https://api.dicebear.com/9.x/${selectedAgent.avatarStyle}/svg?seed=${selectedAgent.avatarSeed}`}
+                        alt=""
+                        className="size-4 shrink-0 rounded"
+                        crossOrigin="anonymous"
+                      />
+                    )
+                    : isCliTui
+                      ? <TerminalIcon className="size-3 shrink-0" />
+                      : selectedProfile
+                        ? (
+                          <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-foreground/10 text-[8px] font-bold text-foreground/70 leading-none">
+                            {profileInitials(selectedProfile.name)}
+                          </span>
+                        )
+                        : <BotIcon className="size-3 shrink-0" />}
+                  <span className="max-w-24 truncate">{selectedAgent?.name ?? selectedProfile?.name ?? 'Agent'}</span>
                   <ChevronDownIcon className="size-2.5 text-muted-foreground/30 shrink-0" />
                 </MenuTrigger>
                 <MenuPopup>
+                  {/* Agents section */}
+                  {agents.length > 0 && (
+                    <MenuGroup>
+                      <MenuGroupLabel>Agents</MenuGroupLabel>
+                      <MenuSeparator />
+                      {agents.filter(a => a.enabled).map(agent => (
+                        <MenuItem
+                          key={agent.id}
+                          onClick={() => {
+                            setSelectedAgentId(agent.id)
+                            setSelectedProfileId(null)
+                          }}
+                        >
+                          <img
+                            src={agent.avatarUrl || `https://api.dicebear.com/9.x/${agent.avatarStyle}/svg?seed=${agent.avatarSeed}`}
+                            alt=""
+                            className="size-4 rounded"
+                            crossOrigin="anonymous"
+                          />
+                          <span className="flex-1">{agent.name}</span>
+                          {agent.id === selectedAgentId && (
+                            <CheckIcon className="size-3 text-foreground/50" />
+                          )}
+                        </MenuItem>
+                      ))}
+                    </MenuGroup>
+                  )}
+                  {/* Profiles fallback */}
                   <MenuGroup>
-                    <MenuGroupLabel>Agent Profiles</MenuGroupLabel>
+                    <MenuGroupLabel>Providers</MenuGroupLabel>
                     <MenuSeparator />
                     {profiles.length === 0
-                      ? <MenuItem disabled>暂无可用的 Agent</MenuItem>
+                      ? <MenuItem disabled>暂无可用的 Provider</MenuItem>
                       : profiles.map(profile => (
                         <MenuItem
                           key={profile.id}
-                          onClick={() => setSelectedProfileId(profile.id)}
+                          onClick={() => {
+                            setSelectedProfileId(profile.id)
+                            setSelectedAgentId(null)
+                          }}
                         >
                           {profile.providerKind === 'cli-tui'
                             ? <TerminalIcon className="size-3" />
                             : <BotIcon className="size-3" />}
                           <span className="flex-1">{profile.name}</span>
-                          {profile.id === selectedProfileId && (
+                          {!selectedAgentId && profile.id === selectedProfileId && (
                             <CheckIcon className="size-3 text-foreground/50" />
                           )}
                         </MenuItem>
@@ -414,8 +472,8 @@ export function NewChatPage() {
                       isItemEqualToValue={(a, b) => a.id === b.id}
                       onValueChange={(next) => {
                         setSelectedModel(next ?? null)
-                        if (next && selectedProfileId) {
-                          setLastModelForProfile(selectedProfileId, next.id)
+                        if (next && effectiveProfileId) {
+                          setLastModelForProfile(effectiveProfileId, next.id)
                         }
                       }}
                     >

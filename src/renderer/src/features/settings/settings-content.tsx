@@ -3,13 +3,15 @@
 // Position: Main content area rendered by AppLayout when isSettings=true
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
+import { AgentList } from '@renderer/features/agent-management/agent-list'
 import { AgentsSettings } from '@renderer/features/agent-management/agents-settings'
 
 import { AppearanceSettings } from './appearance-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
-  agents: AgentsSettings,
+  providers: AgentsSettings,
+  agents: AgentList,
 }
 
 interface SettingsContentProps {

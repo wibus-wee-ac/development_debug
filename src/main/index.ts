@@ -17,6 +17,7 @@ import { initializeIpcDevtool, subscribeRuntimeDevtools } from './lib/ipc-devtoo
 import { PtyManager } from './lib/pty-manager'
 import { decryptSecret } from './lib/safe-storage'
 import { AcpService } from './services/acp'
+import { AgentService } from './services/agent'
 import { AgentRuntimeService } from './services/agent-runtime'
 import { ChatService } from './services/chat'
 import { DevService } from './services/dev'
@@ -139,6 +140,7 @@ app.whenReady().then(() => {
   createServices([
     WorkspaceService,
     SessionService,
+    AgentService,
     AgentRuntimeService,
     AcpService,
     PreferencesService,

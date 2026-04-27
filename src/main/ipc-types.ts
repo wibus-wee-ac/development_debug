@@ -5,6 +5,7 @@
 import type { MergeIpcService } from '@cradle/ipc'
 
 import type { AcpService } from './services/acp'
+import type { AgentService } from './services/agent'
 import type { AgentRuntimeService } from './services/agent-runtime'
 import type { ChatService } from './services/chat'
 import type { DevService } from './services/dev'
@@ -26,6 +27,7 @@ import type { WorkspaceService } from './services/workspace'
 export type IpcServices = MergeIpcService<{
   workspace: typeof WorkspaceService
   session: typeof SessionService
+  agent: typeof AgentService
   agentRuntime: typeof AgentRuntimeService
   acp: typeof AcpService
   preferences: typeof PreferencesService
@@ -47,6 +49,7 @@ export type { Message, Session, Workspace } from './db/schema'
 export type {
   AcpAgent,
   AcpAuditEntry,
+  Agent,
   AgentCredential,
   AgentProfile,
   RuntimeAuditEntry,
@@ -55,6 +58,7 @@ export type {
 export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 export type { AgentActivity, AgentSession } from './db/schema'
 export type { AcpSessionState } from './lib/acp-connection'
+export type { CreateAgentInput, UpdateAgentInput } from './services/agent'
 export type { ProcessMetrics } from './lib/acp-process-manager'
 export type { RegistryAgent } from './lib/acp-registry'
 export type { ChatMessage, EnsureLiveResult } from './lib/chat-engine'

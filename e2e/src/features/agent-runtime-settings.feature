@@ -4,9 +4,9 @@
 
   作为用户，我可以在设置中统一管理不同 Provider 的 Agent Profile
 
-  场景: 导航到 Agent Runtime 设置页面
+  场景: 导航到 Provider 设置页面
     当 我点击设置按钮
-    而且 我点击"Agents"导航项
+    而且 我点击"Providers"导航项
     那么 我应该看到 Agent Runtime 设置页面
 
   @CRADLE-AGENT-RUNTIME-002

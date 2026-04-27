@@ -1,5 +1,5 @@
-// Input: KanbanIssue id, use-kanban hooks, useAgentProfiles, MarkdownEditor, coss UI, motion/react
-// Output: IssuePanel — full-page issue detail + IssueProperties aside (delegate picker, agent session, activity feed)
+// Input: KanbanIssue id, use-kanban hooks, useAgentProfiles, useAgents, MarkdownEditor, coss UI, motion/react
+// Output: IssuePanel — full-page issue detail + IssueProperties aside (delegate picker with Agent avatars, agent session, activity feed)
 // Position: Route page component rendered via kanban/$boardId/$issueId
 
 import type { KanbanIssue, KanbanIssueComment, KanbanIssueRelation } from '@main/ipc-types'
@@ -9,10 +9,10 @@ import { Badge } from '@renderer/components/ui/badge'
 import { Combobox, ComboboxInput, ComboboxItem, ComboboxPopup } from '@renderer/components/ui/combobox'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { Select, SelectItem, SelectPopup, SelectTrigger } from '@renderer/components/ui/select'
-import { Separator } from '@renderer/components/ui/separator'
 import { Textarea } from '@renderer/components/ui/textarea'
 import { Tooltip, TooltipPopup, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
+import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { cn } from '@renderer/lib/cn'
 import { AnimatePresence, motion } from 'motion/react'
 import {
@@ -150,7 +150,7 @@ function ComposeComment({ issueId }: { issueId: string }) {
 
   return (
     <div className="flex gap-3 mt-5">
-      <Avatar className="size-6 mt-1 shrink-0 bg-muted text-foreground">
+      <Avatar className="size-6 mt-1 shrink-0 bg-foreground/5 text-foreground">
         <AvatarFallback className="text-[10px] font-medium">Me</AvatarFallback>
       </Avatar>
       <div className="flex-1 min-w-0">
@@ -163,9 +163,9 @@ function ComposeComment({ issueId }: { issueId: string }) {
           onFocus={() => setFocused(true)}
           onBlur={() => { if (!draft.trim()) setFocused(false) }}
           className={cn(
-            'resize-none text-[13px] transition-all duration-200',
-            'border border-border/50 rounded-xl shadow-none',
-            'bg-muted/30 focus:bg-background',
+            'resize-none text-[13px] transition-all duration-150',
+            'border border-foreground/15 rounded-md',
+            'bg-foreground/2 focus:bg-background',
             focused ? 'min-h-20' : 'min-h-9',
           )}
           onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -185,9 +185,9 @@ function ComposeComment({ issueId }: { issueId: string }) {
               <button
                 data-testid="issue-comment-submit"
                 className={cn(
-                  'h-7 px-3.5 text-[12px] font-medium rounded-lg transition-colors',
-                  'bg-foreground text-background hover:bg-foreground/85',
-                  'disabled:opacity-30',
+                  'h-7 px-3.5 text-[12px] font-medium rounded-md transition-colors',
+                  'bg-foreground text-background hover:bg-foreground/90',
+                  'disabled:opacity-50 disabled:pointer-events-none',
                 )}
                 disabled={!draft.trim() || addComment.isPending}
                 onClick={handleAdd}
@@ -211,11 +211,11 @@ function ActivityEntry({ comment, issueId, isLast }: { comment: KanbanIssueComme
   if (kind === 'system') {
     return (
       <div className="flex items-center gap-3 py-2">
-        <div className="h-px flex-1 bg-border/25" />
-        <span className="text-[11px] text-muted-foreground/35 shrink-0 select-none italic">
+        <div className="h-px flex-1 bg-foreground/5" />
+        <span className="text-[11px] text-muted-foreground/50 shrink-0 select-none italic">
           {comment.content}
         </span>
-        <div className="h-px flex-1 bg-border/25" />
+        <div className="h-px flex-1 bg-foreground/5" />
       </div>
     )
   }
@@ -227,13 +227,13 @@ function ActivityEntry({ comment, issueId, isLast }: { comment: KanbanIssueComme
       <div className="flex flex-col items-center">
         <div className={cn(
           'flex size-6 shrink-0 items-center justify-center rounded-full',
-          isAgent ? 'bg-blue-500/10' : 'bg-muted',
+          isAgent ? 'bg-accent/10' : 'bg-foreground/5',
         )}>
           {isAgent
-            ? <BotIcon className="size-3 text-blue-500" />
+            ? <BotIcon className="size-3 text-accent" />
             : <UserIcon className="size-3 text-foreground/60" />}
         </div>
-        {!isLast && <div className="w-px flex-1 mt-1.5 mb-1 bg-border/25" />}
+        {!isLast && <div className="w-px flex-1 mt-1.5 mb-1 bg-foreground/5" />}
       </div>
 
       <div className={cn('min-w-0 flex-1', isLast ? 'pb-0' : 'pb-5')}>
@@ -241,11 +241,11 @@ function ActivityEntry({ comment, issueId, isLast }: { comment: KanbanIssueComme
           <span className="text-[12px] font-medium text-foreground">
             {isAgent ? 'Agent' : 'Me'}
           </span>
-          <span className="text-[11px] text-muted-foreground/35">
+          <span className="text-[11px] text-muted-foreground/50 tabular-nums">
             {relativeTime(comment.createdAt)}
           </span>
           <button
-            className="text-[11px] text-muted-foreground/25 hover:text-red-400 transition-colors opacity-0 group-hover/entry:opacity-100 ml-auto"
+            className="text-[11px] text-muted-foreground/50 hover:text-destructive transition-colors opacity-0 group-hover/entry:opacity-100 ml-auto"
             onClick={() => deleteComment.mutate({ id: comment.id, issueId })}
           >
             Delete
@@ -280,11 +280,11 @@ function Activity({ issueId }: { issueId: string }) {
 // ── Agent Activity Feed ───────────────────────────────────────────────────────
 
 const ACTIVITY_STYLE: Record<string, { icon: typeof BrainIcon, textClass: string }> = {
-  thought: { icon: BrainIcon, textClass: 'text-muted-foreground/55' },
-  action: { icon: WrenchIcon, textClass: 'text-muted-foreground/70' },
+  thought: { icon: BrainIcon, textClass: 'text-muted-foreground' },
+  action: { icon: WrenchIcon, textClass: 'text-foreground/70' },
   response: { icon: MessageSquareIcon, textClass: 'text-foreground' },
-  elicitation: { icon: SettingsIcon, textClass: 'text-blue-500' },
-  error: { icon: AlertCircleIcon, textClass: 'text-red-500' },
+  elicitation: { icon: SettingsIcon, textClass: 'text-accent' },
+  error: { icon: AlertCircleIcon, textClass: 'text-destructive' },
   prompt: { icon: UserIcon, textClass: 'text-foreground' },
 }
 
@@ -309,7 +309,7 @@ function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
   }
 
   if (activities.length === 0) {
-    return <p className="text-[12px] text-muted-foreground/35">No activity yet.</p>
+    return <p className="text-[12px] text-muted-foreground">No activity yet.</p>
   }
 
   return (
@@ -317,7 +317,7 @@ function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
       {reasoning.length > 0 && (
         <div>
           <button
-            className="flex items-center gap-1.5 text-[12px] text-muted-foreground/45 hover:text-muted-foreground transition-colors"
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setShowReasoning(!showReasoning)}
           >
             <ChevronRightIcon className={cn('size-3 transition-transform duration-150', showReasoning && 'rotate-90')} />
@@ -330,7 +330,7 @@ function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.15 }}
-                className="mt-2 pl-3 border-l border-border/30 space-y-2 overflow-hidden"
+                className="mt-2 pl-3 border-l border-foreground/10 space-y-2 overflow-hidden"
               >
                 {reasoning.map((a) => {
                   const def = ACTIVITY_STYLE[a.type] ?? ACTIVITY_STYLE.thought
@@ -390,21 +390,21 @@ function SubIssueList({ workspaceId, parentIssueId }: { workspaceId: string, par
       <div className="flex items-center gap-2">
         {!isEmpty && (
           <button
-            className="flex items-center gap-1.5 text-[12px] text-muted-foreground/50 hover:text-muted-foreground/80 transition-colors"
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setOpen(!open)}
           >
             <ChevronRightIcon className={cn('size-3 transition-transform duration-150', open && 'rotate-90')} />
             Sub-issues
-            <span className="text-[10px] bg-muted rounded px-1 py-px tabular-nums text-muted-foreground/50">
+            <span className="text-[10px] bg-foreground/5 rounded px-1 py-px tabular-nums text-muted-foreground">
               {subIssues.length}
             </span>
           </button>
         )}
         {isEmpty && (
-          <span className="text-[12px] text-muted-foreground/40 select-none">Sub-issues</span>
+          <span className="text-[12px] text-muted-foreground select-none">Sub-issues</span>
         )}
         <button
-          className="ml-auto text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+          className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
           onClick={() => setComposing(true)}
         >
           <PlusIcon className="size-3.5" />
@@ -423,7 +423,7 @@ function SubIssueList({ workspaceId, parentIssueId }: { workspaceId: string, par
             {subIssues.map((si: KanbanIssue) => (
               <div
                 key={si.id}
-                className="flex items-center gap-2 text-[13px] px-2 py-1.5 rounded-md hover:bg-muted/40 transition-colors text-foreground cursor-pointer"
+                className="flex items-center gap-2 text-[13px] px-2 py-1.5 rounded-lg hover:bg-foreground/3 transition-colors text-foreground cursor-pointer"
               >
                 <span className="size-1.5 rounded-full bg-muted-foreground/25 shrink-0" />
                 <span className="truncate flex-1">{si.title}</span>
@@ -447,7 +447,7 @@ function SubIssueList({ workspaceId, parentIssueId }: { workspaceId: string, par
               value={draft}
               onChange={e => setDraft(e.target.value)}
               placeholder="New sub-issue title…"
-              className="w-full text-[13px] bg-muted/30 border border-border/40 rounded-lg px-3 py-1.5 outline-none placeholder:text-muted-foreground/30 focus:border-border/70 transition-colors"
+              className="w-full text-[13px] bg-foreground/2 border border-foreground/15 rounded-md px-3 py-1.5 outline-none placeholder:text-muted-foreground/50 focus-visible:ring-1 focus-visible:ring-foreground/30 transition-colors"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleCreate()
                 if (e.key === 'Escape') { setDraft(''); setComposing(false) }
@@ -512,12 +512,12 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
     <div className="space-y-1.5">
       {relations.map((r: KanbanIssueRelation) => (
         <div key={r.id} className="flex items-center gap-2 group/rel">
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 font-normal text-muted-foreground/45 border-border/40">
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 shrink-0 font-normal text-muted-foreground">
             {relationLabel(r)}
           </Badge>
           <RelatedIssueTitle issueId={relatedId(r)} />
           <button
-            className="text-muted-foreground/25 hover:text-red-400 transition-colors opacity-0 group-hover/rel:opacity-100"
+            className="text-muted-foreground/50 hover:text-destructive transition-colors opacity-0 group-hover/rel:opacity-100"
             onClick={() => deleteRelation.mutate({ id: r.id, issueId })}
           >
             <XIcon className="size-3" />
@@ -537,10 +537,10 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
                 <button
                   key={t.value}
                   className={cn(
-                    'text-[11px] px-2 py-0.5 rounded-md transition-colors',
+                    'text-[11px] px-2 py-0.5 rounded-lg transition-colors',
                     relType === t.value
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground/35 hover:text-muted-foreground',
+                      ? 'bg-foreground/5 text-foreground'
+                      : 'text-muted-foreground hover:text-foreground',
                   )}
                   onClick={() => setRelType(t.value as typeof relType)}
                 >
@@ -563,14 +563,14 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
                   </ComboboxItem>
                 ))}
                 {candidates.length === 0 && (
-                  <div className="px-2 py-3 text-center text-[12px] text-muted-foreground/35">
+                  <div className="px-2 py-3 text-center text-[12px] text-muted-foreground">
                     No issues available
                   </div>
                 )}
               </ComboboxPopup>
             </Combobox>
             <button
-              className="text-[11px] text-muted-foreground/30 hover:text-muted-foreground transition-colors"
+              className="text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors"
               onClick={() => setShowPicker(false)}
             >
               Cancel
@@ -579,7 +579,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
         )
         : (
           <button
-            className="flex items-center gap-1 text-[12px] text-muted-foreground/35 hover:text-muted-foreground transition-colors"
+            className="flex items-center gap-1 text-[12px] text-muted-foreground/50 hover:text-foreground transition-colors"
             onClick={() => setShowPicker(true)}
           >
             <PlusIcon className="size-3" />
@@ -610,8 +610,8 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
       {refs.map(r => (
         <div key={`${r.type}-${r.value}`} className="flex items-center gap-2 group/ref">
           {r.type === 'url'
-            ? <GlobeIcon className="size-3 text-muted-foreground/35 shrink-0" />
-            : <FileIcon className="size-3 text-muted-foreground/35 shrink-0" />}
+            ? <GlobeIcon className="size-3 text-muted-foreground shrink-0" />
+            : <FileIcon className="size-3 text-muted-foreground shrink-0" />}
           <Tooltip>
             <TooltipTrigger className="flex-1 min-w-0">
               <span className="text-[12px] text-muted-foreground truncate block">{r.label ?? r.value}</span>
@@ -619,7 +619,7 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
             <TooltipPopup>{r.value}</TooltipPopup>
           </Tooltip>
           <button
-            className="text-muted-foreground/25 hover:text-red-400 transition-colors opacity-0 group-hover/ref:opacity-100"
+            className="text-muted-foreground/50 hover:text-destructive transition-colors opacity-0 group-hover/ref:opacity-100"
             onClick={() => removeRef.mutate({ issueId, index: refs.indexOf(r) })}
           >
             <XIcon className="size-3" />
@@ -632,10 +632,10 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
-          className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-muted-foreground/30"
+          className="flex-1 text-[12px] bg-transparent outline-none placeholder:text-muted-foreground/50"
         />
         {input.trim() && (
-          <button className="text-muted-foreground/35 hover:text-foreground transition-colors" onClick={handleAdd}>
+          <button className="text-muted-foreground hover:text-foreground transition-colors" onClick={handleAdd}>
             <PlusIcon className="size-3" />
           </button>
         )}
@@ -663,7 +663,7 @@ function LabelEditor({ labels, onAdd, onRemove }: { labels: string[], onAdd: (l:
         </Badge>
       ))}
       <input
-        className="text-[12px] outline-none bg-transparent min-w-14 placeholder:text-muted-foreground/30"
+        className="text-[12px] outline-none bg-transparent min-w-14 placeholder:text-muted-foreground/50"
         placeholder="Add…"
         value={input}
         onChange={e => setInput(e.target.value)}
@@ -684,22 +684,22 @@ function LabelEditor({ labels, onAdd, onRemove }: { labels: string[], onAdd: (l:
 function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
     <div className="flex items-center h-8 gap-2">
-      <span className="text-[11px] text-muted-foreground/45 w-20 shrink-0 select-none">{label}</span>
+      <span className="text-[11px] text-muted-foreground w-20 shrink-0 select-none">{label}</span>
       <div className="flex-1 min-w-0 flex justify-start">{children}</div>
     </div>
   )
 }
 
-const propertyTriggerCls = 'h-7 border-0 shadow-none text-[12px] px-2 rounded-md bg-transparent hover:bg-muted/50 transition-colors'
+const propertyTriggerCls = 'h-7 border-0 shadow-none text-[12px] px-2 rounded-md bg-transparent hover:bg-foreground/5 transition-colors'
 
 // ── SectionHeader ─────────────────────────────────────────────────────────────
 
 function SectionHeader({ label, count }: { label: string, count?: number }) {
   return (
     <div className="flex items-center gap-1.5 mb-2">
-      <span className="text-[11px] text-muted-foreground/40 select-none">{label}</span>
+      <span className="text-[11px] text-muted-foreground select-none">{label}</span>
       {count !== undefined && count > 0 && (
-        <span className="text-[10px] text-muted-foreground/30 bg-muted/50 rounded px-1 tabular-nums">{count}</span>
+        <span className="text-[10px] text-muted-foreground bg-foreground/5 rounded px-1 tabular-nums">{count}</span>
       )}
     </div>
   )
@@ -709,10 +709,10 @@ function SectionHeader({ label, count }: { label: string, count?: number }) {
 
 const SESSION_STATUS_MAP: Record<string, { label: string, dotClass: string, textClass: string }> = {
   created: { label: 'Queued', dotClass: 'bg-muted-foreground/50', textClass: 'text-muted-foreground' },
-  active: { label: 'Running', dotClass: 'bg-blue-500 animate-pulse', textClass: 'text-blue-500' },
-  completed: { label: 'Done', dotClass: 'bg-green-600', textClass: 'text-green-600' },
-  stopped: { label: 'Stopped', dotClass: 'bg-amber-500', textClass: 'text-amber-500' },
-  failed: { label: 'Failed', dotClass: 'bg-red-500', textClass: 'text-red-500' },
+  active: { label: 'Running', dotClass: 'bg-accent animate-pulse', textClass: 'text-accent' },
+  completed: { label: 'Done', dotClass: 'bg-success', textClass: 'text-success' },
+  stopped: { label: 'Stopped', dotClass: 'bg-info', textClass: 'text-info' },
+  failed: { label: 'Failed', dotClass: 'bg-destructive', textClass: 'text-destructive' },
 }
 
 function AgentSessionStatus({
@@ -729,29 +729,17 @@ function AgentSessionStatus({
   const { profiles = [] } = useAgentProfiles()
   const agent = profiles.find(p => p.id === session.agentProfileId)
   const status = SESSION_STATUS_MAP[session.status] ?? SESSION_STATUS_MAP.created
-  const isLive = session.status === 'active'
 
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-xl p-3 space-y-3',
-        'bg-card border border-border/50',
-        'inset-shadow-[0_1px_--theme(--color-white/8%)]',
+        'relative overflow-hidden rounded-[8px] p-3 space-y-3',
+        'bg-background shadow-minimal',
       )}
     >
-      {isLive && (
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.035] text-blue-400"
-          style={{
-            background: 'radial-gradient(circle at 30% 30%, currentColor, transparent 65%)',
-            animation: 'agentGlow 5s ease-in-out infinite',
-          }}
-        />
-      )}
-
-      <div className="relative flex items-center justify-between">
+      <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 text-[13px]">
-          <BotIcon className="size-3.5 text-muted-foreground/55" />
+          <BotIcon className="size-3.5 text-muted-foreground" />
           <span className="font-medium">{agent?.name ?? 'Agent'}</span>
         </span>
         <span className={cn('flex items-center gap-1.5 text-[11px]', status.textClass)}>
@@ -761,10 +749,10 @@ function AgentSessionStatus({
       </div>
 
       {(session.status === 'created' || activeSession) && (
-        <div className="relative flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {session.status === 'created' && (
             <button
-              className="h-6 px-3 rounded-lg text-[11px] font-medium bg-blue-500/10 text-blue-500 hover:bg-blue-500/15 transition-colors"
+              className="h-6 px-3 rounded-md text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/15 transition-colors"
               onClick={onStart}
             >
               Start
@@ -772,7 +760,7 @@ function AgentSessionStatus({
           )}
           {activeSession && (
             <button
-              className="flex items-center gap-1 h-6 px-3 rounded-lg text-[11px] font-medium bg-red-500/10 text-red-500 hover:bg-red-500/15 transition-colors"
+              className="flex items-center gap-1 h-6 px-3 rounded-md text-[11px] font-medium bg-destructive/10 text-destructive hover:bg-destructive/15 transition-colors"
               onClick={onStop}
             >
               <CircleStopIcon className="size-3" />
@@ -827,19 +815,19 @@ export function IssuePanel({ issueId, workspaceId }: IssuePanelProps) {
         {latestSession && (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <div className="size-5 rounded-full flex items-center justify-center bg-blue-500/10">
-                <BotIcon className="size-3 text-blue-500" />
+              <div className="size-5 rounded-full flex items-center justify-center bg-accent/10">
+                <BotIcon className="size-3 text-accent" />
               </div>
-              <span className="text-[12px] text-muted-foreground/45">Agent reasoning</span>
+              <span className="text-[12px] text-muted-foreground">Agent reasoning</span>
             </div>
             <AgentActivityFeed agentSessionId={latestSession.id} />
           </div>
         )}
 
-        <Separator className="opacity-30" />
+        <div className="h-px bg-foreground/5" />
 
         <div>
-          <span className="text-[12px] text-muted-foreground/40 block mb-3">Activity</span>
+          <span className="text-[12px] text-muted-foreground block mb-3">Activity</span>
           <Activity issueId={issueId} />
         </div>
 
@@ -855,6 +843,7 @@ export function IssueProperties({ issueId, workspaceId }: { issueId: string, wor
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
   const { profiles: agentProfiles = [] } = useAgentProfiles()
+  const { agents = [] } = useAgents()
   const { data: agentSessions = [] } = useAgentSessions(issueId)
   const { data: relations = [] } = useRelations(issueId)
   const updateIssue = useUpdateIssue()
@@ -886,8 +875,10 @@ export function IssueProperties({ issueId, workspaceId }: { issueId: string, wor
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
   const currentPriority = PRIORITY_OPTIONS.find(o => o.value === priority)
+  const enabledAgents = agents.filter(a => a.enabled)
   const enabledProfiles = agentProfiles.filter(p => p.enabled)
-  const currentDelegate = enabledProfiles.find(p => p.id === issue.delegateAgentId)
+  const currentDelegateAgent = enabledAgents.find(a => a.providerId === issue.delegateAgentId)
+  const currentDelegate = currentDelegateAgent ?? enabledProfiles.find(p => p.id === issue.delegateAgentId)
   const activeSession = agentSessions.find(s => s.status === 'active' || s.status === 'created')
   const latestSession = agentSessions[0]
 
@@ -982,8 +973,11 @@ export function IssueProperties({ issueId, workspaceId }: { issueId: string, wor
                 }
                 else if (val.startsWith('agent:')) {
                   const agentId = val.slice(6)
+                  // Resolve Agent identity → Provider ID
+                  const agentEntity = enabledAgents.find(a => a.id === agentId)
+                  const profileId = agentEntity ? agentEntity.providerId : agentId
                   patch({ assigneeKind: null, assigneeId: null })
-                  delegateIssue.mutate({ issueId, agentProfileId: agentId })
+                  delegateIssue.mutate({ issueId, agentProfileId: profileId })
                 }
               }}
             >
@@ -991,7 +985,9 @@ export function IssueProperties({ issueId, workspaceId }: { issueId: string, wor
                 {issue.delegateAgentId
                   ? (
                     <span className="flex items-center gap-1.5">
-                      <BotIcon className="size-3" />
+                      {currentDelegateAgent?.avatarUrl
+                        ? <img src={currentDelegateAgent.avatarUrl} alt="" className="size-3.5 rounded" crossOrigin="anonymous" />
+                        : <BotIcon className="size-3" />}
                       <span>{currentDelegate?.name ?? 'Agent'}</span>
                     </span>
                   )
@@ -1012,10 +1008,23 @@ export function IssueProperties({ issueId, workspaceId }: { issueId: string, wor
                     Me
                   </span>
                 </SelectItem>
-                {enabledProfiles.length > 0 && (
+                {enabledAgents.length > 0 && (
                   <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground/30 select-none">Agents</div>
                 )}
-                {enabledProfiles.map(p => (
+                {enabledAgents.map(a => (
+                  <SelectItem key={a.id} value={`agent:${a.id}`}>
+                    <span className="flex items-center gap-2">
+                      {a.avatarUrl
+                        ? <img src={a.avatarUrl} alt="" className="size-3.5 rounded" crossOrigin="anonymous" />
+                        : <BotIcon className="size-3" />}
+                      {a.name}
+                    </span>
+                  </SelectItem>
+                ))}
+                {enabledProfiles.length > 0 && enabledAgents.length === 0 && (
+                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground/30 select-none">Providers</div>
+                )}
+                {enabledAgents.length === 0 && enabledProfiles.map(p => (
                   <SelectItem key={p.id} value={`agent:${p.id}`}>
                     <span className="flex items-center gap-2">
                       <BotIcon className="size-3" />

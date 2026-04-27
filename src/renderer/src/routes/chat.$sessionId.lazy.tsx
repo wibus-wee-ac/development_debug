@@ -18,6 +18,7 @@ import {
 import { RouteLoadingFallback } from '@renderer/components/ui/route-loading-fallback'
 import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
+import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { ChatView } from '@renderer/features/chat'
 import { useChatSessionTitle } from '@renderer/features/chat/use-chat-events'
 import { GitBranchControl } from '@renderer/features/git'
@@ -161,6 +162,7 @@ function ChatSessionPage() {
   const [workspaceName, setWorkspaceName] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [shellGen, setShellGen] = useState(0)
+  const { agents } = useAgents()
 
   // Session metadata: loader provides the initial value synchronously.
   // useQuery keeps it live (title updates, config changes) without an extra
@@ -175,6 +177,10 @@ function ChatSessionPage() {
   const workspaceId = session?.workspaceId ?? null
   const sessionTitle = session?.title ?? null
   const isTerminalSession = session?.providerKind === 'cli-tui'
+  const sessionAgent = useMemo(
+    () => session?.agentId ? agents.find(a => a.id === session.agentId) ?? null : null,
+    [session?.agentId, agents],
+  )
 
   // Auto-collapse sidebar in tearoff windows
   useEffect(() => {
@@ -237,9 +243,18 @@ function ChatSessionPage() {
     )
   }
 
+  const headerTitle = sessionAgent
+    ? (
+      <span className="flex items-center gap-1.5">
+        <img src={sessionAgent.avatarUrl ?? undefined} alt="" className="size-4 rounded" crossOrigin="anonymous" />
+        <span>{sessionTitle}</span>
+      </span>
+    )
+    : sessionTitle
+
   return (
     <AppLayout
-      title={sessionTitle}
+      title={headerTitle}
       workspace={workspaceName}
       hasAside
       hasPanel={!!(workspaceId && workspacePath)}

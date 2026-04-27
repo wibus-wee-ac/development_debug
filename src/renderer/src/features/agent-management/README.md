@@ -2,11 +2,14 @@
 
 # Features/Agent Management
 
-Unified settings feature for Agent Runtime profiles.
-This feature owns profile CRUD UI across ACP, CLI TUI, Codex App Server, and OpenAI-compatible providers.
-Provider execution and secrets remain in the Electron main process.
+Unified settings feature for Provider (agent_profiles) and Agent identity management.
+Provider CRUD covers ACP, CLI TUI, and OpenAI-compatible providers.
+Agent identity CRUD provides name, DiceBear avatar, model preference, and thinking effort.
 
 ## Files
 
-- **agent-runtime-settings.tsx**: AgentRuntimeSettings component — unified Agent Profile management UI.
-- **index.ts**: Barrel export for the agent management feature.
+- **agent-list.tsx**: AgentList settings page — inline expand-to-create Agent editor with DiceBear avatar picker
+- **agent-runtime-settings.tsx**: AgentRuntimeSettings component — unified Agent Profile management UI
+- **agents-settings.tsx**: AgentsSettings (Providers) — ACP Registry + manual provider profile CRUD
+- **acp-settings.tsx**: Legacy ACP settings (superseded by agents-settings.tsx)
+- **index.ts**: Barrel export for the agent management feature
