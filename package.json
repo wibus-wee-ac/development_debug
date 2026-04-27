@@ -5,6 +5,9 @@
   "author": "example.com",
   "homepage": "https://electron-vite.org",
   "main": "./out/main/index.js",
+  "bin": {
+    "cradle": "./src/cli/index.ts"
+  },
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -84,6 +87,7 @@
     "geist": "^1.7.0",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "ignore": "^7.0.5",
+    "js-yaml": "^4.1.1",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.8.0",
     "motion": "^12.38.0",
@@ -114,12 +118,14 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/extract-zip": "^2.0.3",
     "@types/hast": "^3.0.4",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@types/tar": "^7.0.87",
     "@vitejs/plugin-react": "^5.1.1",
     "babel-plugin-react-compiler": "^1.0.0",
+    "commander": "^14.0.3",
     "drizzle-kit": "^0.31.10",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",
