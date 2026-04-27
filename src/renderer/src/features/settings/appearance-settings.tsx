@@ -2,7 +2,7 @@
 // Output: AppearanceSettings component with macOS-style theme preview cards
 // Position: Settings feature section — appearance/theme preferences
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import type { ThemeMode } from '@renderer/store/theme'
 import { useThemeStore } from '@renderer/store/theme'
 import { CheckIcon } from 'lucide-react'

@@ -4,13 +4,13 @@
 
 import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import {
   BrainIcon,
   DicesIcon,
@@ -215,22 +215,22 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
                 <div className="flex flex-col gap-1">
                   <span className="text-[10px] text-muted-foreground">Provider</span>
                   <Select
-                    value={providerId ?? ''}
-                    onValueChange={(v: string | null) => {
-                      setProviderId(v)
+                    value={providerId ?? undefined}
+                    onValueChange={(value) => {
+                      setProviderId(value)
                       setModelId(null)
                     }}
                   >
                     <SelectTrigger size="sm">
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
-                    <SelectPopup>
+                    <SelectContent>
                       {enabledProviders.map(p => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
                         </SelectItem>
                       ))}
-                    </SelectPopup>
+                    </SelectContent>
                   </Select>
                 </div>
 
@@ -317,10 +317,10 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
                 size="sm"
                 onClick={handleSubmit}
                 disabled={!canSave || saving}
-                loading={saving}
                 className="bg-foreground text-background hover:bg-foreground/90"
                 data-testid="agent-save-btn"
               >
+                {saving && <Spinner className="size-3.5" />}
                 {initial ? 'Save' : 'Create Agent'}
               </Button>
             </div>
@@ -366,19 +366,19 @@ function ModelField({
           )
           : (
             <Select
-              value={modelId ?? models[0]?.id ?? ''}
-              onValueChange={(v: string | null) => onModelChange(v)}
+              value={modelId ?? models[0]?.id ?? undefined}
+              onValueChange={(value) => onModelChange(value)}
             >
               <SelectTrigger size="sm">
                 <SelectValue placeholder="Select" />
               </SelectTrigger>
-              <SelectPopup>
+              <SelectContent>
                 {models.map((m: ModelDescriptor) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.label ?? m.id}
                   </SelectItem>
                 ))}
-              </SelectPopup>
+              </SelectContent>
             </Select>
           )}
     </div>

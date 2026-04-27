@@ -4,10 +4,10 @@
 
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
-import { Popover, PopoverPopup, PopoverTrigger } from '@renderer/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { toastManager } from '@renderer/components/ui/toast'
+import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,
@@ -131,12 +131,20 @@ export function BranchPicker({
   )
 
   return (
-    <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) { cancelCreating() } }}>
-      <PopoverTrigger render={<button type="button" />}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen)
+        if (!nextOpen) {
+          cancelCreating()
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
         {children}
       </PopoverTrigger>
-      <PopoverPopup
-        className="w-72 **:data-[slot='popover-viewport']:p-0!"
+      <PopoverContent
+        className="w-72 gap-0 p-0"
         side="bottom"
         align="start"
         sideOffset={6}
@@ -152,10 +160,17 @@ export function BranchPicker({
                   className="h-7 flex-1 text-xs font-mono"
                   placeholder="feature/my-branch"
                   value={newName}
-                  onChange={(e) => { setNewName(e.target.value); setCreateError(null) }}
+                  onChange={(e) => {
+                    setNewName(e.target.value)
+                    setCreateError(null)
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') { void handleCreate() }
-                    if (e.key === 'Escape') { cancelCreating() }
+                    if (e.key === 'Enter') {
+                      void handleCreate()
+                    }
+                    if (e.key === 'Escape') {
+                      cancelCreating()
+                    }
                   }}
                   disabled={createLoading}
                   autoFocus
@@ -215,7 +230,9 @@ export function BranchPicker({
                   className="h-7 text-xs"
                   placeholder="搜索或切换分支…"
                   value={search}
-                  onChange={e => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value)
+                  }}
                   autoFocus
                 />
                 <Button
@@ -293,7 +310,7 @@ export function BranchPicker({
               </div>
             </div>
           )}
-      </PopoverPopup>
+      </PopoverContent>
     </Popover>
   )
 }

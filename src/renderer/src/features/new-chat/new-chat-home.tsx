@@ -5,12 +5,12 @@
 import { Button } from '@renderer/components/ui/button'
 import {
   Combobox,
+  ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-  ComboboxPopup,
-  ComboboxPrimitive,
+  ComboboxTrigger,
 } from '@renderer/components/ui/combobox'
 import {
   Menu,
@@ -234,7 +234,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
                   }
                 }}
               >
-                <ComboboxPrimitive.Trigger
+                <ComboboxTrigger
                   render={(
                     <Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />
                   )}
@@ -242,11 +242,10 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
                   <CpuIcon className="size-3" aria-hidden="true" />
                   {selectedModel?.label ?? '默认模型'}
                   <ChevronDownIcon aria-hidden="true" />
-                </ComboboxPrimitive.Trigger>
-                <ComboboxPopup aria-label="选择模型" className="min-w-60" side="left">
+                </ComboboxTrigger>
+                <ComboboxContent aria-label="选择模型" className="min-w-60" side="left">
                   <div className="border-b p-2">
                     <ComboboxInput
-                      size="sm"
                       showTrigger={false}
                       placeholder="搜索模型..."
                     />
@@ -259,7 +258,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
                       </ComboboxItem>
                     )}
                   </ComboboxList>
-                </ComboboxPopup>
+                </ComboboxContent>
               </Combobox>
             )
         )}

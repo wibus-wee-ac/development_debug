@@ -3,7 +3,7 @@
 // Position: Right pane inside the IPC devtool page
 
 import type { IpcObservedPayload } from '@cradle/ipc'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { useMemo } from 'react'
 import superjson from 'superjson'
 

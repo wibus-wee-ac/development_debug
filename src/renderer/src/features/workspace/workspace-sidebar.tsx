@@ -4,7 +4,7 @@
 
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
-import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { ThreadSearchDialog } from '@renderer/features/search'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
@@ -261,27 +261,26 @@ interface NavItemProps {
   shortcut?: string
   collapsed?: boolean
   onClick?: () => void
-  'data-testid'?: string
+  dataTestId?: string
 }
 
-function TopNavItem({ icon, label, shortcut, collapsed, onClick, 'data-testid': testId }: NavItemProps) {
+function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: NavItemProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      data-testid={testId}
+      data-testid={dataTestId}
       className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
     >
       {collapsed
         ? (
           <Tooltip>
-            <TooltipTrigger
-              delay={0}
-              render={<span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70" />}
-            >
-              {icon}
+            <TooltipTrigger asChild>
+              <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
+                {icon}
+              </span>
             </TooltipTrigger>
-            <TooltipPopup side="right" sideOffset={8}>{label}</TooltipPopup>
+            <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
           </Tooltip>
         )
         : (
@@ -346,7 +345,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* ── Top navigation ── */}
-      <TooltipProvider delay={collapsed ? 0 : 600}>
+      <TooltipProvider delayDuration={collapsed ? 0 : 600}>
         <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
           <TopNavItem
             icon={<HomeIcon className="size-4" />}
@@ -382,7 +381,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="看板"
             collapsed={collapsed}
             onClick={() => navigate({ to: '/kanban' })}
-            data-testid="nav-kanban"
+            dataTestId="nav-kanban"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-4" />}

@@ -2,7 +2,7 @@
 // Output: AcpEventsTable — selectable event timeline for ACP lifecycle and stream output
 // Position: Left pane of the ACP runtime mode inside the devtool page
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 
 import { useAcpDevtoolStore, useAcpFilteredEvents } from './use-acp-events'
 

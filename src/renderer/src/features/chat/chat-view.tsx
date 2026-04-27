@@ -42,12 +42,13 @@ export function ChatView({
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialMessageRows })
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
    * it can track scroll position without a separate listener.
    */
-  const viewportRef = useRef<HTMLElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const virtualizerRef = useRef<VirtualizerHandle>(null)
 
   /** True when the user is near the bottom (<= 200 px away). Auto-scroll only fires when true. */
@@ -57,6 +58,16 @@ export function ChatView({
   const [scrollMetrics, setScrollMetrics] = useState({ offset: 0, scrollHeight: 0, viewportHeight: 0, barProgress: [] as number[] })
 
   const isStreaming = status === 'streaming'
+
+  useEffect(() => {
+    viewportRef.current = scrollContainerRef.current?.querySelector(
+      '[data-slot="scroll-area-viewport"]',
+    ) as HTMLDivElement | null
+
+    return () => {
+      viewportRef.current = null
+    }
+  }, [])
 
   const lastMsg = messages.at(-1)
   const assistantHasVisibleText = lastMsg?.role === 'assistant'
@@ -201,8 +212,8 @@ export function ChatView({
       onDragOver={e => e.preventDefault()}
     >
       {/* Virtualized message list */}
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <ScrollArea className="h-full **:data-[slot=scroll-area-scrollbar]:hidden" viewportRef={viewportRef}>
+      <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
           <div className="mx-auto max-w-2xl px-4 pt-4">
             {messages.length === 0 && isReady && (
               <div className="flex items-center justify-center py-20">

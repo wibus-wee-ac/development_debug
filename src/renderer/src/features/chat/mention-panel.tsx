@@ -2,7 +2,7 @@
 // Output: MentionPanel — fuzzy file picker panel above composer with character-level highlighting
 // Position: Sub-component of Composer for @ file mention selection
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { Fzf } from 'fzf'
 import { FileIcon, FolderIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

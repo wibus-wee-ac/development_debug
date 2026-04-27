@@ -2,7 +2,7 @@
 // Output: PriorityIcon component — colored icon per priority level (Linear-style)
 // Position: Shared UI atom for kanban issue cards and detail views
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import {
   AlertTriangleIcon,
   ArrowDownIcon,

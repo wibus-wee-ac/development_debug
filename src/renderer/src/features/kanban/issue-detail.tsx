@@ -6,15 +6,21 @@ import type { KanbanIssue, KanbanIssueComment, KanbanIssueRelation } from '@main
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { Badge } from '@renderer/components/ui/badge'
-import { Combobox, ComboboxInput, ComboboxItem, ComboboxPopup } from '@renderer/components/ui/combobox'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxInput,
+  ComboboxItem,
+} from '@renderer/components/ui/combobox'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@renderer/components/ui/menu'
-import { Select, SelectItem, SelectPopup, SelectTrigger } from '@renderer/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@renderer/components/ui/select'
 import { Textarea } from '@renderer/components/ui/textarea'
-import { Tooltip, TooltipPopup, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
+import { useNavigate } from '@tanstack/react-router'
 import {
   AlertCircleIcon,
   BotIcon,
@@ -27,7 +33,6 @@ import {
   MoreHorizontalIcon,
   PlayIcon,
   PlusIcon,
-  SquareIcon,
   Trash2Icon,
   UserIcon,
   WrenchIcon,
@@ -58,7 +63,6 @@ import {
   useRemoveContextRef,
   useStartAgentSession,
   useStatuses,
-  useStopAgentSession,
   useUndelegateIssue,
   useUpdateIssue,
 } from './use-kanban'
@@ -148,7 +152,9 @@ function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) =
     if (t && t !== value) {
       onSave(t)
     }
-    else { setDraft(value) }
+    else {
+      setDraft(value)
+    }
   }
 
   if (editing) {
@@ -216,7 +222,7 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
   const reasoning = activities.filter(a => a.type === 'thought' || a.type === 'action')
   const responses = activities.filter(a => a.type !== 'thought' && a.type !== 'action')
 
-  function parseBody(activity: typeof activities[number]) {
+  function parseBody(activity: (typeof activities)[number]) {
     try {
       const parsed = JSON.parse(activity.content) as Record<string, unknown>
       if (activity.type === 'action') {
@@ -240,7 +246,9 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
           className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors duration-100"
           onClick={() => setExpanded(!expanded)}
         >
-          <ChevronRightIcon className={cn('size-3 transition-transform duration-150', expanded && 'rotate-90')} />
+          <ChevronRightIcon
+            className={cn('size-3 transition-transform duration-150', expanded && 'rotate-90')}
+          />
           {reasoning.length}
           {' '}
           reasoning step
@@ -260,9 +268,14 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
             {reasoning.map((a) => {
               const Icon = ACTIVITY_ICON[a.type] ?? BrainIcon
               return (
-                <div key={a.id} className="flex items-start gap-2 text-[11px] text-muted-foreground/50">
+                <div
+                  key={a.id}
+                  className="flex items-start gap-2 text-[11px] text-muted-foreground/50"
+                >
                   <Icon className="mt-0.5 size-3 shrink-0" />
-                  <span className="whitespace-pre-wrap min-w-0 wrap-break-word">{parseBody(a)}</span>
+                  <span className="whitespace-pre-wrap min-w-0 wrap-break-word">
+                    {parseBody(a)}
+                  </span>
                 </div>
               )
             })}
@@ -274,9 +287,17 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
         const Icon = ACTIVITY_ICON[a.type] ?? MessageSquareIcon
         const isError = a.type === 'error'
         return (
-          <div key={a.id} className={cn('flex items-start gap-2 text-[12px]', isError ? 'text-red-500' : 'text-foreground/80')}>
+          <div
+            key={a.id}
+            className={cn(
+              'flex items-start gap-2 text-[12px]',
+              isError ? 'text-red-500' : 'text-foreground/80',
+            )}
+          >
             <Icon className="mt-0.5 size-3 shrink-0" />
-            <span className="whitespace-pre-wrap min-w-0 wrap-break-word leading-relaxed">{parseBody(a)}</span>
+            <span className="whitespace-pre-wrap min-w-0 wrap-break-word leading-relaxed">
+              {parseBody(a)}
+            </span>
           </div>
         )
       })}
@@ -301,7 +322,6 @@ function AgentPropertyRow({
   const { agents = [] } = useAgents()
   const { data: sessions = [] } = useAgentSessions(issueId)
   const startSession = useStartAgentSession()
-  const stopSession = useStopAgentSession()
 
   const enabledAgents = agents.filter(a => a.enabled)
   const enabledProfiles = profiles.filter(p => p.enabled)
@@ -309,14 +329,22 @@ function AgentPropertyRow({
   const isActive = latestSession?.status === 'active'
   const isQueued = latestSession?.status === 'created'
   const isRunning = isActive || isQueued
-  const phase = latestSession ? (SESSION_PHASE[latestSession.status] ?? SESSION_PHASE.created) : null
+  const isFinished
+    = latestSession?.status === 'completed'
+    || latestSession?.status === 'failed'
+    || latestSession?.status === 'stopped'
+  const phase = latestSession
+    ? (SESSION_PHASE[latestSession.status] ?? SESSION_PHASE.created)
+    : null
 
   const currentAgent = enabledAgents.find(a => a.providerId === delegateAgentId)
   const currentProfile = currentAgent ?? enabledProfiles.find(p => p.id === delegateAgentId)
 
   // Compute select value for current assignment
   const selectValue = delegateAgentId
-    ? (currentAgent ? `agent:${currentAgent.id}` : `profile:${delegateAgentId}`)
+    ? currentAgent
+      ? `agent:${currentAgent.id}`
+      : `profile:${delegateAgentId}`
     : ''
 
   return (
@@ -344,41 +372,70 @@ function AgentPropertyRow({
               ? (
                 <span className="flex items-center gap-1.5">
                   {currentAgent?.avatarUrl
-                    ? <img src={currentAgent.avatarUrl} alt="" className="size-3.5 rounded" crossOrigin="anonymous" />
-                    : <BotIcon className="size-3 text-muted-foreground/50" />}
+                    ? (
+                      <img
+                        src={currentAgent.avatarUrl}
+                        alt=""
+                        className="size-3.5 rounded"
+                        crossOrigin="anonymous"
+                      />
+                    )
+                    : (
+                      <BotIcon className="size-3 text-muted-foreground/50" />
+                    )}
                   <span>{currentProfile?.name ?? 'Agent'}</span>
                   {phase && (
-                    <span className={cn('size-1.5 rounded-full shrink-0', phase.color, phase.pulse && 'animate-pulse')} />
+                    <span
+                      className={cn(
+                        'size-1.5 rounded-full shrink-0',
+                        phase.color,
+                        phase.pulse && 'animate-pulse',
+                      )}
+                    />
                   )}
                 </span>
               )
-              : <span className="text-muted-foreground/30">No agent</span>}
+              : (
+                <span className="text-muted-foreground/30">No agent</span>
+              )}
           </SelectTrigger>
-          <SelectPopup>
-            <SelectItem value=""><span className="text-muted-foreground/30">No agent</span></SelectItem>
+          <SelectContent position="popper" sideOffset={4} align="end">
+            <SelectItem value="">
+              <span className="text-muted-foreground/30">No agent</span>
+            </SelectItem>
             {enabledAgents.map(a => (
               <SelectItem key={a.id} value={`agent:${a.id}`}>
                 <span className="flex items-center gap-2">
                   {a.avatarUrl
-                    ? <img src={a.avatarUrl} alt="" className="size-3.5 rounded" crossOrigin="anonymous" />
-                    : <BotIcon className="size-3 text-muted-foreground/50" />}
+                    ? (
+                      <img
+                        src={a.avatarUrl}
+                        alt=""
+                        className="size-3.5 rounded"
+                        crossOrigin="anonymous"
+                      />
+                    )
+                    : (
+                      <BotIcon className="size-3 text-muted-foreground/50" />
+                    )}
                   {a.name}
                 </span>
               </SelectItem>
             ))}
-            {enabledAgents.length === 0 && enabledProfiles.map(p => (
-              <SelectItem key={p.id} value={`profile:${p.id}`}>
-                <span className="flex items-center gap-2">
-                  <BotIcon className="size-3 text-muted-foreground/50" />
-                  {p.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectPopup>
+            {enabledAgents.length === 0
+              && enabledProfiles.map(p => (
+                <SelectItem key={p.id} value={`profile:${p.id}`}>
+                  <span className="flex items-center gap-2">
+                    <BotIcon className="size-3 text-muted-foreground/50" />
+                    {p.name}
+                  </span>
+                </SelectItem>
+              ))}
+          </SelectContent>
         </Select>
 
-        {/* Inline trigger/stop — only when agent is assigned */}
-        {delegateAgentId && !isRunning && latestSession && (
+        {/* Re-run — only after session finished (completed/failed/stopped) */}
+        {delegateAgentId && isFinished && latestSession && (
           <button
             className="flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-medium bg-foreground text-background hover:bg-foreground/90 transition-colors duration-100 inset-shadow-[0_1px_--theme(--color-white/15%)]"
             onClick={() => {
@@ -390,19 +447,13 @@ function AgentPropertyRow({
             }}
           >
             <PlayIcon className="size-2.5" />
-            Trigger
+            Re-run
           </button>
         )}
-        {delegateAgentId && isRunning && latestSession && (
-          <button
-            className="flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-medium text-red-500 hover:bg-red-500/10 transition-colors duration-100"
-            onClick={() => {
-              stopSession.mutate({ agentSessionId: latestSession.id, issueId })
-            }}
-          >
-            <SquareIcon className="size-2.5" />
-            Stop
-          </button>
+
+        {/* Running indicator */}
+        {delegateAgentId && isRunning && (
+          <span className="text-[10px] text-emerald-500 animate-pulse">Running</span>
         )}
       </div>
     </PropertyRow>
@@ -413,6 +464,7 @@ function AgentPropertyRow({
 
 function AgentSessionFeed({ issueId }: { issueId: string }) {
   const { data: sessions = [] } = useAgentSessions(issueId)
+  const navigate = useNavigate()
   const latestSession = sessions[0]
 
   if (!latestSession) {
@@ -425,10 +477,29 @@ function AgentSessionFeed({ issueId }: { issueId: string }) {
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <span className="text-[11px] text-muted-foreground/50">Session</span>
-        <span className={cn('inline-flex items-center gap-1.5 text-[10px] text-muted-foreground/40')}>
-          <span className={cn('size-1.5 rounded-full', phase.color, phase.pulse && 'animate-pulse')} />
+        <span
+          className={cn('inline-flex items-center gap-1.5 text-[10px] text-muted-foreground/40')}
+        >
+          <span
+            className={cn('size-1.5 rounded-full', phase.color, phase.pulse && 'animate-pulse')}
+          />
           {phase.label}
         </span>
+        {latestSession.chatSessionId && (
+          <button
+            className="ml-auto text-[10px] text-muted-foreground/40 hover:text-foreground transition-colors flex items-center gap-0.5"
+            onClick={() =>
+              navigate({
+                to: '/chat/$sessionId',
+                params: { sessionId: latestSession.chatSessionId! },
+                search: { tearoff: false },
+              })}
+          >
+            <MessageSquareIcon className="size-2.5" />
+            View session
+            <ChevronRightIcon className="size-2.5" />
+          </button>
+        )}
       </div>
       <AgentActivityFeed sessionId={latestSession.id} />
     </div>
@@ -480,7 +551,9 @@ function SubIssueList({
       <div className="flex items-center gap-2">
         <span className="text-[11px] text-muted-foreground/50">Sub-issues</span>
         {subIssues.length > 0 && (
-          <span className="text-[10px] text-muted-foreground/30 tabular-nums">{subIssues.length}</span>
+          <span className="text-[10px] text-muted-foreground/30 tabular-nums">
+            {subIssues.length}
+          </span>
         )}
         <button
           className="ml-auto text-muted-foreground/30 hover:text-foreground transition-colors duration-100"
@@ -552,9 +625,7 @@ function ActivityEntry({ comment, issueId }: { comment: KanbanIssueComment, issu
   if (kind === 'system') {
     return (
       <div className="relative flex items-center gap-3 py-2 pl-7">
-        <span className="text-[11px] text-muted-foreground/30 italic">
-          {comment.content}
-        </span>
+        <span className="text-[11px] text-muted-foreground/30 italic">{comment.content}</span>
         <span className="text-[10px] text-muted-foreground/20 tabular-nums shrink-0">
           {relativeTime(comment.createdAt)}
         </span>
@@ -607,9 +678,12 @@ function ComposeComment({ issueId }: { issueId: string }) {
     if (!content) {
       return
     }
-    addComment.mutate({ issueId, content }, {
-      onSuccess: () => setDraft(''),
-    })
+    addComment.mutate(
+      { issueId, content },
+      {
+        onSuccess: () => setDraft(''),
+      },
+    )
   }
 
   return (
@@ -674,7 +748,9 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
   const [relType, setRelType] = useState<'blocks' | 'duplicates' | 'relates_to'>('relates_to')
   const [showPicker, setShowPicker] = useState(false)
 
-  const relatedIds = new Set(relations.flatMap((r: KanbanIssueRelation) => [r.sourceIssueId, r.targetIssueId]))
+  const relatedIds = new Set(
+    relations.flatMap((r: KanbanIssueRelation) => [r.sourceIssueId, r.targetIssueId]),
+  )
   const candidates = allIssues.filter(i => i.id !== issueId && !relatedIds.has(i.id))
 
   function handleSelect(targetId: string | null) {
@@ -720,7 +796,10 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
     <div className="space-y-1">
       {relations.map((r: KanbanIssueRelation) => (
         <div key={r.id} className="flex items-center gap-2 group/rel">
-          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 shrink-0 font-normal text-muted-foreground/50">
+          <Badge
+            variant="outline"
+            className="text-[9px] px-1 py-0 h-3.5 shrink-0 font-normal text-muted-foreground/50"
+          >
             {relationLabel(r)}
           </Badge>
           <RelatedIssueTitle issueId={relatedId(r)} />
@@ -754,7 +833,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
             </div>
             <Combobox<string> value={null} onValueChange={handleSelect}>
               <ComboboxInput
-                size="sm"
+                className="h-7"
                 placeholder="Search issues…"
                 startAddon={<LinkIcon />}
                 autoFocus
@@ -765,7 +844,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
                   }
                 }}
               />
-              <ComboboxPopup>
+              <ComboboxContent>
                 {candidates.map(i => (
                   <ComboboxItem key={i.id} value={i.id}>
                     <span className="truncate">{i.title}</span>
@@ -776,7 +855,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: 
                     No issues available
                   </div>
                 )}
-              </ComboboxPopup>
+              </ComboboxContent>
             </Combobox>
             <button
               className="text-[10px] text-muted-foreground/30 hover:text-foreground transition-colors duration-100"
@@ -811,7 +890,9 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
     if (!v) {
       return
     }
-    const ref: ContextRef = v.startsWith('http') ? { type: 'url', value: v } : { type: 'file', value: v }
+    const ref: ContextRef = v.startsWith('http')
+      ? { type: 'url', value: v }
+      : { type: 'file', value: v }
     addRef.mutate({ issueId, ref: JSON.stringify(ref) })
     setInput('')
   }
@@ -821,13 +902,19 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
       {refs.map(r => (
         <div key={`${r.type}-${r.value}`} className="flex items-center gap-2 group/ref">
           {r.type === 'url'
-            ? <GlobeIcon className="size-2.5 text-muted-foreground/40 shrink-0" />
-            : <FileIcon className="size-2.5 text-muted-foreground/40 shrink-0" />}
+            ? (
+              <GlobeIcon className="size-2.5 text-muted-foreground/40 shrink-0" />
+            )
+            : (
+              <FileIcon className="size-2.5 text-muted-foreground/40 shrink-0" />
+            )}
           <Tooltip>
             <TooltipTrigger className="flex-1 min-w-0">
-              <span className="text-[11px] text-muted-foreground/50 truncate block">{r.label ?? r.value}</span>
+              <span className="text-[11px] text-muted-foreground/50 truncate block">
+                {r.label ?? r.value}
+              </span>
             </TooltipTrigger>
-            <TooltipPopup>{r.value}</TooltipPopup>
+            <TooltipContent>{r.value}</TooltipContent>
           </Tooltip>
           <button
             className="text-muted-foreground/20 hover:text-red-500 transition-colors duration-100 opacity-0 group-hover/ref:opacity-100"
@@ -850,7 +937,10 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
           className="flex-1 text-[11px] bg-transparent outline-none placeholder:text-muted-foreground/20"
         />
         {input.trim() && (
-          <button className="text-muted-foreground/40 hover:text-foreground transition-colors duration-100" onClick={handleAdd}>
+          <button
+            className="text-muted-foreground/40 hover:text-foreground transition-colors duration-100"
+            onClick={handleAdd}
+          >
             <PlusIcon className="size-2.5" />
           </button>
         )}
@@ -861,13 +951,25 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
 
 // ── Label Editor ──────────────────────────────────────────────────────────────
 
-function LabelEditor({ labels, onAdd, onRemove }: { labels: string[], onAdd: (l: string) => void, onRemove: (l: string) => void }) {
+function LabelEditor({
+  labels,
+  onAdd,
+  onRemove,
+}: {
+  labels: string[]
+  onAdd: (l: string) => void
+  onRemove: (l: string) => void
+}) {
   const [input, setInput] = useState('')
 
   return (
     <div className="flex flex-wrap gap-1 items-center">
       {labels.map(l => (
-        <Badge key={l} variant="secondary" className="text-[10px] gap-0.5 px-1.5 h-4.5 group/label cursor-default">
+        <Badge
+          key={l}
+          variant="secondary"
+          className="text-[10px] gap-0.5 px-1.5 h-4.5 group/label cursor-default"
+        >
           {l}
           <button
             className="opacity-0 group-hover/label:opacity-100 transition-opacity"
@@ -896,7 +998,12 @@ function LabelEditor({ labels, onAdd, onRemove }: { labels: string[], onAdd: (l:
 
 // ── Main IssueDetail ──────────────────────────────────────────────────────────
 
-export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }: IssueDetailProps) {
+export function IssueDetail({
+  issueId,
+  workspaceId,
+  onClose,
+  onNavigateToIssue,
+}: IssueDetailProps) {
   const { data: issue, isLoading } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -905,6 +1012,7 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
   const deleteIssue = useDeleteIssue()
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
+  const startAgentSession = useStartAgentSession()
 
   function patch(p: Parameters<typeof updateIssue.mutate>[0]['patch']) {
     if (!issue) {
@@ -1000,10 +1108,14 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
                         <span>{currentStatus.name}</span>
                       </span>
                     )
-                    : <span className="text-muted-foreground/30">None</span>}
+                    : (
+                      <span className="text-muted-foreground/30">None</span>
+                    )}
                 </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value=""><span className="text-muted-foreground/30">None</span></SelectItem>
+                <SelectContent position="popper" sideOffset={4} align="end">
+                  <SelectItem value="">
+                    <span className="text-muted-foreground/30">None</span>
+                  </SelectItem>
                   {statuses.map(s => (
                     <SelectItem key={s.id} value={s.id}>
                       <span className="flex items-center gap-2">
@@ -1012,14 +1124,15 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
                       </span>
                     </SelectItem>
                   ))}
-                </SelectPopup>
+                </SelectContent>
               </Select>
             </PropertyRow>
 
             <PropertyRow label="Priority">
               <Select
                 value={priority}
-                onValueChange={p => patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })}
+                onValueChange={p =>
+                  patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })}
               >
                 <SelectTrigger size="sm" className={propertyTriggerCls}>
                   <span className="flex items-center gap-1.5">
@@ -1027,7 +1140,7 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
                     <span>{currentPriority?.label ?? 'No priority'}</span>
                   </span>
                 </SelectTrigger>
-                <SelectPopup>
+                <SelectContent position="popper" sideOffset={4} align="end">
                   {PRIORITY_OPTIONS.map(o => (
                     <SelectItem key={o.value} value={o.value}>
                       <span className="flex items-center gap-2">
@@ -1036,7 +1149,7 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
                       </span>
                     </SelectItem>
                   ))}
-                </SelectPopup>
+                </SelectContent>
               </Select>
             </PropertyRow>
 
@@ -1047,15 +1160,23 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
               >
                 <SelectTrigger size="sm" className={propertyTriggerCls}>
                   {currentMilestone
-                    ? <span className="truncate">{currentMilestone.title}</span>
-                    : <span className="text-muted-foreground/30">None</span>}
+                    ? (
+                      <span className="truncate">{currentMilestone.title}</span>
+                    )
+                    : (
+                      <span className="text-muted-foreground/30">None</span>
+                    )}
                 </SelectTrigger>
-                <SelectPopup>
-                  <SelectItem value=""><span className="text-muted-foreground/30">None</span></SelectItem>
+                <SelectContent position="popper" sideOffset={4} align="end">
+                  <SelectItem value="">
+                    <span className="text-muted-foreground/30">None</span>
+                  </SelectItem>
                   {milestones.map(m => (
-                    <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.title}
+                    </SelectItem>
                   ))}
-                </SelectPopup>
+                </SelectContent>
               </Select>
             </PropertyRow>
 
@@ -1074,16 +1195,29 @@ export function IssueDetail({ issueId, workspaceId, onClose, onNavigateToIssue }
             <AgentPropertyRow
               issueId={issueId}
               delegateAgentId={issue.delegateAgentId}
-              onDelegate={agentId => delegateIssue.mutate({ issueId, agentProfileId: agentId })}
+              onDelegate={(agentId) => {
+                delegateIssue.mutate(
+                  { issueId, agentProfileId: agentId },
+                  {
+                    onSuccess: (session) => {
+                      if (session?.id) {
+                        startAgentSession.mutate({
+                          issueId,
+                          agentSessionId: session.id,
+                          agentProfileId: session.agentProfileId,
+                        })
+                      }
+                    },
+                  },
+                )
+              }}
               onUndelegate={() => undelegateIssue.mutate({ issueId })}
             />
           </div>
 
           {/* Agent session activity (flat, below properties) */}
           <div className="px-5">
-            {issue.delegateAgentId && (
-              <AgentSessionFeed issueId={issueId} />
-            )}
+            {issue.delegateAgentId && <AgentSessionFeed issueId={issueId} />}
           </div>
 
           {/* Description */}

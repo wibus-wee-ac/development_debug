@@ -2,7 +2,7 @@
 // Output: ToolCallBlock — collapsible inline tool invocation display
 // Position: Sub-component of message bubble for rendering tool call/result parts
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import {
   AlertCircleIcon,
   CheckCircle2Icon,

@@ -366,8 +366,9 @@ export class AcpConnectionManager {
         throw promptError
       }
       // Capture token usage if the ACP agent reported it
-      if (promptResult?.usage) {
-        const u = promptResult.usage
+      const usage = (promptResult as PromptResponse | null)?.usage ?? null
+      if (usage) {
+        const u = usage
         this._lastUsage = {
           promptTokens: u.inputTokens ?? 0,
           completionTokens: u.outputTokens ?? 0,
@@ -378,7 +379,7 @@ export class AcpConnectionManager {
         this._lastUsage = null
       }
     }
- catch (err) {
+    catch (err) {
       await promptDone.catch(() => {})
       throw err
     }

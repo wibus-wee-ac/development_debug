@@ -2,7 +2,7 @@
 // Output: IpcEventsTable — sortable, selectable table of IPC traces grouped by traceId
 // Position: Left/main pane inside the IPC devtool page
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import type { ColumnDef, SortingState } from '@tanstack/react-table'
 import {
   flexRender,
@@ -61,15 +61,15 @@ export function IpcEventsTable() {
             <span className="flex min-w-0 items-center gap-1.5 font-mono">
               {color
                 ? (
-                    <span
-                      className={cn('h-2 w-2 shrink-0 rounded-full', color)}
-                      title={`flow: ${row.original.flowId}`}
-                      aria-hidden="true"
-                    />
-                  )
+                  <span
+                    className={cn('h-2 w-2 shrink-0 rounded-full', color)}
+                    title={`flow: ${row.original.flowId}`}
+                    aria-hidden="true"
+                  />
+                )
                 : (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-transparent" aria-hidden="true" />
-                  )}
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-transparent" aria-hidden="true" />
+                )}
               <span className="truncate">{getValue<string>()}</span>
             </span>
           )
@@ -119,8 +119,8 @@ export function IpcEventsTable() {
                 : 'text-muted-foreground'
           return (
             <span className={cn('block text-right tabular-nums', color)}>
-{ms}
-ms
+              {ms}
+              ms
             </span>
           )
         },

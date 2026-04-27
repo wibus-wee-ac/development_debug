@@ -3,7 +3,7 @@
 // Position: Top chrome of AppLayout's center column; doubles as a macOS window-drag region
 
 import { Button } from '@renderer/components/ui/button'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useRouterState } from '@tanstack/react-router'
 import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'

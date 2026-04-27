@@ -2,7 +2,7 @@
 // Output: MessageBubble — animated message with parts rendering and action bar
 // Position: Core display component in chat feature for rendering individual messages
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { motion } from 'motion/react'

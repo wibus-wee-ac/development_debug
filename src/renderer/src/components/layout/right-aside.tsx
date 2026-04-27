@@ -4,7 +4,7 @@
 
 import { GitPanel } from '@renderer/features/git'
 import { FileTree } from '@renderer/features/workspace/file-tree'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { FolderTreeIcon, GitBranchIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'

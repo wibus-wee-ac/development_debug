@@ -8,7 +8,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { KanbanIssue, KanbanStatus } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { PlusIcon } from 'lucide-react'
 
 import { IssueCard } from './issue-card'

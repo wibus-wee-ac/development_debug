@@ -5,6 +5,7 @@
 Linear-style issue board with drag-and-drop, inline issue detail panel, and explicit agent control.
 Built on @dnd-kit, TanStack Query, motion/react, and coss UI primitives.
 All IPC calls go through `use-kanban.ts` → `ipc.kanban.*`.
+Kanban UI files should track the current coss primitive API names such as `*Content` instead of legacy popup aliases.
 
 ## Files
 

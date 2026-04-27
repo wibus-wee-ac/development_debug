@@ -5,7 +5,7 @@
 import type { KanbanIssue } from '@main/ipc-types'
 import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { Badge } from '@renderer/components/ui/badge'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { BotIcon, FlagIcon, UserIcon } from 'lucide-react'
 
 import { PriorityIcon } from './priority-icon'
@@ -74,12 +74,15 @@ export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardP
       {labels.length > 0 && (
         <div className="flex flex-wrap gap-1 pl-5.5">
           {labels.slice(0, 3).map(label => (
-            <Badge key={label} variant="secondary" size="sm" className="font-normal text-[9px] h-3.5 px-1">
+            <Badge key={label} variant="secondary" className="h-3.5 px-1 text-[9px] font-normal">
               {label}
             </Badge>
           ))}
           {labels.length > 3 && (
-            <span className="text-[9px] text-muted-foreground/25">+{labels.length - 3}</span>
+            <span className="text-[9px] text-muted-foreground/25">
+              +
+              {labels.length - 3}
+            </span>
           )}
         </div>
       )}

@@ -5,17 +5,14 @@
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
-  DialogFooter,
+  DialogContent,
   DialogHeader,
-  DialogPanel,
-  DialogPopup,
   DialogTitle,
-  DialogTrigger,
 } from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
 import { ipc } from '@renderer/lib/ipc'
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useImperativeHandle, useRef, useState } from 'react'
+import { useCallback, useImperativeHandle, useState } from 'react'
 
 import {
   gitBranchesQueryKey,
@@ -46,7 +43,6 @@ export function CreateBranchDialog({
   const [error, setError] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const { data: branches } = useGitBranches(workspacePath)
-  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useImperativeHandle(ref, () => ({
     open: () => {
@@ -90,13 +86,12 @@ export function CreateBranchDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger ref={triggerRef} style={{ display: 'none' }} />
-      <DialogPopup showCloseButton={false} className="w-95">
+      <DialogContent showCloseButton={false} className="w-95">
         <form onSubmit={(e) => { void handleSubmit(e) }}>
           <DialogHeader>
             <DialogTitle>新建分支</DialogTitle>
           </DialogHeader>
-          <DialogPanel>
+          <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs text-muted-foreground" htmlFor="branch-name">
@@ -131,8 +126,8 @@ export function CreateBranchDialog({
                 <p className="text-xs text-destructive">{error}</p>
               )}
             </div>
-          </DialogPanel>
-          <DialogFooter variant="bare">
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -149,9 +144,9 @@ export function CreateBranchDialog({
             >
               {loading ? '创建中…' : '创建并切换'}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogPopup>
+      </DialogContent>
     </Dialog>
   )
 }

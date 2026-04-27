@@ -2,7 +2,7 @@
 
 import { Form as FormPrimitive } from "@base-ui/react/form";
 import type React from "react";
-import { cn } from "@renderer/lib/utils";
+import { cn } from "@renderer/lib/cn";
 
 export function Form({
   className,

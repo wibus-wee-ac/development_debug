@@ -2,7 +2,7 @@
 // Output: StatusIcon component — circle indicator per status (Linear-style)
 // Position: Shared UI atom for kanban column headers and issue detail
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 
 interface StatusIconProps {
   color?: string | null

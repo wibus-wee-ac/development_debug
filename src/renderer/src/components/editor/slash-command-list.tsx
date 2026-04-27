@@ -2,7 +2,7 @@
 // Output: SlashCommandList React component for the dropdown
 // Position: UI component rendered by slash-command extension via ReactRenderer
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import {
   CodeIcon,
   Heading1Icon,

@@ -6,8 +6,8 @@ import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@renderer/components/ui/menu'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
-import { Tooltip, TooltipPopup, TooltipTrigger } from '@renderer/components/ui/tooltip'
-import { cn } from '@renderer/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { cn } from '@renderer/lib/cn'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import {
   ArrowLeftIcon,
@@ -72,24 +72,20 @@ export function KanbanSidebar() {
         <span className="text-[11px] font-medium text-muted-foreground/50">Boards</span>
         <span className="flex-1" />
         <Tooltip>
-          <TooltipTrigger
-            render={
-              (
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-muted-foreground/30 hover:text-foreground"
-                  onClick={() => {
-                    setIsCreating(true)
-                    requestAnimationFrame(() => inputRef.current?.focus())
-                  }}
-                >
-                  <PlusIcon />
-                </Button>
-              )
-            }
-          />
-          <TooltipPopup>New board</TooltipPopup>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="text-muted-foreground/30 hover:text-foreground"
+              onClick={() => {
+                setIsCreating(true)
+                requestAnimationFrame(() => inputRef.current?.focus())
+              }}
+            >
+              <PlusIcon />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>New board</TooltipContent>
         </Tooltip>
       </div>
 

@@ -8,12 +8,12 @@ import { RightAside } from '@renderer/components/layout/right-aside'
 import { Button } from '@renderer/components/ui/button'
 import {
   Combobox,
+  ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-  ComboboxPopup,
-  ComboboxPrimitive,
+  ComboboxTrigger,
 } from '@renderer/components/ui/combobox'
 import { RouteLoadingFallback } from '@renderer/components/ui/route-loading-fallback'
 import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
@@ -121,7 +121,7 @@ function SessionComposerBar({ session }: SessionComposerBarProps) {
                 }
               }}
             >
-              <ComboboxPrimitive.Trigger
+              <ComboboxTrigger
                 render={(
                   <Button variant="ghost" size="xs" className="text-muted-foreground/70 hover:text-foreground" />
                 )}
@@ -129,11 +129,10 @@ function SessionComposerBar({ session }: SessionComposerBarProps) {
                 <CpuIcon className="size-3" aria-hidden="true" />
                 {selectedModel?.label ?? '默认模型'}
                 <ChevronDownIcon aria-hidden="true" />
-              </ComboboxPrimitive.Trigger>
-              <ComboboxPopup aria-label="选择模型" className="min-w-60" side="left">
+              </ComboboxTrigger>
+              <ComboboxContent aria-label="选择模型" className="min-w-60" side="left">
                 <div className="border-b p-2">
                   <ComboboxInput
-                    size="sm"
                     showTrigger={false}
                     placeholder="搜索模型..."
                   />
@@ -146,7 +145,7 @@ function SessionComposerBar({ session }: SessionComposerBarProps) {
                     </ComboboxItem>
                   )}
                 </ComboboxList>
-              </ComboboxPopup>
+              </ComboboxContent>
             </Combobox>
           )
           : session.modelId

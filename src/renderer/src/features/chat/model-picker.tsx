@@ -6,14 +6,14 @@ import type { ModelInfo, SessionModelState } from '@agentclientprotocol/sdk'
 import { Button } from '@renderer/components/ui/button'
 import {
   Combobox,
+  ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-  ComboboxPopup,
-  ComboboxPrimitive,
+  ComboboxTrigger,
 } from '@renderer/components/ui/combobox'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { ChevronDownIcon, SearchIcon } from 'lucide-react'
 import { useMemo } from 'react'
 
@@ -55,7 +55,7 @@ export function ModelPicker({
         }
       }}
     >
-      <ComboboxPrimitive.Trigger
+      <ComboboxTrigger
         disabled={disabled}
         render={(
           <Button
@@ -67,11 +67,10 @@ export function ModelPicker({
       >
         {triggerLabel}
         <ChevronDownIcon aria-hidden="true" />
-      </ComboboxPrimitive.Trigger>
-      <ComboboxPopup aria-label="选择模型" className="min-w-60" side="left">
+      </ComboboxTrigger>
+      <ComboboxContent aria-label="选择模型" className="min-w-60" side="left">
         <div className="border-b p-2">
           <ComboboxInput
-            size="sm"
             showTrigger={false}
             startAddon={<SearchIcon />}
             placeholder="搜索模型..."
@@ -82,8 +81,8 @@ export function ModelPicker({
         <ComboboxList>
           {(item: ModelInfo) => (
             <ComboboxItem key={item.modelId} value={item}>
-              <div className="flex min-w-0 flex-col max-w-120">
-                <span className="truncate w-fit">{item.name}</span>
+              <div className="flex max-w-120 min-w-0 flex-col">
+                <span className="w-fit truncate">{item.name}</span>
                 {item.description
                   ? (
                     <span className="truncate text-xs text-muted-foreground">
@@ -95,7 +94,7 @@ export function ModelPicker({
             </ComboboxItem>
           )}
         </ComboboxList>
-      </ComboboxPopup>
+      </ComboboxContent>
     </Combobox>
   )
 }

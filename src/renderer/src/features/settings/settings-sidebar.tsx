@@ -4,7 +4,7 @@
 
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { ArrowLeftIcon, BotIcon, PaletteIcon, PlugIcon } from 'lucide-react'
 
 

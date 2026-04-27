@@ -5,7 +5,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
@@ -153,7 +153,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
           )
           : (
             <div className="flex min-h-0 flex-1 flex-col">
-              <TooltipProvider delay={700}>
+              <TooltipProvider delayDuration={700}>
                 <VList
                   ref={vListRef}
                   className="flex-1 [&::-webkit-scrollbar]:hidden"

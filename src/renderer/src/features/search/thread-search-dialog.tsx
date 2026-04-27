@@ -1,27 +1,22 @@
-// Input: ThreadSearchHit from @main/ipc-types, groupHitsByWorkspace helper, useThreadSearch hook, COSS Command primitives, TanStack Router navigate, HighlightedText
-// Output: ThreadSearchDialog — global search palette using COSS Command (Autocomplete-based) with workspace-grouped session results and user+assistant snippets
+// Input: ThreadSearchHit from @main/ipc-types, groupHitsByWorkspace helper, useThreadSearch hook, Command UI primitives, TanStack Router navigate, HighlightedText
+// Output: ThreadSearchDialog — global search palette with workspace-grouped session results and user+assistant snippets
 // Position: Search feature root UI component; controlled open state from parent (sidebar button / ⌘K shortcut)
 
 import type { ThreadSearchHit } from '@main/ipc-types'
 import {
   Command,
-  CommandCollection,
   CommandDialog,
-  CommandDialogPopup,
   CommandEmpty,
-  CommandFooter,
   CommandGroup,
-  CommandGroupLabel,
   CommandInput,
   CommandItem,
   CommandList,
-  CommandPanel,
   CommandSeparator,
 } from '@renderer/components/ui/command'
 import { EmptyMedia } from '@renderer/components/ui/empty'
 import { Kbd, KbdGroup } from '@renderer/components/ui/kbd'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowDownIcon,
@@ -62,10 +57,7 @@ function formatRelativeTime(unix: number): string {
   return `${Math.floor(diff / 2592000)} 月前`
 }
 
-// Pass-through filter: our data is already jieba-filtered on the main process,
-// so the autocomplete primitive should render whatever we give it as-is.
-const passthroughFilter = () => true
-
+// Results are already ranked and filtered by the main process.
 export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogProps) {
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
@@ -93,21 +85,16 @@ export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogPro
   )
 
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandDialogPopup className="max-w-2xl">
-        <Command
-          items={groups}
-          filter={passthroughFilter}
-          autoHighlight="always"
-          keepHighlight
-        >
+    <CommandDialog open={open} onOpenChange={onOpenChange} className="max-w-2xl">
+      <Command shouldFilter={false}>
+        <div className="overflow-hidden rounded-xl!">
           <CommandInput
             placeholder="搜索会话标题和消息内容..."
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onValueChange={setQuery}
             aria-label="搜索会话"
           />
-          <CommandPanel>
+          <div>
             <CommandEmpty className="not-empty:py-12">
               {hasQuery
                 ? isPending
@@ -116,36 +103,34 @@ export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogPro
                 : <IdleEmpty />}
             </CommandEmpty>
             <CommandList>
-              {(group: GroupedSearchHits) => (
+              {groups.map((group: GroupedSearchHits, index) => (
                 <Fragment key={group.value}>
-                  <CommandGroup items={group.items}>
-                    <CommandGroupLabel className="flex items-center justify-between">
+                  <CommandGroup>
+                    <div className="flex items-center justify-between px-2 py-1.5 font-medium text-muted-foreground text-xs">
                       <span>{group.label}</span>
                       <span className="font-normal text-muted-foreground/60 text-[10px]">
                         {group.items.length}
                         {' '}
                         个结果
                       </span>
-                    </CommandGroupLabel>
-                    <CommandCollection>
-                      {(hit: ThreadSearchHit) => (
-                        <CommandItem
-                          key={hit.sessionId}
-                          value={hit}
-                          onClick={() => handleSelect(hit)}
-                          className="flex-col items-stretch gap-1.5 px-2.5 py-2"
-                        >
-                          <SessionRow hit={hit} />
-                        </CommandItem>
-                      )}
-                    </CommandCollection>
+                    </div>
+                    {group.items.map((hit: ThreadSearchHit) => (
+                      <CommandItem
+                        key={hit.sessionId}
+                        value={`${group.label} ${hit.sessionTitle} ${hit.sessionId}`}
+                        onSelect={() => handleSelect(hit)}
+                        className="flex-col items-stretch gap-1.5 px-2.5 py-2"
+                      >
+                        <SessionRow hit={hit} />
+                      </CommandItem>
+                    ))}
                   </CommandGroup>
-                  <CommandSeparator />
+                  {index < groups.length - 1 && <CommandSeparator />}
                 </Fragment>
-              )}
+              ))}
             </CommandList>
-          </CommandPanel>
-          <CommandFooter>
+          </div>
+          <div className="flex items-center justify-between border-t px-3 py-2 text-muted-foreground text-xs">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <KbdGroup>
@@ -173,13 +158,13 @@ export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogPro
               {isPending
                 ? <Spinner className="size-3" />
                 : (
-                    <SparklesIcon className="size-3 text-primary/70" aria-hidden="true" />
-                  )}
+                  <SparklesIcon className="size-3 text-primary/70" aria-hidden="true" />
+                )}
               <span className="font-medium">jieba 智能分词</span>
             </div>
-          </CommandFooter>
-        </Command>
-      </CommandDialogPopup>
+          </div>
+        </div>
+      </Command>
     </CommandDialog>
   )
 }
@@ -207,21 +192,21 @@ function SessionRow({ hit }: { hit: ThreadSearchHit }) {
 
       {snippets.length > 0
         ? (
-            <div className="flex flex-col gap-1 pl-5.5">
-              {snippets.map(snippet => (
-                <SnippetRow key={snippet.messageId} snippet={snippet} />
-              ))}
-            </div>
-          )
+          <div className="flex flex-col gap-1 pl-5.5">
+            {snippets.map(snippet => (
+              <SnippetRow key={snippet.messageId} snippet={snippet} />
+            ))}
+          </div>
+        )
         : (
-            <div className="pl-5.5 text-[11px] opacity-60">
-              仅标题匹配 ·
-              {' '}
-              <span className="tabular-nums">{hit.matchCount}</span>
-              {' '}
-              处
-            </div>
-          )}
+          <div className="pl-5.5 text-[11px] opacity-60">
+            仅标题匹配 ·
+            {' '}
+            <span className="tabular-nums">{hit.matchCount}</span>
+            {' '}
+            处
+          </div>
+        )}
     </>
   )
 }
@@ -243,11 +228,11 @@ function SnippetRow({ snippet }: { snippet: ThreadSearchHit['snippets'][number] 
       >
         {isUser
           ? (
-              <UserIcon className="size-2.5" />
-            )
+            <UserIcon className="size-2.5" />
+          )
           : (
-              <SparklesIcon className="size-2.5" />
-            )}
+            <SparklesIcon className="size-2.5" />
+          )}
       </span>
       <span className="min-w-0 line-clamp-2 wrap-break-word">
         <HighlightedText text={snippet.text} ranges={ranges} />

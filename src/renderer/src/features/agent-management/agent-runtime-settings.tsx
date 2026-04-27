@@ -6,9 +6,9 @@ import type { AgentProfile, ProviderKind } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
 import { CheckCircleIcon, PlusIcon, TrashIcon, XCircleIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -41,8 +41,8 @@ interface CliTuiFields { name: string, command: string }
 
 type ProviderFields
   = | { kind: 'openai-compatible', fields: OpenAIFields }
-    | { kind: 'acp-chat', fields: AcpFields }
-    | { kind: 'cli-tui', fields: CliTuiFields }
+  | { kind: 'acp-chat', fields: AcpFields }
+  | { kind: 'cli-tui', fields: CliTuiFields }
 
 function defaultFields(kind: ProviderKind): ProviderFields {
   switch (kind) {
@@ -94,14 +94,17 @@ function AcpForm({ fields, onChange }: { fields: AcpFields, onChange: (f: AcpFie
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor="agent-dist">安装方式</Label>
-        <Select value={fields.distributionType} onValueChange={(v: 'npx' | 'global' | null) => v && onChange({ ...fields, distributionType: v })}>
+        <Select
+          value={fields.distributionType}
+          onValueChange={(value) => onChange({ ...fields, distributionType: value as AcpFields['distributionType'] })}
+        >
           <SelectTrigger id="agent-dist">
             <SelectValue />
           </SelectTrigger>
-          <SelectPopup>
+          <SelectContent>
             <SelectItem value="npx">通过 npx 运行</SelectItem>
             <SelectItem value="global">全局安装命令</SelectItem>
-          </SelectPopup>
+          </SelectContent>
         </Select>
       </div>
       <div className="grid gap-1.5">
@@ -150,11 +153,9 @@ export function AgentRuntimeSettings() {
   // All provider forms share the same 'name' field, so profileId just slugifies it
   const profileId = useMemo(() => buildProfileId(form.fields.name, form.kind), [form])
 
-  const handleProviderChange = useCallback((value: ProviderKind | null) => {
-    if (!value) {
-      return
-    }
-    setForm(defaultFields(value))
+  const handleProviderChange = useCallback((value: string) => {
+    const nextKind = value as ProviderKind
+    setForm(defaultFields(nextKind))
     setStatusText(null)
     setStatusOk(null)
   }, [])
@@ -235,11 +236,11 @@ export function AgentRuntimeSettings() {
             <SelectTrigger id="agent-provider-kind" data-testid="agent-provider-kind">
               <SelectValue />
             </SelectTrigger>
-            <SelectPopup>
+            <SelectContent>
               {PROVIDER_KINDS.map(kind => (
                 <SelectItem key={kind.id} value={kind.id}>{kind.label}</SelectItem>
               ))}
-            </SelectPopup>
+            </SelectContent>
           </Select>
         </div>
 
@@ -260,12 +261,13 @@ export function AgentRuntimeSettings() {
       </div>
 
       {statusText && (
-        <div className={cn(
-          'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
-          statusOk === true && 'border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400',
-          statusOk === false && 'border-destructive/30 bg-destructive/5 text-destructive',
-          statusOk === null && 'border-border bg-background text-muted-foreground',
-        )}
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
+            statusOk === true && 'border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400',
+            statusOk === false && 'border-destructive/30 bg-destructive/5 text-destructive',
+            statusOk === null && 'border-border bg-background text-muted-foreground',
+          )}
         >
           {statusOk === true && <CheckCircleIcon className="size-3.5 shrink-0" />}
           {statusOk === false && <XCircleIcon className="size-3.5 shrink-0" />}

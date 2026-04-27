@@ -3,7 +3,7 @@
 // Position: Feature primitive for search feature; composable into any matched-text UI
 
 import type { MatchRange } from '@main/ipc-types'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import type { ReactElement } from 'react'
 import { Fragment } from 'react'
 

@@ -2,7 +2,7 @@
 // Output: MarkdownEditor — WYSIWYG Tiptap editor that reads/writes Markdown
 // Position: Shared editor component for workspace-detail feature
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'

@@ -5,7 +5,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {

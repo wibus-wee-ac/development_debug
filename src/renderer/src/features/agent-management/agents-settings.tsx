@@ -7,11 +7,11 @@ import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
-import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
 import {
   BotIcon,
   CheckCircle2Icon,
@@ -252,19 +252,25 @@ function RegistryAgentCard({
           {/* Status + actions */}
           <div className="flex shrink-0 items-center gap-1.5">
             {isInstalled && (
-              <Badge size="sm" variant="success">
+              <Badge
+                variant="secondary"
+                className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+              >
                 <CheckCircle2Icon className="size-3" />
                 Installed
               </Badge>
             )}
             {isInstalling && (
-              <Badge size="sm" variant="info">
+              <Badge
+                variant="outline"
+                className="border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-400"
+              >
                 <Spinner className="size-3" />
                 Installing…
               </Badge>
             )}
             {isFailed && (
-              <Badge size="sm" variant="error">
+              <Badge variant="destructive">
                 <XCircleIcon className="size-3" />
                 Failed
               </Badge>
@@ -276,8 +282,10 @@ function RegistryAgentCard({
                   <Button variant="ghost" size="icon-xs" onClick={onAudit} title="View logs">
                     <FileTextIcon className="size-3.5" />
                   </Button>
-                  <Button variant="ghost" size="xs" onClick={onUninstall} loading={busy}>
-                    <Trash2Icon className="size-3" />
+                  <Button variant="ghost" size="xs" onClick={onUninstall} disabled={busy}>
+                    {busy
+                      ? <Spinner className="size-3" />
+                      : <Trash2Icon className="size-3" />}
                     Remove
                   </Button>
                 </>
@@ -290,8 +298,15 @@ function RegistryAgentCard({
                 )
                 : distTypes.length === 1
                   ? (
-                    <Button variant="default" size="xs" onClick={() => { onInstall(distTypes[0]) }} loading={busy || isInstalling}>
-                      <DownloadIcon className="size-3" />
+                    <Button
+                      variant="default"
+                      size="xs"
+                      onClick={() => { onInstall(distTypes[0]) }}
+                      disabled={busy || isInstalling}
+                    >
+                      {busy || isInstalling
+                        ? <Spinner className="size-3" />
+                        : <DownloadIcon className="size-3" />}
                       Install
                     </Button>
                   )
@@ -300,9 +315,11 @@ function RegistryAgentCard({
                       variant="outline"
                       size="xs"
                       onClick={() => { setShowDistOptions(s => !s) }}
-                      loading={busy || isInstalling}
+                      disabled={busy || isInstalling}
                     >
-                      <DownloadIcon className="size-3" />
+                      {busy || isInstalling
+                        ? <Spinner className="size-3" />
+                        : <DownloadIcon className="size-3" />}
                       Install
                       <ChevronDownIcon className={cn('size-3 transition-transform', showDistOptions && 'rotate-180')} />
                     </Button>
@@ -350,8 +367,9 @@ function RegistryAgentCard({
                   onInstall(t)
                   setShowDistOptions(false)
                 }}
-                loading={busy}
+                disabled={busy}
               >
+                {busy && <Spinner className="size-3" />}
                 {t === 'binary' ? 'Binary' : t}
               </Button>
             ))}
@@ -376,8 +394,8 @@ interface CliTuiFields { name: string, command: string }
 
 type ProviderFields
   = | { kind: 'openai-compatible', fields: OpenAIFields }
-    | { kind: 'acp-chat', fields: AcpFields }
-    | { kind: 'cli-tui', fields: CliTuiFields }
+  | { kind: 'acp-chat', fields: AcpFields }
+  | { kind: 'cli-tui', fields: CliTuiFields }
 
 const DEFAULT_NAMES: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
@@ -415,23 +433,21 @@ function ProfileForm({ form, setForm }: { form: ProviderFields, setForm: (f: Pro
         <Label htmlFor="pf-kind">Type</Label>
         <Select
           value={form.kind}
-          onValueChange={(v: ProviderKind | null) => {
-            if (v) {
-              setForm(defaultFields(v))
-            }
+          onValueChange={(value) => {
+            setForm(defaultFields(value as ProviderKind))
           }}
         >
           <SelectTrigger id="pf-kind">
             <SelectValue />
           </SelectTrigger>
-          <SelectPopup>
+          <SelectContent>
             {PROVIDER_KINDS.map(k => (
               <SelectItem key={k.id} value={k.id}>
                 <span className="font-medium">{k.label}</span>
                 <span className="ml-2 text-xs text-muted-foreground">{k.description}</span>
               </SelectItem>
             ))}
-          </SelectPopup>
+          </SelectContent>
         </Select>
       </div>
 
@@ -488,19 +504,20 @@ function ProfileForm({ form, setForm }: { form: ProviderFields, setForm: (f: Pro
             <Label htmlFor="pf-dist">Distribution</Label>
             <Select
               value={form.fields.distributionType}
-              onValueChange={(v: 'npx' | 'global' | null) => {
-                if (v) {
-                  setForm({ kind: form.kind, fields: { ...form.fields, distributionType: v } })
-                }
+              onValueChange={(value) => {
+                setForm({
+                  kind: form.kind,
+                  fields: { ...form.fields, distributionType: value as AcpFields['distributionType'] },
+                })
               }}
             >
               <SelectTrigger id="pf-dist">
                 <SelectValue />
               </SelectTrigger>
-              <SelectPopup>
+              <SelectContent>
                 <SelectItem value="npx">npx (no install needed)</SelectItem>
                 <SelectItem value="global">Global install</SelectItem>
-              </SelectPopup>
+              </SelectContent>
             </Select>
           </div>
           <div className="grid gap-1.5">
@@ -584,8 +601,10 @@ function ProfileRow({ profile, onRemove, onToggle }: { profile: AgentProfile, on
       </div>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="xs" onClick={probe} loading={probing}>
-          <CircleDotIcon className="size-3" />
+        <Button variant="ghost" size="xs" onClick={probe} disabled={probing}>
+          {probing
+            ? <Spinner className="size-3" />
+            : <CircleDotIcon className="size-3" />}
           Test
         </Button>
         {/* Enable/disable toggle */}
@@ -1067,7 +1086,8 @@ function ConfiguredTab({
               </p>
             )}
             <div className="mt-4 flex gap-2">
-              <Button size="sm" onClick={onAddProfile} loading={busyAdd}>
+              <Button size="sm" onClick={onAddProfile} disabled={busyAdd}>
+                {busyAdd && <Spinner className="size-3" />}
                 <PlusIcon className="size-3" />
                 Add
               </Button>

@@ -3,7 +3,7 @@
 // Position: Core input component for chat feature, used in both NewChatHome and ChatView
 
 import { Button } from '@renderer/components/ui/button'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -159,7 +159,7 @@ export function Composer({
     }
     setInputValue(v => v ? `${v} ${appendText}` : appendText)
     textareaRef.current?.focus()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendTextKey])
 
   // Close mention on blur after a short delay (to allow click selection)

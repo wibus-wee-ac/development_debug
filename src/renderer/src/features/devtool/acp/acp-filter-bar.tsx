@@ -2,7 +2,7 @@
 // Output: AcpFilterBar — search, agent select, stream toggles, pause, and clear controls
 // Position: Top toolbar for the ACP runtime pane inside the devtool page
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 
 import {
   useAcpAgentIds,

@@ -1,18 +1,23 @@
+// Input: global styles, app shell providers, theme store, TanStack Router root APIs
+// Output: Root route component that wraps the main renderer app with shared providers
+// Position: Global renderer root layout for all non-devtool routes
+
 import '../styles.css'
 
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
+import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useThemeStore } from '@renderer/store/theme'
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
 import { useEffect } from 'react'
 
 export const Route = createRootRoute({
-  component: RootComponent,
+  component: RootComponent
 })
 
 function RootComponent() {
-  const mode = useThemeStore(s => s.mode)
+  const mode = useThemeStore((s) => s.mode)
 
   useEffect(() => {
     const applyDark = (dark: boolean): void => {
@@ -31,7 +36,7 @@ function RootComponent() {
     return () => mq.removeEventListener('change', listener)
   }, [mode])
 
-  const isDevtool = useRouterState({ select: s => s.location.pathname.startsWith('/devtool') })
+  const isDevtool = useRouterState({ select: (s) => s.location.pathname.startsWith('/devtool') })
 
   if (isDevtool) {
     return <Outlet />
@@ -40,12 +45,14 @@ function RootComponent() {
   return (
     <ToastProvider>
       <AnchoredToastProvider>
-        <ShortcutProvider>
-          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-            <AppSidebar />
-            <Outlet />
-          </div>
-        </ShortcutProvider>
+        <TooltipProvider>
+          <ShortcutProvider>
+            <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+              <AppSidebar />
+              <Outlet />
+            </div>
+          </ShortcutProvider>
+        </TooltipProvider>
       </AnchoredToastProvider>
     </ToastProvider>
   )

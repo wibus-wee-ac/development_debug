@@ -3,7 +3,7 @@
 // Position: Bottom chrome of AppLayout's center column; always rendered, no slot props
 
 import { Button } from '@renderer/components/ui/button'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { MousePointer2Icon } from 'lucide-react'
 
 export function AppFooter({ className }: { className?: string }) {

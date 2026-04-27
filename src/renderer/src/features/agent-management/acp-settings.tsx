@@ -7,8 +7,8 @@ import { Badge } from '@renderer/components/ui/badge'
 import { Button } from '@renderer/components/ui/button'
 import { Separator } from '@renderer/components/ui/separator'
 import { Spinner } from '@renderer/components/ui/spinner'
+import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
 import {
   CheckCircle2Icon,
   ChevronDownIcon,
@@ -226,19 +226,25 @@ function AgentRow({
               {agent.version}
             </span>
             {isInstalled && (
-              <Badge size="sm" variant="success">
+              <Badge
+                variant="secondary"
+                className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+              >
                 <CheckCircle2Icon className="size-3" />
                 Installed
               </Badge>
             )}
             {isInstalling && (
-              <Badge size="sm" variant="info">
+              <Badge
+                variant="outline"
+                className="border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-400"
+              >
                 <Spinner className="size-3" />
                 Installing…
               </Badge>
             )}
             {isFailed && (
-              <Badge size="sm" variant="error">
+              <Badge variant="destructive">
                 <XCircleIcon className="size-3" />
                 Failed
               </Badge>
@@ -260,8 +266,10 @@ function AgentRow({
                 <Button variant="ghost" size="icon-xs" onClick={onAudit} title="Audit log">
                   <FileTextIcon className="size-3.5" />
                 </Button>
-                <Button variant="ghost" size="xs" onClick={onUninstall} loading={busy}>
-                  <Trash2Icon className="size-3" />
+                <Button variant="ghost" size="xs" onClick={onUninstall} disabled={busy}>
+                  {busy
+                    ? <Spinner className="size-3" />
+                    : <Trash2Icon className="size-3" />}
                   Uninstall
                 </Button>
               </>
@@ -274,8 +282,15 @@ function AgentRow({
               )
               : distTypes.length === 1
                 ? (
-                  <Button variant="outline" size="xs" onClick={() => onInstall(distTypes[0])} loading={busy || isInstalling}>
-                    <DownloadIcon className="size-3" />
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => onInstall(distTypes[0])}
+                    disabled={busy || isInstalling}
+                  >
+                    {busy || isInstalling
+                      ? <Spinner className="size-3" />
+                      : <DownloadIcon className="size-3" />}
                     Install
                   </Button>
                 )
@@ -284,9 +299,11 @@ function AgentRow({
                     variant="outline"
                     size="xs"
                     onClick={() => setExpanded(e => !e)}
-                    loading={busy || isInstalling}
+                    disabled={busy || isInstalling}
                   >
-                    <DownloadIcon className="size-3" />
+                    {busy || isInstalling
+                      ? <Spinner className="size-3" />
+                      : <DownloadIcon className="size-3" />}
                     Install
                     <ChevronDownIcon className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
                   </Button>
@@ -317,8 +334,9 @@ function AgentRow({
                 onInstall(t)
                 setExpanded(false)
               }}
-              loading={busy}
+              disabled={busy}
             >
+              {busy && <Spinner className="size-3" />}
               {t === 'binary' ? 'Binary' : t}
             </Button>
           ))}

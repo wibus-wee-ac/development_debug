@@ -2,7 +2,7 @@
 // Output: ChatMinimap — barcode-style minimap with horizontal ticks per message
 // Position: Overlay component pinned to the right edge of the chat scroll area
 
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import type { UIMessage } from 'ai'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 

@@ -13,9 +13,9 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import type { KanbanIssue } from '@main/ipc-types'
-import { Popover, PopoverPopup, PopoverTrigger } from '@renderer/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { SettingsIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -161,9 +161,9 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
             <PopoverTrigger className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100">
               <SettingsIcon className="size-3.5" />
             </PopoverTrigger>
-            <PopoverPopup side="bottom" align="end" className="w-64">
+            <PopoverContent side="bottom" align="end" className="w-64">
               <StatusManager workspaceId={workspaceId} />
-            </PopoverPopup>
+            </PopoverContent>
           </Popover>
         </div>
 

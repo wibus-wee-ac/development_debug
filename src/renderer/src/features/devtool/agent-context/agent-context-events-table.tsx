@@ -3,7 +3,7 @@
 // Position: Renderer component for the Agent Context devtool pane
 
 import type { AgentContextEvent } from '@cradle/ipc'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 
 import { useAgentContextDevtoolStore } from './use-agent-context-events'
 

@@ -2,8 +2,8 @@
 // Output: GitGraphRow — memoized single-line row (Fork-style): SVG graph | badges + message | sha·time
 // Position: List item for VList in git-panel; expensive so wrapped in React.memo
 
-import { Tooltip, TooltipPopup, TooltipTrigger } from '@renderer/components/ui/tooltip'
-import { cn } from '@renderer/lib/utils'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { cn } from '@renderer/lib/cn'
 import { memo, useMemo } from 'react'
 
 import type { LayoutCommit } from './graph-layout'
@@ -208,7 +208,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
             {commit.subject}
           </span>
         </TooltipTrigger>
-        <TooltipPopup side="right" sideOffset={8} className="max-w-72 p-2.5">
+        <TooltipContent side="right" sideOffset={8} className="max-w-72 p-2.5">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <AuthorAvatar name={commit.authorName} email={commit.authorEmail} gravatarHash={commit.gravatarHash} />
@@ -230,7 +230,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
               )}
             </div>
           </div>
-        </TooltipPopup>
+        </TooltipContent>
       </Tooltip>
 
       {/* Right-aligned: sha · time */}

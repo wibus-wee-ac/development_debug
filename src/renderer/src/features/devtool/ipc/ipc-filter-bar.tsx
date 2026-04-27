@@ -3,7 +3,7 @@
 // Position: Top toolbar inside the IPC devtool page
 
 import type { IpcObservedSide, IpcObservedStatus } from '@cradle/ipc'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 
 import { useIpcDevtoolStore, useIpcFiltersStore, useIpcTraces } from './use-ipc-events'
 
@@ -102,9 +102,9 @@ export function IpcFilterBar() {
 
       <div className="tabular-nums text-muted-foreground">
         {traces.length}
-{' '}
-/
-{events.length}
+        {' '}
+        /
+        {events.length}
       </div>
     </div>
   )

@@ -6,12 +6,12 @@ import type { Agent, ModelDescriptor } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import {
   Combobox,
+  ComboboxContent,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-  ComboboxPopup,
-  ComboboxPrimitive,
+  ComboboxTrigger,
 } from '@renderer/components/ui/combobox'
 import { Kbd } from '@renderer/components/ui/kbd'
 import {
@@ -30,7 +30,7 @@ import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { sessionsQueryKey, useSessions } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { ipc } from '@renderer/lib/ipc'
-import { cn } from '@renderer/lib/utils'
+import { cn } from '@renderer/lib/cn'
 import { useNewChatStore } from '@renderer/store/new-chat'
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
@@ -477,7 +477,7 @@ export function NewChatPage() {
                         }
                       }}
                     >
-                      <ComboboxPrimitive.Trigger
+                      <ComboboxTrigger
                         render={(
                           <Button variant="ghost" size="xs" className="text-muted-foreground/50 hover:text-foreground/70" />
                         )}
@@ -485,11 +485,10 @@ export function NewChatPage() {
                         <CpuIcon className="size-3 shrink-0" />
                         <span className="max-w-28 truncate">{effectiveModel?.label ?? '模型'}</span>
                         <ChevronDownIcon className="size-2.5 text-muted-foreground/25 shrink-0" />
-                      </ComboboxPrimitive.Trigger>
-                      <ComboboxPopup aria-label="选择模型" className="min-w-56" side="top" align="start">
+                      </ComboboxTrigger>
+                      <ComboboxContent aria-label="选择模型" className="min-w-56" side="top" align="start">
                         <div className="border-b p-2">
                           <ComboboxInput
-                            size="sm"
                             showTrigger={false}
                             startAddon={<SearchIcon />}
                             placeholder="搜索模型..."
@@ -504,7 +503,7 @@ export function NewChatPage() {
                             </ComboboxItem>
                           )}
                         </ComboboxList>
-                      </ComboboxPopup>
+                      </ComboboxContent>
                     </Combobox>
                   )
               )}
@@ -577,10 +576,20 @@ export function NewChatPage() {
 
               {/* Send button */}
               <Tooltip>
-                <TooltipTrigger render={<Button variant="default" size="icon-xs" disabled={!canSend} onClick={() => void handleSend()} className="ml-0.5" />}>
-                  {sending
-                    ? <LoaderCircleIcon className="size-3.5 animate-spin" />
-                    : <ArrowUpIcon className="size-3.5" />}
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="icon-xs"
+                    disabled={!canSend}
+                    onClick={() => {
+                      void handleSend()
+                    }}
+                    className="ml-0.5"
+                  >
+                    {sending
+                      ? <LoaderCircleIcon className="size-3.5 animate-spin" />
+                      : <ArrowUpIcon className="size-3.5" />}
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
                   <span className="inline-flex items-center gap-1.5">
