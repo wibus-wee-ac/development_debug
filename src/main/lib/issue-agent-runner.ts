@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '../db'
 import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../db/schema'
 import { ChatEngine } from './chat-engine'
+import { getWorkflowRules } from './workflow-rules'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface RunIssueInput {
   issueId: string
   agentSessionId: string
   agentProfileId: string
+  agentId?: string
 }
 
 // ── Runner ────────────────────────────────────────────────────────────────────
@@ -37,7 +39,7 @@ export class IssueAgentRunner {
    * Called after KanbanService.delegateIssue creates the agent session.
    */
   async run(input: RunIssueInput): Promise<void> {
-    const { issueId, agentSessionId, agentProfileId } = input
+    const { issueId, agentSessionId, agentProfileId, agentId } = input
     const db = getDb()
 
     // Load issue
@@ -65,13 +67,28 @@ export class IssueAgentRunner {
     // Build prompt from issue context
     const prompt = this.buildPrompt(issue)
 
+    // Inject workflow rules as additional user message content
+    const rules = await getWorkflowRules(issue.workspaceId, agentId)
+    let fullText = prompt
+    if (rules.global || rules.profileSpecific) {
+      fullText += '\n\n---\n## Workflow Rules\n\n'
+      if (rules.global) {
+        fullText += `${rules.global}\n\n`
+      }
+      if (rules.profileSpecific) {
+        fullText += `${rules.profileSpecific}\n`
+      }
+      fullText += '---'
+    }
+
     // Create chat session via ChatEngine
     try {
       const chatSessionId = await ChatEngine.getInstance().createAndSend({
         agentId: agentProfileId,
         workspaceId: issue.workspaceId,
         cwd: workspace.path,
-        text: prompt,
+        text: fullText,
+        agentIdentityId: agentId,
       })
 
       // Link chat session to agent session

@@ -31,6 +31,7 @@ import { SearchService } from './services/search'
 import { SessionService } from './services/session'
 import { UsageService } from './services/usage'
 import { WindowService } from './services/window'
+import { WorkflowRulesService } from './services/workflow-rules'
 import { WorkspaceService } from './services/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
 
@@ -154,6 +155,7 @@ app.whenReady().then(() => {
     GitService,
     KanbanService,
     UsageService,
+    WorkflowRulesService,
   ] as const)
 
   // Start Unix domain socket server for CLI access

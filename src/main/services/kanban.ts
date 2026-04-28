@@ -28,6 +28,7 @@ import {
   kanbanIssues,
   kanbanMilestones,
   kanbanStatuses,
+  sessions,
 } from '../db/schema'
 
 const now = (): number => Math.floor(Date.now() / 1000)
@@ -450,7 +451,7 @@ export class KanbanService extends IpcService {
   // ── Delegation ───────────────────────────────────────────────────────────
 
   @IpcMethod()
-  delegateIssue(issueId: string, agentProfileId: string): AgentSession {
+  delegateIssue(issueId: string, agentProfileId: string, _agentId?: string): AgentSession {
     const db = getDb()
     const profile = db.select().from(agentProfiles).where(eq(agentProfiles.id, agentProfileId)).get()
     if (!profile) {
@@ -501,9 +502,9 @@ export class KanbanService extends IpcService {
    * Called by the renderer after delegateIssue succeeds.
    */
   @IpcMethod()
-  async runDelegatedIssue(issueId: string, agentSessionId: string, agentProfileId: string): Promise<void> {
+  async runDelegatedIssue(issueId: string, agentSessionId: string, agentProfileId: string, agentId?: string): Promise<void> {
     const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
-    await IssueAgentRunner.getInstance().run({ issueId, agentSessionId, agentProfileId })
+    await IssueAgentRunner.getInstance().run({ issueId, agentSessionId, agentProfileId, agentId })
   }
 
   /**
@@ -660,6 +661,64 @@ export class KanbanService extends IpcService {
     db.update(kanbanIssues)
       .set({ contextRefs: JSON.stringify(refs), updatedAt: now() })
       .where(eq(kanbanIssues.id, issueId))
+      .run()
+  }
+
+  // ── Session ↔ Issue Link ────────────────────────────────────────────────
+
+  @IpcMethod()
+  getLinkedIssue(chatSessionId: string): {
+    issue: KanbanIssue
+    status: KanbanStatus | null
+    agentSession: AgentSession | null
+  } | null {
+    const db = getDb()
+
+    // 1. Check auto-link via agentSessions
+    const agentSession = db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.chatSessionId, chatSessionId))
+      .get()
+
+    if (agentSession) {
+      const issue = db.select().from(kanbanIssues).where(eq(kanbanIssues.id, agentSession.issueId)).get()
+      if (issue) {
+        const status = issue.statusId
+          ? db.select().from(kanbanStatuses).where(eq(kanbanStatuses.id, issue.statusId)).get() ?? null
+          : null
+        return { issue, status, agentSession }
+      }
+    }
+
+    // 2. Check manual link via sessions.linkedIssueId
+    const session = db.select().from(sessions).where(eq(sessions.id, chatSessionId)).get()
+    if (session?.linkedIssueId) {
+      const issue = db.select().from(kanbanIssues).where(eq(kanbanIssues.id, session.linkedIssueId)).get()
+      if (issue) {
+        const status = issue.statusId
+          ? db.select().from(kanbanStatuses).where(eq(kanbanStatuses.id, issue.statusId)).get() ?? null
+          : null
+        return { issue, status, agentSession: null }
+      }
+    }
+
+    return null
+  }
+
+  @IpcMethod()
+  linkIssueToSession(chatSessionId: string, issueId: string): void {
+    getDb().update(sessions)
+      .set({ linkedIssueId: issueId })
+      .where(eq(sessions.id, chatSessionId))
+      .run()
+  }
+
+  @IpcMethod()
+  unlinkIssueFromSession(chatSessionId: string): void {
+    getDb().update(sessions)
+      .set({ linkedIssueId: null })
+      .where(eq(sessions.id, chatSessionId))
       .run()
   }
 }

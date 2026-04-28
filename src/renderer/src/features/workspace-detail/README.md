@@ -8,7 +8,8 @@ Shiki provides syntax highlighting for code blocks with a language selector.
 
 ## Files
 
-- **workspace-detail-page.tsx**: Main page component with two-column layout (editor tabs + sidebar)
+- **workspace-detail-page.tsx**: Main page component with tab system (Overview + Workflow Rules) and two-column layout
+- **workspace-workflow-rules.tsx**: Workflow rules editor with Agent scope selector, manages global and per-Agent rules
 - **markdown-editor.tsx**: Tiptap-based WYSIWYG Markdown editor with auto-save
 - **shiki-code-block.tsx**: Custom Tiptap extension using Shiki for code block highlighting
 - **code-block-view.tsx**: React NodeView for code blocks with language selector dropdown

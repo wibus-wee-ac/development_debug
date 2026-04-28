@@ -19,6 +19,7 @@ import { agentProfiles as agentProfilesTable, agents as agentsTable, messages, s
 import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
 import { getAgentContextDevtoolStore } from './agent-context-devtool-store'
+import { readBundledResource } from './bundled-resources'
 import { buildSkillCatalog, scanSkills } from './skills'
 import { ThreadSearchEngine } from './thread-search'
 
@@ -640,6 +641,15 @@ export class ChatEngine {
         const skillEntries_ = scanSkills(workspace?.path)
         skillEntries = skillEntries_
         const catalog = buildSkillCatalog(skillEntries_)
+
+        // Prepend bundled system workflow (highest authority — developer-defined)
+        const sysWorkflow = readBundledResource('system-workflow.md')
+        if (sysWorkflow) {
+          systemPrompt = systemPrompt
+            ? sysWorkflow + '\n\n' + systemPrompt
+            : sysWorkflow
+        }
+
         if (catalog) {
           systemPrompt = (systemPrompt ?? '') + catalog
         }

@@ -18,6 +18,7 @@ import type { SearchService } from './services/search'
 import type { SessionService } from './services/session'
 import type { UsageService } from './services/usage'
 import type { WindowService } from './services/window'
+import type { WorkflowRulesService } from './services/workflow-rules'
 import type { WorkspaceService } from './services/workspace'
 
 /**
@@ -40,6 +41,7 @@ export type IpcServices = MergeIpcService<{
   git: typeof GitService
   kanban: typeof KanbanService
   usage: typeof UsageService
+  workflowRules: typeof WorkflowRulesService
 }>
 
 // Convenience re-exports so the renderer imports from one place

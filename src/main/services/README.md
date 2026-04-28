@@ -19,3 +19,4 @@ Register new services in `src/main/index.ts`.
 - **session.ts**: IPC service for persisted chat sessions, provider session handles, and per-session config snapshots; message writes are owned by ChatEngine (this service only reads)
 - **workspace.ts**: IPC service for workspace CRUD, file listing, and native OS integrations
 - **usage.ts**: IPC service for aggregated token usage analytics — `getDailyUsage` (heatmap data) and `getUsageSummary` (totals + breakdowns by agent/model)
+- **workflow-rules.ts**: IPC service for workflow rules CRUD — `get`, `save`, `delete`, `list` operations on Markdown rule files stored under `~/.cradle/workflows/`

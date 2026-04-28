@@ -9,7 +9,7 @@ Kanban UI files should track the current coss primitive API names such as `*Cont
 
 ## Files
 
-- **use-kanban.ts**: TanStack Query hooks + mutations for all kanban IPC calls (boards, statuses, issues, comments, relations, delegation)
+- **use-kanban.ts**: TanStack Query hooks + mutations for all kanban IPC calls (boards, statuses, issues, comments, relations, delegation, session↔issue linking)
 - **kanban-board-view.tsx**: Main board view — columns + integrated right-slide issue detail panel (no route navigation), DnD context, status manager popover
 - **kanban-column.tsx**: Single status column with droppable zone, sortable cards, selected-issue highlight
 - **kanban-sidebar.tsx**: Left sidebar — board list, milestones, board creation, back button
@@ -21,3 +21,4 @@ Kanban UI files should track the current coss primitive API names such as `*Cont
 - **priority-icon.tsx**: Colored priority icon atom (none/low/medium/high/urgent)
 - **status-icon.tsx**: Colored circle status indicator atom
 - **priority-constants.ts**: Priority label map and sort order constants
+- **issue-aside-panel.tsx**: Issue info panel for chat RightAside — shows linked issue details, status, priority, "Open in Kanban" action, and "Link issue" picker for manual association

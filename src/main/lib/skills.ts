@@ -1,5 +1,5 @@
-// Input: node:fs, node:path, node:os, js-yaml for SKILL.md frontmatter parsing
-// Output: scanSkills() — discovers and returns skill catalog entries
+// Input: node:fs, node:path, node:os, js-yaml, bundled-resources for built-in skills path
+// Output: scanSkills() — discovers and returns skill catalog entries from built-in, user, and project sources
 // Position: Main-process utility for skills progressive disclosure (tier 1: catalog)
 
 import fs from 'node:fs'
@@ -7,6 +7,8 @@ import os from 'node:os'
 import path from 'node:path'
 
 import yaml from 'js-yaml'
+
+import { getBundledResourcePath } from './bundled-resources'
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---/
 
@@ -17,17 +19,22 @@ export interface SkillCatalogEntry {
 }
 
 /**
- * Scan `.agents/skills/` directories for SKILL.md files.
- * Project-level skills override user-level skills with the same name.
+ * Scan skills directories for SKILL.md files.
+ * Priority (lowest to highest): built-in → user-level → project-level.
+ * Same-named skills are overwritten by higher-priority sources.
  */
 export function scanSkills(workspacePath?: string): SkillCatalogEntry[] {
   const skillsByName = new Map<string, SkillCatalogEntry>()
 
-  // User-level skills (lower priority — scanned first, overwritten by project-level)
+  // Built-in skills (lowest priority — bundled with the app)
+  const builtinSkillsDir = getBundledResourcePath('skills')
+  scanDirectory(builtinSkillsDir, skillsByName)
+
+  // User-level skills (overwrite built-in)
   const userSkillsDir = path.join(os.homedir(), '.agents', 'skills')
   scanDirectory(userSkillsDir, skillsByName)
 
-  // Project-level skills (higher priority — overwrites user-level)
+  // Project-level skills (highest priority — overwrites user-level and built-in)
   if (workspacePath) {
     const projectSkillsDir = path.join(workspacePath, '.agents', 'skills')
     scanDirectory(projectSkillsDir, skillsByName)

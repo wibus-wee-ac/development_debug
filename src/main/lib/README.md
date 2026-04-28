@@ -19,3 +19,6 @@ They are consumed by `src/main/services/` IPC handlers.
 - **ipc-devtool.ts**: Main-process integration that wires the shared IPC observer into the store, exposes `subscribeIpcDevtool(webContents)` so any BrowserWindow can receive live events, and hosts the dev-only `openDevtoolWindow()` factory for the second `/devtool` window
 - **safe-storage.ts**: Electron safeStorage wrapper for storing secrets
 - **thread-search.ts**: ThreadSearchEngine singleton — lazy-loaded jieba tokenizer + in-memory scored search over sessions/messages; returns hits with title/snippet match ranges for renderer highlighting
+- **workflow-rules.ts**: Filesystem-based workflow rules management — reads/writes Markdown rule files stored under `~/.cradle/workflows/{workspaceId}/` with workspace-level global rules and per-agent-profile specific rules
+- **bundled-resources.ts**: Dev/prod path resolver for files in the `resources/` directory that are bundled into the app binary (system workflow, built-in skills)
+- **skills.ts**: Scans three tiers of `.agents/skills/` directories (built-in → user → project) for SKILL.md files, parses frontmatter, and builds the skill catalog text block for system prompt injection

@@ -271,7 +271,7 @@ function ChatSessionPage() {
       hasAside
       hasPanel={!!(workspaceId && workspacePath)}
       gitBranch={<GitBranchControl workspacePath={workspacePath} />}
-      aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} />}
+      aside={<RightAside workspaceId={workspaceId} workspacePath={workspacePath} sessionId={sessionId} />}
       panel={workspaceId && workspacePath
         ? (
           <ShellView

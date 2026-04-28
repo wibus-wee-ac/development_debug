@@ -315,7 +315,7 @@ function AgentPropertyRow({
 }: {
   issueId: string
   delegateAgentId: string | null | undefined
-  onDelegate: (agentId: string) => void
+  onDelegate: (agentProfileId: string, agentId?: string) => void
   onUndelegate: () => void
 }) {
   const { profiles = [] } = useAgentProfiles()
@@ -359,7 +359,7 @@ function AgentPropertyRow({
             else if (val.startsWith('agent:')) {
               const agentEntity = enabledAgents.find(a => a.id === val.slice(6))
               if (agentEntity) {
-                onDelegate(agentEntity.providerId)
+                onDelegate(agentEntity.providerId, agentEntity.id)
               }
             }
             else if (val.startsWith('profile:')) {
@@ -1195,9 +1195,9 @@ export function IssueDetail({
             <AgentPropertyRow
               issueId={issueId}
               delegateAgentId={issue.delegateAgentId}
-              onDelegate={(agentId) => {
+              onDelegate={(agentProfileId, agentId) => {
                 delegateIssue.mutate(
-                  { issueId, agentProfileId: agentId },
+                  { issueId, agentProfileId, agentId },
                   {
                     onSuccess: (session) => {
                       if (session?.id) {
@@ -1205,6 +1205,7 @@ export function IssueDetail({
                           issueId,
                           agentSessionId: session.id,
                           agentProfileId: session.agentProfileId,
+                          agentId,
                         })
                       }
                     },

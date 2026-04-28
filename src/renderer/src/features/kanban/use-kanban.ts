@@ -313,8 +313,8 @@ export function useDeleteRelation() {
 export function useDelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (vars: { issueId: string, agentProfileId: string }) => {
-      const session = await ipc!.kanban.delegateIssue(vars.issueId, vars.agentProfileId)
+    mutationFn: async (vars: { issueId: string, agentProfileId: string, agentId?: string }) => {
+      const session = await ipc!.kanban.delegateIssue(vars.issueId, vars.agentProfileId, vars.agentId)
       return session
     },
     onSuccess: (_data, vars) => {
@@ -357,8 +357,8 @@ export function useStopAgentSession() {
 export function useStartAgentSession() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (vars: { issueId: string, agentSessionId: string, agentProfileId: string }) => {
-      await ipc!.kanban.runDelegatedIssue(vars.issueId, vars.agentSessionId, vars.agentProfileId)
+    mutationFn: async (vars: { issueId: string, agentSessionId: string, agentProfileId: string, agentId?: string }) => {
+      await ipc!.kanban.runDelegatedIssue(vars.issueId, vars.agentSessionId, vars.agentProfileId, vars.agentId)
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
@@ -404,6 +404,38 @@ export function useRemoveContextRef() {
       ipc!.kanban.removeContextRef(vars.issueId, vars.index),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+    },
+  })
+}
+
+// ── Session ↔ Issue Link ──────────────────────────────────────────────────────
+
+export function useLinkedIssue(chatSessionId: string | null) {
+  return useQuery({
+    queryKey: ['kanban', 'linkedIssue', chatSessionId] as const,
+    queryFn: () => chatSessionId && ipc ? ipc.kanban.getLinkedIssue(chatSessionId) : Promise.resolve(null),
+    enabled: !!chatSessionId,
+  })
+}
+
+export function useLinkIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { chatSessionId: string, issueId: string }) =>
+      ipc!.kanban.linkIssueToSession(vars.chatSessionId, vars.issueId),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['kanban', 'linkedIssue', vars.chatSessionId] })
+    },
+  })
+}
+
+export function useUnlinkIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (chatSessionId: string) =>
+      ipc!.kanban.unlinkIssueFromSession(chatSessionId),
+    onSuccess: (_data, chatSessionId) => {
+      qc.invalidateQueries({ queryKey: ['kanban', 'linkedIssue', chatSessionId] })
     },
   })
 }

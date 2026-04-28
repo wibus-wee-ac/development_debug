@@ -1,26 +1,29 @@
-// Input: useWorkspaceFile, MarkdownEditor, ipc, workspace data, git status, sessions
-// Output: WorkspaceDetailPage — Linear-style scrollable project overview with TOC
+// Input: useWorkspaceFile, MarkdownEditor, ipc, workspace data, git status, sessions, CSS tab switching
+// Output: WorkspaceDetailPage — Linear-style scrollable tab project view with Overview and Workflow Rules
 // Position: Feature component for the /workspace/$workspaceId route
 
+import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { Button } from '@renderer/components/ui/button'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
-import { ipc } from '@renderer/lib/ipc'
 import { cn } from '@renderer/lib/cn'
+import { ipc } from '@renderer/lib/ipc'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ExternalLinkIcon,
+  FileTextIcon,
   FolderOpenIcon,
   Loader2Icon,
   MessageSquareIcon,
   MessageSquarePlusIcon,
   PencilIcon,
+  ScrollTextIcon,
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { useWorkspaceFile } from './use-workspace-file'
+import { WorkspaceWorkflowRules } from './workspace-workflow-rules'
 
 /* ─── Types ──────────────────────────────────────────────── */
 
@@ -39,10 +42,10 @@ interface TocHeading {
 
 function timeAgo(ts: number): string {
   const diff = Math.floor(Date.now() / 1000) - ts
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
-  if (diff < 2592000) return `${Math.floor(diff / 86400)}d`
+  if (diff < 60) { return '刚刚' }
+  if (diff < 3600) { return `${Math.floor(diff / 60)}m` }
+  if (diff < 86400) { return `${Math.floor(diff / 3600)}h` }
+  if (diff < 2592000) { return `${Math.floor(diff / 86400)}d` }
   return `${Math.floor(diff / 2592000)}mo`
 }
 
@@ -59,12 +62,12 @@ const HEADING_RE = /^(#{1,6})\s+(.+)$/gm
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fff]+/g, '-')
+    .replace(/[^\w\u4E00-\u9FFF]+/g, '-')
     .replace(/(^-|-$)/g, '')
 }
 
 function parseHeadings(markdown: string | null, file: string): TocHeading[] {
-  if (!markdown) return []
+  if (!markdown) { return [] }
   const result: TocHeading[] = []
 
   // Strip fenced code blocks before parsing headings
@@ -123,7 +126,7 @@ function InlineEditTitle({
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') commit()
+          if (e.key === 'Enter') { commit() }
           if (e.key === 'Escape') {
             setDraft(value)
             setEditing(false)
@@ -225,7 +228,7 @@ function FloatingToc({
 
   return (
     <nav className="sticky top-6 w-58 shrink-0 pt-6 pr-4 select-none">
-      {grouped.map(group => {
+      {grouped.map((group) => {
         const totalH = group.items.length * itemH
 
         // Build a single continuous folding polyline path
@@ -324,6 +327,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules'>('overview')
+  const [workflowContent, setWorkflowContent] = useState<string | null>(null)
 
   const { data: workspace } = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -346,6 +351,26 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
 
+  // Tab indicator refs — measure button positions for CSS-only sliding indicator
+  const tabRef = useRef<Record<string, HTMLElement | null>>({})
+  const [indicatorStyle, setIndicatorStyle] = useState<React.CSSProperties>({ opacity: 0 })
+
+  useEffect(() => {
+    const el = tabRef.current[activeTab]
+    if (el) {
+      const parent = el.parentElement
+      if (parent) {
+        const parentRect = parent.getBoundingClientRect()
+        const elRect = el.getBoundingClientRect()
+        setIndicatorStyle({
+          left: elRect.left - parentRect.left + 4,
+          width: elRect.width - 8,
+          opacity: 1,
+        })
+      }
+    }
+  }, [activeTab])
+
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
     for (const s of sessions) {
@@ -361,24 +386,27 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     return top
   }, [sessions])
 
-  // Parse headings for TOC
-  const headings = useMemo(() => [
-    ...parseHeadings(agents.content, 'AGENTS.md'),
-  ], [agents.content])
+  // Parse headings for TOC (differs per active tab)
+  const headings = useMemo(() => {
+    if (activeTab === 'overview') {
+      return parseHeadings(agents.content, 'AGENTS.md')
+    }
+    return parseHeadings(workflowContent, 'Workflow Rules')
+  }, [activeTab, agents.content, workflowContent])
 
   const handleRename = useCallback(async (newName: string) => {
-    if (!ipc) return
+    if (!ipc) { return }
     await ipc.workspace.update({ id: workspaceId, name: newName })
     await queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] })
   }, [workspaceId, queryClient])
 
   const handleOpenInFinder = useCallback(() => {
-    if (!ipc || !workspace?.path) return
+    if (!ipc || !workspace?.path) { return }
     ipc.workspace.openInFinder(workspace.path)
   }, [workspace])
 
   const handleOpenInApp = useCallback(async () => {
-    if (!ipc || !workspace?.path) return
+    if (!ipc || !workspace?.path) { return }
     await ipc.workspace.openInDefaultApp(workspace.path)
   }, [workspace])
 
@@ -397,16 +425,22 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   // Track scroll position for active heading
   useEffect(() => {
     const container = scrollRef.current
-    if (!container) return
+    if (!container) { return }
 
     const handleScroll = () => {
-      // Find all heading elements in the editor
       const headingEls = container.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
+      if (headingEls.length === 0) { return }
+
+      const containerRect = container.getBoundingClientRect()
       let active: string | null = null
 
       for (const el of headingEls) {
-        const rect = el.getBoundingClientRect()
-        if (rect.top <= 140) {
+        // Skip elements inside hidden tab content
+        if ((el as HTMLElement).offsetParent === null) {
+          continue
+        }
+        const elTop = el.getBoundingClientRect().top - containerRect.top
+        if (elTop <= 80) {
           active = el.id
         }
       }
@@ -415,8 +449,13 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     }
 
     container.addEventListener('scroll', handleScroll, { passive: true })
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [])
+    // Run once after content renders
+    const timer = setTimeout(handleScroll, 200)
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      clearTimeout(timer)
+    }
+  }, [activeTab])
 
   if (!workspace) {
     return (
@@ -434,40 +473,81 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
           className="max-w-2xl mx-auto py-6 px-2"
         >
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <InlineEditTitle value={workspace.name} onSave={handleRename} />
             <p className="text-[12px] text-muted-foreground/35 font-mono mt-1 truncate">
               {workspace.path}
             </p>
           </div>
 
-          {/* AGENTS section */}
-          <DocumentSection
-            id="section-agents"
-            filename="AGENTS.md"
-            file={agents}
-            placeholder="配置 Agent 指令..."
-          />
+          {/* Tab navigation */}
+          <div className="relative flex items-center gap-0.5 overflow-x-auto mb-6 border-b border-border/40 pb-px scrollbar-none">
+            {([
+              { id: 'overview', label: 'Overview', icon: FileTextIcon },
+              { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                ref={(el) => { tabRef.current[id] = el }}
+                onClick={() => setActiveTab(id)}
+                className={cn(
+                  'relative flex items-center gap-1.5 px-3 py-2 text-[13px] whitespace-nowrap transition-colors select-none',
+                  activeTab === id
+                    ? 'text-foreground'
+                    : 'text-muted-foreground/45 hover:text-muted-foreground/70',
+                )}
+              >
+                <Icon className="relative size-3.5 shrink-0" />
+                <span className="relative">{label}</span>
+              </button>
+            ))}
+            {/* Tab indicator line — CSS transition, no motion layout measurement */}
+            <span
+              className="absolute -bottom-px h-[1.5px] bg-foreground rounded-full transition-all duration-200 ease-out"
+              style={indicatorStyle}
+            />
+          </div>
 
-          {/* Empty state */}
-          {agents.content === null && !agents.loading && (
-            <div className="py-16 text-center text-sm text-muted-foreground/40">
-              该项目中没有 AGENTS.md 文件
-            </div>
-          )}
+          {/* Tab content — pure CSS toggle: no React effect re-runs, no layout thrash */}
+          <div className={activeTab === 'overview' ? undefined : 'hidden'}>
+            {/* AGENTS section */}
+            <DocumentSection
+              id="section-agents"
+              filename="AGENTS.md"
+              file={agents}
+              placeholder="配置 Agent 指令..."
+            />
+
+            {/* Empty state */}
+            {agents.content === null && !agents.loading && (
+              <div className="py-16 text-center text-sm text-muted-foreground/40">
+                该项目中没有 AGENTS.md 文件
+              </div>
+            )}
+          </div>
+
+          <div className={activeTab === 'workflow-rules' ? undefined : 'hidden'}>
+            <WorkspaceWorkflowRules
+              workspaceId={workspaceId}
+              onContentChange={setWorkflowContent}
+            />
+          </div>
 
           <div className="h-16" />
         </motion.div>
       </div>
 
       {/* ── Float TOC (right of content, before sidebar) ──── */}
-      {headings.length > 0 && (
-        <FloatingToc
-          headings={headings}
-          activeSlug={activeSlug}
-          onNavigate={handleTocNavigate}
-        />
-      )}
+      <div className="w-58 shrink-0">
+        {headings.length > 0 && (
+          <FloatingToc
+            headings={headings}
+            activeSlug={activeSlug}
+            onNavigate={handleTocNavigate}
+          />
+        )}
+      </div>
 
       {/* ── Right sidebar ──────────────────────────────────── */}
       <motion.div

@@ -39,6 +39,9 @@ export const sessions = sqliteTable('sessions', {
   /** Optional Agent identity ID — set when a chat is started from an Agent (vs. raw Provider). */
   agentId: text('agent_id')
     .references(() => agents.id, { onDelete: 'set null' }),
+  /** Manually linked issue. Null when the session has no manual association (auto-links go through agentSessions). */
+  linkedIssueId: text('linked_issue_id')
+    .references(() => kanbanIssues.id, { onDelete: 'set null' }),
   providerKind: text('provider_kind', {
     enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
   }).notNull(),

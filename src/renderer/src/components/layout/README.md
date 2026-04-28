@@ -16,3 +16,4 @@ Place domain-specific content components in `features/` instead.
   Extracted from AppLayout to keep layout concerns separate from sidebar orchestration.
 - **dev-bottom-bar.tsx**: Dev-only slim footer inside `AppLayout` with a single button that opens the IPC devtool second window
 - **resize-handle.tsx**: Draggable handle for resizing sidebar, aside, and panel widths/heights.
+- **right-aside.tsx**: Tabbed right side panel with File Tree, Git, and Issue tabs; accepts workspaceId, workspacePath, and sessionId props

@@ -1,11 +1,12 @@
-// Input: FileTree, GitPanel, workspaceId prop, motion/react
-// Output: RightAside component — tabbed right aside panel with File Tree and Git tabs
+// Input: FileTree, GitPanel, IssueAsidePanel, workspaceId prop, sessionId prop, motion/react
+// Output: RightAside component — tabbed right aside panel with File Tree, Git, and Issue tabs
 // Position: Slot content for AppLayout aside prop; shown when asideOpen=true
 
+import { IssueAsidePanel } from '@renderer/features/kanban/issue-aside-panel'
 import { GitPanel } from '@renderer/features/git'
 import { FileTree } from '@renderer/features/workspace/file-tree'
 import { cn } from '@renderer/lib/cn'
-import { FolderTreeIcon, GitBranchIcon } from 'lucide-react'
+import { CircleDotIcon, FolderTreeIcon, GitBranchIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useState } from 'react'
 
@@ -18,6 +19,7 @@ interface Tab {
 const TABS: Tab[] = [
   { id: 'files', label: '文件', icon: FolderTreeIcon },
   { id: 'git', label: 'Git', icon: GitBranchIcon },
+  { id: 'issue', label: 'Issue', icon: CircleDotIcon },
 ]
 
 const TAB_SPRING = {
@@ -29,9 +31,10 @@ const TAB_SPRING = {
 interface RightAsideProps {
   workspaceId: string | null
   workspacePath?: string | null
+  sessionId?: string | null
 }
 
-export function RightAside({ workspaceId, workspacePath }: RightAsideProps) {
+export function RightAside({ workspaceId, workspacePath, sessionId }: RightAsideProps) {
   const [activeTab, setActiveTab] = useState('files')
 
   return (
@@ -69,6 +72,14 @@ export function RightAside({ workspaceId, workspacePath }: RightAsideProps) {
       <div className="flex flex-1 flex-col overflow-hidden">
         {activeTab === 'files' && <FileTree workspaceId={workspaceId} workspacePath={workspacePath} />}
         {activeTab === 'git' && <GitPanel workspacePath={workspacePath} />}
+        {activeTab === 'issue' && sessionId && (
+          <IssueAsidePanel sessionId={sessionId} workspaceId={workspaceId} />
+        )}
+        {activeTab === 'issue' && !sessionId && (
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-[11px] text-muted-foreground/40">No active session</p>
+          </div>
+        )}
       </div>
     </div>
   )
