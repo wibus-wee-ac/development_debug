@@ -21,6 +21,7 @@ const SIDEBAR_SPRING = { type: 'spring', stiffness: 600, damping: 40 } as const
 const COLLAPSED_WIDTH = 48
 
 export function AppSidebar() {
+  'use no memo'
   const {
     sidebarWidth,
     sidebarCollapsed,

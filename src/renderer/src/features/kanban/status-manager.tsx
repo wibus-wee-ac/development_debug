@@ -156,11 +156,13 @@ export function StatusManager({ workspaceId }: { workspaceId: string }) {
           onChange={e => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void handleAdd() }}
           className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/30"
+          data-testid="status-name-input"
         />
         <button
           className="text-muted-foreground/30 hover:text-foreground transition-colors disabled:opacity-30"
           onClick={() => void handleAdd()}
           disabled={!newName.trim() || createStatus.isPending}
+          data-testid="status-add-btn"
         >
           <PlusIcon className="size-3.5" />
         </button>

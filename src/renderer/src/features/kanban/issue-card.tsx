@@ -54,6 +54,7 @@ export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardP
         isDragging && 'opacity-60',
       )}
       onClick={() => onClick(issue)}
+      data-testid={`issue-card-${issue.id}`}
     >
       {/* Title row with priority */}
       <div className="flex items-start gap-2">

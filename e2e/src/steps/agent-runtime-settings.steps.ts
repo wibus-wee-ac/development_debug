@@ -29,13 +29,13 @@ Given('我已进入 Agent Runtime 设置页面', async function (this: CradleWor
   await expect(navItem).toBeVisible({ timeout: 5000 })
   await navItem.click()
 
-  const settings = this.page.locator('[data-testid="agents-settings"]')
+  const settings = this.page.locator('[data-testid="agent-runtime-settings"]')
   await expect(settings).toBeVisible({ timeout: 5000 })
 })
 
 Then('我应该看到 Agent Runtime 设置页面', async function (this: CradleWorld) {
   console.warn('[step] assert Agent Runtime settings visible')
-  const settings = this.page.locator('[data-testid="agents-settings"]')
+  const settings = this.page.locator('[data-testid="agent-runtime-settings"]')
   await expect(settings).toBeVisible({ timeout: 10000 })
 })
 

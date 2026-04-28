@@ -10,13 +10,16 @@ const KanbanBoardContent = lazy(() => import('./kanban-board-tab-content').then(
 
 export const kanbanBoardTab = defineTab({
   type: 'kanban-board' as const,
-  label: (params: { boardId: string, issue?: string }) => `看板: ${params.boardId.slice(0, 8)}`,
+  label: (params: { boardId?: string, issue?: string }) =>
+    params.boardId ? `看板: ${params.boardId.slice(0, 8)}` : '看板',
   component: KanbanBoardContent,
   serialize: (params) => {
+    if (!params.boardId) return ''
     const base = params.boardId
     return params.issue ? `${base}?issue=${params.issue}` : base
   },
   deserialize: (path) => {
+    if (!path) return null
     const [boardId, query] = path.split('?')
     if (!boardId) {
       return null

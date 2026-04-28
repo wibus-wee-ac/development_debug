@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 
+import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import {
   useBoards,
   useCreateBoard,
@@ -28,8 +29,10 @@ import {
 } from './use-kanban'
 
 function useWorkspaceId() {
+  const { workspaces } = useWorkspaces()
   const { data: boards } = useBoards()
-  return boards?.[0]?.workspaceId ?? null
+  // Prefer workspaceId from existing boards; fall back to the first workspace
+  return boards?.[0]?.workspaceId ?? workspaces[0]?.id ?? null
 }
 
 export function KanbanSidebar() {
@@ -62,7 +65,7 @@ export function KanbanSidebar() {
   }, [createBoard, workspaceId, openTab])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" data-testid="kanban-sidebar">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <button
@@ -79,6 +82,7 @@ export function KanbanSidebar() {
               variant="ghost"
               size="icon-xs"
               className="text-muted-foreground/30 hover:text-foreground"
+              data-testid="kanban-add-board-btn"
               onClick={() => {
                 setIsCreating(true)
                 requestAnimationFrame(() => inputRef.current?.focus())

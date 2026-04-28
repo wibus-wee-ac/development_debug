@@ -10,6 +10,7 @@ import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
+import { useLayoutStore } from '@renderer/store/layout'
 import { useCradleNavigation, useIsActiveTab } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -24,6 +25,7 @@ import {
   MoreHorizontalIcon,
   PlusIcon,
   SearchIcon,
+  SettingsIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
   ZapIcon,
@@ -330,6 +332,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
   const { openTab } = useCradleNavigation()
+  const openSettings = useLayoutStore(s => s.openSettings)
   const [searchOpen, setSearchOpen] = useState(false)
 
   const handleDelete = useCallback((id: string) => {
@@ -387,6 +390,14 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="用量"
             collapsed={collapsed}
             onClick={() => openTab('usage')}
+          />
+          <TopNavItem
+            icon={<SettingsIcon className="size-4" />}
+            label="设置"
+            shortcut="⌘,"
+            collapsed={collapsed}
+            onClick={openSettings}
+            dataTestId="settings-btn"
           />
         </nav>
       </TooltipProvider>

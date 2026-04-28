@@ -100,6 +100,7 @@ export function CreateIssueDialog({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Issue title…"
+            data-testid="kanban-new-issue-input"
             className="w-full bg-transparent text-[14px] font-medium text-foreground placeholder:text-muted-foreground/25 outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -229,6 +230,7 @@ export function CreateIssueDialog({
               )}
               disabled={!title.trim() || createIssue.isPending}
               onClick={handleCreate}
+              data-testid="kanban-create-issue-btn"
             >
               Create issue
             </button>

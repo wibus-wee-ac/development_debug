@@ -61,6 +61,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
         'flex h-full w-64 shrink-0 flex-col rounded-lg transition-colors duration-100',
         isOver && 'bg-foreground/2 inset-shadow-[0_1px_--theme(--color-white/10%)]',
       )}
+      data-testid={`kanban-column-${status.id}`}
     >
       {/* Column header */}
       <div className="group/header flex items-center gap-2 px-3 py-2.5">
@@ -72,6 +73,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
           size="icon-xs"
           className="ml-auto text-muted-foreground/25 opacity-0 transition-opacity duration-75 group-hover/header:opacity-100 hover:text-foreground"
           onClick={() => onOpenCreate(status.id)}
+          data-testid={`kanban-column-add-${status.id}`}
         >
           <PlusIcon />
         </Button>

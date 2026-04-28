@@ -43,15 +43,11 @@ export class CradleWorld extends World {
 
   async launch(): Promise<void> {
     const userDataPath = CradleWorld.e2eUserDataPath
-    if (!existsSync(userDataPath)) {
-      mkdirSync(userDataPath, { recursive: true })
+    // Wipe entire userData to clear DB, localStorage, and persisted store state
+    if (existsSync(userDataPath)) {
+      rmSync(userDataPath, { recursive: true })
     }
-
-    // Delete the database before each test to ensure a clean slate
-    const dbPath = join(userDataPath, 'cradle.db')
-    if (existsSync(dbPath)) {
-      rmSync(dbPath)
-    }
+    mkdirSync(userDataPath, { recursive: true })
 
     this.app = await electron.launch({
       args: [

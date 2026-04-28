@@ -37,10 +37,8 @@ Then('看板侧栏应提示{string}', async function (this: CradleWorld, text: s
 
 When('我点击新建看板按钮', async function (this: CradleWorld) {
   console.warn('[step] click create board button')
-  // The + button is in the sidebar header area — find the tooltip trigger
   const sidebar = this.page.locator('[data-testid="kanban-sidebar"]')
-  // The plus button is inside the header section
-  const addBtn = sidebar.locator('button').filter({ has: this.page.locator('svg') }).first()
+  const addBtn = sidebar.locator('[data-testid="kanban-add-board-btn"]')
   await addBtn.click()
   await this.page.waitForSelector('[data-testid="kanban-new-board-input"]', { timeout: 3000 })
 })
@@ -65,7 +63,7 @@ Given('我已创建了一个看板', async function (this: CradleWorld) {
 
   // Click the add button in sidebar header
   const sidebar = this.page.locator('[data-testid="kanban-sidebar"]')
-  const addBtn = sidebar.locator('button').filter({ has: this.page.locator('svg') }).first()
+  const addBtn = sidebar.locator('[data-testid="kanban-add-board-btn"]')
   await addBtn.click()
 
   const input = this.page.locator('[data-testid="kanban-new-board-input"]')
@@ -75,6 +73,31 @@ Given('我已创建了一个看板', async function (this: CradleWorld) {
 
   // Wait for board view to load
   await this.page.waitForSelector('[data-testid="kanban-board"]', { timeout: 5000 })
+
+  // Open settings popover and create default statuses
+  const settingsBtn = this.page.locator('[data-testid="kanban-settings-btn"]')
+  await expect(settingsBtn).toBeVisible({ timeout: 3000 })
+  await settingsBtn.click()
+
+  const statusInput = this.page.locator('[data-testid="status-name-input"]')
+  await expect(statusInput).toBeVisible({ timeout: 3000 })
+
+  // Create "To Do" status
+  await statusInput.fill('To Do')
+  await statusInput.press('Enter')
+  await this.page.waitForTimeout(300)
+
+  // Create "In Progress" status
+  await statusInput.fill('In Progress')
+  await statusInput.press('Enter')
+  await this.page.waitForTimeout(300)
+
+  // Close the popover by clicking outside
+  await this.page.locator('[data-testid="kanban-board"]').click({ position: { x: 10, y: 10 } })
+  await this.page.waitForTimeout(300)
+
+  // Wait for columns to appear
+  await expect(this.page.locator('[data-testid^="kanban-column-"]').first()).toBeVisible({ timeout: 5000 })
 })
 
 Then('看板侧栏应显示名为{string}的看板', async function (this: CradleWorld, name: string) {
@@ -93,11 +116,11 @@ Then('看板视图应显示', async function (this: CradleWorld) {
 
 When('我点击第一个列的添加按钮', async function (this: CradleWorld) {
   console.warn('[step] click first column add button')
-  const addBtn = this.page.locator('[data-testid^="kanban-column-add-"]').first()
-  await expect(addBtn).toBeVisible({ timeout: 5000 })
-  // Need to hover on column to make add button visible
+  // Hover on column first to reveal the add button (it has opacity-0 by default)
   const column = this.page.locator('[data-testid^="kanban-column-"]').first()
+  await expect(column).toBeVisible({ timeout: 5000 })
   await column.hover()
+  const addBtn = this.page.locator('[data-testid^="kanban-column-add-"]').first()
   await addBtn.click({ force: true })
   await this.page.waitForSelector('[data-testid="kanban-new-issue-input"]', { timeout: 3000 })
 })
@@ -107,7 +130,10 @@ When('我输入 Issue 标题{string}并回车', async function (this: CradleWorl
   const input = this.page.locator('[data-testid="kanban-new-issue-input"]')
   await expect(input).toBeVisible()
   await input.fill(title)
-  await input.press('Enter')
+  // Click "Create issue" button (Enter alone does nothing, need ⌘+Enter or button click)
+  const createBtn = this.page.locator('[data-testid="kanban-create-issue-btn"]')
+  await expect(createBtn).toBeEnabled({ timeout: 3000 })
+  await createBtn.click()
   await this.page.waitForTimeout(500)
 })
 
@@ -127,7 +153,10 @@ Given('我已在第一列创建了一个 Issue{string}', async function (this: C
   const input = this.page.locator('[data-testid="kanban-new-issue-input"]')
   await expect(input).toBeVisible({ timeout: 3000 })
   await input.fill(title)
-  await input.press('Enter')
+  // Click "Create issue" button
+  const createBtn = this.page.locator('[data-testid="kanban-create-issue-btn"]')
+  await expect(createBtn).toBeEnabled({ timeout: 3000 })
+  await createBtn.click()
   await this.page.waitForTimeout(500)
 })
 
@@ -169,7 +198,7 @@ When('我在评论框中输入{string}', async function (this: CradleWorld, text
   await textarea.fill(text)
 })
 
-When('我点击{string}按钮', async function (this: CradleWorld, _label: string) {
+When('我点击Comment按钮', async function (this: CradleWorld) {
   console.warn('[step] click comment submit button')
   const btn = this.page.locator('[data-testid="issue-comment-submit"]')
   await expect(btn).toBeEnabled({ timeout: 3000 })

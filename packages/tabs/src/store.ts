@@ -28,6 +28,7 @@ export interface TabStoreState {
   setActiveTab: (id: string) => void
   updateTabParams: (id: string, params: Partial<Record<string, string | undefined>>) => void
   updateTabLabel: (id: string, label: string) => void
+  reorderTabs: (orderedIds: string[]) => void
   getActiveTab: () => TabInstance | undefined
 }
 
@@ -58,10 +59,34 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         activeTabId: null,
 
         openTab: (type, params = {}, opts) => {
+          const def = registry[type]
+          const isPinned = opts?.pinned ?? def?.pinned ?? false
+
+          // Dedup: pinned tabs always reuse existing; parameterized tabs reuse on exact match
+          const existing = get().tabs.find((t) => {
+            if (t.type !== type) {
+              return false
+            }
+            // Pinned tabs: one per type
+            if (t.pinned || isPinned) {
+              return true
+            }
+            // Non-pinned with params: match all param values
+            const paramKeys = Object.keys(params)
+            if (paramKeys.length === 0) {
+              return false // parameterless non-pinned tabs always create new
+            }
+            return paramKeys.every(k => t.params[k] === params[k])
+          })
+
+          if (existing) {
+            set({ activeTabId: existing.id })
+            return existing.id
+          }
+
           const id = makeId()
           const label = opts?.label ?? resolveLabel(registry, type, params)
-          const pinned = opts?.pinned ?? registry[type]?.pinned ?? false
-          const tab: TabInstance = { id, type, params, label, pinned }
+          const tab: TabInstance = { id, type, params, label, pinned: isPinned }
           set(s => ({
             tabs: [...s.tabs, tab],
             activeTabId: id,
@@ -108,6 +133,22 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
             tabs: s.tabs.map(t =>
               t.id === tabId ? { ...t, label } : t),
           }))
+        },
+
+        reorderTabs: (orderedIds) => {
+          set(s => {
+            const tabMap = new Map(s.tabs.map(t => [t.id, t]))
+            const reordered = orderedIds
+              .map(id => tabMap.get(id))
+              .filter((t): t is TabInstance => t !== undefined)
+            // Append any tabs not in orderedIds (safety net)
+            for (const tab of s.tabs) {
+              if (!orderedIds.includes(tab.id)) {
+                reordered.push(tab)
+              }
+            }
+            return { tabs: reordered }
+          })
         },
 
         getActiveTab: () => {

@@ -633,7 +633,7 @@ function ActivityEntry({ comment, issueId }: { comment: KanbanIssueComment, issu
   const isAgent = kind === 'agent'
 
   return (
-    <div className="group/entry relative flex gap-3 py-2">
+    <div className="group/entry relative flex gap-3 py-2" data-testid={`comment-${comment.id}`}>
       <Avatar className="size-5 shrink-0 bg-foreground/4 text-foreground z-10">
         <AvatarFallback className="text-[9px]">
           {isAgent ? <BotIcon className="size-2.5" /> : 'Me'}

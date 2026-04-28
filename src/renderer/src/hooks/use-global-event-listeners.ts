@@ -23,7 +23,7 @@ export function useGlobalEventListeners() {
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
 
-  // Panel keyboard shortcuts
+  // Panel + tab keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // Ctrl+` → toggle bottom panel
@@ -36,6 +36,54 @@ export function useGlobalEventListeners() {
       if (e.metaKey && e.altKey && !e.ctrlKey && (e.key === 'b' || e.key === 'B' || e.key === '∫')) {
         e.preventDefault()
         toggleAside()
+        return
+      }
+
+      // ── Tab shortcuts ──────────────────────────────────────────────
+      const store = useCradleTabStore.getState()
+
+      // Cmd+W → close active tab
+      if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'w') {
+        e.preventDefault()
+        if (store.activeTabId) {
+          store.closeTab(store.activeTabId)
+        }
+        return
+      }
+
+      // Cmd+T → new tab
+      if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 't') {
+        e.preventDefault()
+        store.openTab('new-chat')
+        return
+      }
+
+      // Cmd+1 through Cmd+9 → switch to tab by index
+      if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey) {
+        const digit = Number.parseInt(e.key, 10)
+        if (digit >= 1 && digit <= 9) {
+          const targetIndex = digit - 1
+          const tab = store.tabs[targetIndex]
+          if (tab) {
+            e.preventDefault()
+            store.setActiveTab(tab.id)
+          }
+          return
+        }
+      }
+
+      // Ctrl+Tab / Ctrl+Shift+Tab → cycle tabs
+      if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Tab') {
+        e.preventDefault()
+        const { tabs, activeTabId } = store
+        if (tabs.length <= 1) {
+          return
+        }
+        const currentIndex = tabs.findIndex(t => t.id === activeTabId)
+        const nextIndex = e.shiftKey
+          ? (currentIndex - 1 + tabs.length) % tabs.length
+          : (currentIndex + 1) % tabs.length
+        store.setActiveTab(tabs[nextIndex].id)
       }
     }
     window.addEventListener('keydown', handleKeyDown)

@@ -9,19 +9,26 @@ import { AppLayout } from '@renderer/components/layout/app-layout'
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
+import { SettingsContent } from '@renderer/features/settings/settings-content'
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
+import { useLayoutStore } from '@renderer/store/layout'
 import { useThemeStore } from '@renderer/store/theme'
 import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { useEffect } from 'react'
 
 export function App() {
+  'use no memo'
   const mode = useThemeStore(s => s.mode)
+  const { isSettings, settingsSection } = useLayoutStore()
 
-  // Clean up duplicate pinned home tabs on startup (persist migration)
+  // Ensure at least one home tab exists on startup (fresh or cleared state)
   useEffect(() => {
-    const { tabs } = useCradleTabStore.getState()
+    const { tabs, openTab } = useCradleTabStore.getState()
     const homeTabs = tabs.filter(t => t.type === 'home')
-    if (homeTabs.length > 1) {
+    if (homeTabs.length === 0) {
+      openTab('home', {}, { pinned: true })
+    } else if (homeTabs.length > 1) {
+      // Clean up duplicate pinned home tabs (persist migration)
       for (const dup of homeTabs.slice(1)) {
         useCradleTabStore.setState(s => ({
           tabs: s.tabs.filter(t => t.id !== dup.id),
@@ -56,11 +63,15 @@ export function App() {
             <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
               <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
                 <AppSidebar />
-                <AppLayout hasAside={false} hasPanel={false}>
-                  <TabRenderer
-                    fallback={null}
-                    className="h-full flex overflow-hidden w-full"
-                  />
+                <AppLayout>
+                  {isSettings
+                    ? <SettingsContent section={settingsSection} />
+                    : (
+                      <TabRenderer
+                        fallback={null}
+                        className="h-full flex overflow-hidden w-full"
+                      />
+                    )}
                 </AppLayout>
               </div>
             </TabsProvider>

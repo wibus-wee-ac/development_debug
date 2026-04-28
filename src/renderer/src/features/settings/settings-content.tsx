@@ -4,13 +4,13 @@
 
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { AgentList } from '@renderer/features/agent-management/agent-list'
-import { AgentsSettings } from '@renderer/features/agent-management/agents-settings'
+import { AgentRuntimeSettings } from '@renderer/features/agent-management/agent-runtime-settings'
 
 import { AppearanceSettings } from './appearance-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
-  providers: AgentsSettings,
+  providers: AgentRuntimeSettings,
   agents: AgentList,
 }
 

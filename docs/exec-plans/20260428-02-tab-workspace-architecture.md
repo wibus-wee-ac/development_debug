@@ -18,10 +18,11 @@ The tab system lives in `packages/tabs/` as `@cradle/tabs`. It provides `defineT
 - [x] (2026-04-28 09:30Z) Milestone 2: Core library — defineTab, createTabStore, TabBar, TabRenderer, useTabNavigation, createUrlSync, TabsProvider. 20/20 tests pass.
 - [x] (2026-04-28 10:00Z) E2E: tab-management.feature (7 scenarios) + step definitions + data-testid attributes
 - [x] (2026-04-28 10:30Z) Milestone 3: Tab types defined (home, chat, new-chat, kanban-board, workspace-detail, usage). Registry wired. TabsProvider + TabRenderer in __root.tsx. AppHeader uses library TabBar. LegacyRouteRedirector maps paths to type+params. Typecheck passes.
-- [ ] Milestone 4: Migrate ChatView to props-driven (decouple from route loader)
-- [ ] Milestone 5: Replace all `<Link>` and `useNavigate()` calls with tab-aware navigation (sidebar + feature components)
-- [ ] Milestone 6: Clean up — remove LegacyRouteRedirector, remove unused route components, handle localStorage migration
-- [ ] Milestone 7: Evaluate TanStack Router removal or reduction to devtool-only
+- [x] (2026-04-28 11:00Z) Milestone 4: ChatView tab loader mechanism implemented. Tab definitions support `loader` returning async data passed as `loaderData` prop.
+- [x] (2026-04-28 11:30Z) Milestone 5: All `<Link>` and `useNavigate()` calls replaced with `useCradleNavigation()` across sidebar, home-dashboard, new-chat, kanban-sidebar, thread-search, issue-detail, workspace-detail. TanStack Router fully removed from dependencies.
+- [x] (2026-04-28 12:00Z) Milestone 6: POC files deleted (store/tabs.ts, layout/tab-bar.tsx, layout/tab-content-renderer.tsx, hooks/use-tab-navigation.ts). __root.tsx → app.tsx. main.tsx simplified. localStorage persist key isolated.
+- [x] (2026-04-28 12:30Z) Milestone 7: TanStack Router fully removed (not just evaluated). All route files deleted. routeTree.gen.ts deleted. RouterProvider replaced with direct App component. DevTool window uses hash check at entry point.
+- [x] (2026-04-28 13:30Z) E2E stabilization: 22/22 scenarios pass, 75/75 steps. Fixed StatusManager testids, CreateIssueDialog submit flow, kanban board initialization, settings navigation, workspace sidebar test mocks.
 
 ## Surprises & Discoveries
 
@@ -77,7 +78,31 @@ The tab system lives in `packages/tabs/` as `@cradle/tabs`. It provides `defineT
 
 ## Outcomes & Retrospective
 
-(To be filled as milestones complete.)
+**Completed**: All 7 milestones finished in a single session. Total: ~6.5 hours from POC to full migration with 22/22 E2E passing.
+
+**What went well**:
+- React 19 `<Activity>` API worked exactly as hoped — zero custom lifecycle management needed.
+- `defineTab()` + registry pattern made tab types declarative and type-safe.
+- E2E tests written early (after M2) caught real regressions throughout M3-M7.
+- Removing TanStack Router entirely (M7 went beyond "evaluate") simplified the codebase significantly — eliminated routeTree.gen.ts codegen, route file conventions, and loader patterns.
+
+**What was harder than expected**:
+- **React Compiler (`react-compiler-runtime`) breaks Zustand `useSyncExternalStore` subscriptions.** Components auto-memoized by the compiler don't re-render when external store state changes. Workaround: `'use no memo'` directive on components that subscribe to Zustand stores. This affected TabBar, TabRenderer, AppSidebar, and AppHeader.
+- **Electron `-webkit-app-region: drag` swallows click events.** The AppHeader's drag region intercepted TabBar clicks. Fix: explicit `WebkitAppRegion: 'no-drag'` on interactive elements.
+- **E2E test isolation**: Zustand persist middleware saves to localStorage in userData. Without clearing it between scenarios, stale tab state from one scenario leaked into the next. Fix: `fs.rm(userData)` in E2E `Before` hook.
+- **CreateIssueDialog submission**: The dialog requires `⌘+Enter` or clicking the "Create issue" button — plain `Enter` does nothing. E2E steps initially just pressed Enter, causing silent failures.
+
+**Key decisions that proved correct**:
+- Source-first package (`exports: "./src/index.ts"`) eliminated any build step friction.
+- Props-driven components (not route-dependent) made migration smooth — each feature component already accepted its data as props.
+- Tab loader mechanism (async data loading with Suspense fallback) cleanly replaced route loaders for the chat tab's message pre-fetch.
+
+**Open items for future work**:
+- Tab pill UI refinement (capsule shape, active background differentiation)
+- Tab persistence migration from localStorage to IPC storage
+- Tab drag-to-reorder
+- Keyboard shortcuts (`Cmd+W` close, `Cmd+T` new, `Cmd+1-9` switch)
+- Tab reuse strategy tuning (when to reuse vs. open new)
 
 ## Context and Orientation
 

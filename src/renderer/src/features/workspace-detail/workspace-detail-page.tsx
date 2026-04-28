@@ -550,11 +550,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
       </div>
 
       {/* ── Right sidebar ──────────────────────────────────── */}
-      <motion.div
+      <div
         className="w-62 shrink-0 border-l border-border/30 overflow-y-auto"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.15, duration: 0.25 }}
       >
         {/* Actions */}
         <div className="px-3 pt-3 pb-2 space-y-1">
@@ -615,12 +612,9 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             )
             : (
               <div className="flex flex-col gap-0.5 pb-3">
-                {recentSessions.map((session, i) => (
-                  <motion.div
+                {recentSessions.map((session) => (
+                  <div
                     key={session.id}
-                    initial={{ opacity: 0, x: 4 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.2 + i * 0.03, duration: 0.2 }}
                   >
                     <button
                       type="button"
@@ -633,12 +627,12 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                         {timeAgo(session.updatedAt)}
                       </time>
                     </button>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             )}
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }

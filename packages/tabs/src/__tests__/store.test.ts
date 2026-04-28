@@ -72,6 +72,37 @@ describe('createTabStore', () => {
       expect(id1).not.toBe(id2)
     })
 
+    it('deduplicates pinned tabs by type', () => {
+      const id1 = store.getState().openTab('home')
+      const id2 = store.getState().openTab('home')
+      expect(id1).toBe(id2)
+      expect(store.getState().tabs).toHaveLength(1)
+      expect(store.getState().activeTabId).toBe(id1)
+    })
+
+    it('deduplicates parameterized tabs by type + params', () => {
+      const id1 = store.getState().openTab('chat', { sessionId: 'abc' })
+      store.getState().openTab('usage')
+      const id2 = store.getState().openTab('chat', { sessionId: 'abc' })
+      expect(id1).toBe(id2)
+      expect(store.getState().tabs).toHaveLength(2) // chat + usage
+      expect(store.getState().activeTabId).toBe(id1)
+    })
+
+    it('does NOT dedup when params differ', () => {
+      const id1 = store.getState().openTab('chat', { sessionId: 'abc' })
+      const id2 = store.getState().openTab('chat', { sessionId: 'xyz' })
+      expect(id1).not.toBe(id2)
+      expect(store.getState().tabs).toHaveLength(2)
+    })
+
+    it('does NOT dedup parameterless non-pinned tabs', () => {
+      const id1 = store.getState().openTab('usage')
+      const id2 = store.getState().openTab('usage')
+      expect(id1).not.toBe(id2)
+      expect(store.getState().tabs).toHaveLength(2)
+    })
+
     it('switches active tab to newly opened tab', () => {
       store.getState().openTab('home')
       const id2 = store.getState().openTab('usage')
@@ -178,6 +209,44 @@ describe('createTabStore', () => {
 
     it('returns undefined when no tabs exist', () => {
       expect(store.getState().getActiveTab()).toBeUndefined()
+    })
+  })
+
+  describe('reorderTabs', () => {
+    it('reorders tabs by the given id array', () => {
+      const id1 = store.getState().openTab('home')
+      const id2 = store.getState().openTab('chat', { sessionId: 'a' })
+      const id3 = store.getState().openTab('usage')
+
+      store.getState().reorderTabs([id3, id1, id2])
+      const tabs = store.getState().tabs
+
+      expect(tabs.map(t => t.id)).toEqual([id3, id1, id2])
+    })
+
+    it('preserves active tab after reorder', () => {
+      store.getState().openTab('home')
+      store.getState().openTab('chat', { sessionId: 'a' })
+      const id3 = store.getState().openTab('usage')
+
+      expect(store.getState().activeTabId).toBe(id3)
+
+      const ids = store.getState().tabs.map(t => t.id).reverse()
+      store.getState().reorderTabs(ids)
+
+      expect(store.getState().activeTabId).toBe(id3)
+    })
+
+    it('appends tabs not in the ordered list', () => {
+      const id1 = store.getState().openTab('home')
+      const id2 = store.getState().openTab('chat', { sessionId: 'a' })
+      const id3 = store.getState().openTab('usage')
+
+      // Only pass 2 of 3 ids
+      store.getState().reorderTabs([id3, id1])
+      const tabs = store.getState().tabs
+
+      expect(tabs.map(t => t.id)).toEqual([id3, id1, id2])
     })
   })
 })

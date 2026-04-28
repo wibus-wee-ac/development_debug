@@ -151,14 +151,14 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
   const hasUnassigned = (issuesByStatus.get('__none__')?.length ?? 0) > 0
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full" data-testid="kanban-board">
       {/* Board area */}
       <div className="flex flex-1 min-w-0 flex-col">
         {/* Toolbar */}
         <div className="flex items-center gap-2 px-3 h-10 shrink-0">
           <div className="flex-1" />
           <Popover>
-            <PopoverTrigger className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100">
+            <PopoverTrigger className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100" data-testid="kanban-settings-btn">
               <SettingsIcon className="size-3.5" />
             </PopoverTrigger>
             <PopoverContent side="bottom" align="end" className="w-64">

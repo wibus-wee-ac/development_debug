@@ -21,6 +21,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) {
+  'use no memo'
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, isSettings } = useLayoutStore()
   const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
   const isKanban = activeTabType === 'kanban-board'
