@@ -1,13 +1,15 @@
-// Input: Button, useLayoutStore, lucide icons
-// Output: AppHeader — slim breadcrumb header with bottom-panel / aside toggles on the right
+// Input: Button, useLayoutStore, lucide icons, @cradle/tabs TabBar
+// Output: AppHeader — slim header with capsule tabs and panel toggles
 // Position: Top chrome of AppLayout's center column; doubles as a macOS window-drag region
 
+import { TabBar } from '@cradle/tabs'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/cn'
 import { useLayoutStore } from '@renderer/store/layout'
-import { useRouterState } from '@tanstack/react-router'
-import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
+import { useCradleTabStore } from '@renderer/tabs/registry'
+import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, XIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useCallback } from 'react'
 
 interface AppHeaderProps {
   title?: ReactNode
@@ -18,16 +20,19 @@ interface AppHeaderProps {
   gitBranch?: ReactNode
 }
 
-export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, gitBranch }: AppHeaderProps) {
+export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) {
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, isSettings } = useLayoutStore()
-  const pathname = useRouterState({ select: s => s.location.pathname })
-  const isKanban = pathname.startsWith('/kanban')
+  const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
+  const isKanban = activeTabType === 'kanban-board'
   const isDrillIn = isSettings || isKanban
 
-  const hasBreadcrumb = (workspace !== undefined && workspace !== null && workspace !== '')
-    || (title !== undefined && title !== null && title !== '')
-  const hasWorkspace = workspace !== undefined && workspace !== null && workspace !== ''
-  const hasTitle = title !== undefined && title !== null && title !== ''
+  const handleTabActivated = useCallback((_tab: { id: string }) => {
+    // Tab store already handles activation via TabBar's internal onClick
+  }, [])
+
+  const handleNewTab = useCallback(() => {
+    useCradleTabStore.getState().openTab('new-chat')
+  }, [])
 
   return (
     <div
@@ -48,32 +53,16 @@ export function AppHeader({ title, workspace, hasAside = true, hasPanel = true, 
         </Button>
       )}
 
-      {/* Center: breadcrumb — absolutely centered */}
-      {hasBreadcrumb && (
-        <nav
-          aria-label="Breadcrumb"
-          className="pointer-events-none absolute left-1/2 -translate-x-1/2 flex items-center justify-center text-xs max-w-[calc(100%-8rem)]"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <div className="pointer-events-auto flex min-w-0 max-w-xs items-center">
-            {hasWorkspace && (
-              <span className={cn('truncate', hasTitle ? 'text-muted-foreground' : 'text-foreground font-medium')}>
-                {workspace}
-              </span>
-            )}
-            {hasWorkspace && hasTitle && (
-              <span aria-hidden="true" className="mx-2 shrink-0 select-none text-muted-foreground/40">/</span>
-            )}
-            {hasTitle && (
-              <span className="truncate font-medium text-foreground">{title}</span>
-            )}
-            {gitBranch && (hasTitle || hasWorkspace) && (
-              <span aria-hidden="true" className="mx-2 shrink-0 select-none text-muted-foreground/40">/</span>
-            )}
-            {gitBranch}
-          </div>
-        </nav>
-      )}
+      {/* Center: tab bar — fills available space */}
+      <div className="flex-1 min-w-0 mx-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <TabBar
+          cn={cn}
+          onNewTab={handleNewTab}
+          onTabActivated={handleTabActivated}
+          renderCloseIcon={() => <XIcon className="size-2.5" />}
+          renderNewTabIcon={() => <PlusIcon className="size-3" />}
+        />
+      </div>
 
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

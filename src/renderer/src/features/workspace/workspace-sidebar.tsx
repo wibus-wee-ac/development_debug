@@ -1,6 +1,6 @@
-// Input: useWorkspaces, useSessions hooks, workspace/session types, coss UI primitives, router Link, ThreadSearchDialog
+// Input: useWorkspaces, useSessions hooks, workspace/session types, UI primitives, tab navigation
 // Output: WorkspaceSidebar component with top nav, workspace groups and session items
-// Position: Main sidebar feature component for workspace navigation
+// Position: Main sidebar feature component for workspace navigation (uses tab system)
 
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
@@ -10,8 +10,8 @@ import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
+import { useCradleNavigation, useIsActiveTab } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { Link, useMatchRoute, useNavigate } from '@tanstack/react-router'
 import {
   AlignJustifyIcon,
   BarChart3Icon,
@@ -59,10 +59,9 @@ function formatRelativeTime(unixTimestamp: number): string {
 
 function SessionItem({ session, workspaceId }: { session: Session, workspaceId: string }) {
   'use no memo'
-  const matchRoute = useMatchRoute()
-  const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId: session.id } })
+  const isActive = useIsActiveTab('chat', { sessionId: session.id })
+  const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const clearUnread = useSessionActivityStore(s => s.clearUnread)
 
@@ -73,13 +72,17 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     }
   }, [isActive, isUnread, clearUnread, session.id])
 
+  const handleClick = useCallback(() => {
+    openTab('chat', { sessionId: session.id })
+  }, [openTab, session.id])
+
   const handleDelete = useCallback(async () => {
     await ipc?.session.delete(session.id)
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     if (isActive) {
-      void navigate({ to: '/', search: { workspaceId: undefined } })
+      openTab('home')
     }
-  }, [session.id, workspaceId, queryClient, isActive, navigate])
+  }, [session.id, workspaceId, queryClient, isActive, openTab])
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/x-cradle-session', session.id)
@@ -111,10 +114,9 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       )}
       data-testid={`session-item-${session.id}`}
     >
-      <Link
-        to="/chat/$sessionId"
-        params={{ sessionId: session.id }}
-        search={{ tearoff: false }}
+      <button
+        type="button"
+        onClick={handleClick}
         className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 truncate text-sidebar-foreground/80"
       >
         <span className="flex-1 truncate">{session.title}</span>
@@ -124,7 +126,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
         <span className="shrink-0 text-[11px] text-muted-foreground/50">
           {formatRelativeTime(session.updatedAt)}
         </span>
-      </Link>
+      </button>
       <Menu>
         <MenuTrigger
           render={(
@@ -159,17 +161,14 @@ function WorkspaceGroup({
   onDelete: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(true)
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const { sessions } = useSessions(expanded ? workspace.id : null)
   const toggleExpanded = useCallback(() => {
     setExpanded(prev => !prev)
   }, [])
   const openWorkspaceHome = useCallback(() => {
-    void navigate({
-      to: '/workspace/$workspaceId',
-      params: { workspaceId: workspace.id },
-    })
-  }, [navigate, workspace.id])
+    openTab('workspace-detail', { workspaceId: workspace.id })
+  }, [openTab, workspace.id])
 
   return (
     <div className="flex flex-col" data-testid={`workspace-group-${workspace.id}`}>
@@ -330,7 +329,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const [searchOpen, setSearchOpen] = useState(false)
 
   const handleDelete = useCallback((id: string) => {
@@ -351,13 +350,13 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             icon={<HomeIcon className="size-4" />}
             label="首页"
             collapsed={collapsed}
-            onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
+            onClick={() => openTab('home')}
           />
           <TopNavItem
             icon={<MessageSquarePlusIcon className="size-4" />}
             label="新建聊天"
             collapsed={collapsed}
-            onClick={() => navigate({ to: '/new-chat' })}
+            onClick={() => openTab('new-chat')}
           />
           <TopNavItem
             icon={<SearchIcon className="size-4" />}
@@ -380,14 +379,14 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             icon={<LayoutDashboardIcon className="size-4" />}
             label="看板"
             collapsed={collapsed}
-            onClick={() => navigate({ to: '/kanban' })}
+            onClick={() => openTab('kanban-board')}
             dataTestId="nav-kanban"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-4" />}
             label="用量"
             collapsed={collapsed}
-            onClick={() => navigate({ to: '/usage' })}
+            onClick={() => openTab('usage')}
           />
         </nav>
       </TooltipProvider>

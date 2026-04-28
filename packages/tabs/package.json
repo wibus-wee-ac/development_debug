@@ -1,0 +1,17 @@
+{
+  "name": "@cradle/tabs",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Activity-based tab management for React desktop apps",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "peerDependencies": {
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0",
+    "zustand": ">=5.0.0"
+  }
+}

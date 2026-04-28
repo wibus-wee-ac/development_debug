@@ -1,6 +1,6 @@
-// Input: useBoards, useCreateBoard, useDeleteBoard, useMilestones, TanStack Router navigation
+// Input: useBoards, useCreateBoard, useDeleteBoard, useMilestones, tab navigation
 // Output: KanbanSidebar — left sidebar with board list and milestones
-// Position: Sidebar section inside the /kanban layout route
+// Position: Sidebar section for kanban navigation (uses tab system)
 
 import { Button } from '@renderer/components/ui/button'
 import { Input } from '@renderer/components/ui/input'
@@ -8,7 +8,8 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@renderer/components/ui/
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/cn'
-import { useNavigate, useRouterState } from '@tanstack/react-router'
+import { useCradleTabStore } from '@renderer/tabs/registry'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import {
   ArrowLeftIcon,
   FlagIcon,
@@ -32,11 +33,12 @@ function useWorkspaceId() {
 }
 
 export function KanbanSidebar() {
+  'use no memo'
   const { data: boards = [] } = useBoards()
   const createBoard = useCreateBoard()
   const deleteBoard = useDeleteBoard()
-  const navigate = useNavigate()
-  const pathname = useRouterState({ select: s => s.location.pathname })
+  const { openTab } = useCradleNavigation()
+  const activeTab = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId))
   const workspaceId = useWorkspaceId()
   const { data: milestones = [] } = useMilestones(workspaceId ?? '')
 
@@ -50,14 +52,14 @@ export function KanbanSidebar() {
         { workspaceId, name },
         {
           onSuccess: (board) => {
-            navigate({ to: '/kanban/$boardId', params: { boardId: board.id } })
+            openTab('kanban-board', { boardId: board.id })
           },
         },
       )
       inputRef.current!.value = ''
     }
     setIsCreating(false)
-  }, [createBoard, workspaceId, navigate])
+  }, [createBoard, workspaceId, openTab])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -65,7 +67,7 @@ export function KanbanSidebar() {
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <button
           className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100"
-          onClick={() => navigate({ to: '/', search: { workspaceId: undefined } })}
+          onClick={() => openTab('home')}
         >
           <ArrowLeftIcon className="size-3.5" />
         </button>
@@ -92,7 +94,7 @@ export function KanbanSidebar() {
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-px px-1.5 pb-4">
           {boards.map((board) => {
-            const isActive = pathname.startsWith(`/kanban/${board.id}`)
+            const isActive = activeTab?.type === 'kanban-board' && activeTab.params.boardId === board.id
             return (
               <div key={board.id} className="group flex items-center">
                 <button
@@ -105,7 +107,7 @@ export function KanbanSidebar() {
                       : 'text-muted-foreground/50 hover:bg-foreground/4 hover:text-foreground',
                   )}
                   data-testid={`kanban-board-${board.id}`}
-                  onClick={() => navigate({ to: '/kanban/$boardId', params: { boardId: board.id } })}
+                  onClick={() => openTab('kanban-board', { boardId: board.id })}
                 >
                   <LayoutDashboardIcon className="size-3.5 shrink-0 opacity-40" />
                   <span className="truncate">{board.name}</span>
@@ -124,7 +126,7 @@ export function KanbanSidebar() {
                       onClick={() => {
                         deleteBoard.mutate(board.id)
                         if (isActive) {
-                          navigate({ to: '/kanban' })
+                          openTab('home')
                         }
                       }}
                     >

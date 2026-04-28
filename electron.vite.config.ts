@@ -2,7 +2,6 @@ import { resolve } from 'node:path'
 
 import tailwindcss from '@tailwindcss/vite'
 import { devtools } from '@tanstack/devtools-vite'
-import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 
@@ -48,7 +47,6 @@ export default defineConfig({
     plugins: [
       devtools(),
       tailwindcss(),
-      tanstackRouter({ target: 'react', autoCodeSplitting: true }),
       viteReact({
         babel: {
           plugins: ['babel-plugin-react-compiler'],

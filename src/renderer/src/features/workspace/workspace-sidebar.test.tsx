@@ -55,7 +55,14 @@ vi.mock('@renderer/features/search', () => ({
 }))
 
 vi.mock('@renderer/hooks/use-shortcut', () => ({
-  useShortcut: () => {},
+  useShortcut: () => { },
+}))
+
+vi.mock('@renderer/components/ui/tooltip', () => ({
+  Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  TooltipTrigger: ({ children, asChild }: { children: React.ReactNode, asChild?: boolean }) => <>{children}</>,
+  TooltipContent: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 vi.mock('@renderer/lib/cn', () => ({
@@ -89,16 +96,12 @@ vi.mock('@tanstack/react-query', () => ({
   }),
 }))
 
-vi.mock('@tanstack/react-router', () => ({
-  Link: ({
-    children,
-    className,
-  }: {
-    children: React.ReactNode
-    className?: string
-  }) => <a className={className}>{children}</a>,
-  useMatchRoute: () => () => false,
-  useNavigate: () => mockedDeps.navigate,
+vi.mock('@renderer/tabs/use-cradle-navigation', () => ({
+  useCradleNavigation: () => ({
+    openTab: mockedDeps.navigate,
+    openNewTab: vi.fn(),
+  }),
+  useIsActiveTab: () => false,
 }))
 
 vi.mock('motion/react', () => ({
@@ -108,6 +111,10 @@ vi.mock('motion/react', () => ({
       children,
       ...props
     }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+    span: ({
+      children,
+      ...props
+    }: React.HTMLAttributes<HTMLSpanElement>) => <span {...props}>{children}</span>,
   },
 }))
 
@@ -148,17 +155,17 @@ describe('workspaceSidebar', () => {
     vi.clearAllMocks()
   })
 
-  it('navigates to the home page with the clicked workspace selected without collapsing sessions', () => {
+  it('opens workspace-detail tab when workspace name is clicked without collapsing sessions', () => {
     render(<WorkspaceSidebar />)
 
     expect(screen.queryByText('Session One')).not.toBeNull()
 
     fireEvent.click(screen.getByText('Workspace One'))
 
-    expect(mockedDeps.navigate).toHaveBeenCalledWith({
-      to: '/',
-      search: { workspaceId: 'workspace-1' },
-    })
+    expect(mockedDeps.navigate).toHaveBeenCalledWith(
+      'workspace-detail',
+      { workspaceId: 'workspace-1' },
+    )
     expect(screen.queryByText('Session One')).not.toBeNull()
   })
 

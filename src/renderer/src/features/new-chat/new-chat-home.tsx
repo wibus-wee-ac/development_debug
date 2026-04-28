@@ -28,8 +28,8 @@ import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 import {
   BotIcon,
   BrainIcon,
@@ -77,7 +77,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
   const { profiles } = useAgentProfiles()
   const { models, isLoading: isLoadingModels } = useAgentModels(agentProfileId)
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
 
   const selectedProfile = profiles.find(profile => profile.id === agentProfileId) ?? null
   const selectedWorkspace = workspaces.find(workspace => workspace.id === workspaceId) ?? null
@@ -141,7 +141,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
             providerSessionId: null,
           })
           queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
-          navigate({ to: '/chat/$sessionId', params: { sessionId: session.id }, search: { tearoff: false } })
+          openTab('chat', { sessionId: session.id })
           return
         }
 
@@ -155,14 +155,14 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
         })
 
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
-        navigate({ to: '/chat/$sessionId', params: { sessionId }, search: { tearoff: false } })
+        openTab('chat', { sessionId })
       }
       catch (err) {
         console.error('[NewChatHome] start session failed:', err)
         setSending(false)
       }
     },
-    [effectiveWorkspaceId, navigate, queryClient, selectedModel, selectedProfile, selectedWorkspace, thinkingEffort],
+    [effectiveWorkspaceId, openTab, queryClient, selectedModel, selectedProfile, selectedWorkspace, thinkingEffort],
   )
 
   const composerToolbar = useMemo(

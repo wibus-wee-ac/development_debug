@@ -20,7 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { cn } from '@renderer/lib/cn'
-import { useNavigate } from '@tanstack/react-router'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import {
   AlertCircleIcon,
   BotIcon,
@@ -464,7 +464,7 @@ function AgentPropertyRow({
 
 function AgentSessionFeed({ issueId }: { issueId: string }) {
   const { data: sessions = [] } = useAgentSessions(issueId)
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const latestSession = sessions[0]
 
   if (!latestSession) {
@@ -489,11 +489,8 @@ function AgentSessionFeed({ issueId }: { issueId: string }) {
           <button
             className="ml-auto text-[10px] text-muted-foreground/40 hover:text-foreground transition-colors flex items-center gap-0.5"
             onClick={() =>
-              navigate({
-                to: '/chat/$sessionId',
-                params: { sessionId: latestSession.chatSessionId! },
-                search: { tearoff: false },
-              })}
+              openTab('chat', { sessionId: latestSession.chatSessionId! })
+            }
           >
             <MessageSquareIcon className="size-2.5" />
             View session

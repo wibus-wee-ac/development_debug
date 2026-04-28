@@ -17,7 +17,7 @@ import { EmptyMedia } from '@renderer/components/ui/empty'
 import { Kbd, KbdGroup } from '@renderer/components/ui/kbd'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { cn } from '@renderer/lib/cn'
-import { useNavigate } from '@tanstack/react-router'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -59,7 +59,7 @@ function formatRelativeTime(unix: number): string {
 
 // Results are already ranked and filtered by the main process.
 export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogProps) {
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const [query, setQuery] = useState('')
 
   // Reset the query whenever the dialog closes so reopening starts fresh.
@@ -79,9 +79,9 @@ export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogPro
   const handleSelect = useCallback(
     (hit: ThreadSearchHit) => {
       onOpenChange(false)
-      navigate({ to: '/chat/$sessionId', params: { sessionId: hit.sessionId }, search: { tearoff: false } })
+      openTab('chat', { sessionId: hit.sessionId })
     },
-    [navigate, onOpenChange],
+    [openTab, onOpenChange],
   )
 
   return (

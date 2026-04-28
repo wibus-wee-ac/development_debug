@@ -1,16 +1,25 @@
-// Input: window.ptyPush, chatPush (via useGlobalChatEvent), session-activity store, layout store, TanStack Router matchRoute
+// Input: window.ptyPush, chatPush (via useGlobalChatEvent), session-activity store, layout store, tab store
 // Output: useGlobalEventListeners hook — registers PTY, chat event listeners, and panel keyboard shortcuts
 // Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
 
 import { useGlobalChatEvent } from '@renderer/features/chat/use-chat-events'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
-import { useMatchRoute } from '@tanstack/react-router'
+import { useCradleTabStore } from '@renderer/tabs/registry'
 import { useEffect } from 'react'
+
+/**
+ * Check if a given session is currently the active tab.
+ * Uses the store snapshot directly — safe to call from event handlers.
+ */
+function isSessionActive(sessionId: string): boolean {
+  const { tabs, activeTabId } = useCradleTabStore.getState()
+  const active = tabs.find(t => t.id === activeTabId)
+  return active?.type === 'chat' && active.params.sessionId === sessionId
+}
 
 export function useGlobalEventListeners() {
   const markUnread = useSessionActivityStore(s => s.markUnread)
-  const matchRoute = useMatchRoute()
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
 
@@ -36,8 +45,7 @@ export function useGlobalEventListeners() {
   // PTY notifications: OSC 9, exit, OSC 133;D
   useEffect(() => {
     const unsubNotify = window.ptyPush.onNotification((sessionId, message) => {
-      const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId } })
-      if (!isActive) {
+      if (!isSessionActive(sessionId)) {
         markUnread(sessionId)
       }
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -46,15 +54,13 @@ export function useGlobalEventListeners() {
     })
 
     const unsubExit = window.ptyPush.onExit((sessionId) => {
-      const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId } })
-      if (!isActive) {
+      if (!isSessionActive(sessionId)) {
         markUnread(sessionId)
       }
     })
 
     const unsubCommandFinish = window.ptyPush.onCommandFinish((sessionId) => {
-      const isActive = !!matchRoute({ to: '/chat/$sessionId', params: { sessionId } })
-      if (!isActive) {
+      if (!isSessionActive(sessionId)) {
         markUnread(sessionId)
         if ('Notification' in window && Notification.permission === 'granted') {
           void new Notification('Cradle', { body: '命令执行完成' })
@@ -67,7 +73,7 @@ export function useGlobalEventListeners() {
       unsubExit()
       unsubCommandFinish()
     }
-  }, [markUnread, matchRoute])
+  }, [markUnread])
 
   // Chat response events: mark unread when a response completes in an inactive session
   useGlobalChatEvent((data) => {
@@ -77,11 +83,7 @@ export function useGlobalEventListeners() {
     ) {
       return
     }
-    const isActive = !!matchRoute({
-      to: '/chat/$sessionId',
-      params: { sessionId: data.chatSessionId },
-    })
-    if (!isActive) {
+    if (!isSessionActive(data.chatSessionId)) {
       markUnread(data.chatSessionId)
     }
   })

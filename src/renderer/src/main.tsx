@@ -1,8 +1,12 @@
+// Input: QueryClient, App component, IpcDevtoolPage
+// Output: Renderer entry point — hash check for DevTool window, otherwise main App
+// Position: Entry point for the renderer process
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createHashHistory, createRouter, RouterProvider } from '@tanstack/react-router'
 import ReactDOM from 'react-dom/client'
 
-import { routeTree } from './routeTree.gen'
+import { App } from './app'
+import { IpcDevtoolPage } from './features/devtool'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,26 +17,14 @@ const queryClient = new QueryClient({
   },
 })
 
-const router = createRouter({
-  routeTree,
-  defaultPreload: 'intent',
-  scrollRestoration: true,
-  history: createHashHistory(),
-})
-
-declare module '@tanstack/react-router' {
-  interface Register {
-    router: typeof router
-  }
-}
-
 const rootElement = document.getElementById('app')!
+const isDevtool = window.location.hash === '#/devtool'
 
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)
   root.render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      {isDevtool ? <IpcDevtoolPage /> : <App />}
     </QueryClientProvider>,
   )
 }

@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
+      '@cradle/tabs': resolve('packages/tabs/src/index.ts'),
       '@main': resolve('src/main'),
       '@renderer': resolve('src/renderer/src'),
       '@shared': resolve('src/shared'),
@@ -23,6 +24,10 @@ export default defineConfig({
       'src/**/*.test.tsx',
       'src/**/__tests__/**/*.test.ts',
       'src/**/__tests__/**/*.test.tsx',
+      'packages/**/*.test.ts',
+      'packages/**/*.test.tsx',
+      'packages/**/__tests__/**/*.test.ts',
+      'packages/**/__tests__/**/*.test.tsx',
     ],
     mockReset: true,
   },

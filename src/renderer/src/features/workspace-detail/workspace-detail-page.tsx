@@ -1,14 +1,14 @@
 // Input: useWorkspaceFile, MarkdownEditor, ipc, workspace data, git status, sessions, CSS tab switching
 // Output: WorkspaceDetailPage — Linear-style scrollable tab project view with Overview and Workflow Rules
-// Position: Feature component for the /workspace/$workspaceId route
+// Position: Feature component for the workspace-detail tab
 
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { Button } from '@renderer/components/ui/button'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
 import {
   ExternalLinkIcon,
   FileTextIcon,
@@ -324,7 +324,7 @@ function FloatingToc({
 
 export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const queryClient = useQueryClient()
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules'>('overview')
@@ -411,8 +411,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   }, [workspace])
 
   const handleNewChat = useCallback(() => {
-    void navigate({ to: '/new-chat' })
-  }, [navigate])
+    openTab('new-chat')
+  }, [openTab])
 
   const handleTocNavigate = useCallback((slug: string) => {
     const el = document.getElementById(slug)
@@ -622,18 +622,17 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.2 + i * 0.03, duration: 0.2 }}
                   >
-                    <Link
-                      to="/chat/$sessionId"
-                      params={{ sessionId: session.id }}
-                      search={{ tearoff: false }}
-                      className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-accent/50"
+                    <button
+                      type="button"
+                      onClick={() => openTab('chat', { sessionId: session.id })}
+                      className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-accent/50 w-full text-left"
                     >
                       <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
                       <span className="truncate flex-1 text-foreground/80">{session.title || 'Untitled'}</span>
                       <time dateTime={new Date(session.updatedAt * 1000).toISOString()} className="shrink-0 text-[10px] text-muted-foreground/35 tabular-nums">
                         {timeAgo(session.updatedAt)}
                       </time>
-                    </Link>
+                    </button>
                   </motion.div>
                 ))}
               </div>

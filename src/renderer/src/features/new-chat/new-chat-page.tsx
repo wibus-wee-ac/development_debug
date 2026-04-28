@@ -32,8 +32,8 @@ import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { ipc } from '@renderer/lib/ipc'
 import { cn } from '@renderer/lib/cn'
 import { useNewChatStore } from '@renderer/store/new-chat'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowUpIcon,
   BotIcon,
@@ -137,7 +137,7 @@ export function NewChatPage() {
   const { workspaces } = useWorkspaces()
   const { profiles } = useAgentProfiles()
   const { agents } = useAgents()
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const lastAgentProfileId = useNewChatStore(state => state.lastAgentProfileId)
   const setLastAgentProfileId = useNewChatStore(state => state.setLastAgentProfileId)
@@ -260,7 +260,7 @@ export function NewChatPage() {
           providerSessionId: null,
         })
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(selectedWorkspaceId) })
-        void navigate({ to: '/chat/$sessionId', params: { sessionId: session.id }, search: { tearoff: false } })
+        void openTab('chat', { sessionId: session.id })
         return
       }
 
@@ -275,7 +275,7 @@ export function NewChatPage() {
       })
 
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(selectedWorkspaceId) })
-      void navigate({ to: '/chat/$sessionId', params: { sessionId }, search: { tearoff: false } })
+      void openTab('chat', { sessionId })
     }
     catch (err) {
       console.error('[NewChatPage] send failed:', err)
@@ -283,7 +283,7 @@ export function NewChatPage() {
     finally {
       setSending(false)
     }
-  }, [canSend, effectiveModel, input, isCliTui, navigate, queryClient, selectedAgent, selectedProfile, selectedWorkspace, selectedWorkspaceId, thinkingEffort])
+  }, [canSend, effectiveModel, input, isCliTui, openTab, queryClient, selectedAgent, selectedProfile, selectedWorkspace, selectedWorkspaceId, thinkingEffort])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -304,8 +304,8 @@ export function NewChatPage() {
   }, [])
 
   const handleResumeSession = useCallback((sessionId: string) => {
-    void navigate({ to: '/chat/$sessionId', params: { sessionId }, search: { tearoff: false } })
-  }, [navigate])
+    void openTab('chat', { sessionId })
+  }, [openTab])
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)

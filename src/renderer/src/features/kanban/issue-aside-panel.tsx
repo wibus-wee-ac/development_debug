@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/cn'
-import { useNavigate } from '@tanstack/react-router'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import {
   ArrowUpRightIcon,
   CircleDotIcon,
@@ -63,7 +63,7 @@ function LinkedIssueView({
   linked: NonNullable<ReturnType<typeof useLinkedIssue>['data']>
   workspaceId: string | null
 }) {
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const unlinkMutation = useUnlinkIssue()
   const { data: boards = [] } = useBoards(workspaceId ?? undefined)
   const isManualLink = !linked.agentSession
@@ -73,11 +73,7 @@ function LinkedIssueView({
     if (!board) {
       return
     }
-    navigate({
-      to: '/kanban/$boardId',
-      params: { boardId: board.id },
-      search: { issue: linked.issue.id },
-    })
+    openTab('kanban-board', { boardId: board.id })
   }
 
   const statusLabel = linked.status?.name ?? 'No status'

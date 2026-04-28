@@ -1,13 +1,13 @@
-// Input: WorkspaceSidebar, SettingsSidebar, KanbanSidebar, layout store, useShortcut, motion/react
+// Input: WorkspaceSidebar, SettingsSidebar, KanbanSidebar, layout store, useShortcut, motion/react, tab store
 // Output: AppSidebar — persistent collapsible sidebar with drill-in navigation
-// Position: Rendered in __root.tsx; persists across route changes
+// Position: Rendered at app root; persists across tab changes
 
 import { KanbanSidebar } from '@renderer/features/kanban/kanban-sidebar'
 import { SettingsSidebar } from '@renderer/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '@renderer/features/workspace'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { useLayoutStore } from '@renderer/store/layout'
-import { useRouterState } from '@tanstack/react-router'
+import { useCradleTabStore } from '@renderer/tabs/registry'
 import { AnimatePresence, motion } from 'motion/react'
 
 const DRILL_TRANSITION = {
@@ -31,8 +31,8 @@ export function AppSidebar() {
     closeSettings,
     setSettingsSection,
   } = useLayoutStore()
-  const pathname = useRouterState({ select: s => s.location.pathname })
-  const isKanban = pathname.startsWith('/kanban')
+  const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
+  const isKanban = activeTabType === 'kanban-board'
 
   useShortcut('toggle-settings', { meta: true, key: ',' }, isSettings ? closeSettings : openSettings)
   useShortcut('exit-settings', { key: 'Escape' }, closeSettings, isSettings)

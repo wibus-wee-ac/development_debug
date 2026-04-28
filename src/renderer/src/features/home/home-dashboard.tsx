@@ -1,13 +1,13 @@
-// Input: useWorkspaces, useSessions (per workspace), ThreadSearchDialog, useNavigate, ipc
+// Input: useWorkspaces, useSessions (per workspace), ThreadSearchDialog, useCradleNavigation, ipc
 // Output: HomeDashboard — scenario-driven dashboard hub
-// Position: Main content for the root index route; no composer, no chat entry point
+// Position: Main content for the home tab; no composer, no chat entry point
 
 import { ThreadSearchDialog } from '@renderer/features/search'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { ipc } from '@renderer/lib/ipc'
+import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from '@tanstack/react-router'
 import {
   BotIcon,
   ClockIcon,
@@ -200,13 +200,12 @@ function PendingRunRow({ run }: { run: PendingRun }) {
 
 // ── Recent session row ────────────────────────────────────────────────────────
 
-function RecentSessionRow({ session, workspaceName }: { session: Session, workspaceName: string }) {
+function RecentSessionRow({ session, workspaceName, onSelect }: { session: Session, workspaceName: string, onSelect: (sessionId: string) => void }) {
   return (
-    <Link
-      to="/chat/$sessionId"
-      params={{ sessionId: session.id }}
-      search={{ tearoff: false }}
-      className="group flex items-center gap-3 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50"
+    <button
+      type="button"
+      onClick={() => onSelect(session.id)}
+      className="group flex items-center gap-3 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 w-full text-left"
     >
       <ClockIcon className="size-3 shrink-0 text-muted-foreground/40" />
       <span className="truncate flex-1 text-foreground">
@@ -216,7 +215,7 @@ function RecentSessionRow({ session, workspaceName }: { session: Session, worksp
       <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground/40 tabular-nums">
         {formatRelativeTime(session.updatedAt)}
       </span>
-    </Link>
+    </button>
   )
 }
 
@@ -287,7 +286,7 @@ type ActivityItem
 export function HomeDashboard() {
   const { workspaces } = useWorkspaces()
   const [searchOpen, setSearchOpen] = useState(false)
-  const navigate = useNavigate()
+  const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
 
   const sessionQueries = useQueries({
@@ -371,7 +370,7 @@ export function HomeDashboard() {
                   kind="workspace"
                   title={item.ws.name}
                   meta="项目"
-                  onClick={() => navigate({ to: '/workspace/$workspaceId', params: { workspaceId: item.ws.id } })}
+                  onClick={() => openTab('workspace-detail', { workspaceId: item.ws.id })}
                 />
               )
             }
@@ -382,7 +381,7 @@ export function HomeDashboard() {
                   kind="session"
                   title={item.session.title}
                   meta={item.workspaceName}
-                  onClick={() => navigate({ to: '/chat/$sessionId', params: { sessionId: item.session.id }, search: { tearoff: false } })}
+                  onClick={() => openTab('chat', { sessionId: item.session.id })}
                 />
               )
             }
@@ -422,6 +421,7 @@ export function HomeDashboard() {
                       key={session.id}
                       session={session}
                       workspaceName={workspaceName}
+                      onSelect={(sessionId) => openTab('chat', { sessionId })}
                     />
                   ))}
                 </div>
