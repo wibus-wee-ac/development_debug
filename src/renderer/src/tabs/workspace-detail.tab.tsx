@@ -4,6 +4,7 @@
 // Position: Tab type for workspace detail page
 
 import { defineTab } from '@cradle/tabs'
+import { FolderOpenIcon } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 
 const WorkspaceDetailPage = lazy(() => import('@renderer/features/workspace-detail/workspace-detail-page').then(m => ({ default: m.WorkspaceDetailPage })))
@@ -19,6 +20,7 @@ function WorkspaceDetailTabContent({ params }: { params: { workspaceId: string }
 export const workspaceDetailTab = defineTab({
   type: 'workspace-detail' as const,
   label: (params: { workspaceId: string }) => `Workspace: ${params.workspaceId.slice(0, 8)}`,
+  icon: FolderOpenIcon,
   component: WorkspaceDetailTabContent,
   serialize: params => params.workspaceId,
   deserialize: path => path ? { workspaceId: path } : null,

@@ -7,6 +7,7 @@ import './styles.css'
 import { TabRenderer, TabsProvider } from '@cradle/tabs'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
+import { LayoutSlotsProvider } from '@renderer/components/layout/layout-slots-context'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { SettingsContent } from '@renderer/features/settings/settings-content'
@@ -60,21 +61,23 @@ export function App() {
       <AnchoredToastProvider>
         <TooltipProvider>
           <ShortcutProvider>
-            <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-              <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-                <AppSidebar />
-                <AppLayout>
-                  {isSettings
-                    ? <SettingsContent section={settingsSection} />
-                    : (
-                      <TabRenderer
-                        fallback={null}
-                        className="h-full flex overflow-hidden w-full"
-                      />
-                    )}
-                </AppLayout>
-              </div>
-            </TabsProvider>
+            <LayoutSlotsProvider>
+              <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
+                <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+                  <AppSidebar />
+                  <AppLayout>
+                    {isSettings
+                      ? <SettingsContent section={settingsSection} />
+                      : (
+                        <TabRenderer
+                          fallback={null}
+                          className="h-full flex overflow-hidden w-full"
+                        />
+                      )}
+                  </AppLayout>
+                </div>
+              </TabsProvider>
+            </LayoutSlotsProvider>
           </ShortcutProvider>
         </TooltipProvider>
       </AnchoredToastProvider>

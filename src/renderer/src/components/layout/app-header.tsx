@@ -1,12 +1,13 @@
-// Input: Button, useLayoutStore, lucide icons, @cradle/tabs TabBar
+// Input: Button, useLayoutStore, lucide icons, @cradle/tabs TabBar, cradleRegistry
 // Output: AppHeader — slim header with capsule tabs and panel toggles
 // Position: Top chrome of AppLayout's center column; doubles as a macOS window-drag region
 
+import type { TabInstance } from '@cradle/tabs'
 import { TabBar } from '@cradle/tabs'
 import { Button } from '@renderer/components/ui/button'
 import { cn } from '@renderer/lib/cn'
 import { useLayoutStore } from '@renderer/store/layout'
-import { useCradleTabStore } from '@renderer/tabs/registry'
+import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, XIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useCallback } from 'react'
@@ -35,9 +36,18 @@ export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) 
     useCradleTabStore.getState().openTab('new-chat')
   }, [])
 
+  const renderTabIcon = useCallback((tab: TabInstance) => {
+    const def = cradleRegistry[tab.type as keyof typeof cradleRegistry]
+    if (!def?.icon) {
+      return null
+    }
+    const Icon = def.icon
+    return <Icon className="size-3 text-muted-foreground/60" />
+  }, [])
+
   return (
     <div
-      className="relative flex h-9.5 shrink-0 items-center bg-sidebar pe-1 pl-1"
+      className="relative flex h-10 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       {/* Left: sidebar toggle (hidden in drill-in modes where sidebar is forced open) */}
@@ -57,11 +67,11 @@ export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) 
       {/* Center: tab bar — fills available space */}
       <div className="flex-1 min-w-0 mx-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <TabBar
-          cn={cn}
           onNewTab={handleNewTab}
           onTabActivated={handleTabActivated}
           renderCloseIcon={() => <XIcon className="size-2.5" />}
           renderNewTabIcon={() => <PlusIcon className="size-3" />}
+          renderTabIcon={renderTabIcon}
         />
       </div>
 

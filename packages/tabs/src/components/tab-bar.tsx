@@ -1,4 +1,4 @@
-// Input: useTabsContext, TabInstance, React, dnd-kit
+// Input: useTabsContext, TabInstance, React, dnd-kit, internal cn
 // Output: TabBar — capsule-shaped tab pills with drag-to-reorder
 // Position: Header component rendering tab pills with close/new-tab buttons
 
@@ -8,12 +8,11 @@ import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dn
 import { CSS } from '@dnd-kit/utilities'
 import { memo, useCallback } from 'react'
 
+import { cn } from '../cn'
 import { useTabsContext } from '../context'
 import type { TabInstance } from '../store'
 
 export interface TabBarProps {
-  /** Utility for merging class names (e.g. `cn` from the consuming app) */
-  cn?: (...inputs: (string | boolean | undefined | null | Record<string, boolean>)[]) => string
   /** CSS class for the outer container */
   className?: string
   /** CSS class applied to each tab pill */
@@ -24,6 +23,12 @@ export interface TabBarProps {
   renderCloseIcon?: () => React.ReactNode
   /** Render prop for the new tab button icon (default: +) */
   renderNewTabIcon?: () => React.ReactNode
+  /**
+   * Render prop for per-tab icon shown to the left of the label.
+   * Receives the full TabInstance so the consumer can look up the registry.
+   * Return null to show no icon for a specific tab.
+   */
+  renderTabIcon?: (tab: TabInstance) => React.ReactNode
   /** Called when a new tab is requested. Consumer decides what tab to open. */
   onNewTab?: () => void
   /** Called after a tab is activated */
@@ -32,37 +37,18 @@ export interface TabBarProps {
   onTabClosed?: (tabId: string) => void
 }
 
-function defaultCn(...inputs: (string | boolean | undefined | null | Record<string, boolean>)[]): string {
-  return inputs
-    .flatMap((input) => {
-      if (!input) {
-        return []
-      }
-      if (typeof input === 'string') {
-        return [input]
-      }
-      if (typeof input === 'object') {
-        return Object.entries(input)
-          .filter(([, v]) => v)
-          .map(([k]) => k)
-      }
-      return []
-    })
-    .join(' ')
-}
-
 interface TabPillProps {
   tab: TabInstance
   isActive: boolean
-  cn?: TabBarProps['cn']
   tabClassName?: string
   activeTabClassName?: string
   renderCloseIcon?: () => React.ReactNode
+  renderTabIcon?: (tab: TabInstance) => React.ReactNode
   onActivate: (id: string) => void
   onClose: (e: React.MouseEvent, id: string) => void
 }
 
-const SortableTabPill = memo(({ tab, isActive, cn: mergeCn = defaultCn, tabClassName, activeTabClassName, renderCloseIcon, onActivate, onClose }: TabPillProps) => {
+const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName, renderCloseIcon, renderTabIcon, onActivate, onClose }: TabPillProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id })
 
   const style: React.CSSProperties = {
@@ -82,18 +68,23 @@ const SortableTabPill = memo(({ tab, isActive, cn: mergeCn = defaultCn, tabClass
       data-testid={`tab-pill-${tab.id}`}
       data-tab-active={isActive ? 'true' : 'false'}
       data-tab-pinned={tab.pinned ? 'true' : 'false'}
-      className={mergeCn(
-        'group relative flex items-center gap-1.5 px-3 h-6 text-[11px]',
+      className={cn(
+        'group relative flex items-center justify-start gap-1.5 px-5 h-8 text-[11px]',
         'rounded-lg transition-all duration-150 shrink-0 max-w-44',
         isActive
-          ? mergeCn(
-            'bg-background text-foreground shadow-[0_0.5px_2px_0_rgba(0,0,0,0.1)] dark:shadow-[0_0.5px_2px_0_rgba(0,0,0,0.4)]',
+          ? cn(
+            'bg-background text-foreground border border-border/60',
+            'shadow-[0_2px_6px_0_rgba(0,0,0,0.15),0_1px_2px_0_rgba(0,0,0,0.1)] dark:shadow-[0_2px_8px_0_rgba(0,0,0,0.6),0_1px_3px_0_rgba(0,0,0,0.4)]',
             activeTabClassName,
           )
-          : 'text-muted-foreground/60 hover:text-foreground/80 hover:bg-foreground/5',
-        tabClassName,
+          : cn('text-muted-foreground/60 hover:text-foreground/80 hover:bg-foreground/5', tabClassName),
       )}
     >
+      {renderTabIcon && (
+        <span className="shrink-0 flex items-center">
+          {renderTabIcon(tab)}
+        </span>
+      )}
       <span className="truncate select-none">{tab.label}</span>
       {!tab.pinned && (
         <span
@@ -101,7 +92,7 @@ const SortableTabPill = memo(({ tab, isActive, cn: mergeCn = defaultCn, tabClass
           tabIndex={-1}
           onClick={e => onClose(e, tab.id)}
           data-testid={`tab-close-${tab.id}`}
-          className={mergeCn(
+          className={cn(
             'inline-flex items-center justify-center rounded-full size-3.5',
             isActive
               ? 'opacity-60 hover:opacity-100'
@@ -116,7 +107,7 @@ const SortableTabPill = memo(({ tab, isActive, cn: mergeCn = defaultCn, tabClass
   )
 })
 
-export const TabBar = memo(({ cn: mergeCn = defaultCn, className, tabClassName, activeTabClassName, renderCloseIcon, renderNewTabIcon, onNewTab, onTabActivated, onTabClosed }: TabBarProps) => {
+export const TabBar = memo(({ className, tabClassName, activeTabClassName, renderCloseIcon, renderNewTabIcon, renderTabIcon, onNewTab, onTabActivated, onTabClosed }: TabBarProps) => {
   'use no memo'
   const { store } = useTabsContext()
   const tabs = store(s => s.tabs)
@@ -160,8 +151,8 @@ export const TabBar = memo(({ cn: mergeCn = defaultCn, className, tabClassName, 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div
-        className={mergeCn(
-          'flex items-center gap-0.5 overflow-x-auto scrollbar-none px-0.5',
+        className={cn(
+          'flex items-center justify-start gap-0.5 overflow-x-auto scrollbar-none px-0.5',
           className,
         )}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
@@ -173,10 +164,10 @@ export const TabBar = memo(({ cn: mergeCn = defaultCn, className, tabClassName, 
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeTabId}
-              cn={mergeCn}
               tabClassName={tabClassName}
               activeTabClassName={activeTabClassName}
               renderCloseIcon={renderCloseIcon}
+              renderTabIcon={renderTabIcon}
               onActivate={handleActivate}
               onClose={handleClose}
             />
@@ -187,7 +178,7 @@ export const TabBar = memo(({ cn: mergeCn = defaultCn, className, tabClassName, 
           <button
             onClick={onNewTab}
             data-testid="tab-new-btn"
-            className={mergeCn(
+            className={cn(
               'flex shrink-0 items-center justify-center rounded-lg size-5',
               'text-muted-foreground/40 hover:text-foreground/70 hover:bg-foreground/5 transition-colors',
             )}

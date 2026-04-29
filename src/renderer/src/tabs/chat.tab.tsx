@@ -1,26 +1,103 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs, ChatView component, ipc
-// Output: chat tab definition with session message loader
+// Input: defineTab from @cradle/tabs, ChatView component, ipc, layout slots context
+// Output: chat tab definition with session message loader and per-tab layout (aside + shell panel)
 // Position: Tab type for chat sessions
 
 import { defineTab } from '@cradle/tabs'
+import { RightAside } from '@renderer/components/layout/right-aside'
+import { useRegisterLayoutSlots } from '@renderer/components/layout/use-layout-slots'
 import type { ChatMessageRow } from '@renderer/features/chat/use-chat-session'
+import { GitBranchControl } from '@renderer/features/git'
+import { ShellView } from '@renderer/features/tui/shell-view'
 import { ipc } from '@renderer/lib/ipc'
-import { LoaderCircleIcon } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 
 const ChatView = lazy(() => import('@renderer/features/chat/chat-view').then(m => ({ default: m.ChatView })))
 
 function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatMessageRow[] }) {
+  const { sessionId } = params
+  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
+  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [shellGen, setShellGen] = useState(0)
+
+  // Fetch session metadata to get workspaceId → workspacePath for aside/panel
+  const { data: session } = useQuery({
+    queryKey: ['chat-session', sessionId],
+    queryFn: () => (ipc ? ipc.session.get(sessionId) : Promise.resolve(undefined)),
+    enabled: !!sessionId,
+  })
+
+  const workspaceId = session?.workspaceId ?? null
+
+  // Fetch workspace path when workspaceId is available
+  useQuery({
+    queryKey: ['workspace-detail', workspaceId],
+    queryFn: async () => {
+      const ws = await ipc?.workspace.get(workspaceId!)
+      setWorkspaceName(ws?.name ?? null)
+      setWorkspacePath(ws?.path ?? null)
+      return ws
+    },
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  })
+
+  const hasWorkspace = !!(workspaceId && workspacePath)
+
+  // Memoize each slot so register() can bail out on reference equality
+  const aside = useMemo(
+    () => (
+      <RightAside
+        workspaceId={workspaceId}
+        workspacePath={workspacePath}
+        sessionId={sessionId}
+      />
+    ),
+    [workspaceId, workspacePath, sessionId],
+  )
+
+  const panel = useMemo(
+    () => hasWorkspace
+      ? (
+        <ShellView
+          key={`${sessionId}:${shellGen}`}
+          ptyId={`shell:${sessionId}:${shellGen}`}
+          cwd={workspacePath!}
+          onExited={() => setShellGen(g => g + 1)}
+        />
+      )
+      : undefined,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hasWorkspace, workspacePath, sessionId, shellGen],
+  )
+
+  const gitBranch = useMemo(
+    () => <GitBranchControl workspacePath={workspacePath} />,
+    [workspacePath],
+  )
+
+  useRegisterLayoutSlots(sessionId, useMemo(() => ({
+    hasAside: true,
+    hasPanel: hasWorkspace,
+    title: session?.title ?? undefined,
+    workspace: workspaceName ?? undefined,
+    gitBranch,
+    aside,
+    panel,
+  }), [hasWorkspace, session?.title, workspaceName, gitBranch, aside, panel]))
+
   return (
     <Suspense fallback={null}>
-      <ChatView sessionId={params.sessionId} initialMessageRows={loaderData} />
+      <ChatView sessionId={sessionId} initialMessageRows={loaderData} />
     </Suspense>
   )
 }
 
 export const chatTab = defineTab({
   type: 'chat' as const,
+  icon: MessageCircleIcon,
   label: (params: { sessionId: string }) => `Chat: ${params.sessionId.slice(0, 8)}`,
   component: ChatTabContent,
   loader: async (params: { sessionId: string }) => {

@@ -1,4 +1,4 @@
-// Input: ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent
+// Input: ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent, useLayoutSlotsCtx
 // Output: AppLayout component — content area layout (header + main + aside + panel)
 // Position: Core layout component; sidebar is rendered separately in __root.tsx
 
@@ -6,6 +6,7 @@ import { AppFooter } from '@renderer/components/layout/app-footer'
 import { AppHeader } from '@renderer/components/layout/app-header'
 import { DevBottomBar } from '@renderer/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '@renderer/components/layout/resize-handle'
+import { useLayoutSlotsCtx } from '@renderer/components/layout/use-layout-slots'
 import { SettingsContent } from '@renderer/features/settings/settings-content'
 import { useGlobalEventListeners } from '@renderer/hooks/use-global-event-listeners'
 import { useLayoutStore } from '@renderer/store/layout'
@@ -42,6 +43,18 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
 
   useGlobalEventListeners()
 
+  // Per-tab layout slots registered by tab content components
+  const { slots } = useLayoutSlotsCtx()
+
+  // Slot props override explicit props so per-tab content wins
+  const resolvedAside = slots.aside ?? aside
+  const resolvedPanel = slots.panel ?? panel
+  const resolvedHasAside = slots.hasAside ?? hasAside
+  const resolvedHasPanel = slots.hasPanel ?? hasPanel
+  const resolvedTitle = slots.title ?? title
+  const resolvedWorkspace = slots.workspace ?? workspace
+  const resolvedGitBranch = slots.gitBranch ?? gitBranch
+
   const {
     isSettings,
     settingsSection,
@@ -57,11 +70,11 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
       <AppHeader
-        title={title}
-        workspace={workspace}
-        hasAside={hasAside}
-        hasPanel={hasPanel}
-        gitBranch={gitBranch}
+        title={resolvedTitle}
+        workspace={resolvedWorkspace}
+        hasAside={resolvedHasAside}
+        hasPanel={resolvedHasPanel}
+        gitBranch={resolvedGitBranch}
       />
 
       {/* ── Content area ───────────────────────────────────────────────── */}
@@ -76,7 +89,7 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
           </main>
 
           {/* Bottom panel resize handle */}
-          {!isSettings && bottomPanelOpen && panel !== undefined && (
+          {!isSettings && bottomPanelOpen && resolvedPanel !== undefined && (
             <ResizeHandle
               direction="vertical"
               value={bottomPanelHeight}
@@ -90,7 +103,7 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
             />
           )}
           {/* Bottom panel — always mounted to preserve xterm state */}
-          {!isSettings && panel !== undefined && (
+          {!isSettings && resolvedPanel !== undefined && (
             <motion.div
               initial={{
                 height: bottomPanelOpen ? bottomPanelHeight : 0,
@@ -103,13 +116,13 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
               transition={dragging === 'panel' ? INSTANT : SPRING}
               className="bg-background border-t border-border overflow-hidden shrink-0"
             >
-              <div style={{ height: bottomPanelHeight }}>{panel}</div>
+              <div style={{ height: bottomPanelHeight }}>{resolvedPanel}</div>
             </motion.div>
           )}
         </motion.div>
 
         {/* Right Aside */}
-        {aside !== undefined && (
+        {resolvedAside !== undefined && (
           <>
             {asideOpen && (
               <ResizeHandle
@@ -140,7 +153,7 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
                 className="flex flex-col flex-1 overflow-hidden"
                 style={{ width: asideWidth }}
               >
-                {aside}
+                {resolvedAside}
               </div>
             </motion.aside>
           </>

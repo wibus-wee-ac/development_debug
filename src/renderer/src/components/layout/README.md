@@ -10,10 +10,11 @@ Place domain-specific content components in `features/` instead.
 
 - **app-footer.tsx**: Slim footer bar mirroring the AppHeader chrome pattern; accepts `children` for custom content; hidden when settings overlay is active
 - **app-header.tsx**: Slim breadcrumb header (`workspace / title`) with bottom-panel and right-aside toggles; doubles as a macOS window-drag region
-- **app-layout.tsx**: Pure three-column layout shell — sidebar (via AppSidebar), center column (header/main/footer/panel), and aside.
-  Accepts `header`, `aside`, `panel`, and `children` as composition props. No feature dependencies.
+- **app-layout.tsx**: Pure three-column layout shell — sidebar (via AppSidebar), center column (header/main/footer/panel), and aside. Reads dynamic layout slots from `LayoutSlotsContext` so active tab content can inject aside/panel/title without prop drilling.
 - **app-sidebar.tsx**: Workspace sidebar wrapper with settings navigation button. Handles keyboard shortcuts for toggling settings route and returns to the launcher with an explicit empty workspace selection when leaving settings.
   Extracted from AppLayout to keep layout concerns separate from sidebar orchestration.
 - **dev-bottom-bar.tsx**: Dev-only slim footer inside `AppLayout` with a single button that opens the IPC devtool second window
+- **layout-slots-context.tsx**: React context + `LayoutSlotsProvider` for per-tab layout slot injection (aside, panel, hasAside, hasPanel, title, workspace, gitBranch). Consumed by `AppLayout` and used by tab content components via `useRegisterLayoutSlots`.
 - **resize-handle.tsx**: Draggable handle for resizing sidebar, aside, and panel widths/heights.
 - **right-aside.tsx**: Tabbed right side panel with File Tree, Git, and Issue tabs; accepts workspaceId, workspacePath, and sessionId props
+- **use-layout-slots.ts**: `useLayoutSlotsCtx` and `useRegisterLayoutSlots` hooks for reading and registering layout slots from tab content components.
