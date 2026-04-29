@@ -29,8 +29,8 @@ export interface LayoutSlotsContextValue {
 
 export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
   slots: {},
-  register: () => {},
-  unregister: () => {},
+  register: () => { },
+  unregister: () => { },
 })
 
 export function LayoutSlotsProvider({ children }: { children: ReactNode }) {
