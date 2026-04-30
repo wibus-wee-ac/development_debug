@@ -14,5 +14,6 @@ The registry exports the store instance consumed by the rest of the app.
 - **new-chat.tab.tsx**: New chat creation tab (no params)
 - **kanban-board.tab.tsx**: Kanban board tab (params: `boardId`, optional `issue`)
 - **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel
-- **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`)
+- **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name
+- **workspace-detail.tab.test.tsx**: Regression test covering workspace-detail runtime tab label updates
 - **usage.tab.tsx**: Usage/cost dashboard tab (no params)
