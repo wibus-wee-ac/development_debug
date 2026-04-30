@@ -22,6 +22,8 @@ import {
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { CapsuleComposer } from './capsule-composer'
+
 import { useWorkspaceFile } from './use-workspace-file'
 import { WorkspaceWorkflowRules } from './workspace-workflow-rules'
 
@@ -414,6 +416,25 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     openTab('new-chat')
   }, [openTab])
 
+  const handleCapsuleSend = useCallback(async (
+    text: string,
+    opts: { agentId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
+  ) => {
+    if (!workspace || !ipc) {
+      return
+    }
+    const sessionId = await ipc.chat.createAndSend({
+      agentId: opts.agentId,
+      workspaceId,
+      cwd: workspace.path,
+      text,
+      modelId: opts.modelId,
+      thinkingEffort: opts.thinkingEffort,
+    })
+    queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+    openTab('chat', { sessionId })
+  }, [openTab, queryClient, workspace, workspaceId])
+
   const handleTocNavigate = useCallback((slug: string) => {
     const el = document.getElementById(slug)
     if (el) {
@@ -467,75 +488,89 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
-      {/* ── Main scrollable content ────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto min-w-0 [&::-webkit-scrollbar]:hidden">
-        <motion.div
-          className="max-w-2xl mx-auto py-6 px-2"
-        >
-          {/* Header */}
-          <div className="mb-6">
-            <InlineEditTitle value={workspace.name} onSave={handleRename} />
-            <p className="text-[12px] text-muted-foreground/35 font-mono mt-1 truncate">
-              {workspace.path}
-            </p>
-          </div>
+      {/* ── Main area with floating composer ────────────────── */}
+      <div className="relative flex-1 min-w-0">
+        {/* Scrollable content */}
+        <div ref={scrollRef} className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden">
+          <motion.div
+            className="max-w-2xl mx-auto py-6 px-2"
+          >
+            {/* Header */}
+            <div className="mb-6">
+              <InlineEditTitle value={workspace.name} onSave={handleRename} />
+              <p className="text-[12px] text-muted-foreground/35 font-mono mt-1 truncate">
+                {workspace.path}
+              </p>
+            </div>
 
-          {/* Tab navigation */}
-          <div className="relative flex items-center gap-0.5 overflow-x-auto mb-6 border-b border-border/40 pb-px scrollbar-none">
-            {([
-              { id: 'overview', label: 'Overview', icon: FileTextIcon },
-              { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
-            ] as const).map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                ref={(el) => { tabRef.current[id] = el }}
-                onClick={() => setActiveTab(id)}
-                className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-2 text-[13px] whitespace-nowrap transition-colors select-none',
-                  activeTab === id
-                    ? 'text-foreground'
-                    : 'text-muted-foreground/45 hover:text-muted-foreground/70',
-                )}
-              >
-                <Icon className="relative size-3.5 shrink-0" />
-                <span className="relative">{label}</span>
-              </button>
-            ))}
-            {/* Tab indicator line — CSS transition, no motion layout measurement */}
-            <span
-              className="absolute -bottom-px h-[1.5px] bg-foreground rounded-full transition-all duration-200 ease-out"
-              style={indicatorStyle}
-            />
-          </div>
+            {/* Tab navigation */}
+            <div className="relative flex items-center gap-0.5 overflow-x-auto mb-6 border-b border-border/40 pb-px scrollbar-none">
+              {([
+                { id: 'overview', label: 'Overview', icon: FileTextIcon },
+                { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
+              ] as const).map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  ref={(el) => { tabRef.current[id] = el }}
+                  onClick={() => setActiveTab(id)}
+                  className={cn(
+                    'relative flex items-center gap-1.5 px-3 py-2 text-[13px] whitespace-nowrap transition-colors select-none',
+                    activeTab === id
+                      ? 'text-foreground'
+                      : 'text-muted-foreground/45 hover:text-muted-foreground/70',
+                  )}
+                >
+                  <Icon className="relative size-3.5 shrink-0" />
+                  <span className="relative">{label}</span>
+                </button>
+              ))}
+              {/* Tab indicator line — CSS transition, no motion layout measurement */}
+              <span
+                className="absolute -bottom-px h-[1.5px] bg-foreground rounded-full transition-all duration-200 ease-out"
+                style={indicatorStyle}
+              />
+            </div>
 
-          {/* Tab content — pure CSS toggle: no React effect re-runs, no layout thrash */}
-          <div className={activeTab === 'overview' ? undefined : 'hidden'}>
-            {/* AGENTS section */}
-            <DocumentSection
-              id="section-agents"
-              filename="AGENTS.md"
-              file={agents}
-              placeholder="配置 Agent 指令..."
-            />
+            {/* Tab content — pure CSS toggle: no React effect re-runs, no layout thrash */}
+            <div className={activeTab === 'overview' ? undefined : 'hidden'}>
+              {/* AGENTS section */}
+              <DocumentSection
+                id="section-agents"
+                filename="AGENTS.md"
+                file={agents}
+                placeholder="配置 Agent 指令..."
+              />
 
-            {/* Empty state */}
-            {agents.content === null && !agents.loading && (
-              <div className="py-16 text-center text-sm text-muted-foreground/40">
-                该项目中没有 AGENTS.md 文件
-              </div>
-            )}
-          </div>
+              {/* Empty state */}
+              {agents.content === null && !agents.loading && (
+                <div className="py-16 text-center text-sm text-muted-foreground/40">
+                  该项目中没有 AGENTS.md 文件
+                </div>
+              )}
+            </div>
 
-          <div className={activeTab === 'workflow-rules' ? undefined : 'hidden'}>
-            <WorkspaceWorkflowRules
+            <div className={activeTab === 'workflow-rules' ? undefined : 'hidden'}>
+              <WorkspaceWorkflowRules
+                workspaceId={workspaceId}
+                onContentChange={setWorkflowContent}
+              />
+            </div>
+
+            {/* Bottom spacer for floating composer */}
+            <div className="h-28" />
+          </motion.div>
+        </div>
+
+        {/* ── Floating Capsule Composer ── */}
+        <div className="absolute bottom-0 inset-x-0 px-4 pb-4 pointer-events-none">
+          <div className="max-w-2xl mx-auto pointer-events-auto">
+            <CapsuleComposer
               workspaceId={workspaceId}
-              onContentChange={setWorkflowContent}
+              onSend={handleCapsuleSend}
             />
           </div>
-
-          <div className="h-16" />
-        </motion.div>
+        </div>
       </div>
 
       {/* ── Float TOC (right of content, before sidebar) ──── */}
