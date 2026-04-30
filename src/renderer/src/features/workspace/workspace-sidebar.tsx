@@ -5,7 +5,7 @@
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
-import { ThreadSearchDialog } from '@renderer/features/search'
+import { GlobalSearchDialog } from '@renderer/features/search/global-search-dialog'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
@@ -16,6 +16,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   AlignJustifyIcon,
   BarChart3Icon,
+  ClipboardCopyIcon,
   FolderClosedIcon,
   FolderOpenIcon,
   GitBranchIcon,
@@ -23,6 +24,8 @@ import {
   LayoutDashboardIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
+  PinIcon,
+  PinOffIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
@@ -86,6 +89,18 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     }
   }, [session.id, workspaceId, queryClient, isActive, openTab])
 
+  const handleTogglePin = useCallback(async () => {
+    await ipc?.session.togglePin(session.id)
+    queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+  }, [session.id, workspaceId, queryClient])
+
+  const handleExport = useCallback(async () => {
+    const md = await ipc?.session.exportAsMarkdown(session.id)
+    if (md) {
+      await navigator.clipboard.writeText(md)
+    }
+  }, [session.id])
+
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/x-cradle-session', session.id)
     e.dataTransfer.effectAllowed = 'move'
@@ -119,9 +134,12 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       <button
         type="button"
         onClick={handleClick}
-        className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 truncate text-sidebar-foreground/80"
+        className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
       >
-        <span className="flex-1 truncate">{session.title}</span>
+        {session.pinned ? (
+          <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" />
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-left">{session.title}</span>
         {isUnread && !isActive && (
           <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
         )}
@@ -143,6 +161,15 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
           <MoreHorizontalIcon className="size-3" aria-hidden="true" />
         </MenuTrigger>
         <MenuPopup align="start" side="bottom" sideOffset={4}>
+          <MenuItem onClick={handleTogglePin}>
+            {session.pinned ? <PinOffIcon /> : <PinIcon />}
+            {session.pinned ? '取消置顶' : '置顶'}
+          </MenuItem>
+          <MenuItem onClick={handleExport}>
+            <ClipboardCopyIcon />
+            复制为 Markdown
+          </MenuItem>
+          <MenuSeparator />
           <MenuItem variant="destructive" onClick={handleDelete}>
             <Trash2Icon />
             删除会话
@@ -243,7 +270,7 @@ function WorkspaceGroup({
               {sessions.length === 0 && (
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground/50">暂无会话</p>
               )}
-              {sessions.map(session => (
+              {[...sessions].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)).map(session => (
                 <SessionItem key={session.id} session={session} workspaceId={workspace.id} />
               ))}
             </div>
@@ -476,7 +503,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         </nav>
       </div>
 
-      <ThreadSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

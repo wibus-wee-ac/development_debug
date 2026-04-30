@@ -53,6 +53,8 @@ export const sessions = sqliteTable('sessions', {
   modelId: text('model_id'),
   /** JSON array of SessionConfigOption snapshots captured at creation. */
   configSnapshot: text('config_snapshot'),
+  /** Whether this session is pinned/bookmarked by the user. */
+  pinned: int('pinned').notNull().default(0),
   ...timestamps(),
 })
 

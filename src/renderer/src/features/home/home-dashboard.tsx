@@ -1,8 +1,8 @@
-// Input: useWorkspaces, useSessions (per workspace), ThreadSearchDialog, useCradleNavigation, ipc
+// Input: useWorkspaces, useSessions (per workspace), GlobalSearchDialog, useCradleNavigation, ipc
 // Output: HomeDashboard — scenario-driven dashboard hub
 // Position: Main content for the home tab; no composer, no chat entry point
 
-import { ThreadSearchDialog } from '@renderer/features/search'
+import { GlobalSearchDialog } from '@renderer/features/search/global-search-dialog'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { ipc } from '@renderer/lib/ipc'
@@ -466,7 +466,7 @@ export function HomeDashboard() {
         </div>
       </div>
 
-      <ThreadSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

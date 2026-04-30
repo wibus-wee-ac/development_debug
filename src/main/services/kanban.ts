@@ -279,6 +279,24 @@ export class KanbanService extends IpcService {
   }
 
   @IpcMethod()
+  searchIssues(query: string, limit = 20): KanbanIssue[] {
+    if (!query.trim()) {
+      return []
+    }
+    const pattern = `%${query.trim()}%`
+    return getDb()
+      .select()
+      .from(kanbanIssues)
+      .where(or(
+        like(kanbanIssues.title, pattern),
+        like(kanbanIssues.description, pattern),
+      ))
+      .orderBy(desc(kanbanIssues.updatedAt))
+      .limit(limit)
+      .all()
+  }
+
+  @IpcMethod()
   getIssue(id: string): KanbanIssue | undefined {
     return getDb().select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()
   }

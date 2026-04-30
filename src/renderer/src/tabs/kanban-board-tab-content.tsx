@@ -7,11 +7,21 @@ import { KanbanBoardView } from '@renderer/features/kanban/kanban-board-view'
 import { useBoard } from '@renderer/features/kanban/use-kanban'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { LayoutDashboardIcon } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 export function KanbanBoardTabContent({ params }: { params: { boardId?: string, issue?: string } }) {
   const { store } = useTabsContext()
   const { data: board, isLoading } = useBoard(params.boardId ?? '')
+
+  // Update tab label to board name when loaded
+  useEffect(() => {
+    if (board?.name) {
+      const activeTab = store.getState().getActiveTab()
+      if (activeTab && activeTab.type === 'kanban-board') {
+        store.getState().updateTabLabel(activeTab.id, board.name)
+      }
+    }
+  }, [board?.name, store])
 
   const handleSelectIssue = useCallback((issueId: string | null) => {
     const activeTab = store.getState().getActiveTab()

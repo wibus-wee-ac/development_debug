@@ -25,12 +25,14 @@ export interface LayoutSlotsContextValue {
   slots: LayoutSlots
   register: (id: string, slots: LayoutSlots) => void
   unregister: (id: string) => void
+  activate: (id: string) => void
 }
 
 export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
   slots: {},
   register: () => { },
   unregister: () => { },
+  activate: () => { },
 })
 
 export function LayoutSlotsProvider({ children }: { children: ReactNode }) {
@@ -38,11 +40,15 @@ export function LayoutSlotsProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback((id: string, newSlots: LayoutSlots) => {
     setState((prev) => {
-      // Bail out if both the active id and the slots reference are unchanged
       if (prev.activeId === id && prev.map[id] === newSlots) {
         return prev
       }
-      return { map: { ...prev.map, [id]: newSlots }, activeId: id }
+      // Only set activeId on first registration (new id not yet in map)
+      const isNew = !(id in prev.map)
+      return {
+        map: { ...prev.map, [id]: newSlots },
+        activeId: isNew ? id : prev.activeId,
+      }
     })
   }, [])
 
@@ -58,10 +64,23 @@ export function LayoutSlotsProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const activate = useCallback((id: string) => {
+    setState((prev) => {
+      if (prev.activeId === id) {
+        return prev
+      }
+      // Only activate if the id is registered
+      if (!(id in prev.map)) {
+        return prev
+      }
+      return { ...prev, activeId: id }
+    })
+  }, [])
+
   const slots = (state.activeId && state.map[state.activeId]) || {}
 
   return (
-    <LayoutSlotsContext.Provider value={{ slots, register, unregister }}>
+    <LayoutSlotsContext.Provider value={{ slots, register, unregister, activate }}>
       {children}
     </LayoutSlotsContext.Provider>
   )

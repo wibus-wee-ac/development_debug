@@ -3,7 +3,7 @@
 // Output: chat tab definition with session message loader and per-tab layout (aside + shell panel)
 // Position: Tab type for chat sessions
 
-import { defineTab } from '@cradle/tabs'
+import { defineTab, useTabsContext } from '@cradle/tabs'
 import { RightAside } from '@renderer/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '@renderer/components/layout/use-layout-slots'
 import type { ChatMessageRow } from '@renderer/features/chat/use-chat-session'
@@ -12,14 +12,13 @@ import { ShellView } from '@renderer/features/tui/shell-view'
 import { ipc } from '@renderer/lib/ipc'
 import { useQuery } from '@tanstack/react-query'
 import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 
 const ChatView = lazy(() => import('@renderer/features/chat/chat-view').then(m => ({ default: m.ChatView })))
 
 function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatMessageRow[] }) {
   const { sessionId } = params
-  const [workspaceName, setWorkspaceName] = useState<string | null>(null)
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const { store } = useTabsContext()
   const [shellGen, setShellGen] = useState(0)
 
   // Fetch session metadata to get workspaceId → workspacePath for aside/panel
@@ -29,20 +28,28 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
     enabled: !!sessionId,
   })
 
+  // Update tab label to session title when loaded
+  useEffect(() => {
+    if (session?.title) {
+      const activeTab = store.getState().tabs.find(t => t.params.sessionId === sessionId)
+      if (activeTab) {
+        store.getState().updateTabLabel(activeTab.id, session.title)
+      }
+    }
+  }, [session?.title, sessionId, store])
+
   const workspaceId = session?.workspaceId ?? null
 
-  // Fetch workspace path when workspaceId is available
-  useQuery({
+  // Fetch workspace details — derive path/name from query data (not side-effects)
+  const { data: workspace } = useQuery({
     queryKey: ['workspace-detail', workspaceId],
-    queryFn: async () => {
-      const ws = await ipc?.workspace.get(workspaceId!)
-      setWorkspaceName(ws?.name ?? null)
-      setWorkspacePath(ws?.path ?? null)
-      return ws
-    },
+    queryFn: () => ipc?.workspace.get(workspaceId!),
     enabled: !!workspaceId,
     staleTime: 60_000,
   })
+
+  const workspaceName = workspace?.name ?? null
+  const workspacePath = workspace?.path ?? null
 
   const hasWorkspace = !!(workspaceId && workspacePath)
 
@@ -98,7 +105,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
 export const chatTab = defineTab({
   type: 'chat' as const,
   icon: MessageCircleIcon,
-  label: (params: { sessionId: string }) => `Chat: ${params.sessionId.slice(0, 8)}`,
+  label: (params: { sessionId: string }) => `Chat: ${params.sessionId.slice(0, 6)}`,
   component: ChatTabContent,
   loader: async (params: { sessionId: string }) => {
     if (!ipc) {

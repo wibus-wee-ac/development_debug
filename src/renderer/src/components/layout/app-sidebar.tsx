@@ -2,6 +2,7 @@
 // Output: AppSidebar — persistent collapsible sidebar with drill-in navigation
 // Position: Rendered at app root; persists across tab changes
 
+import { ResizeHandle } from '@renderer/components/layout/resize-handle'
 import { KanbanSidebar } from '@renderer/features/kanban/kanban-sidebar'
 import { SettingsSidebar } from '@renderer/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '@renderer/features/workspace'
@@ -19,11 +20,14 @@ const DRILL_TRANSITION = {
 
 const SIDEBAR_SPRING = { type: 'spring', stiffness: 600, damping: 40 } as const
 const COLLAPSED_WIDTH = 48
+const SIDEBAR_MIN = 180
+const SIDEBAR_MAX = 400
 
 export function AppSidebar() {
   'use no memo'
   const {
     sidebarWidth,
+    setSidebarWidth,
     sidebarCollapsed,
     toggleSidebar,
     isSettings,
@@ -46,63 +50,75 @@ export function AppSidebar() {
   const currentWidth = collapsed ? COLLAPSED_WIDTH : sidebarWidth
 
   return (
-    <motion.aside
-      className="flex flex-col shrink-0 bg-sidebar text-sidebar-foreground overflow-hidden"
-      animate={{ width: currentWidth }}
-      transition={SIDEBAR_SPRING}
-      style={{ width: currentWidth }}
-    >
-      {/* Traffic light spacer — drag region matching AppHeader height */}
-      <div className="h-9.5 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
-      <div
-        className="relative flex flex-col flex-1 overflow-hidden"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+    <>
+      <motion.aside
+        className="flex flex-col shrink-0 bg-sidebar text-sidebar-foreground overflow-hidden"
+        animate={{ width: currentWidth }}
+        transition={SIDEBAR_SPRING}
+        style={{ width: currentWidth }}
       >
-        <AnimatePresence mode="popLayout" initial={false}>
-          {sidebarMode === 'settings'
-            ? (
-              <motion.div
-                key="settings-nav"
-                className="flex flex-1 flex-col overflow-hidden"
-                initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                transition={DRILL_TRANSITION}
-              >
-                <SettingsSidebar
-                  activeSection={settingsSection}
-                  onSetSection={setSettingsSection}
-                  onClose={closeSettings}
-                />
-              </motion.div>
-            )
-            : sidebarMode === 'kanban'
+        {/* Traffic light spacer — drag region matching AppHeader height */}
+        <div className="h-9.5 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+        <div
+          className="relative flex flex-col flex-1 overflow-hidden"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
+          <AnimatePresence mode="popLayout" initial={false}>
+            {sidebarMode === 'settings'
               ? (
                 <motion.div
-                  key="kanban-nav"
+                  key="settings-nav"
                   className="flex flex-1 flex-col overflow-hidden"
                   initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
                   animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
                   exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
                   transition={DRILL_TRANSITION}
                 >
-                  <KanbanSidebar />
+                  <SettingsSidebar
+                    activeSection={settingsSection}
+                    onSetSection={setSettingsSection}
+                    onClose={closeSettings}
+                  />
                 </motion.div>
               )
-              : (
-                <motion.div
-                  key="main-nav"
-                  className="flex flex-1 flex-col overflow-hidden"
-                  initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                  animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                  exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                  transition={DRILL_TRANSITION}
-                >
-                  <WorkspaceSidebar collapsed={collapsed} />
-                </motion.div>
-              )}
-        </AnimatePresence>
-      </div>
-    </motion.aside>
+              : sidebarMode === 'kanban'
+                ? (
+                  <motion.div
+                    key="kanban-nav"
+                    className="flex flex-1 flex-col overflow-hidden"
+                    initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
+                    transition={DRILL_TRANSITION}
+                  >
+                    <KanbanSidebar />
+                  </motion.div>
+                )
+                : (
+                  <motion.div
+                    key="main-nav"
+                    className="flex flex-1 flex-col overflow-hidden"
+                    initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                    transition={DRILL_TRANSITION}
+                  >
+                    <WorkspaceSidebar collapsed={collapsed} />
+                  </motion.div>
+                )}
+          </AnimatePresence>
+        </div>
+      </motion.aside>
+      {!collapsed && (
+        <ResizeHandle
+          direction="horizontal"
+          value={sidebarWidth}
+          onChange={setSidebarWidth}
+          min={SIDEBAR_MIN}
+          max={SIDEBAR_MAX}
+          className="bg-sidebar"
+        />
+      )}
+    </>
   )
 }

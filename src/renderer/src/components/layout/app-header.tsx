@@ -1,11 +1,13 @@
-// Input: Button, useLayoutStore, lucide icons, @cradle/tabs TabBar, cradleRegistry
+// Input: Button, useLayoutStore, lucide icons, @cradle/tabs TabBar, cradleRegistry, Tooltip
 // Output: AppHeader — slim header with capsule tabs and panel toggles
 // Position: Top chrome of AppLayout's center column; doubles as a macOS window-drag region
 
 import type { TabInstance } from '@cradle/tabs'
 import { TabBar } from '@cradle/tabs'
 import { Button } from '@renderer/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { cn } from '@renderer/lib/cn'
+import { ipc } from '@renderer/lib/ipc'
 import { useLayoutStore } from '@renderer/store/layout'
 import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, XIcon } from 'lucide-react'
@@ -21,7 +23,7 @@ interface AppHeaderProps {
   gitBranch?: ReactNode
 }
 
-export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) {
+export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, isSettings } = useLayoutStore()
   const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
@@ -45,6 +47,24 @@ export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) 
     return <Icon className="size-3 text-muted-foreground/60" />
   }, [])
 
+  const renderTooltip = useCallback((tab: TabInstance, children: React.ReactElement) => (
+    <TooltipProvider key={tab.id} delay={400}>
+      <Tooltip>
+        <TooltipTrigger render={children} />
+        <TooltipContent side="bottom" sideOffset={4}>
+          {tab.label}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  ), [])
+
+  const handleTabTearOff = useCallback((tab: TabInstance, screenX: number, screenY: number) => {
+    if (tab.type === 'chat' && tab.params.sessionId) {
+      ipc?.window.tearOffSession(tab.params.sessionId, screenX, screenY)
+      useCradleTabStore.getState().closeTab(tab.id)
+    }
+  }, [])
+
   return (
     <div
       className="relative flex h-10 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
@@ -64,14 +84,16 @@ export function AppHeader({ hasAside = true, hasPanel = true }: AppHeaderProps) 
         </Button>
       )}
 
-      {/* Center: tab bar — fills available space */}
-      <div className="flex-1 min-w-0 mx-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      {/* Tab bar */}
+      <div className="flex-1 min-w-0 ml-0.5 mr-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <TabBar
           onNewTab={handleNewTab}
           onTabActivated={handleTabActivated}
+          onTabTearOff={handleTabTearOff}
           renderCloseIcon={() => <XIcon className="size-2.5" />}
           renderNewTabIcon={() => <PlusIcon className="size-3" />}
           renderTabIcon={renderTabIcon}
+          renderTooltip={renderTooltip}
         />
       </div>
 

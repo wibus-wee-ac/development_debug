@@ -64,8 +64,8 @@ export class IssueAgentRunner {
     // Emit immediate "thinking" activity (must be within 10s per AIG)
     this.addActivity(agentSessionId, 'thought', { body: 'Examining issue...' })
 
-    // Build prompt from issue context
-    const prompt = this.buildPrompt(issue)
+    // Build prompt from issue context (including prior session summaries)
+    const prompt = this.buildPrompt(issue, agentSessionId)
 
     // Inject workflow rules as additional user message content
     const rules = await getWorkflowRules(issue.workspaceId, agentId)
@@ -118,32 +118,48 @@ export class IssueAgentRunner {
 
   /**
    * Stop a running agent session.
+   * Works even if the in-memory activeRuns map has lost the entry (e.g. after restart).
    */
   async stop(agentSessionId: string): Promise<void> {
-    const run = this.activeRuns.get(agentSessionId)
-    if (!run) {
-      return
-    }
-
-    run.aborted = true
-
-    try {
-      await ChatEngine.getInstance().abort(run.chatSessionId)
-    }
-    catch {
-      // Best-effort abort
-    }
-
+    const db = getDb()
     const ts = Math.floor(Date.now() / 1000)
-    getDb().update(agentSessions).set({ status: 'stopped', updatedAt: ts }).where(eq(agentSessions.id, agentSessionId)).run()
+    const run = this.activeRuns.get(agentSessionId)
+
+    if (run) {
+      run.aborted = true
+      try {
+        await ChatEngine.getInstance().abort(run.chatSessionId)
+      }
+      catch {
+        // Best-effort abort
+      }
+      this.activeRuns.delete(agentSessionId)
+    }
+    else {
+      // Fallback: look up the linked chat session from DB and abort it
+      const session = db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
+      if (session?.chatSessionId) {
+        try {
+          await ChatEngine.getInstance().abort(session.chatSessionId)
+        }
+        catch {
+          // Best-effort abort
+        }
+      }
+    }
+
+    // Always update DB status
+    db.update(agentSessions)
+      .set({ status: 'stopped', updatedAt: ts })
+      .where(eq(agentSessions.id, agentSessionId))
+      .run()
 
     this.addActivity(agentSessionId, 'response', { body: 'Stopped by user' })
-    this.activeRuns.delete(agentSessionId)
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────
 
-  private buildPrompt(issue: typeof kanbanIssues.$inferSelect): string {
+  private buildPrompt(issue: typeof kanbanIssues.$inferSelect, agentSessionId: string): string {
     const parts: string[] = []
 
     parts.push(`# Issue: ${issue.title}`)
@@ -182,6 +198,47 @@ export class IssueAgentRunner {
 
     parts.push(`Priority: ${issue.priority}`)
     parts.push('')
+
+    // Include prior agent session summaries for re-delegation context
+    const db = getDb()
+    const priorSessions = db
+      .select()
+      .from(agentSessions)
+      .where(eq(agentSessions.issueId, issue.id))
+      .all()
+      .filter(s => s.id !== agentSessionId && (s.status === 'completed' || s.status === 'stopped' || s.status === 'failed'))
+
+    if (priorSessions.length > 0) {
+      parts.push('## Prior Agent Work')
+      parts.push('This issue was previously worked on by other agents. Here is what they did:')
+      parts.push('')
+      for (const ps of priorSessions) {
+        // Get response/error activities from this session
+        const activities = db
+          .select()
+          .from(agentActivities)
+          .where(eq(agentActivities.agentSessionId, ps.id))
+          .all()
+          .filter(a => a.type === 'response' || a.type === 'error')
+
+        const statusLabel = ps.status === 'completed' ? 'completed' : ps.status === 'stopped' ? 'stopped by user' : 'failed'
+        parts.push(`- Session (${statusLabel}):`)
+        for (const act of activities) {
+          try {
+            const content = JSON.parse(act.content) as { body?: string }
+            if (content.body && content.body !== 'Stopped by user' && content.body !== 'Completed work on issue') {
+              const excerpt = content.body.length > 200 ? `${content.body.slice(0, 200)}...` : content.body
+              parts.push(`  ${excerpt}`)
+            }
+          }
+          catch {
+            // skip malformed
+          }
+        }
+      }
+      parts.push('')
+    }
+
     parts.push('Please work on this issue. When done, summarize what you changed.')
 
     return parts.join('\n')

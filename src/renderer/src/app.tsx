@@ -8,6 +8,7 @@ import { TabRenderer, TabsProvider } from '@cradle/tabs'
 import { AppLayout } from '@renderer/components/layout/app-layout'
 import { AppSidebar } from '@renderer/components/layout/app-sidebar'
 import { LayoutSlotsProvider } from '@renderer/components/layout/layout-slots-context'
+import { useLayoutSlotsCtx } from '@renderer/components/layout/use-layout-slots'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { SettingsContent } from '@renderer/features/settings/settings-content'
@@ -16,6 +17,29 @@ import { useLayoutStore } from '@renderer/store/layout'
 import { useThemeStore } from '@renderer/store/theme'
 import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { useEffect } from 'react'
+
+/**
+ * Syncs the active tab's slot id with the LayoutSlotsProvider.
+ * Must be rendered inside LayoutSlotsProvider.
+ * Uses 'use no memo' to prevent React Compiler from breaking zustand hooks.
+ */
+function ActiveSlotSync() {
+  'use no memo'
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const tabs = useCradleTabStore(s => s.tabs)
+  const { activate } = useLayoutSlotsCtx()
+  const activeTab = tabs.find(t => t.id === activeTabId)
+  // For chat tabs, the slot id is params.sessionId
+  const slotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+
+  useEffect(() => {
+    if (slotId) {
+      activate(slotId)
+    }
+  }, [slotId, activate])
+
+  return null
+}
 
 export function App() {
   'use no memo'
@@ -63,6 +87,7 @@ export function App() {
           <ShortcutProvider>
             <LayoutSlotsProvider>
               <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
+                <ActiveSlotSync />
                 <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
                   <AppSidebar />
                   <AppLayout>

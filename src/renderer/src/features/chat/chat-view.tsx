@@ -297,13 +297,21 @@ export function ChatView({
             appendTextKey={droppedPath?.ts}
           />
           {sessionTokens > 0 && (
-            <p className="mt-1.5 text-right text-[10px] tabular-nums text-muted-foreground/30">
-              {sessionTokens >= 1_000
-                ? `${(sessionTokens / 1_000).toFixed(1)}K`
-                : sessionTokens}
-              {' '}
-              tokens
-            </p>
+            <div className="mt-1.5 flex items-center justify-end gap-2">
+              <div className="flex items-center gap-1.5">
+                <div className="h-1 w-16 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary/40 transition-all"
+                    style={{ width: `${Math.min(100, (sessionTokens / 128_000) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] tabular-nums text-muted-foreground/30">
+                  {sessionTokens >= 1_000
+                    ? `${(sessionTokens / 1_000).toFixed(1)}K`
+                    : sessionTokens}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       </div>

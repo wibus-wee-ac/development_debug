@@ -105,4 +105,45 @@ export class SessionService extends IpcService {
       .orderBy(messages.createdAt)
       .all()
   }
+
+  @IpcMethod()
+  togglePin(id: string): boolean {
+    const db = getDb()
+    const session = db.select().from(sessions).where(eq(sessions.id, id)).get()
+    if (!session) {
+      return false
+    }
+    const newPinned = session.pinned ? 0 : 1
+    db.update(sessions)
+      .set({ pinned: newPinned })
+      .where(eq(sessions.id, id))
+      .run()
+    return newPinned === 1
+  }
+
+  @IpcMethod()
+  exportAsMarkdown(sessionId: string): string {
+    const db = getDb()
+    const session = db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!session) {
+      return ''
+    }
+    const msgs = db.select().from(messages).where(eq(messages.sessionId, sessionId)).orderBy(messages.createdAt).all()
+
+    const lines: string[] = []
+    lines.push(`# ${session.title}`)
+    lines.push('')
+    lines.push(`> Model: ${session.modelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`)
+    lines.push('')
+
+    for (const msg of msgs) {
+      const role = msg.role === 'user' ? 'User' : 'Assistant'
+      lines.push(`## ${role}`)
+      lines.push('')
+      lines.push(msg.content)
+      lines.push('')
+    }
+
+    return lines.join('\n')
+  }
 }
