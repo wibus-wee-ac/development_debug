@@ -87,7 +87,7 @@ describe('agentRuntimeService', () => {
     repository = new MemoryProfileRepository()
     service = new AgentRuntimeService({
       repository,
-      catalog: new ProviderCatalog([createProvider('codex-app-server')]),
+      catalog: new ProviderCatalog([createProvider('openai-compatible')]),
       credentialVault: new CredentialVault({
         encrypt: text => `encrypted:${text}`,
         decrypt: encrypted => encrypted.replace('encrypted:', ''),
@@ -97,33 +97,33 @@ describe('agentRuntimeService', () => {
 
   it('stores and lists unified agent profiles', () => {
     const profile = service.upsertProfile({
-      id: 'local-codex',
-      name: 'Local Codex',
-      providerKind: 'codex-app-server',
+      id: 'test-profile',
+      name: 'Test Profile',
+      providerKind: 'openai-compatible',
       enabled: true,
-      configJson: '{"executable":"codex"}',
+      configJson: '{"baseUrl":"http://localhost","model":"gpt-4o"}',
       credentialRef: null,
     })
 
-    expect(profile.providerKind).toBe('codex-app-server')
+    expect(profile.providerKind).toBe('openai-compatible')
     expect(service.listProfiles()).toEqual([profile])
   })
 
   it('probes a profile through its registered provider', async () => {
     service.upsertProfile({
-      id: 'local-codex',
-      name: 'Local Codex',
-      providerKind: 'codex-app-server',
+      id: 'test-profile',
+      name: 'Test Profile',
+      providerKind: 'openai-compatible',
       enabled: true,
       configJson: '{}',
       credentialRef: null,
     })
 
-    await expect(service.probeProfile('local-codex')).resolves.toEqual({
+    await expect(service.probeProfile('test-profile')).resolves.toEqual({
       ok: true,
-      label: 'Local Codex',
+      label: 'Test Profile',
       version: '1.0.0',
-      details: { providerKind: 'codex-app-server' },
+      details: { providerKind: 'openai-compatible' },
       errorText: null,
     })
   })

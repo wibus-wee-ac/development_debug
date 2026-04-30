@@ -218,6 +218,7 @@ export function Composer({
           onDragOver={e => e.preventDefault()}
           placeholder={placeholder}
           disabled={disabled}
+          data-testid="chat-composer-textarea"
           rows={2}
           className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
         />
@@ -250,6 +251,7 @@ export function Composer({
                   disabled={disabled || !inputValue.trim()}
                   onClick={handleSend}
                   aria-label="发送"
+                  data-testid="chat-send-btn"
                 >
                   <SendHorizonalIcon aria-hidden="true" />
                 </Button>

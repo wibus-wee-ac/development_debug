@@ -8,5 +8,4 @@ Keep provider-specific protocol parsing out of higher-level services.
 
 ## Files
 
-- **codex-app-server-provider.ts**: CodexAppServerProvider probes local Codex App Server profiles and maps `model/list` results.
 - **openai-compatible-provider.ts**: OpenAICompatibleProvider validates Base URL/API key profile config and exposes configured model metadata.

@@ -70,13 +70,12 @@ Given('我已打开三个标签页', async function (this: CradleWorld) {
 })
 
 Given('第三个标签页处于活跃状态', async function (this: CradleWorld) {
-  // The third tab should already be active (it was last opened)
-  // But click it to be sure
+  // The third tab is already active (it was the last opened).
+  // Just verify the state — avoid clicking since Playwright's center-click
+  // can accidentally hit the close button in narrow pills.
   const thirdTab = this.page.locator(TAB_PILL).nth(2)
-  await thirdTab.click()
-  await this.page.waitForTimeout(200)
-
-  await expect(thirdTab).toHaveAttribute('data-tab-active', 'true')
+  await expect(thirdTab).toBeVisible({ timeout: 5000 })
+  await expect(thirdTab).toHaveAttribute('data-tab-active', 'true', { timeout: 3000 })
 })
 
 Given('只有一个标签页', async function (this: CradleWorld) {

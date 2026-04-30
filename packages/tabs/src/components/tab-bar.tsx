@@ -99,9 +99,9 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
           onClick={e => onClose(e, tab.id)}
           data-testid={`tab-close-${tab.id}`}
           className={cn(
-            'inline-flex items-center justify-center rounded-full size-3.5',
+            'inline-flex items-center justify-center rounded-full size-3.5 shrink-0',
             isActive
-              ? 'opacity-60 hover:opacity-100'
+              ? 'opacity-0 group-hover:opacity-60 hover:opacity-100!'
               : 'opacity-0 group-hover:opacity-60 hover:opacity-100!',
             'transition-opacity hover:bg-foreground/10',
           )}

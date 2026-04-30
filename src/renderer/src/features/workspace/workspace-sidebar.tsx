@@ -387,6 +387,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="新建聊天"
             collapsed={collapsed}
             onClick={() => openTab('new-chat')}
+            dataTestId="nav-new-chat"
           />
           <TopNavItem
             icon={<SearchIcon className="size-4" />}

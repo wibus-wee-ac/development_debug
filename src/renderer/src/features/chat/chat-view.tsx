@@ -202,6 +202,7 @@ export function ChatView({
   return (
     <div
       className="flex h-full flex-col"
+      data-testid="chat-view"
       onDrop={(e) => {
         e.preventDefault()
         const path = e.dataTransfer.getData('text/plain')
