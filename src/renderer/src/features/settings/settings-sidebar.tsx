@@ -7,7 +7,6 @@ import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/cn'
 import { ArrowLeftIcon, BotIcon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 
-
 interface SettingsNavItem {
   id: string
   label: string

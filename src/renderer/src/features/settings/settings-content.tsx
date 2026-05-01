@@ -25,7 +25,7 @@ export function SettingsContent({ section }: SettingsContentProps) {
 
   return (
     <ScrollArea className="flex-1">
-      <div className="mx-auto max-w-4xl px-8 pt-10 pb-6">
+      <div className="px-8 pt-10 pb-6">
         <ActiveSection />
       </div>
     </ScrollArea>

@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { CredentialMetadata, SaveCredentialInput } from '../agent-runtime/credential-vault'
@@ -17,7 +17,7 @@ import type {
   ProviderProbeResult,
 } from '../agent-runtime/types'
 import { getDb } from '../db'
-import { agentCredentials, agentProfiles, runtimeAuditLog } from '../db/schema'
+import { agentCredentials, agentProfiles, agentSessions, runtimeAuditLog, usageLogs } from '../db/schema'
 import { decryptSecret, encryptSecret } from '../lib/safe-storage'
 
 type EditableAgentProfile = Omit<AgentProfile, 'createdAt' | 'updatedAt'>
@@ -74,7 +74,18 @@ class DbAgentProfileRepository implements AgentProfileRepository {
   }
 
   removeProfile(id: string): void {
-    getDb().delete(agentProfiles).where(eq(agentProfiles.id, id)).run()
+    const db = getDb()
+    // Temporarily disable FK checks to allow removing profile while preserving sessions/agents
+    db.run(sql`PRAGMA foreign_keys = OFF`)
+    try {
+      db.delete(runtimeAuditLog).where(eq(runtimeAuditLog.agentProfileId, id)).run()
+      db.delete(usageLogs).where(eq(usageLogs.agentProfileId, id)).run()
+      db.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
+      db.delete(agentProfiles).where(eq(agentProfiles.id, id)).run()
+    }
+    finally {
+      db.run(sql`PRAGMA foreign_keys = ON`)
+    }
   }
 }
 

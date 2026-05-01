@@ -67,9 +67,9 @@ describe('skills library', () => {
     homeDir = join(sandboxDir, 'home')
     builtinDir = join(sandboxDir, 'builtin')
     workspaceDir = join(sandboxDir, 'workspace')
-    await mkdir(join(homeDir, '.agents', 'skills'), { recursive: true })
+    await mkdir(join(homeDir, '.cradle', 'skills'), { recursive: true })
     await mkdir(builtinDir, { recursive: true })
-    await mkdir(join(workspaceDir, '.agents', 'skills'), { recursive: true })
+    await mkdir(join(workspaceDir, '.cradle', 'skills'), { recursive: true })
 
     getBundledResourcePath.mockReturnValue(builtinDir)
     homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(homeDir)
@@ -86,15 +86,15 @@ describe('skills library', () => {
       name: 'alpha',
       description: 'builtin alpha',
     })
-    await writeSkillPackage(join(homeDir, '.agents', 'skills'), 'alpha-global', {
+    await writeSkillPackage(join(homeDir, '.cradle', 'skills'), 'alpha-global', {
       name: 'alpha',
       description: 'global alpha',
     })
-    await writeSkillPackage(join(workspaceDir, '.agents', 'skills'), 'alpha-workspace', {
+    await writeSkillPackage(join(workspaceDir, '.cradle', 'skills'), 'alpha-workspace', {
       name: 'alpha',
       description: 'workspace alpha',
     })
-    await writeSkillPackage(join(homeDir, '.agents', 'skills'), 'beta', {
+    await writeSkillPackage(join(homeDir, '.cradle', 'skills'), 'beta', {
       name: 'beta',
       description: 'global beta',
     })
@@ -118,11 +118,11 @@ describe('skills library', () => {
       name: 'alpha',
       description: 'builtin alpha',
     })
-    await writeSkillPackage(join(homeDir, '.agents', 'skills'), 'alpha-global', {
+    await writeSkillPackage(join(homeDir, '.cradle', 'skills'), 'alpha-global', {
       name: 'alpha',
       description: 'global alpha',
     })
-    await writeSkillPackage(join(workspaceDir, '.agents', 'skills'), 'beta', {
+    await writeSkillPackage(join(workspaceDir, '.cradle', 'skills'), 'beta', {
       name: 'beta',
       description: 'workspace beta',
     })

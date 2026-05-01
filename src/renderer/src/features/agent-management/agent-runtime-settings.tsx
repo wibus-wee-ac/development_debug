@@ -1,23 +1,35 @@
-// Input: ipc.agentRuntime profile and credential methods, coss UI primitives
-// Output: AgentRuntimeSettings component for unified Agent Profile management
+// Input: ipc.agentRuntime profile and credential methods, coss UI primitives, SettingsRow
+// Output: AgentRuntimeSettings component — Linear-style provider management
 // Position: Settings feature section for Agent Runtime provider configuration
 
 import type { AgentProfile, ProviderKind } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@renderer/components/ui/dialog'
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { Spinner } from '@renderer/components/ui/spinner'
+import { Switch } from '@renderer/components/ui/switch'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import { CheckCircleIcon, PlusIcon, TrashIcon, XCircleIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { SettingsDivider, SettingsRow, SettingsSectionHeader } from '../settings/settings-row'
+
 // ── Provider metadata ─────────────────────────────────────────────────────────
 
-const PROVIDER_KINDS: Array<{ id: ProviderKind, label: string }> = [
-  { id: 'openai-compatible', label: 'OpenAI-compatible' },
-  { id: 'acp-chat', label: 'ACP Chat' },
-  { id: 'cli-tui', label: 'CLI TUI' },
+const PROVIDER_KINDS: Array<{ id: ProviderKind, label: string, description: string }> = [
+  { id: 'openai-compatible', label: 'OpenAI-compatible', description: 'Any OpenAI API compatible endpoint' },
+  { id: 'acp-chat', label: 'ACP Chat', description: 'Local Agent Communication Protocol' },
+  { id: 'cli-tui', label: 'CLI TUI', description: 'Command-line agent interface' },
 ]
 
 const DEFAULT_NAMES: Record<ProviderKind, string> = {
@@ -60,97 +72,22 @@ function buildConfigJson(pf: ProviderFields): string {
   }
 }
 
-// ── Provider-specific form panels ─────────────────────────────────────────────
+// ── Add Provider Dialog ───────────────────────────────────────────────────────
 
-function OpenAIForm({ fields, onChange }: { fields: OpenAIFields, onChange: (f: OpenAIFields) => void }) {
-  return (
-    <div className="grid gap-3">
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-profile-name">名称</Label>
-        <Input id="agent-profile-name" value={fields.name} onChange={e => onChange({ ...fields, name: e.target.value })} />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-baseurl">Base URL</Label>
-        <Input id="agent-baseurl" value={fields.baseUrl} onChange={e => onChange({ ...fields, baseUrl: e.target.value })} placeholder="https://api.openai.com/v1" />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-model">默认模型</Label>
-        <Input id="agent-model" value={fields.model} onChange={e => onChange({ ...fields, model: e.target.value })} placeholder="gpt-4o" />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-apikey">API Key</Label>
-        <Input id="agent-apikey" type="password" value={fields.apiKey} onChange={e => onChange({ ...fields, apiKey: e.target.value })} placeholder="sk-..." />
-      </div>
-    </div>
-  )
-}
-
-function AcpForm({ fields, onChange }: { fields: AcpFields, onChange: (f: AcpFields) => void }) {
-  return (
-    <div className="grid gap-3">
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-profile-name">名称</Label>
-        <Input id="agent-profile-name" value={fields.name} onChange={e => onChange({ ...fields, name: e.target.value })} />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-dist">安装方式</Label>
-        <Select
-          value={fields.distributionType}
-          onValueChange={(value) => onChange({ ...fields, distributionType: value as AcpFields['distributionType'] })}
-        >
-          <SelectTrigger id="agent-dist">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="npx">通过 npx 运行</SelectItem>
-            <SelectItem value="global">全局安装命令</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-pkg">包名 / 命令</Label>
-        <Input id="agent-pkg" value={fields.packageName} onChange={e => onChange({ ...fields, packageName: e.target.value })} placeholder="@anthropic/claude-code" />
-      </div>
-    </div>
-  )
-}
-
-function CliTuiForm({ fields, onChange }: { fields: CliTuiFields, onChange: (f: CliTuiFields) => void }) {
-  return (
-    <div className="grid gap-3">
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-profile-name">名称</Label>
-        <Input id="agent-profile-name" value={fields.name} onChange={e => onChange({ ...fields, name: e.target.value })} />
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor="agent-cmd">命令</Label>
-        <Input id="agent-cmd" value={fields.command} onChange={e => onChange({ ...fields, command: e.target.value })} placeholder="claude" />
-      </div>
-    </div>
-  )
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
-
-export function AgentRuntimeSettings() {
-  const [profiles, setProfiles] = useState<AgentProfile[]>([])
+function AddProviderDialog({
+  open,
+  onOpenChange,
+  onAdded,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onAdded: () => void
+}) {
   const [form, setForm] = useState<ProviderFields>(() => defaultFields('openai-compatible'))
-  const [busyAdd, setBusyAdd] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [statusText, setStatusText] = useState<string | null>(null)
   const [statusOk, setStatusOk] = useState<boolean | null>(null)
 
-  const refreshProfiles = useCallback(async () => {
-    if (!ipc) {
-      return
-    }
-    setProfiles(await ipc.agentRuntime.listProfiles() as AgentProfile[])
-  }, [])
-
-  useEffect(() => {
-    refreshProfiles().catch(() => setProfiles([]))
-  }, [refreshProfiles])
-
-  // All provider forms share the same 'name' field, so profileId just slugifies it
   const profileId = useMemo(() => buildProfileId(form.fields.name, form.kind), [form])
 
   const handleProviderChange = useCallback((value: string) => {
@@ -160,11 +97,11 @@ export function AgentRuntimeSettings() {
     setStatusOk(null)
   }, [])
 
-  const handleAddProfile = useCallback(async () => {
+  const handleSubmit = useCallback(async () => {
     if (!ipc) {
       return
     }
-    setBusyAdd(true)
+    setBusy(true)
     setStatusText(null)
     setStatusOk(null)
     try {
@@ -188,28 +125,353 @@ export function AgentRuntimeSettings() {
         credentialRef,
       })
 
-      // Auto-probe after adding
       try {
         const result = await ipc.agentRuntime.probeProfile(profileId)
         setStatusOk(result.ok)
-        setStatusText(result.ok ? `${result.label} 已就绪` : (result.errorText ?? '探测失败'))
+        setStatusText(result.ok ? `${result.label} ready` : (result.errorText ?? 'Probe failed'))
       }
       catch {
         setStatusOk(false)
-        setStatusText('保存成功，但探测失败')
+        setStatusText('Saved, but probe failed')
       }
 
-      await refreshProfiles()
+      onAdded()
+      if (statusOk !== false) {
+        onOpenChange(false)
+        setForm(defaultFields('openai-compatible'))
+      }
     }
     catch (err) {
       setStatusOk(false)
-      setStatusText('保存失败')
+      setStatusText('Failed to save')
       console.error('[AgentRuntimeSettings]', err)
     }
     finally {
-      setBusyAdd(false)
+      setBusy(false)
     }
-  }, [form, profileId, refreshProfiles])
+  }, [form, profileId, onAdded, onOpenChange, statusOk])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Add Provider</DialogTitle>
+          <DialogDescription>
+            Configure a new AI provider profile for use in sessions.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-4 py-2">
+          {/* Provider type selector */}
+          <div className="grid gap-1.5">
+            <Label>Provider Type</Label>
+            <Select value={form.kind} onValueChange={handleProviderChange}>
+              <SelectTrigger data-testid="agent-provider-kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROVIDER_KINDS.map(kind => (
+                  <SelectItem key={kind.id} value={kind.id}>{kind.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Provider-specific fields */}
+          {form.kind === 'openai-compatible' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Name</Label>
+                <Input value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Base URL</Label>
+                <Input value={form.fields.baseUrl} onChange={e => setForm({ ...form, fields: { ...form.fields, baseUrl: e.target.value } })} placeholder="https://api.openai.com/v1" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Model</Label>
+                <Input value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="gpt-4o" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>API Key</Label>
+                <Input type="password" value={form.fields.apiKey} onChange={e => setForm({ ...form, fields: { ...form.fields, apiKey: e.target.value } })} placeholder="sk-..." />
+              </div>
+            </>
+          )}
+
+          {form.kind === 'acp-chat' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Name</Label>
+                <Input value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Distribution</Label>
+                <Select value={form.fields.distributionType} onValueChange={v => setForm({ ...form, fields: { ...form.fields, distributionType: v as 'npx' | 'global' } })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="npx">npx</SelectItem>
+                    <SelectItem value="global">Global install</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Package / Command</Label>
+                <Input value={form.fields.packageName} onChange={e => setForm({ ...form, fields: { ...form.fields, packageName: e.target.value } })} placeholder="@anthropic/claude-code" />
+              </div>
+            </>
+          )}
+
+          {form.kind === 'cli-tui' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Name</Label>
+                <Input value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Command</Label>
+                <Input value={form.fields.command} onChange={e => setForm({ ...form, fields: { ...form.fields, command: e.target.value } })} placeholder="claude" />
+              </div>
+            </>
+          )}
+
+          {/* Status message */}
+          {statusText && (
+            <div className={cn(
+              'flex items-center gap-2 text-[12px]',
+              statusOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
+            )}
+            >
+              {statusOk ? <CheckCircleIcon className="size-3.5" /> : <XCircleIcon className="size-3.5" />}
+              {statusText}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter variant="bare">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={() => void handleSubmit()} disabled={busy}>
+            {busy && <Spinner className="size-3.5" />}
+            Add Provider
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Edit Provider Dialog ───────────────────────────────────────────────────────
+
+function EditProviderDialog({
+  open,
+  onOpenChange,
+  profile,
+  onSaved,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  profile: AgentProfile
+  onSaved: () => void
+}) {
+  const parsed = useMemo(() => {
+    try {
+      return JSON.parse(profile.configJson ?? '{}')
+    }
+    catch {
+      return {}
+    }
+  }, [profile.configJson])
+
+  const [name, setName] = useState(profile.name)
+  const [enabled, setEnabled] = useState(profile.enabled)
+  const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState(parsed.baseUrl ?? '')
+  const [model, setModel] = useState(parsed.model ?? '')
+  const [command, setCommand] = useState(parsed.executable ?? parsed.cmd ?? '')
+  const [busy, setBusy] = useState(false)
+
+  const handleSave = useCallback(async () => {
+    if (!ipc) {
+      return
+    }
+    setBusy(true)
+    try {
+      let credentialRef = profile.credentialRef ?? null
+      if (profile.providerKind === 'openai-compatible' && apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'openai-compatible',
+          label: name,
+          secret: apiKey,
+        })
+        credentialRef = meta.id
+      }
+
+      let configJson = profile.configJson
+      if (profile.providerKind === 'openai-compatible') {
+        configJson = JSON.stringify({ baseUrl, model })
+      }
+      else if (profile.providerKind === 'cli-tui') {
+        configJson = JSON.stringify({ executable: command, args: [] })
+      }
+      else if (profile.providerKind === 'acp-chat') {
+        configJson = JSON.stringify({ ...parsed, cmd: command })
+      }
+
+      await ipc.agentRuntime.upsertProfile({
+        id: profile.id,
+        name,
+        providerKind: profile.providerKind,
+        enabled,
+        configJson,
+        credentialRef,
+      })
+      onSaved()
+      onOpenChange(false)
+    }
+    catch (err) {
+      console.error('[EditProvider]', err)
+    }
+    finally {
+      setBusy(false)
+    }
+  }, [profile, name, enabled, apiKey, baseUrl, model, command, parsed, onSaved, onOpenChange])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" showCloseButton>
+        <DialogHeader>
+          <DialogTitle>Edit Provider</DialogTitle>
+          <DialogDescription>Modify provider configuration.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-1.5">
+            <Label>Name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} />
+          </div>
+
+          {profile.providerKind === 'openai-compatible' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Base URL</Label>
+                <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Model</Label>
+                <Input value={model} onChange={e => setModel(e.target.value)} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>API Key (leave empty to keep current)</Label>
+                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
+              </div>
+            </>
+          )}
+
+          {(profile.providerKind === 'cli-tui' || profile.providerKind === 'acp-chat') && (
+            <div className="grid gap-1.5">
+              <Label>Command</Label>
+              <Input value={command} onChange={e => setCommand(e.target.value)} />
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <Label>Enabled</Label>
+            <button
+              type="button"
+              onClick={() => setEnabled(!enabled)}
+              className={cn(
+                'text-[11px] px-2 py-0.5 rounded-md font-medium transition-colors',
+                enabled
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'bg-foreground/5 text-muted-foreground',
+              )}
+            >
+              {enabled ? 'Active' : 'Disabled'}
+            </button>
+          </div>
+        </div>
+        <DialogFooter variant="bare">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button size="sm" onClick={() => void handleSave()} disabled={busy}>
+            {busy && <Spinner className="size-3.5" />}
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Provider Card ─────────────────────────────────────────────────────────────
+
+function ProviderCard({
+  profile,
+  onRemove,
+  onEdit,
+  onToggle,
+}: {
+  profile: AgentProfile
+  onRemove: () => void
+  onEdit: () => void
+  onToggle: (enabled: boolean) => void
+}) {
+  const kind = PROVIDER_KINDS.find(k => k.id === profile.providerKind)
+  const parsed = useMemo(() => {
+    try {
+      return JSON.parse(profile.configJson ?? '{}')
+    }
+    catch {
+      return {}
+    }
+  }, [profile.configJson])
+
+  const detail = profile.providerKind === 'openai-compatible'
+    ? parsed.model
+    : (parsed.executable ?? parsed.cmd ?? '')
+
+  const subtitle = [kind?.label ?? profile.providerKind, detail].filter(Boolean).join(' · ')
+
+  return (
+    <SettingsRow
+      label={profile.name}
+      description={subtitle}
+      className="group cursor-pointer rounded-lg -mx-3 px-3 hover:bg-accent"
+      onClick={onEdit}
+    >
+      <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+        <Switch
+          size="sm"
+          checked={profile.enabled}
+          onCheckedChange={onToggle}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+        >
+          <TrashIcon className="size-3.5" />
+        </button>
+      </div>
+    </SettingsRow>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function AgentRuntimeSettings() {
+  const [profiles, setProfiles] = useState<AgentProfile[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingProfile, setEditingProfile] = useState<AgentProfile | null>(null)
+
+  const refreshProfiles = useCallback(async () => {
+    if (!ipc) {
+      return
+    }
+    setProfiles(await ipc.agentRuntime.listProfiles() as AgentProfile[])
+  }, [])
+
+  useEffect(() => {
+    refreshProfiles().catch(() => setProfiles([]))
+  }, [refreshProfiles])
 
   const handleRemoveProfile = useCallback(async (id: string) => {
     if (!ipc) {
@@ -219,98 +481,74 @@ export function AgentRuntimeSettings() {
     await refreshProfiles()
   }, [refreshProfiles])
 
+  const handleToggleProfile = useCallback(async (id: string, enabled: boolean) => {
+    if (!ipc) {
+      return
+    }
+    const profile = profiles.find(p => p.id === id)
+    if (!profile) {
+      return
+    }
+    await ipc.agentRuntime.upsertProfile({ ...profile, enabled })
+    await refreshProfiles()
+  }, [profiles, refreshProfiles])
+
   return (
-    <div className="flex flex-col gap-5" data-testid="agent-runtime-settings">
-      <div>
-        <h3 className="font-heading text-base font-semibold">Agents</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          添加 Agent Profile 来在会话中使用不同的 AI 提供商。
-        </p>
-      </div>
-
-      {/* Add form */}
-      <div className="grid gap-3 rounded-lg border bg-card/50 p-4">
-        <div className="grid gap-1.5">
-          <Label htmlFor="agent-provider-kind">类型</Label>
-          <Select value={form.kind} onValueChange={handleProviderChange}>
-            <SelectTrigger id="agent-provider-kind" data-testid="agent-provider-kind">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PROVIDER_KINDS.map(kind => (
-                <SelectItem key={kind.id} value={kind.id}>{kind.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {form.kind === 'openai-compatible' && (
-          <OpenAIForm fields={form.fields} onChange={fields => setForm({ kind: 'openai-compatible', fields })} />
+    <div className="flex flex-col gap-1" data-testid="agent-runtime-settings">
+      <SettingsSectionHeader
+        title="Providers"
+        description="Configure AI provider profiles for use in sessions."
+        action={(
+          <Button size="sm" onClick={() => setDialogOpen(true)}>
+            <PlusIcon className="size-3.5" />
+            Add
+          </Button>
         )}
-        {form.kind === 'acp-chat' && (
-          <AcpForm fields={form.fields} onChange={fields => setForm({ kind: 'acp-chat', fields })} />
-        )}
-        {form.kind === 'cli-tui' && (
-          <CliTuiForm fields={form.fields} onChange={fields => setForm({ kind: 'cli-tui', fields })} />
-        )}
+      />
 
-        <Button onClick={handleAddProfile} disabled={busyAdd} className="w-fit">
-          <PlusIcon />
-          添加
-        </Button>
-      </div>
+      <SettingsDivider />
 
-      {statusText && (
-        <div
-          className={cn(
-            'flex items-center gap-2 rounded-md border px-3 py-2 text-sm',
-            statusOk === true && 'border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400',
-            statusOk === false && 'border-destructive/30 bg-destructive/5 text-destructive',
-            statusOk === null && 'border-border bg-background text-muted-foreground',
-          )}
-        >
-          {statusOk === true && <CheckCircleIcon className="size-3.5 shrink-0" />}
-          {statusOk === false && <XCircleIcon className="size-3.5 shrink-0" />}
-          {statusText}
-        </div>
-      )}
-
-      {/* Profile list */}
+      {/* Provider cards */}
       {profiles.length === 0
         ? (
-          <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-            还没有 Agent Profile
+          <div className="py-8 text-center text-[12px] text-muted-foreground">
+            No providers configured yet.
           </div>
         )
         : (
-          <div className="flex flex-col gap-2" data-testid="agent-profile-list">
+          <div className="flex flex-col">
             {profiles.map(profile => (
-              <div key={profile.id} className="flex items-center gap-3 rounded-lg border bg-card/50 px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">{profile.name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {PROVIDER_KINDS.find(k => k.id === profile.providerKind)?.label ?? profile.providerKind}
-                  </div>
-                </div>
-                <span className={cn(
-                  'rounded px-2 py-0.5 text-xs',
-                  profile.enabled ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
-                )}
-                >
-                  {profile.enabled ? '已启用' : '已禁用'}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label="移除 Profile"
-                  onClick={() => handleRemoveProfile(profile.id)}
-                >
-                  <TrashIcon />
-                </Button>
-              </div>
+              <ProviderCard
+                key={profile.id}
+                profile={profile}
+                onRemove={() => void handleRemoveProfile(profile.id)}
+                onEdit={() => setEditingProfile(profile)}
+                onToggle={enabled => void handleToggleProfile(profile.id, enabled)}
+              />
             ))}
           </div>
         )}
+
+      {/* Add dialog */}
+      <AddProviderDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onAdded={() => void refreshProfiles()}
+      />
+
+      {/* Edit dialog */}
+      {editingProfile && (
+        <EditProviderDialog
+          open={!!editingProfile}
+          onOpenChange={(open) => {
+            if (!open) {
+              setEditingProfile(null)
+            }
+          }}
+          profile={editingProfile}
+          onSaved={() => void refreshProfiles()}
+        />
+      )}
     </div>
   )
 }

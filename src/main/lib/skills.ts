@@ -13,7 +13,7 @@ import { getBundledResourcePath } from './bundled-resources'
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
 const UNSAFE_PATH_RE = /[/\\]|\.\./
-const SKILLS_DIR_PARTS = ['.agents', 'skills'] as const
+const SKILLS_DIR_PARTS = ['.cradle', 'skills'] as const
 
 const SCOPE_PRIORITY: Record<SkillScope, number> = {
   builtin: 0,
@@ -154,7 +154,7 @@ export async function createSkillDocument(scope: SkillScope, input: CreateSkillI
   const skillDir = path.join(rootDir, toSkillDirName(input.name))
 
   if (fs.existsSync(skillDir)) {
-    throw new Error(`Skill directory already exists: ${skillDir}`)
+    throw new Error(`Skill "${input.name}" already exists`)
   }
 
   await mkdir(skillDir, { recursive: true })
@@ -197,7 +197,7 @@ export async function updateSkillDocument(input: UpdateSkillInput): Promise<Skil
   const targetRootDir = existing.rootDir
   const targetSkillDir = path.join(targetRootDir, toSkillDirName(input.document.name))
   if (targetSkillDir !== existing.skillDir && fs.existsSync(targetSkillDir)) {
-    throw new Error(`Target skill directory already exists: ${targetSkillDir}`)
+    throw new Error(`Skill "${input.name}" already exists at target location`)
   }
 
   if (targetSkillDir !== existing.skillDir) {
@@ -305,16 +305,45 @@ function scanAllScopes(workspacePath?: string): ScopeScanResult[] {
   })
 
   const globalRoot = resolveScopeRoot('global', workspacePath)
+  const globalEntries = scanDirectory(globalRoot, 'global')
+
+  // Also read from ~/.agents/skills for compatibility (read-only, never write)
+  const agentsCompatRoot = path.join(os.homedir(), '.agents', 'skills')
+  if (agentsCompatRoot !== globalRoot) {
+    const compatEntries = scanDirectory(agentsCompatRoot, 'global')
+    // Only add entries that don't already exist in cradle's global
+    const existingNames = new Set(globalEntries.map(e => e.name))
+    for (const entry of compatEntries) {
+      if (!existingNames.has(entry.name)) {
+        globalEntries.push(entry)
+      }
+    }
+  }
+
   results.push({
     scope: 'global',
-    entries: scanDirectory(globalRoot, 'global'),
+    entries: globalEntries,
   })
 
   if (workspacePath) {
     const workspaceRoot = resolveScopeRoot('workspace', workspacePath)
+    const workspaceEntries = scanDirectory(workspaceRoot, 'workspace')
+
+    // Also read from {workspace}/.agents/skills for compatibility (read-only)
+    const wsAgentsCompatRoot = path.join(workspacePath, '.agents', 'skills')
+    if (wsAgentsCompatRoot !== workspaceRoot) {
+      const compatEntries = scanDirectory(wsAgentsCompatRoot, 'workspace')
+      const existingNames = new Set(workspaceEntries.map(e => e.name))
+      for (const entry of compatEntries) {
+        if (!existingNames.has(entry.name)) {
+          workspaceEntries.push(entry)
+        }
+      }
+    }
+
     results.push({
       scope: 'workspace',
-      entries: scanDirectory(workspaceRoot, 'workspace'),
+      entries: workspaceEntries,
     })
   }
 
