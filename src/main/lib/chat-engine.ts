@@ -20,7 +20,7 @@ import { AcpConnectionManager } from './acp-connection'
 import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
 import { getAgentContextDevtoolStore } from './agent-context-devtool-store'
 import { readBundledResource } from './bundled-resources'
-import { buildSkillCatalog, scanSkills } from './skills'
+import { buildSkillCatalog, parseAgentSkillConfig, scanSkills, selectSkillCatalogEntries } from './skills'
 import { ThreadSearchEngine } from './thread-search'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -578,6 +578,7 @@ export class ChatEngine {
       let history: Array<{ role: 'user' | 'assistant', content: string }> | undefined
       let agentName: string | null = null
       let skillEntries: ReturnType<typeof scanSkills> = []
+      let agentSkillConfig = parseAgentSkillConfig()
 
       const db = getDb()
       const session = db.select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
@@ -592,6 +593,7 @@ export class ChatEngine {
             if (typeof cfg.systemPrompt === 'string' && cfg.systemPrompt.length > 0) {
               systemPrompt = cfg.systemPrompt
             }
+            agentSkillConfig = parseAgentSkillConfig(agent.configJson)
           }
           catch {
             // Invalid JSON in configJson — ignore
@@ -638,7 +640,10 @@ export class ChatEngine {
         const workspace = session?.workspaceId
           ? db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
           : undefined
-        const skillEntries_ = scanSkills(workspace?.path)
+        const skillEntries_ = selectSkillCatalogEntries(
+          scanSkills(workspace?.path),
+          agentSkillConfig,
+        )
         skillEntries = skillEntries_
         const catalog = buildSkillCatalog(skillEntries_)
 

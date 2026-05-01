@@ -3,12 +3,12 @@
 # Workspace Detail
 
 Project detail page for viewing and editing workspace configuration files.
-Uses Tiptap for WYSIWYG Markdown editing of README.md and AGENTS.md.
-Shiki provides syntax highlighting for code blocks with a language selector.
+Uses Tiptap for WYSIWYG Markdown editing of AGENTS.md plus dedicated panes for workflow rules and workspace skills.
+Shiki provides syntax highlighting for code blocks with a language selector where rich text editing is used.
 
 ## Files
 
-- **workspace-detail-page.tsx**: Main page component with tab system (Overview + Workflow Rules) and two-column layout
+- **workspace-detail-page.tsx**: Main page component with tab system (Overview + Workflow Rules + Skills) and two-column layout
 - **workspace-workflow-rules.tsx**: Workflow rules editor with Agent scope selector, manages global and per-Agent rules
 - **markdown-editor.tsx**: Tiptap-based WYSIWYG Markdown editor with auto-save
 - **shiki-code-block.tsx**: Custom Tiptap extension using Shiki for code block highlighting

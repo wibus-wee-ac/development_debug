@@ -1,3 +1,7 @@
+// Input: Cucumber World base, Playwright Electron launcher, filesystem sandbox helpers
+// Output: CradleWorld test harness exposing Electron app/page handles plus isolated HOME and userData paths
+// Position: Shared end-to-end support world used by all Cucumber features and step definitions
+
 import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -19,6 +23,9 @@ interface WorldParameters {
 export class CradleWorld extends World {
   app!: ElectronApplication
   page!: Page
+  skillWorkspaceDir?: string
+  skillImportSourceDir?: string
+  skillExportDir?: string
 
   constructor(options: IWorldOptions) {
     super(options)
@@ -41,13 +48,19 @@ export class CradleWorld extends World {
     return join(homedir(), '.config', name)
   }
 
+  static get e2eHomePath(): string {
+    return join(CradleWorld.e2eUserDataPath, 'home')
+  }
+
   async launch(): Promise<void> {
     const userDataPath = CradleWorld.e2eUserDataPath
+    const homePath = CradleWorld.e2eHomePath
     // Wipe entire userData to clear DB, localStorage, and persisted store state
     if (existsSync(userDataPath)) {
       rmSync(userDataPath, { recursive: true })
     }
     mkdirSync(userDataPath, { recursive: true })
+    mkdirSync(homePath, { recursive: true })
 
     this.app = await electron.launch({
       args: [
@@ -59,6 +72,8 @@ export class CradleWorld extends World {
       env: {
         ...process.env,
         NODE_ENV: 'test',
+        HOME: homePath,
+        USERPROFILE: homePath,
       },
     })
 

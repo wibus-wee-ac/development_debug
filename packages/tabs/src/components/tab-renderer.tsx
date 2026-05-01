@@ -2,9 +2,8 @@
 // Output: TabRenderer — renders all open tabs wrapped in Activity, with optional data loaders
 // Position: Main content area component managing tab visibility via React 19 Activity
 
-import { Activity, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Activity, Suspense, useEffect, useRef, useState } from 'react'
 
-import type { TabsContextValue } from '../context'
 import { useTabsContext } from '../context'
 import type { TabDefinition } from '../define-tab'
 import type { TabInstance } from '../store'

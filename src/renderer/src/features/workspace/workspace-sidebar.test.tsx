@@ -50,8 +50,8 @@ vi.mock('@renderer/components/ui/menu', () => ({
   MenuSeparator: () => <hr />,
 }))
 
-vi.mock('@renderer/features/search', () => ({
-  ThreadSearchDialog: () => null,
+vi.mock('@renderer/features/search/global-search-dialog', () => ({
+  GlobalSearchDialog: () => null,
 }))
 
 vi.mock('@renderer/hooks/use-shortcut', () => ({
@@ -60,7 +60,7 @@ vi.mock('@renderer/hooks/use-shortcut', () => ({
 
 vi.mock('@renderer/components/ui/tooltip', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  TooltipTrigger: ({ children, asChild }: { children: React.ReactNode, asChild?: boolean }) => <>{children}</>,
+  TooltipTrigger: ({ children }: { children: React.ReactNode, asChild?: boolean }) => <>{children}</>,
   TooltipContent: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))

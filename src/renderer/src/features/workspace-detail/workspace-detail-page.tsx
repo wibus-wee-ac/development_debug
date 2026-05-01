@@ -5,6 +5,7 @@
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { Button } from '@renderer/components/ui/button'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
+import { SkillManager } from '@renderer/features/skills/skill-manager'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
@@ -329,7 +330,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules' | 'skills'>('overview')
   const [workflowContent, setWorkflowContent] = useState<string | null>(null)
 
   const { data: workspace } = useQuery({
@@ -393,7 +394,10 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     if (activeTab === 'overview') {
       return parseHeadings(agents.content, 'AGENTS.md')
     }
-    return parseHeadings(workflowContent, 'Workflow Rules')
+    if (activeTab === 'workflow-rules') {
+      return parseHeadings(workflowContent, 'Workflow Rules')
+    }
+    return []
   }, [activeTab, agents.content, workflowContent])
 
   const handleRename = useCallback(async (newName: string) => {
@@ -487,7 +491,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-background">
+    <div className="flex h-full overflow-hidden bg-background" data-testid="workspace-detail-page">
       {/* ── Main area with floating composer ────────────────── */}
       <div className="relative flex-1 min-w-0">
         {/* Scrollable content */}
@@ -508,12 +512,14 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
               {([
                 { id: 'overview', label: 'Overview', icon: FileTextIcon },
                 { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
+                { id: 'skills', label: 'Skills', icon: PencilIcon },
               ] as const).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   type="button"
                   ref={(el) => { tabRef.current[id] = el }}
                   onClick={() => setActiveTab(id)}
+                  data-testid={`workspace-detail-tab-${id}`}
                   className={cn(
                     'relative flex items-center gap-1.5 px-3 py-2 text-[13px] whitespace-nowrap transition-colors select-none',
                     activeTab === id
@@ -554,6 +560,16 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
               <WorkspaceWorkflowRules
                 workspaceId={workspaceId}
                 onContentChange={setWorkflowContent}
+              />
+            </div>
+
+            <div className={activeTab === 'skills' ? undefined : 'hidden'}>
+              <SkillManager
+                workspaceId={workspaceId}
+                editableScope="workspace"
+                pageTestId="workspace-skills-page"
+                title="Workspace Skills"
+                description="Manage repository-specific skills under .agents/skills while reviewing inherited global and built-in skills."
               />
             </div>
 

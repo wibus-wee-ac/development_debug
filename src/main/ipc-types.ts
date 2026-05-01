@@ -16,6 +16,7 @@ import type { PreferencesService } from './services/preferences'
 import type { PtyService } from './services/pty'
 import type { SearchService } from './services/search'
 import type { SessionService } from './services/session'
+import type { SkillsService } from './services/skills'
 import type { UsageService } from './services/usage'
 import type { WindowService } from './services/window'
 import type { WorkflowRulesService } from './services/workflow-rules'
@@ -41,6 +42,7 @@ export type IpcServices = MergeIpcService<{
   git: typeof GitService
   kanban: typeof KanbanService
   usage: typeof UsageService
+  skills: typeof SkillsService
   workflowRules: typeof WorkflowRulesService
 }>
 
@@ -74,3 +76,13 @@ export type {
 export type { GitBranches, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './services/git'
 export type { DailyUsage, UsageSummary } from './services/usage'
 export type { AcpDevtoolEvent } from '@cradle/ipc'
+export type {
+  AgentSkillConfig,
+  AgentSkillReference,
+  CreateSkillInput,
+  SkillCatalogEntry,
+  SkillDocument,
+  SkillInventoryEntry,
+  SkillScope,
+  UpdateSkillInput,
+} from './lib/skills'

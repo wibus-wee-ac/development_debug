@@ -10,7 +10,7 @@ import type { TabDefinition } from './define-tab'
 // ─── Public types ─────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line ts/no-explicit-any
-export type TabRegistry = Record<string, TabDefinition<string, any>>
+export type TabRegistry = Record<string, TabDefinition<string, any, any>>
 
 export interface TabInstance {
   id: string

@@ -15,3 +15,4 @@ Add focused regression coverage here for transport, orchestration, and utility c
 - **acp-registry.test.ts**: Covers remote ACP registry fetch and distribution filtering
 - **ipc-devtool-backend.test.ts**: Covers IPC devtool event buffering and subscriber delivery
 - **session-preferences.test.ts**: Covers stored model/config preference capture and reapplication rules
+- **skills.test.ts**: Covers filesystem-backed skill scanning priority, inventory flags, CRUD, import/export, and agent skill config parsing

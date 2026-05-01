@@ -29,6 +29,7 @@ import { PreferencesService } from './services/preferences'
 import { PtyService } from './services/pty'
 import { SearchService } from './services/search'
 import { SessionService } from './services/session'
+import { SkillsService } from './services/skills'
 import { UsageService } from './services/usage'
 import { WindowService } from './services/window'
 import { WorkflowRulesService } from './services/workflow-rules'
@@ -155,6 +156,7 @@ app.whenReady().then(() => {
     GitService,
     KanbanService,
     UsageService,
+    SkillsService,
     WorkflowRulesService,
   ] as const)
 

@@ -5,6 +5,7 @@
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { AgentList } from '@renderer/features/agent-management/agent-list'
 import { AgentRuntimeSettings } from '@renderer/features/agent-management/agent-runtime-settings'
+import { GlobalSkillsSettings } from '@renderer/features/skills/global-skills-settings'
 
 import { AppearanceSettings } from './appearance-settings'
 
@@ -12,6 +13,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   providers: AgentRuntimeSettings,
   agents: AgentList,
+  skills: GlobalSkillsSettings,
 }
 
 interface SettingsContentProps {

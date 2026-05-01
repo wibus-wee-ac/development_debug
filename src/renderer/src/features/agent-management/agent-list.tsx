@@ -1,8 +1,8 @@
-// Input: useAgents hook, useAgentProfiles, useAgentModels, coss UI, DiceBear API, motion/react
-// Output: AgentList — Settings page for managing Agent identities with character-sheet creation UX
+// Input: useAgents hook, useAgentProfiles, useAgentModels, AgentSkillsConfig, coss UI, DiceBear API, motion/react
+// Output: AgentList — Settings page for managing Agent identities with character-sheet creation UX and per-agent skills
 // Position: Settings section rendered under "Agents" tab; replaces nothing (new feature)
 
-import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor } from '@main/ipc-types'
+import type { Agent, AgentProfile, AgentSkillConfig, AgentSkillReference, CreateAgentInput, ModelDescriptor } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
@@ -10,6 +10,7 @@ import { Switch } from '@renderer/components/ui/switch'
 import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
+import { AgentSkillsConfig } from '@renderer/features/skills'
 import { cn } from '@renderer/lib/cn'
 import {
   BrainIcon,
@@ -34,6 +35,12 @@ const AVATAR_STYLES = [
 
 type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 
+interface AgentEditorConfigState {
+  baseConfig: Record<string, unknown>
+  systemPrompt: string
+  skills: AgentSkillConfig
+}
+
 function buildAvatarUrl(style: string, seed: string): string {
   return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
 }
@@ -46,6 +53,72 @@ const KIND_LABELS: Record<string, string> = {
   'openai-compatible': 'OpenAI',
   'acp-chat': 'ACP',
   'cli-tui': 'CLI',
+}
+
+function parseAgentEditorConfig(configJson?: string | null): AgentEditorConfigState {
+  try {
+    const parsed = JSON.parse(configJson ?? '{}') as Record<string, unknown>
+    const systemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : ''
+    const rawSkills = parsed.skills
+    const skills = rawSkills && typeof rawSkills === 'object' && !Array.isArray(rawSkills)
+      ? {
+          mode: (rawSkills as { mode?: unknown }).mode === 'selected' ? 'selected' as const : 'inherit' as const,
+          selected: Array.isArray((rawSkills as { selected?: unknown }).selected)
+            ? ((rawSkills as { selected: unknown[] }).selected.flatMap((item) => {
+                if (!item || typeof item !== 'object') {
+                  return []
+                }
+                const ref = item as Record<string, unknown>
+                const scope = ref.scope
+                const name = ref.name
+                if ((scope === 'builtin' || scope === 'global' || scope === 'workspace') && typeof name === 'string') {
+                  return [{ scope: scope as AgentSkillReference['scope'], name }]
+                }
+                return []
+              }))
+            : [],
+        }
+      : { mode: 'inherit' as const, selected: [] }
+
+    const { systemPrompt: _discardSystemPrompt, skills: _discardSkills, ...baseConfig } = parsed
+    return {
+      baseConfig,
+      systemPrompt,
+      skills,
+    }
+  }
+  catch {
+    return {
+      baseConfig: {},
+      systemPrompt: '',
+      skills: { mode: 'inherit', selected: [] },
+    }
+  }
+}
+
+function stringifyAgentEditorConfig(config: AgentEditorConfigState): string {
+  const nextConfig: Record<string, unknown> = {
+    ...config.baseConfig,
+  }
+
+  if (config.systemPrompt.trim()) {
+    nextConfig.systemPrompt = config.systemPrompt.trim()
+  }
+  else {
+    delete nextConfig.systemPrompt
+  }
+
+  if (config.skills.mode === 'selected' || (config.skills.selected?.length ?? 0) > 0) {
+    nextConfig.skills = {
+      mode: config.skills.mode === 'selected' ? 'selected' : 'inherit',
+      selected: config.skills.selected ?? [],
+    }
+  }
+  else {
+    delete nextConfig.skills
+  }
+
+  return JSON.stringify(nextConfig)
 }
 
 // ── Agent Editor — Character Sheet ────────────────────────────────────────────
@@ -73,15 +146,9 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(
     (initial?.thinkingEffort as ThinkingEffort) ?? 'auto',
   )
-  const [systemPrompt, setSystemPrompt] = useState(() => {
-    try {
-      const cfg = JSON.parse(initial?.configJson ?? '{}')
-      return typeof cfg.systemPrompt === 'string' ? cfg.systemPrompt : ''
-    }
-    catch {
-      return ''
-    }
-  })
+  const initialConfig = useMemo(() => parseAgentEditorConfig(initial?.configJson), [initial?.configJson])
+  const [systemPrompt, setSystemPrompt] = useState(initialConfig.systemPrompt)
+  const [skillConfig, setSkillConfig] = useState<AgentSkillConfig>(initialConfig.skills)
   const [avatarSpinKey, setAvatarSpinKey] = useState(0)
   const nameRef = useRef<HTMLInputElement>(null)
 
@@ -106,9 +173,13 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
       providerId: providerId!,
       modelId,
       thinkingEffort,
-      configJson: JSON.stringify({ systemPrompt: systemPrompt.trim() || undefined }),
+      configJson: stringifyAgentEditorConfig({
+        baseConfig: initialConfig.baseConfig,
+        systemPrompt,
+        skills: skillConfig,
+      }),
     })
-  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, systemPrompt, onSave])
+  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, initialConfig.baseConfig, systemPrompt, skillConfig, onSave])
 
   const isAuto = thinkingEffort === 'auto'
 
@@ -301,6 +372,11 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
                   )}
                 />
               </div>
+
+              <AgentSkillsConfig
+                value={skillConfig}
+                onChange={setSkillConfig}
+              />
             </div>
 
             {/* Actions — right-aligned at bottom */}

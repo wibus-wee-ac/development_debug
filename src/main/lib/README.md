@@ -21,4 +21,4 @@ They are consumed by `src/main/services/` IPC handlers.
 - **thread-search.ts**: ThreadSearchEngine singleton — lazy-loaded jieba tokenizer + in-memory scored search over sessions/messages; returns hits with title/snippet match ranges for renderer highlighting
 - **workflow-rules.ts**: Filesystem-based workflow rules management — reads/writes Markdown rule files stored under `~/.cradle/workflows/{workspaceId}/` with workspace-level global rules and per-agent-profile specific rules
 - **bundled-resources.ts**: Dev/prod path resolver for files in the `resources/` directory that are bundled into the app binary (system workflow, built-in skills)
-- **skills.ts**: Scans three tiers of `.agents/skills/` directories (built-in → user → project) for SKILL.md files, parses frontmatter, and builds the skill catalog text block for system prompt injection
+- **skills.ts**: Filesystem-backed skills library — scans built-in/global/workspace tiers, reads and writes `SKILL.md` packages, supports import/export, and filters injected catalogs using per-agent skill references
