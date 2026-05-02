@@ -553,16 +553,16 @@ export function SkillManager({
                       <span className="block text-[13px] font-medium text-foreground truncate">
                         {entry.name}
                       </span>
-                      <span className="block text-[11px] text-muted-foreground/60 truncate">
+                      <span className="block text-[11px] text-muted-foreground/60">
                         {entry.description}
                       </span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground/40 group-hover:hidden">
+                    <span className="text-[10px] text-muted-foreground/40">
                       {GROUP_LABELS[entry.scope]}
                     </span>
                     {isEditable && (
                       <Trash2Icon
-                        className="hidden size-3.5 shrink-0 text-muted-foreground/40 hover:text-destructive group-hover:block"
+                        className="opacity-0 size-3.5 shrink-0 text-muted-foreground/40 hover:text-destructive group-hover:opacity-100 transition-opacity"
                         onClick={(e) => {
                           e.stopPropagation()
                           void deleteSkill.mutateAsync({ scope: entry.scope, name: entry.name })
