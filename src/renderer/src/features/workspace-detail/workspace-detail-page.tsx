@@ -293,7 +293,7 @@ function FloatingToc({
                       'absolute flex items-center w-full text-left transition-colors',
                       isActive
                         ? 'text-foreground'
-                        : 'text-muted-foreground/60 hover:text-muted-foreground/70',
+                        : 'text-muted-foreground hover:text-muted-foreground/70',
                     )}
                     style={{
                       top: i * itemH,
