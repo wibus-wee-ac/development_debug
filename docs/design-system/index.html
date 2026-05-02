@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cradle Design Language</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <style>
+    /* ── Tokens ─────────────────────────────────────────────────── */
+    :root {
+      --background: #ffffff;
+      --foreground: #262626;
+      --chrome: #f5f5f5;
+      --chrome-foreground: #595959;
+      --chrome-border: rgba(0, 0, 0, 0.06);
+      --muted: rgba(0, 0, 0, 0.04);
+      --muted-foreground: #737373;
+      --border: rgba(0, 0, 0, 0.08);
+      --ring: #a3a3a3;
+      --primary: #262626;
+
+      --accent-workspace: #3b82f6;
+      --accent-session: #8b5cf6;
+      --accent-scope-ws: #10b981;
+      --accent-agent: #f43f5e;
+      --accent-legacy: #f59e0b;
+      --accent-diff: #f97316;
+      --accent-summary: #ec4899;
+      --accent-global: #0ea5e9;
+
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-base: 10px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+
+      --font-sans: 'Geist Variable', 'Inter', system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+
+      /* ── Pre-resolved text hierarchy (never stack opacity on top of these) ── */
+      /* Radix principle: resolve at token definition time, not at use time      */
+      /* All contrast ratios vs --background (#ffffff light / #141414 dark)      */
+      --text-primary:   #262626;  /* 15.6:1 AAA — body, headings, primary labels    */
+      --text-secondary: #737373;  /*  4.54:1 AA — descriptions, secondary labels    */
+      --text-tertiary:  #767676;  /*  4.53:1 AA — meta, timestamps, captions        */
+      --text-dim:       #a3a3a3;  /*  2.43:1 Exempt — decorative / disabled only    */
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background: #141414;
+        --foreground: #f5f5f5;
+        --chrome: #111111;
+        --chrome-foreground: #8a8a8a;
+        --chrome-border: rgba(255, 255, 255, 0.05);
+        --muted: rgba(255, 255, 255, 0.04);
+        --muted-foreground: #737373;
+        --border: rgba(255, 255, 255, 0.06);
+        --primary: #f5f5f5;
+
+        --text-primary:   #f5f5f5;  /* 17.6:1 AAA */
+        --text-secondary: #a3a3a3;  /*  7.5:1 AAA */
+        --text-tertiary:  #8a8a8a;  /*  5.3:1 AA  */
+        --text-dim:       #525252;  /*  1.6:1 Exempt */
+      }
+    }
+
+    /* ── Reset ──────────────────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--chrome);
+      color: var(--foreground);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Page shell: mimics Cradle two-tone chrome/content layout ─ */
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      grid-template-rows: 40px 1fr 36px;
+      grid-template-areas:
+        "header  header"
+        "sidebar content"
+        "footer  footer";
+    }
+
+    .shell-header {
+      grid-area: header;
+      background: var(--chrome);
+      border-bottom: 1px solid var(--chrome-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+    }
+
+    .traffic-lights {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .traffic-lights span {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+    }
+
+    .traffic-lights .close {
+      background: #ff5f57;
+    }
+
+    .traffic-lights .min {
+      background: #ffbd2e;
+    }
+
+    .traffic-lights .max {
+      background: #28c940;
+    }
+
+    .shell-header-title {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-left: 8px;
+    }
+
+    .shell-header-badge {
+      margin-left: auto;
+      font-size: 10px;
+      color: var(--text-tertiary);
+      font-family: var(--font-mono);
+    }
+
+    .shell-sidebar {
+      grid-area: sidebar;
+      background: var(--chrome);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      border-right: 1px solid var(--chrome-border);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: var(--radius-lg);
+      font-size: 12px;
+      color: var(--chrome-foreground);
+      cursor: pointer;
+      transition: background 0.1s;
+      text-decoration: none;
+    }
+
+    .nav-item:hover {
+      background: var(--muted);
+    }
+
+    .nav-item.active {
+      background: var(--muted);
+      color: var(--foreground);
+    }
+
+    .nav-item-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+
+    .shell-content {
+      grid-area: content;
+      background: var(--chrome);
+      padding: 4px 8px 4px 4px;
+    }
+
+    .content-card {
+      background: var(--background);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      height: 100%;
+      overflow-y: auto;
+    }
+
+    .shell-footer {
+      grid-area: footer;
+      background: var(--chrome);
+      border-top: 1px solid var(--chrome-border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 16px;
+    }
+
+    .footer-pill {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+    }
+
+    /* ── Content sections ──────────────────────────────────────── */
+    .section {
+      padding: 48px 56px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .section:last-child {
+      border-bottom: none;
+    }
+
+    /* ── Hero ───────────────────────────────────────────────────── */
+    .hero {
+      padding: 64px 56px 48px;
+    }
+
+    .hero-eyebrow {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+
+    .hero-title {
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--foreground);
+    }
+
+    .hero-subtitle {
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--muted-foreground);
+      max-width: 480px;
+      line-height: 1.6;
+      text-wrap: pretty;
+    }
+
+    .hero-pills {
+      margin-top: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .hero-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 4px 12px;
+      font-size: 11px;
+      color: var(--foreground);
+    }
+
+    .hero-pill .label {
+      color: var(--text-tertiary);
+    }
+
+    /* ── Typography section ─────────────────────────────────────── */
+    .spec-label {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      letter-spacing: 0.04em;
+      margin-bottom: 20px;
+    }
+
+    .type-row {
+      display: flex;
+      align-items: baseline;
+      gap: 24px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .type-row:last-child {
+      border-bottom: none;
+    }
+
+    .type-sample {
+      flex: 1;
+      color: var(--foreground);
+    }
+
+    .type-meta {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      width: 200px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+
+    /* ── Color swatches ─────────────────────────────────────────── */
+    .swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 8px;
+    }
+
+    .swatch {
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .swatch-color {
+      height: 48px;
+    }
+
+    .swatch-info {
+      padding: 8px 10px;
+      background: var(--background);
+    }
+
+    .swatch-name {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--foreground);
+    }
+
+    .swatch-val {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      margin-top: 1px;
+    }
+
+    /* ── Accent set ─────────────────────────────────────────────── */
+    .accent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 8px;
+    }
+
+    .accent-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 10px 12px;
+    }
+
+    .accent-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .accent-card-text .name {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--foreground);
+    }
+
+    .accent-card-text .scope {
+      font-size: 10px;
+      color: var(--text-tertiary);
+    }
+
+    /* ── Spacing scale ──────────────────────────────────────────── */
+    .spacing-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .spacing-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .spacing-bar-wrap {
+      flex: 1;
+      height: 6px;
+      background: var(--muted);
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .spacing-bar {
+      height: 100%;
+      border-radius: 9999px;
+      background: rgba(38, 38, 38, 0.18);
+    }
+
+    .spacing-label {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      width: 60px;
+    }
+
+    .spacing-val {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--foreground);
+      width: 40px;
+      text-align: right;
+    }
+
+    /* ── Component demos ──────────────────────────────────────────*/
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .demo-cell {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .demo-cell-head {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      background: var(--muted);
+    }
+
+    .demo-cell-body {
+      padding: 20px 16px;
+      background: var(--background);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ── Component atoms ─────────────────────────────────────────── */
+
+    /* List row */
+    .demo-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 8px;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: background 0.1s;
+      font-size: 12px;
+    }
+
+    .demo-row:hover {
+      background: var(--muted);
+    }
+
+    .demo-row-icon {
+      width: 14px;
+      height: 14px;
+      background: var(--text-dim);
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .demo-row-title {
+      flex: 1;
+      color: var(--foreground);
+    }
+
+    .demo-row-meta {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+    }
+
+    /* Activity card */
+    .activity-card-wrap {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .activity-card {
+      flex-shrink: 0;
+      width: 128px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    }
+
+    .activity-card-icon {
+      height: 56px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .activity-card-body {
+      padding: 8px 10px;
+      background: var(--background);
+    }
+
+    .activity-card-title {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--foreground);
+      line-height: 1.3;
+    }
+
+    .activity-card-meta {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+    }
+
+    /* Stat pill */
+    .stat-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      padding: 4px 12px;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-tertiary);
+    }
+
+    .stat-value {
+      font-size: 12px;
+      font-weight: 500;
+      font-variant-numeric: tabular-nums;
+      color: var(--foreground);
+    }
+
+    /* Scope badge */
+    .scope-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-lg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+    }
+
+    /* Section label */
+    .section-label-demo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px 6px;
+    }
+
+    .section-label-text {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-tertiary);
+    }
+
+    .section-label-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .section-label-count {
+      border-radius: 9999px;
+      background: var(--muted);
+      padding: 0 6px;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-secondary);
+    }
+
+    /* Composer */
+    .composer-demo {
+      border-radius: var(--radius-xl);
+      border: 1px solid rgba(0, 0, 0, 0.10);
+      background: var(--background);
+      box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+      overflow: hidden;
+    }
+
+    .composer-textarea {
+      display: block;
+      width: 100%;
+      padding: 14px 16px 8px;
+      font-size: 13px;
+      font-family: var(--font-sans);
+      color: var(--text-tertiary);
+      background: transparent;
+      border: none;
+      outline: none;
+      resize: none;
+      min-height: 48px;
+    }
+
+    .composer-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+    }
+
+    .composer-btn {
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--text-tertiary);
+      padding: 4px 8px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+    }
+
+    /* Message bubbles */
+    .message-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .message-row.user {
+      justify-content: flex-end;
+    }
+
+    .bubble {
+      max-width: 70%;
+      border-radius: var(--radius-lg);
+      padding: 8px 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .bubble.user {
+      background: var(--muted);
+      color: var(--foreground);
+      border-bottom-right-radius: 3px;
+    }
+
+    .bubble.assistant {
+      color: var(--foreground);
+      padding-left: 0;
+    }
+
+    /* Tab bar */
+    .tab-bar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      background: var(--chrome);
+    }
+
+    .tab-btn {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--radius-md);
+      font-size: 11px;
+      cursor: pointer;
+      z-index: 1;
+      color: var(--muted-foreground);
+      user-select: none;
+    }
+
+    .tab-btn.active {
+      color: var(--foreground);
+    }
+
+    .tab-pill-bg {
+      position: absolute;
+      inset: 0;
+      border-radius: var(--radius-md);
+      background: var(--muted);
+      z-index: -1;
+    }
+
+    /* Reasoning block */
+    .reasoning-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: var(--radius-md);
+      font-size: 11px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .reasoning-toggle:hover {
+      color: var(--foreground);
+      background: var(--muted);
+    }
+
+    .reasoning-body {
+      margin-top: 4px;
+      margin-left: 8px;
+      border-left: 2px solid rgba(38, 38, 38, 0.08);
+      padding-left: 12px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    /* ── Section headings ───────────────────────────────────────── */
+    .section-heading {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--foreground);
+      margin-bottom: 6px;
+      letter-spacing: -0.005em;
+    }
+
+    .section-desc {
+      font-size: 12px;
+      color: var(--muted-foreground);
+      margin-bottom: 24px;
+      line-height: 1.6;
+      max-width: 520px;
+      text-wrap: pretty;
+    }
+
+    /* ── Elevation tier diagram ─────────────────────────────────── */
+    .elevation-tiers {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .tier-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .tier-demo {
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tier-info {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .tier-name {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--foreground);
+    }
+
+    .tier-desc {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      margin-top: 2px;
+    }
+
+    /* ── Scrollbar ──────────────────────────────────────────────── */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="shell">
+
+    <!-- Header -->
+    <header class="shell-header">
+      <div class="traffic-lights">
+        <span class="close"></span>
+        <span class="min"></span>
+        <span class="max"></span>
+      </div>
+      <span class="shell-header-title">Cradle Design Language</span>
+      <span class="shell-header-badge">v0.1-alpha · 2026-05-02</span>
+    </header>
+
+    <!-- Sidebar nav -->
+    <nav class="shell-sidebar">
+      <a href="#colors" class="nav-item"><span class="nav-item-dot"></span>Colors</a>
+      <a href="#contrast" class="nav-item"><span class="nav-item-dot"></span>Contrast</a>
+      <a href="#typography" class="nav-item"><span class="nav-item-dot"></span>Typography</a>
+      <a href="#spacing" class="nav-item"><span class="nav-item-dot"></span>Spacing & Radii</a>
+      <a href="#depth" class="nav-item"><span class="nav-item-dot"></span>Elevation</a>
+      <a href="#components" class="nav-item"><span class="nav-item-dot"></span>Components</a>
+      <a href="#animation" class="nav-item"><span class="nav-item-dot"></span>Animation</a>
+      <a href="#donts" class="nav-item"><span class="nav-item-dot"></span>Do's &amp; Don'ts</a>
+    </nav>
+
+    <!-- Content card -->
+    <main class="shell-content">
+      <div class="content-card">
+
+        <!-- ── Hero ─────────────────────────────────────────────── -->
+        <div class="hero">
+          <div class="hero-eyebrow">CRADLE / DESIGN LANGUAGE / ALPHA</div>
+          <h1 class="hero-title">Surface. Physics. Precision.</h1>
+          <p class="hero-subtitle">
+            Cradle's visual language sits between Linear's precision and Vercel's austerity —
+            but distinctly its own. Two-tone chrome architecture, spring-native motion,
+            surface-texture depth. Dense-capable without visual noise.
+          </p>
+          <div class="hero-pills">
+            <div class="hero-pill">
+              <span class="label">Font</span>
+              Geist Variable
+            </div>
+            <div class="hero-pill">
+              <span class="label">Radius</span>
+              10px base
+            </div>
+            <div class="hero-pill">
+              <span class="label">Scale</span>
+              10 – 30px
+            </div>
+            <div class="hero-pill">
+              <span class="label">Animation</span>
+              Spring 600/40
+            </div>
+            <div class="hero-pill">
+              <span class="label">Depth model</span>
+              Two-tone chrome
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Principle diagram ──────────────────────────────────── -->
+        <div class="section">
+          <div class="spec-label">ARCHITECTURE OVERVIEW</div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+            <!-- Shell diagram -->
+            <div
+              style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; font-size: 10px; font-family: var(--font-mono);">
+              <div
+                style="background: var(--chrome); padding: 8px 12px; border-bottom: 1px solid var(--chrome-border); color: #a3a3a3; font-size: 9px;">
+                LAYOUT MODEL</div>
+              <div
+                style="display: grid; grid-template-columns: 56px 1fr 48px; grid-template-rows: 28px 120px 24px; background: var(--chrome); gap: 0;">
+                <div
+                  style="grid-column: 1/-1; background: var(--chrome); border-bottom: 1px solid var(--chrome-border); display:flex; align-items:center; padding: 0 10px; gap: 5px;">
+                  <span style="width:8px;height:8px;border-radius:50%;background:#ff5f57;"></span>
+                  <span style="width:8px;height:8px;border-radius:50%;background:#ffbd2e;"></span>
+                  <span style="width:8px;height:8px;border-radius:50%;background:#28c940;"></span>
+                  <span style="margin-left:8px;font-size:9px;color:var(--text-dim);">Header · bg-sidebar</span>
+                </div>
+                <div
+                  style="background: var(--chrome); padding: 6px 6px; border-right: 1px solid var(--chrome-border); display:flex;align-items:center;justify-content:center;">
+                  <div style="color: var(--text-dim); writing-mode: vertical-lr; font-size: 9px;">sidebar</div>
+                </div>
+                <div style="padding: 4px; background: var(--chrome);">
+                  <div
+                    style="background: var(--background); border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,.05); height: 100%; display:flex;align-items:center;justify-content:center; color: #a3a3a3; font-size: 9px;">
+                    content · bg-background · rounded-xl · shadow-sm</div>
+                </div>
+                <div
+                  style="background: var(--chrome); border-left: 1px solid var(--chrome-border); padding: 6px 4px; display:flex;align-items:center;justify-content:center;">
+                  <div style="color: #a3a3a3; writing-mode: vertical-lr; font-size: 9px;">aside</div>
+                </div>
+                <div
+                  style="grid-column: 1/-1; background: var(--chrome); border-top: 1px solid var(--chrome-border); display:flex; align-items:center; padding: 0 10px; font-size:9px; color: #a3a3a3;">
+                  Footer · bg-sidebar</div>
+              </div>
+            </div>
+            <!-- Depth principle -->
+            <div style="border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden;">
+              <div
+                style="background: var(--chrome); padding: 8px 12px; border-bottom: 1px solid var(--chrome-border); color: #a3a3a3; font-size: 9px; font-family: var(--font-mono);">
+                DEPTH PRINCIPLE</div>
+              <div style="padding: 16px;">
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div
+                      style="width: 10px; height: 10px; border-radius: 2px; background: #f5f5f5; border: 1px solid rgba(0,0,0,.1); flex-shrink:0;">
+                    </div>
+                    <span style="font-size: 11px; color: var(--muted-foreground);">Chrome shell</span>
+                    <code
+                      style="font-size: 10px; font-family: var(--font-mono); color: #a3a3a3; margin-left: auto;">bg-sidebar</code>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div
+                      style="width: 10px; height: 10px; border-radius: 2px; background: #fff; border: 1px solid rgba(0,0,0,.15); box-shadow: 0 1px 2px rgba(0,0,0,.06); flex-shrink:0;">
+                    </div>
+                    <span style="font-size: 11px; color: var(--muted-foreground);">Content card</span>
+                    <code
+                      style="font-size: 10px; font-family: var(--font-mono); color: #a3a3a3; margin-left: auto;">bg-background shadow-sm</code>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div
+                      style="width: 10px; height: 10px; border-radius: 2px; background: #fff; border: 1px solid rgba(0,0,0,.05); box-shadow: inset 0 1px 0 rgba(255,255,255,.1); flex-shrink:0;">
+                    </div>
+                    <span style="font-size: 11px; color: var(--muted-foreground);">Surface tile</span>
+                    <code
+                      style="font-size: 10px; font-family: var(--font-mono); color: #a3a3a3; margin-left: auto;">inset-shadow highlight</code>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div
+                      style="width: 10px; height: 10px; border-radius: 2px; background: rgba(255,255,255,.96); border: 1px solid rgba(0,0,0,.08); box-shadow: 0 8px 24px rgba(0,0,0,.12); flex-shrink:0;">
+                    </div>
+                    <span style="font-size: 11px; color: var(--muted-foreground);">Floating overlay</span>
+                    <code
+                      style="font-size: 10px; font-family: var(--font-mono); color: #a3a3a3; margin-left: auto;">shadow-xl backdrop-blur</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Colors ─────────────────────────────────────────────── -->
+        <div class="section" id="colors">
+          <div class="spec-label">COLORS</div>
+          <div class="section-heading">Core surfaces</div>
+          <p class="section-desc">All depth comes from opacity-modulated neutrals. No mid-tone gray hex codes —
+            black/white at calibrated opacities ensures a single system in both light and dark.</p>
+          <div class="swatch-grid" style="margin-bottom: 24px;">
+            <div class="swatch">
+              <div class="swatch-color" style="background: #ffffff; border-bottom: 1px solid rgba(0,0,0,.08);"></div>
+              <div class="swatch-info">
+                <div class="swatch-name">background</div>
+                <div class="swatch-val">#ffffff</div>
+              </div>
+            </div>
+            <div class="swatch">
+              <div class="swatch-color" style="background: #f5f5f5;"></div>
+              <div class="swatch-info">
+                <div class="swatch-name">chrome</div>
+                <div class="swatch-val">#f5f5f5</div>
+              </div>
+            </div>
+            <div class="swatch">
+              <div class="swatch-color" style="background: #262626;"></div>
+              <div class="swatch-info">
+                <div class="swatch-name">foreground</div>
+                <div class="swatch-val">#262626</div>
+              </div>
+            </div>
+            <div class="swatch">
+              <div class="swatch-color" style="background: #737373;"></div>
+              <div class="swatch-info">
+                <div class="swatch-name">muted-fg</div>
+                <div class="swatch-val">#737373</div>
+              </div>
+            </div>
+            <div class="swatch">
+              <div class="swatch-color" style="background: rgba(0,0,0,0.04);"></div>
+              <div class="swatch-info">
+                <div class="swatch-name">muted</div>
+                <div class="swatch-val">black/4%</div>
+              </div>
+            </div>
+            <div class="swatch">
+              <div class="swatch-color" style="background: rgba(0,0,0,0.08);"></div>
+              <div class="swatch-info">
+                <div class="swatch-name">border</div>
+                <div class="swatch-val">black/8%</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-heading">Categorical accents</div>
+          <p class="section-desc">Colors are reserved exclusively for semantic categories. Every accent appears as a
+            matched pair: <code style="font-size:11px;font-family:var(--font-mono);">bg-[color]-500/10</code> fill +
+            <code style="font-size:11px;font-family:var(--font-mono);">text-[color]-500/60~70</code> icon.
+          </p>
+          <div class="accent-grid">
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(59,130,246,0.10); color: rgba(59,130,246,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Workspace</div>
+                <div class="scope">blue-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(139,92,246,0.10); color: rgba(139,92,246,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Session / Builtin</div>
+                <div class="scope">violet-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(16,185,129,0.10); color: rgba(16,185,129,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Doc / Scope</div>
+                <div class="scope">emerald-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(244,63,94,0.10); color: rgba(244,63,94,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Agent</div>
+                <div class="scope">rose-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(14,165,233,0.10); color: rgba(14,165,233,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Global</div>
+                <div class="scope">sky-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(245,158,11,0.10); color: rgba(245,158,11,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Legacy</div>
+                <div class="scope">amber-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(249,115,22,0.10); color: rgba(249,115,22,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Diff</div>
+                <div class="scope">orange-500</div>
+              </div>
+            </div>
+            <div class="accent-card">
+              <div class="accent-icon" style="background: rgba(236,72,153,0.10); color: rgba(236,72,153,0.7);">⬡</div>
+              <div class="accent-card-text">
+                <div class="name">Summary</div>
+                <div class="scope">pink-500</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Contrast ───────────────────────────────────────────── -->
+        <div class="section" id="contrast">
+          <div class="spec-label">TEXT HIERARCHY &amp; CONTRAST</div>
+          <div class="section-heading">Four pre-resolved tiers — no runtime opacity</div>
+          <p class="section-desc">Following Radix UI's principle: contrast is guaranteed at token definition time. Never add <code style="font-size:11px;font-family:var(--font-mono);">opacity</code> on top of these values. All ratios computed via WCAG 2.1 relative luminance against <code style="font-size:11px;font-family:var(--font-mono);">--background</code>.</p>
+
+          <div style="display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 16px;">
+
+            <!-- Header row -->
+            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; background: var(--muted); border-bottom: 1px solid var(--border); padding: 8px 16px;">
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">TOKEN</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">LIGHT MODE</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">DARK MODE</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">LIGHT CR</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">DARK CR</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">USE</div>
+            </div>
+
+            <!-- text-primary -->
+            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+              <div>
+                <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-primary</code>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#262626;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#262626</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#f5f5f5;border:1px solid var(--border);flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#f5f5f5</span>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:#10b981;">15.6:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AAA</div>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:#10b981;">17.6:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AAA</div>
+              </div>
+              <div>
+                <div style="font-size:13px;color:var(--text-primary);font-weight:500;margin-bottom:2px;">Body text, headings, labels</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">All core readable content</div>
+              </div>
+            </div>
+
+            <!-- text-secondary -->
+            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+              <div>
+                <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-secondary</code>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#737373;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#737373</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#a3a3a3;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#a3a3a3</span>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:#10b981;">4.54:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AA</div>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:#10b981;">7.5:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AAA</div>
+              </div>
+              <div>
+                <div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-bottom:2px;">Descriptions, secondary body</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">Settings rows, supporting labels</div>
+              </div>
+            </div>
+
+            <!-- text-tertiary -->
+            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center; background: rgba(245,158,11,0.03);">
+              <div>
+                <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-tertiary</code>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#767676;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#767676</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#8a8a8a;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#8a8a8a</span>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:#10b981;">4.53:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AA</div>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:#10b981;">5.3:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AA</div>
+              </div>
+              <div>
+                <div style="font-size:13px;color:var(--text-tertiary);font-weight:500;margin-bottom:2px;">Metadata, timestamps, captions</div>
+                <div style="font-size:11px;color:var(--text-tertiary);">
+                  Scope labels, tech counters
+                  <span style="margin-left:6px;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,0.10);color:#b45309;font-size:9px;font-family:var(--font-mono);">was #a3a3a3 (2.4:1 fail)</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- text-dim -->
+            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; align-items: center;">
+              <div>
+                <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-dim</code>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#a3a3a3;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#a3a3a3</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="width:20px;height:20px;border-radius:4px;background:#525252;flex-shrink:0;"></div>
+                <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#525252</span>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:var(--text-dim);">2.43:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">Exempt</div>
+              </div>
+              <div>
+                <span style="font-size:11px;font-weight:500;color:var(--text-dim);">1.6:1</span>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">Exempt</div>
+              </div>
+              <div>
+                <div style="font-size:13px;color:var(--text-dim);font-weight:500;margin-bottom:2px;">Decorative, disabled states</div>
+                <div style="font-size:11px;color:var(--text-dim);">WCAG 2.1 SC 1.4.3 — exempt from contrast requirements</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Anti-pattern callout -->
+          <div style="margin-top:16px;border:1px solid rgba(239,68,68,0.15);border-radius:var(--radius-lg);padding:14px 16px;background:rgba(239,68,68,0.03);">
+            <div style="font-size:11px;font-weight:500;color:#dc2626;margin-bottom:8px;">Anti-pattern: opacity stacking</div>
+            <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap;">
+              <div>
+                <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);margin-bottom:4px;">✕ WRONG — what was used before</div>
+                <div style="background:var(--muted);border-radius:var(--radius-md);padding:8px 12px;font-size:11px;font-family:var(--font-mono);">
+                  <span style="color:#dc2626;">color: var(--muted-foreground);</span><br>
+                  <span style="color:#dc2626;">opacity: 0.5;</span><br>
+                  <span style="color:var(--text-dim);font-size:10px;">/* effective: #737373 × 0.5 = ~1.8:1 */</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);margin-bottom:4px;">✓ CORRECT — pre-resolved token</div>
+                <div style="background:var(--muted);border-radius:var(--radius-md);padding:8px 12px;font-size:11px;font-family:var(--font-mono);">
+                  <span style="color:#10b981;">color: var(--text-tertiary);</span><br>
+                  <span style="color:var(--text-dim);font-size:10px;"><br>/* contrast guaranteed at 4.53:1 AA */</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Typography ─────────────────────────────────────────── -->
+        <div class="section" id="typography">
+          <div class="spec-label">TYPOGRAPHY</div>
+          <div class="section-heading">Geist Variable — the entire scale</div>
+          <p class="section-desc">A single variable font from 10px metadata to 30px display. Hierarchy via size and
+            opacity, never uppercase tracking or decorative transforms.</p>
+
+          <div style="margin-top: 16px;">
+            <div class="type-row">
+              <div class="type-sample" style="font-size:30px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;">
+                Display — 30 / 600</div>
+              <div class="type-meta">display · 30px · 600 · -0.02em</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:18px;font-weight:600;letter-spacing:-0.01em;">Heading — 18 / 600
+              </div>
+              <div class="type-meta">heading · 18px · 600 · -0.01em</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:16px;font-weight:600;">Section Title — 16 / 600</div>
+              <div class="type-meta">section-title · 16px · 600</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:14px;font-weight:500;">Label MD — 13 / 500</div>
+              <div class="type-meta">label-md · 13px · 500</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:14px;">Body LG — 14 / 400 · Primary content, message text</div>
+              <div class="type-meta">body-lg · 14px · 400 · 1.6</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:13px;color: var(--muted-foreground);">Body MD — 13 / 400 ·
+                Settings rows, descriptions</div>
+              <div class="type-meta">body-md · 13px · 400</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:12px;color: var(--muted-foreground);">Body SM — 12 / 400 ·
+                Buttons, action labels</div>
+              <div class="type-meta">body-sm · 12px · 400</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:11px;color:#737373;">Caption — 11 / 400 · Skill descriptions,
+                timestamps, meta</div>
+              <div class="type-meta">caption · 11px · 400</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:10px;color:var(--text-dim);">Micro — 10 / 400 · Token counters, trailing
+                labels, badge counts</div>
+              <div class="type-meta">micro · 10px · 400</div>
+            </div>
+            <div class="type-row">
+              <div class="type-sample" style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);">micro-mono —
+                10 / mono · Keyboard shortcuts, refs, IDs</div>
+              <div class="type-meta">micro-mono · mono · 10px</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Spacing & Radii ─────────────────────────────────────── -->
+        <div class="section" id="spacing">
+          <div class="spec-label">SPACING &amp; RADII</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+            <div>
+              <div class="section-heading">Spacing scale</div>
+              <p style="font-size:12px;color:var(--muted-foreground);margin-bottom:16px;line-height:1.6;">4px base unit.
+                8px standard increment. Micro gaps at 4/6px.</p>
+              <div class="spacing-list">
+                <div class="spacing-row">
+                  <span class="spacing-label">xs</span>
+                  <div class="spacing-bar-wrap">
+                    <div class="spacing-bar" style="width:6.25%"></div>
+                  </div>
+                  <span class="spacing-val">4px</span>
+                </div>
+                <div class="spacing-row">
+                  <span class="spacing-label">sm</span>
+                  <div class="spacing-bar-wrap">
+                    <div class="spacing-bar" style="width:12.5%"></div>
+                  </div>
+                  <span class="spacing-val">8px</span>
+                </div>
+                <div class="spacing-row">
+                  <span class="spacing-label">md</span>
+                  <div class="spacing-bar-wrap">
+                    <div class="spacing-bar" style="width:25%"></div>
+                  </div>
+                  <span class="spacing-val">16px</span>
+                </div>
+                <div class="spacing-row">
+                  <span class="spacing-label">lg</span>
+                  <div class="spacing-bar-wrap">
+                    <div class="spacing-bar" style="width:37.5%"></div>
+                  </div>
+                  <span class="spacing-val">24px</span>
+                </div>
+                <div class="spacing-row">
+                  <span class="spacing-label">xl</span>
+                  <div class="spacing-bar-wrap">
+                    <div class="spacing-bar" style="width:50%"></div>
+                  </div>
+                  <span class="spacing-val">32px</span>
+                </div>
+                <div class="spacing-row">
+                  <span class="spacing-label">2xl</span>
+                  <div class="spacing-bar-wrap">
+                    <div class="spacing-bar" style="width:100%"></div>
+                  </div>
+                  <span class="spacing-val">64px</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="section-heading">Border radius scale</div>
+              <p style="font-size:12px;color:var(--muted-foreground);margin-bottom:16px;line-height:1.6;">Architectural
+                and compact. Pills only for tags and status dots.</p>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:32px;height:32px;background:var(--muted);border-radius:6px;"></div>
+                  <span style="font-size:11px;color:var(--muted-foreground);">sm · 6px — micro badges</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:32px;height:32px;background:var(--muted);border-radius:8px;"></div>
+                  <span style="font-size:11px;color:var(--muted-foreground);">md · 8px — rows, inputs, buttons, tab
+                    pills</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:32px;height:32px;background:var(--muted);border-radius:10px;"></div>
+                  <span style="font-size:11px;color:var(--muted-foreground);">base · 10px — default (--radius)</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:32px;height:32px;background:var(--muted);border-radius:12px;"></div>
+                  <span style="font-size:11px;color:var(--muted-foreground);">lg · 12px — sidebar items, scope
+                    badges</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:32px;height:32px;background:var(--muted);border-radius:16px;"></div>
+                  <span style="font-size:11px;color:var(--muted-foreground);">xl · 16px — content card, composer,
+                    popovers</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:32px;height:32px;background:var(--muted);border-radius:9999px;"></div>
+                  <span style="font-size:11px;color:var(--muted-foreground);">full — pills, status dots, progress
+                    bars</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Elevation ───────────────────────────────────────────── -->
+        <div class="section" id="depth">
+          <div class="spec-label">ELEVATION &amp; DEPTH</div>
+          <div class="section-heading">Three tiers — no levitation</div>
+          <p class="section-desc">Depth is achieved through color separation, not shadows. Shadows exist only for
+            genuinely floating layers.</p>
+          <div class="elevation-tiers">
+            <div class="tier-card">
+              <div class="tier-demo" style="background: var(--chrome); display:flex;gap:8px;padding:16px;">
+                <div
+                  style="width:100%;height:100%;background:var(--background);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);">
+                </div>
+              </div>
+              <div class="tier-info">
+                <div class="tier-name">Tier 1 — Spatial separation</div>
+                <div class="tier-desc">Chrome bg-sidebar + content bg-background. The only permanent depth layer.</div>
+              </div>
+            </div>
+            <div class="tier-card">
+              <div class="tier-demo"
+                style="background: var(--background); display:flex;align-items:center;justify-content:center;padding:16px;">
+                <div
+                  style="width:80px;height:54px;background:var(--background);border:1px solid rgba(0,0,0,.08);border-radius:var(--radius-lg);box-shadow:inset 0 1px 0 rgba(255,255,255,.15);">
+                </div>
+              </div>
+              <div class="tier-info">
+                <div class="tier-name">Tier 2 — Surface texture</div>
+                <div class="tier-desc">inset-shadow 1px top highlight. Interactive tiles feel pressed-in, not floating.
+                </div>
+              </div>
+            </div>
+            <div class="tier-card">
+              <div class="tier-demo"
+                style="background: var(--background); display:flex;align-items:center;justify-content:center;padding:16px;">
+                <div
+                  style="width:80px;height:54px;background:rgba(255,255,255,.96);border:1px solid rgba(0,0,0,.08);border-radius:var(--radius-xl);box-shadow:0 8px 24px rgba(0,0,0,.12);backdrop-filter:blur(12px);">
+                </div>
+              </div>
+              <div class="tier-info">
+                <div class="tier-name">Tier 3 — Floating layers</div>
+                <div class="tier-desc">shadow-xl + backdrop-blur. Only for popovers, command palettes, modals.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Components ─────────────────────────────────────────── -->
+        <div class="section" id="components">
+          <div class="spec-label">COMPONENTS</div>
+          <div class="demo-grid">
+
+            <!-- Section labels -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">section-label</div>
+              <div class="demo-cell-body">
+                <div class="section-label-demo">
+                  <span class="section-label-text">Recent sessions</span>
+                  <div class="section-label-line"></div>
+                  <span class="section-label-count">12</span>
+                </div>
+                <div class="section-label-demo">
+                  <span class="section-label-text">Quick actions</span>
+                  <div class="section-label-line"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- List rows -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">list-row</div>
+              <div class="demo-cell-body">
+                <div class="demo-row">
+                  <div class="demo-row-icon" style="border-radius:50%;"></div>
+                  <span class="demo-row-title">Implement auth middleware</span>
+                  <span class="demo-row-meta">2m ago</span>
+                </div>
+                <div class="demo-row">
+                  <div class="demo-row-icon" style="border-radius:50%;"></div>
+                  <span class="demo-row-title">Refactor stream provider</span>
+                  <span class="demo-row-meta">1h ago</span>
+                </div>
+                <div class="demo-row">
+                  <div class="demo-row-icon" style="border-radius:50%;"></div>
+                  <span class="demo-row-title">Design system tokens</span>
+                  <span class="demo-row-meta">3h ago</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Activity cards -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">activity-card (dashboard)</div>
+              <div class="demo-cell-body">
+                <div class="activity-card-wrap">
+                  <div class="activity-card">
+                    <div class="activity-card-icon" style="background:rgba(59,130,246,0.08);">
+                      <span style="font-size:20px;color:rgba(59,130,246,0.6);">⬡</span>
+                    </div>
+                    <div class="activity-card-body">
+                      <div class="activity-card-title">Auth refactor</div>
+                      <div class="activity-card-meta">workspace</div>
+                    </div>
+                  </div>
+                  <div class="activity-card">
+                    <div class="activity-card-icon" style="background:rgba(139,92,246,0.08);">
+                      <span style="font-size:20px;color:rgba(139,92,246,0.6);">⬡</span>
+                    </div>
+                    <div class="activity-card-body">
+                      <div class="activity-card-title">CLI design review</div>
+                      <div class="activity-card-meta">session</div>
+                    </div>
+                  </div>
+                  <div class="activity-card" style="border-style:dashed;border-color:rgba(0,0,0,0.08);">
+                    <div class="activity-card-icon"
+                      style="flex:1;justify-content:center;align-items:center;display:flex;">
+                      <span style="font-size:16px;color:#c5c5c5;">+</span>
+                    </div>
+                    <div class="activity-card-body">
+                      <div class="activity-card-title" style="color:#c5c5c5;">New</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stat pills -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">stat-pill (usage)</div>
+              <div class="demo-cell-body">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <div class="stat-pill">
+                    <span class="stat-label">sessions</span>
+                    <span class="stat-value">248</span>
+                  </div>
+                  <div class="stat-pill">
+                    <span class="stat-label">tokens</span>
+                    <span class="stat-value">1.2M</span>
+                  </div>
+                  <div class="stat-pill">
+                    <span class="stat-label">streak</span>
+                    <span class="stat-value">14d</span>
+                  </div>
+                  <div class="stat-pill">
+                    <span class="stat-label">cost</span>
+                    <span class="stat-value">$3.40</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Composer -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">composer</div>
+              <div class="demo-cell-body">
+                <div class="composer-demo">
+                  <div class="composer-textarea">Ask anything, or start with @file…</div>
+                  <div class="composer-bar">
+                    <div style="display:flex;gap:4px;">
+                      <button class="composer-btn">@</button>
+                      <button class="composer-btn">+</button>
+                    </div>
+                    <button class="composer-btn">⌵ claude-3.7</button>
+                  </div>
+                </div>
+                <div style="margin-top:6px;display:flex;justify-content:flex-end;">
+                  <span
+                    style="font-size:10px;font-family:var(--font-mono);color:#c5c5c5;font-variant-numeric:tabular-nums;">0
+                    / 200k</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Message bubbles -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">message bubbles</div>
+              <div class="demo-cell-body">
+                <div class="message-row user">
+                  <div class="bubble user">Can you refactor the stream provider?</div>
+                </div>
+                <div class="message-row">
+                  <div class="bubble assistant">
+                    Sure. I'll restructure the provider to separate concerns — the transport layer from the state
+                    machine.
+                    <div style="margin-top:8px;">
+                      <div class="reasoning-toggle">
+                        <span style="font-size:10px;color:var(--text-dim);">▸</span> reasoning
+                      </div>
+                      <div class="reasoning-body" style="margin-top:4px;">
+                        The current provider mixes WebSocket lifecycle with message dispatch. Splitting these allows
+                        independent testing and cleaner error recovery paths.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right aside tab bar -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">right aside — tab bar (spring pill)</div>
+              <div class="demo-cell-body" style="padding: 0;">
+                <div class="tab-bar">
+                  <div class="tab-btn active">
+                    <div class="tab-pill-bg"></div>
+                    <span>Files</span>
+                  </div>
+                  <div class="tab-btn">Context</div>
+                  <div class="tab-btn">Issue</div>
+                  <div class="tab-btn">Timeline</div>
+                </div>
+                <div style="padding: 12px 16px;">
+                  <div class="demo-row">
+                    <div class="demo-row-icon" style="border-radius:3px;width:12px;height:12px;"></div>
+                    <span class="demo-row-title" style="font-size:11px;">src/main/lib/chat-engine.ts</span>
+                  </div>
+                  <div class="demo-row">
+                    <div class="demo-row-icon" style="border-radius:3px;width:12px;height:12px;"></div>
+                    <span class="demo-row-title" style="font-size:11px;">src/renderer/features/chat/</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Scope badges -->
+            <div class="demo-cell">
+              <div class="demo-cell-head">scope-badge</div>
+              <div class="demo-cell-body">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="scope-badge" style="background:rgba(139,92,246,.1);color:rgba(139,92,246,.7);">⬡</div>
+                    <span style="font-size:10px;color:var(--text-tertiary);">builtin</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="scope-badge" style="background:rgba(14,165,233,.1);color:rgba(14,165,233,.7);">⬡</div>
+                    <span style="font-size:10px;color:var(--text-tertiary);">global</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="scope-badge" style="background:rgba(16,185,129,.1);color:rgba(16,185,129,.7);">⬡</div>
+                    <span style="font-size:10px;color:var(--text-tertiary);">workspace</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="scope-badge" style="background:rgba(244,63,94,.1);color:rgba(244,63,94,.7);">⬡</div>
+                    <span style="font-size:10px;color:var(--text-tertiary);">agent</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <div class="scope-badge" style="background:rgba(245,158,11,.1);color:rgba(245,158,11,.7);">⬡</div>
+                    <span style="font-size:10px;color:var(--text-tertiary);">legacy</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Animation ───────────────────────────────────────────── -->
+        <!-- reasoning toggle arrow fix -->
+        <div class="section" id="animation">
+          <div class="spec-label">ANIMATION</div>
+          <div class="section-heading">Spring physics, not keyframes</div>
+          <p class="section-desc">All state transitions use Framer Motion spring. No cubic-bezier millisecond tweening —
+            everything has mass and damping.</p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px;">
+            <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+              <div style="font-size:11px;font-weight:500;color:var(--foreground);margin-bottom:4px;">Layout panels /
+                Aside</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);line-height:1.7;">
+                stiffness: 600<br>damping: 40<br>property: width / height
+              </div>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+              <div style="font-size:11px;font-weight:500;color:var(--foreground);margin-bottom:4px;">Message enter</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);line-height:1.7;">
+                stiffness: 500<br>damping: 35 mass: 0.8<br>y: 8→0 opacity: 0→1
+              </div>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+              <div style="font-size:11px;font-weight:500;color:var(--foreground);margin-bottom:4px;">Panel drill-in
+              </div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);line-height:1.7;">
+                x: 20→0<br>opacity: 0→1<br>filter: blur(4px)→0
+              </div>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+              <div style="font-size:11px;font-weight:500;color:var(--foreground);margin-bottom:4px;">Tab pill (layoutId)
+              </div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);line-height:1.7;">
+                layoutId: "tab-pill"<br>type: spring<br>stiffness: 600 damping: 40
+              </div>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+              <div style="font-size:11px;font-weight:500;color:var(--foreground);margin-bottom:4px;">Hover reveal
+                actions</div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);line-height:1.7;">
+                CSS: opacity-0<br>group-hover:opacity-100<br>duration: 150ms
+              </div>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+              <div style="font-size:11px;font-weight:500;color:var(--foreground);margin-bottom:4px;">Sidebar collapse
+              </div>
+              <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);line-height:1.7;">
+                opacity: 0→1<br>width: 0→auto<br>stiffness: 600 damping: 40
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Do's and Don'ts ─────────────────────────────────────── -->
+        <div class="section" id="donts">
+          <div class="spec-label">DO'S &amp; DON'TS</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div>
+              <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:12px;">DO</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use chrome/content color split as your entire depth model
+                    before reaching for shadows</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use <code
+                      style="font-size:10px;font-family:var(--font-mono);">inset-shadow</code> for surface texture on
+                    cards and interactive tiles</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use <code
+                      style="font-size:10px;font-family:var(--font-mono);">tabular-nums</code> on all numeric display
+                    content</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use categorical color pairs: <code
+                      style="font-size:10px;font-family:var(--font-mono);">bg-[color]-500/10 text-[color]-500/60~70</code></span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use spring animations everywhere; match stiffness 500–600,
+                    damping 35–40</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use <code
+                      style="font-size:10px;font-family:var(--font-mono);">text-pretty</code> on wrapping prose titles
+                    and descriptions</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#10b981;flex-shrink:0;margin-top:1px;">✓</span>
+                  <span style="color:var(--foreground);">Use <code
+                      style="font-size:10px;font-family:var(--font-mono);">opacity-0 group-hover:opacity-100</code> to
+                    reveal secondary actions</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:12px;">DON'T</div>
+              <div style="display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Add <code
+                      style="font-size:10px;font-family:var(--font-mono);">shadow-xs/sm/md</code> to list rows, sidebar
+                    items, or static UI</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Use <code
+                      style="font-size:10px;font-family:var(--font-mono);">uppercase tracking-wider font-semibold</code>
+                    section labels</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Reduce primary content text opacity — hierarchy comes from
+                    size, not opacity washing</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Add hard borders between layout columns — use color separation
+                    instead</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Add per-item hover elevation (shadow on hover) — use background
+                    fill only</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Use standalone gradient backgrounds for UI surfaces</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5;">
+                  <span style="color:#ef4444;flex-shrink:0;margin-top:1px;">✕</span>
+                  <span style="color:var(--foreground);">Use cubic-bezier for elements that should feel physical — use
+                    spring</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /content-card -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="shell-footer">
+      <span class="footer-pill">Cradle Design Language</span>
+      <span class="footer-pill">v0.1-alpha</span>
+      <span class="footer-pill">Geist Variable · Geist Mono</span>
+    </footer>
+
+  </div><!-- /shell -->
+
+</body>
+
+</html>
