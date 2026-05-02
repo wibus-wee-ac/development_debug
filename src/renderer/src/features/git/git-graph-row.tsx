@@ -238,7 +238,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
         <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
           {commit.shortSha}
         </span>
-        <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+        <span className="text-[10px] text-muted-foreground tabular-nums">
           ·
         </span>
         <span className="text-[10px] text-muted-foreground tabular-nums">

@@ -260,7 +260,7 @@ function ActivityEntry({
     return (
       <div className="flex items-center gap-3 py-2">
         <div className="h-px flex-1 bg-foreground/5" />
-        <span className="text-[11px] text-muted-foreground/50 shrink-0 select-none italic">
+        <span className="text-[11px] text-muted-foreground shrink-0 select-none italic">
           {comment.content}
         </span>
         <div className="h-px flex-1 bg-foreground/5" />
@@ -293,7 +293,7 @@ function ActivityEntry({
           <span className="text-[12px] font-medium text-foreground">
             {isAgent ? 'Agent' : 'Me'}
           </span>
-          <span className="text-[11px] text-muted-foreground/50 tabular-nums">
+          <span className="text-[11px] text-muted-foreground tabular-nums">
             {relativeTime(comment.createdAt)}
           </span>
           <button
@@ -672,7 +672,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
             </ComboboxContent>
           </Combobox>
           <button
-            className="text-[11px] text-muted-foreground/50 hover:text-foreground transition-colors"
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => setShowPicker(false)}
           >
             Cancel
@@ -1185,7 +1185,7 @@ export function IssueProperties({
                   </span>
                 </SelectItem>
                 {enabledAgents.length > 0 && (
-                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground/30 select-none">
+                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground select-none">
                     Agents
                   </div>
                 )}
@@ -1207,7 +1207,7 @@ export function IssueProperties({
                   </SelectItem>
                 ))}
                 {enabledProfiles.length > 0 && enabledAgents.length === 0 && (
-                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground/30 select-none">
+                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground select-none">
                     Providers
                   </div>
                 )}

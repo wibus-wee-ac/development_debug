@@ -158,7 +158,7 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
         <div className="flex items-center gap-2 px-3 h-10 shrink-0">
           <div className="flex-1" />
           <Popover>
-            <PopoverTrigger className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100" data-testid="kanban-settings-btn">
+            <PopoverTrigger className="text-muted-foreground hover:text-foreground transition-colors duration-100" data-testid="kanban-settings-btn">
               <SettingsIcon className="size-3.5" />
             </PopoverTrigger>
             <PopoverContent side="bottom" align="end" className="w-64">

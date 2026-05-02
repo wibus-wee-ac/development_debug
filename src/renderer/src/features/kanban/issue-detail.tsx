@@ -199,7 +199,7 @@ function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) =
 function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[72px_1fr] items-center min-h-8">
-      <span className="text-[11px] text-muted-foreground/50 select-none">{label}</span>
+      <span className="text-[11px] text-muted-foreground select-none">{label}</span>
       <div className="min-w-0">{children}</div>
     </div>
   )
@@ -243,7 +243,7 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
     <div className="space-y-1.5">
       {reasoning.length > 0 && (
         <button
-          className="flex items-center gap-1.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors duration-100"
+          className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors duration-100"
           onClick={() => setExpanded(!expanded)}
         >
           <ChevronRightIcon
@@ -396,12 +396,12 @@ function AgentPropertyRow({
                 </span>
               )
               : (
-                <span className="text-muted-foreground/30">No agent</span>
+                <span className="text-muted-foreground">No agent</span>
               )}
           </SelectTrigger>
           <SelectContent position="popper" sideOffset={4} align="end">
             <SelectItem value="">
-              <span className="text-muted-foreground/30">No agent</span>
+              <span className="text-muted-foreground">No agent</span>
             </SelectItem>
             {enabledAgents.map(a => (
               <SelectItem key={a.id} value={`agent:${a.id}`}>
@@ -476,9 +476,9 @@ function AgentSessionFeed({ issueId }: { issueId: string }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground/50">Session</span>
+        <span className="text-[11px] text-muted-foreground">Session</span>
         <span
-          className={cn('inline-flex items-center gap-1.5 text-[10px] text-muted-foreground/40')}
+          className={cn('inline-flex items-center gap-1.5 text-[10px] text-muted-foreground')}
         >
           <span
             className={cn('size-1.5 rounded-full', phase.color, phase.pulse && 'animate-pulse')}
@@ -487,7 +487,7 @@ function AgentSessionFeed({ issueId }: { issueId: string }) {
         </span>
         {latestSession.chatSessionId && (
           <button
-            className="ml-auto text-[10px] text-muted-foreground/40 hover:text-foreground transition-colors flex items-center gap-0.5"
+            className="ml-auto text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-0.5"
             onClick={() =>
               openTab('chat', { sessionId: latestSession.chatSessionId! })
             }
@@ -546,14 +546,14 @@ function SubIssueList({
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground/50">Sub-issues</span>
+        <span className="text-[11px] text-muted-foreground">Sub-issues</span>
         {subIssues.length > 0 && (
-          <span className="text-[10px] text-muted-foreground/30 tabular-nums">
+          <span className="text-[10px] text-muted-foreground tabular-nums">
             {subIssues.length}
           </span>
         )}
         <button
-          className="ml-auto text-muted-foreground/30 hover:text-foreground transition-colors duration-100"
+          className="ml-auto text-muted-foreground hover:text-foreground transition-colors duration-100"
           onClick={() => setComposing(true)}
         >
           <PlusIcon className="size-3" />
@@ -622,8 +622,8 @@ function ActivityEntry({ comment, issueId }: { comment: KanbanIssueComment, issu
   if (kind === 'system') {
     return (
       <div className="relative flex items-center gap-3 py-2 pl-7">
-        <span className="text-[11px] text-muted-foreground/30 italic">{comment.content}</span>
-        <span className="text-[10px] text-muted-foreground/20 tabular-nums shrink-0">
+        <span className="text-[11px] text-muted-foreground italic">{comment.content}</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
           {relativeTime(comment.createdAt)}
         </span>
       </div>

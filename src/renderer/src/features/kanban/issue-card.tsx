@@ -66,7 +66,7 @@ export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardP
 
       {/* Description preview */}
       {hasDescription && (
-        <p className="text-[10px] leading-relaxed text-muted-foreground/40 line-clamp-1 pl-5.5">
+        <p className="text-[10px] leading-relaxed text-muted-foreground line-clamp-1 pl-5.5">
           {issue.description!.slice(0, 80)}
         </p>
       )}
@@ -80,7 +80,7 @@ export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardP
             </Badge>
           ))}
           {labels.length > 3 && (
-            <span className="text-[9px] text-muted-foreground/25">
+            <span className="text-[9px] text-muted-foreground">
               +
               {labels.length - 3}
             </span>
@@ -90,12 +90,12 @@ export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardP
 
       {/* Footer: id, milestone, assignee/agent, timestamp */}
       <div className="flex items-center gap-1.5 pl-5.5">
-        <span className="text-[10px] text-muted-foreground/30 tabular-nums">
+        <span className="text-[10px] text-muted-foreground tabular-nums">
           {issue.id.slice(0, 6).toUpperCase()}
         </span>
 
         {milestone && (
-          <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground/30">
+          <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
             <FlagIcon className="size-2" />
             <span className="truncate max-w-16">{milestone.title}</span>
           </span>
@@ -103,7 +103,7 @@ export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardP
 
         <span className="flex-1" />
 
-        <span className="text-[9px] text-muted-foreground/20 tabular-nums">
+        <span className="text-[9px] text-muted-foreground tabular-nums">
           {relativeShort(issue.updatedAt)}
         </span>
 

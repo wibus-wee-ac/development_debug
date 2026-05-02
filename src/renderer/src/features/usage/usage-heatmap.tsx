@@ -184,7 +184,7 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
           {hoveredCell.tokens > 0
             ? (
               <div className="mt-1 space-y-0.5">
-                <p className="text-[11px] text-muted-foreground/60">
+                <p className="text-[11px] text-muted-foreground">
                   {hoveredCell.tokens.toLocaleString()}
                   {' '}
                   tokens
@@ -198,7 +198,7 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
               </div>
             )
             : (
-              <p className="mt-0.5 text-[11px] text-muted-foreground/40">No usage</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">No usage</p>
             )}
         </div>
       )}

@@ -69,12 +69,12 @@ export function KanbanSidebar() {
       {/* Header */}
       <div className="flex items-center gap-2 px-3 pt-3 pb-2">
         <button
-          className="text-muted-foreground/30 hover:text-foreground transition-colors duration-100"
+          className="text-muted-foreground hover:text-foreground transition-colors duration-100"
           onClick={() => openTab('home')}
         >
           <ArrowLeftIcon className="size-3.5" />
         </button>
-        <span className="text-[11px] font-medium text-muted-foreground/50">Boards</span>
+        <span className="text-[11px] font-medium text-muted-foreground">Boards</span>
         <span className="flex-1" />
         <Tooltip>
           <TooltipTrigger asChild>

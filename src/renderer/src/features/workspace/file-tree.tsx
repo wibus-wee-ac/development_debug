@@ -65,7 +65,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
   if (!workspaceId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-xs text-muted-foreground/50">未关联工作区</p>
+        <p className="text-xs text-muted-foreground">未关联工作区</p>
       </div>
     )
   }
@@ -81,7 +81,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
   if (!preparedInput) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-xs text-muted-foreground/50">工作区为空</p>
+        <p className="text-xs text-muted-foreground">工作区为空</p>
       </div>
     )
   }

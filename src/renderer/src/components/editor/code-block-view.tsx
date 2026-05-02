@@ -30,7 +30,7 @@ export function CodeBlockView({ node, updateAttributes }: {
             updateAttributes({ language: lang })
             void lazyLoadLang(lang)
           }}
-          className="h-6 rounded border border-border/50 bg-background/80 backdrop-blur-xs px-1.5 text-[10px] text-muted-foreground/70 outline-none cursor-pointer hover:border-border"
+          className="h-6 rounded border border-border/50 bg-background/80 backdrop-blur-xs px-1.5 text-[10px] text-muted-foreground outline-none cursor-pointer hover:border-border"
         >
           <option value="">auto</option>
           {ALL_LANGUAGES.map(lang => (

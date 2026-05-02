@@ -189,7 +189,7 @@ function EmptyState({
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4">
       <CircleDotIcon className="size-5 text-muted-foreground/20" />
-      <p className="text-[11px] text-muted-foreground/40">No linked issue</p>
+      <p className="text-[11px] text-muted-foreground">No linked issue</p>
       {workspaceId && (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger>
@@ -252,7 +252,7 @@ function IssuePicker({
       <ScrollArea className="max-h-56">
         <div className="flex flex-col py-1">
           {filtered.length === 0 && (
-            <p className="px-3 py-4 text-center text-[11px] text-muted-foreground/40">
+            <p className="px-3 py-4 text-center text-[11px] text-muted-foreground">
               No issues found
             </p>
           )}

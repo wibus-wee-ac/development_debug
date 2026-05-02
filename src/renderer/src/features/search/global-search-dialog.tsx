@@ -241,7 +241,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                         <cmd.icon className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="flex-1 text-sm">{cmd.label}</span>
                         {cmd.shortcut && (
-                          <span className="text-[10px] text-muted-foreground/60">{cmd.shortcut}</span>
+                          <span className="text-[10px] text-muted-foreground">{cmd.shortcut}</span>
                         )}
                       </CommandItem>
                     ))}
@@ -265,7 +265,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                         <cmd.icon className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="flex-1 text-sm">{cmd.label}</span>
                         {cmd.shortcut && (
-                          <span className="text-[10px] text-muted-foreground/60">{cmd.shortcut}</span>
+                          <span className="text-[10px] text-muted-foreground">{cmd.shortcut}</span>
                         )}
                       </CommandItem>
                     ))}
@@ -294,7 +294,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                           <span className="min-w-0 flex-1 truncate text-sm">
                             <HighlightedText text={hit.sessionTitle} ranges={hit.titleRanges ?? []} />
                           </span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground/50">
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
                             {group.label}
                           </span>
                         </CommandItem>
@@ -382,7 +382,7 @@ function GroupHeader({ label, count }: { label: string, count: number }) {
   return (
     <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
       <span className="font-medium">{label}</span>
-      <span className="text-[10px] text-muted-foreground/60">
+      <span className="text-[10px] text-muted-foreground">
         {count}
         {' 个结果'}
       </span>
@@ -394,8 +394,8 @@ const PRIORITY_CLASSES: Record<string, string> = {
   urgent: 'text-red-500',
   high: 'text-orange-500',
   medium: 'text-yellow-600',
-  low: 'text-muted-foreground/60',
-  none: 'text-muted-foreground/40',
+  low: 'text-muted-foreground',
+  none: 'text-muted-foreground',
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -410,7 +410,7 @@ function LoadingState() {
   return (
     <div className="flex flex-col items-center gap-2">
       <Spinner className="size-4" />
-      <span className="text-xs text-muted-foreground/50">搜索中...</span>
+      <span className="text-xs text-muted-foreground">搜索中...</span>
     </div>
   )
 }
@@ -418,7 +418,7 @@ function LoadingState() {
 function NoResults() {
   return (
     <div className="flex flex-col items-center gap-2">
-      <span className="text-xs text-muted-foreground/50">没有找到匹配的结果</span>
+      <span className="text-xs text-muted-foreground">没有找到匹配的结果</span>
     </div>
   )
 }
@@ -426,7 +426,7 @@ function NoResults() {
 function IdleState() {
   return (
     <div className="flex flex-col items-center gap-2">
-      <span className="text-xs text-muted-foreground/40">输入关键词开始搜索</span>
+      <span className="text-xs text-muted-foreground">输入关键词开始搜索</span>
     </div>
   )
 }

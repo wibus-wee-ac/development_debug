@@ -67,7 +67,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
       <div className="group/header flex items-center gap-2 px-3 py-2.5">
         <StatusIcon color={status.color} />
         <span className="text-[12px] font-medium text-foreground">{status.name}</span>
-        <span className="text-[10px] text-muted-foreground/30 tabular-nums">{issues.length}</span>
+        <span className="text-[10px] text-muted-foreground tabular-nums">{issues.length}</span>
         <Button
           variant="ghost"
           size="icon-xs"
@@ -97,7 +97,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
 
           {issues.length === 0 && (
             <div className="px-2 py-8 text-center">
-              <span className="text-[10px] text-muted-foreground/20">No issues</span>
+              <span className="text-[10px] text-muted-foreground">No issues</span>
             </div>
           )}
         </ScrollArea>

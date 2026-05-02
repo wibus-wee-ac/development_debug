@@ -32,7 +32,7 @@ export function KanbanBoardTabContent({ params }: { params: { boardId?: string, 
 
   if (!params.boardId) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground/30">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
         <LayoutDashboardIcon className="size-8" />
         <p className="text-[12px]">从左侧选择或创建一个看板</p>
       </div>

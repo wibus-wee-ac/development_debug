@@ -261,9 +261,12 @@ body {
   --code-foreground: var(--foreground);
   --code-highlight: --alpha(var(--color-black) / 4%);
   /* Pre-resolved text contrast tiers (WCAG 2.1 AA) */
-  --text-secondary: var(--muted-foreground);       /* ~4.54:1 AA on #fff */
-  --text-tertiary: var(--color-neutral-500);        /* 4.54:1 AA on #fff — labels, metadata */
-  --text-dim: var(--color-neutral-400);             /* 2.43:1 — decorative / disabled only */
+  --text-secondary: var(--muted-foreground);
+  /* ~4.54:1 AA on #fff */
+  --text-tertiary: var(--color-neutral-500);
+  /* 4.54:1 AA on #fff — labels, metadata */
+  --text-dim: var(--color-neutral-400);
+  /* 2.43:1 — decorative / disabled only */
 }
 
 .dark {
@@ -309,9 +312,12 @@ body {
   --code-foreground: var(--foreground);
   --code-highlight: --alpha(var(--color-white) / 4%);
   /* Pre-resolved text contrast tiers (dark mode) */
-  --text-secondary: var(--muted-foreground);       /* ~8:1 AAA */
-  --text-tertiary: color-mix(in srgb, var(--color-neutral-400) 60%, var(--color-neutral-500)); /* ~5.3:1 AA */
-  --text-dim: var(--color-neutral-700);             /* decorative dark equivalent */
+  --text-secondary: var(--muted-foreground);
+  /* ~8:1 AAA */
+  --text-tertiary: color-mix(in srgb, var(--color-neutral-400) 60%, var(--color-neutral-500));
+  /* ~5.3:1 AA */
+  --text-dim: var(--color-neutral-700);
+  /* decorative dark equivalent */
 }
 
 @layer base {

@@ -137,7 +137,7 @@ export function StatusManager({ workspaceId }: { workspaceId: string }) {
 
   return (
     <div>
-      <p className="text-[12px] text-muted-foreground/40 mb-2">Statuses</p>
+      <p className="text-[12px] text-muted-foreground mb-2">Statuses</p>
 
       <DndContext sensors={sensors} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
         <SortableContext items={statuses.map(s => s.id)} strategy={verticalListSortingStrategy}>

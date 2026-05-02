@@ -167,7 +167,7 @@ function DocumentSection({
 }) {
   if (file.loading) {
     return (
-      <div id={id} className="flex items-center gap-2 py-8 text-sm text-muted-foreground/40">
+      <div id={id} className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
         <Loader2Icon className="size-3.5 animate-spin" />
         正在加载...
       </div>
@@ -181,9 +181,9 @@ function DocumentSection({
   return (
     <section id={id}>
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-[12px] font-mono text-muted-foreground/40">{filename}</span>
+        <span className="text-[12px] font-mono text-muted-foreground">{filename}</span>
         {file.saving && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/40">
+          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
             <Loader2Icon className="size-2.5 animate-spin" />
             保存中
           </span>
@@ -258,7 +258,7 @@ function FloatingToc({
 
         return (
           <div key={group.file} className="mb-4">
-            <span className="block text-[10px] font-mono text-muted-foreground/55 font-medium mb-1.5 px-2">
+            <span className="block text-[10px] font-mono text-muted-foreground font-medium mb-1.5 px-2">
               {group.file}
             </span>
             <div className="relative" style={{ height: totalH }}>
@@ -293,7 +293,7 @@ function FloatingToc({
                       'absolute flex items-center w-full text-left transition-colors',
                       isActive
                         ? 'text-foreground'
-                        : 'text-muted-foreground/40 hover:text-muted-foreground/70',
+                        : 'text-muted-foreground/60 hover:text-muted-foreground/70',
                     )}
                     style={{
                       top: i * itemH,
@@ -485,7 +485,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   if (!workspace) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" />
+        <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -502,7 +502,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             {/* Header */}
             <div className="mb-6">
               <InlineEditTitle value={workspace.name} onSave={handleRename} />
-              <p className="text-[12px] text-muted-foreground/35 font-mono mt-1 truncate">
+              <p className="text-[12px] text-muted-foreground font-mono mt-1 truncate">
                 {workspace.path}
               </p>
             </div>
@@ -524,7 +524,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                     'relative flex items-center gap-1.5 px-3 py-2 text-[13px] whitespace-nowrap transition-colors select-none',
                     activeTab === id
                       ? 'text-foreground'
-                      : 'text-muted-foreground/45 hover:text-muted-foreground/70',
+                      : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
                   <Icon className="relative size-3.5 shrink-0" />
@@ -550,7 +550,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
               {/* Empty state */}
               {agents.content === null && !agents.loading && (
-                <div className="py-16 text-center text-sm text-muted-foreground/40">
+                <div className="py-16 text-center text-sm text-muted-foreground">
                   该项目中没有 AGENTS.md 文件
                 </div>
               )}
@@ -609,7 +609,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
           <button
             type="button"
             onClick={handleOpenInFinder}
-            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-[12px] text-muted-foreground/60 transition-colors hover:bg-accent/50 hover:text-foreground"
+            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
           >
             <FolderOpenIcon className="size-3.5" />
             在 Finder 中打开
@@ -617,7 +617,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
           <button
             type="button"
             onClick={() => void handleOpenInApp()}
-            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-[12px] text-muted-foreground/60 transition-colors hover:bg-accent/50 hover:text-foreground"
+            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
           >
             <ExternalLinkIcon className="size-3.5" />
             在编辑器中打开
@@ -629,20 +629,20 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
         {/* Properties */}
         <div className="px-3 py-3 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/40">分支</span>
-            <span className="text-[12px] text-muted-foreground/60 font-mono truncate max-w-28">{gitStatus?.branch ?? '—'}</span>
+            <span className="text-[11px] text-muted-foreground">分支</span>
+            <span className="text-[12px] text-muted-foreground font-mono truncate max-w-28">{gitStatus?.branch ?? '—'}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/40">会话</span>
-            <span className="text-[12px] text-muted-foreground/60">{sessions.length}</span>
+            <span className="text-[11px] text-muted-foreground">会话</span>
+            <span className="text-[12px] text-muted-foreground">{sessions.length}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/40">创建</span>
-            <span className="text-[12px] text-muted-foreground/60">{formatDate(workspace.createdAt)}</span>
+            <span className="text-[11px] text-muted-foreground">创建</span>
+            <span className="text-[12px] text-muted-foreground">{formatDate(workspace.createdAt)}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground/40">更新</span>
-            <span className="text-[12px] text-muted-foreground/60">{formatDate(workspace.updatedAt)}</span>
+            <span className="text-[11px] text-muted-foreground">更新</span>
+            <span className="text-[12px] text-muted-foreground">{formatDate(workspace.updatedAt)}</span>
           </div>
         </div>
 
@@ -651,7 +651,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
         {/* Recent sessions */}
         <div className="px-3 pt-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-muted-foreground/45 select-none">最近会话</span>
+            <span className="text-[11px] text-muted-foreground select-none">最近会话</span>
             <Button variant="ghost" size="icon-xs" onClick={handleNewChat} aria-label="新建聊天">
               <MessageSquarePlusIcon className="size-3" />
             </Button>
@@ -659,7 +659,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
           {recentSessions.length === 0
             ? (
-              <p className="py-4 text-[11px] text-muted-foreground/40 text-center">暂无会话</p>
+              <p className="py-4 text-[11px] text-muted-foreground text-center">暂无会话</p>
             )
             : (
               <div className="flex flex-col gap-0.5 pb-3">
@@ -673,8 +673,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                       className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-accent/50 w-full text-left"
                     >
                       <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
-                      <span className="truncate flex-1 text-foreground/80">{session.title || 'Untitled'}</span>
-                      <time dateTime={new Date(session.updatedAt * 1000).toISOString()} className="shrink-0 text-[10px] text-muted-foreground/35 tabular-nums">
+                      <span className="truncate flex-1 text-foreground">{session.title || 'Untitled'}</span>
+                      <time dateTime={new Date(session.updatedAt * 1000).toISOString()} className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
                         {timeAgo(session.updatedAt)}
                       </time>
                     </button>

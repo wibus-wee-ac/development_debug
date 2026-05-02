@@ -118,7 +118,7 @@ export function CreateIssueDialog({
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.1 }}
                 onClick={() => setDescOpen(true)}
-                className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground/25 hover:text-muted-foreground/50 transition-colors"
+                className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >
                 <AlignLeftIcon className="size-3" />
                 Add description…
