@@ -152,7 +152,7 @@ function LinkedIssueView({
           disabled={!boards.length}
         >
           <ArrowUpRightIcon data-icon="inline-start" />
-          Open in Kanban
+          在看板中打开
         </Button>
 
         {isManualLink && (
@@ -167,7 +167,7 @@ function LinkedIssueView({
                 <UnlinkIcon />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Unlink issue</TooltipContent>
+            <TooltipContent>解除关联</TooltipContent>
           </Tooltip>
         )}
       </div>
@@ -189,13 +189,13 @@ function EmptyState({
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4">
       <CircleDotIcon className="size-5 text-muted-foreground/20" />
-      <p className="text-[11px] text-muted-foreground">No linked issue</p>
+      <p className="text-[11px] text-muted-foreground">未关联 Issue</p>
       {workspaceId && (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger>
             <Button variant="outline" size="xs">
               <LinkIcon data-icon="inline-start" />
-              Link issue
+              关联 Issue
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-72 p-0">
@@ -244,7 +244,7 @@ function IssuePicker({
         <Input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search issues..."
+          placeholder="搜索 Issue..."
           className="h-auto border-0 bg-transparent p-0 text-xs shadow-none focus-visible:ring-0"
           autoFocus
         />
@@ -253,7 +253,7 @@ function IssuePicker({
         <div className="flex flex-col py-1">
           {filtered.length === 0 && (
             <p className="px-3 py-4 text-center text-[11px] text-muted-foreground">
-              No issues found
+              未找到匹配的 Issue
             </p>
           )}
           {filtered.map(issue => (

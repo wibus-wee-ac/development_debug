@@ -217,7 +217,7 @@ export function ChatView({
         <ScrollArea className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
           <div className="mx-auto max-w-2xl px-4 pt-4">
             {messages.length === 0 && isReady && (
-              <div className="flex items-center justify-center py-20">
+              <div className="flex h-full items-center justify-center py-32">
                 <p className="text-sm text-muted-foreground select-none">
                   发送消息开始对话
                 </p>

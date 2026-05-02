@@ -354,26 +354,6 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
 
-  // Tab indicator refs — measure button positions for CSS-only sliding indicator
-  const tabRef = useRef<Record<string, HTMLElement | null>>({})
-  const [indicatorStyle, setIndicatorStyle] = useState<React.CSSProperties>({ opacity: 0 })
-
-  useEffect(() => {
-    const el = tabRef.current[activeTab]
-    if (el) {
-      const parent = el.parentElement
-      if (parent) {
-        const parentRect = parent.getBoundingClientRect()
-        const elRect = el.getBoundingClientRect()
-        setIndicatorStyle({
-          left: elRect.left - parentRect.left + 4,
-          width: elRect.width - 8,
-          opacity: 1,
-        })
-      }
-    }
-  }, [activeTab])
-
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
     for (const s of sessions) {
@@ -507,8 +487,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
               </p>
             </div>
 
-            {/* Tab navigation */}
-            <div className="relative flex items-center gap-0.5 overflow-x-auto mb-6 border-b border-border/40 pb-px scrollbar-none">
+            {/* Tab navigation — Framer Motion spring pill per DESIGN.md */}
+            <div className="flex items-center gap-0.5 overflow-x-auto mb-6 scrollbar-none">
               {([
                 { id: 'overview', label: 'Overview', icon: FileTextIcon },
                 { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
@@ -517,25 +497,27 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                 <button
                   key={id}
                   type="button"
-                  ref={(el) => { tabRef.current[id] = el }}
                   onClick={() => setActiveTab(id)}
                   data-testid={`workspace-detail-tab-${id}`}
                   className={cn(
-                    'relative flex items-center gap-1.5 px-3 py-2 text-[13px] whitespace-nowrap transition-colors select-none',
+                    'relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors select-none z-10',
                     activeTab === id
                       ? 'text-foreground'
                       : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
+                  {activeTab === id && (
+                    <motion.span
+                      layoutId="workspace-detail-tab-pill"
+                      className="absolute inset-0 rounded-md bg-accent"
+                      transition={{ type: 'spring', stiffness: 600, damping: 40 }}
+                      style={{ zIndex: -1 }}
+                    />
+                  )}
                   <Icon className="relative size-3.5 shrink-0" />
                   <span className="relative">{label}</span>
                 </button>
               ))}
-              {/* Tab indicator line — CSS transition, no motion layout measurement */}
-              <span
-                className="absolute -bottom-px h-[1.5px] bg-foreground rounded-full transition-all duration-200 ease-out"
-                style={indicatorStyle}
-              />
             </div>
 
             {/* Tab content — pure CSS toggle: no React effect re-runs, no layout thrash */}

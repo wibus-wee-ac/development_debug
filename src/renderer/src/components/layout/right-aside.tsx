@@ -40,7 +40,7 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* ── Tab bar ─────────────────────────────────────── */}
-      <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-0.5 border-b border-border/30 px-2 py-1.5">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -77,7 +77,7 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
         )}
         {activeTab === 'issue' && !sessionId && (
           <div className="flex flex-1 items-center justify-center">
-            <p className="text-[11px] text-muted-foreground">No active session</p>
+            <p className="text-[11px] text-muted-foreground">未选择会话</p>
           </div>
         )}
       </div>

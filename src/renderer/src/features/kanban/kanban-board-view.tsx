@@ -185,7 +185,7 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex flex-1 gap-0.5 overflow-x-auto overflow-y-hidden px-2 pb-2">
+          <div className="flex flex-1 gap-2 overflow-x-auto overflow-y-hidden px-2 pb-2">
             {statuses.map(status => (
               <KanbanColumn
                 key={status.id}
@@ -226,7 +226,7 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
             initial={{ width: 0, opacity: 0 }}
             animate={{ width: panelWidth, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
-            transition={isResizing ? { duration: 0 } : { type: 'spring', stiffness: 400, damping: 35 }}
+            transition={isResizing ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 35 }}
             className="h-full shrink-0 overflow-hidden relative"
           >
             {/* Resize handle */}

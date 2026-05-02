@@ -97,7 +97,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
 
           {issues.length === 0 && (
             <div className="px-2 py-8 text-center">
-              <span className="text-[10px] text-muted-foreground">No issues</span>
+              <span className="text-[10px] text-muted-foreground">暂无</span>
             </div>
           )}
         </ScrollArea>

@@ -111,7 +111,7 @@ const SESSION_PHASE: Record<string, { label: string, color: string, pulse: boole
 function relativeTime(unixTs: number): string {
   const secs = Math.floor(Date.now() / 1000) - unixTs
   if (secs < 60) {
-    return 'just now'
+    return '刚刚'
   }
   if (secs < 3600) {
     return `${Math.floor(secs / 60)}m ago`
@@ -493,7 +493,7 @@ function AgentSessionFeed({ issueId }: { issueId: string }) {
             }
           >
             <MessageSquareIcon className="size-2.5" />
-            View session
+            查看会话
             <ChevronRightIcon className="size-2.5" />
           </button>
         )}
@@ -1021,7 +1021,7 @@ export function IssueDetail({
   if (isLoading || !issue) {
     return (
       <div className="flex flex-1 items-center justify-center py-20">
-        <span className="text-[12px] text-muted-foreground/30">Loading…</span>
+        <span className="text-[12px] text-muted-foreground/30">加载中…</span>
       </div>
     )
   }

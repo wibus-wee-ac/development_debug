@@ -74,7 +74,7 @@ export function KanbanSidebar() {
         >
           <ArrowLeftIcon className="size-3.5" />
         </button>
-        <span className="text-[11px] font-medium text-muted-foreground">Boards</span>
+        <span className="text-[11px] font-medium text-foreground">Boards</span>
         <span className="flex-1" />
         <Tooltip>
           <TooltipTrigger asChild>
@@ -104,7 +104,7 @@ export function KanbanSidebar() {
                 <button
                   type="button"
                   className={cn(
-                    'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[12px]',
+                    'flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-[12px]',
                     'transition-colors duration-100',
                     isActive
                       ? 'bg-foreground/6 text-foreground'

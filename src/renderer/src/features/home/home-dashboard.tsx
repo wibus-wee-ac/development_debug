@@ -15,6 +15,7 @@ import {
   FileTextIcon,
   FolderIcon,
   GlobeIcon,
+  PlusIcon,
   SearchIcon,
   TimerIcon,
   TriangleAlertIcon,
@@ -397,9 +398,10 @@ export function HomeDashboard() {
           <button
             type="button"
             onClick={handleAddWorkspace}
-            className="flex flex-col w-32 shrink-0 rounded-lg border border-dashed border-border/40 items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:border-border/70 h-21.5"
+            className="flex flex-col w-32 shrink-0 rounded-lg border border-dashed border-border/40 items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:border-border/70 h-24"
           >
-            + 添加项目
+            <PlusIcon className="size-3.5" />
+            添加项目
           </button>
         </div>
       </div>

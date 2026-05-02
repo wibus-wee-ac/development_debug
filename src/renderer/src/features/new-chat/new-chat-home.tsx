@@ -313,7 +313,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
     <main className="flex h-full flex-col items-center justify-center px-6">
       <div className="flex w-full max-w-3xl flex-col gap-5">
         <div className="text-center">
-          <h1 className="font-heading text-2xl font-semibold">Cradle</h1>
+          <h1 className="font-heading text-3xl font-semibold">Cradle</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             选择 workspace 和 Agent Profile 后开始运行。
           </p>
@@ -332,7 +332,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
         {sending && (
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
-            Starting session...
+            正在启动...
           </div>
         )}
       </div>

@@ -350,7 +350,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-border px-3 py-2 text-muted-foreground text-xs">
+          <div className="flex items-center justify-between border-t border-border/30 px-3 py-2 text-muted-foreground text-xs">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <KbdGroup>

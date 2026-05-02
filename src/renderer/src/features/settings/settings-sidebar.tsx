@@ -3,7 +3,6 @@
 // Position: Sidebar content shown in AppSidebar when isSettings=true; fully prop-driven
 
 import { Button } from '@renderer/components/ui/button'
-import { Separator } from '@renderer/components/ui/separator'
 import { cn } from '@renderer/lib/cn'
 import { ArrowLeftIcon, BotIcon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 
@@ -41,10 +40,8 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
         <span className="text-xs font-medium text-foreground select-none">设置</span>
       </div>
 
-      <Separator />
-
       {/* Section nav */}
-      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2">
         {SETTINGS_NAV.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -52,7 +49,7 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
             onClick={() => onSetSection(id)}
             data-testid={`settings-nav-${id}`}
             className={cn(
-              'flex items-center gap-2 rounded-md px-2.5 py-2 text-xs transition-colors',
+              'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-colors',
               activeSection === id
                 ? 'bg-accent text-accent-foreground font-medium'
                 : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
