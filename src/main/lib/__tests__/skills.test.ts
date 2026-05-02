@@ -1,5 +1,5 @@
 // Input: node:fs/promises temp skill directories, mocked bundled resource path
-// Output: Regression tests for filesystem-based skills inventory, CRUD, import/export, and agent skill selection
+// Output: Regression tests for filesystem-based skills inventory, CRUD, import/export, and five-layer root precedence
 // Position: Unit test file for src/main/lib/skills.ts
 
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
@@ -15,10 +15,8 @@ import {
   exportSkillPackage,
   importSkillPackage,
   listSkillInventory,
-  parseAgentSkillConfig,
   readSkillDocument,
   scanSkills,
-  selectSkillCatalogEntries,
   updateSkillDocument,
 } from '../skills'
 
@@ -60,16 +58,23 @@ describe('skills library', () => {
   let homeDir: string
   let builtinDir: string
   let workspaceDir: string
+  let legacyDir: string
+  let sharedDir: string
   let homedirSpy: ReturnType<typeof vi.spyOn>
+  const agentId = 'agent-123'
 
   beforeEach(async () => {
     sandboxDir = await mkdtemp(join(os.tmpdir(), 'cradle-skills-test-'))
     homeDir = join(sandboxDir, 'home')
     builtinDir = join(sandboxDir, 'builtin')
     workspaceDir = join(sandboxDir, 'workspace')
-    await mkdir(join(homeDir, '.cradle', 'skills'), { recursive: true })
+    legacyDir = join(homeDir, '.agents', 'skills')
+    sharedDir = join(homeDir, '.cradle', 'skills')
+    await mkdir(legacyDir, { recursive: true })
+    await mkdir(sharedDir, { recursive: true })
+    await mkdir(join(homeDir, '.cradle', 'agents', agentId, 'skills'), { recursive: true })
     await mkdir(builtinDir, { recursive: true })
-    await mkdir(join(workspaceDir, '.cradle', 'skills'), { recursive: true })
+    await mkdir(join(workspaceDir, '.agents', 'skills'), { recursive: true })
 
     getBundledResourcePath.mockReturnValue(builtinDir)
     homedirSpy = vi.spyOn(os, 'homedir').mockReturnValue(homeDir)
@@ -81,31 +86,39 @@ describe('skills library', () => {
     await rm(sandboxDir, { recursive: true, force: true })
   })
 
-  it('scans built-in, global, and workspace skills with workspace override priority', async () => {
+  it('scans built-in, legacy, shared, workspace, and agent skills with agent override priority', async () => {
     await writeSkillPackage(builtinDir, 'alpha', {
       name: 'alpha',
       description: 'builtin alpha',
     })
-    await writeSkillPackage(join(homeDir, '.cradle', 'skills'), 'alpha-global', {
+    await writeSkillPackage(legacyDir, 'alpha-legacy', {
+      name: 'alpha',
+      description: 'legacy alpha',
+    })
+    await writeSkillPackage(sharedDir, 'alpha-global', {
       name: 'alpha',
       description: 'global alpha',
     })
-    await writeSkillPackage(join(workspaceDir, '.cradle', 'skills'), 'alpha-workspace', {
+    await writeSkillPackage(join(workspaceDir, '.agents', 'skills'), 'alpha-workspace', {
       name: 'alpha',
       description: 'workspace alpha',
     })
-    await writeSkillPackage(join(homeDir, '.cradle', 'skills'), 'beta', {
+    await writeSkillPackage(join(homeDir, '.cradle', 'agents', agentId, 'skills'), 'alpha-agent', {
+      name: 'alpha',
+      description: 'agent alpha',
+    })
+    await writeSkillPackage(sharedDir, 'beta', {
       name: 'beta',
       description: 'global beta',
     })
 
-    const entries = scanSkills(workspaceDir)
+    const entries = scanSkills({ workspacePath: workspaceDir, agentId })
     const byName = mapByName(entries)
 
     expect(Object.keys(byName).sort()).toEqual(['alpha', 'beta'])
     expect(byName.alpha).toMatchObject({
-      description: 'workspace alpha',
-      scope: 'workspace',
+      description: 'agent alpha',
+      scope: 'agent',
     })
     expect(byName.beta).toMatchObject({
       description: 'global beta',
@@ -118,22 +131,27 @@ describe('skills library', () => {
       name: 'alpha',
       description: 'builtin alpha',
     })
-    await writeSkillPackage(join(homeDir, '.cradle', 'skills'), 'alpha-global', {
+    await writeSkillPackage(legacyDir, 'alpha-legacy', {
+      name: 'alpha',
+      description: 'legacy alpha',
+    })
+    await writeSkillPackage(sharedDir, 'alpha-global', {
       name: 'alpha',
       description: 'global alpha',
     })
-    await writeSkillPackage(join(workspaceDir, '.cradle', 'skills'), 'beta', {
+    await writeSkillPackage(join(workspaceDir, '.agents', 'skills'), 'beta', {
       name: 'beta',
       description: 'workspace beta',
     })
 
-    const entries = listSkillInventory(workspaceDir)
+    const entries = listSkillInventory({ workspacePath: workspaceDir })
     const alphaEntries = entries.filter(entry => entry.name === 'alpha')
     const betaEntries = entries.filter(entry => entry.name === 'beta')
 
-    expect(alphaEntries).toHaveLength(2)
+    expect(alphaEntries).toHaveLength(3)
     expect(alphaEntries.some(entry => entry.scope === 'global' && entry.active)).toBe(true)
-    expect(alphaEntries.some(entry => entry.scope === 'builtin' && !entry.active)).toBe(true)
+    expect(alphaEntries.some(entry => entry.scope === 'legacy' && !entry.active && entry.shadowedBy === 'global')).toBe(true)
+    expect(alphaEntries.some(entry => entry.scope === 'builtin' && !entry.active && entry.shadowedBy === 'global')).toBe(true)
     expect(betaEntries).toEqual([
       expect.objectContaining({
         name: 'beta',
@@ -148,13 +166,11 @@ describe('skills library', () => {
       name: 'global-skill',
       description: 'first version',
       body: '# Hello\n',
-      workspacePath: workspaceDir,
     })
 
     const created = await readSkillDocument({
       scope: 'global',
       name: 'global-skill',
-      workspacePath: workspaceDir,
     })
     expect(created).toMatchObject({
       name: 'global-skill',
@@ -171,14 +187,12 @@ describe('skills library', () => {
 
     await importSkillPackage('global', {
       sourceDir: join(importedDir, 'preserved'),
-      workspacePath: workspaceDir,
       overwrite: false,
     })
 
     await updateSkillDocument({
       scope: 'global',
       name: 'preserved-skill',
-      workspacePath: workspaceDir,
       document: {
         name: 'preserved-skill',
         description: 'updated',
@@ -189,7 +203,6 @@ describe('skills library', () => {
     const updated = await readSkillDocument({
       scope: 'global',
       name: 'preserved-skill',
-      workspacePath: workspaceDir,
     })
 
     expect(updated.description).toBe('updated')
@@ -199,14 +212,30 @@ describe('skills library', () => {
     await deleteSkillDocument({
       scope: 'global',
       name: 'global-skill',
-      workspacePath: workspaceDir,
     })
 
     await expect(readSkillDocument({
       scope: 'global',
       name: 'global-skill',
-      workspacePath: workspaceDir,
     })).rejects.toThrow(/Skill not found/)
+  })
+
+  it('creates agent-private skills under ~/.cradle/agents/{agentId}/skills', async () => {
+    const created = await createSkillDocument('agent', {
+      agentId,
+      name: 'agent-only',
+      description: 'agent private skill',
+      body: '# Agent\n',
+    })
+
+    expect(created.rootDir).toBe(join(homeDir, '.cradle', 'agents', agentId, 'skills'))
+    expect(created.location).toBe(join(homeDir, '.cradle', 'agents', agentId, 'skills', 'agent-only', 'SKILL.md'))
+
+    const entries = scanSkills({ workspacePath: workspaceDir, agentId })
+    expect(entries).toContainEqual(expect.objectContaining({
+      name: 'agent-only',
+      scope: 'agent',
+    }))
   })
 
   it('imports and exports skill packages with nested files intact', async () => {
@@ -242,73 +271,11 @@ describe('skills library', () => {
     expect(exportedContent).toBe('usage')
   })
 
-  it('filters the injected catalog by agent skill references', () => {
-    const entries: SkillCatalogEntry[] = [
-      {
-        name: 'builtin-skill',
-        description: 'builtin',
-        location: '/builtin/builtin-skill/SKILL.md',
-        scope: 'builtin',
-        rootDir: '/builtin',
-        skillDir: '/builtin/builtin-skill',
-      },
-      {
-        name: 'global-skill',
-        description: 'global',
-        location: '/global/global-skill/SKILL.md',
-        scope: 'global',
-        rootDir: '/global',
-        skillDir: '/global/global-skill',
-      },
-      {
-        name: 'workspace-skill',
-        description: 'workspace',
-        location: '/workspace/workspace-skill/SKILL.md',
-        scope: 'workspace',
-        rootDir: '/workspace',
-        skillDir: '/workspace/workspace-skill',
-      },
-    ]
-
-    expect(selectSkillCatalogEntries(entries, {
-      mode: 'inherit',
-      selected: [],
-    })).toHaveLength(3)
-
-    expect(selectSkillCatalogEntries(entries, {
-      mode: 'selected',
-      selected: [
-        { scope: 'global', name: 'global-skill' },
-        { scope: 'workspace', name: 'missing-skill' },
-      ],
-    })).toEqual([
-      expect.objectContaining({
-        name: 'global-skill',
-        scope: 'global',
-      }),
-    ])
-  })
-
-  it('parses agent skill config from agent configJson', () => {
-    expect(parseAgentSkillConfig()).toEqual({
-      mode: 'inherit',
-      selected: [],
-    })
-
-    expect(parseAgentSkillConfig(JSON.stringify({
-      systemPrompt: 'hello',
-      skills: {
-        mode: 'selected',
-        selected: [
-          { scope: 'global', name: 'global-skill' },
-          { scope: 'invalid', name: 'ignored' },
-        ],
-      },
-    }))).toEqual({
-      mode: 'selected',
-      selected: [
-        { scope: 'global', name: 'global-skill' },
-      ],
-    })
+  it('rejects writes to legacy read-only skills', async () => {
+    await expect(createSkillDocument('legacy', {
+      name: 'legacy-write',
+      description: 'nope',
+      body: '# Nope\n',
+    })).rejects.toThrow(/read-only/i)
   })
 })

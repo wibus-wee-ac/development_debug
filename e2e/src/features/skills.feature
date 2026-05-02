@@ -2,7 +2,7 @@
 @cradle @P1 @CRADLE-SKILLS-001
 功能: Skills 管理
 
-  作为用户，我可以管理全局与工作区 Skills，并在 Agent 中选择可用技能
+  作为用户，我可以管理全局、工作区与 Agent 专属 Skills
 
   场景: 导航到全局 Skills 设置页面
     当 我点击设置按钮
@@ -33,9 +33,11 @@
     而且 Workspace Skill "workspace-demo" 应该写入磁盘
 
   @CRADLE-SKILLS-005
-  场景: Agent 创建表单显示 Skills 选择区
+  场景: 为 Agent 创建专属 Skill
     假如 我已进入 Agent 列表页面
-    而且 我已创建一个全局 Skill
-    而且 我已打开 Agent 创建表单
-    那么 我应该看到 Agent Skills 配置
-    而且 我应该看到 Skill 选项 "global-demo"
+    而且 我已创建一个 Agent "Skill Keeper"
+    当 我打开 Agent "Skill Keeper" 的 Skills 管理
+    而且 我新建一个 Agent Skill
+    那么 我应该看到 Agent Skills 页面
+    而且 我应该看到 Agent Skill "agent-demo"
+    而且 Agent "Skill Keeper" 的 Skill "agent-demo" 应该写入磁盘

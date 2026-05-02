@@ -26,6 +26,7 @@ export class CradleWorld extends World {
   skillWorkspaceDir?: string
   skillImportSourceDir?: string
   skillExportDir?: string
+  skillAgentIds: Record<string, string> = {}
 
   constructor(options: IWorldOptions) {
     super(options)

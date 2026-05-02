@@ -3,7 +3,7 @@ import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world.ts'
 
-const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles/
+const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles|No providers configured yet\./
 
 When('我点击设置按钮', async function (this: CradleWorld) {
   console.warn('[step] click settings button')
@@ -41,6 +41,9 @@ Then('我应该看到 Agent Runtime 设置页面', async function (this: CradleW
 
 Then('我应该看到 Provider 类型选择', async function (this: CradleWorld) {
   console.warn('[step] assert provider kind selector visible')
+  const addButton = this.page.getByRole('button', { name: /Add Provider|Add/i })
+  await expect(addButton).toBeVisible({ timeout: 5000 })
+  await addButton.click()
   const selector = this.page.locator('[data-testid="agent-provider-kind"]')
   await expect(selector).toBeVisible({ timeout: 5000 })
 })
@@ -50,10 +53,10 @@ Then('我应该看到 Agent Profile 列表或空状态', async function (this: C
   const settings = this.page.locator('[data-testid="agent-runtime-settings"]')
   await expect(settings).toBeVisible({ timeout: 5000 })
 
-  const profileList = this.page.locator('[data-testid="agent-profile-list"]')
   const emptyText = settings.getByText(EMPTY_STATE_RE)
+  const providerRows = settings.locator('[role="switch"]')
 
-  const hasProfiles = await profileList.isVisible().catch(() => false)
+  const hasProfiles = (await providerRows.count()) > 0
   const hasEmpty = await emptyText.isVisible().catch(() => false)
 
   expect(hasProfiles || hasEmpty).toBeTruthy()

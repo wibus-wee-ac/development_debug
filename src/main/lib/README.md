@@ -2,23 +2,23 @@
 
 # src/main/lib
 
-Core main-process libraries for protocol lifecycle and system integration.
-These modules manage ACP transport compatibility, chat orchestration, devtools, and Electron services.
-They are consumed by `src/main/services/` IPC handlers.
+主进程核心库负责聊天编排、文件系统资源管理与各类系统级能力。
+这些模块被 `src/main/services/` 的 IPC Service 组合，对渲染进程暴露后端能力。
+这里的约定是 library 只表达领域语义，不直接承载 UI 或路由状态。
 
 ## Files
 
-- **acp-connection.ts**: AcpConnectionManager singleton — pure transport bridge over ACP; wraps `prompt()`, `session/load`, and `session/resume`, caches live session state, and drops `session/load` replay because transcript persistence belongs to SQLite
-- **acp-installer.ts**: ACP agent installation helper (binary download/extract, package-manager metadata) that writes unified Agent Profiles
-- **acp-process-manager.ts**: Spawns and manages child processes for ACP agents
-- **acp-registry.ts**: Fetches the remote ACP agent registry and filters by platform support
-- **acp-responses-converter.ts**: AcpResponsesConverter — converts ACP SessionUpdate events into OpenAI Responses API-style `ResponseStreamEvent` objects for IPC streaming
-- **chat-engine.ts**: ChatEngine singleton — sole orchestrator for chat sessions; owns transactional user+assistant writes, OpenAI-style `chat:response-event` IPC broadcast, debounced DB flush, abort/failure semantics, crash-recovery on init, and ACP-compatible session restore before reset
-- **chat-provider.ts**: ChatProvider interface + ChatResponseEventPayload IPC envelope type; defines the provider-agnostic stream contract using `ResponseStreamEvent` from the `openai` SDK
-- **ipc-devtool-store.ts**: Ring buffer and live subscriber fan-out for observed IPC events
-- **ipc-devtool.ts**: Main-process integration that wires the shared IPC observer into the store, exposes `subscribeIpcDevtool(webContents)` so any BrowserWindow can receive live events, and hosts the dev-only `openDevtoolWindow()` factory for the second `/devtool` window
-- **safe-storage.ts**: Electron safeStorage wrapper for storing secrets
-- **thread-search.ts**: ThreadSearchEngine singleton — lazy-loaded jieba tokenizer + in-memory scored search over sessions/messages; returns hits with title/snippet match ranges for renderer highlighting
-- **workflow-rules.ts**: Filesystem-based workflow rules management — reads/writes Markdown rule files stored under `~/.cradle/workflows/{workspaceId}/` with workspace-level global rules and per-agent-profile specific rules
-- **bundled-resources.ts**: Dev/prod path resolver for files in the `resources/` directory that are bundled into the app binary (system workflow, built-in skills)
-- **skills.ts**: Filesystem-backed skills library — scans built-in/global/workspace tiers, reads and writes `SKILL.md` packages, supports import/export, and filters injected catalogs using per-agent skill references
+- **acp-connection.ts**: ACP 连接管理器，负责 prompt、session load/resume 与运行时连接状态缓存
+- **acp-installer.ts**: ACP 安装器，负责二进制下载、解压与 Agent Profile 元数据写入
+- **acp-process-manager.ts**: ACP 子进程生命周期管理与清理
+- **acp-registry.ts**: 远程 ACP Registry 拉取与平台过滤
+- **acp-responses-converter.ts**: 将 ACP `SessionUpdate` 转换成 OpenAI Responses 风格流事件
+- **bundled-resources.ts**: 解析开发态与生产态下 `resources/` 内置资源的真实路径
+- **chat-engine.ts**: 聊天主编排器，负责消息写入、响应流广播、会话恢复与 Skills 注入
+- **chat-provider.ts**: Provider 抽象接口与聊天流事件载荷类型
+- **ipc-devtool-store.ts**: IPC Devtool 事件缓冲与订阅分发
+- **ipc-devtool.ts**: Devtool 窗口与观测能力的主进程集成
+- **safe-storage.ts**: Electron `safeStorage` 的安全存储封装
+- **skills.ts**: Filesystem-first Skills 库，负责 built-in、legacy、global、workspace、agent 五层扫描、CRUD 与导入导出
+- **thread-search.ts**: 基于分词与打分的会话搜索引擎
+- **workflow-rules.ts**: 工作流规则文件管理，按 workspace 与 agent profile 分层存储 Markdown 规则

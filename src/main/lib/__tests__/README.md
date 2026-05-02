@@ -2,17 +2,17 @@
 
 # src/main/lib/__tests__
 
-Unit tests for main-process library modules under `src/main/lib`.
-These suites mock ACP and Electron boundaries while preserving library behavior contracts.
-Add focused regression coverage here for transport, orchestration, and utility changes.
+这里放主进程 library 的单元测试，重点验证纯领域逻辑与文件系统边界。
+测试会 mock ACP、Electron 或外部服务，但保留 library 的真实契约。
+当库层抽象、优先级规则或持久化路径变化时，应先在这里补回归。
 
 ## Files
 
-- **acp-connection.test.ts**: Covers ACP transport connection lifecycle, prompt streaming, and session restore capability handling
-- **acp-installer.test.ts**: Covers ACP installer safety checks and install/uninstall persistence behavior
-- **acp-responses-converter.test.ts**: Covers ACP-to-Responses event conversion, including required OpenAI event metadata fields
-- **acp-process-manager.test.ts**: Covers ACP child-process lifecycle metrics and cleanup
-- **acp-registry.test.ts**: Covers remote ACP registry fetch and distribution filtering
-- **ipc-devtool-backend.test.ts**: Covers IPC devtool event buffering and subscriber delivery
-- **session-preferences.test.ts**: Covers stored model/config preference capture and reapplication rules
-- **skills.test.ts**: Covers filesystem-backed skill scanning priority, inventory flags, CRUD, import/export, and agent skill config parsing
+- **acp-connection.test.ts**: 覆盖 ACP 连接生命周期、prompt 流与 session restore 语义
+- **acp-installer.test.ts**: 覆盖 ACP 安装器的安全校验与安装卸载持久化行为
+- **acp-process-manager.test.ts**: 覆盖 ACP 子进程生命周期指标与清理逻辑
+- **acp-registry.test.ts**: 覆盖远程 ACP registry 的拉取与分发过滤
+- **acp-responses-converter.test.ts**: 覆盖 ACP 事件到 OpenAI Responses 事件的转换
+- **ipc-devtool-backend.test.ts**: 覆盖 IPC Devtool 缓冲区与订阅分发
+- **session-preferences.test.ts**: 覆盖会话偏好捕获与重新应用逻辑
+- **skills.test.ts**: 覆盖五层 Skills 扫描优先级、inventory 标记、只读约束、CRUD 与导入导出

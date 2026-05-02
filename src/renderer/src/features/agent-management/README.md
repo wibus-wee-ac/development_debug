@@ -2,14 +2,14 @@
 
 # Features/Agent Management
 
-Unified settings feature for Provider (agent_profiles) and Agent identity management.
-Provider CRUD covers ACP, CLI TUI, and OpenAI-compatible providers.
-Agent identity CRUD provides name, DiceBear avatar, model preference, thinking effort, and per-agent skill selection.
+Agent Management 负责 Provider 与 Agent Identity 的统一设置界面。
+Provider 配置决定模型与运行时来源，Agent Identity 决定 persona、system prompt 与专属 Skills 工作区。
+这里不再把 Skills 开关持久化到 `configJson`，Agent 专属能力改由文件系统表达。
 
 ## Files
 
-- **agent-list.tsx**: AgentList settings page — inline expand-to-create Agent editor with DiceBear avatar picker, system prompt, and per-agent skill configuration
-- **agent-runtime-settings.tsx**: AgentRuntimeSettings component — unified Agent Profile management UI
-- **agents-settings.tsx**: AgentsSettings (Providers) — ACP Registry + manual provider profile CRUD
-- **acp-settings.tsx**: Legacy ACP settings (superseded by agents-settings.tsx)
-- **index.ts**: Barrel export for the agent management feature
+- **acp-settings.tsx**: 旧 ACP 设置页面，保留兼容用途
+- **agent-list.tsx**: Agent 列表与编辑器，负责 identity CRUD、system prompt 与 agent-private Skills 管理入口
+- **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面
+- **agents-settings.tsx**: Provider 设置页，负责 ACP Registry 与手动 provider 配置
+- **index.ts**: Agent Management 功能模块的 barrel export

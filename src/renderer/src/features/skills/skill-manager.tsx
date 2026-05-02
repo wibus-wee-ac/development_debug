@@ -37,7 +37,8 @@ import { useSkillDocument, useSkills } from './use-skills'
 
 interface SkillManagerProps {
   workspaceId?: string | null
-  editableScope: 'global' | 'workspace'
+  agentId?: string | null
+  editableScope: 'global' | 'workspace' | 'agent'
   pageTestId: string
   title: string
   description: string
@@ -48,27 +49,34 @@ interface SelectedSkillRef {
   name: string
 }
 
-const GROUP_ORDER: Record<'global' | 'workspace', SkillScope[]> = {
-  global: ['global', 'builtin'],
-  workspace: ['workspace', 'global', 'builtin'],
+const GROUP_ORDER: Record<'global' | 'workspace' | 'agent', SkillScope[]> = {
+  global: ['global', 'legacy', 'builtin'],
+  workspace: ['workspace', 'global', 'legacy', 'builtin'],
+  agent: ['agent', 'global', 'legacy', 'builtin'],
 }
 
 const GROUP_LABELS: Record<SkillScope, string> = {
   builtin: 'Built-in',
+  legacy: 'Legacy',
   global: 'Global',
   workspace: 'Workspace',
+  agent: 'Agent',
 }
 
 const SCOPE_ICONS: Record<SkillScope, typeof BotIcon> = {
   builtin: BotIcon,
+  legacy: GlobeIcon,
   global: GlobeIcon,
   workspace: FolderTreeIcon,
+  agent: BotIcon,
 }
 
 const SCOPE_ACCENT: Record<SkillScope, string> = {
   builtin: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+  legacy: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   global: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
   workspace: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  agent: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
 }
 
 const EMPTY_BODY = '# Overview\n\nDescribe when the agent should use this skill.\n'
@@ -81,6 +89,7 @@ function SkillEditDialog({
   entry,
   workspaceId,
   editableScope,
+  agentId,
   onSaved,
   createSkill,
   updateSkill,
@@ -89,13 +98,18 @@ function SkillEditDialog({
   onOpenChange: (open: boolean) => void
   entry: SelectedSkillRef | null
   workspaceId?: string | null
-  editableScope: 'global' | 'workspace'
+  agentId?: string | null
+  editableScope: 'global' | 'workspace' | 'agent'
   onSaved: (scope: SkillScope, name: string) => void
   createSkill: ReturnType<typeof useSkills>['createSkill']
   updateSkill: ReturnType<typeof useSkills>['updateSkill']
 }) {
   const isDraft = entry?.name === '__draft__'
-  const doc = useSkillDocument(workspaceId, isDraft ? null : entry?.scope ?? null, isDraft ? null : entry?.name ?? null)
+  const doc = useSkillDocument(
+    { workspaceId, agentId },
+    isDraft ? null : entry?.scope ?? null,
+    isDraft ? null : entry?.name ?? null,
+  )
 
   const [nameVal, setNameVal] = useState('')
   const [descVal, setDescVal] = useState('')
@@ -252,6 +266,7 @@ function SkillEditDialog({
 function SkillDetail({
   entry,
   workspaceId,
+  agentId,
   editableScope,
   onEdit,
   onExport,
@@ -259,76 +274,60 @@ function SkillDetail({
 }: {
   entry: SkillInventoryEntry
   workspaceId?: string | null
-  editableScope: 'global' | 'workspace'
+  agentId?: string | null
+  editableScope: 'global' | 'workspace' | 'agent'
   onEdit: () => void
   onExport: () => void
   onDelete: () => void
 }) {
-  const doc = useSkillDocument(workspaceId, entry.scope, entry.name)
+  const doc = useSkillDocument({ workspaceId, agentId }, entry.scope, entry.name)
   const isEditable = entry.scope === editableScope
   const Icon = SCOPE_ICONS[entry.scope]
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Detail header */}
-      <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={cn(
-                'flex size-7 shrink-0 items-center justify-center rounded-lg',
-                SCOPE_ACCENT[entry.scope],
-              )}
-            >
-              <Icon className="size-3.5" />
-            </span>
-            <div className="min-w-0">
-              <h3 className="text-[14px] font-medium text-foreground truncate">{entry.name}</h3>
-              <span className="text-[11px] text-muted-foreground">{GROUP_LABELS[entry.scope]}</span>
-            </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span
+            className={cn(
+              'flex size-7 shrink-0 items-center justify-center rounded-lg',
+              SCOPE_ACCENT[entry.scope],
+            )}
+          >
+            <Icon className="size-3.5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium text-foreground truncate">{entry.name}</h3>
+            <span className="text-[11px] text-muted-foreground">{GROUP_LABELS[entry.scope]}</span>
           </div>
         </div>
         <div className="flex items-center gap-1">
           {isEditable && (
-            <Button variant="ghost" size="icon-xs" onClick={onEdit} className="text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon-xs" onClick={onEdit} className="text-muted-foreground hover:text-foreground" data-testid="skill-edit-btn">
               <PencilIcon />
             </Button>
           )}
-          <Button variant="ghost" size="icon-xs" onClick={onExport} className="text-muted-foreground hover:text-foreground">
+          <Button variant="ghost" size="icon-xs" onClick={onExport} className="text-muted-foreground hover:text-foreground" data-testid="skill-export-btn">
             <DownloadIcon />
           </Button>
           {isEditable && (
-            <Button variant="ghost" size="icon-xs" onClick={onDelete} className="text-muted-foreground hover:text-destructive">
+            <Button variant="ghost" size="icon-xs" onClick={onDelete} className="text-muted-foreground hover:text-destructive" data-testid="skill-delete-btn">
               <Trash2Icon />
             </Button>
           )}
         </div>
       </div>
 
-      {/* Description */}
-      <div className="px-5 pb-4">
-        <p className="text-[12px] leading-relaxed text-muted-foreground/60 text-pretty">
+      {entry.description && (
+        <p className="text-xs text-muted-foreground/60 text-pretty">
           {entry.description}
         </p>
-      </div>
+      )}
 
-      {/* Meta info */}
-      <div className="mx-5 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-foreground/5 pt-4 pb-4">
-        <div>
-          <span className="text-[10px] text-muted-foreground">Scope</span>
-          <p className="mt-0.5 text-[12px] text-foreground">{GROUP_LABELS[entry.scope]}</p>
-        </div>
-        <div>
-          <span className="text-[10px] text-muted-foreground">Location</span>
-          <p className="mt-0.5 text-[12px] text-foreground truncate font-mono">{entry.location}</p>
-        </div>
-      </div>
-
-      {/* Body preview */}
       {doc.data?.body && (
-        <div className="mx-5 flex-1 border-t border-foreground/5 pt-4">
+        <div>
           <span className="text-[10px] text-muted-foreground">Content</span>
-          <ScrollArea className="mt-2 max-h-64">
+          <ScrollArea className="mt-1.5 max-h-96">
             <pre className="text-[11px] leading-relaxed text-muted-foreground/60 whitespace-pre-wrap font-mono">
               {doc.data.body}
             </pre>
@@ -343,6 +342,7 @@ function SkillDetail({
 
 export function SkillManager({
   workspaceId,
+  agentId,
   editableScope,
   pageTestId,
   title,
@@ -356,11 +356,12 @@ export function SkillManager({
     deleteSkill,
     importSkill,
     exportSkill,
-  } = useSkills(workspaceId)
+  } = useSkills({ workspaceId, agentId })
 
   const [selectedSkill, setSelectedSkill] = useState<SelectedSkillRef | null>(null)
   const [editingSkill, setEditingSkill] = useState<SelectedSkillRef | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [scopeFilter, setScopeFilter] = useState<SkillScope | 'all'>('all')
   const [errorText, setErrorText] = useState<string | null>(null)
@@ -379,7 +380,7 @@ export function SkillManager({
       entries = entries.filter(e =>
         e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q))
     }
-    const order = { workspace: 0, global: 1, builtin: 2 } as const
+    const order = { agent: 0, workspace: 1, global: 2, legacy: 3, builtin: 4 } as const
     return [...entries].sort((a, b) => {
       const aDist = a.scope === editableScope ? -1 : order[a.scope]
       const bDist = b.scope === editableScope ? -1 : order[b.scope]
@@ -389,17 +390,6 @@ export function SkillManager({
       return a.name.localeCompare(b.name)
     })
   }, [activeInventory, scopeFilter, searchQuery, editableScope])
-
-  // Auto-select first entry
-  useEffect(() => {
-    if (selectedSkill) {
-      return
-    }
-    const first = activeInventory[0]
-    if (first) {
-      setSelectedSkill({ scope: first.scope, name: first.name })
-    }
-  }, [activeInventory, selectedSkill])
 
   const selectedEntry = useMemo(() => {
     if (!selectedSkill) {
@@ -412,14 +402,6 @@ export function SkillManager({
     setEditingSkill({ scope: editableScope, name: '__draft__' })
     setDialogOpen(true)
   }, [editableScope])
-
-  const openEdit = useCallback(() => {
-    if (!selectedSkill) {
-      return
-    }
-    setEditingSkill(selectedSkill)
-    setDialogOpen(true)
-  }, [selectedSkill])
 
   const handleSaved = useCallback((scope: SkillScope, name: string) => {
     setSelectedSkill({ scope, name })
@@ -500,114 +482,128 @@ export function SkillManager({
         <p className="text-[11px] text-destructive">{errorText}</p>
       )}
 
-      {/* Split layout */}
-      <div className="grid min-h-112 grid-cols-[14rem_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg border border-border/50">
-        {/* Left — list */}
-        <div className="flex flex-col border-r border-foreground/5">
-          {/* Search */}
-          <div className="p-2.5">
-            <div className="relative">
-              <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/50" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="w-full rounded-md bg-foreground/4 py-1.5 pl-7 pr-2.5 text-[11px] text-foreground placeholder:text-muted-foreground/50 outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Scope pills */}
-          <div className="flex items-center gap-0.5 px-2.5 pb-2">
-            {(['all' as const, ...scopes] as const).map(s => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setScopeFilter(s)}
-                className={cn(
-                  'px-2 py-0.5 text-[10px] font-medium rounded-md transition-colors',
-                  scopeFilter === s
-                    ? 'bg-foreground/8 text-foreground'
-                    : 'text-muted-foreground/50 hover:text-muted-foreground/60',
-                )}
-              >
-                {s === 'all' ? 'All' : GROUP_LABELS[s]}
-              </button>
-            ))}
-          </div>
-
-          {/* Entries */}
-          <ScrollArea className="flex-1">
-            <div className="px-1.5 pb-2">
-              {isLoading
-                ? (
-                  <div className="flex justify-center py-8">
-                    <Spinner className="size-3.5 text-muted-foreground" />
-                  </div>
-                )
-                : filteredInventory.length === 0
-                  ? (
-                    <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">
-                      {searchQuery.trim() ? 'No match' : 'No skills'}
-                    </div>
-                  )
-                  : filteredInventory.map((entry) => {
-                    const isSelected = selectedSkill?.scope === entry.scope && selectedSkill.name === entry.name
-                    const Icon = SCOPE_ICONS[entry.scope]
-                    return (
-                      <button
-                        key={`${entry.scope}:${entry.name}`}
-                        type="button"
-                        onClick={() => setSelectedSkill({ scope: entry.scope, name: entry.name })}
-                        className={cn(
-                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors overflow-hidden',
-                          isSelected
-                            ? 'bg-foreground/6'
-                            : 'hover:bg-foreground/4',
-                        )}
-                      >
-                        <Icon className={cn('size-3 shrink-0', isSelected ? 'text-foreground/70' : 'text-muted-foreground/50')} />
-                        <div className="min-w-0 flex-1">
-                          <span
-                            className={cn(
-                              'block text-[12px] truncate',
-                              isSelected ? 'text-foreground font-medium' : 'text-muted-foreground',
-                            )}
-                          >
-                            {entry.name}
-                          </span>
-                          <span className="block text-[10px] text-muted-foreground/60 truncate">
-                            {entry.description}
-                          </span>
-                        </div>
-                      </button>
-                    )
-                  })}
-            </div>
-          </ScrollArea>
+      {/* Search + filter row */}
+      <div className="flex items-center gap-3 py-2">
+        <div className="relative flex-1">
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/50" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search skills..."
+            className="w-full rounded-md bg-foreground/4 py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none"
+          />
         </div>
-
-        {/* Right — detail */}
-        <div className="flex flex-col overflow-hidden">
-          {selectedEntry
-            ? (
-              <SkillDetail
-                entry={selectedEntry}
-                workspaceId={workspaceId}
-                editableScope={editableScope}
-                onEdit={openEdit}
-                onExport={() => void handleExport()}
-                onDelete={() => void handleDelete()}
-              />
-            )
-            : (
-              <div className="flex flex-1 items-center justify-center">
-                <span className="text-[12px] text-muted-foreground">Select a skill</span>
-              </div>
-            )}
+        <div className="flex items-center gap-0.5">
+          {(['all' as const, ...scopes] as const).map(s => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setScopeFilter(s)}
+              className={cn(
+                'px-2 py-1 text-[11px] font-medium rounded-md transition-colors',
+                scopeFilter === s
+                  ? 'bg-foreground/8 text-foreground'
+                  : 'text-muted-foreground/50 hover:text-muted-foreground',
+              )}
+            >
+              {s === 'all' ? 'All' : GROUP_LABELS[s]}
+            </button>
+          ))}
         </div>
       </div>
+
+      {/* Skill list */}
+      {isLoading
+        ? (
+          <div className="flex justify-center py-12">
+            <Spinner className="size-4 text-muted-foreground" />
+          </div>
+        )
+        : filteredInventory.length === 0
+          ? (
+            <div className="py-12 text-center text-xs text-muted-foreground">
+              {searchQuery.trim() ? 'No matching skills' : 'No skills yet'}
+            </div>
+          )
+          : (
+            <div className="flex flex-col divide-y divide-foreground/5">
+              {filteredInventory.map((entry) => {
+                const Icon = SCOPE_ICONS[entry.scope]
+                const isEditable = entry.scope === editableScope
+                return (
+                  <button
+                    key={`${entry.scope}:${entry.name}`}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSkill({ scope: entry.scope, name: entry.name })
+                      setDetailOpen(true)
+                    }}
+                    className="group flex items-center gap-3 py-3 text-left transition-colors hover:bg-foreground/3 -mx-2 px-2 rounded-md"
+                  >
+                    <span
+                      className={cn(
+                        'flex size-7 shrink-0 items-center justify-center rounded-lg',
+                        SCOPE_ACCENT[entry.scope],
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="block text-[13px] font-medium text-foreground truncate">
+                        {entry.name}
+                      </span>
+                      <span className="block text-[11px] text-muted-foreground/60 truncate">
+                        {entry.description}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground/40 group-hover:hidden">
+                      {GROUP_LABELS[entry.scope]}
+                    </span>
+                    {isEditable && (
+                      <Trash2Icon
+                        className="hidden size-3.5 shrink-0 text-muted-foreground/40 hover:text-destructive group-hover:block"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void deleteSkill.mutateAsync({ scope: entry.scope, name: entry.name })
+                        }}
+                      />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+      {/* Detail Dialog */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="sm:max-w-xl max-h-[80vh] overflow-y-auto" showCloseButton>
+          <DialogHeader>
+            <DialogTitle>Skill Detail</DialogTitle>
+          </DialogHeader>
+          {selectedEntry && (
+            <SkillDetail
+              entry={selectedEntry}
+              workspaceId={workspaceId}
+              editableScope={editableScope}
+              agentId={agentId}
+              onEdit={() => {
+                setDetailOpen(false)
+                setEditingSkill(selectedSkill)
+                setDialogOpen(true)
+              }}
+              onExport={() => {
+                setDetailOpen(false)
+                void handleExport()
+              }}
+              onDelete={() => {
+                setDetailOpen(false)
+                void handleDelete()
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Dialog */}
       <SkillEditDialog
@@ -616,6 +612,7 @@ export function SkillManager({
         entry={editingSkill}
         workspaceId={workspaceId}
         editableScope={editableScope}
+        agentId={agentId}
         onSaved={handleSaved}
         createSkill={createSkill}
         updateSkill={updateSkill}

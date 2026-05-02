@@ -2,12 +2,12 @@
 
 # E2E/Support
 
-Shared Cucumber support code launches the packaged Electron app, isolates test state, and wires global hooks.
-These files define the test world, setup/teardown lifecycle, and any auxiliary mock servers used across features.
-Update this directory when end-to-end infrastructure or shared fixtures change.
+这里存放端到端测试共享的 world、hooks 与辅助服务，用来隔离环境并稳定启动 Electron 应用。
+Support 层负责测试生命周期与共享状态，不承载具体业务断言。
+当应用启动成本、测试状态隔离或全局前后置逻辑变化时，应同步更新这里。
 
 ## Files
 
-- **hooks.ts**: Global Cucumber hooks for launching the app, capturing failure screenshots, and closing sessions
-- **mock-llm-server.ts**: Local OpenAI-compatible mock server used by chat end-to-end scenarios
-- **world.ts**: Custom Cucumber world that launches Electron with isolated `userData` and `HOME` sandboxes
+- **hooks.ts**: 全局 hooks，负责启动应用、失败截图与清理
+- **mock-llm-server.ts**: 本地 OpenAI-compatible mock server，供聊天场景复用
+- **world.ts**: 自定义 Cucumber world，维护隔离的 `userData`、`HOME` 与 agent skill 记录

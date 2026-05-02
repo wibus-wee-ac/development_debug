@@ -1,5 +1,5 @@
 // Input: SkillsService with mocked workspace DB lookup and mocked skills library functions
-// Output: Unit tests for workspace-aware skills IPC behavior
+// Output: Unit tests for workspace-aware and agent-aware skills IPC behavior
 // Position: Service-layer regression coverage for src/main/services/skills.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,9 +49,11 @@ describe('skillsService', () => {
   it('resolves workspace ids before listing skills', async () => {
     listSkillInventory.mockReturnValueOnce([])
 
-    await service.list('workspace-1')
+    await service.list({ workspaceId: 'workspace-1' })
 
-    expect(listSkillInventory).toHaveBeenCalledWith('/tmp/workspace-1')
+    expect(listSkillInventory).toHaveBeenCalledWith({
+      workspacePath: '/tmp/workspace-1',
+    })
   })
 
   it('passes the resolved workspace path to workspace skill creation', async () => {
@@ -74,6 +76,30 @@ describe('skillsService', () => {
       description: 'desc',
       body: '# Skill\n',
       workspacePath: '/tmp/workspace-1',
+    })
+  })
+
+  it('passes agent ids through for agent-private skill creation', async () => {
+    createSkillDocument.mockResolvedValueOnce({
+      name: 'agent-skill',
+      description: 'desc',
+      body: '# Skill\n',
+    })
+
+    await service.create({
+      scope: 'agent',
+      agentId: 'agent-123',
+      name: 'agent-skill',
+      description: 'desc',
+      body: '# Skill\n',
+    })
+
+    expect(createSkillDocument).toHaveBeenCalledWith('agent', {
+      agentId: 'agent-123',
+      name: 'agent-skill',
+      description: 'desc',
+      body: '# Skill\n',
+      workspacePath: undefined,
     })
   })
 })

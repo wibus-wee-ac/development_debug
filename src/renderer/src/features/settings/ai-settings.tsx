@@ -193,7 +193,7 @@ export function AiSettings() {
     if (!ipc) {
       return
     }
-    ipc.skills.list(null)
+    ipc.skills.list()
       .then((inv: SkillInventoryEntry[]) => setSkills(inv.filter(s => s.active)))
       .catch(() => setSkills([]))
   }, [])

@@ -1,6 +1,6 @@
 // Input: node:fs, node:fs/promises, node:path, node:os, js-yaml, bundled resources
-// Output: Filesystem-backed skills catalog scanning, CRUD, import/export, and agent-level selection helpers
-// Position: Main-process library for skill package discovery and management across built-in, global, and workspace scopes
+// Output: Filesystem-backed skills catalog scanning, CRUD, and import/export across built-in, legacy, shared, workspace, and agent roots
+// Position: Main-process library for skill package discovery and management across all filesystem-backed skill tiers
 
 import fs from 'node:fs'
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -13,15 +13,22 @@ import { getBundledResourcePath } from './bundled-resources'
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
 const UNSAFE_PATH_RE = /[/\\]|\.\./
-const SKILLS_DIR_PARTS = ['.cradle', 'skills'] as const
+const CRADLE_DIR_PARTS = ['.cradle'] as const
 
 const SCOPE_PRIORITY: Record<SkillScope, number> = {
   builtin: 0,
-  global: 1,
-  workspace: 2,
+  legacy: 1,
+  global: 2,
+  workspace: 3,
+  agent: 4,
 }
 
-export type SkillScope = 'builtin' | 'global' | 'workspace'
+export type SkillScope = 'builtin' | 'legacy' | 'global' | 'workspace' | 'agent'
+
+export interface SkillContext {
+  workspacePath?: string
+  agentId?: string
+}
 
 export interface SkillCatalogEntry {
   name: string
@@ -48,21 +55,12 @@ export interface SkillDocument {
   skillDir: string
 }
 
-export interface AgentSkillReference {
-  scope: SkillScope
-  name: string
-}
-
-export interface AgentSkillConfig {
-  mode?: 'inherit' | 'selected'
-  selected?: AgentSkillReference[]
-}
-
 export interface CreateSkillInput {
   name: string
   description: string
   body: string
   workspacePath?: string
+  agentId?: string
   frontmatter?: Record<string, unknown>
 }
 
@@ -70,6 +68,7 @@ export interface UpdateSkillInput {
   scope: SkillScope
   name: string
   workspacePath?: string
+  agentId?: string
   document: {
     name: string
     description: string
@@ -82,11 +81,13 @@ export interface SkillLookup {
   scope: SkillScope
   name: string
   workspacePath?: string
+  agentId?: string
 }
 
 export interface ImportSkillInput {
   sourceDir: string
   workspacePath?: string
+  agentId?: string
   overwrite?: boolean
 }
 
@@ -109,16 +110,16 @@ interface ScopeScanResult {
 
 /**
  * Scan skills directories for SKILL.md files.
- * Priority (lowest to highest): built-in → user-level → project-level.
+ * Priority (lowest to highest): built-in → legacy → shared → workspace → agent.
  * Same-named skills are overwritten by higher-priority sources.
  */
-export function scanSkills(workspacePath?: string): SkillCatalogEntry[] {
-  const inventory = listSkillInventory(workspacePath)
+export function scanSkills(context: SkillContext = {}): SkillCatalogEntry[] {
+  const inventory = listSkillInventory(context)
   return inventory.filter(entry => entry.active)
 }
 
-export function listSkillInventory(workspacePath?: string): SkillInventoryEntry[] {
-  const scopedEntries = scanAllScopes(workspacePath)
+export function listSkillInventory(context: SkillContext = {}): SkillInventoryEntry[] {
+  const scopedEntries = scanAllScopes(context)
   const activeScopeByName = new Map<string, SkillScope>()
 
   for (const { entries } of scopedEntries) {
@@ -150,7 +151,7 @@ export async function readSkillDocument(input: SkillLookup): Promise<SkillDocume
 export async function createSkillDocument(scope: SkillScope, input: CreateSkillInput): Promise<SkillDocument> {
   assertWritableScope(scope)
   assertSkillName(input.name)
-  const rootDir = resolveScopeRoot(scope, input.workspacePath)
+  const rootDir = resolveScopeRoot(scope, input)
   const skillDir = path.join(rootDir, toSkillDirName(input.name))
 
   if (fs.existsSync(skillDir)) {
@@ -185,6 +186,7 @@ export async function updateSkillDocument(input: UpdateSkillInput): Promise<Skil
     scope: input.scope,
     name: input.name,
     workspacePath: input.workspacePath,
+    agentId: input.agentId,
   })
 
   const nextFrontmatter = {
@@ -232,7 +234,7 @@ export async function importSkillPackage(scope: SkillScope, input: ImportSkillIn
   const parsed = parseSkillDocument(content)
   assertSkillName(parsed.name)
 
-  const rootDir = resolveScopeRoot(scope, input.workspacePath)
+  const rootDir = resolveScopeRoot(scope, input)
   const targetDir = path.join(rootDir, toSkillDirName(parsed.name))
 
   if (fs.existsSync(targetDir)) {
@@ -273,18 +275,6 @@ export async function exportSkillPackage(input: ExportSkillInput): Promise<strin
   return destination
 }
 
-export function selectSkillCatalogEntries(
-  entries: SkillCatalogEntry[],
-  config?: AgentSkillConfig | null,
-): SkillCatalogEntry[] {
-  if (!config || config.mode !== 'selected') {
-    return entries
-  }
-
-  const wanted = new Set((config.selected ?? []).map(ref => `${ref.scope}:${ref.name}`))
-  return entries.filter(entry => wanted.has(`${entry.scope}:${entry.name}`))
-}
-
 /**
  * Build a skill catalog text block for injection into system prompts.
  */
@@ -296,54 +286,39 @@ export function buildSkillCatalog(entries: SkillCatalogEntry[]): string {
   return `\nAvailable skills (read the SKILL.md file at the listed path when the task matches):\n${lines.join('\n')}`
 }
 
-function scanAllScopes(workspacePath?: string): ScopeScanResult[] {
+function scanAllScopes(context: SkillContext): ScopeScanResult[] {
   const results: ScopeScanResult[] = []
-  const builtinRoot = resolveScopeRoot('builtin', workspacePath)
+  const builtinRoot = resolveScopeRoot('builtin', context)
   results.push({
     scope: 'builtin',
     entries: scanDirectory(builtinRoot, 'builtin'),
   })
 
-  const globalRoot = resolveScopeRoot('global', workspacePath)
-  const globalEntries = scanDirectory(globalRoot, 'global')
-
-  // Also read from ~/.agents/skills for compatibility (read-only, never write)
-  const agentsCompatRoot = path.join(os.homedir(), '.agents', 'skills')
-  if (agentsCompatRoot !== globalRoot) {
-    const compatEntries = scanDirectory(agentsCompatRoot, 'global')
-    // Only add entries that don't already exist in cradle's global
-    const existingNames = new Set(globalEntries.map(e => e.name))
-    for (const entry of compatEntries) {
-      if (!existingNames.has(entry.name)) {
-        globalEntries.push(entry)
-      }
-    }
-  }
-
+  const legacyRoot = resolveScopeRoot('legacy', context)
   results.push({
-    scope: 'global',
-    entries: globalEntries,
+    scope: 'legacy',
+    entries: scanDirectory(legacyRoot, 'legacy'),
   })
 
-  if (workspacePath) {
-    const workspaceRoot = resolveScopeRoot('workspace', workspacePath)
-    const workspaceEntries = scanDirectory(workspaceRoot, 'workspace')
+  const globalRoot = resolveScopeRoot('global', context)
+  results.push({
+    scope: 'global',
+    entries: scanDirectory(globalRoot, 'global'),
+  })
 
-    // Also read from {workspace}/.agents/skills for compatibility (read-only)
-    const wsAgentsCompatRoot = path.join(workspacePath, '.agents', 'skills')
-    if (wsAgentsCompatRoot !== workspaceRoot) {
-      const compatEntries = scanDirectory(wsAgentsCompatRoot, 'workspace')
-      const existingNames = new Set(workspaceEntries.map(e => e.name))
-      for (const entry of compatEntries) {
-        if (!existingNames.has(entry.name)) {
-          workspaceEntries.push(entry)
-        }
-      }
-    }
-
+  if (context.workspacePath) {
+    const workspaceRoot = resolveScopeRoot('workspace', context)
     results.push({
       scope: 'workspace',
-      entries: workspaceEntries,
+      entries: scanDirectory(workspaceRoot, 'workspace'),
+    })
+  }
+
+  if (context.agentId) {
+    const agentRoot = resolveScopeRoot('agent', context)
+    results.push({
+      scope: 'agent',
+      entries: scanDirectory(agentRoot, 'agent'),
     })
   }
 
@@ -395,7 +370,10 @@ function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] 
 }
 
 function resolveInventoryEntry(input: SkillLookup): SkillCatalogEntry {
-  const entries = listSkillInventory(input.workspacePath)
+  const entries = listSkillInventory({
+    workspacePath: input.workspacePath,
+    agentId: input.agentId,
+  })
   const match = entries.find(entry => entry.scope === input.scope && entry.name === input.name)
   if (!match) {
     throw new Error(`Skill not found: ${input.scope}:${input.name}`)
@@ -403,23 +381,31 @@ function resolveInventoryEntry(input: SkillLookup): SkillCatalogEntry {
   return match
 }
 
-function resolveScopeRoot(scope: SkillScope, workspacePath?: string): string {
+function resolveScopeRoot(scope: SkillScope, context: SkillContext): string {
   switch (scope) {
     case 'builtin':
       return getBundledResourcePath('skills')
+    case 'legacy':
+      return path.join(os.homedir(), '.agents', 'skills')
     case 'global':
-      return path.join(os.homedir(), ...SKILLS_DIR_PARTS)
+      return path.join(os.homedir(), ...CRADLE_DIR_PARTS, 'skills')
     case 'workspace':
-      if (!workspacePath) {
+      if (!context.workspacePath) {
         throw new Error('workspacePath is required for workspace skills')
       }
-      return path.join(workspacePath, ...SKILLS_DIR_PARTS)
+      return path.join(context.workspacePath, '.agents', 'skills')
+    case 'agent':
+      if (!context.agentId) {
+        throw new Error('agentId is required for agent skills')
+      }
+      assertAgentId(context.agentId)
+      return path.join(os.homedir(), ...CRADLE_DIR_PARTS, 'agents', context.agentId, 'skills')
   }
 }
 
 function assertWritableScope(scope: SkillScope): void {
-  if (scope === 'builtin') {
-    throw new Error('Built-in skills are read-only')
+  if (scope === 'builtin' || scope === 'legacy') {
+    throw new Error(`${scope} skills are read-only`)
   }
 }
 
@@ -488,42 +474,10 @@ function assertSafeId(id: string): void {
   }
 }
 
-export function parseAgentSkillConfig(configJson?: string | null): AgentSkillConfig {
-  if (!configJson) {
-    return { mode: 'inherit', selected: [] }
-  }
-
-  try {
-    const parsed = JSON.parse(configJson) as { skills?: unknown }
-    const rawSkills = parsed.skills
-    if (!rawSkills || typeof rawSkills !== 'object') {
-      return { mode: 'inherit', selected: [] }
-    }
-
-    const rawConfig = rawSkills as Record<string, unknown>
-    const mode = rawConfig.mode === 'selected' ? 'selected' : 'inherit'
-    const selected = Array.isArray(rawConfig.selected)
-      ? rawConfig.selected.flatMap((item) => {
-          if (!item || typeof item !== 'object') {
-            return []
-          }
-        const ref = item as Record<string, unknown>
-          const scope = ref.scope
-          const name = ref.name
-          if ((scope === 'builtin' || scope === 'global' || scope === 'workspace') && typeof name === 'string') {
-            return [{ scope: scope as SkillScope, name }]
-          }
-          return []
-        })
-      : []
-
-    return { mode, selected }
-  }
-  catch {
-    return { mode: 'inherit', selected: [] }
-  }
-}
-
 export function assertWorkspaceId(workspaceId: string): void {
   assertSafeId(workspaceId)
+}
+
+export function assertAgentId(agentId: string): void {
+  assertSafeId(agentId)
 }

@@ -1,8 +1,8 @@
-// Input: useAgents hook, useAgentProfiles, useAgentModels, AgentSkillsConfig, coss UI, DiceBear API, motion/react
-// Output: AgentList — Settings page for managing Agent identities with character-sheet creation UX and per-agent skills
+// Input: useAgents hook, useAgentProfiles, useAgentModels, SkillManager, coss UI, DiceBear API, motion/react
+// Output: AgentList — Settings page for managing Agent identities with character-sheet creation UX and per-agent private skill workspaces
 // Position: Settings section rendered under "Agents" tab; replaces nothing (new feature)
 
-import type { Agent, AgentProfile, AgentSkillConfig, AgentSkillReference, CreateAgentInput, ModelDescriptor, SkillInventoryEntry } from '@main/ipc-types'
+import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
@@ -10,26 +10,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/components/ui/dialog'
-import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
-import { useSkills } from '@renderer/features/skills/use-skills'
 import { cn } from '@renderer/lib/cn'
 import {
   BrainIcon,
   DicesIcon,
   PencilIcon,
   PlusIcon,
-  SparklesIcon,
   Trash2Icon,
-  XIcon,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
 
@@ -49,7 +45,6 @@ type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 interface AgentEditorConfigState {
   baseConfig: Record<string, unknown>
   systemPrompt: string
-  skills: AgentSkillConfig
 }
 
 function buildAvatarUrl(style: string, seed: string): string {
@@ -70,39 +65,16 @@ function parseAgentEditorConfig(configJson?: string | null): AgentEditorConfigSt
   try {
     const parsed = JSON.parse(configJson ?? '{}') as Record<string, unknown>
     const systemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : ''
-    const rawSkills = parsed.skills
-    const skills = rawSkills && typeof rawSkills === 'object' && !Array.isArray(rawSkills)
-      ? {
-        mode: (rawSkills as { mode?: unknown }).mode === 'selected' ? 'selected' as const : 'inherit' as const,
-        selected: Array.isArray((rawSkills as { selected?: unknown }).selected)
-          ? ((rawSkills as { selected: unknown[] }).selected.flatMap((item) => {
-            if (!item || typeof item !== 'object') {
-              return []
-            }
-            const ref = item as Record<string, unknown>
-            const scope = ref.scope
-            const name = ref.name
-            if ((scope === 'builtin' || scope === 'global' || scope === 'workspace') && typeof name === 'string') {
-              return [{ scope: scope as AgentSkillReference['scope'], name }]
-            }
-            return []
-          }))
-          : [],
-      }
-      : { mode: 'inherit' as const, selected: [] }
-
-    const { systemPrompt: _discardSystemPrompt, skills: _discardSkills, ...baseConfig } = parsed
+    const { systemPrompt: _discardSystemPrompt, skills: _discardLegacySkills, ...baseConfig } = parsed
     return {
       baseConfig,
       systemPrompt,
-      skills,
     }
   }
   catch {
     return {
       baseConfig: {},
       systemPrompt: '',
-      skills: { mode: 'inherit', selected: [] },
     }
   }
 }
@@ -119,173 +91,7 @@ function stringifyAgentEditorConfig(config: AgentEditorConfigState): string {
     delete nextConfig.systemPrompt
   }
 
-  if (config.skills.mode === 'selected' || (config.skills.selected?.length ?? 0) > 0) {
-    nextConfig.skills = {
-      mode: config.skills.mode === 'selected' ? 'selected' : 'inherit',
-      selected: config.skills.selected ?? [],
-    }
-  }
-  else {
-    delete nextConfig.skills
-  }
-
   return JSON.stringify(nextConfig)
-}
-
-// ── Agent Skills Picker — Tag-based skill assignment ──────────────────────────
-
-function AgentSkillsPicker({
-  mode,
-  selected,
-  onModeChange,
-  onSelectedChange,
-}: {
-  mode: 'inherit' | 'selected'
-  selected: AgentSkillReference[]
-  onModeChange: (mode: 'inherit' | 'selected') => void
-  onSelectedChange: (skills: AgentSkillReference[]) => void
-}) {
-  const { inventory } = useSkills(null)
-  const isInherit = mode === 'inherit'
-
-  const isSelected = useCallback(
-    (entry: SkillInventoryEntry) =>
-      selected.some(s => s.scope === entry.scope && s.name === entry.name),
-    [selected],
-  )
-
-  const toggleSkill = useCallback(
-    (entry: SkillInventoryEntry) => {
-      if (isSelected(entry)) {
-        const next = selected.filter(
-          s => !(s.scope === entry.scope && s.name === entry.name),
-        )
-        onSelectedChange(next)
-        if (next.length === 0) {
-          onModeChange('inherit')
-        }
-      }
-      else {
-        if (isInherit) {
-          onModeChange('selected')
-        }
-        onSelectedChange([...selected, { scope: entry.scope, name: entry.name }])
-      }
-    },
-    [isInherit, isSelected, onModeChange, onSelectedChange, selected],
-  )
-
-  const removeSkill = useCallback(
-    (ref: AgentSkillReference) => {
-      const next = selected.filter(
-        s => !(s.scope === ref.scope && s.name === ref.name),
-      )
-      onSelectedChange(next)
-      if (next.length === 0) {
-        onModeChange('inherit')
-      }
-    },
-    [onModeChange, onSelectedChange, selected],
-  )
-
-  const resetToInherit = useCallback(() => {
-    onModeChange('inherit')
-    onSelectedChange([])
-  }, [onModeChange, onSelectedChange])
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between">
-        <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-          <SparklesIcon className="size-3" />
-          Skills
-        </span>
-        {!isInherit && (
-          <button
-            type="button"
-            onClick={resetToInherit}
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Reset to all
-          </button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {isInherit
-          ? (
-            <span className="rounded-md bg-foreground/5 px-2 py-1 text-[11px] text-muted-foreground">
-              All skills
-            </span>
-          )
-          : selected.map(ref => (
-            <span
-              key={`${ref.scope}:${ref.name}`}
-              className="group inline-flex items-center gap-1 rounded-md bg-foreground/5 px-2 py-1 text-[11px] text-foreground"
-            >
-              {ref.name}
-              <button
-                type="button"
-                onClick={() => removeSkill(ref)}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <XIcon className="size-3" />
-              </button>
-            </span>
-          ))}
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-md bg-foreground/5 px-2 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <PlusIcon className="size-3" />
-              {isInherit ? 'Customize' : 'Add'}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="w-56 p-1"
-          >
-            <div className="flex max-h-48 flex-col overflow-y-auto">
-              {inventory.length === 0 && (
-                <span className="px-2 py-3 text-center text-xs text-muted-foreground">
-                  No skills available
-                </span>
-              )}
-              {inventory.map((entry) => {
-                const active = isInherit || isSelected(entry)
-                return (
-                  <button
-                    key={`${entry.scope}:${entry.name}`}
-                    type="button"
-                    onClick={() => toggleSkill(entry)}
-                    className={cn(
-                      'flex items-center justify-between rounded-md px-2 py-1.5 text-left text-xs transition-colors',
-                      'hover:bg-foreground/5',
-                      active && 'text-foreground',
-                      !active && 'text-muted-foreground',
-                    )}
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="font-medium">{entry.name}</span>
-                      {entry.description && (
-                        <span className="text-[10px] text-muted-foreground line-clamp-1">{entry.description}</span>
-                      )}
-                    </div>
-                    {active && (
-                      <div className="size-1.5 shrink-0 rounded-full bg-foreground" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </PopoverContent>
-        </Popover>
-      </div>
-    </div>
-  )
 }
 
 // ── Agent Editor — Character Sheet ────────────────────────────────────────────
@@ -315,14 +121,18 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
   )
   const initialConfig = useMemo(() => parseAgentEditorConfig(initial?.configJson), [initial?.configJson])
   const [systemPrompt, setSystemPrompt] = useState(initialConfig.systemPrompt)
-  const [skillsMode, setSkillsMode] = useState<'inherit' | 'selected'>(initialConfig.skills.mode ?? 'inherit')
-  const [selectedSkills, setSelectedSkills] = useState<AgentSkillReference[]>(initialConfig.skills.selected ?? [])
   const [avatarSpinKey, setAvatarSpinKey] = useState(0)
   const nameRef = useRef<HTMLInputElement>(null)
 
   const enabledProviders = useMemo(() => profiles.filter(p => p.enabled), [profiles])
   const canSave = name.trim().length > 0 && providerId !== null
   const avatarUrl = buildAvatarUrl(avatarStyle, avatarSeed)
+
+  useEffect(() => {
+    if (providerId === null && enabledProviders[0]) {
+      setProviderId(enabledProviders[0].id)
+    }
+  }, [enabledProviders, providerId])
 
   const shuffleAvatar = useCallback(() => {
     setAvatarSeed(generateSeed())
@@ -344,10 +154,9 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
       configJson: stringifyAgentEditorConfig({
         baseConfig: initialConfig.baseConfig,
         systemPrompt,
-        skills: { mode: skillsMode, selected: selectedSkills },
       }),
     })
-  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, initialConfig.baseConfig, systemPrompt, skillsMode, selectedSkills, onSave])
+  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, initialConfig.baseConfig, systemPrompt, onSave])
 
   const isAuto = thinkingEffort === 'auto'
 
@@ -532,15 +341,6 @@ function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEdito
               )}
             />
           </div>
-
-          {/* Skills */}
-          <AgentSkillsPicker
-            mode={skillsMode}
-            selected={selectedSkills}
-            onModeChange={setSkillsMode}
-            onSelectedChange={setSelectedSkills}
-          />
-
         </div>
 
         {/* Actions — right-aligned at bottom */}
@@ -839,6 +639,7 @@ export function AgentList() {
           </div>
         </DialogContent>
       </Dialog>
+
     </div>
   )
 }

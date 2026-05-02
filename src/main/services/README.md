@@ -2,22 +2,21 @@
 
 # Main/Services
 
-Main-process IPC services expose persisted app state and backend operations to the renderer.
-Each service groups a cohesive set of methods behind one IPC namespace.
-Register new services in `src/main/index.ts`.
+主进程 IPC Services 把数据库、文件系统与运行时能力组织成稳定的调用边界。
+每个 service 负责一个清晰领域，通过 `@cradle/ipc` 暴露给渲染进程。
+新增 service 时应保持参数语义简单，并把复杂逻辑继续留在 `src/main/lib/`。
 
 ## Files
 
-- **agent-runtime.ts**: IPC service for unified Agent Profile CRUD, provider probes, model listing, and credential metadata
-- **acp.ts**: Deprecated compatibility module; legacy ACP IPC is no longer registered
-- **chat.ts**: IPC service forwarding to ChatEngine — `createAndSend`, `send`, `abort`, `getMessages`, `ensureLive`
-- **cli.ts**: Deprecated compatibility module; legacy CLI IPC is no longer registered
-- **dev.ts**: Dev-only IPC service backing the bottom bar (`openUserData`, `hardReload`)
-- **ipc-devtool.ts**: IPC service exposing buffered observed IPC events (`getSnapshot`, `clear`) and the dev-only `openWindow` action used by the renderer bottom bar
-- **preferences.ts**: IPC service for global app chat preferences persisted in `electron-store`
-- **search.ts**: IPC service forwarding to ThreadSearchEngine — `searchThreads` returns ranked hits across sessions with jieba-tokenized title + content matches
-- **session.ts**: IPC service for persisted chat sessions, provider session handles, and per-session config snapshots; message writes are owned by ChatEngine (this service only reads)
-- **skills.ts**: IPC service for filesystem-backed skills CRUD, import/export, and layered inventory lookup across built-in, global, and workspace scopes
-- **workspace.ts**: IPC service for workspace CRUD, file listing, and native OS integrations
-- **usage.ts**: IPC service for aggregated token usage analytics — `getDailyUsage` (heatmap data) and `getUsageSummary` (totals + breakdowns by agent/model)
-- **workflow-rules.ts**: IPC service for workflow rules CRUD — `get`, `save`, `delete`, `list` operations on Markdown rule files stored under `~/.cradle/workflows/`
+- **acp.ts**: 已废弃的 ACP 兼容模块，当前不再注册
+- **agent-runtime.ts**: 统一 Agent Profile 与 Provider 能力的 IPC service
+- **chat.ts**: 聊天 IPC service，转发创建、发送、终止与消息读取到 `ChatEngine`
+- **cli.ts**: 已废弃的 CLI 兼容模块，当前不再注册
+- **dev.ts**: 仅开发模式可用的辅助 IPC，例如打开 `userData` 或强制重载
+- **ipc-devtool.ts**: IPC Devtool 事件快照、清理与窗口打开接口
+- **preferences.ts**: 应用级聊天偏好持久化接口
+- **search.ts**: 线程搜索 IPC service，返回分词后的命中结果与高亮范围
+- **session.ts**: 会话数据读取与 provider handle 元数据写入接口
+- **skills.ts**: Skills IPC service，负责 global、workspace、agent 三个可写层与 legacy/built-in 只读层的路由
+- **usage.ts**: token usage 聚合统计接口
+- **workflow-rules.ts**: 工作流规则的读取、保存、删除与列表接口

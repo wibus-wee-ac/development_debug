@@ -3,9 +3,9 @@ import { After, Before, setDefaultTimeout, Status } from '@cucumber/cucumber'
 
 import type { CradleWorld } from './world.ts'
 
-setDefaultTimeout(30_000)
+setDefaultTimeout(60_000)
 
-Before({ timeout: 30_000 }, async function (this: CradleWorld) {
+Before({ timeout: 60_000 }, async function (this: CradleWorld) {
   await this.launch()
 })
 

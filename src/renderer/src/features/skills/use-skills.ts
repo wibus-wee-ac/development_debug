@@ -1,5 +1,5 @@
 // Input: renderer IPC proxy, TanStack Query
-// Output: Hooks for listing skill inventory, loading skill documents, and mutating filesystem-backed skills
+// Output: Hooks for listing skill inventory, loading skill documents, and mutating filesystem-backed skills across shared, workspace, and agent roots
 // Position: Data layer for the skills management feature
 
 import type {
@@ -10,13 +10,26 @@ import type {
 import { ipc } from '@renderer/lib/ipc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-export const skillsInventoryQueryKey = (workspaceId?: string | null) => ['skills', 'inventory', workspaceId ?? 'global'] as const
-export const skillDocumentQueryKey = (workspaceId: string | null | undefined, scope: SkillScope, name: string | null) =>
-  ['skills', 'document', workspaceId ?? 'global', scope, name ?? ''] as const
+export interface SkillQueryContext {
+  workspaceId?: string | null
+  agentId?: string | null
+}
 
-export function useSkills(workspaceId?: string | null) {
+export const skillsInventoryQueryKey = (context?: SkillQueryContext) =>
+  ['skills', 'inventory', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent'] as const
+export const skillDocumentQueryKey = (context: SkillQueryContext | undefined, scope: SkillScope, name: string | null) =>
+  ['skills', 'document', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent', scope, name ?? ''] as const
+
+function toIpcContext(context?: SkillQueryContext): { workspaceId?: string | null, agentId?: string | null } {
+  return {
+    workspaceId: context?.workspaceId ?? null,
+    agentId: context?.agentId ?? null,
+  }
+}
+
+export function useSkills(context?: SkillQueryContext) {
   const queryClient = useQueryClient()
-  const inventoryQueryKey = skillsInventoryQueryKey(workspaceId)
+  const inventoryQueryKey = skillsInventoryQueryKey(context)
 
   const { data: inventory = [], isLoading } = useQuery({
     queryKey: inventoryQueryKey,
@@ -24,7 +37,7 @@ export function useSkills(workspaceId?: string | null) {
       if (!ipc) {
         return []
       }
-      return ipc.skills.list(workspaceId ?? null) as Promise<SkillInventoryEntry[]>
+      return ipc.skills.list(toIpcContext(context)) as Promise<SkillInventoryEntry[]>
     },
   })
 
@@ -42,8 +55,8 @@ export function useSkills(workspaceId?: string | null) {
         throw new Error('IPC not available')
       }
       return ipc.skills.create({
+        ...toIpcContext(context),
         scope: params.scope,
-        workspaceId: workspaceId ?? null,
         name: params.name,
         description: params.description,
         body: params.body,
@@ -66,8 +79,8 @@ export function useSkills(workspaceId?: string | null) {
         throw new Error('IPC not available')
       }
       return ipc.skills.update({
+        ...toIpcContext(context),
         scope: params.scope,
-        workspaceId: workspaceId ?? null,
         name: params.currentName,
         document: {
           name: params.name,
@@ -86,8 +99,8 @@ export function useSkills(workspaceId?: string | null) {
         throw new Error('IPC not available')
       }
       await ipc.skills.delete({
+        ...toIpcContext(context),
         scope: params.scope,
-        workspaceId: workspaceId ?? null,
         name: params.name,
       })
     },
@@ -100,8 +113,8 @@ export function useSkills(workspaceId?: string | null) {
         throw new Error('IPC not available')
       }
       return ipc.skills.import({
+        ...toIpcContext(context),
         scope: params.scope,
-        workspaceId: workspaceId ?? null,
         sourceDir: params.sourceDir,
         overwrite: false,
       }) as Promise<SkillDocument>
@@ -115,8 +128,8 @@ export function useSkills(workspaceId?: string | null) {
         throw new Error('IPC not available')
       }
       return ipc.skills.export({
+        ...toIpcContext(context),
         scope: params.scope,
-        workspaceId: workspaceId ?? null,
         name: params.name,
         destinationDir: params.destinationDir,
         overwrite: false,
@@ -136,19 +149,19 @@ export function useSkills(workspaceId?: string | null) {
 }
 
 export function useSkillDocument(
-  workspaceId: string | null | undefined,
+  context: SkillQueryContext | undefined,
   scope: SkillScope | null,
   name: string | null,
 ) {
   return useQuery({
-    queryKey: skillDocumentQueryKey(workspaceId, scope ?? 'global', name),
+    queryKey: skillDocumentQueryKey(context, scope ?? 'global', name),
     queryFn: async (): Promise<SkillDocument | null> => {
       if (!ipc || !scope || !name) {
         return null
       }
       return ipc.skills.get({
+        ...toIpcContext(context),
         scope,
-        workspaceId: workspaceId ?? null,
         name,
       }) as Promise<SkillDocument>
     },

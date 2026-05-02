@@ -2,13 +2,15 @@
 
 # Features/Settings
 
-应用设置功能模块，提供用户偏好配置界面。
-采用独立 `/settings` 路由：侧边栏负责 section 导航，返回按钮回到 launcher 首页。
-后续新增设置分类只需在对应 NAV 数组和 SECTION_MAP 注册即可。
+应用设置模块负责渲染独立的 `/settings` 路由与各类全局配置页面。
+侧边栏只处理 section 导航，具体设置能力由各 feature 页面承载。
+新增设置分类时，应同步维护导航映射与本目录的文件清单。
 
 ## Files
 
-- **index.ts**: Barrel file，导出 settings 功能模块公共 API
-- **settings-sidebar.tsx**: 设置侧边栏导航，基于路由 search 切换 section，并返回首页 launcher
-- **settings-content.tsx**: 设置主内容区，根据当前路由选中的 section 渲染对应组件
-- **appearance-settings.tsx**: 外观设置区域，包含主题切换（浅色/深色/跟随系统）
+- **ai-settings.tsx**: AI 设置页，展示 Provider、Skills 与相关能力总览
+- **appearance-settings.tsx**: 外观设置页，负责主题切换
+- **index.ts**: Settings 模块的 barrel export
+- **settings-content.tsx**: 根据当前 section 渲染对应设置页面
+- **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件
+- **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口

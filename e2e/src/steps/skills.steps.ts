@@ -1,5 +1,5 @@
 // Input: Cucumber steps, Playwright assertions, temp skill fixtures, CradleWorld support helpers
-// Output: End-to-end step definitions for global/workspace skills management and per-agent skill visibility
+// Output: End-to-end step definitions for global/workspace skills management and agent-private skill roots
 // Position: Skills feature automation bridging filesystem fixtures, mocked native dialogs, and renderer interactions
 
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -50,7 +50,8 @@ Then('我应该看到全局 Skills 页面', async function (this: CradleWorld) {
 
 When('我新建一个全局 Skill', async function (this: CradleWorld) {
   await this.page.locator('[data-testid="new-skill-btn"]').click()
-  await this.page.locator('[data-testid="skill-frontmatter-editor"]').fill('name: global-demo\ndescription: Global demo skill')
+  await this.page.locator('[data-testid="skill-name-input"]').fill('global-demo')
+  await this.page.locator('[data-testid="skill-desc-input"]').fill('Global demo skill')
   await this.page.locator('[data-testid="skill-body-editor"]').fill('# Global Demo\n\nUse this skill carefully.')
   await this.page.locator('[data-testid="skill-save-btn"]').click()
 })
@@ -60,7 +61,7 @@ Then('我应该看到全局 Skill {string}', async function (this: CradleWorld, 
 })
 
 Then('全局 Skill {string} 应该写入磁盘', async function (this: CradleWorld, skillName: string) {
-  const skillPath = join(CradleWorld.e2eHomePath, '.agents', 'skills', skillName, 'SKILL.md')
+  const skillPath = join(CradleWorld.e2eHomePath, '.cradle', 'skills', skillName, 'SKILL.md')
   await expect.poll(async () => {
     const fs = await import('node:fs')
     return fs.existsSync(skillPath)
@@ -132,7 +133,8 @@ When('我切换到 Workspace Skills 标签', async function (this: CradleWorld) 
 
 When('我新建一个工作区 Skill', async function (this: CradleWorld) {
   await this.page.locator('[data-testid="new-skill-btn"]').click()
-  await this.page.locator('[data-testid="skill-frontmatter-editor"]').fill('name: workspace-demo\ndescription: Workspace demo skill')
+  await this.page.locator('[data-testid="skill-name-input"]').fill('workspace-demo')
+  await this.page.locator('[data-testid="skill-desc-input"]').fill('Workspace demo skill')
   await this.page.locator('[data-testid="skill-body-editor"]').fill('# Workspace Demo\n\nScoped to one repo.')
   await this.page.locator('[data-testid="skill-save-btn"]').click()
 })
@@ -149,21 +151,73 @@ Then('Workspace Skill {string} 应该写入磁盘', async function (this: Cradle
   }).toBe(true)
 })
 
-Given('我已创建一个全局 Skill', async function (this: CradleWorld) {
-  await this.page.locator('[data-testid="settings-nav-skills"]').click()
-  await this.page.locator('[data-testid="new-skill-btn"]').click()
-  await this.page.locator('[data-testid="skill-frontmatter-editor"]').fill('name: global-demo\ndescription: Global demo skill')
-  await this.page.locator('[data-testid="skill-body-editor"]').fill('# Global Demo')
-  await this.page.locator('[data-testid="skill-save-btn"]').click()
-  await expect(this.page.getByRole('button', { name: /^global-demo\b/ })).toBeVisible({ timeout: 5000 })
+Given('我已创建一个 Agent {string}', async function (this: CradleWorld, agentName: string) {
+  const createdAgentId = await this.page.evaluate(async ({ name }) => {
+    const invoke = window.electron.ipcRenderer.invoke.bind(window.electron.ipcRenderer)
+    const providerId = 'e2e-openai-provider'
+
+    await invoke('agentRuntime.upsertProfile', {
+      id: providerId,
+      name: 'E2E OpenAI',
+      providerKind: 'openai-compatible',
+      enabled: true,
+      configJson: JSON.stringify({
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'gpt-4o',
+      }),
+      credentialRef: null,
+    })
+
+    const agent = await invoke('agent.create', {
+      name,
+      description: null,
+      avatarStyle: 'bottts-neutral',
+      avatarSeed: 'e2e-skill-agent',
+      providerId,
+      modelId: null,
+      thinkingEffort: 'auto',
+      configJson: '{}',
+    })
+
+    return agent.id as string
+  }, { name: agentName })
+
+  await this.page.reload()
+  await this.page.locator('[data-testid="settings-btn"]').click()
   await this.page.locator('[data-testid="settings-nav-agents"]').click()
+  const row = this.page.locator(`[data-testid="agent-row-${createdAgentId}"]`)
+  await expect(row).toBeVisible({ timeout: 5000 })
+  this.skillAgentIds[agentName] = createdAgentId
 })
 
-Then('我应该看到 Agent Skills 配置', async function (this: CradleWorld) {
-  await expect(this.page.locator('[data-testid="agent-skills-config"]')).toBeVisible({ timeout: 5000 })
+When('我打开 Agent {string} 的 Skills 管理', async function (this: CradleWorld, agentName: string) {
+  const row = this.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()
+  await expect(row).toBeVisible({ timeout: 5000 })
+  await row.locator('[data-testid="agent-manage-skills-btn"]').click()
 })
 
-Then('我应该看到 Skill 选项 {string}', async function (this: CradleWorld, skillName: string) {
-  await this.page.locator('[data-testid="agent-skills-mode-selected"]').click()
-  await expect(this.page.getByText(skillName, { exact: true })).toBeVisible({ timeout: 5000 })
+When('我新建一个 Agent Skill', async function (this: CradleWorld) {
+  await expect(this.page.locator('[data-testid="agent-skills-page"]')).toBeVisible({ timeout: 5000 })
+  await this.page.locator('[data-testid="new-skill-btn"]').click()
+  await this.page.locator('[data-testid="skill-name-input"]').fill('agent-demo')
+  await this.page.locator('[data-testid="skill-desc-input"]').fill('Agent demo skill')
+  await this.page.locator('[data-testid="skill-body-editor"]').fill('# Agent Demo\n\nPrivate to one agent.')
+  await this.page.locator('[data-testid="skill-save-btn"]').click()
+})
+
+Then('我应该看到 Agent Skills 页面', async function (this: CradleWorld) {
+  await expect(this.page.locator('[data-testid="agent-skills-page"]')).toBeVisible({ timeout: 5000 })
+})
+
+Then('我应该看到 Agent Skill {string}', async function (this: CradleWorld, skillName: string) {
+  await expect(this.page.getByRole('button', { name: new RegExp(`^${skillName}\\b`) })).toBeVisible({ timeout: 5000 })
+})
+
+Then('Agent {string} 的 Skill {string} 应该写入磁盘', async function (this: CradleWorld, agentName: string, skillName: string) {
+  const agentId = this.skillAgentIds[agentName]
+  const skillPath = join(CradleWorld.e2eHomePath, '.cradle', 'agents', agentId, 'skills', skillName, 'SKILL.md')
+  await expect.poll(async () => {
+    const fs = await import('node:fs')
+    return fs.existsSync(skillPath)
+  }).toBe(true)
 })

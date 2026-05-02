@@ -1,5 +1,5 @@
 // Input: IpcService base, workspace DB lookup, filesystem-backed skills library
-// Output: SkillsService IPC handler for listing, reading, writing, importing, and exporting skill packages
+// Output: SkillsService IPC handler for listing, reading, writing, importing, and exporting skill packages across shared, workspace, and agent roots
 // Position: Main-process service exposing filesystem skill management to the renderer
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
@@ -27,34 +27,47 @@ import {
   updateSkillDocument,
 } from '../lib/skills'
 
-interface SkillLookupParams extends Omit<SkillLookup, 'workspacePath'> {
+interface SkillLookupParams extends Omit<SkillLookup, 'workspacePath' | 'agentId'> {
   workspaceId?: string | null
+  agentId?: string | null
 }
 
-interface CreateSkillParams extends Omit<CreateSkillInput, 'workspacePath'> {
+interface CreateSkillParams extends Omit<CreateSkillInput, 'workspacePath' | 'agentId'> {
   scope: SkillScope
   workspaceId?: string | null
+  agentId?: string | null
 }
 
-interface UpdateSkillParams extends Omit<UpdateSkillInput, 'workspacePath'> {
+interface UpdateSkillParams extends Omit<UpdateSkillInput, 'workspacePath' | 'agentId'> {
   workspaceId?: string | null
+  agentId?: string | null
 }
 
-interface ImportSkillParams extends Omit<ImportSkillInput, 'workspacePath'> {
+interface ImportSkillParams extends Omit<ImportSkillInput, 'workspacePath' | 'agentId'> {
   scope: SkillScope
   workspaceId?: string | null
+  agentId?: string | null
 }
 
-interface ExportSkillParams extends Omit<ExportSkillInput, 'workspacePath'> {
+interface ExportSkillParams extends Omit<ExportSkillInput, 'workspacePath' | 'agentId'> {
   workspaceId?: string | null
+  agentId?: string | null
+}
+
+interface SkillListParams {
+  workspaceId?: string | null
+  agentId?: string | null
 }
 
 export class SkillsService extends IpcService {
   static readonly groupName = 'skills'
 
   @IpcMethod()
-  async list(workspaceId?: string | null): Promise<SkillInventoryEntry[]> {
-    return listSkillInventory(this.resolveWorkspacePath(workspaceId))
+  async list(params?: SkillListParams): Promise<SkillInventoryEntry[]> {
+    return listSkillInventory({
+      workspacePath: this.resolveWorkspacePath(params?.workspaceId),
+      agentId: params?.agentId ?? undefined,
+    })
   }
 
   @IpcMethod()
@@ -63,6 +76,7 @@ export class SkillsService extends IpcService {
       scope: params.scope,
       name: params.name,
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
     })
   }
 
@@ -74,6 +88,7 @@ export class SkillsService extends IpcService {
       body: params.body,
       frontmatter: params.frontmatter,
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
     })
   }
 
@@ -83,6 +98,7 @@ export class SkillsService extends IpcService {
       scope: params.scope,
       name: params.name,
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
       document: params.document,
     })
   }
@@ -93,6 +109,7 @@ export class SkillsService extends IpcService {
       scope: params.scope,
       name: params.name,
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
     })
   }
 
@@ -102,6 +119,7 @@ export class SkillsService extends IpcService {
       sourceDir: params.sourceDir,
       overwrite: params.overwrite,
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
     })
   }
 
@@ -113,6 +131,7 @@ export class SkillsService extends IpcService {
       destinationDir: params.destinationDir,
       overwrite: params.overwrite,
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
     })
   }
 

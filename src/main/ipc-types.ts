@@ -77,9 +77,8 @@ export type { GitBranches, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitS
 export type { DailyUsage, UsageSummary } from './services/usage'
 export type { AcpDevtoolEvent } from '@cradle/ipc'
 export type {
-  AgentSkillConfig,
-  AgentSkillReference,
   CreateSkillInput,
+  SkillContext,
   SkillCatalogEntry,
   SkillDocument,
   SkillInventoryEntry,
