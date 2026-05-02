@@ -218,7 +218,7 @@ export function ChatView({
           <div className="mx-auto max-w-2xl px-4 pt-4">
             {messages.length === 0 && isReady && (
               <div className="flex items-center justify-center py-20">
-                <p className="text-sm text-muted-foreground/50 select-none">
+                <p className="text-sm text-muted-foreground select-none">
                   发送消息开始对话
                 </p>
               </div>
@@ -263,7 +263,7 @@ export function ChatView({
                 className="flex items-center gap-2 pt-4 pl-1"
               >
                 <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground/50">正在思考...</span>
+                <span className="text-xs text-muted-foreground">正在思考...</span>
               </motion.div>
             )}
 
@@ -306,7 +306,7 @@ export function ChatView({
                     style={{ width: `${Math.min(100, (sessionTokens / 128_000) * 100)}%` }}
                   />
                 </div>
-                <span className="text-[10px] tabular-nums text-muted-foreground/30">
+                <span className="text-[10px] tabular-nums text-muted-foreground">
                   {sessionTokens >= 1_000
                     ? `${(sessionTokens / 1_000).toFixed(1)}K`
                     : sessionTokens}

@@ -4,13 +4,13 @@ This file provides guidance to Agent when working with code in this repository.
 
 ## Principles
 
-Please be clear: When designing features for Cradle, always consider ownership and namespace. Each feature should have a clear owner responsible for its semantics, configuration, lifecycle, compatibility, and migration. This ownership should be reflected in the namespace where the feature resides. The fundamental question to ask is: "Who owns this feature, who is it for, and with whom will it evolve?" 
+Please be clear: When designing features for Cradle, always consider ownership and namespace. Each feature should have a clear owner responsible for its semantics, configuration, lifecycle, compatibility, and migration. This ownership should be reflected in the namespace where the feature resides. The fundamental question to ask is: "Who owns this feature, who is it for, and with whom will it evolve?"
 
 By adhering to this principle, we can ensure that features are well-organized, maintainable, and evolve in a way that serves their intended users effectively. This approach promotes clarity, accountability, and a better developer experience across the codebase.
 
-We should keep the compatibility with other products, we can read data from others namespace,but we should never write data to others namespace, this is the basic principle of namespace ownership. 
+We should keep the compatibility with other products, we can read data from others namespace,but we should never write data to others namespace, this is the basic principle of namespace ownership.
 
-For example, if we want to use skills in agent, we can read skills data from (~/.)/.agents/skills namespace, but we should never write skills data to skills namespace, we should write skills data to our Cradle namespace, and let agent own the lifecycle of skills data in agent context.
+For example, if we want to use skills in agent, we can read skills data from (\~/.)/.agents/skills namespace, but we should never write skills data to skills namespace, we should write skills data to our Cradle namespace, and let agent own the lifecycle of skills data in agent context.
 
 ## Stacks
 
@@ -22,6 +22,10 @@ For example, if we want to use skills in agent, we can read skills data from (~/
 - **Code Quality**: ESLint
 
 ## CRITICAL RULES
+
+### 0. UI - Follow Design System Conventions
+
+**All UI components MUST follow the design system conventions:** design-system
 
 ### 1. Styling - NO Dynamic Tailwind Classes
 

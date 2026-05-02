@@ -108,7 +108,7 @@ export function ThreadSearchDialog({ open, onOpenChange }: ThreadSearchDialogPro
                   <CommandGroup>
                     <div className="flex items-center justify-between px-2 py-1.5 font-medium text-muted-foreground text-xs">
                       <span>{group.label}</span>
-                      <span className="font-normal text-muted-foreground/60 text-[10px]">
+                      <span className="font-normal text-muted-foreground text-[10px]">
                         {group.items.length}
                         {' '}
                         个结果
@@ -185,7 +185,7 @@ function SessionRow({ hit }: { hit: ThreadSearchHit }) {
         <span className="min-w-0 flex-1 truncate text-sm">
           <HighlightedText text={hit.sessionTitle} ranges={titleRanges} />
         </span>
-        <span className="shrink-0 tabular-nums text-[10px] opacity-50">
+        <span className="shrink-0 tabular-nums text-[10px] text-muted-foreground">
           {formatRelativeTime(hit.updatedAt)}
         </span>
       </div>
@@ -199,7 +199,7 @@ function SessionRow({ hit }: { hit: ThreadSearchHit }) {
           </div>
         )
         : (
-          <div className="pl-5.5 text-[11px] opacity-60">
+          <div className="pl-5.5 text-[11px] text-muted-foreground">
             仅标题匹配 ·
             {' '}
             <span className="tabular-nums">{hit.matchCount}</span>
@@ -251,12 +251,12 @@ function IdleEmpty() {
       </EmptyMedia>
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium text-foreground">输入关键词开始搜索</p>
-        <p className="text-xs text-muted-foreground/60">
+        <p className="text-xs text-muted-foreground">
           支持中文分词，同时搜索标题、用户提问和助手回复
         </p>
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5 text-[11px]">
-        <span className="text-muted-foreground/50">试试：</span>
+        <span className="text-muted-foreground">试试：</span>
         <ExamplePill label="部署错误" />
         <ExamplePill label="北京烤鸭" />
         <ExamplePill label="TypeScript" />

@@ -219,7 +219,7 @@ function ChatMinimapInner({
                   hoveredBar.role === 'user' ? 'bg-foreground/50' : 'bg-accent/70',
                 )}
               />
-              <span className="text-[10px] font-medium text-muted-foreground/60">
+              <span className="text-[10px] font-medium text-muted-foreground">
                 {`${hoveredBar.role === 'user' ? '用户' : '助手'} · #${hoverIdx + 1}`}
               </span>
             </div>

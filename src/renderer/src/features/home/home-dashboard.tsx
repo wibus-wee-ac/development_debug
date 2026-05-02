@@ -112,9 +112,9 @@ function formatRelativeTime(unixTimestamp: number): string {
 function SectionLabel({ label, count }: { label: string, count?: number }) {
   return (
     <div className="flex items-center gap-2 px-2 pb-1.5">
-      <span className="text-[11px] font-medium text-muted-foreground/50">{label}</span>
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
       {count !== undefined && (
-        <span className="rounded-full bg-muted/60 px-1.5 py-px text-[10px] tabular-nums text-muted-foreground/60">
+        <span className="rounded-full bg-muted/60 px-1.5 py-px text-[10px] tabular-nums text-muted-foreground">
           {count}
         </span>
       )}
@@ -170,7 +170,7 @@ function ActivityCard({ kind, title, meta, onClick }: ActivityCardProps) {
       </div>
       <div className="flex flex-col gap-0.5 px-2.5 py-2 bg-background">
         <span className="text-xs font-medium text-foreground line-clamp-1 leading-snug">{title}</span>
-        <span className="text-[10px] text-muted-foreground/60 leading-tight">{meta}</span>
+        <span className="text-[10px] text-muted-foreground leading-tight">{meta}</span>
       </div>
     </button>
   )
@@ -184,13 +184,13 @@ function PendingRunRow({ run }: { run: PendingRun }) {
       <TriangleAlertIcon className="size-3.5 mt-0.5 shrink-0 text-amber-500" />
       <div className="flex flex-col gap-0.5 min-w-0 flex-1">
         <span className="text-xs font-medium text-foreground truncate">{run.title}</span>
-        <span className="text-[11px] text-muted-foreground/60">
+        <span className="text-[11px] text-muted-foreground">
           {run.agentType}
           {' · '}
           {run.reason}
         </span>
       </div>
-      <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums mt-0.5">
+      <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums mt-0.5">
         {formatRelativeTime(run.blockedAt)}
         前
       </span>
@@ -211,8 +211,8 @@ function RecentSessionRow({ session, workspaceName, onSelect }: { session: Sessi
       <span className="truncate flex-1 text-foreground">
         {session.title}
       </span>
-      <span className="shrink-0 text-[11px] text-muted-foreground/50">{workspaceName}</span>
-      <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground/40 tabular-nums">
+      <span className="shrink-0 text-[11px] text-muted-foreground">{workspaceName}</span>
+      <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground tabular-nums">
         {formatRelativeTime(session.updatedAt)}
       </span>
     </button>
@@ -230,13 +230,13 @@ const ARTIFACT_ICONS: Record<Artifact['type'], React.ReactNode> = {
 function ArtifactRow({ artifact }: { artifact: Artifact }) {
   return (
     <div className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 cursor-pointer">
-      <span className="shrink-0 text-muted-foreground/50">
+      <span className="shrink-0 text-muted-foreground">
         {ARTIFACT_ICONS[artifact.type]}
       </span>
       <span className="truncate flex-1 text-foreground">
         {artifact.title}
       </span>
-      <span className="shrink-0 text-[11px] text-muted-foreground/50 tabular-nums">
+      <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
         {formatRelativeTime(artifact.createdAt)}
       </span>
     </div>
@@ -251,14 +251,14 @@ function QuickActionButton({ action }: { action: QuickAction }) {
       type="button"
       className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent/60 w-full"
     >
-      <span className="shrink-0 text-muted-foreground/60">
+      <span className="shrink-0 text-muted-foreground">
         {action.icon}
       </span>
       <span className="flex flex-col gap-0">
         <span className="font-medium text-foreground leading-tight">
           {action.label}
         </span>
-        <span className="text-[10px] text-muted-foreground/60 leading-tight">{action.description}</span>
+        <span className="text-[10px] text-muted-foreground leading-tight">{action.description}</span>
       </span>
     </button>
   )
@@ -271,7 +271,7 @@ function ScheduledRow({ task }: { task: ScheduledTask }) {
     <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 cursor-pointer">
       <TimerIcon className="size-3.5 shrink-0 text-muted-foreground/50" />
       <span className="truncate flex-1 text-foreground">{task.label}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground/50">{task.schedule}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{task.schedule}</span>
     </div>
   )
 }
@@ -338,7 +338,7 @@ export function HomeDashboard() {
         <button
           type="button"
           onClick={() => setSearchOpen(true)}
-          className="flex w-full items-center gap-2.5 rounded-md border border-border/50 bg-background px-3 h-8 text-xs text-muted-foreground/50 transition-colors hover:border-border/80 hover:text-muted-foreground"
+          className="flex w-full items-center gap-2.5 rounded-md border border-border/50 bg-background px-3 h-8 text-xs text-muted-foreground transition-colors hover:border-border/80"
         >
           <SearchIcon className="size-3.5 shrink-0" />
           <span className="flex-1 text-left">搜索会话、产物、项目...</span>
@@ -397,7 +397,7 @@ export function HomeDashboard() {
           <button
             type="button"
             onClick={handleAddWorkspace}
-            className="flex flex-col w-32 shrink-0 rounded-lg border border-dashed border-border/40 items-center justify-center gap-1.5 text-xs text-muted-foreground/50 transition-colors hover:border-border/70 hover:text-muted-foreground h-21.5"
+            className="flex flex-col w-32 shrink-0 rounded-lg border border-dashed border-border/40 items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:border-border/70 h-21.5"
           >
             + 添加项目
           </button>
@@ -412,7 +412,7 @@ export function HomeDashboard() {
             <SectionLabel label="继续" count={recentSessions.length} />
             {recentSessions.length === 0
               ? (
-                <p className="px-2 py-3 text-xs text-muted-foreground/40">暂无最近会话</p>
+                <p className="px-2 py-3 text-xs text-muted-foreground">暂无最近会话</p>
               )
               : (
                 <div className="flex flex-col gap-0.5">
@@ -457,7 +457,7 @@ export function HomeDashboard() {
               ))}
               <button
                 type="button"
-                className="mt-0.5 flex items-center gap-2 rounded-md border border-dashed border-border/30 px-2 py-1.5 text-xs text-muted-foreground/40 transition-colors hover:border-border/60 hover:text-muted-foreground/70"
+                className="mt-0.5 flex items-center gap-2 rounded-md border border-dashed border-border/30 px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border/60"
               >
                 + 新建自动化
               </button>

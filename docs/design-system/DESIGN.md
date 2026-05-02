@@ -455,11 +455,13 @@ Session sub-lists are indented with `ml-5 border-l border-sidebar-border/50 pl-2
 
 ### Section Labels
 
-Small structural labels between list groups: `text-[11px] font-medium text-muted-foreground/50`. No uppercase, no tracking. Often accompanied by a hairline rule (`h-px bg-border/40`) and an optional count badge (`rounded-full bg-muted/60 px-1.5 text-[10px] tabular-nums`).
+Small structural labels between list groups: `text-[11px] font-medium text-muted-foreground`. No uppercase, no tracking. Often accompanied by a hairline rule (`h-px bg-border/40`) and an optional count badge (`rounded-full bg-muted/60 px-1.5 text-[10px] tabular-nums text-muted-foreground`).
+
+> **Note**: Previously documented as `text-muted-foreground/50`. Opacity modifiers on `muted-foreground` produce ~1.5–2.8:1 contrast (below WCAG AA 4.5:1). Use full `text-muted-foreground` (~4.54:1 AA) for all readable text. See [Text Hierarchy & Contrast](#text-hierarchy--contrast-guarantees).
 
 ### List Rows
 
-The universal list item: `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs hover:bg-accent/50 transition-colors`. Icons at `size-3~3.5 text-muted-foreground/50`, titles at full `text-foreground`, metadata after at `text-muted-foreground/40~50 tabular-nums`.
+The universal list item: `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs hover:bg-accent/50 transition-colors`. Icons at `size-3~3.5` (decorative — opacity modifiers acceptable), titles at full `text-foreground`, metadata after at `text-muted-foreground tabular-nums`.
 
 Hover-reveal actions use `opacity-0 group-hover:opacity-100 transition-opacity` — never visible by default, never consume space.
 
@@ -494,7 +496,7 @@ Active tab uses a **Framer Motion sliding pill** (`layoutId="tab-pill"`, `bg-acc
 
 ### Reasoning / Tool Call Toggles
 
-Expandable disclosure rows: `inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50`. Expanded content indented with `ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground/60`.
+Expandable disclosure rows: `inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50`. Expanded content indented with `ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed`.
 
 Streaming/active spinner icons use `animate-pulse text-primary/70`.
 

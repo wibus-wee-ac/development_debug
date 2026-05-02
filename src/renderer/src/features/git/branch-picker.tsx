@@ -187,7 +187,7 @@ export function BranchPicker({
               </div>
 
               <div className="px-3 py-2">
-                <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
                   将基于
                   {' '}
                   <span className="font-mono text-foreground/70">{currentBranch}</span>
@@ -251,7 +251,7 @@ export function BranchPicker({
               <div className="max-h-64 overflow-y-auto py-1">
                 {localFiltered.length > 0 && (
                   <div>
-                    <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/50">
+                    <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                       本地分支
                     </p>
                     {localFiltered.map(b => (
@@ -273,7 +273,7 @@ export function BranchPicker({
 
                 {remoteFiltered.length > 0 && (
                   <div>
-                    <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground/50">
+                    <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                       远端分支
                     </p>
                     {remoteFiltered.map(b => (
@@ -284,14 +284,14 @@ export function BranchPicker({
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/60 transition-colors"
                       >
                         <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/30" aria-hidden />
-                        <span className="flex-1 break-all font-mono text-muted-foreground/80">{b.name}</span>
+                        <span className="flex-1 break-all font-mono text-muted-foreground">{b.name}</span>
                       </button>
                     ))}
                   </div>
                 )}
 
                 {localFiltered.length === 0 && remoteFiltered.length === 0 && (
-                  <p className="px-3 py-3 text-center text-xs text-muted-foreground/50">
+                  <p className="px-3 py-3 text-center text-xs text-muted-foreground">
                     {search ? '无匹配分支' : '加载中…'}
                   </p>
                 )}

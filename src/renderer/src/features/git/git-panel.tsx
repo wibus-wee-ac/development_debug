@@ -68,7 +68,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
   if (!workspacePath) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 text-center">
-        <p className="text-xs text-muted-foreground/50">请先选择 Workspace</p>
+        <p className="text-xs text-muted-foreground">请先选择 Workspace</p>
       </div>
     )
   }
@@ -78,7 +78,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
       <div className="flex flex-1 items-center justify-center p-4 text-center">
         <div className="flex flex-col items-center gap-2">
           <GitGraphIcon className="size-5 text-muted-foreground/30" />
-          <p className="text-xs text-muted-foreground/50">不是 Git 仓库或无权限</p>
+          <p className="text-xs text-muted-foreground">不是 Git 仓库或无权限</p>
         </div>
       </div>
     )
@@ -132,7 +132,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
           title="Fetch all (--all --prune)"
           onClick={() => { void handleFetch() }}
           disabled={fetching}
-          className="text-muted-foreground/60 hover:text-foreground"
+          className="text-muted-foreground hover:text-foreground"
         >
           <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} aria-hidden />
         </Button>
@@ -148,7 +148,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
         : layoutCommits.length === 0
           ? (
             <div className="flex flex-1 items-center justify-center p-4">
-              <p className="text-xs text-muted-foreground/50">暂无 commit</p>
+              <p className="text-xs text-muted-foreground">暂无 commit</p>
             </div>
           )
           : (

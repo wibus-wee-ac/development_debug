@@ -9,7 +9,7 @@ export function DevBottomBar() {
   return (
     <footer className="flex h-7 shrink-0 items-center border-t border-border bg-sidebar px-2 font-mono text-[10px]">
       <span
-        className="flex-1 truncate select-all text-muted-foreground/70"
+        className="flex-1 truncate select-all text-muted-foreground"
         title={window.location.href}
       >
         {window.location.hash || '/'}

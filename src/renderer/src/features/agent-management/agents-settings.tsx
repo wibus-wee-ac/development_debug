@@ -244,7 +244,7 @@ function RegistryAgentCard({
                 </span>
               </div>
               {agent.authors && agent.authors.length > 0 && (
-                <p className="text-xs text-muted-foreground/70">{agent.authors.join(', ')}</p>
+                <p className="text-xs text-muted-foreground">{agent.authors.join(', ')}</p>
               )}
             </div>
           </div>
@@ -1101,7 +1101,7 @@ function ConfiguredTab({
           <div className="rounded-xl border border-dashed px-4 py-10 text-center">
             <BotIcon className="mx-auto mb-2 size-6 text-muted-foreground/40" />
             <p className="text-sm text-muted-foreground">No configured providers yet.</p>
-            <p className="mt-0.5 text-xs text-muted-foreground/70">Install from the Registry tab or add a custom provider above.</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Install from the Registry tab or add a custom provider above.</p>
           </div>
         )
         : (

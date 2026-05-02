@@ -224,7 +224,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
               <p className="font-mono text-[10px] text-muted-foreground select-all">{commit.sha}</p>
               <p className="text-[10px] text-muted-foreground">{formattedDate}</p>
               {isMerge && (
-                <p className="text-[10px] text-muted-foreground/60">
+                <p className="text-[10px] text-muted-foreground">
                   {`合并自 ${commit.parents.slice(1).map(p => p.slice(0, 7)).join(', ')}`}
                 </p>
               )}
@@ -235,13 +235,13 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
 
       {/* Right-aligned: sha · time */}
       <div className="flex shrink-0 items-center gap-1.5 pr-2">
-        <span className="font-mono text-[10px] text-muted-foreground/40 tabular-nums">
+        <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
           {commit.shortSha}
         </span>
-        <span className="text-[10px] text-muted-foreground/30 tabular-nums">
+        <span className="text-[10px] text-muted-foreground/40 tabular-nums">
           ·
         </span>
-        <span className="text-[10px] text-muted-foreground/40 tabular-nums">
+        <span className="text-[10px] text-muted-foreground tabular-nums">
           {relativeTime(commit.timestamp)}
         </span>
       </div>

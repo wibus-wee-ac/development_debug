@@ -41,10 +41,14 @@
       /* ── Pre-resolved text hierarchy (never stack opacity on top of these) ── */
       /* Radix principle: resolve at token definition time, not at use time      */
       /* All contrast ratios vs --background (#ffffff light / #141414 dark)      */
-      --text-primary:   #262626;  /* 15.6:1 AAA — body, headings, primary labels    */
-      --text-secondary: #737373;  /*  4.54:1 AA — descriptions, secondary labels    */
-      --text-tertiary:  #767676;  /*  4.53:1 AA — meta, timestamps, captions        */
-      --text-dim:       #a3a3a3;  /*  2.43:1 Exempt — decorative / disabled only    */
+      --text-primary: #262626;
+      /* 15.6:1 AAA — body, headings, primary labels    */
+      --text-secondary: #737373;
+      /*  4.54:1 AA — descriptions, secondary labels    */
+      --text-tertiary: #767676;
+      /*  4.53:1 AA — meta, timestamps, captions        */
+      --text-dim: #a3a3a3;
+      /*  2.43:1 Exempt — decorative / disabled only    */
     }
 
     @media (prefers-color-scheme: dark) {
@@ -59,10 +63,14 @@
         --border: rgba(255, 255, 255, 0.06);
         --primary: #f5f5f5;
 
-        --text-primary:   #f5f5f5;  /* 17.6:1 AAA */
-        --text-secondary: #a3a3a3;  /*  7.5:1 AAA */
-        --text-tertiary:  #8a8a8a;  /*  5.3:1 AA  */
-        --text-dim:       #525252;  /*  1.6:1 Exempt */
+        --text-primary: #f5f5f5;
+        /* 17.6:1 AAA */
+        --text-secondary: #a3a3a3;
+        /*  7.5:1 AAA */
+        --text-tertiary: #8a8a8a;
+        /*  5.3:1 AA  */
+        --text-dim: #525252;
+        /*  1.6:1 Exempt */
       }
     }
 
@@ -1067,12 +1075,17 @@
         <div class="section" id="contrast">
           <div class="spec-label">TEXT HIERARCHY &amp; CONTRAST</div>
           <div class="section-heading">Four pre-resolved tiers — no runtime opacity</div>
-          <p class="section-desc">Following Radix UI's principle: contrast is guaranteed at token definition time. Never add <code style="font-size:11px;font-family:var(--font-mono);">opacity</code> on top of these values. All ratios computed via WCAG 2.1 relative luminance against <code style="font-size:11px;font-family:var(--font-mono);">--background</code>.</p>
+          <p class="section-desc">Following Radix UI's principle: contrast is guaranteed at token definition time. Never
+            add <code style="font-size:11px;font-family:var(--font-mono);">opacity</code> on top of these values. All
+            ratios computed via WCAG 2.1 relative luminance against <code
+              style="font-size:11px;font-family:var(--font-mono);">--background</code>.</p>
 
-          <div style="display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 16px;">
+          <div
+            style="display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; margin-top: 16px;">
 
             <!-- Header row -->
-            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; background: var(--muted); border-bottom: 1px solid var(--border); padding: 8px 16px;">
+            <div
+              style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; background: var(--muted); border-bottom: 1px solid var(--border); padding: 8px 16px;">
               <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">TOKEN</div>
               <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">LIGHT MODE</div>
               <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-tertiary);">DARK MODE</div>
@@ -1082,7 +1095,8 @@
             </div>
 
             <!-- text-primary -->
-            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+            <div
+              style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center;">
               <div>
                 <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-primary</code>
               </div>
@@ -1091,7 +1105,9 @@
                 <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#262626</span>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
-                <div style="width:20px;height:20px;border-radius:4px;background:#f5f5f5;border:1px solid var(--border);flex-shrink:0;"></div>
+                <div
+                  style="width:20px;height:20px;border-radius:4px;background:#f5f5f5;border:1px solid var(--border);flex-shrink:0;">
+                </div>
                 <span style="font-size:11px;font-family:var(--font-mono);color:var(--text-secondary);">#f5f5f5</span>
               </div>
               <div>
@@ -1103,15 +1119,18 @@
                 <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AAA</div>
               </div>
               <div>
-                <div style="font-size:13px;color:var(--text-primary);font-weight:500;margin-bottom:2px;">Body text, headings, labels</div>
+                <div style="font-size:13px;color:var(--text-primary);font-weight:500;margin-bottom:2px;">Body text,
+                  headings, labels</div>
                 <div style="font-size:11px;color:var(--text-tertiary);">All core readable content</div>
               </div>
             </div>
 
             <!-- text-secondary -->
-            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center;">
+            <div
+              style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center;">
               <div>
-                <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-secondary</code>
+                <code
+                  style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-secondary</code>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="width:20px;height:20px;border-radius:4px;background:#737373;flex-shrink:0;"></div>
@@ -1130,15 +1149,18 @@
                 <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AAA</div>
               </div>
               <div>
-                <div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-bottom:2px;">Descriptions, secondary body</div>
+                <div style="font-size:13px;color:var(--text-secondary);font-weight:500;margin-bottom:2px;">Descriptions,
+                  secondary body</div>
                 <div style="font-size:11px;color:var(--text-tertiary);">Settings rows, supporting labels</div>
               </div>
             </div>
 
             <!-- text-tertiary -->
-            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center; background: rgba(245,158,11,0.03);">
+            <div
+              style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); align-items: center; background: rgba(245,158,11,0.03);">
               <div>
-                <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-tertiary</code>
+                <code
+                  style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-tertiary</code>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <div style="width:20px;height:20px;border-radius:4px;background:#767676;flex-shrink:0;"></div>
@@ -1157,16 +1179,20 @@
                 <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">AA</div>
               </div>
               <div>
-                <div style="font-size:13px;color:var(--text-tertiary);font-weight:500;margin-bottom:2px;">Metadata, timestamps, captions</div>
+                <div style="font-size:13px;color:var(--text-tertiary);font-weight:500;margin-bottom:2px;">Metadata,
+                  timestamps, captions</div>
                 <div style="font-size:11px;color:var(--text-tertiary);">
                   Scope labels, tech counters
-                  <span style="margin-left:6px;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,0.10);color:#b45309;font-size:9px;font-family:var(--font-mono);">was #a3a3a3 (2.4:1 fail)</span>
+                  <span
+                    style="margin-left:6px;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,0.10);color:#b45309;font-size:9px;font-family:var(--font-mono);">was
+                    #a3a3a3 (2.4:1 fail)</span>
                 </div>
               </div>
             </div>
 
             <!-- text-dim -->
-            <div style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; align-items: center;">
+            <div
+              style="display: grid; grid-template-columns: 180px 1fr 1fr 80px 80px 1fr; gap: 0; padding: 14px 16px; align-items: center;">
               <div>
                 <code style="font-size:11px;font-family:var(--font-mono);color:var(--foreground);">--text-dim</code>
               </div>
@@ -1180,35 +1206,45 @@
               </div>
               <div>
                 <span style="font-size:11px;font-weight:500;color:var(--text-dim);">2.43:1</span>
-                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">Exempt</div>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">Exempt
+                </div>
               </div>
               <div>
                 <span style="font-size:11px;font-weight:500;color:var(--text-dim);">1.6:1</span>
-                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">Exempt</div>
+                <div style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);margin-top:1px;">Exempt
+                </div>
               </div>
               <div>
-                <div style="font-size:13px;color:var(--text-dim);font-weight:500;margin-bottom:2px;">Decorative, disabled states</div>
-                <div style="font-size:11px;color:var(--text-dim);">WCAG 2.1 SC 1.4.3 — exempt from contrast requirements</div>
+                <div style="font-size:13px;color:var(--text-dim);font-weight:500;margin-bottom:2px;">Decorative,
+                  disabled states</div>
+                <div style="font-size:11px;color:var(--text-dim);">WCAG 2.1 SC 1.4.3 — exempt from contrast requirements
+                </div>
               </div>
             </div>
 
           </div>
 
           <!-- Anti-pattern callout -->
-          <div style="margin-top:16px;border:1px solid rgba(239,68,68,0.15);border-radius:var(--radius-lg);padding:14px 16px;background:rgba(239,68,68,0.03);">
-            <div style="font-size:11px;font-weight:500;color:#dc2626;margin-bottom:8px;">Anti-pattern: opacity stacking</div>
+          <div
+            style="margin-top:16px;border:1px solid rgba(239,68,68,0.15);border-radius:var(--radius-lg);padding:14px 16px;background:rgba(239,68,68,0.03);">
+            <div style="font-size:11px;font-weight:500;color:#dc2626;margin-bottom:8px;">Anti-pattern: opacity stacking
+            </div>
             <div style="display:flex;align-items:flex-start;gap:24px;flex-wrap:wrap;">
               <div>
-                <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);margin-bottom:4px;">✕ WRONG — what was used before</div>
-                <div style="background:var(--muted);border-radius:var(--radius-md);padding:8px 12px;font-size:11px;font-family:var(--font-mono);">
+                <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);margin-bottom:4px;">✕
+                  WRONG — what was used before</div>
+                <div
+                  style="background:var(--muted);border-radius:var(--radius-md);padding:8px 12px;font-size:11px;font-family:var(--font-mono);">
                   <span style="color:#dc2626;">color: var(--muted-foreground);</span><br>
                   <span style="color:#dc2626;">opacity: 0.5;</span><br>
                   <span style="color:var(--text-dim);font-size:10px;">/* effective: #737373 × 0.5 = ~1.8:1 */</span>
                 </div>
               </div>
               <div>
-                <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);margin-bottom:4px;">✓ CORRECT — pre-resolved token</div>
-                <div style="background:var(--muted);border-radius:var(--radius-md);padding:8px 12px;font-size:11px;font-family:var(--font-mono);">
+                <div style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);margin-bottom:4px;">✓
+                  CORRECT — pre-resolved token</div>
+                <div
+                  style="background:var(--muted);border-radius:var(--radius-md);padding:8px 12px;font-size:11px;font-family:var(--font-mono);">
                   <span style="color:#10b981;">color: var(--text-tertiary);</span><br>
                   <span style="color:var(--text-dim);font-size:10px;"><br>/* contrast guaranteed at 4.53:1 AA */</span>
                 </div>
@@ -1263,12 +1299,14 @@
               <div class="type-meta">caption · 11px · 400</div>
             </div>
             <div class="type-row">
-              <div class="type-sample" style="font-size:10px;color:var(--text-dim);">Micro — 10 / 400 · Token counters, trailing
+              <div class="type-sample" style="font-size:10px;color:var(--text-dim);">Micro — 10 / 400 · Token counters,
+                trailing
                 labels, badge counts</div>
               <div class="type-meta">micro · 10px · 400</div>
             </div>
             <div class="type-row">
-              <div class="type-sample" style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);">micro-mono —
+              <div class="type-sample" style="font-size:10px;font-family:var(--font-mono);color:var(--text-dim);">
+                micro-mono —
                 10 / mono · Keyboard shortcuts, refs, IDs</div>
               <div class="type-meta">micro-mono · mono · 10px</div>
             </div>

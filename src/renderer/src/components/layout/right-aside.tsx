@@ -77,7 +77,7 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
         )}
         {activeTab === 'issue' && !sessionId && (
           <div className="flex flex-1 items-center justify-center">
-            <p className="text-[11px] text-muted-foreground/40">No active session</p>
+            <p className="text-[11px] text-muted-foreground">No active session</p>
           </div>
         )}
       </div>

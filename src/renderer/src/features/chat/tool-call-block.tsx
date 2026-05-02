@@ -98,7 +98,7 @@ export function ToolCallBlock({
         onClick={() => setExpanded(v => !v)}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors w-full text-left',
-          'text-muted-foreground/70 hover:text-foreground hover:bg-muted/50',
+          'text-muted-foreground hover:text-foreground hover:bg-muted/50',
         )}
       >
         {renderToolIcon(toolName, 'size-3.5')}
@@ -122,8 +122,8 @@ export function ToolCallBlock({
         <div className="mt-1 ml-2 space-y-1.5 border-l-2 border-muted pl-3 text-xs">
           {input !== undefined && (
             <div>
-              <span className="text-muted-foreground/50 text-[10px] uppercase tracking-wider">Input</span>
-              <pre className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all">
+              <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Input</span>
+              <pre className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-wrap break-all">
                 {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
               </pre>
             </div>

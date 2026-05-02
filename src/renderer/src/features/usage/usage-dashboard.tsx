@@ -109,12 +109,12 @@ export function UsageDashboard() {
         <div className="flex items-end justify-between">
           <div>
             <h1 className="text-lg font-semibold text-foreground">Usage</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground/50">Token consumption over the past year</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">Token consumption over the past year</p>
           </div>
           {stats && stats.currentStreak > 0 && (
             <div className="flex items-center gap-1.5 text-sm text-foreground">
               <span className="font-semibold tabular-nums">{stats.currentStreak}</span>
-              <span className="text-muted-foreground/50 text-xs">day streak</span>
+              <span className="text-muted-foreground text-xs">day streak</span>
             </div>
           )}
         </div>
@@ -136,12 +136,12 @@ export function UsageDashboard() {
         {hasData && (
           <div className="mt-8 flex items-end gap-8">
             <div className="flex-1">
-              <p className="text-[11px] text-muted-foreground/40 mb-1.5">Last 30 days</p>
+              <p className="text-[11px] text-muted-foreground mb-1.5">Last 30 days</p>
               <Sparkline data={daily} />
             </div>
             <div className="text-right">
               <p className="text-3xl font-semibold tabular-nums text-foreground">{formatTokens(summary!.totalTokens)}</p>
-              <p className="text-[11px] text-muted-foreground/40 mt-0.5">total tokens</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">total tokens</p>
             </div>
           </div>
         )}
@@ -157,7 +157,7 @@ export function UsageDashboard() {
             {/* By Model */}
             {summary!.byModel.length > 0 && (
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground/40 mb-3">By Model</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-3">By Model</p>
                 <div className="space-y-2.5">
                   {summary!.byModel.map(m => (
                     <BarRow key={m.modelId} label={m.modelId} value={m.totalTokens} max={summary!.byModel[0].totalTokens} />
@@ -168,7 +168,7 @@ export function UsageDashboard() {
             {/* By Agent */}
             {summary!.byAgent.length > 0 && (
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground/40 mb-3">By Agent</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-3">By Agent</p>
                 <div className="space-y-2.5">
                   {summary!.byAgent.map(a => (
                     <BarRow key={a.agentProfileId} label={a.agentProfileId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
@@ -182,7 +182,7 @@ export function UsageDashboard() {
         {/* Empty state */}
         {summary && summary.totalTokens === 0 && (
           <div className="mt-20 text-center">
-            <p className="text-sm text-muted-foreground/30">
+            <p className="text-sm text-muted-foreground">
               No usage data yet — send a message to start tracking
             </p>
           </div>
@@ -195,7 +195,7 @@ export function UsageDashboard() {
 function Pill({ label, value }: { label: string, value: string }) {
   return (
     <div className="flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1">
-      <span className="text-[10px] text-muted-foreground/40">{label}</span>
+      <span className="text-[10px] text-muted-foreground">{label}</span>
       <span className="text-xs font-medium tabular-nums text-foreground">{value}</span>
     </div>
   )
@@ -206,7 +206,7 @@ function BarRow({ label, value, max }: { label: string, value: number, max: numb
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-muted-foreground/60 font-mono truncate max-w-[70%]">{label}</span>
+        <span className="text-xs text-muted-foreground font-mono truncate max-w-[70%]">{label}</span>
         <span className="text-xs tabular-nums text-foreground">{formatTokens(value)}</span>
       </div>
       <div className="h-1 w-full rounded-full bg-foreground/5">
