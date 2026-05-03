@@ -67,21 +67,21 @@ export function KanbanSidebar() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden" data-testid="kanban-sidebar">
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+      <div className="flex items-center gap-2 px-3 h-10 border-b border-border/40">
         <button
-          className="text-muted-foreground hover:text-foreground transition-colors duration-100"
+          className="text-muted-foreground/50 hover:text-foreground transition-colors duration-100 p-1 rounded-md hover:bg-accent/50"
           onClick={() => openTab('home')}
         >
           <ArrowLeftIcon className="size-3.5" />
         </button>
-        <span className="text-[11px] font-medium text-foreground">Boards</span>
+        <span className="text-[12px] font-medium text-foreground">Boards</span>
         <span className="flex-1" />
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-muted-foreground/30 hover:text-foreground"
+              className="text-muted-foreground/40 hover:text-foreground"
               data-testid="kanban-add-board-btn"
               onClick={() => {
                 setIsCreating(true)
@@ -96,7 +96,7 @@ export function KanbanSidebar() {
       </div>
 
       <ScrollArea className="flex-1 min-h-0">
-        <div className="flex flex-col gap-px px-1.5 pb-4">
+        <div className="flex flex-col gap-0.5 px-2 py-2.5 pb-4">
           {boards.map((board) => {
             const isActive = activeTab?.type === 'kanban-board' && activeTab.params.boardId === board.id
             return (
@@ -104,23 +104,23 @@ export function KanbanSidebar() {
                 <button
                   type="button"
                   className={cn(
-                    'flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-[12px]',
+                    'flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
                     'transition-colors duration-100',
                     isActive
-                      ? 'bg-foreground/6 text-foreground'
-                      : 'text-muted-foreground/50 hover:bg-foreground/4 hover:text-foreground',
+                      ? 'bg-accent/80 text-foreground'
+                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
                   )}
                   data-testid={`kanban-board-${board.id}`}
                   onClick={() => openTab('kanban-board', { boardId: board.id })}
                 >
-                  <LayoutDashboardIcon className="size-3.5 shrink-0 opacity-40" />
+                  <LayoutDashboardIcon className={cn('size-3.5 shrink-0', isActive ? 'opacity-70' : 'opacity-40')} />
                   <span className="truncate">{board.name}</span>
                 </button>
                 <Menu>
                   <MenuTrigger
                     className="opacity-0 group-hover:opacity-100 transition-opacity mr-1"
                   >
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/25">
+                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/40">
                       <MoreHorizontalIcon />
                     </Button>
                   </MenuTrigger>
@@ -144,12 +144,12 @@ export function KanbanSidebar() {
           })}
 
           {isCreating && (
-            <div className="px-2 py-1">
+            <div className="px-1 py-1">
               <Input
                 ref={inputRef}
                 data-testid="kanban-new-board-input"
                 placeholder="Board name"
-                className="h-7 text-[12px]"
+                className="h-7 text-[13px]"
                 onBlur={handleCreate}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -166,18 +166,18 @@ export function KanbanSidebar() {
 
           {milestones.length > 0 && (
             <>
-              <div className="mt-5 px-3 pb-1">
-                <span className="text-[10px] text-muted-foreground/30">Milestones</span>
+              <div className="mt-4 px-2 pb-1">
+                <span className="text-[11px] text-muted-foreground/50">Milestones</span>
               </div>
               {milestones.map(ms => (
                 <div
                   key={ms.id}
-                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground/50"
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground/60"
                 >
-                  <FlagIcon className="size-3 shrink-0 opacity-30" />
+                  <FlagIcon className="size-3 shrink-0 opacity-40" />
                   <span className="truncate">{ms.title}</span>
                   {ms.status === 'closed' && (
-                    <span className="text-[10px] text-muted-foreground/20 ml-auto">closed</span>
+                    <span className="text-[10px] text-muted-foreground/30 ml-auto">closed</span>
                   )}
                 </div>
               ))}

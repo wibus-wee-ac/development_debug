@@ -4,7 +4,6 @@
 
 import type { KanbanIssue, KanbanIssueComment, KanbanIssueRelation } from '@main/ipc-types'
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
-import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
 import { Badge } from '@renderer/components/ui/badge'
 import {
   Combobox,
@@ -184,9 +183,9 @@ function ComposeComment({ issueId }: { issueId: string }) {
 
   return (
     <div className="flex gap-3 mt-5">
-      <Avatar className="size-6 mt-1 shrink-0 bg-foreground/5 text-foreground">
-        <AvatarFallback className="text-[10px] font-medium">Me</AvatarFallback>
-      </Avatar>
+      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground">
+        M
+      </div>
       <div className="flex-1 min-w-0">
         <Textarea
           data-testid="issue-comment-input"
@@ -201,9 +200,7 @@ function ComposeComment({ issueId }: { issueId: string }) {
             }
           }}
           className={cn(
-            'resize-none text-[13px] transition-all duration-150',
-            'border border-foreground/15 rounded-md',
-            'bg-foreground/2 focus:bg-background',
+            'resize-none text-[13px] transition-all duration-150 border-border/60',
             focused ? 'min-h-20' : 'min-h-9'
           )}
           onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -254,16 +251,17 @@ function ActivityEntry({
   isLast: boolean
 }) {
   const deleteComment = useDeleteComment()
-  const kind = (comment.authorKind ?? 'user') as 'user' | 'agent' | 'system'
+  const kind = comment.authorKind ?? 'user'
+  const isSystem = kind === 'system' || kind.startsWith('system.')
 
-  if (kind === 'system') {
+  if (isSystem) {
     return (
-      <div className="flex items-center gap-3 py-2">
-        <div className="h-px flex-1 bg-foreground/5" />
-        <span className="text-[11px] text-muted-foreground shrink-0 select-none italic">
+      <div className="flex items-center gap-3 py-2.5">
+        <div className="h-px flex-1 bg-border/40" />
+        <span className="text-[11px] text-muted-foreground shrink-0 select-none">
           {comment.content}
         </span>
-        <div className="h-px flex-1 bg-foreground/5" />
+        <div className="h-px flex-1 bg-border/40" />
       </div>
     )
   }
@@ -275,29 +273,25 @@ function ActivityEntry({
       <div className="flex flex-col items-center">
         <div
           className={cn(
-            'flex size-6 shrink-0 items-center justify-center rounded-full',
-            isAgent ? 'bg-accent/10' : 'bg-foreground/5'
+            'flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-medium',
+            isAgent ? 'bg-accent/15 text-accent' : 'bg-muted text-muted-foreground'
           )}
         >
-          {isAgent ? (
-            <BotIcon className="size-3 text-accent" />
-          ) : (
-            <UserIcon className="size-3 text-foreground/60" />
-          )}
+          {isAgent ? <BotIcon className="size-3" /> : 'M'}
         </div>
-        {!isLast && <div className="w-px flex-1 mt-1.5 mb-1 bg-foreground/5" />}
+        {!isLast && <div className="w-px flex-1 mt-1.5 mb-1 bg-border/30" />}
       </div>
 
       <div className={cn('min-w-0 flex-1', isLast ? 'pb-0' : 'pb-5')}>
         <div className="flex items-baseline gap-2 mb-1.5">
-          <span className="text-[12px] font-medium text-foreground">
+          <span className="text-[13px] font-medium text-foreground">
             {isAgent ? 'Agent' : 'Me'}
           </span>
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {relativeTime(comment.createdAt)}
+          <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+            · {relativeTime(comment.createdAt)}
           </span>
           <button
-            className="text-[11px] text-muted-foreground/50 hover:text-destructive transition-colors opacity-0 group-hover/entry:opacity-100 ml-auto"
+            className="text-[11px] text-muted-foreground/40 hover:text-destructive transition-colors opacity-0 group-hover/entry:opacity-100 ml-auto"
             onClick={() => deleteComment.mutate({ id: comment.id, issueId })}
           >
             Delete
@@ -825,10 +819,10 @@ const propertyTriggerCls =
 
 function SectionHeader({ label, count }: { label: string; count?: number }) {
   return (
-    <div className="flex items-center gap-1.5 mb-2">
-      <span className="text-[11px] text-muted-foreground select-none">{label}</span>
+    <div className="flex items-center gap-1.5 mb-3">
+      <span className="text-[12px] font-medium text-foreground select-none">{label}</span>
       {count !== undefined && count > 0 && (
-        <span className="text-[10px] text-muted-foreground bg-foreground/5 rounded px-1 tabular-nums">
+        <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 tabular-nums">
           {count}
         </span>
       )}
@@ -866,12 +860,7 @@ function AgentSessionStatus({
   const status = SESSION_STATUS_MAP[session.status] ?? SESSION_STATUS_MAP.created
 
   return (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-[8px] p-3 space-y-3',
-        'bg-background shadow-minimal'
-      )}
-    >
+    <div className="rounded-[8px] border border-border/60 px-3 py-2.5 space-y-2.5">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 text-[13px]">
           <BotIcon className="size-3.5 text-muted-foreground" />
@@ -933,39 +922,52 @@ export function IssuePanel({ issueId, workspaceId }: IssuePanelProps) {
 
   return (
     <div data-testid="issue-detail-panel" className="flex h-full flex-1 flex-col overflow-y-auto">
-      <div className="max-w-170 w-full mx-auto px-8 pb-20 pt-8 space-y-9">
+      <div className="max-w-2xl w-full mx-auto px-8 pb-24 pt-8">
+        {/* ID chip */}
+        <div className="mb-5">
+          <span className="font-mono text-[11px] bg-muted/70 text-muted-foreground px-1.5 py-0.5 rounded select-none">
+            {issue.id.slice(0, 6).toUpperCase()}
+          </span>
+        </div>
+
         <EditableTitle value={issue.title} onSave={(title) => patch({ title })} />
 
-        <MarkdownEditor
-          content={issue.description ?? ''}
-          onSave={(md) => {
-            const trimmed = md.trim() || null
-            if (trimmed !== issue.description) {
-              patch({ description: trimmed })
-            }
-          }}
-          placeholder="Add a description…"
-          className="min-h-24"
-        />
+        {/* Description */}
+        <div className="mt-6">
+          <MarkdownEditor
+            content={issue.description ?? ''}
+            onSave={(md) => {
+              const trimmed = md.trim() || null
+              if (trimmed !== issue.description) {
+                patch({ description: trimmed })
+              }
+            }}
+            placeholder="Add a description…"
+            className="min-h-24"
+          />
+        </div>
 
-        <SubIssueList workspaceId={workspaceId} parentIssueId={issueId} />
+        {/* Sub-issues */}
+        <div className="mt-6 pt-5 border-t border-border/40">
+          <SubIssueList workspaceId={workspaceId} parentIssueId={issueId} />
+        </div>
 
+        {/* Agent reasoning */}
         {latestSession && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="size-5 rounded-full flex items-center justify-center bg-accent/10">
+          <div className="mt-6 pt-5 border-t border-border/40">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="size-5 rounded-full flex items-center justify-center bg-accent/15">
                 <BotIcon className="size-3 text-accent" />
               </div>
-              <span className="text-[12px] text-muted-foreground">Agent reasoning</span>
+              <span className="text-[13px] font-medium text-foreground">Agent reasoning</span>
             </div>
             <AgentActivityFeed agentSessionId={latestSession.id} />
           </div>
         )}
 
-        <div className="h-px bg-foreground/5" />
-
-        <div>
-          <span className="text-[12px] text-muted-foreground block mb-3">Activity</span>
+        {/* Activity */}
+        <div className="mt-6 pt-5 border-t border-border/40">
+          <span className="text-[13px] font-medium text-foreground block mb-4">Activity</span>
           <Activity issueId={issueId} />
         </div>
       </div>
@@ -1038,124 +1040,168 @@ export function IssueProperties({
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="px-4 py-5 space-y-7">
-        <div className="space-y-0.5">
-          <PropertyRow label="Status">
-            <Select
-              value={issue.statusId ?? ''}
-              onValueChange={(statusId) => patch({ statusId: statusId || null })}
-            >
-              <SelectTrigger size="sm" className={propertyTriggerCls}>
-                {currentStatus ? (
-                  <span className="flex items-center gap-1.5">
-                    <StatusIcon color={currentStatus.color} className="size-2.5" />
-                    <span>{currentStatus.name}</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground/35">None</span>
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">
-                  <span className="text-muted-foreground/35">None</span>
-                </SelectItem>
-                {statuses.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    <span className="flex items-center gap-2">
-                      <StatusIcon color={s.color} className="size-2.5" />
-                      {s.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </PropertyRow>
+      {/* Details header */}
+      <div className="px-4 py-3 border-b border-border/40">
+        <span className="text-[11px] text-muted-foreground/70 select-none">Details</span>
+      </div>
 
-          <PropertyRow label="Priority">
-            <Select
-              value={priority}
-              onValueChange={(p) =>
-                patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })
-              }
-            >
-              <SelectTrigger size="sm" className={propertyTriggerCls}>
+      {/* Property rows */}
+      <div className="px-4 py-2 space-y-px">
+        <PropertyRow label="Status">
+          <Select
+            value={issue.statusId ?? ''}
+            onValueChange={(statusId) => patch({ statusId: statusId || null })}
+          >
+            <SelectTrigger size="sm" className={propertyTriggerCls}>
+              {currentStatus ? (
                 <span className="flex items-center gap-1.5">
-                  <PriorityIcon priority={priority} className="size-3" />
-                  <span>{currentPriority?.label ?? 'No priority'}</span>
+                  <StatusIcon color={currentStatus.color} className="size-2.5" />
+                  <span>{currentStatus.name}</span>
                 </span>
-              </SelectTrigger>
-              <SelectContent>
-                {PRIORITY_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    <span className="flex items-center gap-2">
-                      <PriorityIcon priority={o.value} className="size-3" />
-                      {o.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </PropertyRow>
-
-          <PropertyRow label="Milestone">
-            <Select
-              value={issue.milestoneId ?? ''}
-              onValueChange={(milestoneId) => patch({ milestoneId: milestoneId || null })}
-            >
-              <SelectTrigger size="sm" className={propertyTriggerCls}>
-                {currentMilestone ? (
-                  <span className="truncate">{currentMilestone.title}</span>
-                ) : (
-                  <span className="text-muted-foreground/35">None</span>
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">
-                  <span className="text-muted-foreground/35">None</span>
+              ) : (
+                <span className="text-muted-foreground/35">None</span>
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">
+                <span className="text-muted-foreground/35">None</span>
+              </SelectItem>
+              {statuses.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  <span className="flex items-center gap-2">
+                    <StatusIcon color={s.color} className="size-2.5" />
+                    {s.name}
+                  </span>
                 </SelectItem>
-                {milestones.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </PropertyRow>
+              ))}
+            </SelectContent>
+          </Select>
+        </PropertyRow>
 
-          <PropertyRow label="Assignee">
-            <Select
-              value={
-                issue.delegateAgentId
-                  ? `agent:${issue.delegateAgentId}`
-                  : issue.assigneeKind === 'user'
-                    ? 'user:__self__'
-                    : ''
-              }
-              onValueChange={(val) => {
-                if (!val) {
+        <PropertyRow label="Priority">
+          <Select
+            value={priority}
+            onValueChange={(p) =>
+              patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })
+            }
+          >
+            <SelectTrigger size="sm" className={propertyTriggerCls}>
+              <span className="flex items-center gap-1.5">
+                <PriorityIcon priority={priority} className="size-3" />
+                <span>{currentPriority?.label ?? 'No priority'}</span>
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITY_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  <span className="flex items-center gap-2">
+                    <PriorityIcon priority={o.value} className="size-3" />
+                    {o.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </PropertyRow>
+
+        <PropertyRow label="Milestone">
+          <Select
+            value={issue.milestoneId ?? ''}
+            onValueChange={(milestoneId) => patch({ milestoneId: milestoneId || null })}
+          >
+            <SelectTrigger size="sm" className={propertyTriggerCls}>
+              {currentMilestone ? (
+                <span className="truncate">{currentMilestone.title}</span>
+              ) : (
+                <span className="text-muted-foreground/35">None</span>
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">
+                <span className="text-muted-foreground/35">None</span>
+              </SelectItem>
+              {milestones.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </PropertyRow>
+
+        <PropertyRow label="Assignee">
+          <Select
+            value={
+              issue.delegateAgentId
+                ? `agent:${issue.delegateAgentId}`
+                : issue.assigneeKind === 'user'
+                  ? 'user:__self__'
+                  : ''
+            }
+            onValueChange={(val) => {
+              if (!val) {
+                undelegateIssue.mutate({ issueId })
+                patch({ assigneeKind: null, assigneeId: null })
+              } else if (val === 'user:__self__') {
+                if (issue.delegateAgentId) {
                   undelegateIssue.mutate({ issueId })
-                  patch({ assigneeKind: null, assigneeId: null })
-                } else if (val === 'user:__self__') {
-                  if (issue.delegateAgentId) {
-                    undelegateIssue.mutate({ issueId })
-                  }
-                  patch({ assigneeKind: 'user', assigneeId: '__self__' })
-                } else if (val.startsWith('agent:')) {
-                  const agentId = val.slice(6)
-                  // Resolve Agent identity → Provider ID
-                  const agentEntity = enabledAgents.find((a) => a.id === agentId)
-                  const profileId = agentEntity ? agentEntity.providerId : agentId
-                  patch({ assigneeKind: null, assigneeId: null })
-                  delegateIssue.mutate({ issueId, agentProfileId: profileId })
                 }
-              }}
-            >
-              <SelectTrigger size="sm" className={propertyTriggerCls}>
-                {issue.delegateAgentId ? (
-                  <span className="flex items-center gap-1.5">
-                    {currentDelegateAgent?.avatarUrl ? (
+                patch({ assigneeKind: 'user', assigneeId: '__self__' })
+              } else if (val.startsWith('agent:')) {
+                const agentId = val.slice(6)
+                // Resolve Agent identity → Provider ID
+                const agentEntity = enabledAgents.find((a) => a.id === agentId)
+                const profileId = agentEntity ? agentEntity.providerId : agentId
+                patch({ assigneeKind: null, assigneeId: null })
+                delegateIssue.mutate({ issueId, agentProfileId: profileId })
+              }
+            }}
+          >
+            <SelectTrigger size="sm" className={propertyTriggerCls}>
+              {issue.delegateAgentId ? (
+                <span className="flex items-center gap-1.5">
+                  {currentDelegateAgent?.avatarUrl ? (
+                    <img
+                      src={currentDelegateAgent.avatarUrl}
+                      alt=""
+                      className="size-3.5 rounded"
+                      crossOrigin="anonymous"
+                    />
+                  ) : (
+                    <BotIcon className="size-3" />
+                  )}
+                  <span>{currentDelegate?.name ?? 'Agent'}</span>
+                </span>
+              ) : issue.assigneeKind === 'user' ? (
+                <span className="flex items-center gap-1.5">
+                  <UserIcon className="size-3" />
+                  <span>Me</span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground/35">Unassigned</span>
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">
+                <span className="text-muted-foreground/35">Unassigned</span>
+              </SelectItem>
+              <SelectItem value="user:__self__">
+                <span className="flex items-center gap-2">
+                  <UserIcon className="size-3" />
+                  Me
+                </span>
+              </SelectItem>
+              {enabledAgents.length > 0 && (
+                <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground select-none">
+                  Agents
+                </div>
+              )}
+              {enabledAgents.map((a) => (
+                <SelectItem key={a.id} value={`agent:${a.id}`}>
+                  <span className="flex items-center gap-2">
+                    {a.avatarUrl ? (
                       <img
-                        src={currentDelegateAgent.avatarUrl}
+                        src={a.avatarUrl}
                         alt=""
                         className="size-3.5 rounded"
                         crossOrigin="anonymous"
@@ -1163,114 +1209,74 @@ export function IssueProperties({
                     ) : (
                       <BotIcon className="size-3" />
                     )}
-                    <span>{currentDelegate?.name ?? 'Agent'}</span>
-                  </span>
-                ) : issue.assigneeKind === 'user' ? (
-                  <span className="flex items-center gap-1.5">
-                    <UserIcon className="size-3" />
-                    <span>Me</span>
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground/35">Unassigned</span>
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">
-                  <span className="text-muted-foreground/35">Unassigned</span>
-                </SelectItem>
-                <SelectItem value="user:__self__">
-                  <span className="flex items-center gap-2">
-                    <UserIcon className="size-3" />
-                    Me
+                    {a.name}
                   </span>
                 </SelectItem>
-                {enabledAgents.length > 0 && (
-                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground select-none">
-                    Agents
-                  </div>
-                )}
-                {enabledAgents.map((a) => (
-                  <SelectItem key={a.id} value={`agent:${a.id}`}>
+              ))}
+              {enabledProfiles.length > 0 && enabledAgents.length === 0 && (
+                <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground select-none">
+                  Providers
+                </div>
+              )}
+              {enabledAgents.length === 0 &&
+                enabledProfiles.map((p) => (
+                  <SelectItem key={p.id} value={`agent:${p.id}`}>
                     <span className="flex items-center gap-2">
-                      {a.avatarUrl ? (
-                        <img
-                          src={a.avatarUrl}
-                          alt=""
-                          className="size-3.5 rounded"
-                          crossOrigin="anonymous"
-                        />
-                      ) : (
-                        <BotIcon className="size-3" />
-                      )}
-                      {a.name}
+                      <BotIcon className="size-3" />
+                      {p.name}
                     </span>
                   </SelectItem>
                 ))}
-                {enabledProfiles.length > 0 && enabledAgents.length === 0 && (
-                  <div className="px-2 pt-2 pb-0.5 text-[11px] text-muted-foreground select-none">
-                    Providers
-                  </div>
-                )}
-                {enabledAgents.length === 0 &&
-                  enabledProfiles.map((p) => (
-                    <SelectItem key={p.id} value={`agent:${p.id}`}>
-                      <span className="flex items-center gap-2">
-                        <BotIcon className="size-3" />
-                        {p.name}
-                      </span>
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </PropertyRow>
-        </div>
+            </SelectContent>
+          </Select>
+        </PropertyRow>
+      </div>
 
-        {latestSession && (
-          <div>
-            <SectionHeader label="Agent session" />
-            <AgentSessionStatus
-              session={latestSession}
-              activeSession={activeSession ?? null}
-              onStop={() => {
-                if (activeSession) {
-                  stopAgentSession.mutate({ agentSessionId: activeSession.id, issueId })
-                }
-              }}
-              onStart={() => {
-                if (latestSession.status === 'created') {
-                  startAgentSession.mutate({
-                    issueId,
-                    agentSessionId: latestSession.id,
-                    agentProfileId: latestSession.agentProfileId
-                  })
-                }
-              }}
-            />
-          </div>
-        )}
-
-        <div>
-          <SectionHeader label="Labels" count={labels.length} />
-          <LabelEditor
-            labels={labels}
-            onAdd={(l) => {
-              if (!labels.includes(l)) {
-                patch({ labels: [...labels, l] })
+      {latestSession && (
+        <div className="border-t border-border/40 px-4 py-3">
+          <SectionHeader label="Agent session" />
+          <AgentSessionStatus
+            session={latestSession}
+            activeSession={activeSession ?? null}
+            onStop={() => {
+              if (activeSession) {
+                stopAgentSession.mutate({ agentSessionId: activeSession.id, issueId })
               }
             }}
-            onRemove={(l) => patch({ labels: labels.filter((x) => x !== l) })}
+            onStart={() => {
+              if (latestSession.status === 'created') {
+                startAgentSession.mutate({
+                  issueId,
+                  agentSessionId: latestSession.id,
+                  agentProfileId: latestSession.agentProfileId
+                })
+              }
+            }}
           />
         </div>
+      )}
 
-        <div>
-          <SectionHeader label="Relations" count={relations.length} />
-          <RelationList issueId={issueId} workspaceId={workspaceId} />
-        </div>
+      <div className="border-t border-border/40 px-4 py-3">
+        <SectionHeader label="Labels" count={labels.length} />
+        <LabelEditor
+          labels={labels}
+          onAdd={(l) => {
+            if (!labels.includes(l)) {
+              patch({ labels: [...labels, l] })
+            }
+          }}
+          onRemove={(l) => patch({ labels: labels.filter((x) => x !== l) })}
+        />
+      </div>
 
-        <div>
-          <SectionHeader label="Context" count={contextRefs.length} />
-          <ContextRefList issueId={issueId} refs={contextRefs} />
-        </div>
+      <div className="border-t border-border/40 px-4 py-3">
+        <SectionHeader label="Relations" count={relations.length} />
+        <RelationList issueId={issueId} workspaceId={workspaceId} />
+      </div>
+
+      <div className="border-t border-border/40 px-4 py-3">
+        <SectionHeader label="Context" count={contextRefs.length} />
+        <ContextRefList issueId={issueId} refs={contextRefs} />
       </div>
     </div>
   )

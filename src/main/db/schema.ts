@@ -270,9 +270,9 @@ export const kanbanIssueComments = sqliteTable('kanban_issue_comments', {
     .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
   /** Markdown body. */
   content: text('content').notNull(),
-  /** Author kind: 'user' (human), 'agent', or 'system'. */
+  /** Author kind: 'user' | 'agent' | 'system' | 'system.{subtype}'. */
   authorKind: text('author_kind', {
-    enum: ['user', 'agent', 'system'],
+    enum: ['user', 'agent', 'system', 'system.delegated', 'system.undelegated'],
   }).notNull().default('user'),
   /** Author ID: agent profile ID for 'agent', '__self__' for 'user', null for 'system'. */
   authorId: text('author_id'),

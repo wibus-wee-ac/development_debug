@@ -405,7 +405,7 @@ export class KanbanService extends IpcService {
   addComment(input: {
     issueId: string
     content: string
-    authorKind?: 'user' | 'agent' | 'system'
+    authorKind?: KanbanIssueComment['authorKind']
     authorId?: string | null
   }): KanbanIssueComment {
     const db = getDb()
@@ -506,8 +506,8 @@ export class KanbanService extends IpcService {
     db.insert(kanbanIssueComments).values({
       id: randomUUID(),
       issueId,
-      content: `Delegated to **${profile.name}**`,
-      authorKind: 'system',
+      content: `Delegated to ${profile.name}`,
+      authorKind: 'system.delegated',
       authorId: null,
       createdAt: now(),
     }).run()
@@ -556,7 +556,7 @@ export class KanbanService extends IpcService {
       id: randomUUID(),
       issueId,
       content: 'Delegation removed',
-      authorKind: 'system',
+      authorKind: 'system.undelegated',
       authorId: null,
       createdAt: now(),
     }).run()

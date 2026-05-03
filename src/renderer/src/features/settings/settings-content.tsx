@@ -2,7 +2,6 @@
 // Output: SettingsContent component — renders active settings section in main area
 // Position: Main content area rendered by AppLayout when isSettings=true
 
-import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { AgentList } from '@renderer/features/agent-management/agent-list'
 import { AgentRuntimeSettings } from '@renderer/features/agent-management/agent-runtime-settings'
 import { GlobalSkillsSettings } from '@renderer/features/skills/global-skills-settings'
@@ -24,10 +23,10 @@ export function SettingsContent({ section }: SettingsContentProps) {
   const ActiveSection = SECTION_MAP[section] ?? AppearanceSettings
 
   return (
-    <ScrollArea className="flex-1">
-      <div className="px-8 pt-10 pb-6">
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="px-8 pt-10 pb-12">
         <ActiveSection />
       </div>
-    </ScrollArea>
+    </div>
   )
 }

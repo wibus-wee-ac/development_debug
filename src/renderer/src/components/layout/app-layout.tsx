@@ -84,7 +84,7 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
           transition={SPRING}
         >
-          <main className="flex-1 bg-background overflow-hidden rounded-xl">
+          <main className="flex flex-col flex-1 bg-background overflow-hidden rounded-xl">
             {isSettings ? <SettingsContent section={settingsSection} /> : children}
           </main>
 

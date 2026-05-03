@@ -1,28 +1,28 @@
-// Input: KanbanIssue data, priorityIcon, click handler
-// Output: IssueCard — rich issue card with assignee, agent, milestone, labels, timestamp
+// Input: KanbanIssue data, priorityIcon, click handler, agent session info
+// Output: IssueCard — physical-texture card with inset shadows, conditional borders, agent activity strip
 // Position: Leaf component rendered inside KanbanColumn
 
 import type { KanbanIssue } from '@main/ipc-types'
-import { Avatar, AvatarFallback } from '@renderer/components/ui/avatar'
-import { Badge } from '@renderer/components/ui/badge'
 import { cn } from '@renderer/lib/cn'
-import { BotIcon, FlagIcon, UserIcon } from 'lucide-react'
+import { BotIcon, CheckIcon, UserIcon } from 'lucide-react'
 
 import { PriorityIcon } from './priority-icon'
-import { useMilestones } from './use-kanban'
+import { useAgentSessions } from './use-kanban'
 
-function relativeShort(unixTs: number): string {
-  const secs = Math.floor(Date.now() / 1000) - unixTs
-  if (secs < 60) {
-    return 'now'
-  }
-  if (secs < 3600) {
-    return `${Math.floor(secs / 60)}m`
-  }
-  if (secs < 86400) {
-    return `${Math.floor(secs / 3600)}h`
-  }
-  return `${Math.floor(secs / 86400)}d`
+const PRIORITY_BADGE: Record<string, string> = {
+  urgent: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  high: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  medium: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  low: '',
+  none: '',
+}
+
+const PRIORITY_LABEL: Record<string, string> = {
+  urgent: 'Urgent',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: '',
 }
 
 export interface IssueCardProps {
@@ -30,100 +30,164 @@ export interface IssueCardProps {
   onClick: (issue: KanbanIssue) => void
   isDragging?: boolean
   isSelected?: boolean
+  done?: boolean
 }
 
-export function IssueCard({ issue, onClick, isDragging, isSelected }: IssueCardProps) {
+export function IssueCard({ issue, onClick, isDragging, isSelected, done }: IssueCardProps) {
   const labels: string[] = issue.labels ? JSON.parse(issue.labels) : []
-  const { data: milestones = [] } = useMilestones(issue.workspaceId)
-  const milestone = issue.milestoneId ? milestones.find(m => m.id === issue.milestoneId) : null
   const hasAgent = !!issue.delegateAgentId
   const hasAssignee = issue.assigneeKind === 'user'
-  const hasDescription = !!issue.description?.trim()
+  const { data: sessions = [] } = useAgentSessions(issue.id)
+  const latestSession = sessions[0]
+
+  const isRunning = latestSession?.status === 'active' || latestSession?.status === 'created'
+  const isFailed = latestSession?.status === 'failed'
+  const isComplete = latestSession?.status === 'completed'
 
   return (
     <button
       type="button"
       className={cn(
-        'group/card flex w-full cursor-pointer flex-col gap-1.5 rounded-lg px-2.5 py-2 text-left',
-        'border border-foreground/6 bg-foreground/2',
-        'inset-shadow-[0_1px_--theme(--color-white/10%)]',
-        'transition-all duration-100',
-        'hover:bg-foreground/4 hover:border-foreground/10',
-        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        isSelected && 'bg-foreground/6 border-foreground/12',
-        isDragging && 'opacity-60',
+        'group/card flex w-full cursor-pointer flex-col rounded-lg text-left',
+        'border transition-[opacity,box-shadow,border-color] duration-150 select-none overflow-hidden',
+        done
+          ? 'border-border/20 bg-foreground/1 hover:bg-foreground/2.5'
+          : isRunning
+            ? 'border-blue-500/25 bg-foreground/2 hover:bg-foreground/4'
+            : isFailed
+              ? 'border-red-500/20 bg-foreground/2 hover:bg-foreground/4'
+              : 'border-border/40 bg-foreground/2 hover:bg-foreground/4',
+        'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04),inset_0_-1px_0_0_rgba(0,0,0,0.06)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),inset_0_-1px_0_0_rgba(0,0,0,0.15)]',
+        isSelected && 'border-primary/40',
+        isDragging && 'opacity-50',
       )}
       onClick={() => onClick(issue)}
       data-testid={`issue-card-${issue.id}`}
     >
-      {/* Title row with priority */}
-      <div className="flex items-start gap-2">
-        <PriorityIcon priority={issue.priority} className="mt-0.5 shrink-0" />
-        <span className="text-[12px] leading-[1.45] text-foreground text-wrap-pretty line-clamp-2">
-          {issue.title}
-        </span>
-      </div>
-
-      {/* Description preview */}
-      {hasDescription && (
-        <p className="text-[10px] leading-relaxed text-muted-foreground line-clamp-1 pl-5.5">
-          {issue.description!.slice(0, 80)}
-        </p>
-      )}
-
-      {/* Labels */}
-      {labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 pl-5.5">
-          {labels.slice(0, 3).map(label => (
-            <Badge key={label} variant="secondary" className="h-3.5 px-1 text-[9px] font-normal">
-              {label}
-            </Badge>
-          ))}
-          {labels.length > 3 && (
-            <span className="text-[9px] text-muted-foreground">
-              +
-              {labels.length - 3}
-            </span>
+      <div className="px-3 py-2.5">
+        {/* Title */}
+        <p
+          className={cn(
+            'mb-2 text-[13px] leading-snug',
+            done ? 'text-muted-foreground/45' : 'text-foreground',
           )}
+        >
+          {issue.title}
+        </p>
+
+        {/* Labels + Priority badge */}
+        {(labels.length > 0 || (priority(issue) !== 'low' && priority(issue) !== 'none' && !done)) && (
+          <div className="mb-2.5 flex items-center gap-1.5">
+            {labels.slice(0, 2).map(label => (
+              <span
+                key={label}
+                className={cn(
+                  'rounded-full px-1.5 py-px text-[10px] font-medium leading-tight',
+                  done
+                    ? 'bg-muted text-text-dim'
+                    : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {label}
+              </span>
+            ))}
+            {labels.length > 2 && (
+              <span className="text-[10px] text-text-dim">
+                +
+                {labels.length - 2}
+              </span>
+            )}
+            {!done && priority(issue) !== 'low' && priority(issue) !== 'none' && (
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-px text-[10px] font-medium leading-tight',
+                  PRIORITY_BADGE[priority(issue)],
+                )}
+              >
+                {PRIORITY_LABEL[priority(issue)]}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Bottom row */}
+        <div className="flex items-center gap-1.5">
+          {done
+            ? (
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <CheckIcon className="size-3" />
+              </span>
+            )
+            : hasAgent
+              ? (
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-muted-foreground/60">
+                  <BotIcon className="size-2.5" />
+                </span>
+              )
+              : hasAssignee
+                ? (
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-foreground/8 text-muted-foreground/60">
+                    <UserIcon className="size-2.5" />
+                  </span>
+                )
+                : (
+                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[9px] font-semibold text-text-dim select-none">
+                    —
+                  </span>
+                )}
+          <div className="ml-auto flex items-center gap-2">
+            <PriorityIcon priority={issue.priority} className="size-3 text-text-dim" />
+          </div>
         </div>
-      )}
-
-      {/* Footer: id, milestone, assignee/agent, timestamp */}
-      <div className="flex items-center gap-1.5 pl-5.5">
-        <span className="text-[10px] text-muted-foreground tabular-nums">
-          {issue.id.slice(0, 6).toUpperCase()}
-        </span>
-
-        {milestone && (
-          <span className="flex items-center gap-0.5 text-[9px] text-muted-foreground">
-            <FlagIcon className="size-2" />
-            <span className="truncate max-w-16">{milestone.title}</span>
-          </span>
-        )}
-
-        <span className="flex-1" />
-
-        <span className="text-[9px] text-muted-foreground tabular-nums">
-          {relativeShort(issue.updatedAt)}
-        </span>
-
-        {hasAgent && (
-          <span className="flex items-center gap-1">
-            <span className="relative flex size-1.5">
-              <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-40" />
-              <span className="relative inline-flex size-1.5 rounded-full bg-emerald-500" />
-            </span>
-            <BotIcon className="size-2.5 text-muted-foreground/40" />
-          </span>
-        )}
-        {!hasAgent && hasAssignee && (
-          <Avatar className="size-4 bg-foreground/4 text-foreground">
-            <AvatarFallback className="text-[7px]">
-              <UserIcon className="size-2" />
-            </AvatarFallback>
-          </Avatar>
-        )}
       </div>
+
+      {/* ── Agent activity strip ──────────────────────────── */}
+      {hasAgent && !done && (() => {
+        if (isRunning) {
+          return (
+            <div className="border-t border-blue-500/15 bg-blue-500/4 px-3 py-2">
+              <div className="flex items-center gap-1.5">
+                <span className="relative flex size-1.5 shrink-0">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-blue-400 opacity-60" />
+                  <span className="relative size-1.5 rounded-full bg-blue-500" />
+                </span>
+                <span className="text-[10.5px] font-medium text-blue-600 dark:text-blue-400">
+                  Agent running
+                </span>
+              </div>
+            </div>
+          )
+        }
+        if (isFailed) {
+          return (
+            <div className="border-t border-red-500/15 bg-red-500/4 px-3 py-2">
+              <div className="flex items-center gap-1.5">
+                <span className="size-1.5 shrink-0 rounded-full bg-red-500" />
+                <span className="text-[10.5px] font-medium text-red-600 dark:text-red-400">
+                  Agent failed
+                </span>
+              </div>
+            </div>
+          )
+        }
+        if (isComplete) {
+          return (
+            <div className="border-t border-border/30 bg-foreground/1.5 px-3 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <CheckIcon className="size-3 shrink-0 text-emerald-500" />
+                <span className="text-[10.5px] text-muted-foreground/50">
+                  Agent complete
+                </span>
+              </div>
+            </div>
+          )
+        }
+        return null
+      })()}
     </button>
   )
+}
+
+function priority(issue: KanbanIssue): string {
+  return (issue.priority as string) ?? 'none'
 }

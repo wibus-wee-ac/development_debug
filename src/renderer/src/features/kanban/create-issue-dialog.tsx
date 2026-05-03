@@ -31,9 +31,9 @@ const PRIORITY_OPTIONS = [
 ]
 
 const chipCls = cn(
-  'flex items-center gap-1.5 h-6 px-2 rounded-md text-[11px] font-normal transition-colors',
-  'bg-transparent text-muted-foreground/50',
-  'hover:bg-foreground/5 hover:text-foreground',
+  'flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[12px] font-normal transition-colors',
+  'border border-border/50 bg-background text-muted-foreground',
+  'hover:bg-accent/60 hover:text-foreground hover:border-border',
   '[&>[data-slot=select-icon]]:hidden'
 )
 
@@ -101,7 +101,7 @@ export function CreateIssueDialog({
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Issue title…"
             data-testid="kanban-new-issue-input"
-            className="w-full bg-transparent text-[14px] font-medium text-foreground placeholder:text-muted-foreground/25 outline-none"
+            className="w-full bg-transparent text-[15px] font-medium text-foreground placeholder:text-muted-foreground/25 outline-none"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 handleCreate()
@@ -148,7 +148,7 @@ export function CreateIssueDialog({
         </div>
 
         {/* Property chips */}
-        <div className="flex flex-wrap items-center gap-1 px-5 py-2.5 border-t border-border/15 mt-3">
+        <div className="flex flex-wrap items-center gap-1.5 px-5 py-3 border-t border-border/40">
           <Select value={statusId ?? ''} onValueChange={(v) => setStatusId(v || null)}>
             <SelectTrigger className={chipCls}>
               {currentStatus ? (
@@ -216,15 +216,15 @@ export function CreateIssueDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 pb-4 pt-0">
-          <Kbd className="text-[10px]">⌘↵</Kbd>
+        <div className="flex items-center justify-between px-5 pb-4 pt-1">
+          <Kbd className="text-[11px]">⌘↵</Kbd>
           <div className="flex items-center gap-2">
-            <DialogClose className="h-6 px-3 text-[11px] rounded-md text-muted-foreground/50 hover:text-foreground transition-colors">
+            <DialogClose className="h-7 px-3.5 text-[12px] rounded-md text-muted-foreground/60 hover:text-foreground transition-colors">
               Cancel
             </DialogClose>
             <button
               className={cn(
-                'h-6 px-3 text-[11px] font-medium rounded-md transition-colors',
+                'h-7 px-4 text-[12px] font-medium rounded-md transition-colors',
                 'bg-foreground text-background hover:bg-foreground/85',
                 'disabled:opacity-20'
               )}

@@ -1,59 +1,21 @@
-// Input: useAgents hook, useAgentProfiles, useAgentModels, SkillManager, coss UI, DiceBear API, motion/react
-// Output: AgentList — Settings page for managing Agent identities with character-sheet creation UX and per-agent private skill workspaces
-// Position: Settings section rendered under "Agents" tab; replaces nothing (new feature)
+// Input: useAgents hook, useAgentProfiles, AgentDetailPage; Switch, Button, Spinner UI; lucide icons
+// Output: AgentList — compact agent card index; clicking a row or "Add" navigates to AgentDetailPage
+// Position: Settings section rendered under "Agents" tab
 
-import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor } from '@main/ipc-types'
+import type { Agent, AgentProfile } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@renderer/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
-import { useAgentModels } from '@renderer/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { cn } from '@renderer/lib/cn'
-import {
-  BrainIcon,
-  DicesIcon,
-  PencilIcon,
-  PlusIcon,
-  Trash2Icon,
-} from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { PlusIcon, Trash2Icon } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
+import { AgentDetailPage } from './agent-detail'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const AVATAR_STYLES = [
-  { id: 'bottts-neutral', label: 'Bottts' },
-  { id: 'thumbs', label: 'Thumbs' },
-  { id: 'shapes', label: 'Shapes' },
-  { id: 'identicon', label: 'Identicon' },
-  { id: 'pixel-art', label: 'Pixel' },
-  { id: 'adventurer', label: 'Adventurer' },
-] as const
-
-type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
-
-interface AgentEditorConfigState {
-  baseConfig: Record<string, unknown>
-  systemPrompt: string
-}
-
-function buildAvatarUrl(style: string, seed: string): string {
-  return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
-}
-
-function generateSeed(): string {
-  return Math.random().toString(36).slice(2, 10)
-}
 
 const KIND_LABELS: Record<string, string> = {
   'openai-compatible': 'OpenAI',
@@ -61,366 +23,8 @@ const KIND_LABELS: Record<string, string> = {
   'cli-tui': 'CLI',
 }
 
-function parseAgentEditorConfig(configJson?: string | null): AgentEditorConfigState {
-  try {
-    const parsed = JSON.parse(configJson ?? '{}') as Record<string, unknown>
-    const systemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : ''
-    const { systemPrompt: _discardSystemPrompt, skills: _discardLegacySkills, ...baseConfig } = parsed
-    return {
-      baseConfig,
-      systemPrompt,
-    }
-  }
-  catch {
-    return {
-      baseConfig: {},
-      systemPrompt: '',
-    }
-  }
-}
-
-function stringifyAgentEditorConfig(config: AgentEditorConfigState): string {
-  const nextConfig: Record<string, unknown> = {
-    ...config.baseConfig,
-  }
-
-  if (config.systemPrompt.trim()) {
-    nextConfig.systemPrompt = config.systemPrompt.trim()
-  }
-  else {
-    delete nextConfig.systemPrompt
-  }
-
-  return JSON.stringify(nextConfig)
-}
-
-// ── Agent Editor — Character Sheet ────────────────────────────────────────────
-//
-// Design concept: Avatar-first identity creation.
-// The avatar is the hero — click it to shuffle. Style selector orbits below.
-// Name is a hero-sized transparent input that feels like naming, not filling a form.
-// Configuration (provider, model, effort) lives in a recessed tray below the identity zone.
-
-interface AgentEditorProps {
-  profiles: AgentProfile[]
-  initial?: Agent
-  onSave: (input: CreateAgentInput) => Promise<void>
-  onCancel: () => void
-  saving: boolean
-}
-
-function AgentEditor({ profiles, initial, onSave, onCancel, saving }: AgentEditorProps) {
-  const [name, setName] = useState(initial?.name ?? '')
-  const [description, setDescription] = useState(initial?.description ?? '')
-  const [avatarStyle, setAvatarStyle] = useState(initial?.avatarStyle ?? 'bottts-neutral')
-  const [avatarSeed, setAvatarSeed] = useState(() => initial?.avatarSeed ?? generateSeed())
-  const [providerId, setProviderId] = useState<string | null>(initial?.providerId ?? profiles[0]?.id ?? null)
-  const [modelId, setModelId] = useState<string | null>(initial?.modelId ?? null)
-  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(
-    (initial?.thinkingEffort as ThinkingEffort) ?? 'auto',
-  )
-  const initialConfig = useMemo(() => parseAgentEditorConfig(initial?.configJson), [initial?.configJson])
-  const [systemPrompt, setSystemPrompt] = useState(initialConfig.systemPrompt)
-  const [avatarSpinKey, setAvatarSpinKey] = useState(0)
-  const nameRef = useRef<HTMLInputElement>(null)
-
-  const enabledProviders = useMemo(() => profiles.filter(p => p.enabled), [profiles])
-  const canSave = name.trim().length > 0 && providerId !== null
-  const avatarUrl = buildAvatarUrl(avatarStyle, avatarSeed)
-
-  useEffect(() => {
-    if (providerId === null && enabledProviders[0]) {
-      setProviderId(enabledProviders[0].id)
-    }
-  }, [enabledProviders, providerId])
-
-  const shuffleAvatar = useCallback(() => {
-    setAvatarSeed(generateSeed())
-    setAvatarSpinKey(k => k + 1)
-  }, [])
-
-  const handleSubmit = useCallback(async () => {
-    if (!canSave) {
-      return
-    }
-    await onSave({
-      name: name.trim(),
-      description: description.trim() || null,
-      avatarStyle,
-      avatarSeed,
-      providerId: providerId!,
-      modelId,
-      thinkingEffort,
-      configJson: stringifyAgentEditorConfig({
-        baseConfig: initialConfig.baseConfig,
-        systemPrompt,
-      }),
-    })
-  }, [canSave, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, initialConfig.baseConfig, systemPrompt, onSave])
-
-  const isAuto = thinkingEffort === 'auto'
-
-  return (
-    <div className="flex gap-6">
-      {/* ── Left: Avatar Zone ────────────────────────────────── */}
-      <div className="flex w-28 shrink-0 flex-col items-center gap-3 pt-1">
-        {/* Avatar — clickable to shuffle */}
-        <motion.button
-          type="button"
-          onClick={shuffleAvatar}
-          className="group relative size-20 cursor-pointer overflow-hidden rounded-2xl bg-foreground/3 ring-2 ring-transparent transition-shadow hover:ring-foreground/10"
-          title="Click to shuffle"
-          whileTap={{ scale: 0.92 }}
-        >
-          <motion.img
-            key={avatarSpinKey}
-            src={avatarUrl}
-            alt="Agent avatar"
-            className="size-full object-cover"
-            crossOrigin="anonymous"
-            initial={{ rotate: -8, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-          />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity group-hover:opacity-100">
-            <DicesIcon className="size-5 text-white" />
-          </div>
-        </motion.button>
-
-        {/* Style thumbnails — 3×2 grid */}
-        <div className="grid grid-cols-3 gap-1.5">
-          {AVATAR_STYLES.map(s => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setAvatarStyle(s.id)}
-              className={cn(
-                'size-8 overflow-hidden rounded-lg transition-all',
-                avatarStyle === s.id
-                  ? 'ring-2 ring-foreground/20 scale-110'
-                  : 'opacity-50 hover:opacity-80',
-              )}
-            >
-              <img
-                src={buildAvatarUrl(s.id, avatarSeed)}
-                alt={s.label}
-                className="size-full object-cover"
-                crossOrigin="anonymous"
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Right: Identity + Config ─────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Name — hero transparent input */}
-        <input
-          ref={nameRef}
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          placeholder="Name your agent"
-          autoFocus
-          data-testid="agent-name-input"
-          className={cn(
-            'w-full bg-transparent text-lg font-semibold tracking-tight outline-none',
-            'text-foreground placeholder:text-muted-foreground/30',
-          )}
-        />
-
-        {/* Description — subtle, appears when name exists */}
-        <AnimatePresence>
-          {(name.length > 0 || description.length > 0) && (
-            <motion.input
-              type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Add a description..."
-              initial={{ height: 0, opacity: 0, marginTop: 0 }}
-              animate={{ height: 'auto', opacity: 1, marginTop: 4 }}
-              exit={{ height: 0, opacity: 0, marginTop: 0 }}
-              className={cn(
-                'w-full bg-transparent text-xs outline-none',
-                'text-muted-foreground placeholder:text-muted-foreground/20',
-              )}
-            />
-          )}
-        </AnimatePresence>
-
-        {/* Config tray */}
-        <div className="mt-5 flex flex-col gap-4">
-          {/* Provider + Model — side by side */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium text-muted-foreground">Provider</span>
-              <Select
-                value={providerId ?? undefined}
-                onValueChange={(value) => {
-                  setProviderId(value)
-                  setModelId(null)
-                }}
-              >
-                <SelectTrigger size="sm">
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  {enabledProviders.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <ModelField
-              profileId={providerId}
-              modelId={modelId}
-              onModelChange={setModelId}
-            />
-          </div>
-
-          {/* Thinking Effort */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-                <BrainIcon className="size-3" />
-                Thinking
-              </span>
-              <button
-                type="button"
-                onClick={() => setThinkingEffort(isAuto ? 'medium' : 'auto')}
-                className={cn(
-                  'rounded px-1.5 py-0.5 text-[10px] transition-colors',
-                  isAuto
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                Auto
-              </button>
-            </div>
-
-            <div
-              className={cn(
-                'grid grid-cols-3 gap-px rounded-md bg-foreground/5 p-px',
-                isAuto && 'opacity-30 pointer-events-none',
-              )}
-            >
-              {(['low', 'medium', 'high'] as const).map(level => (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => setThinkingEffort(level)}
-                  className={cn(
-                    'rounded-[5px] py-1 text-[11px] font-medium capitalize transition-colors',
-                    thinkingEffort === level
-                      ? 'bg-foreground text-background'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* System Prompt */}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted-foreground">System Prompt</span>
-            <textarea
-              value={systemPrompt}
-              onChange={e => setSystemPrompt(e.target.value)}
-              placeholder="Optional instructions for this agent..."
-              rows={3}
-              className={cn(
-                'w-full resize-none rounded-md bg-foreground/3 px-2.5 py-2 text-xs outline-none',
-                'text-foreground placeholder:text-muted-foreground/20',
-                'focus:ring-1 focus:ring-foreground/10',
-              )}
-            />
-          </div>
-        </div>
-
-        {/* Actions — right-aligned at bottom */}
-        <div className="mt-4 flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={saving}
-            className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={!canSave || saving}
-            className="bg-foreground text-background hover:bg-foreground/90"
-            data-testid="agent-save-btn"
-          >
-            {saving && <Spinner className="size-3.5" />}
-            {initial ? 'Save' : 'Create Agent'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Model Field (inline) ──────────────────────────────────────────────────────
-
-function ModelField({
-  profileId,
-  modelId,
-  onModelChange,
-}: {
-  profileId: string | null
-  modelId: string | null
-  onModelChange: (id: string | null) => void
-}) {
-  const { models, isLoading } = useAgentModels(profileId)
-
-  if (!profileId) {
-    return <div />
-  }
-
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-medium text-muted-foreground">Model</span>
-      {isLoading
-        ? (
-          <div className="flex h-8 items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Spinner className="size-3" />
-            Loading…
-          </div>
-        )
-        : models.length === 0
-          ? (
-            <div className="flex h-8 items-center text-[11px] text-muted-foreground">
-              No models
-            </div>
-          )
-          : (
-            <Select
-              value={modelId ?? models[0]?.id ?? undefined}
-              onValueChange={value => onModelChange(value)}
-            >
-              <SelectTrigger size="sm">
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((m: ModelDescriptor) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.label ?? m.id}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-    </div>
-  )
+function buildAvatarUrl(style: string, seed: string): string {
+  return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
 }
 
 // ── Agent Row ─────────────────────────────────────────────────────────────────
@@ -428,13 +32,13 @@ function ModelField({
 function AgentRow({
   agent,
   profiles,
-  onEdit,
+  onNavigate,
   onRemove,
   onToggle,
 }: {
   agent: Agent
   profiles: AgentProfile[]
-  onEdit: () => void
+  onNavigate: () => void
   onRemove: () => void
   onToggle: () => void
 }) {
@@ -443,8 +47,12 @@ function AgentRow({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
+      onClick={onNavigate}
+      onKeyDown={e => e.key === 'Enter' && onNavigate()}
       className={cn(
-        'group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-foreground/3',
+        'group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-foreground/3',
         !agent.enabled && 'opacity-50',
       )}
       data-testid={`agent-row-${agent.id}`}
@@ -469,7 +77,7 @@ function AgentRow({
             </span>
           )}
           {agent.modelId && (
-            <span className="shrink-0 truncate rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground max-w-32">
+            <span className="max-w-32 shrink-0 truncate rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
               {agent.modelId}
             </span>
           )}
@@ -479,19 +87,22 @@ function AgentRow({
         )}
       </div>
 
-      {/* Actions — fade in on hover */}
+      {/* Hover actions */}
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button variant="ghost" size="icon-xs" onClick={onEdit} aria-label="Edit">
-          <PencilIcon className="size-3" />
-        </Button>
-        <Button variant="ghost" size="icon-xs" onClick={onRemove} aria-label="Remove">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={(e) => { e.stopPropagation(); onRemove() }}
+          aria-label="Remove"
+        >
           <Trash2Icon className="size-3" />
         </Button>
       </div>
 
       <Switch
         checked={agent.enabled}
-        onCheckedChange={onToggle}
+        onCheckedChange={() => onToggle()}
+        onClick={e => e.stopPropagation()}
       />
     </div>
   )
@@ -499,35 +110,16 @@ function AgentRow({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+type NavigationState =
+  | { mode: 'list' }
+  | { mode: 'create' }
+  | { mode: 'detail', agentId: string }
+
 export function AgentList() {
-  const { agents, isLoading, createAgent, updateAgent, removeAgent } = useAgents()
+  const { agents, isLoading, updateAgent, removeAgent } = useAgents()
   const { profiles } = useAgentProfiles()
 
-  const [creatingNew, setCreatingNew] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  const handleCreate = useCallback(async (input: CreateAgentInput) => {
-    setSaving(true)
-    try {
-      await createAgent.mutateAsync(input)
-      setCreatingNew(false)
-    }
-    finally {
-      setSaving(false)
-    }
-  }, [createAgent])
-
-  const handleUpdate = useCallback(async (id: string, input: CreateAgentInput) => {
-    setSaving(true)
-    try {
-      await updateAgent.mutateAsync({ id, patch: input })
-      setEditingId(null)
-    }
-    finally {
-      setSaving(false)
-    }
-  }, [updateAgent])
+  const [nav, setNav] = useState<NavigationState>({ mode: 'list' })
 
   const handleRemove = useCallback(async (id: string) => {
     await removeAgent.mutateAsync(id)
@@ -537,8 +129,27 @@ export function AgentList() {
     await updateAgent.mutateAsync({ id: agent.id, patch: { enabled: !agent.enabled } })
   }, [updateAgent])
 
-  const editingAgent = useMemo(() => agents.find(a => a.id === editingId), [agents, editingId])
+  const selectedAgent = useMemo(
+    () => nav.mode === 'detail' ? agents.find(a => a.id === nav.agentId) : undefined,
+    [agents, nav],
+  )
 
+  const goList = useCallback(() => setNav({ mode: 'list' }), [])
+
+  // Create or edit mode — show detail page
+  if (nav.mode === 'create' || nav.mode === 'detail') {
+    return (
+      <AgentDetailPage
+        agent={selectedAgent}
+        profiles={profiles}
+        onBack={goList}
+        onCreated={id => setNav({ mode: 'detail', agentId: id })}
+        onDeleted={goList}
+      />
+    )
+  }
+
+  // List mode
   return (
     <div className="flex flex-col gap-1" data-testid="agent-list">
       <SettingsSectionHeader
@@ -547,10 +158,7 @@ export function AgentList() {
         action={(
           <Button
             size="sm"
-            onClick={() => {
-              setCreatingNew(true)
-              setEditingId(null)
-            }}
+            onClick={() => setNav({ mode: 'create' })}
             data-testid="new-agent-btn"
           >
             <PlusIcon className="size-3.5" />
@@ -561,7 +169,6 @@ export function AgentList() {
 
       <SettingsDivider />
 
-      {/* Agent list */}
       {isLoading
         ? (
           <div className="flex justify-center py-12">
@@ -571,7 +178,9 @@ export function AgentList() {
         : agents.length === 0
           ? (
             <div className="flex flex-col items-center gap-2 py-16 text-center">
-              <p className="text-sm text-muted-foreground" data-testid="agent-empty-state">No agents yet</p>
+              <p className="text-sm text-muted-foreground" data-testid="agent-empty-state">
+                No agents yet
+              </p>
               <p className="text-xs text-muted-foreground">
                 Create an agent to give your AI a name, avatar, and preferred model.
               </p>
@@ -584,62 +193,13 @@ export function AgentList() {
                   key={agent.id}
                   agent={agent}
                   profiles={profiles}
-                  onEdit={() => {
-                    setEditingId(agent.id)
-                    setCreatingNew(false)
-                  }}
+                  onNavigate={() => setNav({ mode: 'detail', agentId: agent.id })}
                   onRemove={() => handleRemove(agent.id)}
                   onToggle={() => handleToggle(agent)}
                 />
               ))}
             </div>
           )}
-
-      {/* Create Dialog */}
-      <Dialog open={creatingNew} onOpenChange={setCreatingNew}>
-        <DialogContent className="sm:max-w-xl p-0 overflow-hidden" showCloseButton>
-          <DialogHeader className="px-6 pt-5 pb-0">
-            <DialogTitle>New Agent</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 pb-5">
-            <AgentEditor
-              profiles={profiles}
-              onSave={handleCreate}
-              onCancel={() => setCreatingNew(false)}
-              saving={saving}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog
-        open={!!editingId}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingId(null)
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-xl p-0 overflow-hidden" showCloseButton>
-          <DialogHeader className="px-6 pt-5 pb-0">
-            <DialogTitle>Edit Agent</DialogTitle>
-          </DialogHeader>
-          <div className="px-6 pb-5">
-            {editingAgent && (
-              <AgentEditor
-                key={editingAgent.id}
-                profiles={profiles}
-                initial={editingAgent}
-                onSave={input => handleUpdate(editingAgent.id, input)}
-                onCancel={() => setEditingId(null)}
-                saving={saving}
-              />
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
     </div>
   )
 }

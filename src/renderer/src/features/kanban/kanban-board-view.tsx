@@ -1,5 +1,5 @@
-// Input: boardId, workspaceId, useStatuses, useIssues, useMoveIssue, dnd-kit, IssueDetail panel
-// Output: KanbanBoardView — board with DnD columns and integrated issue detail panel
+// Input: boardId, workspaceId, useStatuses, useIssues, useMoveIssue, dnd-kit, IssueDetail full-page
+// Output: KanbanBoardView — board with DnD columns matching BoxCrew layout
 // Position: Main board view, mounted by kanban.$boardId route
 
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
@@ -7,18 +7,16 @@ import {
   closestCorners,
   DndContext,
   DragOverlay,
-  MouseSensor,
-  TouchSensor,
+  PointerSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
 import type { KanbanIssue } from '@main/ipc-types'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { Spinner } from '@renderer/components/ui/spinner'
-import { cn } from '@renderer/lib/cn'
 import { SettingsIcon } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueCard } from './issue-card'
@@ -41,9 +39,8 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
 
   const [activeIssue, setActiveIssue] = useState<KanbanIssue | null>(null)
   const [createStatusId, setCreateStatusId] = useState<string | null>(null)
-  const [panelWidth, setPanelWidth] = useState(420)
-  const [isResizing, setIsResizing] = useState(false)
-  const resizeRef = useRef<{ startX: number, startWidth: number } | null>(null)
+
+  const isLoading = loadingStatuses || loadingIssues
 
   // Group issues by status
   const issuesByStatus = useMemo(() => {
@@ -61,10 +58,9 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
     return map
   }, [statuses, allIssues])
 
-  // DnD sensors
+  // DnD sensors — PointerSensor with distance 8 (like BoxCrew)
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   )
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -103,32 +99,6 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
     onSelectIssue?.(issue.id)
   }, [onSelectIssue])
 
-  // Resize panel handle
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsResizing(true)
-    resizeRef.current = { startX: e.clientX, startWidth: panelWidth }
-
-    function onMouseMove(ev: MouseEvent) {
-      if (!resizeRef.current) {
-        return
-      }
-      const delta = resizeRef.current.startX - ev.clientX
-      const newWidth = Math.min(640, Math.max(340, resizeRef.current.startWidth + delta))
-      setPanelWidth(newWidth)
-    }
-
-    function onMouseUp() {
-      setIsResizing(false)
-      resizeRef.current = null
-      document.removeEventListener('mousemove', onMouseMove)
-      document.removeEventListener('mouseup', onMouseUp)
-    }
-
-    document.addEventListener('mousemove', onMouseMove)
-    document.addEventListener('mouseup', onMouseUp)
-  }, [panelWidth])
-
   // Close on Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -140,7 +110,7 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [selectedIssueId, onSelectIssue])
 
-  if (loadingStatuses || loadingIssues) {
+  if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Spinner className="size-5 text-muted-foreground" />
@@ -149,107 +119,105 @@ export function KanbanBoardView({ boardId: _boardId, workspaceId, selectedIssueI
   }
 
   const hasUnassigned = (issuesByStatus.get('__none__')?.length ?? 0) > 0
+  const totalIssues = allIssues.filter(i => !i.parentIssueId).length
 
   return (
-    <div className="flex h-full" data-testid="kanban-board">
-      {/* Board area */}
-      <div className="flex flex-1 min-w-0 flex-col">
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 px-3 h-10 shrink-0">
-          <div className="flex-1" />
-          <Popover>
-            <PopoverTrigger className="text-muted-foreground hover:text-foreground transition-colors duration-100" data-testid="kanban-settings-btn">
-              <SettingsIcon className="size-3.5" />
-            </PopoverTrigger>
-            <PopoverContent side="bottom" align="end" className="w-64">
-              <StatusManager workspaceId={workspaceId} />
-            </PopoverContent>
-          </Popover>
-        </div>
-
-        <CreateIssueDialog
-          open={createStatusId !== null}
-          onOpenChange={(open: boolean) => {
-            if (!open) {
-              setCreateStatusId(null)
-            }
-          }}
-          workspaceId={workspaceId}
-          defaultStatusId={createStatusId}
-        />
-
-        {/* Columns */}
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex flex-1 gap-2 overflow-x-auto overflow-y-hidden px-2 pb-2">
-            {statuses.map(status => (
-              <KanbanColumn
-                key={status.id}
-                status={status}
-                issues={issuesByStatus.get(status.id) ?? []}
-                onIssueClick={handleIssueClick}
-                onOpenCreate={setCreateStatusId}
-                selectedIssueId={selectedIssueId}
-              />
-            ))}
-
-            {hasUnassigned && (
-              <KanbanColumn
-                status={{ id: '__none__', workspaceId, name: 'Unassigned', color: null, order: 999, createdAt: 0 }}
-                issues={issuesByStatus.get('__none__') ?? []}
-                onIssueClick={handleIssueClick}
-                onOpenCreate={setCreateStatusId}
-                selectedIssueId={selectedIssueId}
-              />
-            )}
-          </div>
-
-          <DragOverlay dropAnimation={null}>
-            {activeIssue && (
-              <div className="w-64 rounded-lg bg-background inset-shadow-[0_1px_0_var(--color-foreground)/0.06]">
-                <IssueCard issue={activeIssue} onClick={() => { }} isDragging />
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
-      </div>
-
-      {/* Issue detail panel */}
+    <div className="relative flex h-full flex-1 flex-col overflow-hidden" data-testid="kanban-board">
       <AnimatePresence mode="popLayout">
-        {selectedIssueId && (
-          <motion.div
-            key={selectedIssueId}
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: panelWidth, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={isResizing ? { duration: 0 } : { type: 'spring', stiffness: 500, damping: 35 }}
-            className="h-full shrink-0 overflow-hidden relative"
-          >
-            {/* Resize handle */}
-            <div
-              className={cn(
-                'absolute left-0 top-0 bottom-0 w-px bg-foreground/6 z-10 cursor-col-resize',
-                'hover:bg-foreground/15 active:bg-foreground/20',
-                'transition-colors duration-100',
-                isResizing && 'bg-foreground/20',
-              )}
-              onMouseDown={handleResizeStart}
+        {selectedIssueId
+          ? (
+            <motion.div
+              key={`issue-${selectedIssueId}`}
+              className="absolute inset-0"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.1 }}
             >
-              <div className="absolute -left-1.5 top-0 bottom-0 w-3" />
-            </div>
+              <IssueDetail
+                issueId={selectedIssueId}
+                workspaceId={workspaceId}
+                onClose={() => onSelectIssue?.(null)}
+                onNavigateToIssue={id => onSelectIssue?.(id)}
+              />
+            </motion.div>
+          )
+          : (
+            <motion.div
+              key="board"
+              className="flex h-full flex-1 flex-col"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.1 }}
+            >
+              {/* Toolbar */}
+              <div className="flex items-center justify-between px-6 pt-2.5 shrink-0">
+                <span className="text-[13px] text-muted-foreground">
+                  {totalIssues}
+                  {' '}
+                  issues
+                </span>
+                <Popover>
+                  <PopoverTrigger className="text-muted-foreground/50 hover:text-foreground transition-colors duration-100 p-1 rounded-md hover:bg-accent/50" data-testid="kanban-settings-btn">
+                    <SettingsIcon className="size-3.5" />
+                  </PopoverTrigger>
+                  <PopoverContent side="bottom" align="end" className="w-64">
+                    <StatusManager workspaceId={workspaceId} />
+                  </PopoverContent>
+                </Popover>
+              </div>
 
-            <IssueDetail
-              issueId={selectedIssueId}
-              workspaceId={workspaceId}
-              onClose={() => onSelectIssue?.(null)}
-              onNavigateToIssue={id => onSelectIssue?.(id)}
-            />
-          </motion.div>
-        )}
+              <CreateIssueDialog
+                open={createStatusId !== null}
+                onOpenChange={(open: boolean) => {
+                  if (!open) {
+                    setCreateStatusId(null)
+                  }
+                }}
+                workspaceId={workspaceId}
+                defaultStatusId={createStatusId}
+              />
+
+              {/* Columns */}
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCorners}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <div className="flex flex-1 gap-3 overflow-x-auto p-6 pb-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {statuses.map(status => (
+                    <KanbanColumn
+                      key={status.id}
+                      status={status}
+                      issues={issuesByStatus.get(status.id) ?? []}
+                      onIssueClick={handleIssueClick}
+                      onOpenCreate={setCreateStatusId}
+                      selectedIssueId={selectedIssueId}
+                      isLoading={loadingIssues}
+                    />
+                  ))}
+
+                  {hasUnassigned && (
+                    <KanbanColumn
+                      status={{ id: '__none__', workspaceId, name: 'Unassigned', color: null, order: 999, createdAt: 0 }}
+                      issues={issuesByStatus.get('__none__') ?? []}
+                      onIssueClick={handleIssueClick}
+                      onOpenCreate={setCreateStatusId}
+                      selectedIssueId={selectedIssueId}
+                    />
+                  )}
+                </div>
+
+                <DragOverlay>
+                  {activeIssue && (
+                    <IssueCard issue={activeIssue} onClick={() => { }} isDragging />
+                  )}
+                </DragOverlay>
+              </DndContext>
+            </motion.div>
+          )}
       </AnimatePresence>
     </div>
   )
