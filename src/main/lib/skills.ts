@@ -259,6 +259,43 @@ export async function importSkillPackage(scope: SkillScope, input: ImportSkillIn
   }
 }
 
+export interface ImportMultipleInput {
+  /** Source directories to import (each directory must contain a SKILL.md) */
+  sourceDirs: string[]
+  workspacePath?: string
+  agentId?: string
+  overwrite?: boolean
+}
+
+/**
+ * Import multiple skill packages from an array of source directories.
+ * Errors are collected per-skill and returned — a failure on one skill does not abort others.
+ */
+export async function importMultipleSkillPackages(
+  scope: SkillScope,
+  input: ImportMultipleInput,
+): Promise<{ imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }> {
+  const imported: SkillDocument[] = []
+  const errors: Array<{ dir: string, error: string }> = []
+
+  for (const sourceDir of input.sourceDirs) {
+    try {
+      const doc = await importSkillPackage(scope, {
+        sourceDir,
+        overwrite: input.overwrite,
+        workspacePath: input.workspacePath,
+        agentId: input.agentId,
+      })
+      imported.push(doc)
+    }
+    catch (err) {
+      errors.push({ dir: sourceDir, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  return { imported, errors }
+}
+
 export async function exportSkillPackage(input: ExportSkillInput): Promise<string> {
   const entry = resolveInventoryEntry(input)
   const destination = path.join(input.destinationDir, path.basename(entry.skillDir))

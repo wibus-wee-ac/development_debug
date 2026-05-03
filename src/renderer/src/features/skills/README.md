@@ -10,5 +10,6 @@ Skills 功能模块提供统一的 filesystem-first 管理界面，覆盖 global
 
 - **global-skills-settings.tsx**: Settings 页面下的全局 Skills 管理包装层
 - **index.ts**: Skills 功能模块的 barrel export
+- **skill-import-dialog.tsx**: 多步骤 Skills 导入对话框，支持 GitHub/GitLab/git URL 与本地路径
 - **skill-manager.tsx**: 通用 Skills 管理界面，支持 layered inventory、CRUD 与导入导出
-- **use-skills.ts**: TanStack Query hooks，负责 inventory、document 与 mutation 的 IPC 调用
+- **use-skills.ts**: TanStack Query hooks，负责 inventory、document、mutation 以及 source-import 的 IPC 调用

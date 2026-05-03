@@ -85,3 +85,4 @@ export type {
   SkillScope,
   UpdateSkillInput,
 } from './lib/skills'
+export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './lib/skill-source'

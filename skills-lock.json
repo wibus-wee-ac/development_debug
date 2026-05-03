@@ -20,6 +20,12 @@
       "source": "cosscom/coss",
       "sourceType": "github",
       "computedHash": "7f99b88dc87f9b262fc4860cd4126fa81ee184bfe2b7471ec6f3027cf212a739"
+    },
+    "make-interfaces-feel-better": {
+      "source": "jakubkrehel/make-interfaces-feel-better",
+      "sourceType": "github",
+      "skillPath": "skills/make-interfaces-feel-better/SKILL.md",
+      "computedHash": "54b6e221bbe4e2d1a8461c3f9ecabe69daf891f964e9ee5e699c323daa018f2e"
     }
   }
 }

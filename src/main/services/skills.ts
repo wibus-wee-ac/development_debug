@@ -1,5 +1,5 @@
-// Input: IpcService base, workspace DB lookup, filesystem-backed skills library
-// Output: SkillsService IPC handler for listing, reading, writing, importing, and exporting skill packages across shared, workspace, and agent roots
+// Input: IpcService base, workspace DB lookup, filesystem-backed skills library, skill-source fetcher
+// Output: SkillsService IPC handler for listing, reading, writing, importing, exporting, and remote-fetching skill packages across shared, workspace, and agent roots
 // Position: Main-process service exposing filesystem skill management to the renderer
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
@@ -21,11 +21,14 @@ import {
   createSkillDocument,
   deleteSkillDocument,
   exportSkillPackage,
+  importMultipleSkillPackages,
   importSkillPackage,
   listSkillInventory,
   readSkillDocument,
   updateSkillDocument,
 } from '../lib/skills'
+import type { DiscoveredSkill, ParsedSkillSource } from '../lib/skill-source'
+import { cleanupFetchSession, fetchSkillsFromSource } from '../lib/skill-source'
 
 interface SkillLookupParams extends Omit<SkillLookup, 'workspacePath' | 'agentId'> {
   workspaceId?: string | null
@@ -133,6 +136,58 @@ export class SkillsService extends IpcService {
       workspacePath: this.resolveWorkspacePath(params.workspaceId),
       agentId: params.agentId ?? undefined,
     })
+  }
+
+  /**
+   * Fetch and discover skills from a remote URL or local path.
+   * Returns a session ID for subsequent `importFromFetch` call.
+   * Always call `importFromFetch` (or a cleanup endpoint) to release the temp dir.
+   */
+  @IpcMethod()
+  async fetchSource(params: { source: string }): Promise<{
+    sessionId: string
+    source: ParsedSkillSource
+    skills: DiscoveredSkill[]
+  }> {
+    const result = await fetchSkillsFromSource(params.source)
+    return {
+      sessionId: result.sessionId,
+      source: result.source,
+      skills: result.skills,
+    }
+  }
+
+  /**
+   * Import selected skills from a previously fetched session and clean up the temp dir.
+   */
+  @IpcMethod()
+  async importFromFetch(params: {
+    sessionId: string
+    selectedDirs: string[]
+    scope: SkillScope
+    overwrite?: boolean
+    workspaceId?: string | null
+    agentId?: string | null
+  }): Promise<{ imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }> {
+    try {
+      return await importMultipleSkillPackages(params.scope, {
+        sourceDirs: params.selectedDirs,
+        overwrite: params.overwrite,
+        workspacePath: this.resolveWorkspacePath(params.workspaceId),
+        agentId: params.agentId ?? undefined,
+      })
+    }
+    finally {
+      await cleanupFetchSession(params.sessionId)
+    }
+  }
+
+  /**
+   * Cancel a fetch session and clean up its temp dir without importing.
+   */
+  @IpcMethod()
+  async cancelFetch(params: { sessionId: string }): Promise<void> {
+    await cleanupFetchSession(params.sessionId)
   }
 
   private resolveWorkspacePath(workspaceId?: string | null): string | undefined {

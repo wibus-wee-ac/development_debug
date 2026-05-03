@@ -1,8 +1,10 @@
 // Input: renderer IPC proxy, TanStack Query
-// Output: Hooks for listing skill inventory, loading skill documents, and mutating filesystem-backed skills across shared, workspace, and agent roots
+// Output: Hooks for listing skill inventory, loading skill documents, mutating filesystem-backed skills, and fetching/importing from remote sources
 // Position: Data layer for the skills management feature
 
 import type {
+  DiscoveredSkill,
+  ParsedSkillSource,
   SkillDocument,
   SkillInventoryEntry,
   SkillScope,
@@ -167,4 +169,62 @@ export function useSkillDocument(
     },
     enabled: !!ipc && !!scope && !!name,
   })
+}
+
+/**
+ * Hooks to fetch skills from a remote/local source and import selected ones.
+ * Operates independently of the inventory query context.
+ */
+export function useSkillSourceImport(context?: SkillQueryContext) {
+  const queryClient = useQueryClient()
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['skills'] })
+
+  const fetchSource = useMutation({
+    mutationFn: async (source: string): Promise<{
+      sessionId: string
+      source: ParsedSkillSource
+      skills: DiscoveredSkill[]
+    }> => {
+      if (!ipc) {
+        throw new Error('IPC not available')
+      }
+      return ipc.skills.fetchSource({ source }) as Promise<{
+        sessionId: string
+        source: ParsedSkillSource
+        skills: DiscoveredSkill[]
+      }>
+    },
+  })
+
+  const importFromFetch = useMutation({
+    mutationFn: async (params: {
+      sessionId: string
+      selectedDirs: string[]
+      scope: SkillScope
+      overwrite?: boolean
+    }): Promise<{ imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }> => {
+      if (!ipc) {
+        throw new Error('IPC not available')
+      }
+      return ipc.skills.importFromFetch({
+        ...toIpcContext(context),
+        sessionId: params.sessionId,
+        selectedDirs: params.selectedDirs,
+        scope: params.scope,
+        overwrite: params.overwrite,
+      }) as Promise<{ imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }>
+    },
+    onSuccess: invalidate,
+  })
+
+  const cancelFetch = useMutation({
+    mutationFn: async (sessionId: string): Promise<void> => {
+      if (!ipc) {
+        return
+      }
+      await ipc.skills.cancelFetch({ sessionId })
+    },
+  })
+
+  return { fetchSource, importFromFetch, cancelFetch }
 }

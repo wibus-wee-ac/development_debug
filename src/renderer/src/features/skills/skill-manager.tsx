@@ -1,5 +1,5 @@
 // Input: skill inventory/doc hooks, workspace directory picker IPC, coss UI primitives
-// Output: Left-right split skills management UI — list + detail pane
+// Output: Left-right split skills management UI — list + detail pane, with source-based import
 // Position: Shared presentation layer for filesystem skill CRUD, import/export, and layered inventory browsing
 
 import type { SkillInventoryEntry, SkillScope } from '@main/ipc-types'
@@ -17,6 +17,7 @@ import { Label } from '@renderer/components/ui/label'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Textarea } from '@renderer/components/ui/textarea'
+import { TruncatedText } from '@renderer/components/ui/truncated-text'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import {
@@ -33,6 +34,7 @@ import {
 import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
+import { SkillImportDialog } from './skill-import-dialog'
 import { useSkillDocument, useSkills } from './use-skills'
 
 interface SkillManagerProps {
@@ -319,9 +321,9 @@ function SkillDetail({
       </div>
 
       {entry.description && (
-        <p className="text-xs text-muted-foreground/60 text-pretty">
+        <TruncatedText maxLines={3} className="text-xs text-muted-foreground/60">
           {entry.description}
-        </p>
+        </TruncatedText>
       )}
 
       {doc.data?.body && (
@@ -354,13 +356,13 @@ export function SkillManager({
     createSkill,
     updateSkill,
     deleteSkill,
-    importSkill,
     exportSkill,
   } = useSkills({ workspaceId, agentId })
 
   const [selectedSkill, setSelectedSkill] = useState<SelectedSkillRef | null>(null)
   const [editingSkill, setEditingSkill] = useState<SelectedSkillRef | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [scopeFilter, setScopeFilter] = useState<SkillScope | 'all'>('all')
@@ -417,22 +419,8 @@ export function SkillManager({
   }, [deleteSkill, editableScope, selectedEntry])
 
   const handleImport = useCallback(async () => {
-    if (!ipc) {
-      return
-    }
-    const sourceDir = await ipc.workspace.selectDirectory()
-    if (!sourceDir) {
-      return
-    }
-    try {
-      setErrorText(null)
-      const imported = await importSkill.mutateAsync({ scope: editableScope, sourceDir })
-      setSelectedSkill({ scope: imported.scope, name: imported.name })
-    }
-    catch (error) {
-      setErrorText(error instanceof Error ? error.message : String(error))
-    }
-  }, [editableScope, importSkill])
+    setImportDialogOpen(true)
+  }, [])
 
   const handleExport = useCallback(async () => {
     if (!ipc || !selectedEntry) {
@@ -553,9 +541,9 @@ export function SkillManager({
                       <span className="block text-[13px] font-medium text-foreground truncate">
                         {entry.name}
                       </span>
-                      <span className="block text-[11px] text-muted-foreground/60">
+                      <TruncatedText maxLines={1} className="text-[11px] text-muted-foreground/60">
                         {entry.description}
-                      </span>
+                      </TruncatedText>
                     </div>
                     <span className="text-[10px] text-muted-foreground/40">
                       {GROUP_LABELS[entry.scope]}
@@ -604,6 +592,14 @@ export function SkillManager({
           )}
         </DialogContent>
       </Dialog>
+
+      <SkillImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        editableScope={editableScope}
+        workspaceId={workspaceId}
+        agentId={agentId}
+      />
 
       {/* Edit Dialog */}
       <SkillEditDialog
