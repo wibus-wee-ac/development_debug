@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
-import { eq, sql } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { CredentialMetadata, SaveCredentialInput } from '../agent-runtime/credential-vault'
@@ -17,7 +17,16 @@ import type {
   ProviderProbeResult,
 } from '../agent-runtime/types'
 import { getDb } from '../db'
-import { agentCredentials, agentProfiles, agentSessions, runtimeAuditLog, usageLogs } from '../db/schema'
+import {
+  agents,
+  agentCredentials,
+  agentProfiles,
+  agentSessions,
+  runtimeAuditLog,
+  runtimeSessions,
+  sessions,
+  usageLogs,
+} from '../db/schema'
 import { decryptSecret, encryptSecret } from '../lib/safe-storage'
 
 type EditableAgentProfile = Omit<AgentProfile, 'createdAt' | 'updatedAt'>
@@ -75,17 +84,25 @@ class DbAgentProfileRepository implements AgentProfileRepository {
 
   removeProfile(id: string): void {
     const db = getDb()
-    // Temporarily disable FK checks to allow removing profile while preserving sessions/agents
-    db.run(sql`PRAGMA foreign_keys = OFF`)
-    try {
-      db.delete(runtimeAuditLog).where(eq(runtimeAuditLog.agentProfileId, id)).run()
-      db.delete(usageLogs).where(eq(usageLogs.agentProfileId, id)).run()
-      db.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
-      db.delete(agentProfiles).where(eq(agentProfiles.id, id)).run()
-    }
-    finally {
-      db.run(sql`PRAGMA foreign_keys = ON`)
-    }
+    db.transaction((tx) => {
+      const ownedSessionIds = tx
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(eq(sessions.agentProfileId, id))
+        .all()
+        .map(row => row.id)
+
+      // Remove rows that reference this profile across runtime and kanban delegation domains.
+      tx.delete(agents).where(eq(agents.providerId, id)).run()
+      tx.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
+      tx.delete(runtimeSessions).where(eq(runtimeSessions.agentProfileId, id)).run()
+      tx.delete(runtimeAuditLog).where(eq(runtimeAuditLog.agentProfileId, id)).run()
+      tx.delete(usageLogs).where(eq(usageLogs.agentProfileId, id)).run()
+      if (ownedSessionIds.length > 0) {
+        tx.delete(sessions).where(inArray(sessions.id, ownedSessionIds)).run()
+      }
+      tx.delete(agentProfiles).where(eq(agentProfiles.id, id)).run()
+    })
   }
 }
 

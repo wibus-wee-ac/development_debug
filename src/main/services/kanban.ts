@@ -20,7 +20,6 @@ import type {
 } from '../db/schema'
 import {
   agentActivities,
-  agentProfiles,
   agentSessions,
   kanbanBoards,
   kanbanIssueComments,
@@ -30,6 +29,12 @@ import {
   kanbanStatuses,
   sessions,
 } from '../db/schema'
+import {
+  delegateIssue as delegateIssueDomain,
+  runDelegatedIssue as runDelegatedIssueDomain,
+  stopDelegatedIssueSession,
+  undelegateIssue as undelegateIssueDomain,
+} from '../lib/issue-delegation'
 
 const now = (): number => Math.floor(Date.now() / 1000)
 
@@ -469,50 +474,8 @@ export class KanbanService extends IpcService {
   // ── Delegation ───────────────────────────────────────────────────────────
 
   @IpcMethod()
-  delegateIssue(issueId: string, agentProfileId: string, _agentId?: string): AgentSession {
-    const db = getDb()
-    const profile = db.select().from(agentProfiles).where(eq(agentProfiles.id, agentProfileId)).get()
-    if (!profile) {
-      throw new Error(`Agent profile ${agentProfileId} not found`)
-    }
-
-    // Stop any active agent session for this issue
-    db.update(agentSessions)
-      .set({ status: 'stopped', updatedAt: now() })
-      .where(and(
-        eq(agentSessions.issueId, issueId),
-        eq(agentSessions.status, 'active'),
-      ))
-      .run()
-
-    // Update issue delegate
-    db.update(kanbanIssues)
-      .set({ delegateAgentId: agentProfileId, updatedAt: now() })
-      .where(eq(kanbanIssues.id, issueId))
-      .run()
-
-    // Create agent session
-    const sessionId = randomUUID()
-    db.insert(agentSessions).values({
-      id: sessionId,
-      issueId,
-      agentProfileId,
-      status: 'created',
-      createdAt: now(),
-      updatedAt: now(),
-    }).run()
-
-    // System comment
-    db.insert(kanbanIssueComments).values({
-      id: randomUUID(),
-      issueId,
-      content: `Delegated to ${profile.name}`,
-      authorKind: 'system.delegated',
-      authorId: null,
-      createdAt: now(),
-    }).run()
-
-    return db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)).get()!
+  async delegateIssue(issueId: string, agentProfileId: string, _agentId?: string): Promise<AgentSession> {
+    return delegateIssueDomain({ issueId, agentProfileId })
   }
 
   /**
@@ -521,8 +484,7 @@ export class KanbanService extends IpcService {
    */
   @IpcMethod()
   async runDelegatedIssue(issueId: string, agentSessionId: string, agentProfileId: string, agentId?: string): Promise<void> {
-    const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
-    await IssueAgentRunner.getInstance().run({ issueId, agentSessionId, agentProfileId, agentId })
+    await runDelegatedIssueDomain({ issueId, agentSessionId, agentProfileId, agentId })
   }
 
   /**
@@ -530,36 +492,12 @@ export class KanbanService extends IpcService {
    */
   @IpcMethod()
   async stopAgentSession(agentSessionId: string): Promise<void> {
-    const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
-    await IssueAgentRunner.getInstance().stop(agentSessionId)
+    await stopDelegatedIssueSession(agentSessionId)
   }
 
   @IpcMethod()
-  undelegateIssue(issueId: string): void {
-    const db = getDb()
-
-    // Stop active sessions
-    db.update(agentSessions)
-      .set({ status: 'stopped', updatedAt: now() })
-      .where(and(
-        eq(agentSessions.issueId, issueId),
-        eq(agentSessions.status, 'active'),
-      ))
-      .run()
-
-    db.update(kanbanIssues)
-      .set({ delegateAgentId: null, updatedAt: now() })
-      .where(eq(kanbanIssues.id, issueId))
-      .run()
-
-    db.insert(kanbanIssueComments).values({
-      id: randomUUID(),
-      issueId,
-      content: 'Delegation removed',
-      authorKind: 'system.undelegated',
-      authorId: null,
-      createdAt: now(),
-    }).run()
+  async undelegateIssue(issueId: string): Promise<void> {
+    await undelegateIssueDomain(issueId)
   }
 
   // ── Agent Sessions ──────────────────────────────────────────────────────

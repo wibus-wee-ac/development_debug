@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
 import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../db/schema'
+import type { ChatTurnFinishedEvent } from './chat-engine'
 import { ChatEngine } from './chat-engine'
 import { getWorkflowRules } from './workflow-rules'
 
@@ -32,6 +33,10 @@ export class IssueAgentRunner {
       IssueAgentRunner.instance = new IssueAgentRunner()
     }
     return IssueAgentRunner.instance
+  }
+
+  private constructor() {
+    ChatEngine.getInstance().onTurnFinished(event => this.onTurnFinished(event))
   }
 
   /**
@@ -98,9 +103,6 @@ export class IssueAgentRunner {
         .run()
 
       this.activeRuns.set(agentSessionId, { chatSessionId, aborted: false })
-
-      // Monitor chat session completion
-      this.monitorCompletion(agentSessionId, chatSessionId, issueId)
     }
     catch (err) {
       // Mark session failed
@@ -275,27 +277,44 @@ export class IssueAgentRunner {
     }
   }
 
-  private monitorCompletion(agentSessionId: string, chatSessionId: string, issueId: string): void {
-    // Poll for chat session completion by checking if the draft is still active
-    // This is a simplified approach — a production system would use event subscription
-    const checkInterval = setInterval(() => {
-      const run = this.activeRuns.get(agentSessionId)
-      if (!run || run.aborted) {
-        clearInterval(checkInterval)
-        return
-      }
+  private onTurnFinished(event: ChatTurnFinishedEvent): void {
+    const db = getDb()
+    const matchingRun = [...this.activeRuns.entries()].find(([, run]) => run.chatSessionId === event.chatSessionId)
+    if (!matchingRun) {
+      return
+    }
 
-      // Check if ChatEngine still has an active draft for this session
-      const engine = ChatEngine.getInstance()
-      if (!engine.hasDraft(chatSessionId)) {
-        clearInterval(checkInterval)
-        this.activeRuns.delete(agentSessionId)
+    const [agentSessionId, run] = matchingRun
+    this.activeRuns.delete(agentSessionId)
+    if (run.aborted) {
+      return
+    }
 
-        const now = Math.floor(Date.now() / 1000)
-        getDb().update(agentSessions).set({ status: 'completed', updatedAt: now }).where(eq(agentSessions.id, agentSessionId)).run()
+    const agentSession = db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
+    if (!agentSession) {
+      return
+    }
 
-        this.addActivity(agentSessionId, 'response', { body: 'Completed work on issue' }, issueId)
-      }
-    }, 2000) // Check every 2 seconds
+    const ts = Math.floor(Date.now() / 1000)
+    const nextStatus = event.status === 'failed' ? 'failed' : 'completed'
+    db.update(agentSessions)
+      .set({ status: nextStatus, updatedAt: ts })
+      .where(eq(agentSessions.id, agentSessionId))
+      .run()
+
+    if (event.status === 'failed') {
+      this.addActivity(
+        agentSessionId,
+        'error',
+        { body: event.errorText ?? 'Agent turn failed' },
+        agentSession.issueId,
+      )
+      return
+    }
+
+    const completionLabel = event.status === 'aborted'
+      ? 'Stopped by user'
+      : 'Completed work on issue'
+    this.addActivity(agentSessionId, 'response', { body: completionLabel }, agentSession.issueId)
   }
 }

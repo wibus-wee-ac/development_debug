@@ -15,7 +15,7 @@ export default defineConfig({
     },
     build: {
       externalizeDeps: {
-        exclude: ['@cradle/ipc', 'electron-store'],
+        exclude: ['@cradle/ipc', 'electron-store', '@anthropic-ai/claude-agent-sdk', '@openai/codex-sdk'],
       },
       rollupOptions: {
         external: ['better-sqlite3'],

@@ -100,12 +100,24 @@ interface SerializedChatError {
   }
 }
 
+export type ChatTurnStatus = 'complete' | 'aborted' | 'failed'
+
+export interface ChatTurnFinishedEvent {
+  chatSessionId: string
+  messageId: string
+  status: ChatTurnStatus
+  errorText: string | null
+  agentProfileId: string
+  finishedAt: number
+}
+
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 export class ChatEngine {
   private static instance: ChatEngine
   private readonly drafts = new Map<string, Draft>()
   private readonly subscribers = new Set<WebContents>()
+  private readonly turnFinishedSubscribers = new Set<(event: ChatTurnFinishedEvent) => void>()
   private titleUnsubscribe: (() => void) | null = null
   private initialized = false
 
@@ -191,6 +203,17 @@ export class ChatEngine {
     }
     return () => {
       this.subscribers.delete(wc)
+    }
+  }
+
+  /**
+   * Subscribe to turn lifecycle completion events.
+   * Used by higher-level orchestrators that need deterministic completion.
+   */
+  onTurnFinished(listener: (event: ChatTurnFinishedEvent) => void): () => void {
+    this.turnFinishedSubscribers.add(listener)
+    return () => {
+      this.turnFinishedSubscribers.delete(listener)
     }
   }
 
@@ -764,6 +787,23 @@ export class ChatEngine {
             : null,
         } as Extract<ResponseStreamEvent, { type: 'response.failed' }>['response'],
       } as Extract<ResponseStreamEvent, { type: 'response.failed' }>)
+    }
+
+    const finishedEvent: ChatTurnFinishedEvent = {
+      chatSessionId: draft.chatSessionId,
+      messageId: draft.messageId,
+      status: finalStatus,
+      errorText: finalError,
+      agentProfileId: draft.agentId,
+      finishedAt: Date.now(),
+    }
+    for (const subscriber of [...this.turnFinishedSubscribers]) {
+      try {
+        subscriber(finishedEvent)
+      }
+      catch (error) {
+        console.error('[ChatEngine] turn-finished subscriber failed:', error)
+      }
     }
   }
 

@@ -18,6 +18,7 @@
 - **chat-provider.ts**: Provider 抽象接口与聊天流事件载荷类型
 - **ipc-devtool-store.ts**: IPC Devtool 事件缓冲与订阅分发
 - **ipc-devtool.ts**: Devtool 窗口与观测能力的主进程集成
+- **issue-delegation.ts**: Issue 委派领域编排（delegate/run/stop/undelegate），从 IPC service 抽离事务逻辑
 - **safe-storage.ts**: Electron `safeStorage` 的安全存储封装
 - **skills.ts**: Filesystem-first Skills 库，负责 built-in、legacy、global、workspace、agent 五层扫描、CRUD 与导入导出
 - **thread-search.ts**: 基于分词与打分的会话搜索引擎
