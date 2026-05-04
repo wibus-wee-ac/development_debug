@@ -238,6 +238,7 @@ function InputForm({
             disabled={isFetching}
             spellCheck={false}
             autoComplete="off"
+            data-testid="skill-import-source-input"
           />
           {value && !isFetching && (
             <button
@@ -258,6 +259,7 @@ function InputForm({
         onClick={handleSubmit}
         disabled={!value.trim() || isFetching}
         className="h-10 w-full"
+        data-testid="skill-import-fetch-btn"
       >
         {isFetching
           ? (
@@ -387,6 +389,7 @@ function SelectBody({
           onClick={onInstall}
           disabled={selected.size === 0 || isInstalling}
           className="h-10 w-full"
+          data-testid="skill-import-install-btn"
         >
           {isInstalling
             ? (
@@ -450,7 +453,7 @@ function DoneBody({
         </div>
       )}
 
-      <Button onClick={onClose} variant="outline" className="h-10 w-full">
+      <Button onClick={onClose} variant="outline" className="h-10 w-full" data-testid="skill-import-done-btn">
         Done
       </Button>
     </div>
@@ -568,6 +571,7 @@ export function SkillImportDialog({
       <DialogContent
         className="sm:max-w-240 overflow-hidden p-0"
         showCloseButton={false}
+        data-testid="skill-import-dialog"
       >
         <div className="flex h-130">
           {/* ── Left panel: interactive content ──────────────────────── */}

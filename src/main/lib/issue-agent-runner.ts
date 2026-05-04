@@ -1,6 +1,6 @@
-// Input: ChatEngine, KanbanService DB access, agent session/activity tables
-// Output: IssueAgentRunner — orchestrates agent execution when an issue is delegated
-// Position: Main-process L2 service bridging kanban delegation with chat engine
+// Input: ChatEngine, domain event bus, Kanban DB tables, workflow rules
+// Output: IssueAgentRunner for delegated issue execution and event-driven completion handling
+// Position: Main-process orchestration service bridging issue delegation with chat runtime
 
 import { randomUUID } from 'node:crypto'
 
@@ -8,7 +8,8 @@ import { eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
 import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../db/schema'
-import type { ChatTurnFinishedEvent } from './chat-engine'
+import type { DomainEventBus } from '../events/domain-event-bus'
+import type { ChatTurnFinishedDomainEvent } from '../events/domain-events'
 import { ChatEngine } from './chat-engine'
 import { getWorkflowRules } from './workflow-rules'
 
@@ -27,6 +28,8 @@ export class IssueAgentRunner {
   private static instance: IssueAgentRunner
   /** Tracks in-flight runs by agentSessionId. */
   private readonly activeRuns = new Map<string, { chatSessionId: string, aborted: boolean }>()
+  private turnFinishedUnsubscribe: (() => void) | null = null
+  private eventBus: DomainEventBus | null = null
 
   static getInstance(): IssueAgentRunner {
     if (!IssueAgentRunner.instance) {
@@ -35,8 +38,18 @@ export class IssueAgentRunner {
     return IssueAgentRunner.instance
   }
 
-  private constructor() {
-    ChatEngine.getInstance().onTurnFinished(event => this.onTurnFinished(event))
+  private constructor() {}
+
+  bindDomainEventBus(eventBus: DomainEventBus): void {
+    if (this.eventBus === eventBus) {
+      return
+    }
+    if (this.turnFinishedUnsubscribe) {
+      this.turnFinishedUnsubscribe()
+      this.turnFinishedUnsubscribe = null
+    }
+    this.eventBus = eventBus
+    this.turnFinishedUnsubscribe = eventBus.subscribe('chat.turn-finished', event => this.onTurnFinishedEvent(event))
   }
 
   /**
@@ -277,42 +290,62 @@ export class IssueAgentRunner {
     }
   }
 
-  private onTurnFinished(event: ChatTurnFinishedEvent): void {
+  private onTurnFinishedEvent(event: ChatTurnFinishedDomainEvent): void {
+    const payload = event.payload
     const db = getDb()
-    const matchingRun = [...this.activeRuns.entries()].find(([, run]) => run.chatSessionId === event.chatSessionId)
-    if (!matchingRun) {
+    const matchingRun = [...this.activeRuns.entries()].find(([, run]) => run.chatSessionId === payload.chatSessionId)
+    const fallbackSession = matchingRun
+      ? null
+      : db
+          .select()
+          .from(agentSessions)
+          .where(eq(agentSessions.chatSessionId, payload.chatSessionId))
+          .get()
+
+    const agentSessionId = matchingRun?.[0] ?? fallbackSession?.id
+    if (!agentSessionId) {
       return
     }
 
-    const [agentSessionId, run] = matchingRun
-    this.activeRuns.delete(agentSessionId)
-    if (run.aborted) {
+    const run = matchingRun?.[1]
+    if (matchingRun) {
+      this.activeRuns.delete(agentSessionId)
+    }
+    if (run?.aborted) {
       return
     }
 
-    const agentSession = db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
+    const agentSession = fallbackSession
+      ?? db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
     if (!agentSession) {
+      return
+    }
+    if (agentSession.status === 'stopped') {
       return
     }
 
     const ts = Math.floor(Date.now() / 1000)
-    const nextStatus = event.status === 'failed' ? 'failed' : 'completed'
+    const nextStatus = payload.status === 'failed'
+      ? 'failed'
+      : payload.status === 'aborted'
+        ? 'stopped'
+        : 'completed'
     db.update(agentSessions)
       .set({ status: nextStatus, updatedAt: ts })
       .where(eq(agentSessions.id, agentSessionId))
       .run()
 
-    if (event.status === 'failed') {
+    if (payload.status === 'failed') {
       this.addActivity(
         agentSessionId,
         'error',
-        { body: event.errorText ?? 'Agent turn failed' },
+        { body: payload.errorText ?? 'Agent turn failed' },
         agentSession.issueId,
       )
       return
     }
 
-    const completionLabel = event.status === 'aborted'
+    const completionLabel = payload.status === 'aborted'
       ? 'Stopped by user'
       : 'Completed work on issue'
     this.addActivity(agentSessionId, 'response', { body: completionLabel }, agentSession.issueId)

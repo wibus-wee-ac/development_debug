@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron'
 import { ChatEngine } from './chat-engine'
 import { subscribeRuntimeDevtools } from './ipc-devtool'
 import { PtyManager } from './pty-manager'
+import { revealOrFocusExistingWindow, revealWindow } from './window-activation'
 
 export class WindowManager {
   private static instance: WindowManager | null = null
@@ -33,7 +34,7 @@ export class WindowManager {
   openSessionWindow(sessionId: string, x?: number, y?: number): void {
     const existing = this.sessionWindows.get(sessionId)
     if (existing && !existing.isDestroyed()) {
-      existing.focus()
+      revealOrFocusExistingWindow(existing)
       return
     }
 
@@ -62,7 +63,7 @@ export class WindowManager {
     this.sessionWindows.set(sessionId, win)
 
     win.on('ready-to-show', () => {
-      win.show()
+      revealWindow(win)
     })
 
     win.on('closed', () => {

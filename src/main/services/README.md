@@ -4,7 +4,7 @@
 
 主进程 IPC Services 把数据库、文件系统与运行时能力组织成稳定的调用边界。
 每个 service 负责一个清晰领域，通过 `@cradle/ipc` 暴露给渲染进程。
-新增 service 时应保持参数语义简单，并把复杂逻辑继续留在 `src/main/lib/`。
+新增 service 时应保持参数语义简单，并把复杂流程优先下沉到 `src/main/application/`。
 
 ## Files
 
@@ -20,3 +20,4 @@
 - **skills.ts**: Skills IPC service，负责 global、workspace、agent 三个可写层与 legacy/built-in 只读层的路由
 - **usage.ts**: token usage 聚合统计接口
 - **workflow-rules.ts**: 工作流规则的读取、保存、删除与列表接口
+- **kanban.ts**: Kanban IPC facade，委派流程由应用层 `issue-delegation-application` 负责编排

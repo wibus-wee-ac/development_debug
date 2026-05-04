@@ -22,7 +22,8 @@ Activity-based tab management for React desktop apps. Uses React 19 `<Activity>`
 - **src/context.ts**: `TabsContext` and `useTabsContext()` for component access
 - **src/provider.tsx**: `<TabsProvider>` component wrapping context
 - **src/url-sync.ts**: `createUrlSync()` hash URL ↔ tab descriptor sync
-- **src/components/tab-bar.tsx**: `<TabBar>` capsule-shaped tab pill component
+- **src/components/tab-bar.tsx**: `<TabBar>` capsule-shaped tab pill component，包含更稳健的 tear-off 坐标采集逻辑，避免普通点击被误判成拖出窗口
 - **src/components/tab-renderer.tsx**: `<TabRenderer>` Activity-based content renderer
 - **src/hooks/use-tab-navigation.ts**: `useTabNavigation()` programmatic navigation hook
 - **src/\_\_tests\_\_/store.test.ts**: Unit tests for store and defineTab
+- **src/\_\_tests\_\_/tab-bar.test.ts**: TabBar tear-off helper regression tests，防止缺失 pointer 坐标时误触发拆分窗口

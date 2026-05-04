@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { IpcMethod, IpcService } from '@cradle/ipc'
 import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
 
+import { createIssueDelegationApplicationService } from '../application/issue-delegation-application'
 import { getDb } from '../db'
 import type {
   AgentActivity,
@@ -30,16 +31,19 @@ import {
   sessions,
 } from '../db/schema'
 import {
-  delegateIssue as delegateIssueDomain,
-  runDelegatedIssue as runDelegatedIssueDomain,
-  stopDelegatedIssueSession,
-  undelegateIssue as undelegateIssueDomain,
-} from '../lib/issue-delegation'
+  type IssueDelegationApplicationService,
+} from '../application/issue-delegation-application'
 
 const now = (): number => Math.floor(Date.now() / 1000)
 
 export class KanbanService extends IpcService {
   static readonly groupName = 'kanban'
+  private readonly delegationApp: IssueDelegationApplicationService
+
+  constructor(delegationApp: IssueDelegationApplicationService = createIssueDelegationApplicationService()) {
+    super()
+    this.delegationApp = delegationApp
+  }
 
   // ── Status ────────────────────────────────────────────────────────────────
 
@@ -475,7 +479,7 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   async delegateIssue(issueId: string, agentProfileId: string, _agentId?: string): Promise<AgentSession> {
-    return delegateIssueDomain({ issueId, agentProfileId })
+    return this.delegationApp.delegateIssue({ issueId, agentProfileId })
   }
 
   /**
@@ -484,7 +488,7 @@ export class KanbanService extends IpcService {
    */
   @IpcMethod()
   async runDelegatedIssue(issueId: string, agentSessionId: string, agentProfileId: string, agentId?: string): Promise<void> {
-    await runDelegatedIssueDomain({ issueId, agentSessionId, agentProfileId, agentId })
+    await this.delegationApp.runDelegatedIssue({ issueId, agentSessionId, agentProfileId, agentId })
   }
 
   /**
@@ -492,12 +496,12 @@ export class KanbanService extends IpcService {
    */
   @IpcMethod()
   async stopAgentSession(agentSessionId: string): Promise<void> {
-    await stopDelegatedIssueSession(agentSessionId)
+    await this.delegationApp.stopAgentSession(agentSessionId)
   }
 
   @IpcMethod()
   async undelegateIssue(issueId: string): Promise<void> {
-    await undelegateIssueDomain(issueId)
+    await this.delegationApp.undelegateIssue(issueId)
   }
 
   // ── Agent Sessions ──────────────────────────────────────────────────────

@@ -1,100 +1,70 @@
-import { mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+// Input: Cucumber workspace steps, Playwright assertions, and CradleWorld temp-directory helpers
+// Output: Workspace management step definitions with isolated temp directories and deterministic dialog stubbing
+// Position: E2E step layer covering workspace.feature setup and teardown workflows
 
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world.ts'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const runId = Date.now().toString(36)
-
-function createTempWorkspaceDir(): string {
-  const dir = join(tmpdir(), `cradle-e2e-ws-${runId}`)
-  mkdirSync(dir, { recursive: true })
-  return dir
+async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
+  await world.app.evaluate(async ({ dialog }, targetPath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [targetPath],
+    })
+  }, dirPath)
 }
-
-// ── Steps ─────────────────────────────────────────────────────────────────────
 
 Then('我应该看到工作区列表为空', async function (this: CradleWorld) {
   console.warn('[step] assert workspace list is empty')
-  const list = this.page.locator('[data-testid="workspace-list"]')
-  await expect(list).toBeVisible({ timeout: 15000 })
-
-  const emptyBtn = this.page.locator('[data-testid="add-workspace-empty-btn"]')
-  await expect(emptyBtn).toBeVisible({ timeout: 15000 })
+  await expect(this.page.locator('[data-testid="workspace-list"]')).toBeVisible({ timeout: 15_000 })
+  await expect(this.page.locator('[data-testid="add-workspace-empty-btn"]')).toBeVisible({ timeout: 15_000 })
 })
 
 Then('我应该看到"添加工作区"按钮', async function (this: CradleWorld) {
-  console.warn('[step] assert add workspace button visible')
-  const btn = this.page.locator('[data-testid="add-workspace-btn"]')
-  await expect(btn).toBeVisible()
+  await expect(this.page.locator('[data-testid="add-workspace-btn"]')).toBeVisible({ timeout: 15_000 })
 })
 
 When('我通过原生对话框添加工作区', async function (this: CradleWorld) {
-  console.warn('[step] add workspace via native dialog')
-  const dir = createTempWorkspaceDir()
+  const dir = this.createTempWorkspaceDir()
+  await mockWorkspaceDialog(this, dir)
 
-  // Mock the native dialog to return our temp directory
-  await this.app.evaluate(async ({ dialog }, dirPath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [dirPath],
-    })
-  }, dir)
-
-  // Click the add button
-  const btn = this.page.locator('[data-testid="add-workspace-btn"]')
-  await btn.click()
-
-  // Wait for workspace to appear
-  await this.page.waitForSelector('[data-testid^="workspace-group-"]', { timeout: 5000 })
+  const button = this.page.locator('[data-testid="add-workspace-btn"]')
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
+  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(1, { timeout: 10_000 })
 })
 
 Then('工作区列表中应该有 {int} 个工作区', async function (this: CradleWorld, count: number) {
-  console.warn(`[step] assert workspace count = ${count}`)
-  const groups = this.page.locator('[data-testid^="workspace-group-"]')
-  await expect(groups).toHaveCount(count)
+  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(count, { timeout: 10_000 })
 })
 
 Given('我已添加了一个工作区', async function (this: CradleWorld) {
   console.warn('[step] setup: add one workspace')
-  const dir = createTempWorkspaceDir()
+  const dir = this.createTempWorkspaceDir()
+  await mockWorkspaceDialog(this, dir)
 
-  await this.app.evaluate(async ({ dialog }, dirPath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [dirPath],
-    })
-  }, dir)
-
-  const btn = this.page.locator('[data-testid="add-workspace-btn"]')
-  await btn.click()
-  await this.page.waitForSelector('[data-testid^="workspace-group-"]', { timeout: 5000 })
+  const button = this.page.locator('[data-testid="add-workspace-btn"]')
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
+  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(1, { timeout: 10_000 })
 })
 
 When('我打开该工作区的菜单', async function (this: CradleWorld) {
-  console.warn('[step] open workspace context menu')
   const group = this.page.locator('[data-testid^="workspace-group-"]').first()
-  // Hover to reveal the menu trigger
+  await expect(group).toBeVisible({ timeout: 10_000 })
   await group.hover()
-  // The trigger is a Button inside the group header
+
   const menuTrigger = group.locator('[data-slot="menu-trigger"]')
+  await expect(menuTrigger).toBeVisible({ timeout: 10_000 })
   await menuTrigger.click()
-  // Wait for the menu popup to be visible before proceeding
-  await this.page.waitForSelector('[data-slot="menu-popup"]', { state: 'visible', timeout: 5000 })
+  await expect(this.page.locator('[data-slot="menu-popup"]')).toBeVisible({ timeout: 10_000 })
 })
 
 When('我点击"移除工作区"', async function (this: CradleWorld) {
-  console.warn('[step] click remove workspace')
-  // The menu item with destructive variant containing "移除工作区"
   const removeItem = this.page.locator('[data-slot="menu-item"][data-variant="destructive"]')
-  await expect(removeItem).toBeVisible({ timeout: 5000 })
+  await expect(removeItem).toBeVisible({ timeout: 10_000 })
   await removeItem.click()
-
-  // Wait for the workspace group to disappear
-  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(0, { timeout: 10000 })
+  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(0, { timeout: 10_000 })
 })

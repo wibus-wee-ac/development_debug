@@ -203,6 +203,9 @@ export function ChatView({
     <div
       className="flex h-full flex-col"
       data-testid="chat-view"
+      data-chat-ready={isReady ? 'true' : 'false'}
+      data-chat-session-id={sessionId ?? ''}
+      data-chat-status={status}
       onDrop={(e) => {
         e.preventDefault()
         const path = e.dataTransfer.getData('text/plain')
@@ -241,6 +244,7 @@ export function ChatView({
 
             {status === 'error' && (
               <motion.div
+                data-testid="chat-error-banner"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
@@ -256,6 +260,7 @@ export function ChatView({
 
             {showThinking && (
               <motion.div
+                data-testid="chat-thinking-indicator"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}

@@ -1,6 +1,6 @@
-// Input: @ai-sdk/react useChat, ipc-chat-transport, ipc.chat
-// Output: useChatSession — thin wrapper over AI SDK's useChat, backed by ChatEngine over IPC
-// Position: Feature hook for chat feature; renderer-side view layer, no orchestration
+// Input: @ai-sdk/react useChat, ipc-chat-transport, ipc.chat, and chat response push events
+// Output: useChatSession — renderer chat hook with local streaming plus passive snapshot recovery after reload
+// Position: Feature hook for chat feature; renderer-side view layer bridging useChat with persisted ChatEngine state
 
 import { useChat } from '@ai-sdk/react'
 import { ipc } from '@renderer/lib/ipc'
@@ -13,7 +13,12 @@ import { useChatResponseEvent } from './use-chat-events'
 /** Raw message row as returned by `ipc.chat.getMessages`. */
 export type ChatMessageRow = Awaited<ReturnType<NonNullable<typeof ipc>['chat']['getMessages']>>[number]
 
-type PublicStatus = 'idle' | 'streaming' | 'error'
+export type PublicStatus = 'idle' | 'streaming' | 'error'
+
+type ChatSnapshotState = {
+  status: PublicStatus
+  error?: string
+}
 
 function parseMessage(
   content: string,
@@ -50,6 +55,53 @@ function mapStatus(status: ChatStatus): PublicStatus {
   return 'idle'
 }
 
+export function derivePassiveChatState(
+  rows: Array<Pick<ChatMessageRow, 'role' | 'status' | 'errorText'>>,
+): ChatSnapshotState {
+  if (rows.some(row => row.status === 'streaming')) {
+    return { status: 'streaming' }
+  }
+
+  const failedAssistant = [...rows]
+    .reverse()
+    .find(row => row.role === 'assistant' && row.status === 'failed')
+
+  if (failedAssistant) {
+    return {
+      status: 'error',
+      error: failedAssistant.errorText ?? undefined,
+    }
+  }
+
+  return { status: 'idle' }
+}
+
+export function resolveVisibleChatState(
+  liveStatus: PublicStatus,
+  passiveStatus: PublicStatus,
+): PublicStatus {
+  if (liveStatus === 'streaming' || liveStatus === 'error') {
+    return liveStatus
+  }
+  return passiveStatus
+}
+
+export async function stopChatTurn(args: {
+  chatSessionId: string | null
+  chatStop: () => Promise<void> | void
+  ipcAbort?: (chatSessionId: string) => Promise<void> | void
+}): Promise<void> {
+  const tasks: Promise<unknown>[] = [Promise.resolve(args.chatStop())]
+
+  if (args.chatSessionId && args.ipcAbort) {
+    tasks.push(
+      Promise.resolve(args.ipcAbort(args.chatSessionId)).catch(() => {}),
+    )
+  }
+
+  await Promise.allSettled(tasks)
+}
+
 /**
  * Stable, recognisable placeholder id used when no chat session is selected.
  * useChat needs an id on every render; we just avoid feeding it null/undefined
@@ -57,6 +109,7 @@ function mapStatus(status: ChatStatus): PublicStatus {
  */
 const EMPTY_CHAT_ID = '__cradle_empty_chat__'
 const STREAM_RENDER_THROTTLE_MS = 50
+const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 
 export function useChatSession(chatSessionId: string | null, options?: {
   /**
@@ -110,14 +163,51 @@ export function useChatSession(chatSessionId: string | null, options?: {
   // are ready before the first paint.  useState's initialiser runs exactly once
   // so this never causes an extra re-render when chatSessionId later changes.
   const [isReady, setIsReady] = useState(() => !!(chatSessionId && initialMessageRows?.length))
+  const [snapshotState, setSnapshotState] = useState<ChatSnapshotState>({ status: 'idle' })
+  const snapshotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Initial load + resume if a draft is in flight.
-  // When initialMessageRows were pre-loaded we stay ready throughout; the IPC
-  // fetch runs only to hydrate fresher data and resume any in-flight stream.
+  const applySnapshotRows = useCallback((rows: ChatMessageRow[]) => {
+    const hydrated = rows.map(r => parseMessage(r.content, r.id, r.role))
+    chatRef.current.setMessages(hydrated)
+    setSnapshotState(derivePassiveChatState(rows))
+  }, [])
+
+  const syncSnapshot = useCallback(async () => {
+    if (!chatSessionId || !ipc) {
+      return
+    }
+
+    const rows = await ipc.chat.getMessages(chatSessionId)
+    applySnapshotRows(rows)
+    setIsReady(true)
+  }, [applySnapshotRows, chatSessionId])
+
+  const scheduleSnapshotSync = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
+    if (snapshotSyncTimerRef.current) {
+      clearTimeout(snapshotSyncTimerRef.current)
+    }
+
+    snapshotSyncTimerRef.current = setTimeout(() => {
+      snapshotSyncTimerRef.current = null
+      void syncSnapshot().catch(() => {})
+    }, delay)
+  }, [syncSnapshot])
+
+  // Initial load + passive recovery if a draft is already streaming.
+  // We intentionally hydrate from the persisted DB snapshot instead of calling
+  // useChat.resumeStream() after reload. The AI SDK stream assembler requires
+  // the original text-start envelope, which a mid-flight reconnect cannot
+  // reliably replay. Passive observation keeps the UI truthful without corrupting
+  // the resumed message state.
   useEffect(() => {
     if (!chatSessionId || !ipc) {
+      if (snapshotSyncTimerRef.current) {
+        clearTimeout(snapshotSyncTimerRef.current)
+        snapshotSyncTimerRef.current = null
+      }
       chatRef.current.setMessages([])
       setIsReady(false)
+      setSnapshotState({ status: 'idle' })
       return
     }
 
@@ -128,46 +218,61 @@ export function useChatSession(chatSessionId: string | null, options?: {
     }
 
     let cancelled = false
-    ipc.chat
-      .getMessages(chatSessionId)
-      .then((rows) => {
-        if (cancelled) {
-          return
-        }
-        const hydrated = rows.map(r => parseMessage(r.content, r.id, r.role))
-        chatRef.current.setMessages(hydrated)
-        setIsReady(true)
-        if (rows.some(r => r.status === 'streaming')) {
-          void chatRef.current.resumeStream()
-        }
-      })
+    void syncSnapshot()
       .catch(() => {
         if (!cancelled) {
           setIsReady(false)
+          setSnapshotState({ status: 'idle' })
         }
       })
 
     return () => {
       cancelled = true
+      if (snapshotSyncTimerRef.current) {
+        clearTimeout(snapshotSyncTimerRef.current)
+        snapshotSyncTimerRef.current = null
+      }
     }
-  }, [chatSessionId])
+  }, [chatSessionId, initialMessageRows?.length, syncSnapshot])
 
-  // Covers the "another window finishes a stream we weren't locally driving" case:
-  // on any Turn-end for this session while we're idle, resync from DB so content
-  // matches the backend snapshot.
+  // Covers the passive observer case (reload, secondary window, or route remount).
+  // When this renderer is not the one actively assembling the stream, we mirror
+  // the persisted DB snapshot on response events so the UI stays accurate.
   useChatResponseEvent(chatSessionId, (data) => {
-    if (data.event.type !== 'response.completed' && data.event.type !== 'response.failed') {
-      return
-    }
     const currentStatus = chatRef.current.status
     if (currentStatus === 'streaming' || currentStatus === 'submitted') {
       // Locally driving — useChat is already assembling this turn
       return
     }
-    ipc?.chat.getMessages(chatSessionId!).then((rows) => {
-      const hydrated = rows.map(r => parseMessage(r.content, r.id, r.role))
-      chatRef.current.setMessages(hydrated)
-    })
+
+    switch (data.event.type) {
+      case 'response.failed': {
+        const error = 'error' in data.event.response && data.event.response.error?.message
+          ? data.event.response.error.message
+          : undefined
+        setSnapshotState({ status: 'error', error })
+        scheduleSnapshotSync(0)
+        return
+      }
+      case 'response.completed': {
+        setSnapshotState({ status: 'idle' })
+        scheduleSnapshotSync(0)
+        return
+      }
+      case 'response.created':
+      case 'response.output_item.added':
+      case 'response.output_text.delta':
+      case 'response.output_item.done':
+      case 'response.reasoning_summary_part.added':
+      case 'response.reasoning_summary_text.delta':
+      case 'response.reasoning_summary_part.done': {
+        setSnapshotState({ status: 'streaming' })
+        scheduleSnapshotSync()
+        return
+      }
+      default:
+        return
+    }
   })
 
   useEffect(() => {
@@ -193,13 +298,23 @@ export function useChatSession(chatSessionId: string | null, options?: {
   )
 
   const stop = useCallback(() => {
-    chat.stop()
-  }, [chat])
+    void stopChatTurn({
+      chatSessionId,
+      chatStop: chat.stop,
+      ipcAbort: ipc?.chat.abort,
+    })
+  }, [chat.stop, chatSessionId])
+
+  const liveStatus = mapStatus(chat.status)
+  const visibleStatus = resolveVisibleChatState(liveStatus, snapshotState.status)
+  const visibleError = liveStatus === 'error'
+    ? chat.error?.message
+    : snapshotState.error
 
   return {
     messages: chat.messages,
-    status: mapStatus(chat.status),
-    error: chat.error?.message,
+    status: visibleStatus,
+    error: visibleError,
     sendMessage,
     stop,
     isReady,

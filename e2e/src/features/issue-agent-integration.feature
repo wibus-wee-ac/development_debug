@@ -1,48 +1,31 @@
 # language: zh-CN
 @cradle @P1 @CRADLE-ISSUE-AGENT-001
-功能: 看板 Issue 管理
+功能: Issue Agent 委派集成
 
-  作为用户，我可以通过看板创建和管理 Issue
+  作为用户，我可以把 Issue 委派给 Agent，并追踪关联会话与委派状态
 
   @CRADLE-ISSUE-AGENT-002
-  场景: 导航到看板页面
+  场景: 将 Issue 委派给 Agent 后会生成并完成关联会话
     假如 我已添加了一个工作区
-    当 我点击看板导航按钮
-    那么 我应该看到看板侧栏
-    而且 看板侧栏应提示"从左侧选择或创建一个看板"
+    而且 我已配置 Mock LLM Provider
+    而且 我已创建了一个看板
+    而且 我已在第一列创建了一个 Issue"委派测试"
+    而且 我已打开名为"委派测试"的 Issue 详情面板
+    当 我将当前 Issue 委派给"Mock LLM"
+    那么 当前 Issue 的 Agent 会话应开始运行
+    而且 当前 Issue 的 Agent 会话最终应完成
+    而且 Activity 时间线应显示"Delegated to Mock LLM"
+    而且 我可以打开当前 Issue 的 Agent 聊天会话
+    而且 最后一条 AI 消息应包含"Hello from mock LLM!"
 
   @CRADLE-ISSUE-AGENT-003
-  场景: 创建看板
+  场景: 取消 Issue 委派会清理 Agent 绑定
     假如 我已添加了一个工作区
-    而且 我已导航到看板页面
-    当 我点击新建看板按钮
-    而且 我输入看板名称"测试看板"并回车
-    那么 看板侧栏应显示名为"测试看板"的看板
-    而且 看板视图应显示
-
-  @CRADLE-ISSUE-AGENT-004
-  场景: 在看板中创建 Issue
-    假如 我已添加了一个工作区
+    而且 我已配置 Mock LLM Provider
     而且 我已创建了一个看板
-    当 我点击第一个列的添加按钮
-    而且 我输入 Issue 标题"测试 Issue"并回车
-    那么 该列应显示一张名为"测试 Issue"的卡片
-
-  @CRADLE-ISSUE-AGENT-005
-  场景: 点击 Issue 卡片查看详情
-    假如 我已添加了一个工作区
-    而且 我已创建了一个看板
-    而且 我已在第一列创建了一个 Issue"详情测试"
-    当 我点击名为"详情测试"的 Issue 卡片
-    那么 Issue 详情面板应显示
-    而且 面板标题应为"详情测试"
-
-  @CRADLE-ISSUE-AGENT-006
-  场景: 在 Issue 详情中添加评论
-    假如 我已添加了一个工作区
-    而且 我已创建了一个看板
-    而且 我已在第一列创建了一个 Issue"评论测试"
-    而且 我已打开该 Issue 的详情面板
-    当 我在评论框中输入"这是一条测试评论"
-    而且 我点击Comment按钮
-    那么 评论列表应显示"这是一条测试评论"
+    而且 我已在第一列创建了一个 Issue"取消委派测试"
+    而且 我已打开名为"取消委派测试"的 Issue 详情面板
+    而且 我已将当前 Issue 委派给"Mock LLM"
+    当 我取消当前 Issue 的 Agent 委派
+    那么 当前 Issue 不应再显示 Agent 委派
+    而且 Activity 时间线应显示"Delegation removed"

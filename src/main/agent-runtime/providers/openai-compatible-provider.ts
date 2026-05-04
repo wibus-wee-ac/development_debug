@@ -1,4 +1,4 @@
-// Input: AgentProfile config and main-process credential reader
+// Input: AgentProfile config, main-process credential reader, and optional injected OpenAI client factory
 // Output: OpenAICompatibleProvider for Base URL / API key model access with streaming chat
 // Position: Concrete Agent Runtime provider for OpenAI-compatible HTTP APIs
 
@@ -22,11 +22,25 @@ import type {
 
 interface OpenAICompatibleProviderDeps {
   readSecret: (credentialRef: string) => string
+  createClient?: (input: { apiKey: string, baseURL: string }) => OpenAICompatibleClient
 }
 
 interface OpenAICompatibleConfig {
   baseUrl?: string
   model?: string
+}
+
+type OpenAICompatibleStream = AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
+
+interface OpenAICompatibleClient {
+  chat: {
+    completions: {
+      create: (
+        params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+        options?: { signal?: AbortSignal },
+      ) => Promise<OpenAICompatibleStream>
+    }
+  }
 }
 
 export class OpenAICompatibleProvider implements ChatRuntimeProvider {
@@ -120,11 +134,12 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
       ? this.deps.readSecret(profile.credentialRef)
       : 'no-key'
 
-    const client = new OpenAI({
-      apiKey,
-      baseURL: config.baseUrl,
-      dangerouslyAllowBrowser: false,
-    })
+    const client = this.deps.createClient?.({ apiKey, baseURL: config.baseUrl })
+      ?? new OpenAI({
+        apiKey,
+        baseURL: config.baseUrl,
+        dangerouslyAllowBrowser: false,
+      })
 
     const abortController = new AbortController()
     this.activeTurns.set(runtimeSession.chatSessionId, abortController)
@@ -167,6 +182,10 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
       let firstChunk = true
       for await (const chunk of stream) {
+        if (abortController.signal.aborted) {
+          throw createAbortError()
+        }
+
         // Capture usage from the final chunk (sent when include_usage is true)
         if (chunk.usage) {
           this._lastUsage = {
@@ -209,6 +228,10 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         } as Extract<ResponseStreamEvent, { type: 'response.output_text.delta' }>
       }
 
+      if (abortController.signal.aborted) {
+        throw createAbortError()
+      }
+
       if (!firstChunk) {
         yield {
           type: 'response.output_item.done',
@@ -249,4 +272,10 @@ function parseConfig(configJson: string): OpenAICompatibleConfig {
   catch {
     return {}
   }
+}
+
+function createAbortError(): Error {
+  const error = new Error('OpenAI-compatible turn aborted')
+  error.name = 'AbortError'
+  return error
 }

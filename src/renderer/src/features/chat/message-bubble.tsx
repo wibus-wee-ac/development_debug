@@ -76,6 +76,9 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={BUBBLE_TRANSITION}
       data-testid={`message-bubble-${message.role}`}
+      data-message-id={message.id}
+      data-message-role={message.role}
+      data-message-streaming={isStreaming ? 'true' : 'false'}
       className={cn(
         'group flex w-full gap-3',
         isUser && 'justify-end',

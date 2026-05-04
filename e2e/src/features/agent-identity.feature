@@ -15,13 +15,13 @@
     那么 我应该看到 Agent 空状态提示
 
   @CRADLE-AGENT-IDENTITY-003
-  场景: 点击新建 Agent 按钮展开创建表单
+  场景: 点击新建 Agent 按钮进入创建页面
     假如 我已进入 Agent 列表页面
     当 我点击"New Agent"按钮
-    那么 我应该看到 Agent 创建表单
+    那么 我应该看到 Agent 创建页面
 
   @CRADLE-AGENT-IDENTITY-004
-  场景: Agent 创建表单显示头像预览
+  场景: Agent 创建页面显示头像预览
     假如 我已进入 Agent 列表页面
-    而且 我已打开 Agent 创建表单
+    而且 我已打开 Agent 创建页面
     那么 我应该看到 DiceBear 头像预览

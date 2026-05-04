@@ -9,12 +9,13 @@ AI SDK's `useChat` through a custom `ChatTransport` which forwards to `ipc.chat`
 Streaming events arrive as OpenAI Responses API-style `ResponseStreamEvent` objects
 on the `chat:response-event` IPC channel, consumed through the preload `chatPush` wrapper
 and the unified `useChatEvents` hook. The transport converts them to `UIMessageChunk`
-for `useChat` assembly.
+for `useChat` assembly, while reload/reconnect paths fall back to persisted snapshot
+observation so mid-flight refreshes do not corrupt the active assistant message.
 
 ## Files
 
-- **use-chat-session.ts**: Hook wrapping `useChat` — loads initial snapshot via `ipc.chat.getMessages`, resumes in-flight drafts via `chat.resumeStream()`, refetches on Turn-end from other windows, throttles streamed UI updates to avoid render storms, logs raw `useChat` errors to the renderer console for debugging, exposes `{ messages, status, error, sendMessage, stop, isReady }`
-- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + subscribe to `chatPush.onResponseEvent`; `reconnectToStream` resumes a streaming draft; converts `ResponseStreamEvent` to `UIMessageChunk` via a stateful converter
+- **use-chat-session.ts**: Hook wrapping `useChat` — loads initial snapshot via `ipc.chat.getMessages`, keeps reload/reconnect views in sync by passively observing persisted streaming drafts, refetches on response events when this renderer is not the active stream owner, forwards stop actions to both local `useChat` and `ipc.chat.abort`, throttles streamed UI updates, logs raw `useChat` errors, and exposes `{ messages, status, error, sendMessage, stop, isReady }`
+- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + subscribe to `chatPush.onResponseEvent`; guards stream teardown races so late IPC events from an old page do not throw after navigation; converts `ResponseStreamEvent` to `UIMessageChunk` via a stateful converter
 - **use-chat-events.ts**: Unified chat event bridge — single preload subscription, multi-consumer dispatch via `useChatResponseEvent`, `useGlobalChatEvent`, and `useChatSessionTitle` hooks
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls
 - **composer.tsx**: Rich input with @ path autocomplete, inline send/stop toggle, fzf fuzzy file search
@@ -23,4 +24,5 @@ for `useChat` assembly.
 - **model-picker.tsx**: Button-triggered Combobox with searchable list for picking the active ACP model; controlled open state so callers can open it after reconnecting
 - **reasoning-block.tsx**: Collapsible thinking chain display with Streamdown markdown rendering inside
 - **tool-call-block.tsx**: Collapsible tool invocation display with status icons and state machine; renders tool input and terminal state without depending on unused output payloads
+- **use-chat-session.test.ts**: Passive snapshot/reload regression tests for chat status derivation, renderer-visible state precedence, and stop-action abort forwarding
 - **index.ts**: Barrel file re-exporting public API

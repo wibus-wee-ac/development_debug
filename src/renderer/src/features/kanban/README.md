@@ -11,10 +11,10 @@ Kanban UI files should track the current coss primitive API names such as `*Cont
 
 - **use-kanban.ts**: TanStack Query hooks + mutations for all kanban IPC calls (boards, statuses, issues, comments, relations, delegation, session↔issue linking)
 - **kanban-board-view.tsx**: Main board view — columns + integrated right-slide issue detail panel (no route navigation), DnD context, status manager popover
-- **kanban-column.tsx**: Single status column with droppable zone, sortable cards, selected-issue highlight
+- **kanban-column.tsx**: Single status column with droppable zone, sortable cards, selected-issue highlight, and stable column identifiers for E2E assertions
 - **kanban-sidebar.tsx**: Left sidebar — board list, milestones, board creation, back button
 - **issue-card.tsx**: Minimal issue card — priority, title, labels, animated agent presence indicator
-- **issue-detail.tsx**: Sheet-style issue detail panel — inline properties, description, sub-issues, agent workspace, relations, context refs, unified activity timeline
+- **issue-detail.tsx**: Sheet-style issue detail panel — inline properties, description, sub-issues, agent workspace, relations, context refs, unified activity timeline, and live invalidation while delegated agent sessions are running
 - **issue-panel.tsx**: (Legacy) Old full-page issue detail, no longer actively used
 - **create-issue-dialog.tsx**: Issue creation dialog with property chips (status, priority, milestone)
 - **status-manager.tsx**: Workspace-level status management UI with drag-to-reorder

@@ -1,8 +1,8 @@
-// Input: issueId, workspaceId, use-kanban hooks, useAgentProfiles, useAgents, MarkdownEditor, Combobox, motion/react
+// Input: issueId, workspaceId, TanStack Query client, use-kanban hooks, useAgentProfiles, useAgents, MarkdownEditor, Combobox, motion/react
 // Output: IssueDetail — immersive full-bleed issue detail with frosted-glass layers, cinematic motion, and fluid inline editing
 // Position: Rendered inside the board view when an issue is selected
 
-import type { KanbanIssue, KanbanIssueComment, KanbanIssueRelation } from '@main/ipc-types'
+import type { AgentSession, KanbanIssue, KanbanIssueComment, KanbanIssueRelation } from '@main/ipc-types'
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import {
   Combobox,
@@ -19,6 +19,7 @@ import { useAgentProfiles } from '@renderer/features/agent-runtime/use-agent-pro
 import { useAgents } from '@renderer/features/agent-runtime/use-agents'
 import { cn } from '@renderer/lib/cn'
 import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircleIcon,
   BotIcon,
@@ -46,6 +47,7 @@ import {
   useAddComment,
   useAddContextRef,
   useAddRelation,
+  kanbanKeys,
   useAgentActivities,
   useAgentSessions,
   useComments,
@@ -115,6 +117,8 @@ const LABEL_COLORS = [
   'bg-teal-500/8 text-teal-600 dark:text-teal-400',
   'bg-red-500/8 text-red-600 dark:text-red-400',
 ] as const
+
+const LIVE_AGENT_SESSION_STATUSES = new Set<AgentSession['status']>(['created', 'active'])
 
 function getLabelColor(label: string): string {
   let h = 0
@@ -322,17 +326,18 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
 function AgentDelegatePicker({
   issueId,
   delegateAgentId,
+  sessions,
   onDelegate,
   onUndelegate,
 }: {
   issueId: string
   delegateAgentId: string | null | undefined
+  sessions: AgentSession[]
   onDelegate: (agentProfileId: string, agentId?: string) => void
   onUndelegate: () => void
 }) {
   const { profiles = [] } = useAgentProfiles()
   const { agents = [] } = useAgents()
-  const { data: sessions = [] } = useAgentSessions(issueId)
   const startSession = useStartAgentSession()
 
   const enabledAgents = agents.filter(a => a.enabled)
@@ -364,7 +369,12 @@ function AgentDelegatePicker({
           }
         }}
       >
-        <SelectTrigger size="sm" className={propTriggerCls}>
+        <SelectTrigger
+          size="sm"
+          className={propTriggerCls}
+          data-agent-delegated={delegateAgentId ? 'true' : 'false'}
+          data-testid="issue-agent-delegate-trigger"
+        >
           {delegateAgentId
             ? (
               <span className="flex items-center gap-1.5">
@@ -380,9 +390,9 @@ function AgentDelegatePicker({
             : <span className="text-muted-foreground/40">Unassigned</span>}
         </SelectTrigger>
         <SelectContent position="popper" sideOffset={4} align="start">
-          <SelectItem value=""><span className="text-muted-foreground/40">Unassigned</span></SelectItem>
+          <SelectItem value="" data-testid="issue-agent-option-unassigned"><span className="text-muted-foreground/40">Unassigned</span></SelectItem>
           {enabledAgents.map(a => (
-            <SelectItem key={a.id} value={`agent:${a.id}`}>
+            <SelectItem key={a.id} value={`agent:${a.id}`} data-testid={`issue-agent-option-agent-${a.id}`}>
               <span className="flex items-center gap-2">
                 {a.avatarUrl
                   ? <img src={a.avatarUrl} alt="" className="size-3.5 rounded" crossOrigin="anonymous" />
@@ -392,7 +402,7 @@ function AgentDelegatePicker({
             </SelectItem>
           ))}
           {enabledAgents.length === 0 && enabledProfiles.map(p => (
-            <SelectItem key={p.id} value={`profile:${p.id}`}>
+            <SelectItem key={p.id} value={`profile:${p.id}`} data-testid={`issue-agent-option-profile-${p.id}`}>
               <span className="flex items-center gap-2">
                 <BotIcon className="size-3 text-muted-foreground/50" />
                 {p.name}
@@ -404,6 +414,7 @@ function AgentDelegatePicker({
 
       {delegateAgentId && isFinished && latestSession && (
         <motion.button
+          data-testid="issue-agent-rerun-btn"
           className="flex items-center gap-1 h-6 px-2 rounded-md text-[10px] font-medium bg-foreground/5 text-foreground hover:bg-foreground/10 transition-colors duration-150"
           onClick={() => startSession.mutate({
             issueId,
@@ -417,7 +428,7 @@ function AgentDelegatePicker({
         </motion.button>
       )}
       {delegateAgentId && isActive && (
-        <span className="text-[10px] text-emerald-500 font-medium animate-pulse">Running</span>
+        <span data-testid="issue-agent-running-indicator" className="text-[10px] text-emerald-500 font-medium animate-pulse">Running</span>
       )}
     </div>
   )
@@ -425,17 +436,14 @@ function AgentDelegatePicker({
 
 // ── Agent Session Feed ────────────────────────────────────────────────────────
 
-function AgentSessionFeed({ issueId }: { issueId: string }) {
-  const { data: sessions = [] } = useAgentSessions(issueId)
+function AgentSessionFeed({ latestSession }: { latestSession: AgentSession }) {
   const { openTab } = useCradleNavigation()
-  const latestSession = sessions[0]
-
-  if (!latestSession) return null
 
   const phase = SESSION_PHASE[latestSession.status] ?? SESSION_PHASE.created
 
   return (
     <motion.div
+      data-testid="issue-agent-session"
       className="rounded-xl bg-foreground/2 backdrop-blur-sm px-4 py-3.5 space-y-3"
       style={{ boxShadow: 'inset 0 1px 0 0 rgba(255,255,255,0.04)' }}
       {...fadeSlide}
@@ -445,12 +453,17 @@ function AgentSessionFeed({ issueId }: { issueId: string }) {
           <BotIcon className="size-3 text-foreground/60" />
         </div>
         <span className="text-[12px] font-medium text-foreground">Agent Session</span>
-        <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 ml-auto">
+        <span
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 ml-auto"
+          data-agent-session-status={latestSession.status}
+          data-testid="issue-agent-session-phase"
+        >
           <span className={cn('size-1.5 rounded-full shrink-0', phase.color, phase.pulse && 'animate-pulse')} />
           {phase.label}
         </span>
         {latestSession.chatSessionId && (
           <button
+            data-testid="issue-agent-session-open-chat"
             className="text-[10px] text-muted-foreground/40 hover:text-foreground transition-colors duration-150 flex items-center gap-1"
             onClick={() => openTab('chat', { sessionId: latestSession.chatSessionId! })}
           >
@@ -912,6 +925,7 @@ function PropertyPanel({
   issue,
   issueId,
   workspaceId,
+  agentSessions,
   statuses,
   milestones,
   labels,
@@ -923,6 +937,7 @@ function PropertyPanel({
   issue: KanbanIssue
   issueId: string
   workspaceId: string
+  agentSessions: AgentSession[]
   statuses: { id: string, name: string, color: string | null }[]
   milestones: { id: string, title: string }[]
   labels: string[]
@@ -1003,6 +1018,7 @@ function PropertyPanel({
           <AgentDelegatePicker
             issueId={issueId}
             delegateAgentId={issue.delegateAgentId}
+            sessions={agentSessions}
             onDelegate={onDelegate}
             onUndelegate={onUndelegate}
           />
@@ -1107,16 +1123,19 @@ export function IssueDetail({
   onNavigateToIssue,
   boardName,
 }: IssueDetailProps) {
+  const queryClient = useQueryClient()
   const { data: issue, isLoading } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
   const { data: comments = [] } = useComments(issueId)
+  const { data: agentSessions = [] } = useAgentSessions(issueId)
   const updateIssue = useUpdateIssue()
   const deleteIssue = useDeleteIssue()
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
   const startAgentSession = useStartAgentSession()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const latestAgentSession = agentSessions[0] ?? null
 
   function patch(p: Parameters<typeof updateIssue.mutate>[0]['patch']) {
     if (!issue) return
@@ -1131,6 +1150,22 @@ export function IssueDetail({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    if (!latestAgentSession || !LIVE_AGENT_SESSION_STATUSES.has(latestAgentSession.status)) {
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: kanbanKeys.agentSessions(issueId) })
+      void queryClient.invalidateQueries({ queryKey: kanbanKeys.agentActivities(latestAgentSession.id) })
+      void queryClient.invalidateQueries({ queryKey: kanbanKeys.comments(issueId) })
+      void queryClient.invalidateQueries({ queryKey: kanbanKeys.issue(issueId) })
+      void queryClient.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [issueId, latestAgentSession, queryClient])
 
   if (isLoading || !issue) {
     return (
@@ -1252,15 +1287,16 @@ export function IssueDetail({
             </motion.div>
 
             {/* Agent session */}
-            {issue.delegateAgentId && (
+            {issue.delegateAgentId && latestAgentSession && (
               <div className="mt-8">
-                <AgentSessionFeed issueId={issueId} />
+                <AgentSessionFeed latestSession={latestAgentSession} />
               </div>
             )}
 
             {/* Activity timeline */}
             <motion.div
               className="mt-10"
+              data-testid="issue-activity-timeline"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2 }}
@@ -1283,6 +1319,7 @@ export function IssueDetail({
           issue={issue}
           issueId={issueId}
           workspaceId={workspaceId}
+          agentSessions={agentSessions}
           statuses={statuses}
           milestones={milestones}
           labels={labels}

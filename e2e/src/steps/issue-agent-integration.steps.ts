@@ -1,213 +1,78 @@
+// Input: Cucumber issue-agent step bindings, Playwright assertions, and chat/kanban UI anchors
+// Output: Issue delegation step definitions covering agent assignment, completion, and undelegation flows
+// Position: E2E step layer covering issue-agent-integration.feature delegated issue scenarios
+
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world.ts'
 
-// ── Navigation ────────────────────────────────────────────────────────────────
+const DELEGATE_TRIGGER = '[data-testid="issue-agent-delegate-trigger"]'
+const DELEGATE_OPTIONS = '[data-testid^="issue-agent-option-"]'
+const AGENT_SESSION = '[data-testid="issue-agent-session"]'
+const AGENT_SESSION_PHASE = '[data-testid="issue-agent-session-phase"]'
+const AGENT_SESSION_OPEN_CHAT = '[data-testid="issue-agent-session-open-chat"]'
+const ISSUE_ACTIVITY_TIMELINE = '[data-testid="issue-activity-timeline"]'
+const STARTED_AGENT_SESSION_STATUS = /^(created|active|completed)$/
 
-When('我点击看板导航按钮', async function (this: CradleWorld) {
-  console.warn('[step] click kanban nav button')
-  const btn = this.page.locator('[data-testid="nav-kanban"]')
-  await expect(btn).toBeVisible({ timeout: 15000 })
-  await btn.click()
-  await this.page.waitForSelector('[data-testid="kanban-sidebar"]', { timeout: 5000 })
+async function selectAgentForCurrentIssue(world: CradleWorld, agentName: string): Promise<void> {
+  const trigger = world.page.locator(DELEGATE_TRIGGER)
+  await expect(trigger).toBeVisible({ timeout: 10_000 })
+  await trigger.click()
+
+  const option = world.page.locator(DELEGATE_OPTIONS).filter({ hasText: agentName }).first()
+  await expect(option).toBeVisible({ timeout: 10_000 })
+  await option.click()
+}
+
+async function waitForAgentSessionStatus(world: CradleWorld, expected: string | RegExp): Promise<void> {
+  const phase = world.page.locator(AGENT_SESSION_PHASE)
+  await expect(phase).toBeVisible({ timeout: 10_000 })
+  await expect(phase).toHaveAttribute('data-agent-session-status', expected, { timeout: 30_000 })
+}
+
+When('我将当前 Issue 委派给{string}', async function (this: CradleWorld, agentName: string) {
+  console.warn(`[step] delegate current issue to ${agentName}`)
+  await selectAgentForCurrentIssue(this, agentName)
 })
 
-Given('我已导航到看板页面', async function (this: CradleWorld) {
-  console.warn('[step] navigate to kanban')
-  const btn = this.page.locator('[data-testid="nav-kanban"]')
-  await expect(btn).toBeVisible({ timeout: 15000 })
-  await btn.click()
-  await this.page.waitForSelector('[data-testid="kanban-sidebar"]', { timeout: 5000 })
+Then('当前 Issue 的 Agent 会话应开始运行', async function (this: CradleWorld) {
+  await expect(this.page.locator(AGENT_SESSION)).toBeVisible({ timeout: 10_000 })
+  await waitForAgentSessionStatus(this, STARTED_AGENT_SESSION_STATUS)
 })
 
-Then('我应该看到看板侧栏', async function (this: CradleWorld) {
-  console.warn('[step] assert kanban sidebar visible')
-  const sidebar = this.page.locator('[data-testid="kanban-sidebar"]')
-  await expect(sidebar).toBeVisible({ timeout: 5000 })
+Then('当前 Issue 的 Agent 会话最终应完成', async function (this: CradleWorld) {
+  await waitForAgentSessionStatus(this, 'completed')
 })
 
-Then('看板侧栏应提示{string}', async function (this: CradleWorld, text: string) {
-  console.warn(`[step] assert kanban placeholder text: ${text}`)
-  const placeholder = this.page.locator(`text=${text}`)
-  await expect(placeholder).toBeVisible({ timeout: 5000 })
+Then('Activity 时间线应显示{string}', async function (this: CradleWorld, text: string) {
+  await expect(this.page.locator(ISSUE_ACTIVITY_TIMELINE).locator(`text=${text}`)).toBeVisible({ timeout: 30_000 })
 })
 
-// ── Board creation ────────────────────────────────────────────────────────────
-
-When('我点击新建看板按钮', async function (this: CradleWorld) {
-  console.warn('[step] click create board button')
-  const sidebar = this.page.locator('[data-testid="kanban-sidebar"]')
-  const addBtn = sidebar.locator('[data-testid="kanban-add-board-btn"]')
-  await addBtn.click()
-  await this.page.waitForSelector('[data-testid="kanban-new-board-input"]', { timeout: 3000 })
+Then('我可以打开当前 Issue 的 Agent 聊天会话', async function (this: CradleWorld) {
+  const button = this.page.locator(AGENT_SESSION_OPEN_CHAT)
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
+  await expect(this.page.locator('[data-testid="chat-view"]')).toBeVisible({ timeout: 30_000 })
 })
 
-When('我输入看板名称{string}并回车', async function (this: CradleWorld, name: string) {
-  console.warn(`[step] type board name: ${name}`)
-  const input = this.page.locator('[data-testid="kanban-new-board-input"]')
-  await expect(input).toBeVisible()
-  await input.fill(name)
-  await input.press('Enter')
-  // Wait for board to appear
-  await this.page.waitForTimeout(500)
+Given('我已将当前 Issue 委派给{string}', async function (this: CradleWorld, agentName: string) {
+  await selectAgentForCurrentIssue(this, agentName)
+  await waitForAgentSessionStatus(this, 'completed')
 })
 
-Given('我已创建了一个看板', async function (this: CradleWorld) {
-  console.warn('[step] setup: navigate to kanban and create a board')
-  // Navigate to kanban
-  const navBtn = this.page.locator('[data-testid="nav-kanban"]')
-  await expect(navBtn).toBeVisible({ timeout: 15000 })
-  await navBtn.click()
-  await this.page.waitForSelector('[data-testid="kanban-sidebar"]', { timeout: 5000 })
+When('我取消当前 Issue 的 Agent 委派', async function (this: CradleWorld) {
+  const trigger = this.page.locator(DELEGATE_TRIGGER)
+  await expect(trigger).toBeVisible({ timeout: 10_000 })
+  await trigger.click()
 
-  // Click the add button in sidebar header
-  const sidebar = this.page.locator('[data-testid="kanban-sidebar"]')
-  const addBtn = sidebar.locator('[data-testid="kanban-add-board-btn"]')
-  await addBtn.click()
-
-  const input = this.page.locator('[data-testid="kanban-new-board-input"]')
-  await expect(input).toBeVisible({ timeout: 3000 })
-  await input.fill('E2E Board')
-  await input.press('Enter')
-
-  // Wait for board view to load
-  await this.page.waitForSelector('[data-testid="kanban-board"]', { timeout: 5000 })
-
-  // Open settings popover and create default statuses
-  const settingsBtn = this.page.locator('[data-testid="kanban-settings-btn"]')
-  await expect(settingsBtn).toBeVisible({ timeout: 3000 })
-  await settingsBtn.click()
-
-  const statusInput = this.page.locator('[data-testid="status-name-input"]')
-  await expect(statusInput).toBeVisible({ timeout: 3000 })
-
-  // Create "To Do" status
-  await statusInput.fill('To Do')
-  await statusInput.press('Enter')
-  await this.page.waitForTimeout(300)
-
-  // Create "In Progress" status
-  await statusInput.fill('In Progress')
-  await statusInput.press('Enter')
-  await this.page.waitForTimeout(300)
-
-  // Close the popover by clicking outside
-  await this.page.locator('[data-testid="kanban-board"]').click({ position: { x: 10, y: 10 } })
-  await this.page.waitForTimeout(300)
-
-  // Wait for columns to appear
-  await expect(this.page.locator('[data-testid^="kanban-column-"]').first()).toBeVisible({ timeout: 5000 })
+  const unassignedOption = this.page.locator('[data-testid="issue-agent-option-unassigned"]')
+  await expect(unassignedOption).toBeVisible({ timeout: 10_000 })
+  await unassignedOption.click()
 })
 
-Then('看板侧栏应显示名为{string}的看板', async function (this: CradleWorld, name: string) {
-  console.warn(`[step] assert board "${name}" in sidebar`)
-  const sidebar = this.page.locator('[data-testid="kanban-sidebar"]')
-  await expect(sidebar.locator(`text=${name}`)).toBeVisible({ timeout: 5000 })
-})
-
-Then('看板视图应显示', async function (this: CradleWorld) {
-  console.warn('[step] assert board view visible')
-  const board = this.page.locator('[data-testid="kanban-board"]')
-  await expect(board).toBeVisible({ timeout: 5000 })
-})
-
-// ── Issue creation ────────────────────────────────────────────────────────────
-
-When('我点击第一个列的添加按钮', async function (this: CradleWorld) {
-  console.warn('[step] click first column add button')
-  // Hover on column first to reveal the add button (it has opacity-0 by default)
-  const column = this.page.locator('[data-testid^="kanban-column-"]').first()
-  await expect(column).toBeVisible({ timeout: 5000 })
-  await column.hover()
-  const addBtn = this.page.locator('[data-testid^="kanban-column-add-"]').first()
-  await addBtn.click({ force: true })
-  await this.page.waitForSelector('[data-testid="kanban-new-issue-input"]', { timeout: 3000 })
-})
-
-When('我输入 Issue 标题{string}并回车', async function (this: CradleWorld, title: string) {
-  console.warn(`[step] type issue title: ${title}`)
-  const input = this.page.locator('[data-testid="kanban-new-issue-input"]')
-  await expect(input).toBeVisible()
-  await input.fill(title)
-  // Click "Create issue" button (Enter alone does nothing, need ⌘+Enter or button click)
-  const createBtn = this.page.locator('[data-testid="kanban-create-issue-btn"]')
-  await expect(createBtn).toBeEnabled({ timeout: 3000 })
-  await createBtn.click()
-  await this.page.waitForTimeout(500)
-})
-
-Then('该列应显示一张名为{string}的卡片', async function (this: CradleWorld, title: string) {
-  console.warn(`[step] assert issue card "${title}" visible`)
-  const card = this.page.locator('[data-testid^="issue-card-"]').filter({ hasText: title })
-  await expect(card).toBeVisible({ timeout: 5000 })
-})
-
-Given('我已在第一列创建了一个 Issue{string}', async function (this: CradleWorld, title: string) {
-  console.warn(`[step] setup: create issue "${title}" in first column`)
-  const column = this.page.locator('[data-testid^="kanban-column-"]').first()
-  await column.hover()
-  const addBtn = this.page.locator('[data-testid^="kanban-column-add-"]').first()
-  await addBtn.click({ force: true })
-
-  const input = this.page.locator('[data-testid="kanban-new-issue-input"]')
-  await expect(input).toBeVisible({ timeout: 3000 })
-  await input.fill(title)
-  // Click "Create issue" button
-  const createBtn = this.page.locator('[data-testid="kanban-create-issue-btn"]')
-  await expect(createBtn).toBeEnabled({ timeout: 3000 })
-  await createBtn.click()
-  await this.page.waitForTimeout(500)
-})
-
-// ── Issue detail ──────────────────────────────────────────────────────────────
-
-When('我点击名为{string}的 Issue 卡片', async function (this: CradleWorld, title: string) {
-  console.warn(`[step] click issue card "${title}"`)
-  const card = this.page.locator('[data-testid^="issue-card-"]').filter({ hasText: title })
-  await expect(card).toBeVisible({ timeout: 5000 })
-  await card.click()
-})
-
-Given('我已打开该 Issue 的详情面板', async function (this: CradleWorld) {
-  console.warn('[step] setup: open issue detail panel')
-  const card = this.page.locator('[data-testid^="issue-card-"]').first()
-  await expect(card).toBeVisible({ timeout: 5000 })
-  await card.click()
-  await this.page.waitForSelector('[data-testid="issue-detail-panel"]', { timeout: 5000 })
-})
-
-Then('Issue 详情面板应显示', async function (this: CradleWorld) {
-  console.warn('[step] assert issue detail panel visible')
-  const panel = this.page.locator('[data-testid="issue-detail-panel"]')
-  await expect(panel).toBeVisible({ timeout: 5000 })
-})
-
-Then('面板标题应为{string}', async function (this: CradleWorld, title: string) {
-  console.warn(`[step] assert panel title is "${title}"`)
-  const panel = this.page.locator('[data-testid="issue-detail-panel"]')
-  await expect(panel.locator(`text=${title}`)).toBeVisible({ timeout: 5000 })
-})
-
-// ── Comments ──────────────────────────────────────────────────────────────────
-
-When('我在评论框中输入{string}', async function (this: CradleWorld, text: string) {
-  console.warn(`[step] type comment: ${text}`)
-  const textarea = this.page.locator('[data-testid="issue-comment-input"]')
-  await expect(textarea).toBeVisible({ timeout: 5000 })
-  await textarea.fill(text)
-})
-
-When('我点击Comment按钮', async function (this: CradleWorld) {
-  console.warn('[step] click comment submit button')
-  const btn = this.page.locator('[data-testid="issue-comment-submit"]')
-  await expect(btn).toBeEnabled({ timeout: 3000 })
-  await btn.click()
-  await this.page.waitForTimeout(500)
-})
-
-Then('评论列表应显示{string}', async function (this: CradleWorld, text: string) {
-  console.warn(`[step] assert comment "${text}" visible`)
-  const comment = this.page.locator('[data-testid^="comment-"]').filter({ hasText: text })
-  await expect(comment).toBeVisible({ timeout: 5000 })
+Then('当前 Issue 不应再显示 Agent 委派', async function (this: CradleWorld) {
+  const trigger = this.page.locator(DELEGATE_TRIGGER)
+  await expect(trigger).toHaveAttribute('data-agent-delegated', 'false', { timeout: 30_000 })
+  await expect(trigger).toContainText('Unassigned', { timeout: 30_000 })
 })

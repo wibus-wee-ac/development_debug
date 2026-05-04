@@ -26,6 +26,10 @@ function createSkillPackage(dir: string, skillName: string, description: string,
   )
 }
 
+function agentSkillsPageSelector(agentId?: string): string {
+  return agentId ? `[data-testid="agent-skills-${agentId}"]` : '[data-testid^="agent-skills-"]'
+}
+
 When('我点击"Skills"导航项', async function (this: CradleWorld) {
   const navItem = this.page.locator('[data-testid="settings-nav-skills"]')
   await expect(navItem).toBeVisible({ timeout: 5000 })
@@ -77,15 +81,30 @@ Given('我准备了一个待导入的 Skill 目录', async function (this: Cradl
 })
 
 When('我导入这个全局 Skill', async function (this: CradleWorld) {
-  await this.app.evaluate(async ({ dialog }, dirPath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [dirPath],
-    })
-  }, this.skillImportSourceDir)
-
   await this.page.locator('[data-testid="skill-import-btn"]').click()
-  await expect(this.page.getByRole('button', { name: /^imported-demo\b/ })).toBeVisible({ timeout: 5000 })
+
+  const dialog = this.page.locator('[data-testid="skill-import-dialog"]')
+  await expect(dialog).toBeVisible({ timeout: 5000 })
+
+  const sourceInput = dialog.locator('[data-testid="skill-import-source-input"]')
+  await expect(sourceInput).toBeVisible({ timeout: 5000 })
+  await sourceInput.fill(this.skillImportSourceDir!)
+
+  const fetchButton = dialog.locator('[data-testid="skill-import-fetch-btn"]')
+  await expect(fetchButton).toBeEnabled({ timeout: 5000 })
+  await fetchButton.click()
+
+  const installButton = dialog.locator('[data-testid="skill-import-install-btn"]')
+  await expect(installButton).toBeVisible({ timeout: 10000 })
+  await expect(installButton).toBeEnabled({ timeout: 10000 })
+  await installButton.click()
+
+  const doneButton = dialog.locator('[data-testid="skill-import-done-btn"]')
+  await expect(doneButton).toBeVisible({ timeout: 10000 })
+  await doneButton.click()
+
+  await expect(dialog).toHaveCount(0, { timeout: 5000 })
+  await expect(this.page.getByRole('button', { name: /^imported-demo\b/ })).toBeVisible({ timeout: 10000 })
 })
 
 When('我导出全局 Skill {string}', async function (this: CradleWorld, skillName: string) {
@@ -191,13 +210,17 @@ Given('我已创建一个 Agent {string}', async function (this: CradleWorld, ag
 })
 
 When('我打开 Agent {string} 的 Skills 管理', async function (this: CradleWorld, agentName: string) {
-  const row = this.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()
+  const agentId = this.skillAgentIds[agentName]
+  const row = agentId
+    ? this.page.locator(`[data-testid="agent-row-${agentId}"]`)
+    : this.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()
   await expect(row).toBeVisible({ timeout: 5000 })
-  await row.locator('[data-testid="agent-manage-skills-btn"]').click()
+  await row.click()
+  await expect(this.page.locator(agentSkillsPageSelector(agentId))).toBeVisible({ timeout: 5000 })
 })
 
 When('我新建一个 Agent Skill', async function (this: CradleWorld) {
-  await expect(this.page.locator('[data-testid="agent-skills-page"]')).toBeVisible({ timeout: 5000 })
+  await expect(this.page.locator(agentSkillsPageSelector()).first()).toBeVisible({ timeout: 5000 })
   await this.page.locator('[data-testid="new-skill-btn"]').click()
   await this.page.locator('[data-testid="skill-name-input"]').fill('agent-demo')
   await this.page.locator('[data-testid="skill-desc-input"]').fill('Agent demo skill')
@@ -206,7 +229,7 @@ When('我新建一个 Agent Skill', async function (this: CradleWorld) {
 })
 
 Then('我应该看到 Agent Skills 页面', async function (this: CradleWorld) {
-  await expect(this.page.locator('[data-testid="agent-skills-page"]')).toBeVisible({ timeout: 5000 })
+  await expect(this.page.locator(agentSkillsPageSelector()).first()).toBeVisible({ timeout: 5000 })
 })
 
 Then('我应该看到 Agent Skill {string}', async function (this: CradleWorld, skillName: string) {

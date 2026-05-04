@@ -145,7 +145,12 @@ function buildChunkStream(
       return
     }
     closed = true
-    ctrl.close()
+    try {
+      ctrl.close()
+    }
+    catch {
+      // Stream was already closed by the consumer; nothing left to do.
+    }
   }
   const closeWithError = (err: unknown) => {
     if (closed) {
@@ -154,7 +159,30 @@ function buildChunkStream(
     closed = true
     // controller.error() puts the ReadableStream into "errored" state,
     // which the AI SDK surfaces as chat.error (status → 'error').
-    ctrl.error(err)
+    try {
+      ctrl.error(err)
+    }
+    catch {
+      // Stream was already closed by the consumer; surfacing another error would be noisy.
+    }
+  }
+
+  const safeEnqueue = (chunk: UIMessageChunk) => {
+    if (closed) {
+      return
+    }
+
+    try {
+      ctrl.enqueue(chunk)
+    }
+    catch (error) {
+      offEvent()
+      closed = true
+
+      if (error instanceof Error && !error.message.includes('closed readable stream')) {
+        throw error
+      }
+    }
   }
 
   const offEvent = window.chatPush.onResponseEvent(
@@ -165,7 +193,7 @@ function buildChunkStream(
       const { event } = data
 
       for (const chunk of responsesEventToUIMessageChunks(event, state)) {
-        ctrl.enqueue(chunk)
+        safeEnqueue(chunk)
       }
 
       if (event.type === 'response.completed') {

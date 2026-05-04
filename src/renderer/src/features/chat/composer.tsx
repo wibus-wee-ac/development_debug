@@ -240,6 +240,7 @@ export function Composer({
                   size="icon-xs"
                   onClick={onStop}
                   aria-label="停止生成"
+                  data-testid="chat-stop-btn"
                 >
                   <SquareIcon className="size-3" aria-hidden="true" />
                 </Button>

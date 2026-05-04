@@ -1,8 +1,8 @@
-// Input: useTabsContext, TabInstance, React, dnd-kit, internal cn
-// Output: TabBar — capsule-shaped tab pills with drag-to-reorder
-// Position: Header component rendering tab pills with close/new-tab buttons
+// Input: useTabsContext, TabInstance, React, dnd-kit drag events, internal cn
+// Output: TabBar plus tear-off coordinate helpers for draggable tab pills
+// Position: Header component rendering tab pills with drag-to-reorder and window tear-off behavior
 
-import type { DragEndEvent } from '@dnd-kit/core'
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { closestCenter, DndContext, MouseSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -53,6 +53,49 @@ interface TabPillProps {
   onClose: (e: React.MouseEvent, id: string) => void
 }
 
+interface ScreenCoordinates {
+  screenX: number
+  screenY: number
+}
+
+export function getEventScreenCoordinates(event: Event | null): ScreenCoordinates | null {
+  if (!event) {
+    return null
+  }
+
+  const pointerLike = event as Event & Partial<ScreenCoordinates>
+  if (typeof pointerLike.screenX === 'number' && typeof pointerLike.screenY === 'number') {
+    return { screenX: pointerLike.screenX, screenY: pointerLike.screenY }
+  }
+
+  const touchLike = event as Event & {
+    touches?: ArrayLike<ScreenCoordinates>
+    changedTouches?: ArrayLike<ScreenCoordinates>
+  }
+  const touch = touchLike.changedTouches?.[0] ?? touchLike.touches?.[0]
+  if (touch && typeof touch.screenX === 'number' && typeof touch.screenY === 'number') {
+    return { screenX: touch.screenX, screenY: touch.screenY }
+  }
+
+  return null
+}
+
+export function isPointerOutsideWindow(
+  pointer: ScreenCoordinates | null,
+  windowBounds: Pick<Window, 'screenX' | 'screenY' | 'outerWidth' | 'outerHeight'>,
+): boolean {
+  if (!pointer) {
+    return false
+  }
+
+  return (
+    pointer.screenX < windowBounds.screenX
+    || pointer.screenX > windowBounds.screenX + windowBounds.outerWidth
+    || pointer.screenY < windowBounds.screenY
+    || pointer.screenY > windowBounds.screenY + windowBounds.outerHeight
+  )
+}
+
 const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName, renderCloseIcon, renderTabIcon, renderTooltip, onActivate, onClose }: TabPillProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id })
 
@@ -64,18 +107,25 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
   }
 
   const pill = (
-    <button
+    <div
       ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
       onClick={() => onActivate(tab.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onActivate(tab.id)
+        }
+      }}
       title={renderTooltip ? undefined : tab.label}
       data-testid={`tab-pill-${tab.id}`}
       data-tab-active={isActive ? 'true' : 'false'}
       data-tab-pinned={tab.pinned ? 'true' : 'false'}
       className={cn(
-        'group relative flex items-center justify-start gap-1.5 px-3.5 h-7 text-[11px] font-medium',
+        'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium',
+        tab.pinned ? 'px-3.5' : 'pl-3.5 pr-7',
         'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden',
         isActive
           ? cn(
@@ -93,13 +143,12 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
       )}
       <span className="truncate select-none">{tab.label}</span>
       {!tab.pinned && (
-        <span
-          role="button"
-          tabIndex={-1}
+        <button
+          type="button"
           onClick={e => onClose(e, tab.id)}
           data-testid={`tab-close-${tab.id}`}
           className={cn(
-            'inline-flex items-center justify-center rounded-full size-3.5 shrink-0',
+            'absolute right-1 top-1/2 z-10 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-transparent p-0',
             isActive
               ? 'opacity-0 group-hover:opacity-60 hover:opacity-100!'
               : 'opacity-0 group-hover:opacity-60 hover:opacity-100!',
@@ -107,9 +156,9 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
           )}
         >
           {renderCloseIcon ? renderCloseIcon() : '×'}
-        </span>
+        </button>
       )}
-    </button>
+    </div>
   )
 
   return renderTooltip ? renderTooltip(tab, pill) as React.ReactElement : pill
@@ -120,8 +169,8 @@ export const TabBar = memo(({ className, tabClassName, activeTabClassName, rende
   const { store } = useTabsContext()
   const tabs = store(s => s.tabs)
   const activeTabId = store(s => s.activeTabId)
-  const pointerRef = useRef<{ screenX: number, screenY: number }>({ screenX: 0, screenY: 0 })
-  const draggingRef = useRef(false)
+  const pointerRef = useRef<ScreenCoordinates | null>(null)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -141,38 +190,37 @@ export const TabBar = memo(({ className, tabClassName, activeTabClassName, rende
     onTabClosed?.(id)
   }, [store, onTabClosed])
 
-  const handleDragStart = useCallback(() => {
-    draggingRef.current = true
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    pointerRef.current = getEventScreenCoordinates(event.activatorEvent)
     const onMove = (e: PointerEvent) => {
       pointerRef.current = { screenX: e.screenX, screenY: e.screenY }
     }
     window.addEventListener('pointermove', onMove, true)
-      ; (draggingRef as unknown as { _cleanup: () => void })._cleanup = () => {
-        window.removeEventListener('pointermove', onMove, true)
-      }
+    dragCleanupRef.current = () => {
+      window.removeEventListener('pointermove', onMove, true)
+    }
   }, [])
 
   const checkTearOff = useCallback((activeId: string | number) => {
-    ; (draggingRef as unknown as { _cleanup?: () => void })._cleanup?.()
-    draggingRef.current = false
+    dragCleanupRef.current?.()
+    dragCleanupRef.current = null
 
     if (!onTabTearOff) {
       return false
     }
-    const { screenX, screenY } = pointerRef.current
-    const outside = (
-      screenX < window.screenX
-      || screenX > window.screenX + window.outerWidth
-      || screenY < window.screenY
-      || screenY > window.screenY + window.outerHeight
-    )
-    if (outside) {
-      const tab = store.getState().tabs.find(t => t.id === activeId)
-      if (tab && !tab.pinned) {
-        onTabTearOff(tab, screenX, screenY)
-        return true
-      }
+    const pointer = pointerRef.current
+    pointerRef.current = null
+
+    if (!isPointerOutsideWindow(pointer, window)) {
+      return false
     }
+
+    const tab = store.getState().tabs.find(t => t.id === activeId)
+    if (tab && !tab.pinned && pointer) {
+      onTabTearOff(tab, pointer.screenX, pointer.screenY)
+      return true
+    }
+
     return false
   }, [store, onTabTearOff])
 

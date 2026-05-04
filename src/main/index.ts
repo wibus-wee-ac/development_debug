@@ -12,10 +12,14 @@ import { cliTuiProvider } from './agent-runtime/providers/cli-tui-provider'
 import { OpenAICompatibleProvider } from './agent-runtime/providers/openai-compatible-provider'
 import { getDb, initDb } from './db'
 import { acpAgents, agentCredentials } from './db/schema'
+import { createInMemoryDomainEventBus } from './events/domain-event-bus'
+import { bridgeChatTurnFinishedEvents } from './events/chat-turn-finished-bridge'
 import { ChatEngine } from './lib/chat-engine'
 import { initializeIpcDevtool, subscribeRuntimeDevtools } from './lib/ipc-devtool'
+import { IssueAgentRunner } from './lib/issue-agent-runner'
 import { PtyManager } from './lib/pty-manager'
 import { startSocketServer, stopSocketServer } from './lib/socket-server'
+import { revealWindow } from './lib/window-activation'
 import { decryptSecret } from './lib/safe-storage'
 import { AcpService } from './services/acp'
 import { AgentService } from './services/agent'
@@ -78,7 +82,7 @@ function createWindow(): BrowserWindow {
 
   mainWindow.on('ready-to-show', () => {
     restoreWindowState('main', mainWindow)
-    mainWindow.show()
+    revealWindow(mainWindow)
   })
 
   mainWindow.on('close', () => {
@@ -137,7 +141,15 @@ app.whenReady().then(() => {
   bootstrapProviderCatalog()
 
   // Bootstrap chat engine (crash recovery + transport hooks)
-  ChatEngine.getInstance().initialize()
+  const chatEngine = ChatEngine.getInstance()
+  chatEngine.initialize()
+
+  const domainEventBus = createInMemoryDomainEventBus()
+  IssueAgentRunner.getInstance().bindDomainEventBus(domainEventBus)
+  bridgeChatTurnFinishedEvents({
+    source: chatEngine,
+    eventBus: domainEventBus,
+  })
 
   // Register IPC services
   const services = createServices([
@@ -174,7 +186,7 @@ app.whenReady().then(() => {
   })
 
   const mainWindow = createWindow()
-  ChatEngine.getInstance().subscribe(mainWindow.webContents)
+  chatEngine.subscribe(mainWindow.webContents)
   subscribeRuntimeDevtools(mainWindow.webContents)
   PtyManager.getInstance().subscribe(mainWindow.webContents)
 
@@ -183,7 +195,7 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow()
-      ChatEngine.getInstance().subscribe(win.webContents)
+      chatEngine.subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
       PtyManager.getInstance().subscribe(win.webContents)
     }

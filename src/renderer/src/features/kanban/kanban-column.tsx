@@ -110,6 +110,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
     <div
       className="flex w-68 shrink-0 flex-col gap-2"
       data-testid={`kanban-column-${status.id}`}
+      data-kanban-column-id={status.id}
     >
       {/* Column header */}
       <div className="flex items-center gap-1.5 px-0.5 pb-1">

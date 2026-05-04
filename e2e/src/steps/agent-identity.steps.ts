@@ -3,6 +3,9 @@ import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world.ts'
 
+const AGENT_CREATE_PAGE = '[data-testid="agent-create"]'
+const AGENT_NAME_INPUT = '[data-testid="agent-detail-name"]'
+
 // ── Navigation ────────────────────────────────────────────────────────────────
 
 When('我点击"Agents"导航项', async function (this: CradleWorld) {
@@ -49,19 +52,21 @@ When('我点击"New Agent"按钮', async function (this: CradleWorld) {
   await btn.click()
 })
 
-Given('我已打开 Agent 创建表单', async function (this: CradleWorld) {
-  console.warn('[step] open Agent create form')
+Given('我已打开 Agent 创建页面', async function (this: CradleWorld) {
+  console.warn('[step] open Agent create page')
   const btn = this.page.locator('[data-testid="new-agent-btn"]')
   await expect(btn).toBeVisible({ timeout: 5000 })
   await btn.click()
 
-  const nameInput = this.page.locator('[data-testid="agent-name-input"]')
+  await expect(this.page.locator(AGENT_CREATE_PAGE)).toBeVisible({ timeout: 5000 })
+  const nameInput = this.page.locator(AGENT_NAME_INPUT)
   await expect(nameInput).toBeVisible({ timeout: 5000 })
 })
 
-Then('我应该看到 Agent 创建表单', async function (this: CradleWorld) {
-  console.warn('[step] assert Agent create form visible')
-  const nameInput = this.page.locator('[data-testid="agent-name-input"]')
+Then('我应该看到 Agent 创建页面', async function (this: CradleWorld) {
+  console.warn('[step] assert Agent create page visible')
+  await expect(this.page.locator(AGENT_CREATE_PAGE)).toBeVisible({ timeout: 5000 })
+  const nameInput = this.page.locator(AGENT_NAME_INPUT)
   await expect(nameInput).toBeVisible({ timeout: 5000 })
 })
 
@@ -69,7 +74,7 @@ Then('我应该看到 Agent 创建表单', async function (this: CradleWorld) {
 
 Then('我应该看到 DiceBear 头像预览', async function (this: CradleWorld) {
   console.warn('[step] assert DiceBear avatar preview visible')
-  const avatar = this.page.locator('img[alt="Agent avatar"]')
+  const avatar = this.page.locator(`${AGENT_CREATE_PAGE} img`).first()
   await expect(avatar).toBeVisible({ timeout: 5000 })
   const src = await avatar.getAttribute('src')
   expect(src).toContain('dicebear.com')
