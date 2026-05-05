@@ -4,7 +4,6 @@
 
 import { randomUUID } from 'node:crypto'
 
-import type { UIMessage } from 'ai'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import {
@@ -29,7 +28,6 @@ export interface PersistEventInput {
   messageId: string
   runId: string
   event: TimelineInputEvent
-  message: UIMessage
   messageStatus: 'streaming' | 'complete' | 'aborted' | 'failed'
   errorText: string | null
   runCompletion?: {
@@ -87,8 +85,8 @@ const DEBOUNCE_INTERVAL_MS = 150
 export function createTurnRepository(deps: TurnRepositoryDeps): TurnRepository {
   const { db } = deps
 
-  // Debounce state: buffer delta events and flush periodically
-  let pendingWrite: PersistEventInput | null = null
+  // Debounce state: buffer delta events and flush periodically as a batch
+  let pendingWrites: PersistEventInput[] = []
   let flushTimer: ReturnType<typeof setTimeout> | null = null
   let lastFlushedResult: BackendTimelineEvent | null = null
 
@@ -122,7 +120,6 @@ export function createTurnRepository(deps: TurnRepositoryDeps): TurnRepository {
 
       tx.update(messages)
         .set({
-          content: JSON.stringify(input.message),
           status: input.messageStatus,
           errorText: input.errorText,
           updatedAt: now,
@@ -170,9 +167,11 @@ export function createTurnRepository(deps: TurnRepositoryDeps): TurnRepository {
       clearTimeout(flushTimer)
       flushTimer = null
     }
-    if (pendingWrite) {
-      lastFlushedResult = commitEvent(pendingWrite)
-      pendingWrite = null
+    if (pendingWrites.length > 0) {
+      for (const input of pendingWrites) {
+        lastFlushedResult = commitEvent(input)
+      }
+      pendingWrites = []
     }
   }
 
@@ -195,8 +194,8 @@ export function createTurnRepository(deps: TurnRepositoryDeps): TurnRepository {
         return result
       }
 
-      // Delta event: buffer it (only keep latest — each delta carries the cumulative message)
-      pendingWrite = input
+      // Delta event: buffer it for batch flush
+      pendingWrites.push(input)
       scheduleFlush()
 
       // Return a synthetic BackendTimelineEvent from the input for the caller's broadcast needs.

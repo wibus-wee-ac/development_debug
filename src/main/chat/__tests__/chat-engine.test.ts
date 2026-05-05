@@ -646,9 +646,11 @@ describe('chatEngine', () => {
       expect(state.backendTimelineEvents.some(event => event.eventType === 'assistant.text.delta')).toBe(true)
     })
 
-    const assistantRow = state.messages.find(message => message.role === 'assistant')
-
-    expect(assistantRow?.content).toContain('即时落盘')
+    // Verify the timeline event contains the text delta (content is no longer materialized in messages.content)
+    const textDelta = state.backendTimelineEvents.find(event => event.eventType === 'assistant.text.delta')
+    expect(textDelta).toBeDefined()
+    const payload = JSON.parse(textDelta!.payloadJson)
+    expect(payload.delta).toBe('即时落盘')
 
     releaseTurn?.()
     await vi.waitFor(() => {

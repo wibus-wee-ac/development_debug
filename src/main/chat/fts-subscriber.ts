@@ -25,7 +25,7 @@ export function createFtsSubscriber(deps: FtsSubscriberDeps): () => void {
   const { eventBus, db, searchEngine } = deps
 
   return eventBus.subscribe('chat.message-completed', (event) => {
-    const { chatSessionId, messageId, status, uiMessageJson } = event.payload
+    const { chatSessionId, messageId, status, assistantText } = event.payload
 
     if (status !== 'complete') {
       return
@@ -35,7 +35,7 @@ export function createFtsSubscriber(deps: FtsSubscriberDeps): () => void {
       try {
         const session = db.select().from(sessions).where(eq(sessions.id, chatSessionId)).get()
         if (session) {
-          searchEngine.indexMessage(chatSessionId, session.title, messageId, uiMessageJson)
+          searchEngine.indexMessage(chatSessionId, session.title, messageId, assistantText)
         }
       }
       catch (err) {

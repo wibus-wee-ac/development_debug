@@ -2,11 +2,10 @@
 // Output: Minimal turn context resolver for agent name, agent-owned system prompt, and prior chat history
 // Position: Chat feature helper that defines the current model-context boundary for one turn
 
-import type { UIMessage } from 'ai'
 import { and, eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
-import { agents as agentsTable, messages, sessions, workspaces } from '../db/schema'
+import { agents as agentsTable, backendTimelineEvents, messages, sessions, workspaces } from '../db/schema'
 import type { ProviderKind } from '../agent-runtime/runtime-provider-types'
 
 const ACP_AGENT_ID_PREFIX_RE = /^acp:/
@@ -57,7 +56,9 @@ export function resolveChatTurnContext(args: {
       .filter(row => row.id !== args.draftUserMessageId && row.id !== args.draftMessageId)
       .map(row => ({
         role: row.role as 'user' | 'assistant',
-        content: extractMessageText(row.content),
+        content: row.role === 'user'
+          ? row.content
+          : extractAssistantText(db, args.chatSessionId),
       }))
 
   return {
@@ -84,15 +85,20 @@ function readAgentSystemPrompt(configJson: string | null | undefined): string | 
   }
 }
 
-function extractMessageText(content: string): string {
-  try {
-    const message = JSON.parse(content) as UIMessage
-    return message.parts
-      .filter((part): part is Extract<UIMessage['parts'][number], { type: 'text' }> => part.type === 'text')
-      .map(part => part.text)
-      .join('\n')
-  }
-  catch {
-    return content
-  }
+function extractAssistantText(db: ReturnType<typeof getDb>, chatSessionId: string): string {
+  // Get timeline events for this session and reduce text deltas
+  const events = db
+    .select()
+    .from(backendTimelineEvents)
+    .where(
+      eq(backendTimelineEvents.chatSessionId, chatSessionId),
+    )
+    .orderBy(backendTimelineEvents.sequenceNumber)
+    .all()
+
+  return events
+    .map(e => JSON.parse(e.payloadJson) as { type: string, delta?: string })
+    .filter(e => e.type === 'assistant.text.delta')
+    .map(e => e.delta ?? '')
+    .join('')
 }

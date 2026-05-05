@@ -96,11 +96,13 @@ export function projectTimelineEventToChunks(event: ProjectableTimelineEvent): U
 interface TextPart {
   type: 'text'
   text: string
+  state?: 'streaming' | 'done'
 }
 
 interface ReasoningPart {
   type: 'reasoning'
   text: string
+  state: 'streaming' | 'done'
 }
 
 interface ToolPart {
@@ -134,7 +136,7 @@ export function projectEventsToAssistantMessage(
       switch (chunk.type) {
         case 'text-start': {
           if (!textParts.has(chunk.id)) {
-            const part: TextPart = { type: 'text', text: '' }
+            const part: TextPart = { type: 'text', text: '', state: 'streaming' }
             textParts.set(chunk.id, part)
             parts.push(part as UIMessage['parts'][number])
           }
@@ -143,19 +145,24 @@ export function projectEventsToAssistantMessage(
         case 'text-delta': {
           let part = textParts.get(chunk.id)
           if (!part) {
-            part = { type: 'text', text: '' }
+            part = { type: 'text', text: '', state: 'streaming' }
             textParts.set(chunk.id, part)
             parts.push(part as UIMessage['parts'][number])
           }
           part.text += chunk.delta
           break
         }
-        case 'text-end':
+        case 'text-end': {
+          const part = textParts.get(chunk.id)
+          if (part) {
+            part.state = 'done'
+          }
           break
+        }
 
         case 'reasoning-start': {
           if (!reasoningParts.has(chunk.id)) {
-            const part: ReasoningPart = { type: 'reasoning', text: '' }
+            const part: ReasoningPart = { type: 'reasoning', text: '', state: 'streaming' }
             reasoningParts.set(chunk.id, part)
             parts.push(part as UIMessage['parts'][number])
           }
@@ -164,15 +171,20 @@ export function projectEventsToAssistantMessage(
         case 'reasoning-delta': {
           let part = reasoningParts.get(chunk.id)
           if (!part) {
-            part = { type: 'reasoning', text: '' }
+            part = { type: 'reasoning', text: '', state: 'streaming' }
             reasoningParts.set(chunk.id, part)
             parts.push(part as UIMessage['parts'][number])
           }
           part.text += chunk.delta
           break
         }
-        case 'reasoning-end':
+        case 'reasoning-end': {
+          const part = reasoningParts.get(chunk.id)
+          if (part) {
+            part.state = 'done'
+          }
           break
+        }
 
         case 'tool-input-start': {
           if (!toolParts.has(chunk.toolCallId)) {

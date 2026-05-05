@@ -21,31 +21,6 @@ type ChatSnapshotState = {
   error?: string
 }
 
-function parseMessage(
-  content: string,
-  fallbackId: string,
-  fallbackRole: 'user' | 'assistant',
-): UIMessage {
-  try {
-    const parsed = JSON.parse(content) as { id?: string, role?: string, parts?: unknown[] }
-    if (parsed.parts && Array.isArray(parsed.parts)) {
-      return {
-        id: parsed.id ?? fallbackId,
-        role: (parsed.role as UIMessage['role']) ?? fallbackRole,
-        parts: parsed.parts as UIMessage['parts'],
-      }
-    }
-  }
-  catch {
-    // fall through
-  }
-  return {
-    id: fallbackId,
-    role: fallbackRole,
-    parts: [{ type: 'text', text: content }],
-  }
-}
-
 function mapStatus(status: ChatStatus): PublicStatus {
   if (status === 'streaming' || status === 'submitted') {
     return 'streaming'
@@ -77,7 +52,7 @@ export function derivePassiveChatState(
   return { status: 'idle' }
 }
 
-type TimelineGroup = { role: string, status: string, events: unknown[] }
+type TimelineGroup = { role: string, status: string, events: unknown[], errorText?: string }
 
 function deriveTimelineState(groups: TimelineGroup[]): ChatSnapshotState {
   if (groups.some(g => g.status === 'streaming')) {
@@ -85,7 +60,7 @@ function deriveTimelineState(groups: TimelineGroup[]): ChatSnapshotState {
   }
   const failed = [...groups].reverse().find(g => g.role === 'assistant' && g.status === 'failed')
   if (failed) {
-    return { status: 'error' }
+    return { status: 'error', error: failed.errorText }
   }
   return { status: 'idle' }
 }
@@ -140,12 +115,17 @@ export function useChatSession(chatSessionId: string | null, options?: {
     [chatSessionId],
   )
 
-  // Parsed UIMessages for useChat initialisation — captured once per session.
-  // Intentionally keyed on chatSessionId (not initialMessageRows) so that the
-  // same session's stale loader data doesn't trigger a useChat re-initialisation.
-
+  // Initial messages for useChat — captured once per session.
+  // Since messages.content is now plain text (user) or empty (assistant),
+  // we provide a simple bootstrapping set. Full hydration happens in syncSnapshot().
   const cachedInitialMessages = useMemo(
-    () => initialMessageRows?.map(r => parseMessage(r.content, r.id, r.role)),
+    () => initialMessageRows?.map((r): UIMessage => ({
+      id: r.id,
+      role: r.role,
+      parts: r.role === 'user' && r.content
+        ? [{ type: 'text', text: r.content }]
+        : [],
+    })),
     [chatSessionId],
   )
 
@@ -180,19 +160,12 @@ export function useChatSession(chatSessionId: string | null, options?: {
   const [snapshotState, setSnapshotState] = useState<ChatSnapshotState>({ status: 'idle' })
   const snapshotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const applySnapshotRows = useCallback((rows: ChatMessageRow[]) => {
-    const hydrated = rows.map(r => parseMessage(r.content, r.id, r.role))
-    chatRef.current.setMessages(hydrated)
-    setSnapshotState(derivePassiveChatState(rows))
-  }, [])
-
   const syncSnapshot = useCallback(async () => {
     if (!chatSessionId || !ipc) {
       return
     }
 
-    // Prefer timeline projection — project UIMessages from raw events.
-    // Falls back to legacy content-JSON parsing if timeline data is unavailable.
+    // Project UIMessages from raw timeline events (sole hydration path)
     const timeline = await ipc.chat.getSessionTimeline(chatSessionId)
     if (timeline.length > 0) {
       const projected = timeline.map((group) => {
@@ -203,19 +176,17 @@ export function useChatSession(chatSessionId: string | null, options?: {
             parts: [{ type: 'text' as const, text: group.userText ?? '' }],
           }
         }
-        return projectEventsToAssistantMessage(group.messageId, group.events as ProjectableTimelineEvent[])
+        return projectEventsToAssistantMessage(group.messageId, group.events as unknown as ProjectableTimelineEvent[])
       })
       chatRef.current.setMessages(projected)
       setSnapshotState(deriveTimelineState(timeline))
-      setIsReady(true)
-      return
     }
-
-    // Fallback: legacy content-JSON hydration
-    const rows = await ipc.chat.getMessages(chatSessionId)
-    applySnapshotRows(rows)
+    else {
+      chatRef.current.setMessages([])
+      setSnapshotState({ status: 'idle' })
+    }
     setIsReady(true)
-  }, [applySnapshotRows, chatSessionId])
+  }, [chatSessionId])
 
   const scheduleSnapshotSync = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
     if (snapshotSyncTimerRef.current) {
@@ -275,18 +246,25 @@ export function useChatSession(chatSessionId: string | null, options?: {
   // the persisted DB snapshot on response events so the UI stays accurate.
   useChatTimelineEvent(chatSessionId, (data) => {
     const currentStatus = chatRef.current.status
+
+    // Always capture run.failed error text regardless of stream state.
+    // AI SDK may not reliably surface the error message from controller.error(),
+    // so we preserve the backend error in snapshotState as a fallback.
+    if (data.event.type === 'run.failed') {
+      const error = data.event.error || undefined
+      setSnapshotState({ status: 'error', error })
+      if (currentStatus !== 'streaming' && currentStatus !== 'submitted') {
+        scheduleSnapshotSync(0)
+      }
+      return
+    }
+
     if (currentStatus === 'streaming' || currentStatus === 'submitted') {
       // Locally driving — useChat is already assembling this turn
       return
     }
 
     switch (data.event.type) {
-      case 'run.failed': {
-        const error = data.event.error || undefined
-        setSnapshotState({ status: 'error', error })
-        scheduleSnapshotSync(0)
-        return
-      }
       case 'run.completed':
       case 'run.aborted': {
         setSnapshotState({ status: 'idle' })
@@ -334,7 +312,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
   const liveStatus = mapStatus(chat.status)
   const visibleStatus = resolveVisibleChatState(liveStatus, snapshotState.status)
   const visibleError = liveStatus === 'error'
-    ? chat.error?.message
+    ? (chat.error?.message || snapshotState.error)
     : snapshotState.error
 
   return {

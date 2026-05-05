@@ -1,96 +1,69 @@
-// Input: TurnStateMachine and typed timeline events
-// Output: Unit tests for assistant message projection across text, reasoning, and command parts
-// Position: Chat feature regression guard for the turn state machine used by transactional persistence
+// Input: TimelineChunkProjector and typed timeline events
+// Output: Unit tests for chunk projection from domain events
+// Position: Chat feature regression guard for real-time broadcast chunk generation
 
 import { describe, expect, it } from 'vitest'
 
-import { createTurnStateMachine } from '../turn-state-machine'
+import { createTimelineChunkProjector } from '../timeline-chunk-projector'
 
-function createMachine() {
-  return createTurnStateMachine({
-    id: 'message-1',
-    role: 'assistant',
-    parts: [],
-  })
-}
+describe('timelineChunkProjector', () => {
+  it('projects reasoning events to reasoning chunks', () => {
+    const projector = createTimelineChunkProjector()
 
-describe('turnStateMachine', () => {
-  it('projects assistant text and reasoning parts in stream order', () => {
-    const machine = createMachine()
-
-    machine.apply({
+    const startChunks = projector.apply({
       type: 'reasoning.started',
       itemId: 'reasoning-1',
       source: { backend: 'acp-chat', eventType: 'reasoning.started' },
     })
-    machine.apply({
+    expect(startChunks).toEqual([{ type: 'reasoning-start', id: 'reasoning-1' }])
+
+    const deltaChunks = projector.apply({
       type: 'reasoning.delta',
       itemId: 'reasoning-1',
       delta: '思考中',
       source: { backend: 'acp-chat', eventType: 'reasoning.delta' },
     })
-    machine.apply({
-      type: 'assistant.message.started',
-      itemId: 'text-1',
-      source: { backend: 'acp-chat', eventType: 'assistant.message.started' },
-    })
-    machine.apply({
-      type: 'assistant.text.delta',
-      itemId: 'text-1',
-      delta: '最终答案',
-      source: { backend: 'acp-chat', eventType: 'assistant.text.delta' },
-    })
-    machine.apply({
+    expect(deltaChunks).toEqual([{ type: 'reasoning-delta', id: 'reasoning-1', delta: '思考中' }])
+
+    const endChunks = projector.apply({
       type: 'reasoning.completed',
       itemId: 'reasoning-1',
       source: { backend: 'acp-chat', eventType: 'reasoning.completed' },
     })
-    machine.apply({
-      type: 'assistant.message.completed',
-      itemId: 'text-1',
-      source: { backend: 'acp-chat', eventType: 'assistant.message.completed' },
-    })
-
-    expect(machine.message.parts).toEqual([
-      { type: 'reasoning', text: '思考中', state: 'done' },
-      { type: 'text', text: '最终答案', state: 'done' },
-    ])
+    expect(endChunks).toEqual([{ type: 'reasoning-end', id: 'reasoning-1' }])
   })
 
-  it('projects command lifecycle into a single tool part', () => {
-    const machine = createMachine()
+  it('projects command lifecycle to tool chunks', () => {
+    const projector = createTimelineChunkProjector()
 
-    machine.apply({
+    const startChunks = projector.apply({
       type: 'command.started',
       itemId: 'cmd-1',
       command: 'bash',
       input: 'echo hello',
       source: { backend: 'cli-tui', eventType: 'command.started' },
     })
-    machine.apply({
+    expect(startChunks).toEqual([
+      { type: 'tool-input-start', toolCallId: 'cmd-1', toolName: 'bash' },
+      { type: 'tool-input-available', toolCallId: 'cmd-1', toolName: 'bash', input: 'echo hello' },
+    ])
+
+    const completeChunks = projector.apply({
       type: 'command.completed',
       itemId: 'cmd-1',
       exitCode: 0,
       output: 'hello',
       source: { backend: 'cli-tui', eventType: 'command.completed' },
     })
-
-    expect(machine.message.parts).toEqual([
-      {
-        type: 'tool-bash',
-        toolName: 'bash',
-        toolCallId: 'cmd-1',
-        state: 'output-available',
-        input: 'echo hello',
-        output: 'hello',
-      },
+    expect(completeChunks).toEqual([
+      { type: 'tool-output-available', toolCallId: 'cmd-1', output: 'hello' },
     ])
   })
 
-  it('returns UIMessageChunks for broadcast', () => {
-    const machine = createMachine()
+  it('returns text-delta chunk for assistant text', () => {
+    const projector = createTimelineChunkProjector()
 
-    const chunks = machine.apply({
+    const chunks = projector.apply({
       type: 'assistant.text.delta',
       itemId: 'text-1',
       delta: 'hello',
@@ -102,29 +75,13 @@ describe('turnStateMachine', () => {
     ])
   })
 
-  it('handles duplicate text-start gracefully', () => {
-    const machine = createMachine()
+  it('returns finish chunk for run.completed', () => {
+    const projector = createTimelineChunkProjector()
 
-    machine.apply({
-      type: 'assistant.message.started',
-      itemId: 'text-1',
-      source: { backend: 'acp-chat', eventType: 'assistant.message.started' },
+    const chunks = projector.apply({
+      type: 'run.completed',
+      source: { backend: 'openai-compatible', eventType: 'response.completed' },
     })
-    machine.apply({
-      type: 'assistant.message.started',
-      itemId: 'text-1',
-      source: { backend: 'acp-chat', eventType: 'assistant.message.started' },
-    })
-    machine.apply({
-      type: 'assistant.text.delta',
-      itemId: 'text-1',
-      delta: 'content',
-      source: { backend: 'acp-chat', eventType: 'assistant.text.delta' },
-    })
-
-    // Should only have one text part, not duplicated
-    expect(machine.message.parts).toEqual([
-      { type: 'text', text: 'content', state: 'streaming' },
-    ])
+    expect(chunks).toEqual([{ type: 'finish', finishReason: 'stop' }])
   })
 })

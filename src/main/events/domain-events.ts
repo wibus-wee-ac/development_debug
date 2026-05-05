@@ -47,7 +47,7 @@ export interface ChatMessageCompletedPayload {
   messageId: string
   status: 'complete' | 'aborted' | 'failed'
   errorText: string | null
-  uiMessageJson: string
+  assistantText: string
   agentProfileId: string
   modelId: string | null
   usage: { promptTokens: number, completionTokens: number, totalTokens: number } | null

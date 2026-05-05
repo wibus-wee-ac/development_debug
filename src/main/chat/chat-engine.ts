@@ -4,7 +4,6 @@
 
 import { randomUUID } from 'node:crypto'
 
-import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 
@@ -23,8 +22,8 @@ import { resolveChatTurnContext } from './chat-turn-context'
 import { coordinateTurn } from './turn-coordinator'
 import type { TurnRepository } from './turn-repository'
 import { createTurnRepository } from './turn-repository'
-import type { TurnStateMachine } from './turn-state-machine'
-import { createTurnStateMachine } from './turn-state-machine'
+import type { TimelineChunkProjector } from './timeline-chunk-projector'
+import { createTimelineChunkProjector } from './timeline-chunk-projector'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -37,7 +36,7 @@ interface Draft {
   userMessageId: string
   agentId: string
   runtimeSession: ProviderSession
-  turn: TurnStateMachine
+  turn: TimelineChunkProjector
   /** AbortController for stream cancellation — replaces boolean `cancelled` flag. */
   abortController: AbortController
   /** Optional model override for this draft's turns. */
@@ -483,10 +482,8 @@ export class ChatEngine {
         return rowToChatMessage(row)
       }
       if (activeDraft && activeDraft.messageId === row.id) {
-        return rowToChatMessage({
-          ...row,
-          content: JSON.stringify(activeDraft.turn.message),
-        })
+        // Active draft — return as streaming (content reconstruction is done via timeline events)
+        return rowToChatMessage(row)
       }
       // Stale streaming row — heal on read so no caller ever sees a zombie status
       db.update(messages)
@@ -515,6 +512,7 @@ export class ChatEngine {
     events: Array<Record<string, unknown>>
     userText?: string
     status: string
+    errorText?: string
   }> {
     const db = getDb()
     const rows = db
@@ -526,17 +524,8 @@ export class ChatEngine {
 
     return rows.map((row) => {
       if (row.role === 'user') {
-        // User messages: extract text from content JSON
-        let userText = ''
-        try {
-          const parsed = JSON.parse(row.content)
-          const textPart = parsed.parts?.find((p: { type: string }) => p.type === 'text')
-          userText = textPart?.text ?? row.content
-        }
-        catch {
-          userText = row.content
-        }
-        return { messageId: row.id, role: 'user' as const, events: [], userText, status: row.status }
+        // User messages: content is plain text
+        return { messageId: row.id, role: 'user' as const, events: [], userText: row.content, status: row.status }
       }
 
       // Assistant messages: fetch timeline events
@@ -568,7 +557,7 @@ export class ChatEngine {
         }
       }
 
-      return { messageId: row.id, role: 'assistant' as const, events: decoded, status: row.status }
+      return { messageId: row.id, role: 'assistant' as const, events: decoded, status: row.status, errorText: row.errorText ?? undefined }
     })
   }
 
@@ -613,16 +602,6 @@ export class ChatEngine {
 
     const userMsgId = randomUUID()
     const assistantMsgId = randomUUID()
-    const userMessage: UIMessage = {
-      id: userMsgId,
-      role: 'user',
-      parts: [{ type: 'text', text: userText }],
-    }
-    const assistantMessage: UIMessage = {
-      id: assistantMsgId,
-      role: 'assistant',
-      parts: [],
-    }
 
     const db = getDb()
     db.transaction((tx) => {
@@ -643,7 +622,7 @@ export class ChatEngine {
           sessionId: chatSessionId,
           role: 'user',
           status: 'complete',
-          content: JSON.stringify(userMessage),
+          content: userText,
         })
         .run()
       tx.insert(messages)
@@ -652,7 +631,7 @@ export class ChatEngine {
           sessionId: chatSessionId,
           role: 'assistant',
           status: 'streaming',
-          content: JSON.stringify(assistantMessage),
+          content: '',
         })
         .run()
       if (!newSession) {
@@ -670,7 +649,7 @@ export class ChatEngine {
       userMessageId: userMsgId,
       agentId,
       runtimeSession,
-      turn: createTurnStateMachine(assistantMessage),
+      turn: createTimelineChunkProjector(),
       abortController: new AbortController(),
       modelId,
       providerOptions,
@@ -715,7 +694,6 @@ export class ChatEngine {
         messageId: draft.messageId,
         runId: draft.runId,
         event,
-        message: draft.turn.message,
         messageStatus: options.messageStatus ?? 'streaming',
         errorText: options.errorText ?? null,
         runCompletion: options.runCompletion,
@@ -887,6 +865,21 @@ export class ChatEngine {
     // Publish chat.message-completed domain event — subscribers handle FTS + usage
     if (this.eventBus) {
       const binding = getBackendControlPlaneService().getBinding(draft.chatSessionId)
+
+      // Extract plain text from timeline events for FTS indexing
+      const db = getDb()
+      const timelineRows = db
+        .select()
+        .from(backendTimelineEvents)
+        .where(eq(backendTimelineEvents.runId, draft.runId!))
+        .orderBy(backendTimelineEvents.sequenceNumber)
+        .all()
+      const assistantText = timelineRows
+        .map(r => JSON.parse(r.payloadJson))
+        .filter((e: { type: string }) => e.type === 'assistant.text.delta')
+        .map((e: { delta?: string }) => e.delta ?? '')
+        .join('')
+
       void this.eventBus.publish({
         id: randomUUID(),
         type: 'chat.message-completed',
@@ -896,7 +889,7 @@ export class ChatEngine {
           messageId: draft.messageId,
           status: finalStatus,
           errorText: finalError,
-          uiMessageJson: JSON.stringify(draft.turn.message),
+          assistantText,
           agentProfileId: draft.agentId,
           modelId: draft.modelId ?? binding?.requestedModelId ?? null,
           usage: provider?.lastUsage ?? null,
