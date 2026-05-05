@@ -89,4 +89,21 @@ export type {
   UpdateSkillInput,
 } from './features/skills/skills'
 export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './features/skills/skill-source'
-export type { PackCodebaseOptions, PackCodebaseResult, PackStyle } from './features/pack-codebase/pack-codebase'
+
+// Pack-codebase types — inlined here so the renderer doesn't need to resolve the feature module
+export type PackStyle = 'xml' | 'markdown' | 'plain'
+
+export interface PackCodebaseOptions {
+  style: PackStyle
+  compress: boolean
+  include?: string
+  ignore?: string
+  removeComments?: boolean
+  removeEmptyLines?: boolean
+}
+
+export interface PackCodebaseResult {
+  content: string
+  totalFiles: number
+  totalTokens: number
+}

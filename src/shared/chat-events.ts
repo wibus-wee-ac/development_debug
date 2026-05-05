@@ -1,14 +1,17 @@
-// Input: OpenAI ResponseStreamEvent type
+// Input: Typed timeline events and AI SDK chat chunk projection types
 // Output: Chat push event payload types for IPC channels
-// Position: Shared types used by main (ChatEngine), preload (chatPush), and renderer (useChatEvents)
+// Position: Shared types used by main (ChatEngine), preload (chatPush), and renderer (chat event hooks)
 
-import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
+import type { UIMessageChunk } from 'ai'
 
-/** Payload for the `chat:response-event` IPC push channel. */
-export interface ChatResponseEventPayload {
+import type { BackendTimelineEvent } from '../main/features/backend-control-plane/timeline-events'
+
+/** Payload for the `chat:timeline-event` IPC push channel. */
+export interface ChatTimelineEventPayload {
   chatSessionId: string
   messageId: string
-  event: ResponseStreamEvent
+  event: BackendTimelineEvent
+  chunks: UIMessageChunk[]
 }
 
 /** Payload for the `chat:session-title` IPC push channel. */

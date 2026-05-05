@@ -1,4 +1,4 @@
-// Input: ACP SDK client connection, process manager, responses converter, filesystem helpers
+// Input: ACP SDK client connection, process manager, timeline converter, and filesystem helpers
 // Output: AcpConnectionManager singleton that owns ACP connections, sessions, prompts, and cached session state
 // Position: ACP platform transport bridge used by chat runtime and ACP IPC surfaces
 
@@ -22,10 +22,10 @@ import {
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
 
+import type { TimelineInputEvent } from '../../features/backend-control-plane/timeline-events'
 import type { ProcessEntry } from './acp-process-manager'
 import { AcpProcessManager } from './acp-process-manager'
-import { AcpResponsesConverter } from './acp-responses-converter'
-import type { ResponseStreamEvent } from '../../features/chat/chat-provider'
+import { AcpTimelineConverter } from './acp-timeline-converter'
 
 // ── Session state ─────────────────────────────────────────────────────────────
 
@@ -37,16 +37,16 @@ export interface AcpSessionState {
 // ── Chunk queue (async pipe for prompt generator) ─────────────────────────────
 
 class ChunkQueue {
-  private buffered: ResponseStreamEvent[] = []
+  private buffered: TimelineInputEvent[] = []
   private waiters: Array<{
-    resolve: (value: ResponseStreamEvent | null) => void
+    resolve: (value: TimelineInputEvent | null) => void
     reject: (err: Error) => void
   }> = []
 
   private closed = false
   private failure: Error | null = null
 
-  push(chunk: ResponseStreamEvent): void {
+  push(chunk: TimelineInputEvent): void {
     if (this.closed) {
       return
     }
@@ -80,7 +80,7 @@ class ChunkQueue {
     }
   }
 
-  async next(): Promise<ResponseStreamEvent | null> {
+  async next(): Promise<TimelineInputEvent | null> {
     if (this.buffered.length > 0) {
       return this.buffered.shift()!
     }
@@ -90,7 +90,7 @@ class ChunkQueue {
     if (this.closed) {
       return null
     }
-    return new Promise<ResponseStreamEvent | null>((resolve, reject) => {
+    return new Promise<TimelineInputEvent | null>((resolve, reject) => {
       this.waiters.push({ resolve, reject })
     })
   }
@@ -99,7 +99,7 @@ class ChunkQueue {
 // ── Connection entry ──────────────────────────────────────────────────────────
 
 interface SessionChannel {
-  converter: AcpResponsesConverter
+  converter: AcpTimelineConverter
   queue: ChunkQueue
 }
 
@@ -309,10 +309,10 @@ export class AcpConnectionManager {
   }
 
   /**
-   * Send a prompt and yield UIMessageChunk values as they arrive.
+  * Send a prompt and yield typed timeline facts as they arrive.
    *
    * Generator semantics:
-   *  - Yields every chunk produced by the AcpStreamConverter (text/reasoning/tool deltas)
+  *  - Yields every normalized event produced by the ACP timeline converter
    *  - Yields trailing flush chunks on normal completion, then returns
    *  - Throws if the underlying ACP connection errors (caller's for-await rethrows)
    *  - Safe to `break` from the generator: the active ACP prompt is *not* auto-cancelled —
@@ -322,9 +322,9 @@ export class AcpConnectionManager {
     agentId: string,
     sessionId: string,
     message: string,
-  ): AsyncGenerator<ResponseStreamEvent, void, void> {
+  ): AsyncGenerator<TimelineInputEvent, void, void> {
     const conn = this.getConnection(agentId)
-    const converter = new AcpResponsesConverter()
+    const converter = new AcpTimelineConverter({ backend: 'acp-chat' })
     const queue = new ChunkQueue()
     conn.channels.set(sessionId, { converter, queue })
 

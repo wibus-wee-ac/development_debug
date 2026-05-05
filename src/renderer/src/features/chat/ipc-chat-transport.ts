@@ -1,11 +1,10 @@
-// Input: ipc.chat IPC surface, chatPush preload API (ResponseStreamEvent envelope)
-// Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by our main-process ChatEngine
+// Input: ipc.chat IPC surface and chatPush preload timeline event bridge
+// Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by projected timeline chunks
 // Position: Feature helper for chat feature, bridges AI SDK's useChat to Electron IPC
 
-import type { ChatResponseEventPayload } from '@shared/chat-events'
+import type { ChatTimelineEventPayload } from '@shared/chat-events'
 import { ipc } from '@renderer/lib/ipc'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
-import type { ResponseStreamEvent } from 'openai/resources/responses/responses'
 
 function extractText(parts: UIMessage['parts']): string {
   return parts
@@ -15,105 +14,7 @@ function extractText(parts: UIMessage['parts']): string {
 }
 
 /**
- * Convert a single `ResponseStreamEvent` into zero or more AI SDK
- * `UIMessageChunk` objects for `useChat` consumption.
- *
- * State is kept across calls via the `state` object so we can track open
- * text / reasoning spans (needed for start/end pairs).
- */
-interface ConverterState {
-  textItemId: string | null
-  reasoningItemId: string | null
-}
-
-function responsesEventToUIMessageChunks(
-  event: ResponseStreamEvent,
-  state: ConverterState,
-): UIMessageChunk[] {
-  const chunks: UIMessageChunk[] = []
-
-  switch (event.type) {
-    case 'response.output_item.added': {
-      if (event.item.type === 'message') {
-        state.textItemId = event.item.id
-        chunks.push({ type: 'text-start', id: event.item.id })
-      }
-      else if (event.item.type === 'function_call') {
-        chunks.push({
-          type: 'tool-input-start',
-          toolCallId: event.item.call_id,
-          toolName: event.item.name,
-        })
-      }
-      break
-    }
-    case 'response.output_text.delta': {
-      chunks.push({ type: 'text-delta', id: event.item_id, delta: event.delta })
-      break
-    }
-    case 'response.output_item.done': {
-      if (event.item.type === 'message') {
-        chunks.push({ type: 'text-end', id: event.item.id })
-        state.textItemId = null
-      }
-      else if (event.item.type === 'function_call' && event.item.status === 'completed') {
-        // arguments encodes { input, output } as JSON (ACP extension)
-        try {
-          const decoded = JSON.parse(event.item.arguments) as { input: unknown, output: unknown }
-          if (decoded.input !== undefined) {
-            chunks.push({
-              type: 'tool-input-available',
-              toolCallId: event.item.call_id,
-              toolName: event.item.name,
-              input: typeof decoded.input === 'string' ? decoded.input : JSON.stringify(decoded.input),
-            })
-          }
-          if (decoded.output !== null && decoded.output !== undefined) {
-            chunks.push({
-              type: 'tool-output-available',
-              toolCallId: event.item.call_id,
-              output: typeof decoded.output === 'string' ? decoded.output : JSON.stringify(decoded.output),
-            })
-          }
-        }
-        catch {
-          chunks.push({
-            type: 'tool-input-available',
-            toolCallId: event.item.call_id,
-            toolName: event.item.name,
-            input: event.item.arguments,
-          })
-        }
-      }
-      break
-    }
-    case 'response.reasoning_summary_part.added': {
-      state.reasoningItemId = event.item_id
-      chunks.push({ type: 'reasoning-start', id: event.item_id })
-      break
-    }
-    case 'response.reasoning_summary_text.delta': {
-      chunks.push({ type: 'reasoning-delta', id: event.item_id, delta: event.delta })
-      break
-    }
-    case 'response.reasoning_summary_part.done': {
-      chunks.push({ type: 'reasoning-end', id: event.item_id })
-      state.reasoningItemId = null
-      break
-    }
-    case 'response.completed': {
-      chunks.push({ type: 'finish', finishReason: 'stop' })
-      break
-    }
-    default:
-      break
-  }
-
-  return chunks
-}
-
-/**
- * Build a ReadableStream bridging `chat:response-event` IPC events for a given
+ * Build a ReadableStream bridging `chat:timeline-event` IPC events for a given
  * chat session into a `UIMessageChunk` stream for AI SDK's `useChat`.
  *
  * Uses a custom ReadableStream with a direct controller reference so that
@@ -131,7 +32,6 @@ function buildChunkStream(
   abortSignal: AbortSignal | undefined,
 ): ReadableStream<UIMessageChunk> {
   let ctrl: ReadableStreamDefaultController<UIMessageChunk> = null!
-  const state: ConverterState = { textItemId: null, reasoningItemId: null }
   let closed = false
 
   const readable = new ReadableStream<UIMessageChunk>({
@@ -185,26 +85,24 @@ function buildChunkStream(
     }
   }
 
-  const offEvent = window.chatPush.onResponseEvent(
-    (data: ChatResponseEventPayload) => {
+  const offEvent = window.chatPush.onTimelineEvent(
+    (data: ChatTimelineEventPayload) => {
       if (data.chatSessionId !== chatSessionId || closed) {
         return
       }
-      const { event } = data
+      const { event, chunks } = data
 
-      for (const chunk of responsesEventToUIMessageChunks(event, state)) {
+      for (const chunk of chunks) {
         safeEnqueue(chunk)
       }
 
-      if (event.type === 'response.completed') {
+      if (event.type === 'run.completed' || event.type === 'run.aborted') {
         offEvent()
         closeCleanly()
       }
-      else if (event.type === 'response.failed') {
+      else if (event.type === 'run.failed') {
         offEvent()
-        const msg = 'error' in event.response && event.response.error?.message
-          ? event.response.error.message
-          : 'chat failed'
+        const msg = event.error || 'chat failed'
         closeWithError(new Error(msg))
       }
     },

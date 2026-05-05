@@ -15,10 +15,10 @@ This slice is intentionally breaking. It does not preserve a compatibility lane 
 - [x] (2026-05-05 07:24Z) Reviewed `src/main/features/chat/chat-provider.ts`, `src/shared/chat-events.ts`, and the current `ResponseStreamEvent` push path.
 - [x] (2026-05-05 07:24Z) Confirmed that current domain events model only `chat.turn-finished` and do not represent in-flight activity.
 - [x] (2026-05-05 08:33Z) Reframed this plan as a breaking rewrite: no compatibility channel, no transport-shaped core contract, and no class-hierarchy runtime abstraction.
-- [ ] Add failing tests for typed timeline events, reducers, projections, runtime validation, and backend-specific mappers.
-- [ ] Implement append-only typed timeline persistence plus runtime schemas for external event parsing.
-- [ ] Rewrite `ChatEngine` to consume backend mappers and emit only normalized timeline facts plus projections.
-- [ ] Remove raw transport contracts from core/shared renderer paths and keep chat + devtool behavior green through projections and E2E coverage.
+- [x] (2026-05-05 15:58Z) Added RED tests for typed timeline parsing/projection, ACP adapter mapping, schema ownership, backend control-plane sequencing, and chat-engine push-channel behavior.
+- [x] (2026-05-05 16:01Z) Implemented append-only typed timeline persistence plus runtime parsing/reducer/projection helpers under `src/main/features/backend-control-plane/`.
+- [x] (2026-05-05 16:11Z) Rewrote `ChatEngine`, preload/shared payloads, and renderer chat transport/hooks to consume normalized timeline facts plus projected chunks only.
+- [x] (2026-05-05 16:26Z) Replaced ACP/OpenAI-compatible raw transport adapters with timeline mappers, deleted obsolete raw response bridge modules, generated a Drizzle migration for `backend_timeline_events`, and added E2E coverage for timeline persistence.
 
 ## Surprises & Discoveries
 
@@ -58,7 +58,26 @@ This slice is intentionally breaking. It does not preserve a compatibility lane 
 
 ## Outcomes & Retrospective
 
-Not started yet. When implementation lands, update this section with which typed timeline event families were introduced, which raw transport contracts were deleted, and whether any backend-specific metadata remained intentionally exposed through controlled projections.
+Plan 07 landed as an actual breaking rewrite, not a compatibility shim.
+
+Implemented outcomes:
+
+- Introduced Cradle-owned typed timeline families for run lifecycle, assistant text, reasoning, command/tool activity, approvals, and failures in `src/main/features/backend-control-plane/timeline-events.ts`.
+- Added append-only persistence via `backend_timeline_events`, including Drizzle schema, generated migration `drizzle/0001_steady_phalanx.sql`, and storage/service sequencing tests.
+- Rewrote `ChatEngine` to append normalized timeline facts, broadcast `chat:timeline-event`, and feed internal AI SDK message assembly exclusively through projected `UIMessageChunk`s.
+- Replaced renderer/preload/shared raw `ResponseStreamEvent` contracts with `ChatTimelineEventPayload`, `chatPush.onTimelineEvent`, and projection-only transport consumption.
+- Moved backend adapter normalization to owners: OpenAI-compatible provider now emits typed timeline input events directly, and ACP now maps `SessionUpdate` via `acp-timeline-converter.ts`.
+- Deleted obsolete raw transport modules `src/main/features/chat/chat-provider.ts`, `src/main/platform/acp/acp-responses-converter.ts`, and its test.
+
+Intentional exposure kept after the rewrite:
+
+- `TimelineSource.eventType` retains backend-native/source event names for observability and debugging, but only as adapter metadata attached to normalized facts.
+- Chat renderer code sees only projected chunks plus typed terminal events; it no longer branches on backend-native transport shapes.
+
+Retrospective:
+
+- The reducer/projection split made the chat rewrite smaller than a transport-compatibility approach would have been; once the event vocabulary existed, the preload/renderer bridge collapsed into straightforward payload forwarding.
+- The biggest operational surprise was Drizzle tooling: `drizzle/meta/` must stay JSON-only, otherwise `drizzle-kit generate` tries to parse documentation as a snapshot.
 
 ## Context and Orientation
 
@@ -222,6 +241,12 @@ A good artifact looks like this:
     tool.call.delta            command.output.delta
     tool.call.completed        command.completed
     response.completed         run.completed
+
+  Recorded artifacts from implementation:
+
+  - RED: targeted Vitest run initially failed on missing `timeline-events`, missing `acp-timeline-converter`, missing `backendTimelineEvents`, and old `chat:response-event` behavior.
+  - GREEN: targeted timeline suite passed after the first implementation wave (`backend-timeline-schema`, `timeline-events`, `backend-control-plane`, `openai-compatible-provider`, `acp-timeline-converter`, `chat-engine`, `use-chat-session`).
+  - Validation: `pnpm test` → 43 files / 202 tests passed; `pnpm typecheck` passed; `pnpm build` passed; targeted Cucumber chat regression tags `@CRADLE-CHAT-003/004/005/006/007/008/009/010` passed (8 scenarios / 85 steps).
 
 ## Interfaces and Dependencies
 

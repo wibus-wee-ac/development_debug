@@ -1,4 +1,4 @@
-// Input: @ai-sdk/react useChat, ipc-chat-transport, ipc.chat, and chat response push events
+// Input: @ai-sdk/react useChat, ipc-chat-transport, ipc.chat, and chat timeline push events
 // Output: useChatSession — renderer chat hook with local streaming plus passive snapshot recovery after reload
 // Position: Feature hook for chat feature; renderer-side view layer bridging useChat with persisted ChatEngine state
 
@@ -8,7 +8,7 @@ import type { ChatStatus, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { createIpcChatTransport } from './ipc-chat-transport'
-import { useChatResponseEvent } from './use-chat-events'
+import { useChatTimelineEvent } from './use-chat-events'
 
 /** Raw message row as returned by `ipc.chat.getMessages`. */
 export type ChatMessageRow = Awaited<ReturnType<NonNullable<typeof ipc>['chat']['getMessages']>>[number]
@@ -238,7 +238,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
   // Covers the passive observer case (reload, secondary window, or route remount).
   // When this renderer is not the one actively assembling the stream, we mirror
   // the persisted DB snapshot on response events so the UI stays accurate.
-  useChatResponseEvent(chatSessionId, (data) => {
+  useChatTimelineEvent(chatSessionId, (data) => {
     const currentStatus = chatRef.current.status
     if (currentStatus === 'streaming' || currentStatus === 'submitted') {
       // Locally driving — useChat is already assembling this turn
@@ -246,32 +246,23 @@ export function useChatSession(chatSessionId: string | null, options?: {
     }
 
     switch (data.event.type) {
-      case 'response.failed': {
-        const error = 'error' in data.event.response && data.event.response.error?.message
-          ? data.event.response.error.message
-          : undefined
+      case 'run.failed': {
+        const error = data.event.error || undefined
         setSnapshotState({ status: 'error', error })
         scheduleSnapshotSync(0)
         return
       }
-      case 'response.completed': {
+      case 'run.completed':
+      case 'run.aborted': {
         setSnapshotState({ status: 'idle' })
         scheduleSnapshotSync(0)
         return
       }
-      case 'response.created':
-      case 'response.output_item.added':
-      case 'response.output_text.delta':
-      case 'response.output_item.done':
-      case 'response.reasoning_summary_part.added':
-      case 'response.reasoning_summary_text.delta':
-      case 'response.reasoning_summary_part.done': {
+      default: {
         setSnapshotState({ status: 'streaming' })
         scheduleSnapshotSync()
         return
       }
-      default:
-        return
     }
   })
 

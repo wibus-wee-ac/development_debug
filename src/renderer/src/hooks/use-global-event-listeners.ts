@@ -1,8 +1,8 @@
-// Input: window.ptyPush, chatPush (via useGlobalChatEvent), session-activity store, layout store, tab store
+// Input: window.ptyPush, chatPush timeline hooks, session-activity store, layout store, and tab store
 // Output: useGlobalEventListeners hook — registers PTY, chat event listeners, and panel keyboard shortcuts
 // Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
 
-import { useGlobalChatEvent } from '@renderer/features/chat/use-chat-events'
+import { useGlobalChatTimelineEvent } from '@renderer/features/chat/use-chat-events'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useCradleTabStore } from '@renderer/tabs/registry'
@@ -123,11 +123,12 @@ export function useGlobalEventListeners() {
     }
   }, [markUnread])
 
-  // Chat response events: mark unread when a response completes in an inactive session
-  useGlobalChatEvent((data) => {
+  // Chat terminal timeline events: mark unread when a turn finishes in an inactive session
+  useGlobalChatTimelineEvent((data) => {
     if (
-      data.event.type !== 'response.completed'
-      && data.event.type !== 'response.failed'
+      data.event.type !== 'run.completed'
+      && data.event.type !== 'run.aborted'
+      && data.event.type !== 'run.failed'
     ) {
       return
     }

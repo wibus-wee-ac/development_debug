@@ -1,6 +1,6 @@
-// Input: main-process Drizzle schema exports, table metadata helpers, and baseline migration artifacts
-// Output: Regression tests for backend control-plane schema ownership and the rebased Drizzle baseline
-// Position: Schema-level guardrail for backend bindings/runs and the current single-baseline migration history
+// Input: main-process Drizzle schema exports, table metadata helpers, and migration artifacts
+// Output: Regression tests for backend control-plane schema ownership and Drizzle migration consistency
+// Position: Schema-level guardrail for backend bindings/runs/timeline tables and migration history
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -28,7 +28,7 @@ describe('backend control plane schema', () => {
     expect(sessionColumns).not.toContain('configSnapshot')
   })
 
-  it('keeps the rebased Drizzle baseline internally consistent', () => {
+  it('keeps the Drizzle baseline plus timeline migration internally consistent', () => {
     const journal = JSON.parse(
       readFileSync(resolve(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8'),
     ) as {
@@ -38,12 +38,21 @@ describe('backend control plane schema', () => {
       resolve(process.cwd(), 'drizzle/0000_initial_baseline.sql'),
       'utf8',
     )
+    const latestTag = journal.entries.at(-1)?.tag
 
-    expect(journal.entries).toHaveLength(1)
+    expect(latestTag).toBeDefined()
+
+    const latestMigrationSql = readFileSync(
+      resolve(process.cwd(), `drizzle/${latestTag}.sql`),
+      'utf8',
+    )
+
+    expect(journal.entries.length).toBeGreaterThanOrEqual(2)
     expect(journal.entries[0]?.tag).toBe('0000_initial_baseline')
     expect(baselineSql).toContain('CREATE TABLE `backend_session_bindings`')
     expect(baselineSql).toContain('CREATE TABLE `backend_runs`')
     expect(baselineSql).toContain('CREATE TABLE `backend_capability_snapshots`')
     expect(baselineSql).not.toContain('runtime_sessions')
+    expect(latestMigrationSql).toContain('CREATE TABLE `backend_timeline_events`')
   })
 })

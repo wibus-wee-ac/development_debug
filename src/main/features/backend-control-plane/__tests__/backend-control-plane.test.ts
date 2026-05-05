@@ -14,6 +14,7 @@ import type {
   BackendControlPlaneStore,
   BackendRun,
   BackendSessionBinding,
+  BackendTimelineEvent,
   FinishBackendRunInput,
   RecordBackendCapabilitySnapshotInput,
   StartBackendRunInput,
@@ -24,6 +25,7 @@ class MemoryBackendControlPlaneStore implements BackendControlPlaneStore {
   readonly bindings = new Map<string, BackendSessionBinding>()
   readonly runs = new Map<string, BackendRun>()
   readonly capabilitySnapshots: BackendCapabilitySnapshot[] = []
+  readonly timelineEvents = new Map<string, BackendTimelineEvent[]>()
 
   getBindingByChatSessionId(chatSessionId: string): BackendSessionBinding | undefined {
     return this.bindings.get(chatSessionId)
@@ -96,6 +98,21 @@ class MemoryBackendControlPlaneStore implements BackendControlPlaneStore {
     }
     this.capabilitySnapshots.push(snapshot)
     return snapshot
+  }
+
+  getLastTimelineEvent(runId: string): BackendTimelineEvent | undefined {
+    return this.timelineEvents.get(runId)?.at(-1)
+  }
+
+  insertTimelineEvent(event: BackendTimelineEvent): BackendTimelineEvent {
+    const existing = this.timelineEvents.get(event.runId) ?? []
+    existing.push(event)
+    this.timelineEvents.set(event.runId, existing)
+    return event
+  }
+
+  listTimelineEventsByRunId(runId: string): BackendTimelineEvent[] {
+    return this.timelineEvents.get(runId) ?? []
   }
 }
 
@@ -221,5 +238,53 @@ describe('backendControlPlaneService', () => {
         capabilitiesJson: '{"models":["claude-4"]}',
       }),
     ])
+  })
+
+  it('appends typed timeline events with monotonically increasing sequence numbers', () => {
+    const service = createBackendControlPlaneService({ store })
+    service.attachBinding({
+      chatSessionId: 'chat-3',
+      agentProfileId: 'profile-1',
+      providerKind: 'openai-compatible',
+      backendSessionId: null,
+      backendStateSnapshot: null,
+      requestedModelId: 'gpt-5',
+      configSnapshot: null,
+    })
+
+    const run = service.startRun({
+      chatSessionId: 'chat-3',
+      messageId: 'message-3',
+      origin: 'user',
+    })
+
+    const started = service.appendTimelineEvent({
+      chatSessionId: 'chat-3',
+      runId: run.id,
+      event: {
+        type: 'run.started',
+        source: {
+          backend: 'openai-compatible',
+          eventType: 'run.started',
+        },
+      },
+    })
+    const delta = service.appendTimelineEvent({
+      chatSessionId: 'chat-3',
+      runId: run.id,
+      event: {
+        type: 'assistant.text.delta',
+        itemId: 'item-1',
+        delta: 'Hello',
+        source: {
+          backend: 'openai-compatible',
+          eventType: 'response.output_text.delta',
+        },
+      },
+    })
+
+    expect(started.sequenceNumber).toBe(0)
+    expect(delta.sequenceNumber).toBe(1)
+    expect(store.listTimelineEventsByRunId(run.id)).toHaveLength(2)
   })
 })

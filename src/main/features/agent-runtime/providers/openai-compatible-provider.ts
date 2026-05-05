@@ -1,12 +1,12 @@
-// Input: AgentProfile config, main-process credential reader, and optional injected OpenAI client factory
-// Output: OpenAICompatibleProvider for Base URL / API key model access with streaming chat
+// Input: AgentProfile config, credential reader, and optional injected OpenAI client factory
+// Output: OpenAICompatibleProvider that maps OpenAI-compatible streams into typed timeline facts
 // Position: Concrete Agent Runtime provider for OpenAI-compatible HTTP APIs
 
 import { randomUUID } from 'node:crypto'
 
 import OpenAI from 'openai'
 
-import type { ResponseStreamEvent } from '../../chat/chat-provider'
+import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
 import type {
   AgentProfile,
   CancelTurnInput,
@@ -121,7 +121,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
     return input.runtimeSession
   }
 
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<ResponseStreamEvent, void, void> {
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
     const { runtimeSession, profile, message, modelId: inputModelId, thinkingEffort } = input
     const config = parseConfig(profile.configJson)
 
@@ -145,12 +145,6 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
     this.activeTurns.set(runtimeSession.chatSessionId, abortController)
 
     const textItemId = randomUUID()
-    let outputIndex = 0
-    let seqNum = 0
-    const nextSeq = (): number => {
-      seqNum++
-      return seqNum
-    }
 
     try {
       const extraParams: Record<string, unknown> = {}
@@ -202,30 +196,29 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
         if (firstChunk) {
           firstChunk = false
-          outputIndex++
           yield {
-            type: 'response.output_item.added',
-            output_index: outputIndex,
-            item: {
-              type: 'message',
-              id: textItemId,
-              role: 'assistant',
-              status: 'in_progress',
-              content: [],
+            type: 'assistant.message.started',
+            itemId: textItemId,
+            source: {
+              backend: this.providerKind,
+              eventType: 'response.output_item.added',
+              eventId: chunk.id,
+              itemId: textItemId,
             },
-            sequence_number: nextSeq(),
-          } as Extract<ResponseStreamEvent, { type: 'response.output_item.added' }>
+          }
         }
 
         yield {
-          type: 'response.output_text.delta',
-          item_id: textItemId,
-          content_index: 0,
+          type: 'assistant.text.delta',
+          itemId: textItemId,
           delta,
-          logprobs: [],
-          output_index: outputIndex,
-          sequence_number: nextSeq(),
-        } as Extract<ResponseStreamEvent, { type: 'response.output_text.delta' }>
+          source: {
+            backend: this.providerKind,
+            eventType: 'response.output_text.delta',
+            eventId: chunk.id,
+            itemId: textItemId,
+          },
+        }
       }
 
       if (abortController.signal.aborted) {
@@ -234,17 +227,14 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
       if (!firstChunk) {
         yield {
-          type: 'response.output_item.done',
-          output_index: outputIndex,
-          item: {
-            type: 'message',
-            id: textItemId,
-            role: 'assistant',
-            status: 'completed',
-            content: [],
+          type: 'assistant.message.completed',
+          itemId: textItemId,
+          source: {
+            backend: this.providerKind,
+            eventType: 'response.output_item.done',
+            itemId: textItemId,
           },
-          sequence_number: nextSeq(),
-        } as Extract<ResponseStreamEvent, { type: 'response.output_item.done' }>
+        }
       }
     }
     finally {

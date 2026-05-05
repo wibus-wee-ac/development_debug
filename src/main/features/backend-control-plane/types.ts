@@ -1,8 +1,12 @@
-// Input: ProviderKind from agent runtime and durable control-plane persistence requirements
-// Output: Backend control-plane entities, store interfaces, and application service input types
-// Position: Type contract for Cradle-owned backend binding/run/capability semantics
+// Input: ProviderKind from agent runtime, timeline event model, and durable control-plane persistence requirements
+// Output: Backend control-plane entities, timeline contracts, store interfaces, and service input types
+// Position: Type contract for Cradle-owned backend binding/run/capability/timeline semantics
 
 import type { ProviderKind } from '../agent-runtime/runtime-provider-types'
+import type {
+  BackendTimelineEvent,
+  TimelineInputEvent,
+} from './timeline-events'
 
 export interface BackendSessionBinding {
   id: string
@@ -69,6 +73,12 @@ export interface RecordBackendCapabilitySnapshotInput {
   capabilitiesJson: string
 }
 
+export interface AppendTimelineEventInput {
+  chatSessionId: string
+  runId: string
+  event: TimelineInputEvent
+}
+
 export interface BackendControlPlaneStore {
   getBindingByChatSessionId: (chatSessionId: string) => BackendSessionBinding | undefined
   listBindingsByBackendSessionId: (backendSessionId: string) => BackendSessionBinding[]
@@ -76,6 +86,9 @@ export interface BackendControlPlaneStore {
   createRun: (input: StartBackendRunInput & { bindingId: string }) => BackendRun
   updateRun: (input: FinishBackendRunInput) => BackendRun
   insertCapabilitySnapshot: (input: RecordBackendCapabilitySnapshotInput) => BackendCapabilitySnapshot
+  getLastTimelineEvent: (runId: string) => BackendTimelineEvent | undefined
+  insertTimelineEvent: (event: BackendTimelineEvent) => BackendTimelineEvent
+  listTimelineEventsByRunId: (runId: string) => BackendTimelineEvent[]
 }
 
 export interface BackendControlPlaneService {
@@ -85,8 +98,12 @@ export interface BackendControlPlaneService {
   startRun: (input: StartBackendRunInput) => BackendRun
   finishRun: (input: FinishBackendRunInput) => BackendRun
   recordCapabilitySnapshot: (input: RecordBackendCapabilitySnapshotInput) => BackendCapabilitySnapshot
+  appendTimelineEvent: (input: AppendTimelineEventInput) => BackendTimelineEvent
+  listTimelineEvents: (runId: string) => BackendTimelineEvent[]
 }
 
 export interface BackendCapabilityRecorder {
   recordCapabilitySnapshot: (input: RecordBackendCapabilitySnapshotInput) => BackendCapabilitySnapshot | void
 }
+
+export type { BackendTimelineEvent, TimelineInputEvent }

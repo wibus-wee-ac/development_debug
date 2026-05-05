@@ -1,5 +1,5 @@
 // Input: shared schema helpers, chat tables, identity tables, and sqlite column builders
-// Output: Backend binding/run/capability tables plus inferred row types
+// Output: Backend binding/run/capability/timeline tables plus inferred row types
 // Position: Control-plane persistence schema owned by Cradle's backend session model
 
 import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
@@ -63,9 +63,27 @@ export const backendCapabilitySnapshots = sqliteTable('backend_capability_snapsh
   recordedAt: int('recorded_at').notNull(),
 })
 
+export const backendTimelineEvents = sqliteTable('backend_timeline_events', {
+  id: textPk(),
+  runId: text('run_id')
+    .notNull()
+    .references(() => backendRuns.id, { onDelete: 'cascade' }),
+  chatSessionId: text('chat_session_id')
+    .notNull()
+    .references(() => sessions.id, { onDelete: 'cascade' }),
+  sequenceNumber: int('sequence_number').notNull(),
+  eventType: text('event_type').notNull(),
+  schemaVersion: text('schema_version').notNull(),
+  payloadJson: text('payload_json').notNull(),
+  sourceJson: text('source_json').notNull(),
+  createdAt: int('created_at').notNull(),
+})
+
 export type BackendSessionBinding = typeof backendSessionBindings.$inferSelect
 export type NewBackendSessionBinding = typeof backendSessionBindings.$inferInsert
 export type BackendRun = typeof backendRuns.$inferSelect
 export type NewBackendRun = typeof backendRuns.$inferInsert
 export type BackendCapabilitySnapshot = typeof backendCapabilitySnapshots.$inferSelect
 export type NewBackendCapabilitySnapshot = typeof backendCapabilitySnapshots.$inferInsert
+export type BackendTimelineEvent = typeof backendTimelineEvents.$inferSelect
+export type NewBackendTimelineEvent = typeof backendTimelineEvents.$inferInsert

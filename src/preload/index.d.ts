@@ -1,8 +1,12 @@
+// Input: Electron preload API contracts, IPC service types, and shared chat push payloads
+// Output: Global Window typing for preload-exposed bridges used by the renderer
+// Position: Type declaration surface for the isolated preload bridge
+
 import type { AcpDevtoolEvent, AgentContextEvent, IpcObservedEvent } from '@cradle/ipc'
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
-import type { ChatResponseEventPayload, ChatSessionTitlePayload } from '../shared/chat-events'
+import type { ChatSessionTitlePayload, ChatTimelineEventPayload } from '../shared/chat-events'
 
 interface IpcDevtoolApi {
   getSnapshot: () => ReturnType<IpcServices['ipcDevtool']['getSnapshot']>
@@ -25,7 +29,7 @@ interface PtyPushApi {
 }
 
 interface ChatPushApi {
-  onResponseEvent: (listener: (payload: ChatResponseEventPayload) => void) => () => void
+  onTimelineEvent: (listener: (payload: ChatTimelineEventPayload) => void) => () => void
   onSessionTitle: (listener: (payload: ChatSessionTitlePayload) => void) => () => void
 }
 

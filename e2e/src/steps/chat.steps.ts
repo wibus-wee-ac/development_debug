@@ -32,6 +32,11 @@ type PersistedBackendRun = {
   stopReason: string | null
 }
 
+type PersistedTimelineEvent = {
+  eventType: string
+  sequenceNumber: number
+}
+
 async function queryPersistedSessionRow<T>(
   world: CradleWorld,
   sql: string,
@@ -347,4 +352,55 @@ Then('当前聊天会话应持久化一条状态为{string}的 backend run', asy
 
   expect(run).not.toBeNull()
   expect(run).toEqual(expect.objectContaining({ chatSessionId, status }))
+})
+
+Then('当前聊天会话应持久化 backend timeline 事件序列', async function (this: CradleWorld) {
+  const chatSessionId = await getCurrentChatSessionId(this)
+  const timelineEvents = await this.mainProcess<PersistedTimelineEvent[], { chatSessionId: string }>(
+    async (electron, { chatSessionId }) => {
+      const getBuiltinModule = process.getBuiltinModule?.bind(process)
+
+      if (!getBuiltinModule) {
+        throw new Error('process.getBuiltinModule unavailable in Electron evaluate context')
+      }
+
+      const path = getBuiltinModule('node:path')
+      const moduleApi = getBuiltinModule('node:module')
+      const requireFromApp = moduleApi.createRequire(path.join(electron.app.getAppPath(), 'package.json'))
+      const Database = requireFromApp('better-sqlite3')
+
+      if (!Database) {
+        throw new Error('better-sqlite3 default export unavailable in Electron main process')
+      }
+
+      const dbPath = path.join(electron.app.getPath('userData'), 'cradle.db')
+      const db = new Database(dbPath, { readonly: true })
+
+      try {
+        return db.prepare(`
+          SELECT
+            event_type AS eventType,
+            sequence_number AS sequenceNumber
+          FROM backend_timeline_events
+          WHERE chat_session_id = ?
+          ORDER BY sequence_number ASC
+        `).all(chatSessionId) as PersistedTimelineEvent[]
+      }
+      finally {
+        db.close()
+      }
+    },
+    { chatSessionId },
+  )
+
+  expect(timelineEvents.length).toBeGreaterThanOrEqual(4)
+  expect(timelineEvents.map(event => event.eventType)).toEqual(expect.arrayContaining([
+    'run.started',
+    'assistant.message.started',
+    'assistant.text.delta',
+    'run.completed',
+  ]))
+  expect(timelineEvents.map(event => event.sequenceNumber)).toEqual(
+    timelineEvents.map((_, index) => index),
+  )
 })

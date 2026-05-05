@@ -5,7 +5,7 @@
 import { electronAPI } from '@electron-toolkit/preload'
 import { contextBridge } from 'electron'
 
-import type { ChatResponseEventPayload, ChatSessionTitlePayload } from '../shared/chat-events'
+import type { ChatSessionTitlePayload, ChatTimelineEventPayload } from '../shared/chat-events'
 
 const ACP_DEVTOOL_EVENT_CHANNEL = 'acp-devtool:event'
 const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
@@ -73,10 +73,10 @@ const ptyPush = {
 }
 
 const chatPush = {
-  onResponseEvent: (listener: (payload: ChatResponseEventPayload) => void) => {
-    const wrapped = (_event: unknown, payload: ChatResponseEventPayload) => listener(payload)
-    electronAPI.ipcRenderer.on('chat:response-event', wrapped)
-    return () => electronAPI.ipcRenderer.removeListener('chat:response-event', wrapped)
+  onTimelineEvent: (listener: (payload: ChatTimelineEventPayload) => void) => {
+    const wrapped = (_event: unknown, payload: ChatTimelineEventPayload) => listener(payload)
+    electronAPI.ipcRenderer.on('chat:timeline-event', wrapped)
+    return () => electronAPI.ipcRenderer.removeListener('chat:timeline-event', wrapped)
   },
   onSessionTitle: (listener: (payload: ChatSessionTitlePayload) => void) => {
     const wrapped = (_event: unknown, payload: ChatSessionTitlePayload) => listener(payload)

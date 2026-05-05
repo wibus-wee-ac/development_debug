@@ -36,6 +36,14 @@ type RunRecord = {
   errorText: string | null
 }
 
+type TimelineRecord = {
+  id: string
+  runId: string
+  chatSessionId: string
+  sequenceNumber: number
+  type: string
+}
+
 const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   getProviderCatalog: vi.fn(),
@@ -259,6 +267,7 @@ function createFakeDb(state: FakeDbState) {
 function createControlPlaneHarness() {
   const bindings = new Map<string, BindingRecord>()
   const runs = new Map<string, RunRecord>()
+  const timeline = new Map<string, TimelineRecord[]>()
   const snapshots: Array<{ agentProfileId: string, providerKind: string, source: string, capabilitiesJson: string }> = []
   let resolveFinished: (() => void) | null = null
   const finished = new Promise<void>((resolve) => {
@@ -313,9 +322,27 @@ function createControlPlaneHarness() {
       snapshots.push(input)
       return { id: `snapshot-${snapshots.length}`, ...input, recordedAt: 1_700_000_000 }
     },
+    appendTimelineEvent(input: { chatSessionId: string, runId: string, event: { type: string } }) {
+      const existing = timeline.get(input.runId) ?? []
+      const event: TimelineRecord & Record<string, unknown> = {
+        id: `timeline-${existing.length + 1}`,
+        runId: input.runId,
+        chatSessionId: input.chatSessionId,
+        sequenceNumber: existing.length,
+        schemaVersion: 'cradle.timeline.v1',
+        createdAt: 1_700_000_000,
+        ...input.event,
+      }
+      existing.push(event)
+      timeline.set(input.runId, existing)
+      return event
+    },
+    listTimelineEvents(runId: string) {
+      return timeline.get(runId) ?? []
+    },
   }
 
-  return { service, bindings, runs, snapshots, finished }
+  return { service, bindings, runs, timeline, snapshots, finished }
 }
 
 describe('chatEngine', () => {
@@ -373,9 +400,23 @@ describe('chatEngine', () => {
         },
         streamTurn: async function* streamTurn() {
           yield {
-            type: 'response.completed',
-            sequence_number: 1,
-            response: {},
+            type: 'assistant.message.started',
+            itemId: 'assistant-1',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+          yield {
+            type: 'assistant.text.delta',
+            itemId: 'assistant-1',
+            delta: '你好',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
           }
         },
         cancelTurn: async () => {},
@@ -427,6 +468,8 @@ describe('chatEngine', () => {
         source: 'session_start',
       }),
     ])
+    expect(mocks.observePush.mock.calls.some(([channel]) => channel === 'chat:timeline-event')).toBe(true)
+    expect(mocks.observePush.mock.calls.some(([channel]) => channel === 'chat:response-event')).toBe(false)
     expect(state.sessions[0]?.id).toBe(sessionId)
     expect(state.messages).toHaveLength(2)
   })

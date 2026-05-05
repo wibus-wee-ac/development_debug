@@ -1,9 +1,9 @@
-// Input: AcpConnectionManager, AcpProcessManager, AgentProfile, chat provider types
+// Input: AcpConnectionManager, AgentProfile, and typed runtime provider contracts
 // Output: AcpChatProvider implementing ChatRuntimeProvider for ACP-based agents
 // Position: Concrete chat provider for acp-chat profiles; wraps existing ACP transport
 
 import { AcpConnectionManager } from '../../../platform/acp/acp-connection'
-import type { ResponseStreamEvent } from '../../chat/chat-provider'
+import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
 import type {
   AgentProfile,
   AgentProvider,
@@ -183,7 +183,7 @@ export class AcpChatProvider implements ChatRuntimeProvider {
     })
   }
 
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<ResponseStreamEvent, void, void> {
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
     const { runtimeSession, profile, message } = input
     const acpSessionId = runtimeSession.providerSessionId
     if (!acpSessionId) {

@@ -12,4 +12,4 @@
 - **acp-installer.test.ts**: 验证 ACP 安装/卸载辅助逻辑
 - **acp-process-manager.test.ts**: 验证 ACP 子进程生命周期与 devtool 记录
 - **acp-registry.test.ts**: 验证 registry 拉取与平台过滤逻辑
-- **acp-responses-converter.test.ts**: 验证 ACP session update 到响应事件的转换
+- **acp-timeline-converter.test.ts**: 验证 ACP session update 到 typed timeline 事件的转换

@@ -1,8 +1,8 @@
-// Input: ResponseStreamEvent type from chat-provider
+// Input: Typed timeline input event model
 // Output: Agent runtime provider types shared by main-process services and providers
 // Position: Core type contract for the main-process agent runtime layer
 
-import type { ResponseStreamEvent } from '../chat/chat-provider'
+import type { TimelineInputEvent } from '../backend-control-plane/timeline-events'
 
 export type ProviderKind
   = 'acp-chat'
@@ -111,7 +111,7 @@ export interface TokenUsage {
 export interface ChatRuntimeProvider extends AgentProvider {
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
-  streamTurn: (input: StreamTurnInput) => AsyncGenerator<ResponseStreamEvent, void, void>
+  streamTurn: (input: StreamTurnInput) => AsyncGenerator<TimelineInputEvent, void, void>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
   /** Token usage from the most recent streamTurn call, if the provider supports it. */
   readonly lastUsage?: TokenUsage | null

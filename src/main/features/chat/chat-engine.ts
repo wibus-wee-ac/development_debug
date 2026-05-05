@@ -1,4 +1,4 @@
-// Input: Provider catalog, SQLite schema, AI UI stream helpers, devtool/ACP/skills integrations
+// Input: Provider catalog, SQLite schema, timeline reducers/projections, and devtool/ACP/skills integrations
 // Output: ChatEngine singleton for chat session lifecycle, persistence, streaming, and renderer broadcasts
 // Position: Chat feature orchestrator consumed by IPC adapters and issue-agent workflows
 
@@ -13,11 +13,13 @@ import type { WebContents } from 'electron'
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
 import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
+import type { BackendTimelineEvent, TimelineInputEvent } from '../backend-control-plane/timeline-events'
+import { projectTimelineEventToChatChunks } from '../backend-control-plane/timeline-events'
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
 import { agentProfiles as agentProfilesTable, agents as agentsTable, messages, sessions, usageLogs, workspaces } from '../../db/schema'
 import { AcpConnectionManager } from '../../platform/acp/acp-connection'
-import type { ChatResponseEventPayload, ResponseStreamEvent } from './chat-provider'
+import type { ChatTimelineEventPayload } from '../../../shared/chat-events'
 import { getAgentContextDevtoolStore } from '../../devtools/agent-context-devtool-store'
 import { readBundledResource } from '../../platform/resources/bundled-resources'
 import { buildSkillCatalog, scanSkills } from '../skills/skills'
@@ -581,16 +583,15 @@ export class ChatEngine {
   /**
    * Drive the transport chunk stream for a prepared draft.
    *
-   *  - Emits `response.created` before streaming starts
-   *  - Broadcasts each `ResponseStreamEvent` on `chat:response-event`
-   *  - Feeds an internal `readUIMessageStream` to maintain the DB snapshot
-   *  - On completion: broadcasts `response.completed`
-   *  - On error/cancel: broadcasts `response.failed` or `response.completed`
-   *    (with appropriate status), then clears the draft slot
+   *  - Appends Cradle-owned timeline facts to the backend control plane
+   *  - Broadcasts each persisted fact on `chat:timeline-event`
+   *  - Feeds projected `UIMessageChunk`s into the internal snapshot pipeline
+   *  - Closes or errors the stream from final `run.*` events, then clears the draft slot
    */
   private async runStream(draft: Draft, userText: string): Promise<void> {
     const pipe = new TransformStream<UIMessageChunk, UIMessageChunk>()
     const writer = pipe.writable.getWriter()
+    const controlPlane = getBackendControlPlaneService()
     const dbTask = (async () => {
       try {
         for await (const snap of readUIMessageStream<UIMessage>({
@@ -609,15 +610,37 @@ export class ChatEngine {
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
     let provider: ChatRuntimeProvider | null = null
+    let terminalError: unknown = null
 
-    // Announce the start of this response turn
-    this.broadcastResponseEvent(draft, {
-      type: 'response.created',
-      sequence_number: 0,
-      // `response` below satisfies the shape expected by the renderer
-      // (which only reads `type`); not sent to OpenAI, only over local IPC
-      response: { id: draft.messageId } as ResponseStreamEvent extends { type: 'response.created', response: infer R } ? R : never,
-    } as Extract<ResponseStreamEvent, { type: 'response.created' }>)
+    const emitTimelineEvent = async (event: TimelineInputEvent): Promise<BackendTimelineEvent> => {
+      if (!draft.runId) {
+        throw new Error(`Missing backend run for chat session: ${draft.chatSessionId}`)
+      }
+
+      const stored = controlPlane.appendTimelineEvent({
+        chatSessionId: draft.chatSessionId,
+        runId: draft.runId,
+        event,
+      })
+      const chunks = projectTimelineEventToChatChunks(stored)
+      this.broadcastTimelineEvent(draft, stored, chunks)
+      for (const chunk of chunks) {
+        await writer.write(chunk)
+      }
+      return stored
+    }
+
+    await emitTimelineEvent({
+      type: 'run.started',
+      source: {
+        backend: draft.runtimeSession.providerKind,
+        eventType: 'chat.turn.started',
+        metadata: {
+          messageId: draft.messageId,
+          userMessageId: draft.userMessageId,
+        },
+      },
+    })
 
     try {
       const profile = this.loadProfile(draft.agentId)
@@ -730,18 +753,14 @@ export class ChatEngine {
         systemPrompt,
         history,
       })) {
-        this.broadcastResponseEvent(draft, event)
-        for (const chunk of responsesEventToUIMessageChunks(event)) {
-          await writer.write(chunk)
-        }
+        await emitTimelineEvent(event)
       }
-      await writer.close()
     }
     catch (err) {
-      await writer.abort(err).catch(() => {})
       finalStatus = draft.cancelled ? 'aborted' : 'failed'
       const serializedError = serializeChatError(err)
       finalError = serializedError.text
+      terminalError = err
 
       if (!draft.cancelled) {
         console.error('[ChatEngine] prompt failed', {
@@ -754,10 +773,44 @@ export class ChatEngine {
       }
     }
 
+    const terminalEvent = await emitTimelineEvent(
+      finalStatus === 'complete'
+        ? {
+            type: 'run.completed',
+            source: {
+              backend: draft.runtimeSession.providerKind,
+              eventType: 'chat.turn.completed',
+            },
+          }
+        : finalStatus === 'aborted'
+          ? {
+              type: 'run.aborted',
+              source: {
+                backend: draft.runtimeSession.providerKind,
+                eventType: 'chat.turn.aborted',
+              },
+            }
+          : {
+              type: 'run.failed',
+              error: finalError ?? 'chat failed',
+              source: {
+                backend: draft.runtimeSession.providerKind,
+                eventType: 'chat.turn.failed',
+              },
+            },
+    )
+
+    if (terminalEvent.type === 'run.failed') {
+      await writer.abort(terminalError ?? new Error(terminalEvent.error)).catch(() => {})
+    }
+    else {
+      await writer.close()
+    }
+
     await dbTask
     await this.flushNow(draft, finalStatus, finalError)
     if (draft.runId) {
-      getBackendControlPlaneService().finishRun({
+      controlPlane.finishRun({
         runId: draft.runId,
         status: finalStatus,
         stopReason: finalStatus === 'complete'
@@ -806,26 +859,6 @@ export class ChatEngine {
       catch (err) {
         console.error('[ChatEngine] usage log insert failed:', err)
       }
-    }
-
-    // Broadcast Turn-end event
-    if (finalStatus === 'complete' || finalStatus === 'aborted') {
-      this.broadcastResponseEvent(draft, {
-        type: 'response.completed',
-        sequence_number: 0,
-        response: {} as Extract<ResponseStreamEvent, { type: 'response.completed' }>['response'],
-      } as Extract<ResponseStreamEvent, { type: 'response.completed' }>)
-    }
-    else {
-      this.broadcastResponseEvent(draft, {
-        type: 'response.failed',
-        sequence_number: 0,
-        response: {
-          error: finalError
-            ? ({ type: 'server_error', code: 'chat_failed', message: finalError } as unknown as Extract<ResponseStreamEvent, { type: 'response.failed' }>['response']['error'])
-            : null,
-        } as Extract<ResponseStreamEvent, { type: 'response.failed' }>['response'],
-      } as Extract<ResponseStreamEvent, { type: 'response.failed' }>)
     }
 
     const finishedEvent: ChatTurnFinishedEvent = {
@@ -887,13 +920,18 @@ export class ChatEngine {
     })
   }
 
-  private broadcastResponseEvent(draft: Draft, event: ResponseStreamEvent): void {
-    const payload: ChatResponseEventPayload = {
+  private broadcastTimelineEvent(
+    draft: Draft,
+    event: BackendTimelineEvent,
+    chunks: UIMessageChunk[],
+  ): void {
+    const payload: ChatTimelineEventPayload = {
       chatSessionId: draft.chatSessionId,
       messageId: draft.messageId,
       event,
+      chunks,
     }
-    this.broadcast('chat:response-event', payload as unknown as { chatSessionId: string, [k: string]: unknown })
+    this.broadcast('chat:timeline-event', payload as unknown as { chatSessionId: string, [k: string]: unknown })
   }
 
   private broadcast(
@@ -968,99 +1006,6 @@ function extractSessionMeta(providerStateSnapshot: string | null): {
   catch {
     return { modelId: null, configSnapshot: null }
   }
-}
-
-/**
- * Convert a single `ResponseStreamEvent` event into zero or more AI SDK
- * `UIMessageChunk` objects for internal DB-persistence use only.
- *
- * This keeps the existing `readUIMessageStream` pipeline working without
- * any dependency on the IPC wire format.
- */
-function responsesEventToUIMessageChunks(event: ResponseStreamEvent): UIMessageChunk[] {
-  const chunks: UIMessageChunk[] = []
-
-  switch (event.type) {
-    case 'response.output_item.added': {
-      if (event.item.type === 'message') {
-        chunks.push({ type: 'text-start', id: event.item.id })
-      }
-      else if (event.item.type === 'function_call') {
-        chunks.push({
-          type: 'tool-input-start',
-          toolCallId: event.item.call_id,
-          toolName: event.item.name,
-        })
-      }
-      break
-    }
-    case 'response.output_text.delta': {
-      chunks.push({ type: 'text-delta', id: event.item_id, delta: event.delta })
-      break
-    }
-    case 'response.output_item.done': {
-      if (event.item.type === 'message') {
-        chunks.push({ type: 'text-end', id: event.item.id })
-      }
-      else if (event.item.type === 'function_call' && event.item.status === 'completed') {
-        // arguments encodes { input, output } as JSON (ACP extension)
-        try {
-          const decoded = JSON.parse(event.item.arguments) as { input: unknown, output: unknown }
-          if (decoded.input !== undefined) {
-            chunks.push({
-              type: 'tool-input-available',
-              toolCallId: event.item.call_id,
-              toolName: event.item.name,
-              input: typeof decoded.input === 'string' ? decoded.input : JSON.stringify(decoded.input),
-            })
-          }
-          if (decoded.output !== null && decoded.output !== undefined) {
-            chunks.push({
-              type: 'tool-output-available',
-              toolCallId: event.item.call_id,
-              output: typeof decoded.output === 'string' ? decoded.output : JSON.stringify(decoded.output),
-            })
-          }
-        }
-        catch {
-          chunks.push({
-            type: 'tool-input-available',
-            toolCallId: event.item.call_id,
-            toolName: event.item.name,
-            input: event.item.arguments,
-          })
-        }
-      }
-      break
-    }
-    case 'response.reasoning_summary_part.added': {
-      chunks.push({ type: 'reasoning-start', id: event.item_id })
-      break
-    }
-    case 'response.reasoning_summary_text.delta': {
-      chunks.push({ type: 'reasoning-delta', id: event.item_id, delta: event.delta })
-      break
-    }
-    case 'response.reasoning_summary_part.done': {
-      chunks.push({ type: 'reasoning-end', id: event.item_id })
-      break
-    }
-    case 'response.completed': {
-      chunks.push({
-        type: 'finish',
-        finishReason: 'stop',
-      })
-      break
-    }
-    case 'response.failed': {
-      // failure handled at the caller level; no UI chunk needed
-      break
-    }
-    default:
-      break
-  }
-
-  return chunks
 }
 
 function rowToChatMessage(row: Message): ChatMessage {

@@ -10,3 +10,4 @@
 
 - **agent-runtime-schema.test.ts**: 验证 agent-runtime 相关表结构与约束
 - **backend-control-plane-schema.test.ts**: 验证 backend control-plane 表导出、session 瘦身约束，以及重基线后的 Drizzle 产物一致性
+- **backend-timeline-schema.test.ts**: 验证 backend timeline append-only 表导出与 run/sequence 所有权列

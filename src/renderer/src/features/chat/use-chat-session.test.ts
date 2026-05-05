@@ -17,7 +17,7 @@ vi.mock('@ai-sdk/react', () => ({
 
 vi.mock('@renderer/lib/ipc', () => ({ ipc: undefined }))
 vi.mock('./ipc-chat-transport', () => ({ createIpcChatTransport: vi.fn() }))
-vi.mock('./use-chat-events', () => ({ useChatResponseEvent: vi.fn() }))
+vi.mock('./use-chat-events', () => ({ useChatTimelineEvent: vi.fn() }))
 
 import { derivePassiveChatState, resolveVisibleChatState } from './use-chat-session'
 import { stopChatTurn } from './use-chat-session'

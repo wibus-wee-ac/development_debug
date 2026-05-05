@@ -5,7 +5,7 @@
 import { create } from 'zustand'
 
 interface SessionActivityState {
-  /** Session IDs that received a `response.completed` or `response.failed` while not active */
+  /** Session IDs that received a terminal `run.*` timeline event while not active */
   unread: Set<string>
   markUnread: (sessionId: string) => void
   clearUnread: (sessionId: string) => void

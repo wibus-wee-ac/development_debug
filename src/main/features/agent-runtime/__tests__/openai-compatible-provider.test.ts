@@ -100,11 +100,11 @@ describe('openAICompatibleProvider', () => {
 
     await expect(iterator.next()).resolves.toMatchObject({
       done: false,
-      value: { type: 'response.output_item.added' },
+      value: { type: 'assistant.message.started' },
     })
     await expect(iterator.next()).resolves.toMatchObject({
       done: false,
-      value: { type: 'response.output_text.delta', delta: 'Hello' },
+      value: { type: 'assistant.text.delta', delta: 'Hello' },
     })
 
     await provider.cancelTurn({ runtimeSession, profile })

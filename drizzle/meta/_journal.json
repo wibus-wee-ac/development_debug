@@ -8,6 +8,13 @@
       "when": 1777969277151,
       "tag": "0000_initial_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1777972784902,
+      "tag": "0001_steady_phalanx",
+      "breakpoints": true
     }
   ]
 }

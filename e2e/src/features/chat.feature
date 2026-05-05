@@ -102,3 +102,14 @@
     而且 聊天状态最终应为"idle"
     而且 当前聊天会话应持久化一条 backend binding
     而且 当前聊天会话应持久化一条状态为"complete"的 backend run
+
+  @P1 @CRADLE-CHAT-010
+  场景: 聊天回合会持久化 append-only backend timeline 事件
+    假如 我已配置 Mock LLM Provider
+    而且 我已添加了一个工作区
+    而且 我已导航到新建聊天页面
+    当 我在新建聊天输入框中输入"请建立一次 timeline 持久化回归会话"
+    而且 我点击发送按钮
+    那么 应该跳转到聊天视图
+    而且 聊天状态最终应为"idle"
+    而且 当前聊天会话应持久化 backend timeline 事件序列

@@ -1,27 +1,27 @@
-// Input: chatPush preload API, ChatResponseEventPayload, ChatSessionTitlePayload
-// Output: useChatResponseEvent, useGlobalChatEvent, useChatSessionTitle hooks
+// Input: chatPush preload API, ChatTimelineEventPayload, ChatSessionTitlePayload
+// Output: useChatTimelineEvent, useGlobalChatTimelineEvent, useChatSessionTitle hooks
 // Position: Unified chat event bridge — single subscription, multi-consumer dispatch
 
-import type { ChatResponseEventPayload, ChatSessionTitlePayload } from '@shared/chat-events'
+import type { ChatSessionTitlePayload, ChatTimelineEventPayload } from '@shared/chat-events'
 import { useEffect, useRef } from 'react'
 
 /* ─── Module-level handler registries ────────────────────── */
 
-type ResponseHandler = (payload: ChatResponseEventPayload) => void
+type TimelineHandler = (payload: ChatTimelineEventPayload) => void
 type TitleHandler = (payload: ChatSessionTitlePayload) => void
 
-const responseHandlers = new Set<ResponseHandler>()
+const timelineHandlers = new Set<TimelineHandler>()
 const titleHandlers = new Set<TitleHandler>()
 
-let responseUnsub: (() => void) | null = null
+let timelineUnsub: (() => void) | null = null
 let titleUnsub: (() => void) | null = null
 
-function ensureResponseSubscription(): void {
-  if (responseUnsub) {
+function ensureTimelineSubscription(): void {
+  if (timelineUnsub) {
     return
   }
-  responseUnsub = window.chatPush.onResponseEvent((payload) => {
-    for (const handler of responseHandlers) {
+  timelineUnsub = window.chatPush.onTimelineEvent((payload) => {
+    for (const handler of timelineHandlers) {
       handler(payload)
     }
   })
@@ -41,12 +41,12 @@ function ensureTitleSubscription(): void {
 /* ─── Hooks ──────────────────────────────────────────────── */
 
 /**
- * Subscribe to chat response events for a specific session.
+ * Subscribe to chat timeline events for a specific session.
  * The handler is called only when `payload.chatSessionId === sessionId`.
  */
-export function useChatResponseEvent(
+export function useChatTimelineEvent(
   sessionId: string | null | undefined,
-  handler: ResponseHandler,
+  handler: TimelineHandler,
 ): void {
   const handlerRef = useRef(handler)
 
@@ -59,25 +59,25 @@ export function useChatResponseEvent(
       return
     }
 
-    const wrapped: ResponseHandler = (payload) => {
+    const wrapped: TimelineHandler = (payload) => {
       if (payload.chatSessionId === sessionId) {
         handlerRef.current(payload)
       }
     }
 
-    responseHandlers.add(wrapped)
-    ensureResponseSubscription()
+    timelineHandlers.add(wrapped)
+    ensureTimelineSubscription()
 
     return () => {
-      responseHandlers.delete(wrapped)
+      timelineHandlers.delete(wrapped)
     }
   }, [sessionId])
 }
 
 /**
- * Subscribe to all chat response events regardless of session.
+ * Subscribe to all chat timeline events regardless of session.
  */
-export function useGlobalChatEvent(handler: ResponseHandler): void {
+export function useGlobalChatTimelineEvent(handler: TimelineHandler): void {
   const handlerRef = useRef(handler)
 
   useEffect(() => {
@@ -85,15 +85,15 @@ export function useGlobalChatEvent(handler: ResponseHandler): void {
   })
 
   useEffect(() => {
-    const wrapped: ResponseHandler = (payload) => {
+    const wrapped: TimelineHandler = (payload) => {
       handlerRef.current(payload)
     }
 
-    responseHandlers.add(wrapped)
-    ensureResponseSubscription()
+    timelineHandlers.add(wrapped)
+    ensureTimelineSubscription()
 
     return () => {
-      responseHandlers.delete(wrapped)
+      timelineHandlers.delete(wrapped)
     }
   }, [])
 }

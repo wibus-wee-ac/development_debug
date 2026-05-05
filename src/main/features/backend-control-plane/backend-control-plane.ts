@@ -1,10 +1,10 @@
-// Input: random UUIDs, Drizzle DB schema, and backend control-plane types/store contracts
+// Input: random UUIDs, Drizzle DB schema, timeline codecs, and backend control-plane types/store contracts
 // Output: DB-backed backend control-plane store plus application service and singleton accessor
-// Position: Feature owner for Cradle's backend bindings, run lifecycle, and capability snapshots
+// Position: Feature owner for Cradle's backend bindings, run lifecycle, capability snapshots, and timeline facts
 
 import { randomUUID } from 'node:crypto'
 
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
 import { getDb } from '../../db'
@@ -13,11 +13,18 @@ import {
   backendCapabilitySnapshots,
   backendRuns,
   backendSessionBindings,
+  backendTimelineEvents,
 } from '../../db/schema'
 import type {
+  BackendTimelineEvent,
   BackendControlPlaneService,
   BackendControlPlaneStore,
 } from './types'
+import {
+  decodeTimelineInputEvent,
+  encodeTimelineInputEvent,
+  TIMELINE_SCHEMA_VERSION,
+} from './timeline-events'
 
 export type {
   AttachBackendBindingInput,
@@ -137,6 +144,44 @@ export function createDbBackendControlPlaneStore(
         .returning()
         .get()
     },
+    getLastTimelineEvent(runId) {
+      const row = db
+        .select()
+        .from(backendTimelineEvents)
+        .where(eq(backendTimelineEvents.runId, runId))
+        .orderBy(desc(backendTimelineEvents.sequenceNumber))
+        .get()
+
+      return row ? hydrateTimelineEvent(row) : undefined
+    },
+    insertTimelineEvent(event) {
+      const encoded = encodeTimelineInputEvent(event)
+      const row = db.insert(backendTimelineEvents)
+        .values({
+          id: event.id,
+          runId: event.runId,
+          chatSessionId: event.chatSessionId,
+          sequenceNumber: event.sequenceNumber,
+          eventType: encoded.eventType,
+          schemaVersion: encoded.schemaVersion,
+          payloadJson: encoded.payloadJson,
+          sourceJson: encoded.sourceJson,
+          createdAt: event.createdAt,
+        })
+        .returning()
+        .get()
+
+      return hydrateTimelineEvent(row)
+    },
+    listTimelineEventsByRunId(runId) {
+      return db
+        .select()
+        .from(backendTimelineEvents)
+        .where(eq(backendTimelineEvents.runId, runId))
+        .orderBy(backendTimelineEvents.sequenceNumber)
+        .all()
+        .map(hydrateTimelineEvent)
+    },
   }
 }
 
@@ -176,6 +221,21 @@ export function createBackendControlPlaneService(deps: {
     recordCapabilitySnapshot(input) {
       return deps.store.insertCapabilitySnapshot(input)
     },
+    appendTimelineEvent(input) {
+      const lastEvent = deps.store.getLastTimelineEvent(input.runId)
+      return deps.store.insertTimelineEvent({
+        id: randomUUID(),
+        runId: input.runId,
+        chatSessionId: input.chatSessionId,
+        sequenceNumber: (lastEvent?.sequenceNumber ?? -1) + 1,
+        schemaVersion: TIMELINE_SCHEMA_VERSION,
+        createdAt: nowUnix(),
+        ...input.event,
+      })
+    },
+    listTimelineEvents(runId) {
+      return deps.store.listTimelineEventsByRunId(runId)
+    },
   }
 }
 
@@ -197,5 +257,25 @@ export function resetBackendControlPlaneServiceForTests(): void {
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000)
 }
+
+function hydrateTimelineEvent(row: typeof backendTimelineEvents.$inferSelect): BackendTimelineEvent {
+  const event = decodeTimelineInputEvent({
+    eventType: row.eventType,
+    payloadJson: row.payloadJson,
+    sourceJson: row.sourceJson,
+  })
+
+  return {
+    id: row.id,
+    runId: row.runId,
+    chatSessionId: row.chatSessionId,
+    sequenceNumber: row.sequenceNumber,
+    schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
+    createdAt: row.createdAt,
+    ...event,
+  }
+}
+
+export type { AppendTimelineEventInput } from './types'
 
 export type { BackendCapabilityRecorder } from './types'
