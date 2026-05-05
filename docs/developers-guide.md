@@ -54,8 +54,10 @@ Recent examples:
 - `src/main/features/issue-agent/issue-agent-query.ts` owns agent-session/activity query ordering.
 - `src/main/features/kanban/kanban-query.ts` owns Kanban read-side filtering, search, ordering, and linked-session projections.
 - `src/main/features/kanban/kanban-write.ts` owns Kanban write-side commands.
+- `src/main/features/agent-runtime/agent-runtime.ts` owns profile CRUD, credential persistence, provider probe/listModels orchestration, and runtime audit recording.
 - `src/main/app/ipc/kanban.ts` owns the public Kanban IPC namespace and delegates only Kanban-owned behavior.
 - `src/main/app/ipc/issue-agent.ts` owns the public issue-agent IPC namespace for delegation commands and agent-session/activity queries.
+- `src/main/app/ipc/agent-runtime.ts` owns the public agent-runtime IPC namespace and forwards to the feature-owned runtime control-plane service.
 
 That split is deliberate. Do not move new query-side or write-side business rules back into IPC adapters.
 
@@ -163,10 +165,10 @@ The backend is cleaner than before, but it is not done.
 
 High-value next steps:
 
-1. Shrink `IssueAgentRunner` into smaller orchestration pieces.
+1. Keep trimming thick `app/ipc/*` adapters such as `acp.ts`, `workspace.ts`, `session.ts`, and `usage.ts` until they are transport-only.
 2. Continue decomposing `ChatEngine`, which is still the largest feature hotspot.
 3. Reconcile session-model overlap only after the current app/feature boundaries are stable.
-4. Keep tightening agent-runtime ownership so provider/credential orchestration keeps shrinking.
+4. Reduce cross-layer knowledge where `platform/*` still knows too much feature-specific detail (for example window/chat or ACP/chat touchpoints).
 
 ## A simple rule of thumb
 

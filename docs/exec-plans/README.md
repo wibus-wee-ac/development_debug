@@ -6,7 +6,7 @@ Living execution plans for complex changes are stored here.
 Each plan must follow the repository ExecPlan format and remain self-contained as work evolves.
 Use date-prefixed filenames so contributors can find the latest plan quickly.
 
-Current canonical backend paths after the 2026-05-05 context refactor are under `src/main/contexts/kanban/` and `src/main/contexts/issue-agent/`. Older plans may reference the pre-refactor locations under `src/main/application/` or `src/main/lib/issue-agent-runner.ts`.
+Current canonical main-process backend paths after the 2026-05-05 ownership refactor are under `src/main/features/`, `src/main/app/ipc/`, `src/main/platform/`, and `src/main/events/`. Older plans may still reference pre-refactor locations such as `src/main/application/`, `src/main/services/`, `src/main/contexts/`, or `src/main/lib/`.
 
 ## Files
 
@@ -29,3 +29,7 @@ Current canonical backend paths after the 2026-05-05 context refactor are under 
 - **20260505-03-db-schema-context-split.md**: Execution plan for replacing the monolithic main-process DB schema with context-owned modules under `src/main/db/schema/`.
 - **20260505-04-issue-agent-ipc-ownership-split.md**: Execution plan for moving issue-agent delegation/session/activity IPC out of the `kanban` namespace into a dedicated `issueAgent` service.
 - **20260505-05-context-owned-ipc-adapters.md**: Execution plan for moving Kanban and issue-agent IPC adapters out of the root `services/` bucket into their owner contexts under `src/main/contexts/*/interfaces/`.
+- **20260505-06-backend-control-plane-schema.md**: Execution plan for introducing Cradle-owned backend bindings, runs, and capability snapshots so app sessions no longer store provider-native state directly, now implemented with fresh-DB migration and E2E validation notes.
+- **20260505-07-normalized-activity-timeline.md**: Execution plan for turning raw provider transport into a Cradle-owned activity timeline and keeping chat as a projection rather than the canonical model.
+- **20260505-08-approval-mediation-foundation.md**: Execution plan for adding a shared approval queue and renderer surface for interactive backends without faking uniform approval semantics where they do not exist.
+- **20260505-09-skills-routing-control-plane.md**: Execution plan for adding product-owned skill routing intent and compatibility mapping while keeping skill content filesystem-first.

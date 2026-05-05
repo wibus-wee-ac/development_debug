@@ -1,0 +1,12 @@
+<!-- Once this directory changes, update this README.md -->
+
+# Drizzle
+
+这里存放 SQLite 的 Drizzle migration 产物，是运行时真正执行的 schema 历史。
+SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，三者必须成套维护。
+当前历史已重新基线化；后续新增 migration 时不要再只提交其中一部分。
+
+## Files
+
+- **0000_initial_baseline.sql**: 当前主进程 schema 的干净 baseline migration
+- **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理
