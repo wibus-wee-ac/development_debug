@@ -24,6 +24,9 @@ import { acpChatProvider } from '../features/agent-runtime/providers/acp-chat-pr
 import { cliTuiProvider } from '../features/agent-runtime/providers/cli-tui-provider'
 import { OpenAICompatibleProvider } from '../features/agent-runtime/providers/openai-compatible-provider'
 import { ChatEngine } from '../features/chat/chat-engine'
+import { createBroadcastSubscriber } from '../features/chat/subscribers/broadcast-subscriber'
+import { createFtsSubscriber } from '../features/chat/subscribers/fts-subscriber'
+import { createUsageSubscriber } from '../features/chat/subscribers/usage-subscriber'
 import { ThreadSearchEngine } from '../features/chat/thread-search'
 import { IssueAgentRunner } from '../features/issue-agent/issue-agent-runner'
 import { PtyManager } from '../platform/pty/pty-manager'
@@ -150,10 +153,28 @@ app.whenReady().then(() => {
   chatEngine.initialize()
 
   const domainEventBus = createInMemoryDomainEventBus()
+  chatEngine.bindEventBus(domainEventBus)
   IssueAgentRunner.getInstance().bindDomainEventBus(domainEventBus)
   bridgeChatTurnFinishedEvents({
     source: chatEngine,
     eventBus: domainEventBus,
+  })
+
+  // Wire domain event subscribers (Open/Closed — add new behaviors here)
+  createBroadcastSubscriber({
+    eventBus: domainEventBus,
+    getSessionWatchers: () => chatEngine.getSessionWatchers(),
+    getGlobalSubscribers: () => chatEngine.getGlobalSubscribers(),
+    detachWebContents: wc => chatEngine.detachRenderer(wc),
+  })
+  createFtsSubscriber({
+    eventBus: domainEventBus,
+    db: getDb(),
+    searchEngine: ThreadSearchEngine.getInstance(),
+  })
+  createUsageSubscriber({
+    eventBus: domainEventBus,
+    db: getDb(),
   })
 
   // Register IPC services

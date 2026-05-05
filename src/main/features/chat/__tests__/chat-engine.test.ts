@@ -5,7 +5,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as schema from '../../../db/schema'
+import { createInMemoryDomainEventBus } from '../../../events/domain-event-bus'
 import { ChatEngine } from '../chat-engine'
+import { createBroadcastSubscriber } from '../subscribers/broadcast-subscriber'
 
 type FakeDbState = {
   agentProfiles: Array<typeof schema.agentProfiles.$inferSelect>
@@ -502,6 +504,16 @@ describe('chatEngine', () => {
         cancelTurn: async () => {},
         lastUsage: null,
       }),
+    })
+
+    // Wire event bus + broadcast subscriber so domain events reach IPC
+    const eventBus = createInMemoryDomainEventBus()
+    ChatEngine.getInstance().bindEventBus(eventBus)
+    createBroadcastSubscriber({
+      eventBus,
+      getSessionWatchers: () => ChatEngine.getInstance().getSessionWatchers(),
+      getGlobalSubscribers: () => ChatEngine.getInstance().getGlobalSubscribers(),
+      detachWebContents: wc => ChatEngine.getInstance().detachRenderer(wc),
     })
   })
 

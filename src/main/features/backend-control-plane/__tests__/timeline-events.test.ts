@@ -1,14 +1,12 @@
-// Input: timeline event parsers, reducers, and chat projection helpers
+// Input: timeline event parsers and chat projection helpers
 // Output: Regression tests for typed backend timeline facts and projection semantics
 // Position: Feature-level RED/GREEN guardrail for the Plan 07 breaking timeline rewrite
 
 import { describe, expect, it } from 'vitest'
 
 import {
-  createTimelineState,
   parseTimelineInputEvent,
   projectTimelineEventToChatChunks,
-  reduceTimelineState,
 } from '../timeline-events'
 
 describe('timeline events', () => {
@@ -27,46 +25,6 @@ describe('timeline events', () => {
       type: 'assistant.text.delta',
       itemId: 'item-1',
       delta: 'hello',
-    }))
-  })
-
-  it('reduces command activity into append-only projection state', () => {
-    const started = parseTimelineInputEvent({
-      type: 'command.started',
-      itemId: 'cmd-1',
-      command: 'pnpm test',
-      source: {
-        backend: 'acp-chat',
-        eventType: 'tool_call',
-      },
-    })
-    const delta = parseTimelineInputEvent({
-      type: 'command.output.delta',
-      itemId: 'cmd-1',
-      stream: 'stdout',
-      delta: 'PASS',
-      source: {
-        backend: 'acp-chat',
-        eventType: 'tool_call_update',
-      },
-    })
-    const completed = parseTimelineInputEvent({
-      type: 'command.completed',
-      itemId: 'cmd-1',
-      exitCode: 0,
-      source: {
-        backend: 'acp-chat',
-        eventType: 'tool_call',
-      },
-    })
-
-    const state = [started, delta, completed].reduce(reduceTimelineState, createTimelineState())
-
-    expect(state.commands['cmd-1']).toEqual(expect.objectContaining({
-      command: 'pnpm test',
-      stdout: 'PASS',
-      status: 'completed',
-      exitCode: 0,
     }))
   })
 

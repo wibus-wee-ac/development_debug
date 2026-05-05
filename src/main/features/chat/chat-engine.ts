@@ -5,28 +5,26 @@
 import { randomUUID } from 'node:crypto'
 
 import { observePush } from '@cradle/ipc'
-import type { UIMessage, UIMessageChunk } from 'ai'
-import { eq, inArray } from 'drizzle-orm'
+import type { UIMessage } from 'ai'
+import { eq } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 
+import { getDb } from '../../db'
+import type { Message, Session } from '../../db/schema'
+import { agentProfiles as agentProfilesTable, messages, sessions, workspaces } from '../../db/schema'
+import { getAgentContextDevtoolStore } from '../../devtools/agent-context-devtool-store'
+import type { DomainEventBus } from '../../events/domain-event-bus'
+import { AcpConnectionManager } from '../../platform/acp/acp-connection'
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
 import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
 import type { BackendTimelineEvent, TimelineInputEvent } from '../backend-control-plane/timeline-events'
-import { getDb } from '../../db'
-import type { Message, Session } from '../../db/schema'
-import { agentProfiles as agentProfilesTable, messages, sessions, usageLogs, workspaces } from '../../db/schema'
-import { AcpConnectionManager } from '../../platform/acp/acp-connection'
-import type { ChatSessionActivityPayload, ChatTimelineEventPayload } from '../../../shared/chat-events'
-import { getAgentContextDevtoolStore } from '../../devtools/agent-context-devtool-store'
 import { resolveChatTurnContext } from './chat-turn-context'
-import { persistProjectedTimelineEvent } from './chat-turn-persistence'
-import {
-  applyTimelineEventToChatTurn,
-  createChatTurnProjector,
-  type ChatTurnProjector,
-} from './chat-turn-projector'
-import { ThreadSearchEngine } from './thread-search'
+import { coordinateTurn } from './turn-coordinator'
+import type { TurnRepository } from './turn-repository'
+import { createTurnRepository } from './turn-repository'
+import type { TurnStateMachine } from './turn-state-machine'
+import { createTurnStateMachine } from './turn-state-machine'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -39,14 +37,13 @@ interface Draft {
   userMessageId: string
   agentId: string
   runtimeSession: ProviderSession
-  message: UIMessage
-  projector: ChatTurnProjector
-  /** User-triggered abort; distinguishes 'aborted' vs 'failed' at finalize time. */
-  cancelled: boolean
+  turn: TurnStateMachine
+  /** AbortController for stream cancellation — replaces boolean `cancelled` flag. */
+  abortController: AbortController
   /** Optional model override for this draft's turns. */
   modelId?: string
-  /** Optional reasoning effort for this draft's turns. */
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  /** Provider-specific options (e.g., thinkingEffort). Opaque to the engine. */
+  providerOptions?: Record<string, unknown>
 }
 
 interface CreateAndSendOpts {
@@ -83,7 +80,7 @@ interface PrepareTurnArgs {
   runtimeSession: ProviderSession
   userText: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  providerOptions?: Record<string, unknown>
   /** If present, the session row is created as part of the same transaction (first turn). */
   newSession?: {
     workspaceId: string
@@ -123,6 +120,20 @@ export class ChatEngine {
   private readonly turnFinishedSubscribers = new Set<(event: ChatTurnFinishedEvent) => void>()
   private titleUnsubscribe: (() => void) | null = null
   private initialized = false
+  private _repository: TurnRepository | null = null
+  private eventBus: DomainEventBus | null = null
+
+  private getRepository(): TurnRepository {
+    if (!this._repository) {
+      this._repository = createTurnRepository({ db: getDb() })
+    }
+    return this._repository
+  }
+
+  /** Bind a domain event bus for publishing streaming lifecycle events. */
+  bindEventBus(bus: DomainEventBus): void {
+    this.eventBus = bus
+  }
 
   static getInstance(): ChatEngine {
     if (!ChatEngine.instance) {
@@ -138,45 +149,20 @@ export class ChatEngine {
     }
     this.initialized = true
 
-    // Crash-recovery: any message left in 'streaming' from a previous run is aborted,
-    // and the parent session's updatedAt is bumped so the sidebar reflects the last
-    // activity time (otherwise a crash can bury a session in the list).
-    const db = getDb()
-    const strandedSessionIds = db
-      .select({ sessionId: messages.sessionId })
-      .from(messages)
-      .where(eq(messages.status, 'streaming'))
-      .all()
-      .map(row => row.sessionId)
-    const uniqueSessionIds = [...new Set(strandedSessionIds)]
-
-    if (uniqueSessionIds.length > 0) {
-      db.transaction((tx) => {
-        tx.update(messages)
-          .set({
-            status: 'aborted',
-            errorText: 'Interrupted by app restart',
-            updatedAt: nowUnix(),
-          })
-          .where(eq(messages.status, 'streaming'))
-          .run()
-        tx.update(sessions)
-          .set({ updatedAt: nowUnix() })
-          .where(inArray(sessions.id, uniqueSessionIds))
-          .run()
-      })
-    }
+    // Create repository and run crash recovery
+    this.getRepository().recoverStrandedRuns()
 
     // Forward agent title updates → chat:session-title with chatSessionId mapping.
     this.titleUnsubscribe = AcpConnectionManager.getInstance().onSessionTitle(
       (acpSessionId, title) => {
         const bindings = getBackendControlPlaneService().listBindingsByBackendSessionId(acpSessionId)
         for (const binding of bindings) {
-          const row = db.select().from(sessions).where(eq(sessions.id, binding.chatSessionId)).get()
+          const row = getDb().select().from(sessions).where(eq(sessions.id, binding.chatSessionId)).get()
           if (!row) {
             continue
           }
-          db.update(sessions)
+          getDb()
+            .update(sessions)
             .set({ title, updatedAt: nowUnix() })
             .where(eq(sessions.id, row.id))
             .run()
@@ -195,6 +181,7 @@ export class ChatEngine {
     this.drafts.clear()
     this.subscribers.clear()
     this.sessionWatchers.clear()
+    this._repository = null
     this.initialized = false
   }
 
@@ -245,6 +232,21 @@ export class ChatEngine {
     }
   }
 
+  /** Expose session watchers for broadcast subscriber wiring. */
+  getSessionWatchers(): Map<string, Map<WebContents, number>> {
+    return this.sessionWatchers
+  }
+
+  /** Expose global subscribers for broadcast subscriber wiring. */
+  getGlobalSubscribers(): Set<WebContents> {
+    return this.subscribers
+  }
+
+  /** Expose detach logic for broadcast subscriber cleanup. */
+  detachRenderer(wc: WebContents): void {
+    this.detachWebContents(wc)
+  }
+
   private detachWebContents(wc: WebContents): void {
     this.subscribers.delete(wc)
     for (const [chatSessionId, counts] of this.sessionWatchers.entries()) {
@@ -275,6 +277,10 @@ export class ChatEngine {
     const { modelId } = extractSessionMeta(runtimeSession.providerStateSnapshot)
     const requestedModelId = optsModelId ?? modelId
 
+    const providerOptions: Record<string, unknown> | undefined = thinkingEffort
+      ? { thinkingEffort }
+      : undefined
+
     const draft = this.prepareTurn({
       chatSessionId,
       agentId,
@@ -282,7 +288,7 @@ export class ChatEngine {
       runtimeSession,
       userText: text,
       modelId: optsModelId,
-      thinkingEffort,
+      providerOptions,
       newSession: {
         workspaceId,
         title: fallbackTitle,
@@ -392,7 +398,7 @@ export class ChatEngine {
     if (!draft) {
       return
     }
-    draft.cancelled = true
+    draft.abortController.abort()
     try {
       const profile = this.loadProfile(draft.agentId)
       const provider = this.getChatProvider(profile.providerKind)
@@ -481,7 +487,7 @@ export class ChatEngine {
       if (activeDraft && activeDraft.messageId === row.id) {
         return rowToChatMessage({
           ...row,
-          content: JSON.stringify(activeDraft.message),
+          content: JSON.stringify(activeDraft.turn.message),
         })
       }
       // Stale streaming row — heal on read so no caller ever sees a zombie status
@@ -532,7 +538,7 @@ export class ChatEngine {
    * Returns the draft ready for `runStream` to drive.
    */
   private prepareTurn(args: PrepareTurnArgs): Draft {
-    const { chatSessionId, agentId, agentIdentityId, runtimeSession, userText, newSession, modelId, thinkingEffort } = args
+    const { chatSessionId, agentId, agentIdentityId, runtimeSession, userText, newSession, modelId, providerOptions } = args
 
     // Atomic single-in-flight-turn claim. JS is single-threaded so this is the
     // authoritative check — any caller that loses the race throws here.
@@ -599,11 +605,10 @@ export class ChatEngine {
       userMessageId: userMsgId,
       agentId,
       runtimeSession,
-      message: assistantMessage,
-      projector: createChatTurnProjector(assistantMessage),
-      cancelled: false,
+      turn: createTurnStateMachine(assistantMessage),
+      abortController: new AbortController(),
       modelId,
-      thinkingEffort,
+      providerOptions,
     }
     this.drafts.set(chatSessionId, draft)
 
@@ -613,16 +618,16 @@ export class ChatEngine {
   /**
    * Drive the transport chunk stream for a prepared draft.
    *
-   *  - Appends Cradle-owned timeline facts inside the same transaction that updates the assistant snapshot
-   *  - Broadcasts persisted facts only to windows explicitly watching the session
-   *  - Emits terminal activity summaries globally for unread indicators
+   * Uses TurnCoordinator to drive the provider stream. Side-effects (persist,
+   * broadcast, FTS, usage) are still processed inline for now — these will move
+   * to event subscribers in a later milestone.
    */
   private async runStream(draft: Draft, userText: string): Promise<void> {
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
     let provider: ChatRuntimeProvider | null = null
 
-    const emitTimelineEvent = async (
+    const emitTimelineEvent = (
       event: TimelineInputEvent,
       options: {
         messageStatus?: MessageStatus
@@ -633,49 +638,45 @@ export class ChatEngine {
           errorText: string | null
         }
       } = {},
-    ): Promise<BackendTimelineEvent> => {
+    ): BackendTimelineEvent => {
       if (!draft.runId) {
         throw new Error(`Missing backend run for chat session: ${draft.chatSessionId}`)
       }
 
-      const chunks = applyTimelineEventToChatTurn(draft.projector, event)
-      draft.message = draft.projector.message
+      const chunks = draft.turn.apply(event)
 
-      const stored = persistProjectedTimelineEvent({
+      const stored = this.getRepository().persistEvent({
         chatSessionId: draft.chatSessionId,
         messageId: draft.messageId,
         runId: draft.runId,
         event,
-        messageJson: JSON.stringify(draft.message),
+        message: draft.turn.message,
         messageStatus: options.messageStatus ?? 'streaming',
         errorText: options.errorText ?? null,
         runCompletion: options.runCompletion,
       })
-      this.broadcastTimelineEvent(draft, stored, chunks)
 
-      if (stored.type === 'run.completed' || stored.type === 'run.aborted' || stored.type === 'run.failed') {
-        this.broadcastSessionActivity({
-          chatSessionId: draft.chatSessionId,
-          messageId: draft.messageId,
-          status: options.runCompletion?.status ?? 'failed',
-          errorText: options.errorText ?? null,
+      const isTerminal = stored.type === 'run.completed' || stored.type === 'run.aborted' || stored.type === 'run.failed'
+
+      // Publish domain event — subscribers handle broadcast + session activity
+      if (this.eventBus) {
+        void this.eventBus.publish({
+          id: randomUUID(),
+          type: 'chat.timeline-event-persisted',
+          occurredAt: Date.now(),
+          payload: {
+            chatSessionId: draft.chatSessionId,
+            messageId: draft.messageId,
+            runId: draft.runId,
+            event: stored,
+            chunks,
+            terminal: isTerminal,
+          },
         })
       }
 
       return stored
     }
-
-    await emitTimelineEvent({
-      type: 'run.started',
-      source: {
-        backend: draft.runtimeSession.providerKind,
-        eventType: 'chat.turn.started',
-        metadata: {
-          messageId: draft.messageId,
-          userMessageId: draft.userMessageId,
-        },
-      },
-    })
 
     try {
       const profile = this.loadProfile(draft.agentId)
@@ -702,44 +703,79 @@ export class ChatEngine {
         providerKind: profile.providerKind,
       })
 
-      for await (const event of provider.streamTurn({
-        runtimeSession: draft.runtimeSession,
-        profile,
-        message: userText,
-        modelId: draft.modelId,
-        thinkingEffort: draft.thinkingEffort,
-        systemPrompt: turnContext.systemPrompt,
-        history: turnContext.history,
-      })) {
-        await emitTimelineEvent(event)
+      // Drive the provider stream via TurnCoordinator
+      const turnGen = coordinateTurn({
+        provider,
+        streamInput: {
+          runtimeSession: draft.runtimeSession,
+          profile,
+          message: userText,
+          modelId: draft.modelId,
+          providerOptions: draft.providerOptions,
+          systemPrompt: turnContext.systemPrompt,
+          history: turnContext.history,
+        },
+        providerKind: profile.providerKind,
+        signal: draft.abortController.signal,
+      })
+
+      for await (const yield_ of turnGen) {
+        const { event } = yield_
+        if (yield_.type === 'terminal') {
+          // Terminal event — determine final status from the event type
+          finalStatus = event.type === 'run.completed'
+            ? 'complete'
+            : event.type === 'run.aborted'
+              ? 'aborted'
+              : 'failed'
+          finalError = event.type === 'run.failed' ? event.error : null
+
+          if (finalStatus === 'failed') {
+            console.error('[ChatEngine] prompt failed', {
+              chatSessionId: draft.chatSessionId,
+              messageId: draft.messageId,
+              agentId: draft.agentId,
+              providerSessionId: draft.runtimeSession.providerSessionId,
+              error: finalError,
+            })
+          }
+
+          emitTimelineEvent(event, {
+            messageStatus: finalStatus,
+            errorText: finalError,
+            runCompletion: {
+              status: finalStatus,
+              stopReason: finalStatus === 'complete'
+                ? 'response.completed'
+                : finalStatus === 'aborted'
+                  ? 'response.cancelled'
+                  : 'response.failed',
+              errorText: finalError,
+            },
+          })
+        }
+        else {
+          emitTimelineEvent(event)
+        }
       }
     }
     catch (err) {
-      finalStatus = draft.cancelled ? 'aborted' : 'failed'
+      // If something went wrong outside the coordinator (e.g., context resolution, profile load)
+      finalStatus = draft.abortController.signal.aborted ? 'aborted' : 'failed'
       const serializedError = serializeChatError(err)
       finalError = serializedError.text
 
-      if (!draft.cancelled) {
-        console.error('[ChatEngine] prompt failed', {
+      if (!draft.abortController.signal.aborted) {
+        console.error('[ChatEngine] runStream outer failure', {
           chatSessionId: draft.chatSessionId,
           messageId: draft.messageId,
-          agentId: draft.agentId,
-          providerSessionId: draft.runtimeSession.providerSessionId,
           error: serializedError.payload,
         })
       }
-    }
 
-    await emitTimelineEvent(
-      finalStatus === 'complete'
-        ? {
-            type: 'run.completed',
-            source: {
-              backend: draft.runtimeSession.providerKind,
-              eventType: 'chat.turn.completed',
-            },
-          }
-        : finalStatus === 'aborted'
+      // Emit terminal event for failures outside the coordinator
+      emitTimelineEvent(
+        finalStatus === 'aborted'
           ? {
               type: 'run.aborted',
               source: {
@@ -755,60 +791,24 @@ export class ChatEngine {
                 eventType: 'chat.turn.failed',
               },
             },
-      {
-        messageStatus: finalStatus,
-        errorText: finalError,
-        runCompletion: {
-          status: finalStatus,
-          stopReason: finalStatus === 'complete'
-            ? 'response.completed'
-            : draft.cancelled
+        {
+          messageStatus: finalStatus,
+          errorText: finalError,
+          runCompletion: {
+            status: finalStatus,
+            stopReason: draft.abortController.signal.aborted
               ? 'response.cancelled'
               : 'response.failed',
-          errorText: finalError,
+            errorText: finalError,
+          },
         },
-      },
-    )
+      )
+    }
+
+    // Flush any buffered delta writes before cleanup
+    this.getRepository().flush()
 
     this.drafts.delete(draft.chatSessionId)
-
-    // Index completed message in FTS
-    if (finalStatus === 'complete') {
-      try {
-        const session = getDb().select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
-        if (session) {
-          ThreadSearchEngine.getInstance().indexMessage(
-            draft.chatSessionId,
-            session.title,
-            draft.messageId,
-            JSON.stringify(draft.message),
-          )
-        }
-      }
-      catch (err) {
-        console.error('[ChatEngine] FTS indexing failed:', err)
-      }
-    }
-
-    // Persist token usage if the provider reported it
-    if (finalStatus === 'complete' && provider?.lastUsage) {
-      try {
-        const binding = getBackendControlPlaneService().getBinding(draft.chatSessionId)
-        getDb().insert(usageLogs).values({
-          id: randomUUID(),
-          sessionId: draft.chatSessionId,
-          messageId: draft.messageId,
-          agentProfileId: draft.agentId,
-          modelId: draft.modelId ?? binding?.requestedModelId ?? null,
-          promptTokens: provider.lastUsage.promptTokens,
-          completionTokens: provider.lastUsage.completionTokens,
-          totalTokens: provider.lastUsage.totalTokens,
-        }).run()
-      }
-      catch (err) {
-        console.error('[ChatEngine] usage log insert failed:', err)
-      }
-    }
 
     const finishedEvent: ChatTurnFinishedEvent = {
       chatSessionId: draft.chatSessionId,
@@ -818,56 +818,33 @@ export class ChatEngine {
       agentProfileId: draft.agentId,
       finishedAt: Date.now(),
     }
+
+    // Publish chat.message-completed domain event — subscribers handle FTS + usage
+    if (this.eventBus) {
+      const binding = getBackendControlPlaneService().getBinding(draft.chatSessionId)
+      void this.eventBus.publish({
+        id: randomUUID(),
+        type: 'chat.message-completed',
+        occurredAt: Date.now(),
+        payload: {
+          chatSessionId: draft.chatSessionId,
+          messageId: draft.messageId,
+          status: finalStatus,
+          errorText: finalError,
+          uiMessageJson: JSON.stringify(draft.turn.message),
+          agentProfileId: draft.agentId,
+          modelId: draft.modelId ?? binding?.requestedModelId ?? null,
+          usage: provider?.lastUsage ?? null,
+        },
+      })
+    }
+
     for (const subscriber of [...this.turnFinishedSubscribers]) {
       try {
         subscriber(finishedEvent)
       }
       catch (error) {
         console.error('[ChatEngine] turn-finished subscriber failed:', error)
-      }
-    }
-  }
-
-  private broadcastTimelineEvent(
-    draft: Draft,
-    event: BackendTimelineEvent,
-    chunks: UIMessageChunk[],
-  ): void {
-    const payload: ChatTimelineEventPayload = {
-      chatSessionId: draft.chatSessionId,
-      messageId: draft.messageId,
-      event,
-      chunks,
-    }
-    this.broadcastSession('chat:timeline-event', draft.chatSessionId, payload)
-  }
-
-  private broadcastSessionActivity(event: ChatSessionActivityPayload): void {
-    this.broadcastGlobal('chat:session-activity', event)
-  }
-
-  private broadcastSession<T extends { chatSessionId: string }>(
-    channel: string,
-    chatSessionId: string,
-    payload: T,
-  ): void {
-    observePush(channel, payload, { flowId: payload.chatSessionId })
-
-    const watchers = this.sessionWatchers.get(chatSessionId)
-    if (!watchers) {
-      return
-    }
-
-    for (const wc of [...watchers.keys()]) {
-      if (wc.isDestroyed()) {
-        this.detachWebContents(wc)
-        continue
-      }
-      try {
-        wc.send(channel, payload)
-      }
-      catch {
-        this.detachWebContents(wc)
       }
     }
   }

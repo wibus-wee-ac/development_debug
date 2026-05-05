@@ -66,8 +66,8 @@ export interface StreamTurnInput {
   message: string
   /** Override the model for this turn. Takes precedence over profile configJson. */
   modelId?: string
-  /** Reasoning effort hint for models that support it (e.g., OpenAI o-series). */
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  /** Provider-specific options (e.g., reasoning_effort for OpenAI o-series). Opaque to the engine. */
+  providerOptions?: Record<string, unknown>
   /** System prompt to prepend as a {role:'system'} message. */
   systemPrompt?: string
   /** Prior conversation messages for context (excludes the current turn). */

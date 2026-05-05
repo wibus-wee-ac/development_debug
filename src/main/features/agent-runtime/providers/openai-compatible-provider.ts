@@ -122,7 +122,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
   }
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
-    const { runtimeSession, profile, message, modelId: inputModelId, thinkingEffort } = input
+    const { runtimeSession, profile, message, modelId: inputModelId, providerOptions } = input
     const config = parseConfig(profile.configJson)
 
     const effectiveModel = inputModelId ?? config.model
@@ -148,8 +148,8 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
     try {
       const extraParams: Record<string, unknown> = {}
-      if (thinkingEffort) {
-        extraParams.reasoning_effort = thinkingEffort
+      if (providerOptions?.thinkingEffort) {
+        extraParams.reasoning_effort = providerOptions.thinkingEffort
       }
 
       this._lastUsage = null
