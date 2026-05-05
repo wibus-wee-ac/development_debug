@@ -2,15 +2,10 @@
 // Output: PtyManager singleton — starts/stops/writes/resizes PTY processes and fans out data to subscribers
 // Position: Main-process lifecycle manager for cli-tui provider sessions
 
-import type { WebContents } from 'electron'
 import type { IPty } from 'node-pty'
 import * as pty from 'node-pty'
 
-export const PTY_DATA_CHANNEL = 'pty:data'
-export const PTY_TITLE_CHANNEL = 'pty:title'
-export const PTY_EXIT_CHANNEL = 'pty:exit'
-export const PTY_NOTIFICATION_CHANNEL = 'pty:notification'
-export const PTY_COMMAND_FINISH_CHANNEL = 'pty:command-finish'
+import type { SignalBroadcaster } from '../signal-broadcaster'
 
 /**
  * Parse OSC 133;D command-finish sequences. Returns exit code (null if not found).
@@ -82,9 +77,9 @@ function extractOscTitle(data: string): string | null {
 export class PtyManager {
   private static instance: PtyManager | null = null
   private readonly sessions = new Map<string, IPty>()
-  private readonly subscribers = new Set<WebContents>()
   /** Rolling output buffer per session — capped at MAX_BUFFER_BYTES */
   private readonly buffers = new Map<string, string>()
+  private broadcaster: SignalBroadcaster | null = null
 
   private static readonly MAX_BUFFER_BYTES = 512 * 1024 // 512 KB
 
@@ -95,31 +90,8 @@ export class PtyManager {
     return PtyManager.instance
   }
 
-  subscribe(webContents: WebContents): () => void {
-    this.subscribers.add(webContents)
-
-    webContents.once('destroyed', () => {
-      this.subscribers.delete(webContents)
-    })
-
-    return () => {
-      this.subscribers.delete(webContents)
-    }
-  }
-
-  private push(channel: string, ...args: unknown[]): void {
-    for (const wc of [...this.subscribers]) {
-      if (wc.isDestroyed()) {
-        this.subscribers.delete(wc)
-        continue
-      }
-      try {
-        wc.send(channel, ...args)
-      }
-      catch {
-        this.subscribers.delete(wc)
-      }
-    }
+  bindBroadcaster(broadcaster: SignalBroadcaster): void {
+    this.broadcaster = broadcaster
   }
 
   start(
@@ -153,24 +125,24 @@ export class PtyManager {
           ? next.slice(next.length - PtyManager.MAX_BUFFER_BYTES)
           : next,
       )
-      this.push(PTY_DATA_CHANNEL, sessionId, data)
+      this.broadcaster?.broadcastGlobal('pty:data', { sessionId, data })
       const title = extractOscTitle(data)
       if (title !== null) {
-        this.push(PTY_TITLE_CHANNEL, sessionId, title)
+        this.broadcaster?.broadcastGlobal('pty:title', { sessionId, title })
       }
       const notification = extractOsc9Notification(data)
       if (notification !== null) {
-        this.push(PTY_NOTIFICATION_CHANNEL, sessionId, notification)
+        this.broadcaster?.broadcastGlobal('pty:notification', { sessionId, message: notification })
       }
       const exitCode = extractOsc133CommandFinish(data)
       if (exitCode !== null) {
-        this.push(PTY_COMMAND_FINISH_CHANNEL, sessionId, exitCode)
+        this.broadcaster?.broadcastGlobal('pty:command-finish', { sessionId, exitCode })
       }
     })
 
     instance.onExit(({ exitCode, signal }) => {
       this.sessions.delete(sessionId)
-      this.push(PTY_EXIT_CHANNEL, sessionId, exitCode, signal ?? null)
+      this.broadcaster?.broadcastGlobal('pty:exit', { sessionId, exitCode, signal: signal ?? null })
     })
   }
 

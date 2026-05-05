@@ -1,8 +1,9 @@
-// Input: window.ptyPush, chat activity hooks, session-activity store, layout store, and tab store
+// Input: unified signal bridge, chat activity hooks, session-activity store, layout store, and tab store
 // Output: useGlobalEventListeners hook — registers PTY, chat event listeners, and panel keyboard shortcuts
 // Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
 
 import { useGlobalChatSessionActivityEvent } from '@renderer/features/chat/use-chat-events'
+import { subscribe } from '@renderer/lib/signal'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useCradleTabStore } from '@renderer/tabs/registry'
@@ -92,7 +93,7 @@ export function useGlobalEventListeners() {
 
   // PTY notifications: OSC 9, exit, OSC 133;D
   useEffect(() => {
-    const unsubNotify = window.ptyPush.onNotification((sessionId, message) => {
+    const unsubNotify = subscribe('pty:notification', ({ sessionId, message }) => {
       if (!isSessionActive(sessionId)) {
         markUnread(sessionId)
       }
@@ -101,13 +102,13 @@ export function useGlobalEventListeners() {
       }
     })
 
-    const unsubExit = window.ptyPush.onExit((sessionId) => {
+    const unsubExit = subscribe('pty:exit', ({ sessionId }) => {
       if (!isSessionActive(sessionId)) {
         markUnread(sessionId)
       }
     })
 
-    const unsubCommandFinish = window.ptyPush.onCommandFinish((sessionId) => {
+    const unsubCommandFinish = subscribe('pty:command-finish', ({ sessionId }) => {
       if (!isSessionActive(sessionId)) {
         markUnread(sessionId)
         if ('Notification' in window && Notification.permission === 'granted') {

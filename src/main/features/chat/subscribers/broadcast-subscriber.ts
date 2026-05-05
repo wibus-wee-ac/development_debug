@@ -1,40 +1,38 @@
-// Input: Domain event bus, renderer WebContents session/global watcher registries
-// Output: Event subscriber that pushes timeline events to renderer windows via IPC
+// Input: Domain event bus, SignalBroadcaster, session watcher registry
+// Output: Event subscriber that pushes timeline events to renderer via unified signal bridge
 // Position: Chat feature subscriber — decouples broadcast from the core turn loop
 
-import { observePush } from '@cradle/ipc'
 import type { WebContents } from 'electron'
 
 import type { ChatSessionActivityPayload, ChatTimelineEventPayload } from '../../../../shared/chat-events'
 import type { DomainEventBus } from '../../../events/domain-event-bus'
+import type { SignalBroadcaster } from '../../../platform/signal-broadcaster'
 
 export interface BroadcastSubscriberDeps {
   eventBus: DomainEventBus
+  broadcaster: SignalBroadcaster
   getSessionWatchers: () => Map<string, Map<WebContents, number>>
-  getGlobalSubscribers: () => Set<WebContents>
-  detachWebContents: (wc: WebContents) => void
 }
 
 export function createBroadcastSubscriber(deps: BroadcastSubscriberDeps): () => void {
-  const { eventBus, getSessionWatchers, getGlobalSubscribers, detachWebContents } = deps
+  const { eventBus, broadcaster, getSessionWatchers } = deps
 
   return eventBus.subscribe('chat.timeline-event-persisted', (event) => {
     const { chatSessionId, messageId, event: timelineEvent, chunks, terminal } = event.payload
 
-    // Push timeline event to session watchers
+    // Push timeline event to session watchers only
     const payload: ChatTimelineEventPayload = {
       chatSessionId,
       messageId,
       event: timelineEvent,
       chunks,
     }
-    broadcastToSession(
-      'chat:timeline-event',
-      chatSessionId,
-      payload,
-      getSessionWatchers(),
-      detachWebContents,
-    )
+
+    const sessionWatchers = getSessionWatchers().get(chatSessionId)
+    if (sessionWatchers) {
+      const watcherSet = new Set(sessionWatchers.keys())
+      broadcaster.broadcastFiltered('chat:timeline-event', payload, wc => watcherSet.has(wc))
+    }
 
     // Push session activity (global) for terminal events
     if (terminal) {
@@ -51,62 +49,7 @@ export function createBroadcastSubscriber(deps: BroadcastSubscriberDeps): () => 
         status,
         errorText,
       }
-      broadcastToGlobal(
-        'chat:session-activity',
-        activityPayload,
-        getGlobalSubscribers(),
-        detachWebContents,
-      )
+      broadcaster.broadcastGlobal('chat:session-activity', activityPayload)
     }
   })
-}
-
-function broadcastToSession<T extends { chatSessionId: string }>(
-  channel: string,
-  chatSessionId: string,
-  payload: T,
-  sessionWatchers: Map<string, Map<WebContents, number>>,
-  detachWebContents: (wc: WebContents) => void,
-): void {
-  observePush(channel, payload, { flowId: payload.chatSessionId })
-
-  const watchers = sessionWatchers.get(chatSessionId)
-  if (!watchers) {
-    return
-  }
-
-  for (const wc of [...watchers.keys()]) {
-    if (wc.isDestroyed()) {
-      detachWebContents(wc)
-      continue
-    }
-    try {
-      wc.send(channel, payload)
-    }
-    catch {
-      detachWebContents(wc)
-    }
-  }
-}
-
-function broadcastToGlobal<T extends { chatSessionId: string }>(
-  channel: string,
-  payload: T,
-  globalSubscribers: Set<WebContents>,
-  detachWebContents: (wc: WebContents) => void,
-): void {
-  observePush(channel, payload, { flowId: payload.chatSessionId })
-
-  for (const wc of [...globalSubscribers]) {
-    if (wc.isDestroyed()) {
-      detachWebContents(wc)
-      continue
-    }
-    try {
-      wc.send(channel, payload)
-    }
-    catch {
-      detachWebContents(wc)
-    }
-  }
 }

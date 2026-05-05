@@ -4,7 +4,6 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { observePush } from '@cradle/ipc'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import type { WebContents } from 'electron'
@@ -15,6 +14,7 @@ import { agentProfiles as agentProfilesTable, messages, sessions, workspaces } f
 import { getAgentContextDevtoolStore } from '../../devtools/agent-context-devtool-store'
 import type { DomainEventBus } from '../../events/domain-event-bus'
 import { AcpConnectionManager } from '../../platform/acp/acp-connection'
+import type { SignalBroadcaster } from '../../platform/signal-broadcaster'
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
 import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
@@ -122,6 +122,7 @@ export class ChatEngine {
   private initialized = false
   private _repository: TurnRepository | null = null
   private eventBus: DomainEventBus | null = null
+  private signalBroadcaster: SignalBroadcaster | null = null
 
   private getRepository(): TurnRepository {
     if (!this._repository) {
@@ -133,6 +134,11 @@ export class ChatEngine {
   /** Bind a domain event bus for publishing streaming lifecycle events. */
   bindEventBus(bus: DomainEventBus): void {
     this.eventBus = bus
+  }
+
+  /** Bind the unified signal broadcaster for renderer push events. */
+  bindSignalBroadcaster(broadcaster: SignalBroadcaster): void {
+    this.signalBroadcaster = broadcaster
   }
 
   static getInstance(): ChatEngine {
@@ -850,22 +856,11 @@ export class ChatEngine {
   }
 
   private broadcastGlobal<T extends { chatSessionId: string }>(
-    channel: string,
+    _channel: string,
     payload: T,
   ): void {
-    observePush(channel, payload, { flowId: payload.chatSessionId })
-
-    for (const wc of [...this.subscribers]) {
-      if (wc.isDestroyed()) {
-        this.detachWebContents(wc)
-        continue
-      }
-      try {
-        wc.send(channel, payload)
-      }
-      catch {
-        this.detachWebContents(wc)
-      }
+    if (this.signalBroadcaster) {
+      this.signalBroadcaster.broadcastGlobal('chat:session-title', payload as unknown as import('../../../shared/chat-events').ChatSessionTitlePayload)
     }
   }
 

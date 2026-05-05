@@ -9,6 +9,7 @@ export default defineConfig({
   main: {
     resolve: {
       alias: {
+        '@main': resolve('src/main'),
         '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
         '@shared': resolve('src/shared'),
       },

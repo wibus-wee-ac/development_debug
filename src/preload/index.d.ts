@@ -1,16 +1,23 @@
-// Input: Electron preload API contracts, IPC service types, and shared chat push payloads
-// Output: Global Window typing for preload-exposed bridges used by the renderer
+// Input: Electron preload API contracts, PushEventMap, IPC service types
+// Output: Global Window typing for the unified signal bridge
 // Position: Type declaration surface for the isolated preload bridge
 
 import type { AcpDevtoolEvent, AgentContextEvent, IpcObservedEvent } from '@cradle/ipc'
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
-import type {
-  ChatSessionActivityPayload,
-  ChatSessionTitlePayload,
-  ChatTimelineEventPayload,
-} from '../shared/chat-events'
+import type { PushEventMap, PushTopic } from '../shared/push-events'
+
+// ── Unified Signal Bridge ─────────────────────────────────────────────────────
+
+interface CradleBridge {
+  subscribe: <T extends PushTopic>(
+    topic: T,
+    listener: (payload: PushEventMap[T]) => void,
+  ) => () => void
+}
+
+// ── Devtool (observability) ───────────────────────────────────────────────────
 
 interface IpcDevtoolApi {
   getSnapshot: () => ReturnType<IpcServices['ipcDevtool']['getSnapshot']>
@@ -24,26 +31,11 @@ interface IpcDevtoolApi {
   onAgentContextEvent: (listener: (event: AgentContextEvent) => void) => () => void
 }
 
-interface PtyPushApi {
-  onData: (listener: (sessionId: string, data: string) => void) => () => void
-  onTitle: (listener: (sessionId: string, title: string) => void) => () => void
-  onExit: (listener: (sessionId: string, exitCode: number, signal: number | null) => void) => () => void
-  onNotification: (listener: (sessionId: string, message: string) => void) => () => void
-  onCommandFinish: (listener: (sessionId: string, exitCode: number) => void) => () => void
-}
-
-interface ChatPushApi {
-  onTimelineEvent: (listener: (payload: ChatTimelineEventPayload) => void) => () => void
-  onSessionTitle: (listener: (payload: ChatSessionTitlePayload) => void) => () => void
-  onSessionActivity: (listener: (payload: ChatSessionActivityPayload) => void) => () => void
-}
-
 declare global {
   interface Window {
     electron: ElectronAPI
     ipc: IpcServices
+    cradle: CradleBridge
     ipcDevtool: IpcDevtoolApi
-    ptyPush: PtyPushApi
-    chatPush: ChatPushApi
   }
 }

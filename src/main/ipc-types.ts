@@ -7,6 +7,7 @@ import type { MergeIpcService } from '@cradle/ipc'
 import type { AcpService } from './app/ipc/acp'
 import type { AgentService } from './app/ipc/agent'
 import type { AgentRuntimeService } from './app/ipc/agent-runtime'
+import type { ApprovalService } from './app/ipc/approval'
 import type { ChatService } from './app/ipc/chat'
 import type { DevService } from './app/ipc/dev'
 import type { GitService } from './app/ipc/git'
@@ -34,6 +35,7 @@ export type IpcServices = MergeIpcService<{
   agent: typeof AgentService
   agentRuntime: typeof AgentRuntimeService
   acp: typeof AcpService
+  approval: typeof ApprovalService
   preferences: typeof PreferencesService
   ipcDevtool: typeof IpcDevtoolService
   dev: typeof DevService
@@ -51,8 +53,10 @@ export type IpcServices = MergeIpcService<{
 }>
 
 // Convenience re-exports so the renderer imports from one place
-export type { CredentialMetadata } from './features/agent-runtime/credential-vault'
-export type { ModelDescriptor, ProviderKind, ProviderProbeResult } from './features/agent-runtime/runtime-provider-types'
+export type { ChatTimelineEventPayload } from '../shared/chat-events'
+export type { CreateAgentInput, UpdateAgentInput } from './app/ipc/agent'
+export type { GitBranches, GitFileStatus, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './app/ipc/git'
+export type { DailyUsage, UsageSummary } from './app/ipc/usage'
 export type { Message, Session, Workspace } from './db/schema'
 export type {
   AcpAgent,
@@ -64,31 +68,29 @@ export type {
 } from './db/schema'
 export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 export type { AgentActivity, AgentSession } from './db/schema'
-export type { AcpSessionState } from './platform/acp/acp-connection'
-export type { CreateAgentInput, UpdateAgentInput } from './app/ipc/agent'
-export type { ProcessMetrics } from './platform/acp/acp-process-manager'
-export type { RegistryAgent } from './platform/acp/acp-registry'
+export type { CredentialMetadata } from './features/agent-runtime/credential-vault'
+export type { ModelDescriptor, ProviderKind, ProviderProbeResult } from './features/agent-runtime/runtime-provider-types'
 export type { ChatMessage, EnsureLiveResult } from './features/chat/chat-engine'
-export type { ChatTimelineEventPayload } from '../shared/chat-events'
 export type {
   MatchRange,
   ThreadSearchHit,
   ThreadSearchParams,
   ThreadSearchSnippet,
 } from './features/chat/thread-search'
-export type { GitBranches, GitFileStatus, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './app/ipc/git'
-export type { DailyUsage, UsageSummary } from './app/ipc/usage'
-export type { AcpDevtoolEvent } from '@cradle/ipc'
+export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './features/skills/skill-source'
 export type {
   CreateSkillInput,
-  SkillContext,
   SkillCatalogEntry,
+  SkillContext,
   SkillDocument,
   SkillInventoryEntry,
   SkillScope,
   UpdateSkillInput,
 } from './features/skills/skills'
-export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './features/skills/skill-source'
+export type { AcpSessionState } from './platform/acp/acp-connection'
+export type { ProcessMetrics } from './platform/acp/acp-process-manager'
+export type { RegistryAgent } from './platform/acp/acp-registry'
+export type { AcpDevtoolEvent } from '@cradle/ipc'
 
 // Pack-codebase types — inlined here so the renderer doesn't need to resolve the feature module
 export type PackStyle = 'xml' | 'markdown' | 'plain'

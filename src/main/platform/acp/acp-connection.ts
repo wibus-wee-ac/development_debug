@@ -121,11 +121,26 @@ interface ConnectionEntry {
 
 // ── Manager ───────────────────────────────────────────────────────────────────
 
+export interface AcpPermissionRequest {
+  agentId: string
+  sessionId: string
+  toolTitle: string
+  options: Array<{ optionId: string, name: string, kind: string }>
+}
+
+export interface AcpPermissionResponse {
+  outcome: 'selected' | 'cancelled'
+  optionId?: string
+}
+
+export type AcpPermissionHandler = (request: AcpPermissionRequest) => Promise<AcpPermissionResponse>
+
 export class AcpConnectionManager {
   private static instance: AcpConnectionManager
   private readonly connections = new Map<string, ConnectionEntry>()
   private readonly pendingConnects = new Map<string, Promise<InitializeResponse>>()
   private readonly sessionTitleHandlers = new Set<(acpSessionId: string, title: string) => void>()
+  private _permissionHandler: AcpPermissionHandler | null = null
 
   /** Token usage from the most recently completed prompt, if reported by the ACP agent. */
   private _lastUsage: { promptTokens: number, completionTokens: number, totalTokens: number } | null = null
@@ -136,6 +151,11 @@ export class AcpConnectionManager {
       AcpConnectionManager.instance = new AcpConnectionManager()
     }
     return AcpConnectionManager.instance
+  }
+
+  /** Bind a permission handler for user approval flow. */
+  setPermissionHandler(handler: AcpPermissionHandler): void {
+    this._permissionHandler = handler
   }
 
   /** Register a callback for agent-pushed session title updates (used by ChatEngine). */
@@ -315,10 +335,10 @@ export class AcpConnectionManager {
   }
 
   /**
-  * Send a prompt and yield typed timeline facts as they arrive.
+   * Send a prompt and yield typed timeline facts as they arrive.
    *
    * Generator semantics:
-  *  - Yields every normalized event produced by the ACP timeline converter
+   *  - Yields every normalized event produced by the ACP timeline converter
    *  - Yields trailing flush chunks on normal completion, then returns
    *  - Throws if the underlying ACP connection errors (caller's for-await rethrows)
    *  - Safe to `break` from the generator: the active ACP prompt is *not* auto-cancelled —
@@ -490,11 +510,39 @@ export class AcpConnectionManager {
   private createClient(agentId: string, _agent: Agent): Client {
     return {
       requestPermission: async (params) => {
-        const firstOption = params.options?.[0]
+        if (!this._permissionHandler) {
+          // Fallback: auto-approve when no handler is wired (e.g., tests)
+          const firstOption = params.options?.[0]
+          return {
+            outcome: {
+              outcome: 'selected' as const,
+              optionId: firstOption?.optionId ?? '',
+            },
+          }
+        }
+
+        const options = (params.options ?? []).map(opt => ({
+          optionId: opt.optionId,
+          name: opt.name,
+          kind: opt.kind,
+        }))
+
+        const toolTitle = params.toolCall?.title ?? 'Unknown operation'
+        const response = await this._permissionHandler({
+          agentId,
+          sessionId: params.sessionId,
+          toolTitle,
+          options,
+        })
+
+        if (response.outcome === 'cancelled') {
+          return { outcome: { outcome: 'cancelled' as const } }
+        }
+
         return {
           outcome: {
             outcome: 'selected' as const,
-            optionId: firstOption?.optionId ?? '',
+            optionId: response.optionId ?? '',
           },
         }
       },

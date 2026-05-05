@@ -1,10 +1,11 @@
-// Input: window.ptyPush push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon + full addon suite, app CSS theme vars
+// Input: unified signal bridge push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon + full addon suite, app CSS theme vars
 // Output: ShellView — interactive shell terminal for the bottom panel
 // Position: Rendered as the bottom panel for chat sessions; ptyId is session-scoped
 
 import '@xterm/xterm/css/xterm.css'
 
 import { ipc } from '@renderer/lib/ipc'
+import { subscribe } from '@renderer/lib/signal'
 import { useLayoutStore } from '@renderer/store/layout'
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
@@ -201,11 +202,11 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
       void ipc?.pty.writePty(ptyId, data)
     })
 
-    const unsubData = window.ptyPush.onData((id, data) => {
+    const unsubData = subscribe('pty:data', ({ sessionId: id, data }) => {
       if (id === ptyId) { terminal.write(data) }
     })
 
-    const unsubExit = window.ptyPush.onExit((id) => {
+    const unsubExit = subscribe('pty:exit', ({ sessionId: id }) => {
       if (id !== ptyId) { return }
       terminal.write('\r\n\x1B[2m[Process exited]\x1B[0m\r\n')
       setBottomPanelOpen(false)

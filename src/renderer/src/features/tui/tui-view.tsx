@@ -1,4 +1,4 @@
-// Input: window.ptyPush push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon, app CSS theme vars
+// Input: unified signal bridge push API, ipc.pty IPC methods, xterm Terminal + FitAddon + WebglAddon, app CSS theme vars
 // Output: TuiView — live terminal rendering for cli-tui sessions
 // Position: Session view rendered when session.agent resolves to a CliAgent
 //
@@ -11,6 +11,7 @@
 import '@xterm/xterm/css/xterm.css'
 
 import { ipc } from '@renderer/lib/ipc'
+import { subscribe } from '@renderer/lib/signal'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
@@ -118,14 +119,14 @@ export function TuiView({ sessionId }: TuiViewProps) {
     })
 
     // Receive raw PTY output
-    const unsubData = window.ptyPush.onData((sid, data) => {
+    const unsubData = subscribe('pty:data', ({ sessionId: sid, data }) => {
       if (sid === sessionId) {
         terminal.write(data)
       }
     })
 
     // Show exit message
-    const unsubExit = window.ptyPush.onExit((sid) => {
+    const unsubExit = subscribe('pty:exit', ({ sessionId: sid }) => {
       if (sid === sessionId) {
         terminal.write('\r\n\x1B[2m[Process exited]\x1B[0m\r\n')
       }

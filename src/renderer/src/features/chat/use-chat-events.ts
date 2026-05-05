@@ -1,4 +1,4 @@
-// Input: chatPush preload API, renderer IPC proxy, ChatTimelineEventPayload, ChatSessionTitlePayload, ChatSessionActivityPayload
+// Input: unified signal bridge (window.cradle.subscribe), ChatTimelineEventPayload, ChatSessionTitlePayload, ChatSessionActivityPayload
 // Output: useChatTimelineEvent, useGlobalChatSessionActivityEvent, useChatSessionTitle hooks
 // Position: Unified chat event bridge — single subscription, multi-consumer dispatch
 
@@ -7,6 +7,7 @@ import type {
   ChatSessionTitlePayload,
   ChatTimelineEventPayload,
 } from '@shared/chat-events'
+import { subscribe } from '@renderer/lib/signal'
 import { ipc } from '@renderer/lib/ipc'
 import { useEffect, useRef } from 'react'
 
@@ -28,7 +29,7 @@ function ensureTimelineSubscription(): void {
   if (timelineUnsub) {
     return
   }
-  timelineUnsub = window.chatPush.onTimelineEvent((payload) => {
+  timelineUnsub = subscribe('chat:timeline-event', (payload) => {
     for (const handler of timelineHandlers) {
       handler(payload)
     }
@@ -39,7 +40,7 @@ function ensureActivitySubscription(): void {
   if (activityUnsub) {
     return
   }
-  activityUnsub = window.chatPush.onSessionActivity((payload) => {
+  activityUnsub = subscribe('chat:session-activity', (payload) => {
     for (const handler of activityHandlers) {
       handler(payload)
     }
@@ -50,7 +51,7 @@ function ensureTitleSubscription(): void {
   if (titleUnsub) {
     return
   }
-  titleUnsub = window.chatPush.onSessionTitle((payload) => {
+  titleUnsub = subscribe('chat:session-title', (payload) => {
     for (const handler of titleHandlers) {
       handler(payload)
     }

@@ -6,6 +6,7 @@ import { join } from 'node:path'
 
 import { createServices } from '@cradle/ipc'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
+import { getBackendControlPlaneService } from '@main/features/backend-control-plane/backend-control-plane'
 import { eq, sql } from 'drizzle-orm'
 import { app, BrowserWindow, shell } from 'electron'
 
@@ -18,24 +19,29 @@ import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
 import {
   createDbCredentialStore,
 } from '../features/agent-runtime/agent-runtime'
-import { initPackCodebaseWasm } from '../features/pack-codebase/pack-codebase'
 import { initProviderCatalog } from '../features/agent-runtime/catalog-instance'
 import { acpChatProvider } from '../features/agent-runtime/providers/acp-chat-provider'
 import { cliTuiProvider } from '../features/agent-runtime/providers/cli-tui-provider'
 import { OpenAICompatibleProvider } from '../features/agent-runtime/providers/openai-compatible-provider'
+import { createApprovalBroadcastSubscriber } from '../features/approval/approval-broadcast'
+import { getApprovalService } from '../features/approval/approval-service'
 import { ChatEngine } from '../features/chat/chat-engine'
 import { createBroadcastSubscriber } from '../features/chat/subscribers/broadcast-subscriber'
 import { createFtsSubscriber } from '../features/chat/subscribers/fts-subscriber'
 import { createUsageSubscriber } from '../features/chat/subscribers/usage-subscriber'
 import { ThreadSearchEngine } from '../features/chat/thread-search'
 import { IssueAgentRunner } from '../features/issue-agent/issue-agent-runner'
+import { initPackCodebaseWasm } from '../features/pack-codebase/pack-codebase'
+import { AcpConnectionManager } from '../platform/acp/acp-connection'
 import { PtyManager } from '../platform/pty/pty-manager'
+import { initSignalBroadcaster } from '../platform/signal-broadcaster'
 import { startSocketServer, stopSocketServer } from '../platform/socket/socket-server'
 import { decryptSecret, encryptSecret } from '../platform/storage/safe-storage'
 import { revealWindow } from '../platform/window/window-activation'
 import { AcpService } from './ipc/acp'
 import { AgentService } from './ipc/agent'
 import { AgentRuntimeService } from './ipc/agent-runtime'
+import { ApprovalService } from './ipc/approval'
 import { ChatService } from './ipc/chat'
 import { DevService } from './ipc/dev'
 import { GitService } from './ipc/git'
@@ -160,12 +166,16 @@ app.whenReady().then(() => {
     eventBus: domainEventBus,
   })
 
+  // Create unified signal broadcaster — single push gateway for all renderer events
+  const signalBroadcaster = initSignalBroadcaster()
+  chatEngine.bindSignalBroadcaster(signalBroadcaster)
+  PtyManager.getInstance().bindBroadcaster(signalBroadcaster)
+
   // Wire domain event subscribers (Open/Closed — add new behaviors here)
   createBroadcastSubscriber({
     eventBus: domainEventBus,
+    broadcaster: signalBroadcaster,
     getSessionWatchers: () => chatEngine.getSessionWatchers(),
-    getGlobalSubscribers: () => chatEngine.getGlobalSubscribers(),
-    detachWebContents: wc => chatEngine.detachRenderer(wc),
   })
   createFtsSubscriber({
     eventBus: domainEventBus,
@@ -177,6 +187,42 @@ app.whenReady().then(() => {
     db: getDb(),
   })
 
+  // Wire approval broadcast (pushes approval lifecycle events to renderer)
+  const approvalService = getApprovalService()
+  createApprovalBroadcastSubscriber({
+    approvalService,
+    broadcaster: signalBroadcaster,
+  })
+
+  // Wire ACP permission handler → approval service
+  AcpConnectionManager.getInstance().setPermissionHandler(async (request) => {
+    const bindings = getBackendControlPlaneService().listBindingsByBackendSessionId(request.sessionId)
+    const chatSessionId = bindings[0]?.chatSessionId ?? null
+
+    const options = request.options.map(opt => ({
+      optionId: opt.optionId,
+      label: opt.name,
+      description: opt.kind,
+    }))
+
+    const response = await approvalService.requestApproval({
+      chatSessionId,
+      agentId: request.agentId,
+      prompt: request.toolTitle,
+      options,
+    })
+
+    if (response.decision === 'rejected') {
+      const rejectOption = request.options.find(o => o.kind === 'reject_once' || o.kind === 'reject_always')
+      if (rejectOption) {
+        return { outcome: 'selected', optionId: rejectOption.optionId }
+      }
+      return { outcome: 'cancelled' }
+    }
+
+    return { outcome: 'selected', optionId: response.selectedOptionId }
+  })
+
   // Register IPC services
   const services = createServices([
     WorkspaceService,
@@ -184,6 +230,7 @@ app.whenReady().then(() => {
     AgentService,
     AgentRuntimeService,
     AcpService,
+    ApprovalService,
     PreferencesService,
     IpcDevtoolService,
     DevService,
@@ -214,18 +261,18 @@ app.whenReady().then(() => {
   })
 
   const mainWindow = createWindow()
+  signalBroadcaster.subscribe(mainWindow.webContents)
   chatEngine.subscribe(mainWindow.webContents)
   subscribeRuntimeDevtools(mainWindow.webContents)
-  PtyManager.getInstance().subscribe(mainWindow.webContents)
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow()
+      signalBroadcaster.subscribe(win.webContents)
       chatEngine.subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
-      PtyManager.getInstance().subscribe(win.webContents)
     }
   })
 })

@@ -1,9 +1,10 @@
-// Input: ipc.chat IPC surface and chatPush preload timeline event bridge
+// Input: ipc.chat IPC surface and unified signal bridge for timeline events
 // Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by projected timeline chunks
 // Position: Feature helper for chat feature, bridges AI SDK's useChat to Electron IPC
 
 import type { ChatTimelineEventPayload } from '@shared/chat-events'
 import { ipc } from '@renderer/lib/ipc'
+import { subscribe } from '@renderer/lib/signal'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 
 function extractText(parts: UIMessage['parts']): string {
@@ -97,7 +98,7 @@ function buildChunkStream(
     void ipc?.chat.unwatchSession(chatSessionId).catch(() => {})
   }
 
-  const offEvent = window.chatPush.onTimelineEvent(
+  const offEvent = subscribe('chat:timeline-event',
     (data: ChatTimelineEventPayload) => {
       if (data.chatSessionId !== chatSessionId || closed) {
         return

@@ -9,7 +9,7 @@ import { BrowserWindow } from 'electron'
 
 import { ChatEngine } from '../../features/chat/chat-engine'
 import { subscribeRuntimeDevtools } from '../../devtools/ipc-devtool'
-import { PtyManager } from '../pty/pty-manager'
+import { getSignalBroadcaster } from '../signal-broadcaster'
 import { revealOrFocusExistingWindow, revealWindow } from './window-activation'
 
 export class WindowManager {
@@ -74,8 +74,8 @@ export class WindowManager {
 
     win.webContents.once('did-finish-load', () => {
       // Subscribe streaming events so chat updates reach this window
+      getSignalBroadcaster().subscribe(win.webContents)
       ChatEngine.getInstance().subscribe(win.webContents)
-      PtyManager.getInstance().subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
     })
 

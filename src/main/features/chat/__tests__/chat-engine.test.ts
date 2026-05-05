@@ -424,6 +424,7 @@ function createFakeWebContents() {
 describe('chatEngine', () => {
   let state: FakeDbState
   let controlPlane: ReturnType<typeof createControlPlaneHarness>
+  let mockBroadcaster: { broadcastGlobal: ReturnType<typeof vi.fn>, broadcastFiltered: ReturnType<typeof vi.fn>, subscribe: ReturnType<typeof vi.fn> }
 
   beforeEach(() => {
     state = {
@@ -509,11 +510,15 @@ describe('chatEngine', () => {
     // Wire event bus + broadcast subscriber so domain events reach IPC
     const eventBus = createInMemoryDomainEventBus()
     ChatEngine.getInstance().bindEventBus(eventBus)
+    mockBroadcaster = {
+      broadcastGlobal: vi.fn(),
+      broadcastFiltered: vi.fn(),
+      subscribe: vi.fn(() => () => {}),
+    }
     createBroadcastSubscriber({
       eventBus,
+      broadcaster: mockBroadcaster as never,
       getSessionWatchers: () => ChatEngine.getInstance().getSessionWatchers(),
-      getGlobalSubscribers: () => ChatEngine.getInstance().getGlobalSubscribers(),
-      detachWebContents: wc => ChatEngine.getInstance().detachRenderer(wc),
     })
   })
 
@@ -562,8 +567,11 @@ describe('chatEngine', () => {
         source: 'session_start',
       }),
     ])
-    expect(mocks.observePush.mock.calls.some(([channel]) => channel === 'chat:timeline-event')).toBe(true)
-    expect(mocks.observePush.mock.calls.some(([channel]) => channel === 'chat:response-event')).toBe(false)
+    // Verify timeline events were broadcast through the unified signal bridge
+    const anyTimelineBroadcast = mockBroadcaster.broadcastFiltered.mock.calls.some(([topic]) => topic === 'chat:timeline-event')
+      || mockBroadcaster.broadcastGlobal.mock.calls.some(([topic]) => topic === 'chat:session-activity')
+    expect(anyTimelineBroadcast).toBe(true)
+    expect(mockBroadcaster.broadcastFiltered.mock.calls.some(([topic]) => topic === 'chat:response-event')).toBe(false)
     expect(state.sessions[0]?.id).toBe(sessionId)
     expect(state.messages).toHaveLength(2)
   })
@@ -837,13 +845,18 @@ describe('chatEngine', () => {
       expect(state.backendRuns[0]?.status).toBe('complete')
     })
 
-    expect(watcher.send).toHaveBeenCalledWith(
+    expect(watcher.send).not.toHaveBeenCalled()
+    // The broadcast now goes through the mock broadcaster, not direct wc.send
+    expect(mockBroadcaster.broadcastFiltered).toHaveBeenCalledWith(
       'chat:timeline-event',
       expect.objectContaining({ chatSessionId: 'chat-1' }),
+      expect.any(Function),
     )
-    expect(bystander.send).not.toHaveBeenCalledWith(
-      'chat:timeline-event',
-      expect.anything(),
-    )
+    // Verify the predicate accepts the watcher but not the bystander
+    const lastCall = mockBroadcaster.broadcastFiltered.mock.calls.find(([topic]) => topic === 'chat:timeline-event')
+    expect(lastCall).toBeDefined()
+    const predicate = lastCall![2] as (wc: unknown) => boolean
+    expect(predicate(watcher)).toBe(true)
+    expect(predicate(bystander)).toBe(false)
   })
 })
