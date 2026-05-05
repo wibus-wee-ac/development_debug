@@ -6,6 +6,7 @@ import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
 import { GlobalSearchDialog } from '@renderer/features/search/global-search-dialog'
+import { PackCodebaseDialog } from '@renderer/features/pack-codebase/pack-codebase-dialog'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
@@ -24,6 +25,7 @@ import {
   LayoutDashboardIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
+  PackageIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
@@ -190,6 +192,7 @@ function WorkspaceGroup({
   onDelete: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(true)
+  const [packOpen, setPackOpen] = useState(false)
   const { openTab } = useCradleNavigation()
   const { sessions } = useSessions(expanded ? workspace.id : null)
   const toggleExpanded = useCallback(() => {
@@ -243,6 +246,10 @@ function WorkspaceGroup({
               <FolderOpenIcon />
               在 Finder 中打开
             </MenuItem>
+            <MenuItem onClick={() => setPackOpen(true)}>
+              <PackageIcon />
+              复制代码库
+            </MenuItem>
             <MenuSeparator />
             <MenuItem
               variant="destructive"
@@ -254,6 +261,13 @@ function WorkspaceGroup({
           </MenuPopup>
         </Menu>
       </div>
+
+      <PackCodebaseDialog
+        workspaceId={workspace.id}
+        workspaceName={workspace.name}
+        open={packOpen}
+        onOpenChange={setPackOpen}
+      />
 
       {/* Session list with expand/collapse animation */}
       <AnimatePresence initial={false}>

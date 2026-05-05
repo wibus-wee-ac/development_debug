@@ -18,6 +18,7 @@ import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
 import {
   createDbCredentialStore,
 } from '../features/agent-runtime/agent-runtime'
+import { initPackCodebaseWasm } from '../features/pack-codebase/pack-codebase'
 import { initProviderCatalog } from '../features/agent-runtime/catalog-instance'
 import { acpChatProvider } from '../features/agent-runtime/providers/acp-chat-provider'
 import { cliTuiProvider } from '../features/agent-runtime/providers/cli-tui-provider'
@@ -38,6 +39,7 @@ import { GitService } from './ipc/git'
 import { IpcDevtoolService } from './ipc/ipc-devtool'
 import { IssueAgentService } from './ipc/issue-agent'
 import { KanbanService } from './ipc/kanban'
+import { PackCodebaseService } from './ipc/pack-codebase'
 import { PreferencesService } from './ipc/preferences'
 import { PtyService } from './ipc/pty'
 import { SearchService } from './ipc/search'
@@ -138,6 +140,7 @@ app.whenReady().then(() => {
     .run()
 
   initializeIpcDevtool()
+  initPackCodebaseWasm()
 
   // Bootstrap provider catalog (must happen after DB init)
   bootstrapProviderCatalog()
@@ -173,6 +176,7 @@ app.whenReady().then(() => {
     UsageService,
     SkillsService,
     WorkflowRulesService,
+    PackCodebaseService,
   ] as const)
 
   // Start Unix domain socket server for CLI access

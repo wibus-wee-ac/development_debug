@@ -13,6 +13,7 @@ import type { GitService } from './app/ipc/git'
 import type { IpcDevtoolService } from './app/ipc/ipc-devtool'
 import type { IssueAgentService } from './app/ipc/issue-agent'
 import type { KanbanService } from './app/ipc/kanban'
+import type { PackCodebaseService } from './app/ipc/pack-codebase'
 import type { PreferencesService } from './app/ipc/preferences'
 import type { PtyService } from './app/ipc/pty'
 import type { SearchService } from './app/ipc/search'
@@ -46,6 +47,7 @@ export type IpcServices = MergeIpcService<{
   usage: typeof UsageService
   skills: typeof SkillsService
   workflowRules: typeof WorkflowRulesService
+  packCodebase: typeof PackCodebaseService
 }>
 
 // Convenience re-exports so the renderer imports from one place
@@ -67,7 +69,7 @@ export type { CreateAgentInput, UpdateAgentInput } from './app/ipc/agent'
 export type { ProcessMetrics } from './platform/acp/acp-process-manager'
 export type { RegistryAgent } from './platform/acp/acp-registry'
 export type { ChatMessage, EnsureLiveResult } from './features/chat/chat-engine'
-export type { ChatResponseEventPayload, ResponseStreamEvent } from './features/chat/chat-provider'
+export type { ChatTimelineEventPayload } from '../shared/chat-events'
 export type {
   MatchRange,
   ThreadSearchHit,
@@ -87,3 +89,4 @@ export type {
   UpdateSkillInput,
 } from './features/skills/skills'
 export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './features/skills/skill-source'
+export type { PackCodebaseOptions, PackCodebaseResult, PackStyle } from './features/pack-codebase/pack-codebase'

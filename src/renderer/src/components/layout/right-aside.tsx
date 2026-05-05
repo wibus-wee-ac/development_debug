@@ -4,11 +4,14 @@
 
 import { IssueAsidePanel } from '@renderer/features/kanban/issue-aside-panel'
 import { GitPanel } from '@renderer/features/git'
+import { PackCodebaseDialog } from '@renderer/features/pack-codebase/pack-codebase-dialog'
 import { FileTree } from '@renderer/features/workspace/file-tree'
+import { useQuery } from '@tanstack/react-query'
+import { ipc } from '@renderer/lib/ipc'
 import { cn } from '@renderer/lib/cn'
 import { CircleDotIcon, FolderTreeIcon, GitBranchIcon } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 interface Tab {
   id: string
@@ -36,6 +39,19 @@ interface RightAsideProps {
 
 export function RightAside({ workspaceId, workspacePath, sessionId }: RightAsideProps) {
   const [activeTab, setActiveTab] = useState('files')
+  const [packOpen, setPackOpen] = useState(false)
+  const [packInitialPaths, setPackInitialPaths] = useState<string[]>([])
+
+  const { data: workspace } = useQuery({
+    queryKey: ['workspace', workspaceId],
+    queryFn: () => ipc && workspaceId ? ipc.workspace.get(workspaceId) : Promise.resolve(undefined),
+    enabled: !!workspaceId,
+  })
+
+  const handlePackRequested = useCallback((paths: string[]) => {
+    setPackInitialPaths(paths)
+    setPackOpen(true)
+  }, [])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -70,7 +86,13 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
 
       {/* ── Tab content ─────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {activeTab === 'files' && <FileTree workspaceId={workspaceId} workspacePath={workspacePath} />}
+        {activeTab === 'files' && (
+          <FileTree
+            workspaceId={workspaceId}
+            workspacePath={workspacePath}
+            onPackRequested={workspaceId ? handlePackRequested : undefined}
+          />
+        )}
         {activeTab === 'git' && <GitPanel workspacePath={workspacePath} />}
         {activeTab === 'issue' && sessionId && (
           <IssueAsidePanel sessionId={sessionId} workspaceId={workspaceId} />
@@ -81,6 +103,16 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
           </div>
         )}
       </div>
+
+      {workspaceId && workspace && (
+        <PackCodebaseDialog
+          workspaceId={workspaceId}
+          workspaceName={workspace.name ?? workspaceId}
+          initialPaths={packInitialPaths}
+          open={packOpen}
+          onOpenChange={setPackOpen}
+        />
+      )}
     </div>
   )
 }

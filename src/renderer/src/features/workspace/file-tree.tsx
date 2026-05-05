@@ -7,7 +7,7 @@ import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
 import { ipc } from '@renderer/lib/ipc'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon, PackageIcon } from 'lucide-react'
 import { normalize } from 'pathe'
 import { useEffect, useMemo } from 'react'
 
@@ -31,9 +31,10 @@ function quotePath(p: string): string {
 interface FileTreeProps {
   workspaceId: string | null
   workspacePath?: string | null
+  onPackRequested?: (paths: string[]) => void
 }
 
-export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
+export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: () => ipc && workspaceId ? ipc.workspace.listFiles(workspaceId) : Promise.resolve([]),
@@ -91,6 +92,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       preparedInput={preparedInput}
       gitStatus={treeGitStatus}
       workspacePath={workspacePath ?? undefined}
+      onPackRequested={onPackRequested}
     />
   )
 }
@@ -101,9 +103,10 @@ interface FileTreeInnerProps {
   preparedInput: ReturnType<typeof prepareFileTreeInput>
   gitStatus?: TreeGitStatus[]
   workspacePath?: string
+  onPackRequested?: (paths: string[]) => void
 }
 
-function FileTreeInner({ preparedInput, gitStatus, workspacePath }: FileTreeInnerProps) {
+function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
   const { model } = useFileTree({
     preparedInput,
     search: true,
@@ -193,6 +196,23 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath }: FileTreeInne
                 }}
               />
             )}
+            {onPackRequested && (
+              <>
+                <div className="mx-1 my-1 h-px bg-border/60" />
+                <ContextMenuItem
+                  label="Pack & Copy to AI"
+                  icon={<PackageIcon className="size-3" />}
+                  onClick={() => {
+                    // Use current selection if it includes this item; otherwise just this item
+                    const paths: string[] = selectedPaths.length > 0 && selectedPaths.includes(item.path)
+                      ? [...selectedPaths]
+                      : [item.path]
+                    onPackRequested(paths)
+                    context.close({ restoreFocus: true })
+                  }}
+                />
+              </>
+            )}
           </div>
         )}
       />
@@ -211,13 +231,14 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath }: FileTreeInne
 
 // ── Context menu item ──────────────────────────────────────────────────────────
 
-function ContextMenuItem({ label, onClick }: { label: string, onClick: () => void }) {
+function ContextMenuItem({ label, icon, onClick }: { label: string, icon?: React.ReactNode, onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center rounded-md px-2 py-1.5 text-xs text-popover-foreground hover:bg-accent transition-colors"
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-popover-foreground transition-colors hover:bg-accent"
     >
+      {icon}
       {label}
     </button>
   )

@@ -11,6 +11,8 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - node_modules/web-tree-sitter/web-tree-sitter.wasm
+  - node_modules/@repomix/tree-sitter-wasms/out/*.wasm
 extraResources:
   - from: ./drizzle
     to: drizzle
