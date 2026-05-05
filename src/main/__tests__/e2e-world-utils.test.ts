@@ -25,9 +25,10 @@ describe('e2eWorldUtils', () => {
     expect(paths.consoleLogPath).toBe('/tmp/e2e-artifacts/scenarios/chat-sends-and-recovers-2/console.log')
   })
 
-  it('injects no-activate defaults into launch environment', () => {
+  it('injects hidden-window defaults into launch environment', () => {
     const env = buildE2ELaunchEnv({ PATH: '/bin' }, '/tmp/cradle-e2e-home')
     expect(env.NODE_ENV).toBe('test')
+    expect(env.CRADLE_E2E_HIDE_WINDOWS).toBe('1')
     expect(env.CRADLE_E2E_NO_ACTIVATE).toBe('1')
     expect(env.HOME).toBe('/tmp/cradle-e2e-home')
     expect(env.USERPROFILE).toBe('/tmp/cradle-e2e-home')

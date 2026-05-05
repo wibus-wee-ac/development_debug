@@ -4,9 +4,17 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { resolveWindowRevealAction, shouldSuppressWindowActivation } from '../window-display-policy'
+import {
+  resolveWindowRevealAction,
+  shouldHideWindows,
+  shouldSuppressWindowActivation,
+} from '../window-display-policy'
 
 describe('windowDisplayPolicy', () => {
+  it('hides windows when explicit E2E hidden mode is enabled', () => {
+    expect(shouldHideWindows({ CRADLE_E2E_HIDE_WINDOWS: '1' })).toBe(true)
+  })
+
   it('suppresses activation when NODE_ENV=test', () => {
     expect(shouldSuppressWindowActivation({ NODE_ENV: 'test' })).toBe(true)
   })
@@ -19,7 +27,11 @@ describe('windowDisplayPolicy', () => {
     expect(shouldSuppressWindowActivation({ NODE_ENV: 'production', CI: '0' })).toBe(false)
   })
 
-  it('reveals by showInactive in test/e2e runs', () => {
+  it('reveals by hidden mode when explicit E2E hidden mode is enabled', () => {
+    expect(resolveWindowRevealAction({ CRADLE_E2E_HIDE_WINDOWS: '1' })).toBe('hidden')
+  })
+
+  it('reveals by showInactive in test/ci runs without hidden mode', () => {
     expect(resolveWindowRevealAction({ NODE_ENV: 'test' })).toBe('showInactive')
   })
 
