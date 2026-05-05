@@ -28,6 +28,7 @@ import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { ipc } from '@renderer/lib/ipc'
+import { useNewChatStore } from '@renderer/store/new-chat'
 import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -66,15 +67,16 @@ interface NewChatHomeProps {
 }
 
 export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: NewChatHomeProps) {
-  const [agentProfileId, setAgentProfileId] = useState<string | null>(
-    () => localStorage.getItem('lastAgentProfileId') ?? null,
-  )
   const [workspaceId, setWorkspaceId] = useState<string | null>(null)
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high' | null>(null)
   const [sending, setSending] = useState(false)
   const { workspaces } = useWorkspaces()
   const { profiles } = useAgentProfiles()
+  const agentProfileId = useNewChatStore(s => s.lastAgentProfileId)
+  const lastModelByProfile = useNewChatStore(s => s.lastModelByProfile)
+  const setLastAgentProfileId = useNewChatStore(s => s.setLastAgentProfileId)
+  const setLastModelForProfile = useNewChatStore(s => s.setLastModelForProfile)
+  const reconcileProfiles = useNewChatStore(s => s.reconcileProfiles)
   const { models, isLoading: isLoadingModels } = useAgentModels(agentProfileId)
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
@@ -83,6 +85,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
   const selectedWorkspace = workspaces.find(workspace => workspace.id === workspaceId) ?? null
   const effectiveWorkspaceId = selectedWorkspace?.id ?? null
   const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
+  const selectedModelId = agentProfileId ? lastModelByProfile[agentProfileId] ?? null : null
   const selectedModel = models.find(m => m.id === selectedModelId) ?? models[0] ?? null
 
   useEffect(() => {
@@ -102,20 +105,13 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
   }, [preferredWorkspaceId, workspaces])
 
   useEffect(() => {
+    reconcileProfiles(profiles.map(profile => profile.id))
     if (agentProfileId === null && profiles.length > 0) {
-      const lastId = localStorage.getItem('lastAgentProfileId')
-      const exists = lastId && profiles.some(p => p.id === lastId)
-      setAgentProfileId(exists ? lastId : profiles[0].id)
+      setLastAgentProfileId(profiles[0].id)
     }
-  }, [profiles, agentProfileId])
+  }, [agentProfileId, profiles, reconcileProfiles, setLastAgentProfileId])
 
-  // Persist selected profile and restore last model when profile changes
   useEffect(() => {
-    if (agentProfileId) {
-      localStorage.setItem('lastAgentProfileId', agentProfileId)
-      const lastModel = localStorage.getItem(`lastModelId:${agentProfileId}`)
-      setSelectedModelId(lastModel)
-    }
     setThinkingEffort(null)
   }, [agentProfileId])
 
@@ -196,8 +192,8 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
               <MenuSeparator />
               {profiles.length === 0
                 ? <MenuItem disabled>没有 Agent Profile</MenuItem>
-                : profiles.map(profile => (
-                  <MenuItem key={profile.id} onClick={() => setAgentProfileId(profile.id)}>
+                    : profiles.map(profile => (
+                      <MenuItem key={profile.id} onClick={() => setLastAgentProfileId(profile.id)}>
                     {profile.providerKind === 'cli-tui'
                       ? <TerminalIcon className="size-3" aria-hidden="true" />
                       : <BotIcon className="size-3" aria-hidden="true" />}
@@ -224,11 +220,8 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
                 itemToStringLabel={m => m.label}
                 isItemEqualToValue={(a, b) => a.id === b.id}
                 onValueChange={(next) => {
-                  if (next) {
-                    setSelectedModelId(next.id)
-                    if (agentProfileId) {
-                      localStorage.setItem(`lastModelId:${agentProfileId}`, next.id)
-                    }
+                  if (next && agentProfileId) {
+                    setLastModelForProfile(agentProfileId, next.id)
                   }
                 }}
               >
@@ -304,7 +297,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
         </Menu>
       </>
     ),
-    [agentProfileId, isLoadingModels, models, profiles, selectedModel, selectedProfile, selectedWorkspace, thinkingEffort, workspaces],
+    [agentProfileId, isLoadingModels, models, profiles, selectedModel, selectedProfile, selectedWorkspace, setLastAgentProfileId, setLastModelForProfile, thinkingEffort, workspaces],
   )
 
   return (

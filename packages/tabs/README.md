@@ -7,7 +7,7 @@ Activity-based tab management for React desktop apps. Uses React 19 `<Activity>`
 ## Architecture
 
 - `defineTab()` registers tab types with type-safe params
-- `createTabStore(registry)` creates a persisted Zustand store
+- `createTabStore(registry)` creates a versioned persisted Zustand store with safe storage fallback outside the browser
 - `<TabsProvider>` provides store + registry via context
 - `<TabBar>` renders capsule-shaped tab pills
 - `<TabRenderer>` wraps each tab in `<Activity mode="visible"|"hidden">`
@@ -18,7 +18,7 @@ Activity-based tab management for React desktop apps. Uses React 19 `<Activity>`
 
 - **src/index.ts**: Barrel export — public API entry point
 - **src/define-tab.ts**: `defineTab()` type helper and `TabDefinition` interface
-- **src/store.ts**: `createTabStore()` Zustand store factory with persistence
+- **src/store.ts**: `createTabStore()` Zustand store factory with versioned persistence and safe storage fallback
 - **src/context.ts**: `TabsContext` and `useTabsContext()` for component access
 - **src/provider.tsx**: `<TabsProvider>` component wrapping context
 - **src/url-sync.ts**: `createUrlSync()` hash URL ↔ tab descriptor sync

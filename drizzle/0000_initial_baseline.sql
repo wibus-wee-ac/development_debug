@@ -194,7 +194,6 @@ CREATE TABLE `backend_session_bindings` (
 	`backend_session_id` text,
 	`backend_state_snapshot` text,
 	`requested_model_id` text,
-	`config_snapshot` text,
 	`created_at` integer DEFAULT (unixepoch()) NOT NULL,
 	`updated_at` integer DEFAULT (unixepoch()) NOT NULL,
 	FOREIGN KEY (`chat_session_id`) REFERENCES `sessions`(`id`) ON UPDATE no action ON DELETE cascade,

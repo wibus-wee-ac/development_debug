@@ -82,6 +82,15 @@ async function drain<T>(gen: AsyncGenerator<T>): Promise<T[]> {
   return out
 }
 
+async function raceOutcome<T>(promise: Promise<T>): Promise<{ kind: 'result', value: T } | { kind: 'error', error: unknown } | { kind: 'timeout' }> {
+  return Promise.race([
+    promise
+      .then(value => ({ kind: 'result' as const, value }))
+      .catch(error => ({ kind: 'error' as const, error })),
+    new Promise<{ kind: 'timeout' }>(resolve => setTimeout(() => resolve({ kind: 'timeout' }), 20)),
+  ])
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('acpConnectionManager', () => {
@@ -238,6 +247,21 @@ describe('acpConnectionManager', () => {
       expect(mocks.mockCancel).toHaveBeenCalledWith({ sessionId: 'sess-1' })
     })
 
+    it('closes a pending prompt generator immediately when cancel is requested', async () => {
+      mocks.mockPrompt.mockImplementationOnce(() => new Promise(() => {}))
+
+      const gen = manager.prompt('test-agent', 'sess-1', 'hello')
+      const nextPromise = gen.next()
+
+      await Promise.resolve()
+      await manager.cancel('test-agent', 'sess-1')
+
+      await expect(raceOutcome(nextPromise)).resolves.toEqual({
+        kind: 'result',
+        value: { value: undefined, done: true },
+      })
+    })
+
     it('rejects loadSession when agent does not advertise support', async () => {
       await expect(manager.loadSession('test-agent', 'sess-1', '/tmp/workspace')).rejects.toThrow(
         'does not support session/load',
@@ -259,6 +283,24 @@ describe('acpConnectionManager', () => {
       await manager.disconnect('test-agent')
       expect(manager.isConnected('test-agent')).toBe(false)
       expect(mocks.mockStop).toHaveBeenCalledWith('test-agent')
+    })
+
+    it('rejects a pending prompt generator when the agent disconnects', async () => {
+      await manager.connect('test-agent', fakeRecord)
+      mocks.mockPrompt.mockImplementationOnce(() => new Promise(() => {}))
+
+      const gen = manager.prompt('test-agent', 'sess-1', 'hello')
+      const nextPromise = gen.next()
+
+      await Promise.resolve()
+      await manager.disconnect('test-agent')
+
+      const outcome = await raceOutcome(nextPromise)
+      expect(outcome.kind).toBe('error')
+      if (outcome.kind === 'error') {
+        expect(outcome.error).toBeInstanceOf(Error)
+        expect((outcome.error as Error).message).toContain('disconnected')
+      }
     })
   })
 

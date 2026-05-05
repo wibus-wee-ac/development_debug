@@ -46,7 +46,6 @@ class MemoryBackendControlPlaneStore implements BackendControlPlaneStore {
       backendSessionId: input.backendSessionId,
       backendStateSnapshot: input.backendStateSnapshot,
       requestedModelId: input.requestedModelId,
-      configSnapshot: input.configSnapshot,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
@@ -133,7 +132,6 @@ describe('backendControlPlaneService', () => {
       backendSessionId: 'backend-1',
       backendStateSnapshot: '{"phase":"first"}',
       requestedModelId: 'claude-4',
-      configSnapshot: '[{"id":"thinking","currentValue":"high"}]',
     })
     const second = service.attachBinding({
       chatSessionId: 'chat-1',
@@ -142,7 +140,6 @@ describe('backendControlPlaneService', () => {
       backendSessionId: 'backend-2',
       backendStateSnapshot: '{"phase":"second"}',
       requestedModelId: 'claude-4.1',
-      configSnapshot: '[{"id":"thinking","currentValue":"medium"}]',
     })
 
     expect(first.id).toBe(second.id)
@@ -164,7 +161,6 @@ describe('backendControlPlaneService', () => {
       backendSessionId: null,
       backendStateSnapshot: null,
       requestedModelId: 'gpt-5',
-      configSnapshot: null,
     })
 
     const run = service.startRun({
@@ -197,7 +193,6 @@ describe('backendControlPlaneService', () => {
       backendSessionId: 'backend-2',
       backendStateSnapshot: null,
       requestedModelId: null,
-      configSnapshot: null,
     })
 
     const run = service.startRun({
@@ -249,7 +244,6 @@ describe('backendControlPlaneService', () => {
       backendSessionId: null,
       backendStateSnapshot: null,
       requestedModelId: 'gpt-5',
-      configSnapshot: null,
     })
 
     const run = service.startRun({

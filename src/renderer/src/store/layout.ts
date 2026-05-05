@@ -5,6 +5,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { persistStorage } from './persist-storage'
+
 interface LayoutState {
   sidebarWidth: number
   sidebarCollapsed: boolean
@@ -51,7 +53,9 @@ export const useLayoutStore = create<LayoutState>()(
       setSettingsSection: (settingsSection: string) => set({ settingsSection }),
     }),
     {
-      name: 'cradle-layout',
+      name: 'cradle:layout:v1',
+      storage: persistStorage,
+      version: 1,
       partialize: state => ({
         sidebarWidth: state.sidebarWidth,
         sidebarCollapsed: state.sidebarCollapsed,

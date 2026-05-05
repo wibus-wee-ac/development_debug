@@ -37,4 +37,23 @@ describe('useNewChatStore', () => {
 
     expect(seenModelIds).toEqual(['model-1'])
   })
+
+  it('reconciles removed profiles and prunes their stale model selections', () => {
+    useNewChatStore.setState({
+      lastAgentProfileId: 'profile-1',
+      lastModelByProfile: {
+        'profile-1': 'model-a',
+        'profile-2': 'model-b',
+      },
+    })
+
+    useNewChatStore.getState().reconcileProfiles(['profile-2'])
+
+    expect(useNewChatStore.getState()).toMatchObject({
+      lastAgentProfileId: null,
+      lastModelByProfile: {
+        'profile-2': 'model-b',
+      },
+    })
+  })
 })

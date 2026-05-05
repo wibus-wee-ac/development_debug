@@ -101,6 +101,7 @@ class ChunkQueue {
 interface SessionChannel {
   converter: AcpTimelineConverter
   queue: ChunkQueue
+  closedBy: { kind: 'cancelled' } | { kind: 'disconnected', error: Error } | null
 }
 
 interface ConnectionEntry {
@@ -218,6 +219,11 @@ export class AcpConnectionManager {
     })
 
     connection.closed.then(() => {
+      const existing = this.connections.get(agentId)
+      if (!existing) {
+        return
+      }
+      this.failConnectionChannels(existing, new Error(`ACP agent disconnected: ${agentId}`))
       this.connections.delete(agentId)
     })
 
@@ -326,7 +332,8 @@ export class AcpConnectionManager {
     const conn = this.getConnection(agentId)
     const converter = new AcpTimelineConverter({ backend: 'acp-chat' })
     const queue = new ChunkQueue()
-    conn.channels.set(sessionId, { converter, queue })
+    const channel: SessionChannel = { converter, queue, closedBy: null }
+    conn.channels.set(sessionId, channel)
 
     let promptResult: PromptResponse | null = null
     let promptError: Error | null = null
@@ -348,7 +355,10 @@ export class AcpConnectionManager {
         queue.fail(promptError)
       })
       .finally(() => {
-        conn.channels.delete(sessionId)
+        const current = conn.channels.get(sessionId)
+        if (current === channel) {
+          conn.channels.delete(sessionId)
+        }
       })
 
     try {
@@ -359,6 +369,17 @@ export class AcpConnectionManager {
         }
         yield chunk
       }
+
+      if (channel.closedBy?.kind === 'cancelled') {
+        this._lastUsage = null
+        return
+      }
+
+      if (channel.closedBy?.kind === 'disconnected') {
+        this._lastUsage = null
+        throw channel.closedBy.error
+      }
+
       await promptDone
       if (promptError) {
         throw promptError
@@ -378,20 +399,27 @@ export class AcpConnectionManager {
       }
     }
     catch (err) {
-      await promptDone.catch(() => {})
+      if (!channel.closedBy) {
+        await promptDone.catch(() => {})
+      }
       throw err
     }
   }
 
   async cancel(agentId: string, sessionId: string): Promise<void> {
     const conn = this.getConnection(agentId)
+    this.closeChannel(conn, sessionId, { kind: 'cancelled' })
     await conn.connection.cancel({ sessionId })
   }
 
   // ── Disconnect ────────────────────────────────────────────────────────────
 
   async disconnect(agentId: string): Promise<void> {
-    this.connections.delete(agentId)
+    const conn = this.connections.get(agentId)
+    if (conn) {
+      this.failConnectionChannels(conn, new Error(`ACP agent disconnected: ${agentId}`))
+      this.connections.delete(agentId)
+    }
     await AcpProcessManager.getInstance().stop(agentId)
   }
 
@@ -411,6 +439,37 @@ export class AcpConnectionManager {
       throw new Error(`Agent ${agentId} is not connected`)
     }
     return entry
+  }
+
+  private closeChannel(
+    conn: ConnectionEntry,
+    sessionId: string,
+    reason: SessionChannel['closedBy'],
+  ): void {
+    if (!reason) {
+      return
+    }
+
+    const channel = conn.channels.get(sessionId)
+    if (!channel || channel.closedBy) {
+      return
+    }
+
+    channel.closedBy = reason
+    conn.channels.delete(sessionId)
+
+    if (reason.kind === 'cancelled') {
+      channel.queue.close()
+      return
+    }
+
+    channel.queue.fail(reason.error)
+  }
+
+  private failConnectionChannels(conn: ConnectionEntry, error: Error): void {
+    for (const sessionId of [...conn.channels.keys()]) {
+      this.closeChannel(conn, sessionId, { kind: 'disconnected', error })
+    }
   }
 
   private cacheSessionState(

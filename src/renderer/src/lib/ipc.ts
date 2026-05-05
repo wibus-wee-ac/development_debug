@@ -4,8 +4,15 @@
 
 import { createIpcProxy } from '@cradle/ipc/client'
 
+import { shouldCaptureIpcStack } from './ipc-options'
+
 type IpcServices = typeof window.ipc
 
 export const ipc = createIpcProxy<IpcServices>(window.electron.ipcRenderer, {
-  captureStack: true,
+  captureStack: shouldCaptureIpcStack({
+    isDev: import.meta.env.DEV,
+    hash: window.location.hash,
+  }),
 })
+
+export { shouldCaptureIpcStack }

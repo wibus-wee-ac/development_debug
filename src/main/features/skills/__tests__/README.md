@@ -8,4 +8,4 @@
 
 ## Files
 
-- **skills.test.ts**: 验证 skills inventory 的多层扫描与写入行为
+- **skills.test.ts**: 验证 skills inventory 的多层扫描、缓存复用/失效，以及写入行为

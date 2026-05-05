@@ -5,6 +5,7 @@
 import type { UIMessageChunk } from 'ai'
 
 import type { BackendTimelineEvent } from '../main/features/backend-control-plane/timeline-events'
+import type { ChatTurnStatus } from '../main/features/chat/chat-engine'
 
 /** Payload for the `chat:timeline-event` IPC push channel. */
 export interface ChatTimelineEventPayload {
@@ -18,4 +19,12 @@ export interface ChatTimelineEventPayload {
 export interface ChatSessionTitlePayload {
   chatSessionId: string
   title: string
+}
+
+/** Payload for the `chat:session-activity` IPC push channel. */
+export interface ChatSessionActivityPayload {
+  chatSessionId: string
+  messageId: string
+  status: ChatTurnStatus
+  errorText: string | null
 }

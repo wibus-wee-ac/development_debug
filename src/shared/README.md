@@ -8,5 +8,5 @@ When a contract changes here, verify both main/preload and renderer consumers in
 
 ## Files
 
-- **chat-events.ts**: Shared chat push payloads for preload/main/renderer, now carrying typed timeline events plus projected chat chunks
+- **chat-events.ts**: Shared chat push payloads for preload/main/renderer, carrying session-scoped typed timeline events plus projected chat chunks, and global terminal chat activity summaries
 - **chat-preferences.ts**: Shared chat preference helpers and serializable preference shapes

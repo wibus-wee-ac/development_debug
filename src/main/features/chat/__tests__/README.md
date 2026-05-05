@@ -8,4 +8,5 @@
 
 ## Files
 
-- **chat-engine.test.ts**: 验证 ChatEngine 的核心会话与流式行为
+- **chat-engine.test.ts**: 验证 ChatEngine 的核心会话行为，包括事务化 assistant snapshot 持久化、提示词边界收缩，以及会话级 timeline 广播
+- **chat-turn-projector.test.ts**: 验证 chat-turn-projector 对 text / reasoning / command 事件的 UIMessage 投影语义

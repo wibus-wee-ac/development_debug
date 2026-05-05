@@ -9,5 +9,5 @@ Skills feature 负责 filesystem-first skills inventory、CRUD 与远程 source 
 ## Files
 
 - **skill-source.ts**: 解析远程或本地 source、clone 仓库并发现 skill package
-- **skills.ts**: Filesystem-first skills 库，负责五层扫描、CRUD 与导入导出
+- **skills.ts**: Filesystem-first skills 库，负责五层扫描、按目录签名缓存 inventory 解析结果、CRUD 与导入导出
 - **__tests__/**: skills feature 的主进程回归测试

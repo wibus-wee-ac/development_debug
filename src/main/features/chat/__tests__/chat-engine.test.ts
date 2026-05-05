@@ -9,6 +9,9 @@ import { ChatEngine } from '../chat-engine'
 
 type FakeDbState = {
   agentProfiles: Array<typeof schema.agentProfiles.$inferSelect>
+  agents: Array<typeof schema.agents.$inferSelect>
+  backendRuns: Array<typeof schema.backendRuns.$inferSelect>
+  backendTimelineEvents: Array<typeof schema.backendTimelineEvents.$inferSelect>
   sessions: Array<typeof schema.sessions.$inferSelect>
   messages: Array<typeof schema.messages.$inferSelect>
   usageLogs: Array<typeof schema.usageLogs.$inferSelect>
@@ -23,7 +26,6 @@ type BindingRecord = {
   backendSessionId: string | null
   backendStateSnapshot: string | null
   requestedModelId: string | null
-  configSnapshot: string | null
 }
 
 type RunRecord = {
@@ -51,6 +53,9 @@ const mocks = vi.hoisted(() => ({
   recordAgentContext: vi.fn(),
   indexMessage: vi.fn(),
   observePush: vi.fn(),
+  readBundledResource: vi.fn(),
+  scanSkills: vi.fn(),
+  buildSkillCatalog: vi.fn(),
 }))
 
 vi.mock('../../../db', () => ({
@@ -72,12 +77,12 @@ vi.mock('../../../devtools/agent-context-devtool-store', () => ({
 }))
 
 vi.mock('../../../platform/resources/bundled-resources', () => ({
-  readBundledResource: () => null,
+  readBundledResource: mocks.readBundledResource,
 }))
 
 vi.mock('../../skills/skills', () => ({
-  scanSkills: () => [],
-  buildSkillCatalog: () => '',
+  scanSkills: mocks.scanSkills,
+  buildSkillCatalog: mocks.buildSkillCatalog,
 }))
 
 vi.mock('../thread-search', () => ({
@@ -152,6 +157,22 @@ function createFakeDb(state: FakeDbState) {
       return inserted
     }
 
+    if (table === schema.backendTimelineEvents) {
+      const inserted: typeof schema.backendTimelineEvents.$inferSelect = {
+        id: String(row.id),
+        runId: String(row.runId),
+        chatSessionId: String(row.chatSessionId),
+        sequenceNumber: Number(row.sequenceNumber),
+        eventType: String(row.eventType),
+        schemaVersion: String(row.schemaVersion),
+        payloadJson: String(row.payloadJson),
+        sourceJson: String(row.sourceJson),
+        createdAt: Number(row.createdAt ?? now),
+      }
+      state.backendTimelineEvents.push(inserted)
+      return inserted
+    }
+
     throw new Error('Unsupported table insert in fake DB')
   }
 
@@ -171,6 +192,15 @@ function createFakeDb(state: FakeDbState) {
         return
       }
       Object.assign(target, values)
+      return
+    }
+
+    if (table === schema.backendRuns) {
+      const target = state.backendRuns.at(-1)
+      if (!target) {
+        return
+      }
+      Object.assign(target, values)
     }
   }
 
@@ -178,8 +208,17 @@ function createFakeDb(state: FakeDbState) {
     if (table === schema.agentProfiles) {
       return state.agentProfiles
     }
+    if (table === schema.agents) {
+      return state.agents
+    }
     if (table === schema.sessions) {
       return state.sessions
+    }
+    if (table === schema.backendRuns) {
+      return state.backendRuns
+    }
+    if (table === schema.backendTimelineEvents) {
+      return state.backendTimelineEvents
     }
     if (table === schema.messages) {
       return state.messages
@@ -232,17 +271,22 @@ function createFakeDb(state: FakeDbState) {
       return {
         from(table: unknown) {
           const rows = selectRows(table)
+          let ordered = false
           return {
             where() {
               return this
             },
             orderBy() {
+              ordered = true
               return this
             },
             get() {
               if (selection && table === schema.messages) {
                 const first = rows[0] as typeof schema.messages.$inferSelect | undefined
                 return first ? { sessionId: first.sessionId } : undefined
+              }
+              if (ordered && table === schema.backendTimelineEvents) {
+                return rows.at(-1)
               }
               return rows[0]
             },
@@ -264,15 +308,11 @@ function createFakeDb(state: FakeDbState) {
   return tx
 }
 
-function createControlPlaneHarness() {
+function createControlPlaneHarness(state: FakeDbState) {
   const bindings = new Map<string, BindingRecord>()
   const runs = new Map<string, RunRecord>()
   const timeline = new Map<string, TimelineRecord[]>()
   const snapshots: Array<{ agentProfileId: string, providerKind: string, source: string, capabilitiesJson: string }> = []
-  let resolveFinished: (() => void) | null = null
-  const finished = new Promise<void>((resolve) => {
-    resolveFinished = resolve
-  })
 
   const service = {
     getBinding(chatSessionId: string) {
@@ -301,6 +341,18 @@ function createControlPlaneHarness() {
         errorText: null,
       }
       runs.set(run.id, run)
+      state.backendRuns.push({
+        id: run.id,
+        bindingId: `binding-${bindings.size}`,
+        chatSessionId: run.chatSessionId,
+        messageId: run.messageId,
+        origin: run.origin,
+        status: run.status,
+        stopReason: run.stopReason,
+        errorText: run.errorText,
+        startedAt: 1_700_000_000,
+        finishedAt: null,
+      })
       return run
     },
     finishRun(input: { runId: string, status: RunRecord['status'], stopReason?: string | null, errorText?: string | null }) {
@@ -315,7 +367,15 @@ function createControlPlaneHarness() {
         errorText: input.errorText ?? null,
       }
       runs.set(input.runId, finished)
-      resolveFinished?.()
+      const target = state.backendRuns.find(run => run.id === input.runId)
+      if (target) {
+        Object.assign(target, {
+          status: input.status,
+          stopReason: input.stopReason ?? null,
+          errorText: input.errorText ?? null,
+          finishedAt: 1_700_000_100,
+        })
+      }
       return finished
     },
     recordCapabilitySnapshot(input: { agentProfileId: string, providerKind: string, source: string, capabilitiesJson: string }) {
@@ -342,7 +402,21 @@ function createControlPlaneHarness() {
     },
   }
 
-  return { service, bindings, runs, timeline, snapshots, finished }
+  return {
+    service,
+    bindings,
+    runs,
+    timeline,
+    snapshots,
+  }
+}
+
+function createFakeWebContents() {
+  return {
+    send: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+    once: vi.fn(),
+  }
 }
 
 describe('chatEngine', () => {
@@ -361,6 +435,9 @@ describe('chatEngine', () => {
         createdAt: 1_700_000_000,
         updatedAt: 1_700_000_000,
       }],
+      agents: [],
+      backendRuns: [],
+      backendTimelineEvents: [],
       sessions: [],
       messages: [],
       usageLogs: [],
@@ -372,13 +449,16 @@ describe('chatEngine', () => {
         updatedAt: 1_700_000_000,
       }],
     }
-    controlPlane = createControlPlaneHarness()
+    controlPlane = createControlPlaneHarness(state)
 
     mocks.getDb.mockReturnValue(createFakeDb(state))
     mocks.getBackendControlPlaneService.mockReturnValue(controlPlane.service)
     mocks.recordAgentContext.mockReset()
     mocks.indexMessage.mockReset()
     mocks.observePush.mockReset()
+    mocks.readBundledResource.mockReturnValue(null)
+    mocks.scanSkills.mockReturnValue([])
+    mocks.buildSkillCatalog.mockReturnValue('')
     mocks.getProviderCatalog.mockReturnValue({
       get: () => ({
         providerKind: 'acp-chat' as const,
@@ -439,10 +519,12 @@ describe('chatEngine', () => {
       modelId: 'claude-4',
     })
 
-    await controlPlane.finished
+    await vi.waitFor(() => {
+      expect(state.backendRuns[0]?.status).toBe('complete')
+    })
 
     const binding = controlPlane.bindings.get(sessionId)
-    const run = [...controlPlane.runs.values()][0]
+    const run = state.backendRuns[0]
 
     expect(binding).toEqual(
       expect.objectContaining({
@@ -472,5 +554,284 @@ describe('chatEngine', () => {
     expect(mocks.observePush.mock.calls.some(([channel]) => channel === 'chat:response-event')).toBe(false)
     expect(state.sessions[0]?.id).toBe(sessionId)
     expect(state.messages).toHaveLength(2)
+  })
+
+  it('persists the assistant snapshot as soon as a timeline delta is stored', async () => {
+    let releaseTurn: (() => void) | undefined
+    const turnBlocked = new Promise<void>((resolve) => {
+      releaseTurn = () => resolve()
+    })
+
+    mocks.getProviderCatalog.mockReturnValue({
+      get: () => ({
+        providerKind: 'acp-chat' as const,
+        probe: async () => ({ ok: true, label: 'ACP', version: '1.0.0', details: {}, errorText: null }),
+        listModels: async () => [],
+        startChatSession: async () => ({
+          id: 'backend-session-1',
+          chatSessionId: 'chat-ignored',
+          agentProfileId: 'profile-1',
+          providerKind: 'acp-chat' as const,
+          providerSessionId: 'backend-session-1',
+          providerStateSnapshot: JSON.stringify({ models: { currentModelId: 'claude-4' } }),
+        }),
+        resumeChatSession: async () => {
+          throw new Error('resume not expected in this test')
+        },
+        streamTurn: async function* streamTurn() {
+          yield {
+            type: 'assistant.message.started',
+            itemId: 'assistant-1',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+          yield {
+            type: 'assistant.text.delta',
+            itemId: 'assistant-1',
+            delta: '即时落盘',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+          await turnBlocked
+          yield {
+            type: 'assistant.message.completed',
+            itemId: 'assistant-1',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+        },
+        cancelTurn: async () => {},
+        lastUsage: null,
+      }),
+    })
+
+    await ChatEngine.getInstance().createAndSend({
+      agentId: 'profile-1',
+      workspaceId: 'workspace-1',
+      cwd: '/tmp/workspace',
+      text: '现在就写',
+      modelId: 'claude-4',
+    })
+
+    await vi.waitFor(() => {
+      expect(state.backendTimelineEvents.some(event => event.eventType === 'assistant.text.delta')).toBe(true)
+    })
+
+    const assistantRow = state.messages.find(message => message.role === 'assistant')
+
+    expect(assistantRow?.content).toContain('即时落盘')
+
+    releaseTurn?.()
+    await vi.waitFor(() => {
+      expect(state.backendRuns[0]?.status).toBe('complete')
+    })
+  })
+
+  it('does not append bundled workflow or skills catalog into non-ACP system prompts', async () => {
+    state.agentProfiles = [{
+      id: 'profile-1',
+      name: 'OpenAI Profile',
+      providerKind: 'openai-compatible',
+      enabled: true,
+      configJson: '{}',
+      credentialRef: null,
+      createdAt: 1_700_000_000,
+      updatedAt: 1_700_000_000,
+    }]
+    state.agents = [{
+      id: 'agent-1',
+      name: 'Planner',
+      description: null,
+      avatarUrl: null,
+      avatarStyle: 'bottts-neutral',
+      avatarSeed: 'planner',
+      providerId: 'profile-1',
+      modelId: null,
+      thinkingEffort: 'auto',
+      configJson: JSON.stringify({ systemPrompt: '只保留 agent prompt' }),
+      enabled: true,
+      createdAt: 1_700_000_000,
+      updatedAt: 1_700_000_000,
+    }]
+
+    mocks.readBundledResource.mockReturnValue('BUNDLED WORKFLOW')
+    mocks.scanSkills.mockReturnValue([{ id: 'skill-1', label: 'Skill 1' }])
+    mocks.buildSkillCatalog.mockReturnValue('\n\nSKILL CATALOG')
+
+    const streamTurn = vi.fn(async function* streamTurn(..._args: any[]) {
+      yield {
+        type: 'assistant.message.started',
+        itemId: 'assistant-1',
+        source: {
+          backend: 'openai-compatible' as const,
+          eventType: 'response.output_text.delta',
+          itemId: 'assistant-1',
+        },
+      }
+      yield {
+        type: 'assistant.text.delta',
+        itemId: 'assistant-1',
+        delta: 'ok',
+        source: {
+          backend: 'openai-compatible' as const,
+          eventType: 'response.output_text.delta',
+          itemId: 'assistant-1',
+        },
+      }
+      yield {
+        type: 'assistant.message.completed',
+        itemId: 'assistant-1',
+        source: {
+          backend: 'openai-compatible' as const,
+          eventType: 'response.completed',
+          itemId: 'assistant-1',
+        },
+      }
+    })
+
+    mocks.getProviderCatalog.mockReturnValue({
+      get: () => ({
+        providerKind: 'openai-compatible' as const,
+        probe: async () => ({ ok: true, label: 'OpenAI', version: '1.0.0', details: {}, errorText: null }),
+        listModels: async () => [],
+        startChatSession: async () => ({
+          id: 'backend-session-1',
+          chatSessionId: 'chat-ignored',
+          agentProfileId: 'profile-1',
+          providerKind: 'openai-compatible' as const,
+          providerSessionId: 'backend-session-1',
+          providerStateSnapshot: JSON.stringify({ models: { currentModelId: 'gpt-5' } }),
+        }),
+        resumeChatSession: async () => {
+          throw new Error('resume not expected in this test')
+        },
+        streamTurn,
+        cancelTurn: async () => {},
+        lastUsage: null,
+      }),
+    })
+
+    await ChatEngine.getInstance().createAndSend({
+      agentId: 'profile-1',
+      workspaceId: 'workspace-1',
+      cwd: '/tmp/workspace',
+      text: '把 prompt 收干净',
+      agentIdentityId: 'agent-1',
+    })
+
+    await vi.waitFor(() => {
+      expect(state.backendRuns[0]?.status).toBe('complete')
+    })
+
+    expect(streamTurn).toHaveBeenCalledTimes(1)
+    expect(streamTurn.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        systemPrompt: '只保留 agent prompt',
+      }),
+    )
+  })
+
+  it('only pushes session timeline events to windows that explicitly watch that session', async () => {
+    state.sessions = [{
+      id: 'chat-1',
+      workspaceId: 'workspace-1',
+      title: 'Existing chat',
+      agentProfileId: 'profile-1',
+      agentId: null,
+      linkedIssueId: null,
+      pinned: 0,
+      createdAt: 1_700_000_000,
+      updatedAt: 1_700_000_000,
+    }]
+
+    controlPlane.service.attachBinding({
+      chatSessionId: 'chat-1',
+      agentProfileId: 'profile-1',
+      providerKind: 'acp-chat',
+      backendSessionId: 'backend-session-1',
+      backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'claude-4' } }),
+      requestedModelId: 'claude-4',
+    })
+
+    mocks.getProviderCatalog.mockReturnValue({
+      get: () => ({
+        providerKind: 'acp-chat' as const,
+        probe: async () => ({ ok: true, label: 'ACP', version: '1.0.0', details: {}, errorText: null }),
+        listModels: async () => [],
+        startChatSession: async () => {
+          throw new Error('start not expected in this test')
+        },
+        resumeChatSession: async () => ({
+          id: 'backend-session-1',
+          chatSessionId: 'chat-1',
+          agentProfileId: 'profile-1',
+          providerKind: 'acp-chat' as const,
+          providerSessionId: 'backend-session-1',
+          providerStateSnapshot: JSON.stringify({ models: { currentModelId: 'claude-4' } }),
+        }),
+        streamTurn: async function* streamTurn() {
+          yield {
+            type: 'assistant.message.started',
+            itemId: 'assistant-1',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+          yield {
+            type: 'assistant.text.delta',
+            itemId: 'assistant-1',
+            delta: '仅发送给订阅窗口',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+          yield {
+            type: 'assistant.message.completed',
+            itemId: 'assistant-1',
+            source: {
+              backend: 'acp-chat' as const,
+              eventType: 'agent_message_chunk',
+              itemId: 'assistant-1',
+            },
+          }
+        },
+        cancelTurn: async () => {},
+        lastUsage: null,
+      }),
+    })
+
+    const watcher = createFakeWebContents()
+    const bystander = createFakeWebContents()
+    const engine = ChatEngine.getInstance()
+    engine.subscribe(watcher as never)
+    engine.subscribe(bystander as never)
+    ;(engine as { watchSession?: (webContents: unknown, chatSessionId: string) => void }).watchSession?.(watcher, 'chat-1')
+
+    await engine.send('chat-1', '开始吧')
+    await vi.waitFor(() => {
+      expect(state.backendRuns[0]?.status).toBe('complete')
+    })
+
+    expect(watcher.send).toHaveBeenCalledWith(
+      'chat:timeline-event',
+      expect.objectContaining({ chatSessionId: 'chat-1' }),
+    )
+    expect(bystander.send).not.toHaveBeenCalledWith(
+      'chat:timeline-event',
+      expect.anything(),
+    )
   })
 })

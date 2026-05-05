@@ -48,21 +48,6 @@ export function buildStoredChatPreferences(state: SessionStateLike | null): Stor
   }
 }
 
-export function buildStoredChatPreferencesFromSnapshot(args: {
-  modelId: string | null
-  configSnapshot: string | null
-}): StoredChatPreferences {
-  const { modelId, configSnapshot } = args
-  const parsedOptions = parseConfigSnapshot(configSnapshot)
-
-  return {
-    modelId,
-    configSelections: Object.fromEntries(
-      parsedOptions.filter(hasPersistableValue).map(option => [option.id, option.currentValue]),
-    ),
-  }
-}
-
 export function mergeChatPreferencesWithState(
   preferences: StoredChatPreferences,
   state: SessionStateLike | null,
@@ -143,18 +128,4 @@ function flattenOptionValues(options: SessionConfigOptionLike['options']): strin
     }
     return option.options.map(groupOption => groupOption.value)
   })
-}
-
-function parseConfigSnapshot(configSnapshot: string | null): SessionConfigOptionLike[] {
-  if (!configSnapshot) {
-    return []
-  }
-
-  try {
-    const parsed = JSON.parse(configSnapshot)
-    return Array.isArray(parsed) ? (parsed as SessionConfigOptionLike[]) : []
-  }
- catch {
-    return []
-  }
 }

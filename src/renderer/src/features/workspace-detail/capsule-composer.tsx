@@ -27,6 +27,7 @@ import type { MentionItem } from '@renderer/features/chat'
 import { MentionPanel } from '@renderer/features/chat/mention-panel'
 import { useWorkspaceFiles } from '@renderer/features/workspace/use-workspace-files'
 import { cn } from '@renderer/lib/cn'
+import { useNewChatStore } from '@renderer/store/new-chat'
 import {
   BotIcon,
   BrainIcon,
@@ -53,36 +54,29 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Agent profile & model state
-  const [agentProfileId, setAgentProfileId] = useState<string | null>(
-    () => localStorage.getItem('lastAgentProfileId') ?? null,
-  )
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [thinkingEffort, setThinkingEffort] = useState<'low' | 'medium' | 'high' | null>(null)
+  const agentProfileId = useNewChatStore(s => s.lastAgentProfileId)
+  const lastModelByProfile = useNewChatStore(s => s.lastModelByProfile)
+  const setLastAgentProfileId = useNewChatStore(s => s.setLastAgentProfileId)
+  const setLastModelForProfile = useNewChatStore(s => s.setLastModelForProfile)
+  const reconcileProfiles = useNewChatStore(s => s.reconcileProfiles)
 
   const { profiles } = useAgentProfiles()
   const { models, isLoading: isLoadingModels } = useAgentModels(agentProfileId)
   const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
 
   const selectedProfile = profiles.find(p => p.id === agentProfileId) ?? null
+  const selectedModelId = agentProfileId ? lastModelByProfile[agentProfileId] ?? null : null
   const selectedModel = models.find(m => m.id === selectedModelId) ?? models[0] ?? null
 
-  // Auto-select profile
   useEffect(() => {
+    reconcileProfiles(profiles.map(profile => profile.id))
     if (agentProfileId === null && profiles.length > 0) {
-      const lastId = localStorage.getItem('lastAgentProfileId')
-      const exists = lastId && profiles.some(p => p.id === lastId)
-      setAgentProfileId(exists ? lastId : profiles[0].id)
+      setLastAgentProfileId(profiles[0].id)
     }
-  }, [profiles, agentProfileId])
+  }, [agentProfileId, profiles, reconcileProfiles, setLastAgentProfileId])
 
-  // Persist profile and restore model
   useEffect(() => {
-    if (agentProfileId) {
-      localStorage.setItem('lastAgentProfileId', agentProfileId)
-      const lastModel = localStorage.getItem(`lastModelId:${agentProfileId}`)
-      setSelectedModelId(lastModel)
-    }
     setThinkingEffort(null)
   }, [agentProfileId])
 
@@ -283,8 +277,8 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
                       <MenuSeparator />
                       {profiles.length === 0
                         ? <MenuItem disabled>没有 Agent Profile</MenuItem>
-                        : profiles.map(profile => (
-                          <MenuItem key={profile.id} onClick={() => setAgentProfileId(profile.id)}>
+                            : profiles.map(profile => (
+                              <MenuItem key={profile.id} onClick={() => setLastAgentProfileId(profile.id)}>
                             <BotIcon className="size-3" aria-hidden="true" />
                             <span>{profile.name}</span>
                           </MenuItem>
@@ -308,11 +302,8 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
                         itemToStringLabel={m => m.label}
                         isItemEqualToValue={(a, b) => a.id === b.id}
                         onValueChange={(next) => {
-                          if (next) {
-                            setSelectedModelId(next.id)
-                            if (agentProfileId) {
-                              localStorage.setItem(`lastModelId:${agentProfileId}`, next.id)
-                            }
+                          if (next && agentProfileId) {
+                            setLastModelForProfile(agentProfileId, next.id)
                           }
                         }}
                       >

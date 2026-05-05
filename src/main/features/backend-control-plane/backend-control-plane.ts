@@ -70,7 +70,6 @@ export function createDbBackendControlPlaneStore(
             backendSessionId: input.backendSessionId,
             backendStateSnapshot: input.backendStateSnapshot,
             requestedModelId: input.requestedModelId,
-            configSnapshot: input.configSnapshot,
             updatedAt: now,
           })
           .where(eq(backendSessionBindings.id, existing.id))
@@ -91,7 +90,6 @@ export function createDbBackendControlPlaneStore(
           backendSessionId: input.backendSessionId,
           backendStateSnapshot: input.backendStateSnapshot,
           requestedModelId: input.requestedModelId,
-          configSnapshot: input.configSnapshot,
           createdAt: now,
           updatedAt: now,
         })
@@ -202,7 +200,6 @@ export function createBackendControlPlaneService(deps: {
         backendSessionId: input.backendSessionId ?? existing?.backendSessionId ?? null,
         backendStateSnapshot: input.backendStateSnapshot ?? existing?.backendStateSnapshot ?? null,
         requestedModelId: input.requestedModelId ?? existing?.requestedModelId ?? null,
-        configSnapshot: input.configSnapshot ?? existing?.configSnapshot ?? null,
       })
     },
     startRun(input) {

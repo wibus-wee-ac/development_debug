@@ -151,6 +151,7 @@ function Button({ variant = 'primary', size = 'md', className, ...props }: Butto
 
 ### Enforcement
 
+- **Always use Drizzle**: For database interactions, use Drizzle ORM to ensure type safety and consistency. Avoid raw SQL queries or other database libraries. Use drizzle-kit for schema management and migrations.
 - **Before committing**: Ensure all new files have header comments
 - **Before committing**: Ensure modified directories have updated `README.md`
 - **During code review**: Check for missing or outdated documentation

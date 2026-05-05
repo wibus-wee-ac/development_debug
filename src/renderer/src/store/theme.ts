@@ -5,6 +5,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { persistStorage } from './persist-storage'
+
 export type ThemeMode = 'light' | 'dark' | 'system'
 
 interface ThemeState {
@@ -18,6 +20,10 @@ export const useThemeStore = create<ThemeState>()(
       mode: 'system',
       setMode: mode => set({ mode }),
     }),
-    { name: 'cradle-theme' },
+    {
+      name: 'cradle:theme:v1',
+      storage: persistStorage,
+      version: 1,
+    },
   ),
 )

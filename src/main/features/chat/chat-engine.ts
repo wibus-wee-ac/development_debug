@@ -1,33 +1,34 @@
-// Input: Provider catalog, SQLite schema, timeline reducers/projections, and devtool/ACP/skills integrations
-// Output: ChatEngine singleton for chat session lifecycle, persistence, streaming, and renderer broadcasts
+// Input: Provider catalog, SQLite schema, transactional turn projection helpers, and devtool/ACP integrations
+// Output: ChatEngine singleton for chat session lifecycle, transactional timeline persistence, and renderer broadcasts
 // Position: Chat feature orchestrator consumed by IPC adapters and issue-agent workflows
 
 import { randomUUID } from 'node:crypto'
 
 import { observePush } from '@cradle/ipc'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { readUIMessageStream } from 'ai'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
 import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
 import type { BackendTimelineEvent, TimelineInputEvent } from '../backend-control-plane/timeline-events'
-import { projectTimelineEventToChatChunks } from '../backend-control-plane/timeline-events'
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
-import { agentProfiles as agentProfilesTable, agents as agentsTable, messages, sessions, usageLogs, workspaces } from '../../db/schema'
+import { agentProfiles as agentProfilesTable, messages, sessions, usageLogs, workspaces } from '../../db/schema'
 import { AcpConnectionManager } from '../../platform/acp/acp-connection'
-import type { ChatTimelineEventPayload } from '../../../shared/chat-events'
+import type { ChatSessionActivityPayload, ChatTimelineEventPayload } from '../../../shared/chat-events'
 import { getAgentContextDevtoolStore } from '../../devtools/agent-context-devtool-store'
-import { readBundledResource } from '../../platform/resources/bundled-resources'
-import { buildSkillCatalog, scanSkills } from '../skills/skills'
+import { resolveChatTurnContext } from './chat-turn-context'
+import { persistProjectedTimelineEvent } from './chat-turn-persistence'
+import {
+  applyTimelineEventToChatTurn,
+  createChatTurnProjector,
+  type ChatTurnProjector,
+} from './chat-turn-projector'
 import { ThreadSearchEngine } from './thread-search'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-const FLUSH_DEBOUNCE_MS = 200
 
 type MessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
@@ -39,7 +40,7 @@ interface Draft {
   agentId: string
   runtimeSession: ProviderSession
   message: UIMessage
-  flushTimer: NodeJS.Timeout | null
+  projector: ChatTurnProjector
   /** User-triggered abort; distinguishes 'aborted' vs 'failed' at finalize time. */
   cancelled: boolean
   /** Optional model override for this draft's turns. */
@@ -118,6 +119,7 @@ export class ChatEngine {
   private static instance: ChatEngine
   private readonly drafts = new Map<string, Draft>()
   private readonly subscribers = new Set<WebContents>()
+  private readonly sessionWatchers = new Map<string, Map<WebContents, number>>()
   private readonly turnFinishedSubscribers = new Set<(event: ChatTurnFinishedEvent) => void>()
   private titleUnsubscribe: (() => void) | null = null
   private initialized = false
@@ -178,7 +180,7 @@ export class ChatEngine {
             .set({ title, updatedAt: nowUnix() })
             .where(eq(sessions.id, row.id))
             .run()
-          this.broadcast('chat:session-title', { chatSessionId: row.id, title })
+          this.broadcastGlobal('chat:session-title', { chatSessionId: row.id, title })
         }
       },
     )
@@ -190,13 +192,9 @@ export class ChatEngine {
       this.titleUnsubscribe()
       this.titleUnsubscribe = null
     }
-    for (const draft of this.drafts.values()) {
-      if (draft.flushTimer) {
-        clearTimeout(draft.flushTimer)
-      }
-    }
     this.drafts.clear()
     this.subscribers.clear()
+    this.sessionWatchers.clear()
     this.initialized = false
   }
 
@@ -204,10 +202,35 @@ export class ChatEngine {
   subscribe(wc: WebContents): () => void {
     this.subscribers.add(wc)
     if ('once' in wc) {
-      wc.once('destroyed', () => this.subscribers.delete(wc))
+      wc.once('destroyed', () => this.detachWebContents(wc))
     }
     return () => {
-      this.subscribers.delete(wc)
+      this.detachWebContents(wc)
+    }
+  }
+
+  watchSession(wc: WebContents, chatSessionId: string): void {
+    const counts = this.sessionWatchers.get(chatSessionId) ?? new Map<WebContents, number>()
+    counts.set(wc, (counts.get(wc) ?? 0) + 1)
+    this.sessionWatchers.set(chatSessionId, counts)
+  }
+
+  unwatchSession(wc: WebContents, chatSessionId: string): void {
+    const counts = this.sessionWatchers.get(chatSessionId)
+    if (!counts) {
+      return
+    }
+
+    const current = counts.get(wc) ?? 0
+    if (current <= 1) {
+      counts.delete(wc)
+    }
+    else {
+      counts.set(wc, current - 1)
+    }
+
+    if (counts.size === 0) {
+      this.sessionWatchers.delete(chatSessionId)
     }
   }
 
@@ -219,6 +242,16 @@ export class ChatEngine {
     this.turnFinishedSubscribers.add(listener)
     return () => {
       this.turnFinishedSubscribers.delete(listener)
+    }
+  }
+
+  private detachWebContents(wc: WebContents): void {
+    this.subscribers.delete(wc)
+    for (const [chatSessionId, counts] of this.sessionWatchers.entries()) {
+      counts.delete(wc)
+      if (counts.size === 0) {
+        this.sessionWatchers.delete(chatSessionId)
+      }
     }
   }
 
@@ -239,7 +272,7 @@ export class ChatEngine {
     })
 
     const fallbackTitle = text.length > 50 ? `${text.slice(0, 50)}...` : text
-    const { modelId, configSnapshot } = extractSessionMeta(runtimeSession.providerStateSnapshot)
+    const { modelId } = extractSessionMeta(runtimeSession.providerStateSnapshot)
     const requestedModelId = optsModelId ?? modelId
 
     const draft = this.prepareTurn({
@@ -264,7 +297,6 @@ export class ChatEngine {
       backendSessionId: runtimeSession.providerSessionId,
       backendStateSnapshot: runtimeSession.providerStateSnapshot,
       requestedModelId,
-      configSnapshot,
     })
     draft.runId = controlPlane.startRun({
       chatSessionId,
@@ -327,7 +359,6 @@ export class ChatEngine {
       backendSessionId: runtimeSession.providerSessionId,
       backendStateSnapshot: runtimeSession.providerStateSnapshot,
       requestedModelId: binding?.requestedModelId ?? resumedMeta.modelId,
-      configSnapshot: binding?.configSnapshot ?? resumedMeta.configSnapshot,
     })
     this.recordSessionCapabilitySnapshot(profile.id, profile.providerKind, runtimeSession.providerStateSnapshot)
 
@@ -419,7 +450,6 @@ export class ChatEngine {
       backendSessionId: resumed.providerSessionId,
       backendStateSnapshot: resumed.providerStateSnapshot,
       requestedModelId: binding?.requestedModelId ?? resumedMeta.modelId,
-      configSnapshot: binding?.configSnapshot ?? resumedMeta.configSnapshot,
     })
     this.recordSessionCapabilitySnapshot(profile.id, profile.providerKind, resumed.providerStateSnapshot)
     const liveSessionId = updatedBinding.backendSessionId ?? chatSessionId
@@ -570,7 +600,7 @@ export class ChatEngine {
       agentId,
       runtimeSession,
       message: assistantMessage,
-      flushTimer: null,
+      projector: createChatTurnProjector(assistantMessage),
       cancelled: false,
       modelId,
       thinkingEffort,
@@ -583,50 +613,55 @@ export class ChatEngine {
   /**
    * Drive the transport chunk stream for a prepared draft.
    *
-   *  - Appends Cradle-owned timeline facts to the backend control plane
-   *  - Broadcasts each persisted fact on `chat:timeline-event`
-   *  - Feeds projected `UIMessageChunk`s into the internal snapshot pipeline
-   *  - Closes or errors the stream from final `run.*` events, then clears the draft slot
+   *  - Appends Cradle-owned timeline facts inside the same transaction that updates the assistant snapshot
+   *  - Broadcasts persisted facts only to windows explicitly watching the session
+   *  - Emits terminal activity summaries globally for unread indicators
    */
   private async runStream(draft: Draft, userText: string): Promise<void> {
-    const pipe = new TransformStream<UIMessageChunk, UIMessageChunk>()
-    const writer = pipe.writable.getWriter()
-    const controlPlane = getBackendControlPlaneService()
-    const dbTask = (async () => {
-      try {
-        for await (const snap of readUIMessageStream<UIMessage>({
-          message: draft.message,
-          stream: pipe.readable,
-        })) {
-          draft.message = snap
-          this.scheduleFlush(draft)
-        }
-      }
-      catch {
-        // readUIMessageStream throwing is fine here — main loop handles it
-      }
-    })()
-
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
     let provider: ChatRuntimeProvider | null = null
-    let terminalError: unknown = null
 
-    const emitTimelineEvent = async (event: TimelineInputEvent): Promise<BackendTimelineEvent> => {
+    const emitTimelineEvent = async (
+      event: TimelineInputEvent,
+      options: {
+        messageStatus?: MessageStatus
+        errorText?: string | null
+        runCompletion?: {
+          status: ChatTurnStatus
+          stopReason: string | null
+          errorText: string | null
+        }
+      } = {},
+    ): Promise<BackendTimelineEvent> => {
       if (!draft.runId) {
         throw new Error(`Missing backend run for chat session: ${draft.chatSessionId}`)
       }
 
-      const stored = controlPlane.appendTimelineEvent({
+      const chunks = applyTimelineEventToChatTurn(draft.projector, event)
+      draft.message = draft.projector.message
+
+      const stored = persistProjectedTimelineEvent({
         chatSessionId: draft.chatSessionId,
+        messageId: draft.messageId,
         runId: draft.runId,
         event,
+        messageJson: JSON.stringify(draft.message),
+        messageStatus: options.messageStatus ?? 'streaming',
+        errorText: options.errorText ?? null,
+        runCompletion: options.runCompletion,
       })
-      const chunks = projectTimelineEventToChatChunks(stored)
       this.broadcastTimelineEvent(draft, stored, chunks)
-      for (const chunk of chunks) {
-        await writer.write(chunk)
+
+      if (stored.type === 'run.completed' || stored.type === 'run.aborted' || stored.type === 'run.failed') {
+        this.broadcastSessionActivity({
+          chatSessionId: draft.chatSessionId,
+          messageId: draft.messageId,
+          status: options.runCompletion?.status ?? 'failed',
+          errorText: options.errorText ?? null,
+        })
       }
+
       return stored
     }
 
@@ -646,90 +681,13 @@ export class ChatEngine {
       const profile = this.loadProfile(draft.agentId)
       provider = this.getChatProvider(profile.providerKind)
 
-      // ── Assemble conversation context (history + system prompt) ──────────
-      let systemPrompt: string | undefined
-      let history: Array<{ role: 'user' | 'assistant', content: string }> | undefined
-      let agentName: string | null = null
-      let skillEntries: ReturnType<typeof scanSkills> = []
-
-      const db = getDb()
-      const session = db.select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
-
-      // Load Agent identity info (name + system prompt) for all providers
-      if (session?.agentId) {
-        const agent = db.select().from(agentsTable).where(eq(agentsTable.id, session.agentId)).get()
-        agentName = agent?.name ?? null
-        if (agent?.configJson) {
-          try {
-            const cfg = JSON.parse(agent.configJson)
-            if (typeof cfg.systemPrompt === 'string' && cfg.systemPrompt.length > 0) {
-              systemPrompt = cfg.systemPrompt
-            }
-          }
-          catch {
-            // Invalid JSON in configJson — ignore
-          }
-        }
-      }
-
-      // For ACP providers, fall back to deriving name from agentId
-      if (profile.providerKind === 'acp-chat' && !agentName && draft.agentId) {
-        agentName = draft.agentId.replace(/^acp:/, '')
-      }
-
-      // Load history + skills only for providers that need it (not ACP — it manages its own state)
-      if (profile.providerKind !== 'acp-chat') {
-        // Load conversation history (exclude current turn's user + assistant messages)
-        const rows = db.select()
-          .from(messages)
-          .where(and(
-            eq(messages.sessionId, draft.chatSessionId),
-            eq(messages.status, 'complete'),
-          ))
-          .orderBy(messages.createdAt)
-          .all()
-          .filter(row => row.id !== draft.userMessageId && row.id !== draft.messageId)
-
-        if (rows.length > 0) {
-          history = rows.map((row) => {
-            let text = ''
-            try {
-              const uiMsg: UIMessage = JSON.parse(row.content)
-              text = uiMsg.parts
-                .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
-                .map(p => p.text)
-                .join('\n')
-            }
-            catch {
-              text = row.content
-            }
-            return { role: row.role as 'user' | 'assistant', content: text }
-          })
-        }
-
-        // Scan skills and append catalog to system prompt
-        const workspace = session?.workspaceId
-          ? db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
-          : undefined
-        const skillEntries_ = scanSkills({
-          workspacePath: workspace?.path,
-          agentId: session?.agentId ?? undefined,
-        })
-        skillEntries = skillEntries_
-        const catalog = buildSkillCatalog(skillEntries_)
-
-        // Prepend bundled system workflow (highest authority — developer-defined)
-        const sysWorkflow = readBundledResource('system-workflow.md')
-        if (sysWorkflow) {
-          systemPrompt = systemPrompt
-            ? sysWorkflow + '\n\n' + systemPrompt
-            : sysWorkflow
-        }
-
-        if (catalog) {
-          systemPrompt = (systemPrompt ?? '') + catalog
-        }
-      }
+      const turnContext = resolveChatTurnContext({
+        chatSessionId: draft.chatSessionId,
+        draftMessageId: draft.messageId,
+        draftUserMessageId: draft.userMessageId,
+        fallbackAgentId: draft.agentId,
+        providerKind: profile.providerKind,
+      })
 
       // Record agent context for devtool observability (all providers)
       getAgentContextDevtoolStore().record({
@@ -737,10 +695,10 @@ export class ChatEngine {
         timestamp: Date.now(),
         chatSessionId: draft.chatSessionId,
         agentId: draft.agentId ?? null,
-        agentName,
-        systemPrompt: systemPrompt ?? null,
-        skillsCatalog: skillEntries,
-        historyLength: history?.length ?? 0,
+        agentName: turnContext.agentName,
+        systemPrompt: turnContext.systemPrompt ?? null,
+        skillsCatalog: [],
+        historyLength: turnContext.history?.length ?? 0,
         providerKind: profile.providerKind,
       })
 
@@ -750,8 +708,8 @@ export class ChatEngine {
         message: userText,
         modelId: draft.modelId,
         thinkingEffort: draft.thinkingEffort,
-        systemPrompt,
-        history,
+        systemPrompt: turnContext.systemPrompt,
+        history: turnContext.history,
       })) {
         await emitTimelineEvent(event)
       }
@@ -760,7 +718,6 @@ export class ChatEngine {
       finalStatus = draft.cancelled ? 'aborted' : 'failed'
       const serializedError = serializeChatError(err)
       finalError = serializedError.text
-      terminalError = err
 
       if (!draft.cancelled) {
         console.error('[ChatEngine] prompt failed', {
@@ -773,7 +730,7 @@ export class ChatEngine {
       }
     }
 
-    const terminalEvent = await emitTimelineEvent(
+    await emitTimelineEvent(
       finalStatus === 'complete'
         ? {
             type: 'run.completed',
@@ -798,29 +755,21 @@ export class ChatEngine {
                 eventType: 'chat.turn.failed',
               },
             },
+      {
+        messageStatus: finalStatus,
+        errorText: finalError,
+        runCompletion: {
+          status: finalStatus,
+          stopReason: finalStatus === 'complete'
+            ? 'response.completed'
+            : draft.cancelled
+              ? 'response.cancelled'
+              : 'response.failed',
+          errorText: finalError,
+        },
+      },
     )
 
-    if (terminalEvent.type === 'run.failed') {
-      await writer.abort(terminalError ?? new Error(terminalEvent.error)).catch(() => {})
-    }
-    else {
-      await writer.close()
-    }
-
-    await dbTask
-    await this.flushNow(draft, finalStatus, finalError)
-    if (draft.runId) {
-      controlPlane.finishRun({
-        runId: draft.runId,
-        status: finalStatus,
-        stopReason: finalStatus === 'complete'
-          ? 'response.completed'
-          : draft.cancelled
-            ? 'response.cancelled'
-            : 'response.failed',
-        errorText: finalError,
-      })
-    }
     this.drafts.delete(draft.chatSessionId)
 
     // Index completed message in FTS
@@ -879,47 +828,6 @@ export class ChatEngine {
     }
   }
 
-  private scheduleFlush(draft: Draft): void {
-    if (draft.flushTimer) {
-      return
-    }
-    draft.flushTimer = setTimeout(() => {
-      draft.flushTimer = null
-      this.persistDraft(draft, 'streaming', null)
-    }, FLUSH_DEBOUNCE_MS)
-  }
-
-  private async flushNow(
-    draft: Draft,
-    status: MessageStatus,
-    errorText: string | null,
-  ): Promise<void> {
-    if (draft.flushTimer) {
-      clearTimeout(draft.flushTimer)
-      draft.flushTimer = null
-    }
-    this.persistDraft(draft, status, errorText)
-  }
-
-  private persistDraft(draft: Draft, status: MessageStatus, errorText: string | null): void {
-    const db = getDb()
-    db.transaction((tx) => {
-      tx.update(messages)
-        .set({
-          content: JSON.stringify(draft.message),
-          status,
-          errorText,
-          updatedAt: nowUnix(),
-        })
-        .where(and(eq(messages.id, draft.messageId), eq(messages.sessionId, draft.chatSessionId)))
-        .run()
-      tx.update(sessions)
-        .set({ updatedAt: nowUnix() })
-        .where(eq(sessions.id, draft.chatSessionId))
-        .run()
-    })
-  }
-
   private broadcastTimelineEvent(
     draft: Draft,
     event: BackendTimelineEvent,
@@ -931,26 +839,55 @@ export class ChatEngine {
       event,
       chunks,
     }
-    this.broadcast('chat:timeline-event', payload as unknown as { chatSessionId: string, [k: string]: unknown })
+    this.broadcastSession('chat:timeline-event', draft.chatSessionId, payload)
   }
 
-  private broadcast(
+  private broadcastSessionActivity(event: ChatSessionActivityPayload): void {
+    this.broadcastGlobal('chat:session-activity', event)
+  }
+
+  private broadcastSession<T extends { chatSessionId: string }>(
     channel: string,
-    payload: { chatSessionId: string, [k: string]: unknown },
+    chatSessionId: string,
+    payload: T,
   ): void {
-    // Surface the push in the IPC devtool feed (single-event trace, grouped by chatSessionId).
     observePush(channel, payload, { flowId: payload.chatSessionId })
 
-    for (const wc of [...this.subscribers]) {
+    const watchers = this.sessionWatchers.get(chatSessionId)
+    if (!watchers) {
+      return
+    }
+
+    for (const wc of [...watchers.keys()]) {
       if (wc.isDestroyed()) {
-        this.subscribers.delete(wc)
+        this.detachWebContents(wc)
         continue
       }
       try {
         wc.send(channel, payload)
       }
       catch {
-        this.subscribers.delete(wc)
+        this.detachWebContents(wc)
+      }
+    }
+  }
+
+  private broadcastGlobal<T extends { chatSessionId: string }>(
+    channel: string,
+    payload: T,
+  ): void {
+    observePush(channel, payload, { flowId: payload.chatSessionId })
+
+    for (const wc of [...this.subscribers]) {
+      if (wc.isDestroyed()) {
+        this.detachWebContents(wc)
+        continue
+      }
+      try {
+        wc.send(channel, payload)
+      }
+      catch {
+        this.detachWebContents(wc)
       }
     }
   }
@@ -979,32 +916,27 @@ function nowUnix(): number {
 }
 
 /**
- * Extract optional modelId and configSnapshot from a provider state snapshot.
+ * Extract optional modelId from a provider state snapshot.
  * ACP providers store `{ models: SessionModelState, configOptions: [...] }` in the snapshot.
  */
 function extractSessionMeta(providerStateSnapshot: string | null): {
   modelId: string | null
-  configSnapshot: string | null
 } {
   if (!providerStateSnapshot) {
-    return { modelId: null, configSnapshot: null }
+    return { modelId: null }
   }
   try {
     const state = JSON.parse(providerStateSnapshot) as {
       models?: { currentModelId?: string }
-      configOptions?: unknown
     }
     return {
       modelId: typeof state?.models?.currentModelId === 'string'
         ? state.models.currentModelId
         : null,
-      configSnapshot: state?.configOptions !== undefined
-        ? JSON.stringify(state.configOptions)
-        : null,
     }
   }
   catch {
-    return { modelId: null, configSnapshot: null }
+    return { modelId: null }
   }
 }
 

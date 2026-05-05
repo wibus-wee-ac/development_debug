@@ -8,5 +8,5 @@ Keep the surface minimal and serializable because every exposed method becomes p
 
 ## Files
 
-- **index.d.ts**: Global window type declarations for preload-exposed APIs, including chat timeline push contracts.
-- **index.ts**: Runtime preload bridge exposing Electron, IPC devtool APIs, PTY push events, and chat timeline push events to renderers.
+- **index.d.ts**: Global window type declarations for preload-exposed APIs, including session-scoped chat timeline pushes and global chat activity contracts.
+- **index.ts**: Runtime preload bridge exposing Electron, IPC devtool APIs, PTY push events, session-scoped chat timeline pushes, and global chat activity pushes to renderers.

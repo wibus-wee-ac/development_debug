@@ -3,7 +3,7 @@
 // Position: Core state management for tab lifecycle
 
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
 import type { TabDefinition } from './define-tab'
 
@@ -49,8 +49,25 @@ function resolveLabel(registry: TabRegistry, type: string, params: Record<string
   return def.label
 }
 
+const persistStorage = createJSONStorage(() => {
+  try {
+    if (typeof globalThis.localStorage !== 'undefined') {
+      return globalThis.localStorage
+    }
+  }
+  catch {
+    // Ignore and fall back to ephemeral in-memory storage for tests / non-browser environments.
+  }
+
+  return {
+    getItem: () => null,
+    setItem: () => {},
+    removeItem: () => {},
+  }
+})
+
 export function createTabStore(registry: TabRegistry, options?: { persistKey?: string }) {
-  const persistKey = options?.persistKey ?? 'cradle-tab-store'
+  const persistKey = options?.persistKey ?? 'cradle:tabs:v1'
 
   return create<TabStoreState>()(
     persist(
@@ -158,6 +175,8 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
       }),
       {
         name: persistKey,
+        storage: persistStorage,
+        version: 1,
         partialize: state => ({
           tabs: state.tabs,
           activeTabId: state.activeTabId,

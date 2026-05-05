@@ -108,6 +108,13 @@ interface ScopeScanResult {
   entries: SkillCatalogEntry[]
 }
 
+interface DirectoryScanCacheEntry {
+  signature: string
+  entries: SkillCatalogEntry[]
+}
+
+const directoryScanCache = new Map<string, DirectoryScanCacheEntry>()
+
 /**
  * Scan skills directories for SKILL.md files.
  * Priority (lowest to highest): built-in → legacy → shared → workspace → agent.
@@ -166,6 +173,7 @@ export async function createSkillDocument(scope: SkillScope, input: CreateSkillI
   }
   const skillPath = path.join(skillDir, 'SKILL.md')
   await writeFile(skillPath, serializeSkillDocument(frontmatter, input.body), 'utf8')
+  invalidateScopeCache(scope, input)
 
   return {
     name: input.name,
@@ -208,6 +216,7 @@ export async function updateSkillDocument(input: UpdateSkillInput): Promise<Skil
 
   const targetLocation = path.join(targetSkillDir, 'SKILL.md')
   await writeFile(targetLocation, serializeSkillDocument(nextFrontmatter, input.document.body), 'utf8')
+  invalidateScopeCache(input.scope, input)
 
   return {
     name: input.document.name,
@@ -225,6 +234,7 @@ export async function deleteSkillDocument(input: SkillLookup): Promise<void> {
   assertWritableScope(input.scope)
   const entry = resolveInventoryEntry(input)
   await rm(entry.skillDir, { recursive: true, force: true })
+  invalidateScopeCache(input.scope, input)
 }
 
 export async function importSkillPackage(scope: SkillScope, input: ImportSkillInput): Promise<SkillDocument> {
@@ -246,6 +256,7 @@ export async function importSkillPackage(scope: SkillScope, input: ImportSkillIn
 
   await mkdir(rootDir, { recursive: true })
   await cp(input.sourceDir, targetDir, { recursive: true })
+  invalidateScopeCache(scope, input)
 
   return {
     name: parsed.name,
@@ -364,6 +375,7 @@ function scanAllScopes(context: SkillContext): ScopeScanResult[] {
 
 function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] {
   if (!fs.existsSync(rootDir)) {
+    directoryScanCache.delete(getDirectoryScanCacheKey(scope, rootDir))
     return []
   }
 
@@ -372,10 +384,12 @@ function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] 
     dirEntries = fs.readdirSync(rootDir, { withFileTypes: true })
   }
   catch {
+    directoryScanCache.delete(getDirectoryScanCacheKey(scope, rootDir))
     return []
   }
 
-  const result: SkillCatalogEntry[] = []
+  const candidates: Array<{ skillDir: string, skillPath: string }> = []
+  const signatureParts: string[] = []
   for (const dirEntry of dirEntries) {
     if (!dirEntry.isDirectory()) {
       continue
@@ -386,6 +400,26 @@ function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] 
     if (!fs.existsSync(skillPath)) {
       continue
     }
+
+    try {
+      const stat = fs.statSync(skillPath)
+      signatureParts.push(`${dirEntry.name}:${stat.size}:${stat.mtimeMs}`)
+      candidates.push({ skillDir, skillPath })
+    }
+    catch {
+      // Ignore transient files or stat failures.
+    }
+  }
+
+  const cacheKey = getDirectoryScanCacheKey(scope, rootDir)
+  const signature = signatureParts.join('|')
+  const cached = directoryScanCache.get(cacheKey)
+  if (cached && cached.signature === signature) {
+    return cloneCatalogEntries(cached.entries)
+  }
+
+  const result: SkillCatalogEntry[] = []
+  for (const { skillDir, skillPath } of candidates) {
 
     try {
       const parsed = parseSkillDocument(fs.readFileSync(skillPath, 'utf8'))
@@ -402,6 +436,11 @@ function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] 
       // Malformed skill package — skip
     }
   }
+
+  directoryScanCache.set(cacheKey, {
+    signature,
+    entries: cloneCatalogEntries(result),
+  })
 
   return result
 }
@@ -517,4 +556,21 @@ export function assertWorkspaceId(workspaceId: string): void {
 
 export function assertAgentId(agentId: string): void {
   assertSafeId(agentId)
+}
+
+function cloneCatalogEntries(entries: SkillCatalogEntry[]): SkillCatalogEntry[] {
+  return entries.map(entry => ({ ...entry }))
+}
+
+function getDirectoryScanCacheKey(scope: SkillScope, rootDir: string): string {
+  return `${scope}:${rootDir}`
+}
+
+function invalidateScopeCache(scope: SkillScope, context: SkillContext): void {
+  try {
+    directoryScanCache.delete(getDirectoryScanCacheKey(scope, resolveScopeRoot(scope, context)))
+  }
+  catch {
+    // Ignore invalidation failures for partial contexts.
+  }
 }

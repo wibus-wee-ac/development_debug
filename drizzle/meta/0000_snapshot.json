@@ -1385,13 +1385,6 @@
           "notNull": false,
           "autoincrement": false
         },
-        "config_snapshot": {
-          "name": "config_snapshot",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "integer",

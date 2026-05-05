@@ -6,7 +6,11 @@ import type { AcpDevtoolEvent, AgentContextEvent, IpcObservedEvent } from '@crad
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
-import type { ChatSessionTitlePayload, ChatTimelineEventPayload } from '../shared/chat-events'
+import type {
+  ChatSessionActivityPayload,
+  ChatSessionTitlePayload,
+  ChatTimelineEventPayload,
+} from '../shared/chat-events'
 
 interface IpcDevtoolApi {
   getSnapshot: () => ReturnType<IpcServices['ipcDevtool']['getSnapshot']>
@@ -31,6 +35,7 @@ interface PtyPushApi {
 interface ChatPushApi {
   onTimelineEvent: (listener: (payload: ChatTimelineEventPayload) => void) => () => void
   onSessionTitle: (listener: (payload: ChatSessionTitlePayload) => void) => () => void
+  onSessionActivity: (listener: (payload: ChatSessionActivityPayload) => void) => () => void
 }
 
 declare global {

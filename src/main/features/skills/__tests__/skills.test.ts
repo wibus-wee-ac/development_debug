@@ -2,6 +2,7 @@
 // Output: Regression tests for filesystem-based skills inventory, CRUD, import/export, and five-layer root precedence
 // Position: Unit test file for src/main/features/skills/skills.ts
 
+import fs from 'node:fs'
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { join } from 'node:path'
@@ -159,6 +160,46 @@ describe('skills library', () => {
         active: true,
       }),
     ])
+  })
+
+  it('reuses cached parsed skills when the directory signature is unchanged', async () => {
+    await writeSkillPackage(sharedDir, 'cached-skill', {
+      name: 'cached-skill',
+      description: 'cached description',
+    })
+
+    const readSpy = vi.spyOn(fs, 'readFileSync')
+
+    const first = listSkillInventory()
+    const second = listSkillInventory()
+
+    expect(first).toEqual(second)
+    expect(readSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('SKILL.md'))).toHaveLength(1)
+
+    readSpy.mockRestore()
+  })
+
+  it('refreshes cached parsed skills when SKILL.md changes', async () => {
+    const skillPath = join(sharedDir, 'cached-skill', 'SKILL.md')
+    await writeSkillPackage(sharedDir, 'cached-skill', {
+      name: 'cached-skill',
+      description: 'cached description',
+    })
+
+    const readSpy = vi.spyOn(fs, 'readFileSync')
+
+    expect(listSkillInventory().find(entry => entry.name === 'cached-skill')?.description).toBe('cached description')
+    expect(readSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('SKILL.md'))).toHaveLength(1)
+
+    expect(listSkillInventory().find(entry => entry.name === 'cached-skill')?.description).toBe('cached description')
+    expect(readSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('SKILL.md'))).toHaveLength(1)
+
+    await writeFile(skillPath, '---\nname: cached-skill\ndescription: updated cached description\n---\n\n# Updated\n', 'utf8')
+
+    expect(listSkillInventory().find(entry => entry.name === 'cached-skill')?.description).toBe('updated cached description')
+    expect(readSpy.mock.calls.filter(([filePath]) => String(filePath).endsWith('SKILL.md'))).toHaveLength(2)
+
+    readSpy.mockRestore()
   })
 
   it('creates, updates, and deletes a global skill while preserving unknown frontmatter', async () => {

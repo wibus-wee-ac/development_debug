@@ -2,7 +2,7 @@
 // Output: ChatService IPC surface — thin forwarder delegating to ChatEngine
 // Position: Main-process IPC layer (L2 surface) for chat feature
 
-import { IpcMethod, IpcService } from '@cradle/ipc'
+import { getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
 
 import type { ChatMessage, EnsureLiveResult } from '../../features/chat/chat-engine'
 import { ChatEngine } from '../../features/chat/chat-engine'
@@ -44,5 +44,15 @@ export class ChatService extends IpcService {
   @IpcMethod()
   async ensureLive(chatSessionId: string): Promise<EnsureLiveResult> {
     return this.engine.ensureLive(chatSessionId)
+  }
+
+  @IpcMethod()
+  watchSession(chatSessionId: string): void {
+    this.engine.watchSession(getIpcContext().sender, chatSessionId)
+  }
+
+  @IpcMethod()
+  unwatchSession(chatSessionId: string): void {
+    this.engine.unwatchSession(getIpcContext().sender, chatSessionId)
   }
 }

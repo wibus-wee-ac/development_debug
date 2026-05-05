@@ -8,10 +8,12 @@
 
 ## Files
 
+- **acp/**: ACP registry、安装状态、runtime session 与 auto-profile 同步的 feature-owned application service
 - **agent-runtime/**: provider catalog、凭证与 runtime provider 合约
 - **backend-control-plane/**: Cradle-owned backend bindings、runs 与 capability snapshots
 - **chat/**: 聊天会话编排、provider 抽象与 thread search
 - **issue-agent/**: issue delegation、runner 与 agent session/activity 查询
 - **kanban/**: Kanban 查询与写侧命令
 - **skills/**: filesystem-first skills inventory 与 source 抓取
+- **workspace/**: workspace 记录、目录文件清单与安全文本读写语义
 - **workflow-rules/**: workflow rules 的读写与持久化规则

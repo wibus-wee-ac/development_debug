@@ -23,7 +23,6 @@ export const backendSessionBindings = sqliteTable('backend_session_bindings', {
   backendSessionId: text('backend_session_id'),
   backendStateSnapshot: text('backend_state_snapshot'),
   requestedModelId: text('requested_model_id'),
-  configSnapshot: text('config_snapshot'),
   ...timestamps(),
 })
 

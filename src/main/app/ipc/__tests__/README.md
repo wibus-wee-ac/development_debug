@@ -8,8 +8,10 @@
 
 ## Files
 
+- **acp.test.ts**: 覆盖 ACP IPC adapter 对 ACP feature application service 的 registry/install/runtime 转发行为
 - **agent-runtime.test.ts**: 覆盖 agent-runtime IPC adapter 对 feature application service 的转发行为
 - **issue-agent.test.ts**: 覆盖 issue-agent IPC adapter 的委派路由与 runner 协作
 - **preferences.test.ts**: 覆盖全局聊天偏好的读取与更新
 - **session.test.ts**: 覆盖会话元数据写入与读取契约
 - **skills.test.ts**: 覆盖 skills IPC 从 workspace/agent 上下文到 filesystem layer 的路由
+- **workspace.test.ts**: 覆盖 workspace IPC adapter 对 workspace feature application service 的 CRUD 与文件访问转发行为

@@ -33,6 +33,7 @@ function buildChunkStream(
 ): ReadableStream<UIMessageChunk> {
   let ctrl: ReadableStreamDefaultController<UIMessageChunk> = null!
   let closed = false
+  let unwatchRequested = false
 
   const readable = new ReadableStream<UIMessageChunk>({
     start(controller) {
@@ -45,6 +46,7 @@ function buildChunkStream(
       return
     }
     closed = true
+    requestUnwatch()
     try {
       ctrl.close()
     }
@@ -57,6 +59,7 @@ function buildChunkStream(
       return
     }
     closed = true
+    requestUnwatch()
     // controller.error() puts the ReadableStream into "errored" state,
     // which the AI SDK surfaces as chat.error (status → 'error').
     try {
@@ -78,11 +81,20 @@ function buildChunkStream(
     catch (error) {
       offEvent()
       closed = true
+      requestUnwatch()
 
       if (error instanceof Error && !error.message.includes('closed readable stream')) {
         throw error
       }
     }
+  }
+
+  const requestUnwatch = () => {
+    if (unwatchRequested) {
+      return
+    }
+    unwatchRequested = true
+    void ipc?.chat.unwatchSession(chatSessionId).catch(() => {})
   }
 
   const offEvent = window.chatPush.onTimelineEvent(
@@ -126,7 +138,10 @@ function buildChunkStream(
   }
 
   Promise.resolve()
-    .then(() => onReady())
+    .then(async () => {
+      await ipc?.chat.watchSession(chatSessionId)
+      await onReady()
+    })
     .catch((err) => {
       offEvent()
       closeWithError(err)

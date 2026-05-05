@@ -8,7 +8,7 @@
 
 ## Files
 
-- **backend-control-plane.ts**: backend binding、run、append-only timeline 与 capability snapshot 相关表
+- **backend-control-plane.ts**: backend binding、run、append-only timeline 与 capability snapshot 相关表；binding 只保留 Cradle-owned backend snapshot + requested model，不再复制 ACP config snapshot
 - **index.ts**: Schema barrel，聚合导出所有 context-specific schema 模块
 - **shared.ts**: 共享列片段与 `workspaces` 表
 - **identity.ts**: Agent identity / credential 相关表

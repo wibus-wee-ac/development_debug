@@ -28,6 +28,12 @@ describe('backend control plane schema', () => {
     expect(sessionColumns).not.toContain('configSnapshot')
   })
 
+  it('keeps ACP config selections out of backend bindings when they are only opaque session snapshot state', () => {
+    const bindingColumns = Object.keys(getTableColumns(schema.backendSessionBindings))
+
+    expect(bindingColumns).not.toContain('configSnapshot')
+  })
+
   it('keeps the Drizzle baseline plus timeline migration internally consistent', () => {
     const journal = JSON.parse(
       readFileSync(resolve(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8'),

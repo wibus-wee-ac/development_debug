@@ -8,7 +8,7 @@
 
 ## Files
 
-- **acp-connection.test.ts**: 验证 ACP connection manager 的连接与 session 行为
+- **acp-connection.test.ts**: 验证 ACP connection manager 的连接、session 行为，以及 cancel / disconnect 时 prompt generator 的收口语义
 - **acp-installer.test.ts**: 验证 ACP 安装/卸载辅助逻辑
 - **acp-process-manager.test.ts**: 验证 ACP 子进程生命周期与 devtool 记录
 - **acp-registry.test.ts**: 验证 registry 拉取与平台过滤逻辑

@@ -8,10 +8,10 @@
 
 ## Files
 
-- **acp.ts**: ACP registry、安装、运行时 session、审计与指标的 IPC adapter
+- **acp.ts**: ACP feature application service 的薄 IPC adapter，转发 registry、安装状态、runtime session 与审计查询
 - **agent.ts**: Agent identity 的 CRUD IPC adapter
 - **agent-runtime.ts**: agent-runtime feature 的薄 IPC adapter，转发 profile、probe、models 与凭证命令
-- **chat.ts**: ChatEngine 的会话创建、发送、终止与消息读取接口
+- **chat.ts**: ChatEngine 的会话创建、发送、终止、消息读取，以及 renderer 会话级 timeline watch / unwatch 接口
 - **dev.ts**: 仅开发模式可用的辅助 IPC，如打开目录与强制重载
 - **git.ts**: Git 状态、分支与提交图相关 IPC adapter
 - **ipc-devtool.ts**: devtool 窗口、事件快照与清理接口
@@ -25,4 +25,4 @@
 - **usage.ts**: token usage 聚合统计接口
 - **window.ts**: tear-off 窗口管理接口
 - **workflow-rules.ts**: workflow rules 的读取、保存、删除与列表接口
-- **workspace.ts**: 工作区列表、创建、删除与路径管理接口
+- **workspace.ts**: workspace feature application service 的薄 IPC adapter，仅保留目录选择与 shell 打开等 transport helper

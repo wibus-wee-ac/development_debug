@@ -16,7 +16,6 @@ export interface BackendSessionBinding {
   backendSessionId: string | null
   backendStateSnapshot: string | null
   requestedModelId: string | null
-  configSnapshot: string | null
   createdAt: number
   updatedAt: number
 }
@@ -50,7 +49,6 @@ export interface AttachBackendBindingInput {
   backendSessionId: string | null
   backendStateSnapshot: string | null
   requestedModelId: string | null
-  configSnapshot: string | null
 }
 
 export interface StartBackendRunInput {

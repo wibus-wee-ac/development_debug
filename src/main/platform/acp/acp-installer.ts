@@ -1,5 +1,5 @@
-// Input: electron app, net module; tar, extract-zip npm packages; drizzle DB
-// Output: installAgent(), uninstallAgent(), audit logging helpers
+// Input: electron app, net module; tar, extract-zip npm packages; ACP audit log store
+// Output: binary/package install helpers, uninstall helper, and low-level file audit logging
 // Position: ACP capability module used by AcpService; all FS writes remain
 //           confined to app.getPath('userData')/acp/ and fully audited in DB.
 
@@ -11,7 +11,7 @@ import extractZip from 'extract-zip'
 import * as tar from 'tar'
 
 import { getDb } from '../../db'
-import { acpAgents, acpAuditLog } from '../../db/schema'
+import { acpAuditLog } from '../../db/schema'
 import type { PackageDistribution, RegistryAgent } from './acp-registry'
 import { getPlatformKey } from './acp-registry'
 
@@ -299,74 +299,6 @@ export async function uninstallBinaryAgent(
   await fsp.rm(installPath, { recursive: true, force: true })
   audit(agentId, 'file_delete', installPath, {})
   audit(agentId, 'uninstall_complete', null, {})
-}
-
-// ── DB persistence helpers ────────────────────────────────────────────────────
-
-export function persistInstalled(
-  agentId: string,
-  name: string,
-  version: string,
-  distributionType: 'binary' | 'npx' | 'uvx',
-  result: InstallResult,
-): void {
-  const now = Math.floor(Date.now() / 1000)
-  getDb()
-    .insert(acpAgents)
-    .values({
-      id: agentId,
-      name,
-      version,
-      distributionType,
-      installPath: result.installPath,
-      cmd: result.cmd,
-      args: JSON.stringify(result.args ?? []),
-      env: JSON.stringify(result.env ?? {}),
-      status: 'installed',
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: acpAgents.id,
-      set: {
-        name,
-        version,
-        distributionType,
-        installPath: result.installPath,
-        cmd: result.cmd,
-        args: JSON.stringify(result.args ?? []),
-        env: JSON.stringify(result.env ?? {}),
-        status: 'installed',
-        updatedAt: now,
-      },
-    })
-    .run()
-
-  audit(agentId, 'install_complete', result.installPath, { distributionType })
-}
-
-export function persistFailed(agentId: string, error: unknown): void {
-  const now = Math.floor(Date.now() / 1000)
-  getDb()
-    .insert(acpAgents)
-    .values({
-      id: agentId,
-      name: agentId,
-      version: '0.0.0',
-      distributionType: 'npx',
-      installPath: null,
-      cmd: null,
-      args: '[]',
-      env: '{}',
-      status: 'failed',
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: acpAgents.id,
-      set: { status: 'failed', updatedAt: now },
-    })
-    .run()
-
-  audit(agentId, 'install_failed', null, { error: String(error) })
 }
 
 // pipeline re-export for potential future use

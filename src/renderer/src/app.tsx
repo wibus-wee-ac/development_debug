@@ -12,10 +12,12 @@ import { useLayoutSlotsCtx } from '@renderer/components/layout/use-layout-slots'
 import { AnchoredToastProvider, ToastProvider } from '@renderer/components/ui/toast'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
 import { SettingsContent } from '@renderer/features/settings/settings-content'
+import { ipc } from '@renderer/lib/ipc'
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useThemeStore } from '@renderer/store/theme'
 import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
+import { reconcilePersistedTabs } from '@renderer/tabs/reconcile-persisted-tabs'
 import { useEffect } from 'react'
 
 /**
@@ -60,6 +62,62 @@ export function App() {
           activeTabId: s.activeTabId === dup.id ? homeTabs[0].id : s.activeTabId,
         }))
       }
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const reconcileTabs = async () => {
+      if (!ipc) {
+        return
+      }
+
+      const current = useCradleTabStore.getState()
+      const chatSessionIds = [...new Set(
+        current.tabs
+          .filter(tab => tab.type === 'chat' && typeof tab.params.sessionId === 'string')
+          .map(tab => tab.params.sessionId as string),
+      )]
+      const workspaceIds = [...new Set(
+        current.tabs
+          .filter(tab => tab.type === 'workspace-detail' && typeof tab.params.workspaceId === 'string')
+          .map(tab => tab.params.workspaceId as string),
+      )]
+
+      if (chatSessionIds.length === 0 && workspaceIds.length === 0) {
+        return
+      }
+
+      const [sessionRows, workspaceRows] = await Promise.all([
+        Promise.all(chatSessionIds.map(sessionId => ipc.session.get(sessionId))),
+        Promise.all(workspaceIds.map(workspaceId => ipc.workspace.get(workspaceId))),
+      ])
+
+      if (cancelled) {
+        return
+      }
+
+      const next = reconcilePersistedTabs({
+        tabs: current.tabs,
+        activeTabId: current.activeTabId,
+        existingSessionIds: new Set(sessionRows.filter(Boolean).map(session => session!.id)),
+        existingWorkspaceIds: new Set(workspaceRows.filter(Boolean).map(workspace => workspace!.id)),
+      })
+
+      const changed = next.activeTabId !== current.activeTabId
+        || next.tabs.length !== current.tabs.length
+        || next.tabs.some((tab, index) => current.tabs[index]?.id !== tab.id)
+
+      if (changed) {
+        useCradleTabStore.setState(next)
+      }
+    }
+
+    void reconcileTabs()
+
+    return () => {
+      cancelled = true
     }
   }, [])
 

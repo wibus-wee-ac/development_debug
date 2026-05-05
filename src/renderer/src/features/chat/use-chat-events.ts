@@ -1,19 +1,27 @@
-// Input: chatPush preload API, ChatTimelineEventPayload, ChatSessionTitlePayload
-// Output: useChatTimelineEvent, useGlobalChatTimelineEvent, useChatSessionTitle hooks
+// Input: chatPush preload API, renderer IPC proxy, ChatTimelineEventPayload, ChatSessionTitlePayload, ChatSessionActivityPayload
+// Output: useChatTimelineEvent, useGlobalChatSessionActivityEvent, useChatSessionTitle hooks
 // Position: Unified chat event bridge — single subscription, multi-consumer dispatch
 
-import type { ChatSessionTitlePayload, ChatTimelineEventPayload } from '@shared/chat-events'
+import type {
+  ChatSessionActivityPayload,
+  ChatSessionTitlePayload,
+  ChatTimelineEventPayload,
+} from '@shared/chat-events'
+import { ipc } from '@renderer/lib/ipc'
 import { useEffect, useRef } from 'react'
 
 /* ─── Module-level handler registries ────────────────────── */
 
 type TimelineHandler = (payload: ChatTimelineEventPayload) => void
+type ActivityHandler = (payload: ChatSessionActivityPayload) => void
 type TitleHandler = (payload: ChatSessionTitlePayload) => void
 
 const timelineHandlers = new Set<TimelineHandler>()
+const activityHandlers = new Set<ActivityHandler>()
 const titleHandlers = new Set<TitleHandler>()
 
 let timelineUnsub: (() => void) | null = null
+let activityUnsub: (() => void) | null = null
 let titleUnsub: (() => void) | null = null
 
 function ensureTimelineSubscription(): void {
@@ -22,6 +30,17 @@ function ensureTimelineSubscription(): void {
   }
   timelineUnsub = window.chatPush.onTimelineEvent((payload) => {
     for (const handler of timelineHandlers) {
+      handler(payload)
+    }
+  })
+}
+
+function ensureActivitySubscription(): void {
+  if (activityUnsub) {
+    return
+  }
+  activityUnsub = window.chatPush.onSessionActivity((payload) => {
+    for (const handler of activityHandlers) {
       handler(payload)
     }
   })
@@ -67,17 +86,19 @@ export function useChatTimelineEvent(
 
     timelineHandlers.add(wrapped)
     ensureTimelineSubscription()
+    void ipc?.chat.watchSession(sessionId).catch(() => {})
 
     return () => {
       timelineHandlers.delete(wrapped)
+      void ipc?.chat.unwatchSession(sessionId).catch(() => {})
     }
   }, [sessionId])
 }
 
 /**
- * Subscribe to all chat timeline events regardless of session.
+ * Subscribe to all terminal chat activity events regardless of session.
  */
-export function useGlobalChatTimelineEvent(handler: TimelineHandler): void {
+export function useGlobalChatSessionActivityEvent(handler: ActivityHandler): void {
   const handlerRef = useRef(handler)
 
   useEffect(() => {
@@ -85,15 +106,15 @@ export function useGlobalChatTimelineEvent(handler: TimelineHandler): void {
   })
 
   useEffect(() => {
-    const wrapped: TimelineHandler = (payload) => {
+    const wrapped: ActivityHandler = (payload) => {
       handlerRef.current(payload)
     }
 
-    timelineHandlers.add(wrapped)
-    ensureTimelineSubscription()
+    activityHandlers.add(wrapped)
+    ensureActivitySubscription()
 
     return () => {
-      timelineHandlers.delete(wrapped)
+      activityHandlers.delete(wrapped)
     }
   }, [])
 }
