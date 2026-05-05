@@ -19,7 +19,6 @@
 - **ipc-devtool-store.ts**: IPC Devtool 事件缓冲与订阅分发
 - **ipc-devtool.ts**: Devtool 窗口与观测能力的主进程集成
 - **issue-agent-runner.ts**: 委派执行 runner，负责 issue prompt 组装、运行时触发与 `chat.turn-finished` 事件消费，并在内存映射缺失时按 `chatSessionId` 回收完成态
-- **issue-delegation.ts**: 旧版 Issue 委派编排模块（迁移中，新增流程优先走 application 层）
 - **safe-storage.ts**: Electron `safeStorage` 的安全存储封装
 - **skills.ts**: Filesystem-first Skills 库，负责 built-in、legacy、global、workspace、agent 五层扫描、CRUD 与导入导出
 - **thread-search.ts**: 基于分词与打分的会话搜索引擎

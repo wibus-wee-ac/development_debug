@@ -8,4 +8,5 @@
 
 ## Files
 
+- **kanban-write-application.test.ts**: Kanban 写侧应用服务的 fake-store 行为测试，覆盖状态、看板、里程碑、Issue、评论、关联、上下文引用与会话链接命令
 - **issue-delegation-application.test.ts**: Issue 委派应用服务的状态流转与 runner 协调测试

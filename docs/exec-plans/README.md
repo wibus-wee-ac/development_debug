@@ -21,3 +21,4 @@ Use date-prefixed filenames so contributors can find the latest plan quickly.
 - **20260426-02-task-system-foundation.md**: Execution plan for a Task System covering pending runs (human-in-the-loop checkpoints), scheduled tasks, and agent-to-agent handoff.
 - **20260430-01-skills-management-system.md**: Execution plan for a filesystem-first Skills management system covering global/workspace CRUD, per-agent skill selection, and import/export without storing skill content in the DB.
 - **20260504-01-backend-application-event-pipeline.md**: Execution plan for introducing backend application-layer delegation orchestration and a domain event pipeline bridge for chat turn lifecycle.
+- **20260504-02-kanban-write-application-boundary.md**: Execution plan for moving Kanban write-side commands into the application layer, deleting dead delegation code, and validating the thinner IPC facade.

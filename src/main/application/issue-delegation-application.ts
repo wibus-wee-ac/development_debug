@@ -1,4 +1,4 @@
-// Input: Drizzle DB context, issue/agent schema tables, and IssueAgentRunner coordination
+// Input: Drizzle DB context, issue/agent schema tables, and a dynamically resolved delegation runner
 // Output: Issue delegation application service with delegate/run/stop/undelegate commands
 // Position: Application-layer orchestration boundary between IPC services and lib runners
 
@@ -9,9 +9,13 @@ import { and, eq } from 'drizzle-orm'
 import { getDb } from '../db'
 import type { AgentSession } from '../db/schema'
 import { agentProfiles, agentSessions, kanbanIssueComments, kanbanIssues } from '../db/schema'
-import { IssueAgentRunner } from '../lib/issue-agent-runner'
 
 const defaultNowUnix = (): number => Math.floor(Date.now() / 1000)
+
+async function resolveDefaultRunner(): Promise<IssueDelegationRunner> {
+  const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
+  return IssueAgentRunner.getInstance()
+}
 
 export interface IssueDelegationDbContext {
   select: () => { from: (table: unknown) => { where: (condition: unknown) => { get: () => unknown, all: () => unknown[] }, all: () => unknown[] } }
@@ -52,8 +56,9 @@ export function createIssueDelegationApplicationService(
   deps: IssueDelegationApplicationDeps = {},
 ): IssueDelegationApplicationService {
   const db = deps.db ?? (getDb() as unknown as IssueDelegationDbContext)
-  const runner = deps.runner ?? IssueAgentRunner.getInstance()
   const nowUnix = deps.nowUnix ?? defaultNowUnix
+
+  const getRunner = async (): Promise<IssueDelegationRunner> => deps.runner ?? resolveDefaultRunner()
 
   const delegateIssue: IssueDelegationApplicationService['delegateIssue'] = async ({ issueId, agentProfileId }) => {
     const profile = db.select().from(agentProfiles).where(eq(agentProfiles.id, agentProfileId)).get() as { id: string, name: string } | undefined
@@ -104,10 +109,12 @@ export function createIssueDelegationApplicationService(
   }
 
   const runDelegatedIssue: IssueDelegationApplicationService['runDelegatedIssue'] = async (input) => {
+    const runner = await getRunner()
     await runner.run(input)
   }
 
   const stopAgentSession: IssueDelegationApplicationService['stopAgentSession'] = async (agentSessionId) => {
+    const runner = await getRunner()
     await runner.stop(agentSessionId)
   }
 

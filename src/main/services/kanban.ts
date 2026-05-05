@@ -1,6 +1,6 @@
-// Input: getDb, kanban schema tables, drizzle-orm operators
-// Output: KanbanService — IPC surface for boards, statuses, milestones, issues, comments, relations, delegation, and agent activities
-// Position: Main-process IPC service for the Kanban feature
+// Input: getDb, kanban schema tables, drizzle-orm operators, and Kanban/issue application services
+// Output: KanbanService — IPC facade for Kanban queries, commands, delegation, and agent activities
+// Position: Main-process IPC adapter for the Kanban feature
 
 import { randomUUID } from 'node:crypto'
 
@@ -8,6 +8,10 @@ import { IpcMethod, IpcService } from '@cradle/ipc'
 import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
 
 import { createIssueDelegationApplicationService } from '../application/issue-delegation-application'
+import {
+  createKanbanWriteApplicationService,
+  type KanbanWriteApplicationService,
+} from '../application/kanban-write-application'
 import { getDb } from '../db'
 import type {
   AgentActivity,
@@ -39,10 +43,15 @@ const now = (): number => Math.floor(Date.now() / 1000)
 export class KanbanService extends IpcService {
   static readonly groupName = 'kanban'
   private readonly delegationApp: IssueDelegationApplicationService
+  private readonly kanbanWriteApp: KanbanWriteApplicationService
 
-  constructor(delegationApp: IssueDelegationApplicationService = createIssueDelegationApplicationService()) {
+  constructor(
+    delegationApp: IssueDelegationApplicationService = createIssueDelegationApplicationService(),
+    kanbanWriteApp: KanbanWriteApplicationService = createKanbanWriteApplicationService(),
+  ) {
     super()
     this.delegationApp = delegationApp
+    this.kanbanWriteApp = kanbanWriteApp
   }
 
   // ── Status ────────────────────────────────────────────────────────────────
@@ -63,23 +72,7 @@ export class KanbanService extends IpcService {
     name: string
     color?: string | null
   }): KanbanStatus {
-    const db = getDb()
-    const maxRow = db
-      .select({ maxOrder: sql<number>`coalesce(max(${kanbanStatuses.order}), -1)` })
-      .from(kanbanStatuses)
-      .where(eq(kanbanStatuses.workspaceId, input.workspaceId))
-      .get()
-    const nextOrder = (maxRow?.maxOrder ?? -1) + 1
-    const id = randomUUID()
-    db.insert(kanbanStatuses).values({
-      id,
-      workspaceId: input.workspaceId,
-      name: input.name,
-      color: input.color ?? null,
-      order: nextOrder,
-      createdAt: now(),
-    }).run()
-    return db.select().from(kanbanStatuses).where(eq(kanbanStatuses.id, id)).get()!
+    return this.kanbanWriteApp.createStatus(input)
   }
 
   @IpcMethod()
@@ -87,36 +80,17 @@ export class KanbanService extends IpcService {
     name?: string
     color?: string | null
   }): KanbanStatus {
-    const db = getDb()
-    const updates: Record<string, unknown> = {}
-    if (patch.name !== undefined) {
-      updates.name = patch.name
-    }
-    if ('color' in patch) {
-      updates.color = patch.color ?? null
-    }
-    if (Object.keys(updates).length > 0) {
-      db.update(kanbanStatuses).set(updates).where(eq(kanbanStatuses.id, id)).run()
-    }
-    return db.select().from(kanbanStatuses).where(eq(kanbanStatuses.id, id)).get()!
+    return this.kanbanWriteApp.updateStatus(id, patch)
   }
 
   @IpcMethod()
   reorderStatuses(workspaceId: string, orderedIds: string[]): void {
-    const db = getDb()
-    db.transaction(() => {
-      for (let i = 0; i < orderedIds.length; i++) {
-        db.update(kanbanStatuses)
-          .set({ order: i })
-          .where(and(eq(kanbanStatuses.id, orderedIds[i]), eq(kanbanStatuses.workspaceId, workspaceId)))
-          .run()
-      }
-    })
+    this.kanbanWriteApp.reorderStatuses(workspaceId, orderedIds)
   }
 
   @IpcMethod()
   deleteStatus(id: string): void {
-    getDb().delete(kanbanStatuses).where(eq(kanbanStatuses.id, id)).run()
+    this.kanbanWriteApp.deleteStatus(id)
   }
 
   // ── Board ─────────────────────────────────────────────────────────────────
@@ -141,18 +115,7 @@ export class KanbanService extends IpcService {
     name: string
     filterConfig?: string | null
   }): KanbanBoard {
-    const db = getDb()
-    const id = randomUUID()
-    const ts = now()
-    db.insert(kanbanBoards).values({
-      id,
-      workspaceId: input.workspaceId,
-      name: input.name,
-      filterConfig: input.filterConfig ?? null,
-      createdAt: ts,
-      updatedAt: ts,
-    }).run()
-    return db.select().from(kanbanBoards).where(eq(kanbanBoards.id, id)).get()!
+    return this.kanbanWriteApp.createBoard(input)
   }
 
   @IpcMethod()
@@ -160,21 +123,12 @@ export class KanbanService extends IpcService {
     name?: string
     filterConfig?: string | null
   }): KanbanBoard {
-    const db = getDb()
-    const updates: Record<string, unknown> = { updatedAt: now() }
-    if (patch.name !== undefined) {
-      updates.name = patch.name
-    }
-    if ('filterConfig' in patch) {
-      updates.filterConfig = patch.filterConfig ?? null
-    }
-    db.update(kanbanBoards).set(updates).where(eq(kanbanBoards.id, id)).run()
-    return db.select().from(kanbanBoards).where(eq(kanbanBoards.id, id)).get()!
+    return this.kanbanWriteApp.updateBoard(id, patch)
   }
 
   @IpcMethod()
   deleteBoard(id: string): void {
-    getDb().delete(kanbanBoards).where(eq(kanbanBoards.id, id)).run()
+    this.kanbanWriteApp.deleteBoard(id)
   }
 
   // ── Milestone ─────────────────────────────────────────────────────────────
@@ -196,20 +150,7 @@ export class KanbanService extends IpcService {
     description?: string | null
     dueDate?: number | null
   }): KanbanMilestone {
-    const db = getDb()
-    const id = randomUUID()
-    const ts = now()
-    db.insert(kanbanMilestones).values({
-      id,
-      workspaceId: input.workspaceId,
-      title: input.title,
-      description: input.description ?? null,
-      dueDate: input.dueDate ?? null,
-      status: 'open',
-      createdAt: ts,
-      updatedAt: ts,
-    }).run()
-    return db.select().from(kanbanMilestones).where(eq(kanbanMilestones.id, id)).get()!
+    return this.kanbanWriteApp.createMilestone(input)
   }
 
   @IpcMethod()
@@ -219,27 +160,12 @@ export class KanbanService extends IpcService {
     dueDate?: number | null
     status?: 'open' | 'closed'
   }): KanbanMilestone {
-    const db = getDb()
-    const updates: Record<string, unknown> = { updatedAt: now() }
-    if (patch.title !== undefined) {
-      updates.title = patch.title
-    }
-    if ('description' in patch) {
-      updates.description = patch.description ?? null
-    }
-    if ('dueDate' in patch) {
-      updates.dueDate = patch.dueDate ?? null
-    }
-    if (patch.status !== undefined) {
-      updates.status = patch.status
-    }
-    db.update(kanbanMilestones).set(updates).where(eq(kanbanMilestones.id, id)).run()
-    return db.select().from(kanbanMilestones).where(eq(kanbanMilestones.id, id)).get()!
+    return this.kanbanWriteApp.updateMilestone(id, patch)
   }
 
   @IpcMethod()
   deleteMilestone(id: string): void {
-    getDb().delete(kanbanMilestones).where(eq(kanbanMilestones.id, id)).run()
+    this.kanbanWriteApp.deleteMilestone(id)
   }
 
   // ── Issue ─────────────────────────────────────────────────────────────────
@@ -321,23 +247,7 @@ export class KanbanService extends IpcService {
     parentIssueId?: string | null
     statusId?: string | null
   }): KanbanIssue {
-    const db = getDb()
-    const id = randomUUID()
-    const ts = now()
-    db.insert(kanbanIssues).values({
-      id,
-      workspaceId: input.workspaceId,
-      title: input.title,
-      description: input.description ?? null,
-      priority: input.priority ?? 'none',
-      labels: JSON.stringify(input.labels ?? []),
-      milestoneId: input.milestoneId ?? null,
-      parentIssueId: input.parentIssueId ?? null,
-      statusId: input.statusId ?? null,
-      createdAt: ts,
-      updatedAt: ts,
-    }).run()
-    return db.select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()!
+    return this.kanbanWriteApp.createIssue(input)
   }
 
   @IpcMethod()
@@ -352,50 +262,17 @@ export class KanbanService extends IpcService {
     assigneeKind: string | null
     assigneeId: string | null
   }>): KanbanIssue {
-    const db = getDb()
-    const updates: Record<string, unknown> = { updatedAt: now() }
-    if (patch.title !== undefined) {
-      updates.title = patch.title
-    }
-    if ('description' in patch) {
-      updates.description = patch.description ?? null
-    }
-    if (patch.priority !== undefined) {
-      updates.priority = patch.priority
-    }
-    if (patch.labels !== undefined) {
-      updates.labels = JSON.stringify(patch.labels)
-    }
-    if ('milestoneId' in patch) {
-      updates.milestoneId = patch.milestoneId ?? null
-    }
-    if ('parentIssueId' in patch) {
-      updates.parentIssueId = patch.parentIssueId ?? null
-    }
-    if ('statusId' in patch) {
-      updates.statusId = patch.statusId ?? null
-    }
-    if ('assigneeKind' in patch) {
-      updates.assigneeKind = patch.assigneeKind ?? null
-    }
-    if ('assigneeId' in patch) {
-      updates.assigneeId = patch.assigneeId ?? null
-    }
-    db.update(kanbanIssues).set(updates).where(eq(kanbanIssues.id, id)).run()
-    return db.select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()!
+    return this.kanbanWriteApp.updateIssue(id, patch)
   }
 
   @IpcMethod()
   moveIssue(id: string, statusId: string | null): KanbanIssue {
-    return this.updateIssue(id, { statusId })
+    return this.kanbanWriteApp.moveIssue(id, statusId)
   }
 
   @IpcMethod()
   deleteIssue(id: string): void {
-    const db = getDb()
-    // Clear parentIssueId on child issues before deletion (self-ref FK is application-managed)
-    db.update(kanbanIssues).set({ parentIssueId: null }).where(eq(kanbanIssues.parentIssueId, id)).run()
-    db.delete(kanbanIssues).where(eq(kanbanIssues.id, id)).run()
+    this.kanbanWriteApp.deleteIssue(id)
   }
 
   // ── Comment ───────────────────────────────────────────────────────────────
@@ -417,22 +294,12 @@ export class KanbanService extends IpcService {
     authorKind?: KanbanIssueComment['authorKind']
     authorId?: string | null
   }): KanbanIssueComment {
-    const db = getDb()
-    const id = randomUUID()
-    db.insert(kanbanIssueComments).values({
-      id,
-      issueId: input.issueId,
-      content: input.content,
-      authorKind: input.authorKind ?? 'user',
-      authorId: input.authorId ?? '__self__',
-      createdAt: now(),
-    }).run()
-    return db.select().from(kanbanIssueComments).where(eq(kanbanIssueComments.id, id)).get()!
+    return this.kanbanWriteApp.addComment(input)
   }
 
   @IpcMethod()
   deleteComment(id: string): void {
-    getDb().delete(kanbanIssueComments).where(eq(kanbanIssueComments.id, id)).run()
+    this.kanbanWriteApp.deleteComment(id)
   }
 
   // ── Relation ──────────────────────────────────────────────────────────────
@@ -458,21 +325,12 @@ export class KanbanService extends IpcService {
     targetIssueId: string
     type: 'blocks' | 'duplicates' | 'relates_to'
   }): KanbanIssueRelation {
-    const db = getDb()
-    const id = randomUUID()
-    db.insert(kanbanIssueRelations).values({
-      id,
-      sourceIssueId: input.sourceIssueId,
-      targetIssueId: input.targetIssueId,
-      type: input.type,
-      createdAt: now(),
-    }).run()
-    return db.select().from(kanbanIssueRelations).where(eq(kanbanIssueRelations.id, id)).get()!
+    return this.kanbanWriteApp.addRelation(input)
   }
 
   @IpcMethod()
   deleteRelation(id: string): void {
-    getDb().delete(kanbanIssueRelations).where(eq(kanbanIssueRelations.id, id)).run()
+    this.kanbanWriteApp.deleteRelation(id)
   }
 
   // ── Delegation ───────────────────────────────────────────────────────────
@@ -592,36 +450,17 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   updateContextRefs(issueId: string, refs: string): void {
-    getDb().update(kanbanIssues)
-      .set({ contextRefs: refs, updatedAt: now() })
-      .where(eq(kanbanIssues.id, issueId))
-      .run()
+    this.kanbanWriteApp.updateContextRefs(issueId, refs)
   }
 
   @IpcMethod()
   addContextRef(issueId: string, ref: string): void {
-    const db = getDb()
-    const issue = db.select({ contextRefs: kanbanIssues.contextRefs }).from(kanbanIssues).where(eq(kanbanIssues.id, issueId)).get()
-    if (!issue) return
-    const refs = JSON.parse(issue.contextRefs) as unknown[]
-    refs.push(JSON.parse(ref))
-    db.update(kanbanIssues)
-      .set({ contextRefs: JSON.stringify(refs), updatedAt: now() })
-      .where(eq(kanbanIssues.id, issueId))
-      .run()
+    this.kanbanWriteApp.addContextRef(issueId, ref)
   }
 
   @IpcMethod()
   removeContextRef(issueId: string, index: number): void {
-    const db = getDb()
-    const issue = db.select({ contextRefs: kanbanIssues.contextRefs }).from(kanbanIssues).where(eq(kanbanIssues.id, issueId)).get()
-    if (!issue) return
-    const refs = JSON.parse(issue.contextRefs) as unknown[]
-    refs.splice(index, 1)
-    db.update(kanbanIssues)
-      .set({ contextRefs: JSON.stringify(refs), updatedAt: now() })
-      .where(eq(kanbanIssues.id, issueId))
-      .run()
+    this.kanbanWriteApp.removeContextRef(issueId, index)
   }
 
   // ── Session ↔ Issue Link ────────────────────────────────────────────────
@@ -668,17 +507,11 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   linkIssueToSession(chatSessionId: string, issueId: string): void {
-    getDb().update(sessions)
-      .set({ linkedIssueId: issueId })
-      .where(eq(sessions.id, chatSessionId))
-      .run()
+    this.kanbanWriteApp.linkIssueToSession(chatSessionId, issueId)
   }
 
   @IpcMethod()
   unlinkIssueFromSession(chatSessionId: string): void {
-    getDb().update(sessions)
-      .set({ linkedIssueId: null })
-      .where(eq(sessions.id, chatSessionId))
-      .run()
+    this.kanbanWriteApp.unlinkIssueFromSession(chatSessionId)
   }
 }

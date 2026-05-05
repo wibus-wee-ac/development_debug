@@ -46,10 +46,10 @@
 
 ### 3.2 Kanban Delegation
 
-- `kanban.delegateIssue` -> `issue-delegation.delegateIssue` -> write `agent_sessions`, update `kanban_issues.delegateAgentId`, append `kanban_issue_comments`
+- `kanban.delegateIssue` -> `issue-delegation-application.delegateIssue` -> write `agent_sessions`, update `kanban_issues.delegateAgentId`, append `kanban_issue_comments`
 - `kanban.runDelegatedIssue` -> `IssueAgentRunner.run` -> create chat session + append `agent_activities`
 - `ChatEngine onTurnFinished` -> `IssueAgentRunner.onTurnFinished` -> update `agent_sessions.status` + append response/error activity
-- `kanban.undelegateIssue` -> `issue-delegation.undelegateIssue` -> stop active session + clear delegate + append system comment
+- `kanban.undelegateIssue` -> `issue-delegation-application.undelegateIssue` -> stop active session + clear delegate + append system comment
 
 ### 3.3 Agent Runtime
 
@@ -78,7 +78,7 @@
 ### 4.2 Major Boundary Violations
 
 1. `ChatEngine` 同时承担应用服务 + 领域规则 + 基础设施细节
-2. `KanbanService` 过去承担过多委派编排（已开始下沉到 `issue-delegation`）
+2. `KanbanService` 仍保留查询职责，但写侧与委派编排已经下沉到 `application` 层
 3. 会话模型并存导致语义不清（chat session vs runtime session vs issue agent session）
 4. 多个 singleton 跨上下文直连，导致生命周期和可替换性弱
 
@@ -111,7 +111,8 @@
 1. `ChatEngine` 增加 `onTurnFinished` 生命周期事件。
 2. `IssueAgentRunner` 从 polling 完成检测改为事件驱动收口。
 3. `AgentRuntimeService.removeProfile` 删除了 `PRAGMA foreign_keys = OFF`，改为显式事务清理依赖。
-4. 新增 `src/main/lib/issue-delegation.ts`，将 issue delegation 编排从 `KanbanService` 下沉。
+4. 新增 `src/main/application/issue-delegation-application.ts`，并在后续切片中删除了旧的 `src/main/lib/issue-delegation.ts`。
+5. 新增 `src/main/application/kanban-write-application.ts`，将 Kanban 写侧命令从 `KanbanService` 下沉。
 
 ## 7. Target Architecture (Rebuild-Friendly)
 
@@ -122,6 +123,7 @@ interfaces/
 application/
   chat-app-service
   issue-delegation-app-service
+  kanban-write-app-service
   agent-profile-app-service
 
 domain/
@@ -183,6 +185,7 @@ events/
 1. `src/main/lib/chat-engine.ts`
 2. `src/main/lib/issue-agent-runner.ts`
 3. `src/main/services/agent-runtime.ts`
-4. `src/main/lib/issue-delegation.ts` (new)
-5. `src/main/services/kanban.ts`
-6. `src/main/lib/README.md`
+4. `src/main/application/issue-delegation-application.ts`
+5. `src/main/application/kanban-write-application.ts`
+6. `src/main/services/kanban.ts`
+7. `src/main/lib/README.md`

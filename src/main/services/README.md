@@ -20,4 +20,4 @@
 - **skills.ts**: Skills IPC service，负责 global、workspace、agent 三个可写层与 legacy/built-in 只读层的路由
 - **usage.ts**: token usage 聚合统计接口
 - **workflow-rules.ts**: 工作流规则的读取、保存、删除与列表接口
-- **kanban.ts**: Kanban IPC facade，委派流程由应用层 `issue-delegation-application` 负责编排
+- **kanban.ts**: Kanban IPC facade，查询留在 service，写侧命令与委派流程分别由 `kanban-write-application` 和 `issue-delegation-application` 负责编排
