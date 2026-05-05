@@ -4,7 +4,7 @@
 
 import type { UIMessageChunk } from 'ai'
 
-import type { BackendTimelineEvent } from '../features/backend-control-plane/timeline-events'
+import type { BackendTimelineEvent } from '../backend-control-plane/timeline-events'
 
 export interface DomainEventBase<TType extends string, TPayload> {
   id: string

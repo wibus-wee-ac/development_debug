@@ -4,13 +4,13 @@
 
 import { getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
 
-import type { ChatMessage, EnsureLiveResult } from '../../features/chat/chat-engine'
-import { ChatEngine } from '../../features/chat/chat-engine'
+import type { ChatMessage, EnsureLiveResult } from '../../chat/chat-engine'
+import { chatEngine } from '../../chat/chat-engine'
 
 export class ChatService extends IpcService {
   static readonly groupName = 'chat'
-  private get engine(): ChatEngine {
-    return ChatEngine.getInstance()
+  private get engine() {
+    return chatEngine
   }
 
   @IpcMethod()
@@ -39,6 +39,11 @@ export class ChatService extends IpcService {
   @IpcMethod()
   getMessages(chatSessionId: string): ChatMessage[] {
     return this.engine.getMessages(chatSessionId)
+  }
+
+  @IpcMethod()
+  getSessionTimeline(chatSessionId: string) {
+    return this.engine.getSessionTimeline(chatSessionId)
   }
 
   @IpcMethod()

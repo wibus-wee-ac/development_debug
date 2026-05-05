@@ -13,14 +13,14 @@ import type {
   KanbanMilestone,
   KanbanStatus,
 } from '../../db/schema'
-import type { KanbanQueryApplicationService } from '../../features/kanban/kanban-query'
+import type { KanbanQueryApplicationService } from '../../kanban/kanban-query'
 import {
   createKanbanQueryApplicationService,
-} from '../../features/kanban/kanban-query'
-import type { KanbanWriteApplicationService } from '../../features/kanban/kanban-write'
+} from '../../kanban/kanban-query'
+import type { KanbanWriteApplicationService } from '../../kanban/kanban-write'
 import {
   createKanbanWriteApplicationService,
-} from '../../features/kanban/kanban-write'
+} from '../../kanban/kanban-write'
 
 export class KanbanService extends IpcService {
   static readonly groupName = 'kanban'

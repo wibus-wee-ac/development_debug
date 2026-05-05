@@ -142,18 +142,10 @@ function createObservedReadable(
 // ── Manager ───────────────────────────────────────────────────────────────────
 
 export class AcpProcessManager {
-  private static instance: AcpProcessManager
   private readonly processes = new Map<string, ProcessEntry>()
   private disposed = false
 
-  static getInstance(): AcpProcessManager {
-    if (!AcpProcessManager.instance || AcpProcessManager.instance.disposed) {
-      AcpProcessManager.instance = new AcpProcessManager()
-    }
-    return AcpProcessManager.instance
-  }
-
-  private constructor() {
+  constructor() {
     // Kill all managed processes when the Electron app quits.
     app.on('before-quit', () => this.disposeAll())
   }
@@ -386,3 +378,5 @@ export class AcpProcessManager {
     }
   }
 }
+
+export const acpProcessManager = new AcpProcessManager()

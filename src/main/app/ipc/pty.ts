@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm'
 
 import { getDb } from '../../db'
 import { agentProfiles, sessions, workspaces } from '../../db/schema'
-import { PtyManager } from '../../platform/pty/pty-manager'
+import { ptyManager } from '../../pty/pty-manager'
 
 export class PtyService extends IpcService {
   static readonly groupName = 'pty'
@@ -30,37 +30,37 @@ export class PtyService extends IpcService {
       throw new Error(`CLI-TUI agent profile not found: ${session.agentProfileId}`)
     }
     const config = readCliConfig(profile.configJson)
-    PtyManager.getInstance().start(sessionId, config.executable, config.args, cwd, cols, rows)
+    ptyManager.start(sessionId, config.executable, config.args, cwd, cols, rows)
   }
 
   /** Stop (kill) the PTY process for the given session. No-op if not running. */
   @IpcMethod()
   stopPty(sessionId: string): void {
-    PtyManager.getInstance().stop(sessionId)
+    ptyManager.stop(sessionId)
   }
 
   /** Write raw bytes (keyboard input) to the PTY's stdin. */
   @IpcMethod()
   writePty(sessionId: string, data: string): void {
-    PtyManager.getInstance().write(sessionId, data)
+    ptyManager.write(sessionId, data)
   }
 
   /** Resize the PTY to the given dimensions. Call when the terminal view resizes. */
   @IpcMethod()
   resizePty(sessionId: string, cols: number, rows: number): void {
-    PtyManager.getInstance().resize(sessionId, cols, rows)
+    ptyManager.resize(sessionId, cols, rows)
   }
 
   /** Return true if a PTY process is alive for the given session. */
   @IpcMethod()
   isPtyRunning(sessionId: string): boolean {
-    return PtyManager.getInstance().isRunning(sessionId)
+    return ptyManager.isRunning(sessionId)
   }
 
   /** Return the accumulated output buffer for a session (for xterm replay on reconnect). */
   @IpcMethod()
   getPtyBuffer(sessionId: string): string {
-    return PtyManager.getInstance().getBuffer(sessionId)
+    return ptyManager.getBuffer(sessionId)
   }
 
   /**
@@ -70,7 +70,7 @@ export class PtyService extends IpcService {
   @IpcMethod()
   startShell(ptyId: string, cwd: string, cols: number, rows: number): void {
     const shell = process.env.SHELL ?? '/bin/sh'
-    PtyManager.getInstance().start(ptyId, shell, [], cwd, cols, rows)
+    ptyManager.start(ptyId, shell, [], cwd, cols, rows)
   }
 }
 

@@ -13,7 +13,7 @@ import type { Message, Session } from '../../db/schema'
 import { agentProfiles as agentProfilesTable, messages, sessions, workspaces } from '../../db/schema'
 import { getAgentContextDevtoolStore } from '../../devtools/agent-context-devtool-store'
 import type { DomainEventBus } from '../../events/domain-event-bus'
-import { AcpConnectionManager } from '../../platform/acp/acp-connection'
+import { acpConnectionManager } from '../../platform/acp/acp-connection'
 import type { SignalBroadcaster } from '../../platform/signal-broadcaster'
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
@@ -113,7 +113,6 @@ export interface ChatTurnFinishedEvent {
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 export class ChatEngine {
-  private static instance: ChatEngine
   private readonly drafts = new Map<string, Draft>()
   private readonly subscribers = new Set<WebContents>()
   private readonly sessionWatchers = new Map<string, Map<WebContents, number>>()
@@ -141,13 +140,6 @@ export class ChatEngine {
     this.signalBroadcaster = broadcaster
   }
 
-  static getInstance(): ChatEngine {
-    if (!ChatEngine.instance) {
-      ChatEngine.instance = new ChatEngine()
-    }
-    return ChatEngine.instance
-  }
-
   /** One-time setup: clean up dangling streaming messages, wire transport hooks. */
   initialize(): void {
     if (this.initialized) {
@@ -159,7 +151,7 @@ export class ChatEngine {
     this.getRepository().recoverStrandedRuns()
 
     // Forward agent title updates → chat:session-title with chatSessionId mapping.
-    this.titleUnsubscribe = AcpConnectionManager.getInstance().onSessionTitle(
+    this.titleUnsubscribe = acpConnectionManager.onSessionTitle(
       (acpSessionId, title) => {
         const bindings = getBackendControlPlaneService().listBindingsByBackendSessionId(acpSessionId)
         for (const binding of bindings) {
@@ -981,3 +973,5 @@ function stringifyErrorValue(value: unknown): string | null {
     return String(value)
   }
 }
+
+export const chatEngine = new ChatEngine()

@@ -4,11 +4,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { IssueAgentQueryApplicationService } from '../../../features/issue-agent/issue-agent-query'
-import type { IssueDelegationApplicationService } from '../../../features/issue-agent/issue-delegation'
+import type { IssueAgentQueryApplicationService } from '../../../issue-agent/issue-agent-query'
+import type { IssueDelegationApplicationService } from '../../../issue-agent/issue-delegation'
 import { IssueAgentService } from '../issue-agent'
 
 vi.mock('electron', () => ({
+  app: {
+    on: vi.fn(),
+  },
   ipcMain: {
     handle: vi.fn(),
   },

@@ -24,7 +24,7 @@ import {
 
 import type { TimelineInputEvent } from '../../features/backend-control-plane/timeline-events'
 import type { ProcessEntry } from './acp-process-manager'
-import { AcpProcessManager } from './acp-process-manager'
+import { acpProcessManager } from './acp-process-manager'
 import { AcpTimelineConverter } from './acp-timeline-converter'
 
 // ── Session state ─────────────────────────────────────────────────────────────
@@ -136,7 +136,6 @@ export interface AcpPermissionResponse {
 export type AcpPermissionHandler = (request: AcpPermissionRequest) => Promise<AcpPermissionResponse>
 
 export class AcpConnectionManager {
-  private static instance: AcpConnectionManager
   private readonly connections = new Map<string, ConnectionEntry>()
   private readonly pendingConnects = new Map<string, Promise<InitializeResponse>>()
   private readonly sessionTitleHandlers = new Set<(acpSessionId: string, title: string) => void>()
@@ -145,13 +144,6 @@ export class AcpConnectionManager {
   /** Token usage from the most recently completed prompt, if reported by the ACP agent. */
   private _lastUsage: { promptTokens: number, completionTokens: number, totalTokens: number } | null = null
   get lastUsage() { return this._lastUsage }
-
-  static getInstance(): AcpConnectionManager {
-    if (!AcpConnectionManager.instance) {
-      AcpConnectionManager.instance = new AcpConnectionManager()
-    }
-    return AcpConnectionManager.instance
-  }
 
   /** Bind a permission handler for user approval flow. */
   setPermissionHandler(handler: AcpPermissionHandler): void {
@@ -207,7 +199,7 @@ export class AcpConnectionManager {
     const env: Record<string, string> = JSON.parse(record.env || '{}')
     const distType = record.distributionType as 'binary' | 'npx' | 'uvx'
 
-    const procMgr = AcpProcessManager.getInstance()
+    const procMgr = acpProcessManager
     const entry: ProcessEntry = procMgr.spawn({
       agentId,
       cmd: record.cmd ?? '',
@@ -440,7 +432,7 @@ export class AcpConnectionManager {
       this.failConnectionChannels(conn, new Error(`ACP agent disconnected: ${agentId}`))
       this.connections.delete(agentId)
     }
-    await AcpProcessManager.getInstance().stop(agentId)
+    await acpProcessManager.stop(agentId)
   }
 
   isConnected(agentId: string): boolean {
@@ -588,3 +580,5 @@ export class AcpConnectionManager {
     }
   }
 }
+
+export const acpConnectionManager = new AcpConnectionManager()

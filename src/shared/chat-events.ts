@@ -4,8 +4,8 @@
 
 import type { UIMessageChunk } from 'ai'
 
-import type { BackendTimelineEvent } from '../main/features/backend-control-plane/timeline-events'
-import type { ChatTurnStatus } from '../main/features/chat/chat-engine'
+import type { BackendTimelineEvent } from '../main/backend-control-plane/timeline-events'
+import type { ChatTurnStatus } from '../main/chat/chat-engine'
 
 /** Payload for the `chat:timeline-event` IPC push channel. */
 export interface ChatTimelineEventPayload {

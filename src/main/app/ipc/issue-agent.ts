@@ -6,14 +6,14 @@ import { IpcMethod, IpcService } from '@cradle/ipc'
 
 import { getDb } from '../../db'
 import type { AgentActivity, AgentSession } from '../../db/schema'
-import type { IssueAgentQueryApplicationService } from '../../features/issue-agent/issue-agent-query'
-import { createIssueAgentQueryApplicationService } from '../../features/issue-agent/issue-agent-query'
-import { getIssueAgentRuntime } from '../../features/issue-agent/issue-agent-runner'
-import type { IssueDelegationApplicationService } from '../../features/issue-agent/issue-delegation'
+import type { IssueAgentQueryApplicationService } from '../../issue-agent/issue-agent-query'
+import { createIssueAgentQueryApplicationService } from '../../issue-agent/issue-agent-query'
+import { getIssueAgentRuntime } from '../../issue-agent/issue-agent-runner'
+import type { IssueDelegationApplicationService } from '../../issue-agent/issue-delegation'
 import {
   createDrizzleIssueDelegationStore,
   createIssueDelegationApplicationService,
-} from '../../features/issue-agent/issue-delegation'
+} from '../../issue-agent/issue-delegation'
 
 function createDefaultIssueDelegationApplication(): IssueDelegationApplicationService {
   return createIssueDelegationApplicationService({

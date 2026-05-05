@@ -16,7 +16,7 @@ import type {
   SkillLookup,
   SkillScope,
   UpdateSkillInput,
-} from '../../features/skills/skills'
+} from '../../skills/skills'
 import {
   createSkillDocument,
   deleteSkillDocument,
@@ -26,9 +26,9 @@ import {
   listSkillInventory,
   readSkillDocument,
   updateSkillDocument,
-} from '../../features/skills/skills'
-import type { DiscoveredSkill, ParsedSkillSource } from '../../features/skills/skill-source'
-import { cleanupFetchSession, fetchSkillsFromSource } from '../../features/skills/skill-source'
+} from '../../skills/skills'
+import type { DiscoveredSkill, ParsedSkillSource } from '../../skills/skill-source'
+import { cleanupFetchSession, fetchSkillsFromSource } from '../../skills/skill-source'
 
 interface SkillLookupParams extends Omit<SkillLookup, 'workspacePath' | 'agentId'> {
   workspaceId?: string | null

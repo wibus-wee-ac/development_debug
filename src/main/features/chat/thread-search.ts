@@ -61,15 +61,7 @@ const CONTENT_WEIGHT = 1
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 export class ThreadSearchEngine {
-  private static instance: ThreadSearchEngine
   private jieba: Jieba | null = null
-
-  static getInstance(): ThreadSearchEngine {
-    if (!ThreadSearchEngine.instance) {
-      ThreadSearchEngine.instance = new ThreadSearchEngine()
-    }
-    return ThreadSearchEngine.instance
-  }
 
   /**
    * Tokenize a search query via jieba (lazy-loaded). Returns the deduplicated
@@ -586,3 +578,7 @@ function extractSearchableText(content: string): string {
     return content
   }
 }
+
+// ── Module-level singleton ────────────────────────────────────────────────────
+
+export const threadSearchEngine = new ThreadSearchEngine()

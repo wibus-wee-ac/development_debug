@@ -6,6 +6,7 @@ import { useChat } from '@ai-sdk/react'
 import { ipc } from '@renderer/lib/ipc'
 import type { ChatStatus, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { projectEventsToAssistantMessage, type ProjectableTimelineEvent } from '../../../../shared/timeline-projection'
 
 import { createIpcChatTransport } from './ipc-chat-transport'
 import { useChatTimelineEvent } from './use-chat-events'
@@ -73,6 +74,19 @@ export function derivePassiveChatState(
     }
   }
 
+  return { status: 'idle' }
+}
+
+type TimelineGroup = { role: string, status: string, events: unknown[] }
+
+function deriveTimelineState(groups: TimelineGroup[]): ChatSnapshotState {
+  if (groups.some(g => g.status === 'streaming')) {
+    return { status: 'streaming' }
+  }
+  const failed = [...groups].reverse().find(g => g.role === 'assistant' && g.status === 'failed')
+  if (failed) {
+    return { status: 'error' }
+  }
   return { status: 'idle' }
 }
 
@@ -177,6 +191,27 @@ export function useChatSession(chatSessionId: string | null, options?: {
       return
     }
 
+    // Prefer timeline projection — project UIMessages from raw events.
+    // Falls back to legacy content-JSON parsing if timeline data is unavailable.
+    const timeline = await ipc.chat.getSessionTimeline(chatSessionId)
+    if (timeline.length > 0) {
+      const projected = timeline.map((group) => {
+        if (group.role === 'user') {
+          return {
+            id: group.messageId,
+            role: 'user' as const,
+            parts: [{ type: 'text' as const, text: group.userText ?? '' }],
+          }
+        }
+        return projectEventsToAssistantMessage(group.messageId, group.events as ProjectableTimelineEvent[])
+      })
+      chatRef.current.setMessages(projected)
+      setSnapshotState(deriveTimelineState(timeline))
+      setIsReady(true)
+      return
+    }
+
+    // Fallback: legacy content-JSON hydration
     const rows = await ipc.chat.getMessages(chatSessionId)
     applySnapshotRows(rows)
     setIsReady(true)

@@ -7,8 +7,8 @@ import { dialog, shell } from 'electron'
 
 import { getDb } from '../../db'
 import type { Workspace } from '../../db/schema'
-import type { WorkspaceApplicationService } from '../../features/workspace/workspace'
-import { createDbWorkspaceStore, createWorkspaceApplicationService } from '../../features/workspace/workspace'
+import type { WorkspaceApplicationService } from '../../workspace/workspace'
+import { createDbWorkspaceStore, createWorkspaceApplicationService } from '../../workspace/workspace'
 
 function createDefaultWorkspaceApplication(): WorkspaceApplicationService {
   return createWorkspaceApplicationService({

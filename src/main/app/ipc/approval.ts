@@ -4,8 +4,8 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import type { ApprovalResponse, PendingApproval } from '../../features/approval/approval-service'
-import { getApprovalService } from '../../features/approval/approval-service'
+import type { ApprovalResponse, PendingApproval } from '../../approval/approval-service'
+import { getApprovalService } from '../../approval/approval-service'
 
 export class ApprovalService extends IpcService {
   static readonly groupName = 'approval'

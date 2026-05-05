@@ -7,19 +7,19 @@ import { app } from 'electron'
 
 import { getDb } from '../../db'
 import type { AcpAgent, AcpAuditEntry } from '../../db/schema'
-import type { AcpApplicationService } from '../../features/acp/acp'
-import { createAcpApplicationService, createDbAcpStore } from '../../features/acp/acp'
-import { AcpConnectionManager } from '../../platform/acp/acp-connection'
+import type { AcpApplicationService } from '../../acp-feature/acp'
+import { createAcpApplicationService, createDbAcpStore } from '../../acp-feature/acp'
+import { acpConnectionManager } from '../../acp/acp-connection'
 import {
   getAgentInstallDir,
   installBinaryAgent,
   installPackageAgent,
   uninstallBinaryAgent,
-} from '../../platform/acp/acp-installer'
-import type { ProcessMetrics } from '../../platform/acp/acp-process-manager'
-import { AcpProcessManager } from '../../platform/acp/acp-process-manager'
-import type { RegistryAgent } from '../../platform/acp/acp-registry'
-import { fetchRegistry, getSupportedDistributionTypes } from '../../platform/acp/acp-registry'
+} from '../../acp/acp-installer'
+import type { ProcessMetrics } from '../../acp/acp-process-manager'
+import { acpProcessManager } from '../../acp/acp-process-manager'
+import type { RegistryAgent } from '../../acp/acp-registry'
+import { fetchRegistry, getSupportedDistributionTypes } from '../../acp/acp-registry'
 
 function createDefaultAcpApplication(): AcpApplicationService {
   return createAcpApplicationService({
@@ -35,24 +35,24 @@ function createDefaultAcpApplication(): AcpApplicationService {
     },
     runtime: {
       async startAgent(agentId, record) {
-        const initResult = await AcpConnectionManager.getInstance().connect(agentId, record)
+        const initResult = await acpConnectionManager.connect(agentId, record)
         return initResult as unknown as Record<string, unknown>
       },
-      stopAgent: agentId => AcpConnectionManager.getInstance().disconnect(agentId),
-      isAgentRunning: agentId => AcpConnectionManager.getInstance().isConnected(agentId),
+      stopAgent: agentId => acpConnectionManager.disconnect(agentId),
+      isAgentRunning: agentId => acpConnectionManager.isConnected(agentId),
       async createSession(agentId, cwd) {
-        const result = await AcpConnectionManager.getInstance().newSession(agentId, cwd)
+        const result = await acpConnectionManager.newSession(agentId, cwd)
         return result as unknown as Record<string, unknown>
       },
       async sendPrompt(agentId, sessionId, message) {
-        const result = await AcpConnectionManager.getInstance().prompt(agentId, sessionId, message)
+        const result = await acpConnectionManager.prompt(agentId, sessionId, message)
         return result as unknown as Record<string, unknown>
       },
-      cancelPrompt: (agentId, sessionId) => AcpConnectionManager.getInstance().cancel(agentId, sessionId),
-      getSessionState: (agentId, sessionId) => AcpConnectionManager.getInstance().getSessionState(agentId, sessionId),
-      setSessionModel: (agentId, sessionId, modelId) => AcpConnectionManager.getInstance().setSessionModel(agentId, sessionId, modelId),
-      setSessionConfigOption: (agentId, sessionId, configId, value) => AcpConnectionManager.getInstance().setSessionConfigOption(agentId, sessionId, configId, value),
-      getRunningAgentMetrics: () => AcpProcessManager.getInstance().getMetrics(),
+      cancelPrompt: (agentId, sessionId) => acpConnectionManager.cancel(agentId, sessionId),
+      getSessionState: (agentId, sessionId) => acpConnectionManager.getSessionState(agentId, sessionId),
+      setSessionModel: (agentId, sessionId, modelId) => acpConnectionManager.setSessionModel(agentId, sessionId, modelId),
+      setSessionConfigOption: (agentId, sessionId, configId, value) => acpConnectionManager.setSessionConfigOption(agentId, sessionId, configId, value),
+      getRunningAgentMetrics: () => acpProcessManager.getMetrics(),
     },
     paths: {
       getUserDataPath: () => app.getPath('userData'),
@@ -167,7 +167,7 @@ export class AcpService extends IpcService {
   // ── Runtime: Session model / config ───────────────────────────────────────
 
   @IpcMethod()
-  getSessionState(agentId: string, sessionId: string): import('../../platform/acp/acp-connection').AcpSessionState | null {
+  getSessionState(agentId: string, sessionId: string): import('../../acp/acp-connection').AcpSessionState | null {
     return this.appService.getSessionState(agentId, sessionId)
   }
 

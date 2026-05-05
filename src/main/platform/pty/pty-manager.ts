@@ -75,20 +75,12 @@ function extractOscTitle(data: string): string | null {
 }
 
 export class PtyManager {
-  private static instance: PtyManager | null = null
   private readonly sessions = new Map<string, IPty>()
   /** Rolling output buffer per session — capped at MAX_BUFFER_BYTES */
   private readonly buffers = new Map<string, string>()
   private broadcaster: SignalBroadcaster | null = null
 
   private static readonly MAX_BUFFER_BYTES = 512 * 1024 // 512 KB
-
-  static getInstance(): PtyManager {
-    if (!PtyManager.instance) {
-      PtyManager.instance = new PtyManager()
-    }
-    return PtyManager.instance
-  }
 
   bindBroadcaster(broadcaster: SignalBroadcaster): void {
     this.broadcaster = broadcaster
@@ -184,3 +176,5 @@ export class PtyManager {
     return this.buffers.get(sessionId) ?? ''
   }
 }
+
+export const ptyManager = new PtyManager()

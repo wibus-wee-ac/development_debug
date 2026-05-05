@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { WorkspaceApplicationService } from '../../../features/workspace/workspace'
+import type { WorkspaceApplicationService } from '../../../workspace/workspace'
 import { WorkspaceService } from '../workspace'
 
 const { showOpenDialog, showItemInFolder, openPath } = vi.hoisted(() => ({

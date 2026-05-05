@@ -10,7 +10,7 @@ import { getDb } from '../../db'
 import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../../db/schema'
 import type { DomainEventBus } from '../../events/domain-event-bus'
 import type { ChatTurnFinishedDomainEvent } from '../../events/domain-events'
-import { ChatEngine } from '../chat/chat-engine'
+import { chatEngine } from '../chat/chat-engine'
 import { getWorkflowRules } from '../workflow-rules/workflow-rules'
 
 interface RunIssueInput {
@@ -27,19 +27,9 @@ export interface IssueAgentRuntime {
 }
 
 export class IssueAgentRunner {
-  private static instance: IssueAgentRunner
   private readonly activeRuns = new Map<string, { chatSessionId: string, aborted: boolean }>()
   private turnFinishedUnsubscribe: (() => void) | null = null
   private eventBus: DomainEventBus | null = null
-
-  static getInstance(): IssueAgentRunner {
-    if (!IssueAgentRunner.instance) {
-      IssueAgentRunner.instance = new IssueAgentRunner()
-    }
-    return IssueAgentRunner.instance
-  }
-
-  private constructor() {}
 
   bindDomainEventBus(eventBus: DomainEventBus): void {
     if (this.eventBus === eventBus) {
@@ -91,7 +81,7 @@ export class IssueAgentRunner {
     }
 
     try {
-      const chatSessionId = await ChatEngine.getInstance().createAndSend({
+      const chatSessionId = await chatEngine.createAndSend({
         agentId: agentProfileId,
         workspaceId: issue.workspaceId,
         cwd: workspace.path,
@@ -127,7 +117,7 @@ export class IssueAgentRunner {
     if (run) {
       run.aborted = true
       try {
-        await ChatEngine.getInstance().abort(run.chatSessionId)
+        await chatEngine.abort(run.chatSessionId)
       }
       catch {
         // Best-effort abort
@@ -138,7 +128,7 @@ export class IssueAgentRunner {
       const session = db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
       if (session?.chatSessionId) {
         try {
-          await ChatEngine.getInstance().abort(session.chatSessionId)
+          await chatEngine.abort(session.chatSessionId)
         }
         catch {
           // Best-effort abort
@@ -327,6 +317,8 @@ export class IssueAgentRunner {
   }
 }
 
+export const issueAgentRunner = new IssueAgentRunner()
+
 export function getIssueAgentRuntime(): IssueAgentRuntime {
-  return IssueAgentRunner.getInstance()
+  return issueAgentRunner
 }

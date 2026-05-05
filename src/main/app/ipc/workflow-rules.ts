@@ -4,8 +4,8 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import type { WorkflowRuleEntry, WorkflowRules } from '../../features/workflow-rules/workflow-rules'
-import { deleteWorkflowRule, getWorkflowRules, listWorkflowRules, saveWorkflowRule } from '../../features/workflow-rules/workflow-rules'
+import type { WorkflowRuleEntry, WorkflowRules } from '../../workflow-rules/workflow-rules'
+import { deleteWorkflowRule, getWorkflowRules, listWorkflowRules, saveWorkflowRule } from '../../workflow-rules/workflow-rules'
 
 export class WorkflowRulesService extends IpcService {
   static readonly groupName = 'workflowRules'

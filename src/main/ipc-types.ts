@@ -68,16 +68,16 @@ export type {
 } from './db/schema'
 export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 export type { AgentActivity, AgentSession } from './db/schema'
-export type { CredentialMetadata } from './features/agent-runtime/credential-vault'
-export type { ModelDescriptor, ProviderKind, ProviderProbeResult } from './features/agent-runtime/runtime-provider-types'
-export type { ChatMessage, EnsureLiveResult } from './features/chat/chat-engine'
+export type { CredentialMetadata } from './agent-runtime/credential-vault'
+export type { ModelDescriptor, ProviderKind, ProviderProbeResult } from './agent-runtime/runtime-provider-types'
+export type { ChatMessage, EnsureLiveResult } from './chat/chat-engine'
 export type {
   MatchRange,
   ThreadSearchHit,
   ThreadSearchParams,
   ThreadSearchSnippet,
-} from './features/chat/thread-search'
-export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './features/skills/skill-source'
+} from './chat/thread-search'
+export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './skills/skill-source'
 export type {
   CreateSkillInput,
   SkillCatalogEntry,
@@ -86,10 +86,10 @@ export type {
   SkillInventoryEntry,
   SkillScope,
   UpdateSkillInput,
-} from './features/skills/skills'
-export type { AcpSessionState } from './platform/acp/acp-connection'
-export type { ProcessMetrics } from './platform/acp/acp-process-manager'
-export type { RegistryAgent } from './platform/acp/acp-registry'
+} from './skills/skills'
+export type { AcpSessionState } from './acp/acp-connection'
+export type { ProcessMetrics } from './acp/acp-process-manager'
+export type { RegistryAgent } from './acp/acp-registry'
 export type { AcpDevtoolEvent } from '@cradle/ipc'
 
 // Pack-codebase types — inlined here so the renderer doesn't need to resolve the feature module

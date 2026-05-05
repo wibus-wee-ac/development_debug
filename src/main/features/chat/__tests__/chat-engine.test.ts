@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as schema from '../../../db/schema'
 import { createInMemoryDomainEventBus } from '../../../events/domain-event-bus'
-import { ChatEngine } from '../chat-engine'
+import { chatEngine } from '../chat-engine'
 import { createBroadcastSubscriber } from '../subscribers/broadcast-subscriber'
 
 type FakeDbState = {
@@ -509,7 +509,7 @@ describe('chatEngine', () => {
 
     // Wire event bus + broadcast subscriber so domain events reach IPC
     const eventBus = createInMemoryDomainEventBus()
-    ChatEngine.getInstance().bindEventBus(eventBus)
+    chatEngine.bindEventBus(eventBus)
     mockBroadcaster = {
       broadcastGlobal: vi.fn(),
       broadcastFiltered: vi.fn(),
@@ -518,17 +518,17 @@ describe('chatEngine', () => {
     createBroadcastSubscriber({
       eventBus,
       broadcaster: mockBroadcaster as never,
-      getSessionWatchers: () => ChatEngine.getInstance().getSessionWatchers(),
+      getSessionWatchers: () => chatEngine.getSessionWatchers(),
     })
   })
 
   afterEach(() => {
-    ChatEngine.getInstance().destroy()
+    chatEngine.destroy()
     vi.clearAllMocks()
   })
 
   it('creates a binding and completes a backend run for one prompt', async () => {
-    const sessionId = await ChatEngine.getInstance().createAndSend({
+    const sessionId = await chatEngine.createAndSend({
       agentId: 'profile-1',
       workspaceId: 'workspace-1',
       cwd: '/tmp/workspace',
@@ -634,7 +634,7 @@ describe('chatEngine', () => {
       }),
     })
 
-    await ChatEngine.getInstance().createAndSend({
+    await chatEngine.createAndSend({
       agentId: 'profile-1',
       workspaceId: 'workspace-1',
       cwd: '/tmp/workspace',
@@ -740,7 +740,7 @@ describe('chatEngine', () => {
       }),
     })
 
-    await ChatEngine.getInstance().createAndSend({
+    await chatEngine.createAndSend({
       agentId: 'profile-1',
       workspaceId: 'workspace-1',
       cwd: '/tmp/workspace',
@@ -835,7 +835,7 @@ describe('chatEngine', () => {
 
     const watcher = createFakeWebContents()
     const bystander = createFakeWebContents()
-    const engine = ChatEngine.getInstance()
+    const engine = chatEngine
     engine.subscribe(watcher as never)
     engine.subscribe(bystander as never)
     ;(engine as { watchSession?: (webContents: unknown, chatSessionId: string) => void }).watchSession?.(watcher, 'chat-1')

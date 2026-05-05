@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { AcpApplicationService } from '../../../features/acp/acp'
+import type { AcpApplicationService } from '../../../acp-feature/acp'
 import { AcpService } from '../acp'
 
 vi.mock('electron', () => ({
@@ -32,7 +32,7 @@ vi.mock('../../../db', () => ({
   }),
 }))
 
-vi.mock('../../../platform/acp/acp-connection', () => ({
+vi.mock('../../../acp/acp-connection', () => ({
   AcpConnectionManager: {
     getInstance: () => ({
       connect: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock('../../../platform/acp/acp-connection', () => ({
   },
 }))
 
-vi.mock('../../../platform/acp/acp-installer', () => ({
+vi.mock('../../../acp/acp-installer', () => ({
   getAgentInstallDir: vi.fn(() => '/tmp/user-data/acp/agents/demo-agent'),
   installBinaryAgent: vi.fn(),
   installPackageAgent: vi.fn(),
@@ -57,7 +57,7 @@ vi.mock('../../../platform/acp/acp-installer', () => ({
   persistInstalled: vi.fn(),
 }))
 
-vi.mock('../../../platform/acp/acp-process-manager', () => ({
+vi.mock('../../../acp/acp-process-manager', () => ({
   AcpProcessManager: {
     getInstance: () => ({
       getMetrics: vi.fn(() => []),
@@ -65,7 +65,7 @@ vi.mock('../../../platform/acp/acp-process-manager', () => ({
   },
 }))
 
-vi.mock('../../../platform/acp/acp-registry', () => ({
+vi.mock('../../../acp/acp-registry', () => ({
   fetchRegistry: vi.fn(async () => ({ agents: [] })),
   getSupportedDistributionTypes: vi.fn(() => []),
 }))

@@ -6,12 +6,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   AgentRuntimeApplicationService,
-} from '../../../features/agent-runtime/agent-runtime'
-import type { CredentialMetadata } from '../../../features/agent-runtime/credential-vault'
+} from '../../../agent-runtime/agent-runtime'
+import type { CredentialMetadata } from '../../../agent-runtime/credential-vault'
 import type {
   ModelDescriptor,
   ProviderProbeResult,
-} from '../../../features/agent-runtime/runtime-provider-types'
+} from '../../../agent-runtime/runtime-provider-types'
 import { AgentRuntimeService } from '../agent-runtime'
 
 vi.mock('../../../db/index.ts', () => ({
@@ -27,7 +27,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('../../../platform/storage/safe-storage', () => ({
+vi.mock('../../../storage/safe-storage', () => ({
   encryptSecret: (text: string) => `encrypted:${text}`,
   decryptSecret: (text: string) => text.replace('encrypted:', ''),
 }))

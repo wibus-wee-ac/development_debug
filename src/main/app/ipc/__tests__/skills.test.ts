@@ -31,7 +31,7 @@ vi.mock('../../../db', () => ({
   }),
 }))
 
-vi.mock('../../../features/skills/skills', () => ({
+vi.mock('../../../skills/skills', () => ({
   listSkillInventory,
   createSkillDocument,
 }))

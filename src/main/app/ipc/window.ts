@@ -4,13 +4,13 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import { WindowManager } from '../../platform/window/window-manager'
+import { windowManager } from '../../window/window-manager'
 
 export class WindowService extends IpcService {
   static readonly groupName = 'window'
 
   @IpcMethod()
   tearOffSession(sessionId: string, x: number, y: number): void {
-    WindowManager.getInstance().openSessionWindow(sessionId, x, y)
+    windowManager.openSessionWindow(sessionId, x, y)
   }
 }

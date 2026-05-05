@@ -8,7 +8,7 @@ import {
   applyStoredChatPreferences,
   buildStoredChatPreferences,
 } from '../../shared/chat-preferences'
-import type { AcpSessionState } from '../platform/acp/acp-connection'
+import type { AcpSessionState } from '../acp/acp-connection'
 
 describe('chat preferences', () => {
   it('captures current model and config selections from session state', () => {

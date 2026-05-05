@@ -71,10 +71,7 @@ vi.mock('node:stream', async () => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function freshManager(): AcpProcessManager {
-  // Reset the singleton for test isolation
-  // @ts-expect-error accessing private static for testing
-  AcpProcessManager.instance = undefined
-  return AcpProcessManager.getInstance()
+  return new AcpProcessManager()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

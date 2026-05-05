@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 import { createServices } from '@cradle/ipc'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
-import { getBackendControlPlaneService } from '@main/features/backend-control-plane/backend-control-plane'
+import { getBackendControlPlaneService } from '@main/backend-control-plane/backend-control-plane'
 import { eq, sql } from 'drizzle-orm'
 import { app, BrowserWindow, shell } from 'electron'
 
@@ -18,26 +18,26 @@ import { bridgeChatTurnFinishedEvents } from '../events/chat-turn-finished-bridg
 import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
 import {
   createDbCredentialStore,
-} from '../features/agent-runtime/agent-runtime'
-import { initProviderCatalog } from '../features/agent-runtime/catalog-instance'
-import { acpChatProvider } from '../features/agent-runtime/providers/acp-chat-provider'
-import { cliTuiProvider } from '../features/agent-runtime/providers/cli-tui-provider'
-import { OpenAICompatibleProvider } from '../features/agent-runtime/providers/openai-compatible-provider'
-import { createApprovalBroadcastSubscriber } from '../features/approval/approval-broadcast'
-import { getApprovalService } from '../features/approval/approval-service'
-import { ChatEngine } from '../features/chat/chat-engine'
-import { createBroadcastSubscriber } from '../features/chat/subscribers/broadcast-subscriber'
-import { createFtsSubscriber } from '../features/chat/subscribers/fts-subscriber'
-import { createUsageSubscriber } from '../features/chat/subscribers/usage-subscriber'
-import { ThreadSearchEngine } from '../features/chat/thread-search'
-import { IssueAgentRunner } from '../features/issue-agent/issue-agent-runner'
-import { initPackCodebaseWasm } from '../features/pack-codebase/pack-codebase'
-import { AcpConnectionManager } from '../platform/acp/acp-connection'
-import { PtyManager } from '../platform/pty/pty-manager'
-import { initSignalBroadcaster } from '../platform/signal-broadcaster'
-import { startSocketServer, stopSocketServer } from '../platform/socket/socket-server'
-import { decryptSecret, encryptSecret } from '../platform/storage/safe-storage'
-import { revealWindow } from '../platform/window/window-activation'
+} from '../agent-runtime/agent-runtime'
+import { initProviderCatalog } from '../agent-runtime/catalog-instance'
+import { acpChatProvider } from '../agent-runtime/providers/acp-chat-provider'
+import { cliTuiProvider } from '../agent-runtime/providers/cli-tui-provider'
+import { OpenAICompatibleProvider } from '../agent-runtime/providers/openai-compatible-provider'
+import { createApprovalBroadcastSubscriber } from '../approval/approval-broadcast'
+import { getApprovalService } from '../approval/approval-service'
+import { chatEngine } from '../chat/chat-engine'
+import { createBroadcastSubscriber } from '../chat/broadcast'
+import { createFtsSubscriber } from '../chat/fts-subscriber'
+import { createUsageSubscriber } from '../chat/usage-subscriber'
+import { threadSearchEngine } from '../chat/thread-search'
+import { issueAgentRunner } from '../issue-agent/issue-agent-runner'
+import { initPackCodebaseWasm } from '../pack-codebase/pack-codebase'
+import { acpConnectionManager } from '../acp/acp-connection'
+import { ptyManager } from '../pty/pty-manager'
+import { initSignalBroadcaster } from '../signal/broadcaster'
+import { startSocketServer, stopSocketServer } from '../socket/socket-server'
+import { decryptSecret, encryptSecret } from '../storage/safe-storage'
+import { revealWindow } from '../window/window-activation'
 import { AcpService } from './ipc/acp'
 import { AgentService } from './ipc/agent'
 import { AgentRuntimeService } from './ipc/agent-runtime'
@@ -134,7 +134,7 @@ app.whenReady().then(() => {
   try {
     const ftsCount = getDb().all<{ cnt: number }>(sql`SELECT count(*) as cnt FROM messages_fts`)
     if (ftsCount[0]?.cnt === 0) {
-      ThreadSearchEngine.getInstance().rebuildIndex()
+      threadSearchEngine.rebuildIndex()
     }
   }
   catch {
@@ -155,12 +155,11 @@ app.whenReady().then(() => {
   bootstrapProviderCatalog()
 
   // Bootstrap chat engine (crash recovery + transport hooks)
-  const chatEngine = ChatEngine.getInstance()
   chatEngine.initialize()
 
   const domainEventBus = createInMemoryDomainEventBus()
   chatEngine.bindEventBus(domainEventBus)
-  IssueAgentRunner.getInstance().bindDomainEventBus(domainEventBus)
+  issueAgentRunner.bindDomainEventBus(domainEventBus)
   bridgeChatTurnFinishedEvents({
     source: chatEngine,
     eventBus: domainEventBus,
@@ -169,7 +168,7 @@ app.whenReady().then(() => {
   // Create unified signal broadcaster — single push gateway for all renderer events
   const signalBroadcaster = initSignalBroadcaster()
   chatEngine.bindSignalBroadcaster(signalBroadcaster)
-  PtyManager.getInstance().bindBroadcaster(signalBroadcaster)
+  ptyManager.bindBroadcaster(signalBroadcaster)
 
   // Wire domain event subscribers (Open/Closed — add new behaviors here)
   createBroadcastSubscriber({
@@ -180,7 +179,7 @@ app.whenReady().then(() => {
   createFtsSubscriber({
     eventBus: domainEventBus,
     db: getDb(),
-    searchEngine: ThreadSearchEngine.getInstance(),
+    searchEngine: threadSearchEngine,
   })
   createUsageSubscriber({
     eventBus: domainEventBus,
@@ -195,7 +194,7 @@ app.whenReady().then(() => {
   })
 
   // Wire ACP permission handler → approval service
-  AcpConnectionManager.getInstance().setPermissionHandler(async (request) => {
+  acpConnectionManager.setPermissionHandler(async (request) => {
     const bindings = getBackendControlPlaneService().listBindingsByBackendSessionId(request.sessionId)
     const chatSessionId = bindings[0]?.chatSessionId ?? null
 

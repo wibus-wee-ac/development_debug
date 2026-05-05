@@ -7,8 +7,8 @@ import { eq } from 'drizzle-orm'
 
 import { getDb } from '../../db'
 import { workspaces } from '../../db/schema'
-import type { PackCodebaseOptions, PackCodebaseResult } from '../../features/pack-codebase/pack-codebase'
-import { packCodebase } from '../../features/pack-codebase/pack-codebase'
+import type { PackCodebaseOptions, PackCodebaseResult } from '../../pack-codebase/pack-codebase'
+import { packCodebase } from '../../pack-codebase/pack-codebase'
 
 interface PackCodebaseParams extends PackCodebaseOptions {
   workspaceId: string

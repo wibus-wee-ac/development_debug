@@ -2,7 +2,7 @@
 // Output: AcpChatProvider implementing ChatRuntimeProvider for ACP-based agents
 // Position: Concrete chat provider for acp-chat profiles; wraps existing ACP transport
 
-import { AcpConnectionManager } from '../../../platform/acp/acp-connection'
+import { acpConnectionManager } from '../../../platform/acp/acp-connection'
 import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
 import type {
   AgentProfile,
@@ -57,8 +57,8 @@ function buildConnectionRecord(configJson: string): {
 export class AcpChatProvider implements ChatRuntimeProvider {
   readonly providerKind = 'acp-chat' as const
 
-  private get connMgr(): AcpConnectionManager {
-    return AcpConnectionManager.getInstance()
+  private get connMgr() {
+    return acpConnectionManager
   }
 
   get lastUsage(): TokenUsage | null {

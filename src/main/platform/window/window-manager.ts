@@ -7,24 +7,13 @@ import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import { BrowserWindow } from 'electron'
 
-import { ChatEngine } from '../../features/chat/chat-engine'
+import { chatEngine } from '../../features/chat/chat-engine'
 import { subscribeRuntimeDevtools } from '../../devtools/ipc-devtool'
 import { getSignalBroadcaster } from '../signal-broadcaster'
 import { revealOrFocusExistingWindow, revealWindow } from './window-activation'
 
 export class WindowManager {
-  private static instance: WindowManager | null = null
-
   private readonly sessionWindows = new Map<string, BrowserWindow>()
-
-  private constructor() {}
-
-  static getInstance(): WindowManager {
-    if (!WindowManager.instance) {
-      WindowManager.instance = new WindowManager()
-    }
-    return WindowManager.instance
-  }
 
   /**
    * Open a tear-off window for a session.
@@ -75,7 +64,7 @@ export class WindowManager {
     win.webContents.once('did-finish-load', () => {
       // Subscribe streaming events so chat updates reach this window
       getSignalBroadcaster().subscribe(win.webContents)
-      ChatEngine.getInstance().subscribe(win.webContents)
+      chatEngine.subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
     })
 
@@ -95,3 +84,5 @@ export class WindowManager {
     }
   }
 }
+
+export const windowManager = new WindowManager()

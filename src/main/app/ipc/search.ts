@@ -4,14 +4,14 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import type { ThreadSearchHit, ThreadSearchParams } from '../../features/chat/thread-search'
-import { ThreadSearchEngine } from '../../features/chat/thread-search'
+import type { ThreadSearchHit, ThreadSearchParams } from '../../chat/thread-search'
+import { threadSearchEngine } from '../../chat/thread-search'
 
 export class SearchService extends IpcService {
   static readonly groupName = 'search'
 
-  private get engine(): ThreadSearchEngine {
-    return ThreadSearchEngine.getInstance()
+  private get engine() {
+    return threadSearchEngine
   }
 
   @IpcMethod()

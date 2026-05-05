@@ -8,25 +8,25 @@ import { getDb } from '../../db'
 import type {
   AgentRuntimeApplicationService,
   EditableAgentProfile,
-} from '../../features/agent-runtime/agent-runtime'
+} from '../../agent-runtime/agent-runtime'
 import {
   createAgentRuntimeApplicationService,
   createDbAgentProfileStore,
   createDbCredentialStore,
   createDbRuntimeAuditStore,
-} from '../../features/agent-runtime/agent-runtime'
-import { getBackendControlPlaneService } from '../../features/backend-control-plane/backend-control-plane'
-import { getProviderCatalog } from '../../features/agent-runtime/catalog-instance'
+} from '../../agent-runtime/agent-runtime'
+import { getBackendControlPlaneService } from '../../backend-control-plane/backend-control-plane'
+import { getProviderCatalog } from '../../agent-runtime/catalog-instance'
 import type {
   CredentialMetadata,
   SaveCredentialInput,
-} from '../../features/agent-runtime/credential-vault'
+} from '../../agent-runtime/credential-vault'
 import type {
   AgentProfile,
   ModelDescriptor,
   ProviderProbeResult,
-} from '../../features/agent-runtime/runtime-provider-types'
-import { decryptSecret, encryptSecret } from '../../platform/storage/safe-storage'
+} from '../../agent-runtime/runtime-provider-types'
+import { decryptSecret, encryptSecret } from '../../storage/safe-storage'
 
 function createDefaultAgentRuntimeApplication(): AgentRuntimeApplicationService {
   const db = getDb()

@@ -10,8 +10,8 @@ import { desc, eq } from 'drizzle-orm'
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
 import { backendSessionBindings, messages, sessions } from '../../db/schema'
-import { PtyManager } from '../../platform/pty/pty-manager'
-import { ThreadSearchEngine } from '../../features/chat/thread-search'
+import { ptyManager } from '../../pty/pty-manager'
+import { threadSearchEngine } from '../../chat/thread-search'
 
 export class SessionService extends IpcService {
   static readonly groupName = 'session'
@@ -56,9 +56,9 @@ export class SessionService extends IpcService {
   @IpcMethod()
   delete(id: string): void {
     // Stop PTY if this session has an active terminal process
-    PtyManager.getInstance().stop(id)
+    ptyManager.stop(id)
     // Remove FTS index entries before deleting the session
-    ThreadSearchEngine.getInstance().removeSessionFromIndex(id)
+    threadSearchEngine.removeSessionFromIndex(id)
     getDb().delete(sessions).where(eq(sessions.id, id)).run()
   }
 
