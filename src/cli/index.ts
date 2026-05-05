@@ -179,7 +179,7 @@ issue.command('delegate')
   .argument('<issueId>', 'Issue ID')
   .argument('<agentProfileId>', 'Agent profile ID')
   .action(async (issueId: string, agentProfileId: string) => {
-    const result = await rpcCall('kanban.delegateIssue', [issueId, agentProfileId])
+    const result = await rpcCall('issueAgent.delegateIssue', [issueId, agentProfileId])
     console.log(JSON.stringify(result, null, 2))
   })
 
@@ -187,7 +187,7 @@ issue.command('undelegate')
   .description('Cancel issue delegation')
   .argument('<issueId>', 'Issue ID')
   .action(async (issueId: string) => {
-    await rpcCall('kanban.undelegateIssue', [issueId])
+    await rpcCall('issueAgent.undelegateIssue', [issueId])
     console.log('Done')
   })
 

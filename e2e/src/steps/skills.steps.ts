@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { CradleWorld } from '../support/world.ts'
+import { CradleWorld } from '../support/world'
 
 function createTempDir(prefix: string): string {
   const dir = join(tmpdir(), `${prefix}-${Date.now().toString(36)}`)

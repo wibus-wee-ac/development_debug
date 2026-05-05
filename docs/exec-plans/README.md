@@ -27,3 +27,5 @@ Current canonical backend paths after the 2026-05-05 context refactor are under 
 - **20260505-01-kanban-read-query-boundary.md**: Execution plan for moving Kanban read-side queries into an application-layer query boundary so `KanbanService` can become a pure facade.
 - **20260505-02-main-context-ownership-overhaul.md**: Execution plan for moving active Kanban and issue-agent backend code into context-owned directories under `src/main/contexts/`.
 - **20260505-03-db-schema-context-split.md**: Execution plan for replacing the monolithic main-process DB schema with context-owned modules under `src/main/db/schema/`.
+- **20260505-04-issue-agent-ipc-ownership-split.md**: Execution plan for moving issue-agent delegation/session/activity IPC out of the `kanban` namespace into a dedicated `issueAgent` service.
+- **20260505-05-context-owned-ipc-adapters.md**: Execution plan for moving Kanban and issue-agent IPC adapters out of the root `services/` bucket into their owner contexts under `src/main/contexts/*/interfaces/`.

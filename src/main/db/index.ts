@@ -1,3 +1,7 @@
+// Input: better-sqlite3, Drizzle schema/migrator, Electron runtime path helpers
+// Output: initDb and getDb helpers for the main-process SQLite database singleton
+// Position: Persistence bootstrap and database accessor for the Electron main process
+
 import { join } from 'node:path'
 
 import { is } from '@electron-toolkit/utils'

@@ -14,6 +14,7 @@ Keep subdirectory inventories current when files are added or changed.
 - **SPEC-v2.md**: Updated product specification reflecting ACP chat, CLI-TUI sessions, and built-in observability.
 - **architecture-layout-tab-system.md**: Architecture notes for the layout and tab system.
 - **architecture-review-2026-04-21.md**: Consolidated frontend and backend architecture assessment covering routes, features, state flow, UI system, IPC, and main-process design.
+- **agent-client-console-architecture.md**: Architecture position for treating Cradle as an internal-first agent client console over Codex App Server, Claude Agent SDK, and ACP backends.
 - **backend-architecture-overhaul-2026-05-04.md**: Backend-only deep audit with data-flow mapping, DDD boundary assessment, and the evolving destructive refactor roadmap after application-layer extraction work.
 - **developers-guide.md**: Practical contributor guide for extending the current architecture without reintroducing service-layer coupling.
 - **design-system/**: Visual design documentation, tokens, and reference materials.

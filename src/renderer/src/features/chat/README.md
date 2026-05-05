@@ -4,7 +4,7 @@
 
 Renderer-side view layer for chat.
 All orchestration lives in the main-process `ChatEngine`
-(`src/main/lib/chat-engine.ts`); this directory is a thin view that drives
+(`src/main/features/chat/chat-engine.ts`); this directory is a thin view that drives
 AI SDK's `useChat` through a custom `ChatTransport` which forwards to `ipc.chat`.
 Streaming events arrive as OpenAI Responses API-style `ResponseStreamEvent` objects
 on the `chat:response-event` IPC channel, consumed through the preload `chatPush` wrapper

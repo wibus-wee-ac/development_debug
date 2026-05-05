@@ -5,7 +5,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import type { CradleWorld } from '../support/world.ts'
+import type { CradleWorld } from '../support/world'
 
 const TAB_BAR = '[data-testid="tab-bar"]'
 const TAB_PILL = '[data-testid^="tab-pill-"]'

@@ -5,7 +5,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import type { CradleWorld } from '../support/world.ts'
+import type { CradleWorld } from '../support/world'
 
 async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
   await world.app.evaluate(async ({ dialog }, targetPath) => {

@@ -314,7 +314,7 @@ export function useDelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, agentProfileId: string, agentId?: string }) => {
-      const session = await ipc!.kanban.delegateIssue(vars.issueId, vars.agentProfileId, vars.agentId)
+      const session = await ipc!.issueAgent.delegateIssue(vars.issueId, vars.agentProfileId, vars.agentId)
       return session
     },
     onSuccess: (_data, vars) => {
@@ -331,7 +331,7 @@ export function useUndelegateIssue() {
   return useMutation({
     mutationFn: async (vars: { issueId: string }) => {
       // Stop any running agent first
-      await ipc!.kanban.undelegateIssue(vars.issueId)
+      await ipc!.issueAgent.undelegateIssue(vars.issueId)
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
@@ -346,7 +346,7 @@ export function useStopAgentSession() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: { agentSessionId: string, issueId: string }) =>
-      ipc!.kanban.stopAgentSession(vars.agentSessionId),
+      ipc!.issueAgent.stopAgentSession(vars.agentSessionId),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
@@ -358,7 +358,7 @@ export function useStartAgentSession() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, agentSessionId: string, agentProfileId: string, agentId?: string }) => {
-      await ipc!.kanban.runDelegatedIssue(vars.issueId, vars.agentSessionId, vars.agentProfileId, vars.agentId)
+      await ipc!.issueAgent.runDelegatedIssue(vars.issueId, vars.agentSessionId, vars.agentProfileId, vars.agentId)
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
@@ -371,7 +371,7 @@ export function useStartAgentSession() {
 export function useAgentSessions(issueId: string) {
   return useQuery({
     queryKey: kanbanKeys.agentSessions(issueId),
-    queryFn: () => ipc ? ipc.kanban.getAgentSessions(issueId) : Promise.resolve([]),
+    queryFn: () => ipc ? ipc.issueAgent.getAgentSessions(issueId) : Promise.resolve([]),
     enabled: !!issueId,
   })
 }
@@ -379,7 +379,7 @@ export function useAgentSessions(issueId: string) {
 export function useAgentActivities(agentSessionId: string | null) {
   return useQuery({
     queryKey: kanbanKeys.agentActivities(agentSessionId ?? ''),
-    queryFn: () => agentSessionId && ipc ? ipc.kanban.getAgentActivities(agentSessionId) : Promise.resolve([]),
+    queryFn: () => agentSessionId && ipc ? ipc.issueAgent.getAgentActivities(agentSessionId) : Promise.resolve([]),
     enabled: !!agentSessionId,
   })
 }

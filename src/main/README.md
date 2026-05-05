@@ -1,18 +1,19 @@
 <!-- Once this directory changes, update this README.md -->
 
-# src/main
+# Main
 
-主进程入口层负责注册 IPC、装配服务，并定义主进程与渲染进程共享的公共类型。
-复杂业务逻辑优先落到 `contexts/` 的上下文目录，而不是横向技术桶。
-新增主进程能力时，先确定 owner context，再决定是否通过 `services/`、`events/`、`db/` 暴露或集成。
-`lib/` 仅保留仍未 context 化的共享基础设施，后续应继续收缩。
+主进程由 `app/` 装配、`features/` 承载业务、`platform/` 承载系统适配，`db/` 与 `events/` 提供持久化和域事件。
+新增能力时先判断 owner，再决定它属于 app glue、feature 语义还是 platform 能力。
+不要把业务规则重新塞回水平技术桶；旧 `contexts/` 与 `lib/` 已被收敛删除。
 
 ## Files
 
-- **index.ts**: Electron 主进程入口，负责窗口生命周期、IPC 注册与服务装配
-- **ipc-types.ts**: 主进程与渲染进程共享的 IPC 类型导出层
-- **contexts/**: 按业务上下文组织的主进程后端代码（如 `kanban`、`issue-agent`）
-- **db/**: 数据库初始化、schema 与持久化相关入口
-- **events/**: 主进程域事件与桥接层
-- **lib/**: 尚未进一步 context 化的共享基础设施与系统级能力
-- **services/**: 暴露给渲染进程的 IPC adapter 层
+- **index.ts**: Electron 主进程薄入口，只转入 `app/main`
+- **ipc-types.ts**: 主进程与 preload/renderer 共享的 IPC 类型导出层
+- **app/**: 主进程装配层，包含 bootstrap、IPC adapters 与 app-wide store
+- **features/**: 业务能力目录，如 `chat`、`kanban`、`issue-agent`、`skills`、`agent-runtime`
+- **platform/**: 系统/运行时适配目录，如 `acp`、`window`、`pty`、`storage`、`socket`、`resources`
+- **devtools/**: 主进程调试后端与观测缓冲
+- **db/**: SQLite 初始化、schema 与持久化入口
+- **events/**: 进程内领域事件与桥接器
+- **__tests__/**: 跨 feature/platform 的根级主进程回归测试

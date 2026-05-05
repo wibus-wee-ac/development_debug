@@ -4,7 +4,7 @@
 
 This guide explains how to extend Cradle without reintroducing the main-process coupling problems we are actively removing.
 Use it as the practical companion to the architecture audits and execution plans.
-When in doubt, prefer a thinner adapter, a smaller ownership boundary, and a test that proves behavior before code exists.
+When in doubt, prefer a thinner adapter, a clearer owner, and a test that proves behavior before code exists.
 
 ## What Lives Where
 
@@ -12,11 +12,11 @@ Cradle is not a generic web app with an Electron wrapper bolted on top. The desk
 
 ### Main process layers
 
-- `src/main/services/`: IPC adapters. These are the stable entrypoints used by the renderer through `window.ipc.*`. Services should keep parameters simple and should not become orchestration blobs.
-- `src/main/contexts/*/application/`: context-owned use-case orchestration. If a workflow writes multiple records, coordinates a runner, or owns state transitions, it belongs in the owning context here.
-- `src/main/contexts/*/infrastructure/`: context-owned runtime implementations that bridge application logic with chat/runtime/process concerns.
-- `src/main/lib/`: lower-level shared infrastructure that has not yet been moved into a specific context. `ChatEngine` still lives here today, but new business workflows should not be added here by default.
-- `src/main/events/`: in-process event pipeline and event-bridge code.
+- `src/main/app/`: bootstrap, IPC adapters, and app-wide persistent stores.
+- `src/main/features/*`: owner-owned business semantics such as chat, kanban, issue-agent, skills, and agent-runtime.
+- `src/main/platform/*`: OS/process/protocol adapters such as ACP, windowing, PTY, safe storage, socket server, and bundled resources.
+- `src/main/devtools/`: runtime observability buffers and devtool-window integration.
+- `src/main/events/`: in-process domain event bus and bridges.
 - `src/main/db/`: schema, initialization, and persistence primitives.
 
 ### Renderer layers
@@ -30,10 +30,11 @@ Cradle is not a generic web app with an Electron wrapper bolted on top. The desk
 
 Before adding code, ask one question: **who owns this behavior?**
 
-- IPC transport semantics are owned by `services/`.
-- Use-case semantics are owned by `application/`.
-- Runtime engines, process bridges, and infrastructure helpers are owned by `lib/`.
-- Durable data shape is owned by `db/schema.ts`.
+- Transport and lifecycle glue belong in `app/`.
+- Query/command semantics and orchestrators belong in `features/`.
+- OS/process/protocol bridges belong in `platform/`.
+- Debug-only observation belongs in `devtools/`.
+- Durable data shape belongs in `db/schema/`.
 
 If the answer is “multiple layers,” the boundary is probably still wrong.
 
@@ -41,28 +42,32 @@ If the answer is “multiple layers,” the boundary is probably still wrong.
 
 The current backend direction is:
 
-1. Services become thin facades.
-2. Complex workflows move into application services.
-3. Event-driven lifecycle replaces hidden singleton callbacks where practical.
-4. Dead compatibility layers are deleted instead of preserved.
+1. `app/ipc/*` stays thin.
+2. `features/*` owns workflow/query semantics.
+3. `platform/*` owns ACP/window/pty/storage/socket/resources plumbing.
+4. Event-driven lifecycle replaces hidden singleton callbacks where practical.
+5. Dead compatibility layers are deleted instead of preserved.
 
 Recent examples:
 
-- `src/main/contexts/issue-agent/application/issue-delegation-application.ts` owns Issue delegation commands.
-- `src/main/contexts/kanban/application/kanban-query-application.ts` owns Kanban read-side filtering, search, ordering, and linked-session projections.
-- `src/main/contexts/kanban/application/kanban-write-application.ts` owns Kanban write-side commands.
-- `src/main/services/kanban.ts` delegates Kanban queries and commands to application services.
+- `src/main/features/issue-agent/issue-delegation.ts` owns issue delegation commands.
+- `src/main/features/issue-agent/issue-agent-query.ts` owns agent-session/activity query ordering.
+- `src/main/features/kanban/kanban-query.ts` owns Kanban read-side filtering, search, ordering, and linked-session projections.
+- `src/main/features/kanban/kanban-write.ts` owns Kanban write-side commands.
+- `src/main/app/ipc/kanban.ts` owns the public Kanban IPC namespace and delegates only Kanban-owned behavior.
+- `src/main/app/ipc/issue-agent.ts` owns the public issue-agent IPC namespace for delegation commands and agent-session/activity queries.
 
-That split is deliberate. Do not move new query-side or write-side business rules back into `KanbanService`.
+That split is deliberate. Do not move new query-side or write-side business rules back into IPC adapters.
 
 ## How to add a new backend workflow
 
 Use this checklist whenever you introduce or change behavior in the main process.
 
-### 1. Decide whether it is a query or a command
+### 1. Decide the owner first
 
-- **Query**: reads data and returns a projection. If it needs filtering, ordering, search semantics, or multi-record composition, put it in `application/`.
-- **Command**: mutates data, coordinates multiple tables, triggers a runner, or emits events. Put it in `application/`.
+- **Feature rule/query/command**: put it in the owning feature directory.
+- **Platform bridge**: put it in the relevant `platform/*` bucket.
+- **App glue / transport**: keep it in `app/` and keep it boring.
 
 ### 2. Write the failing test first
 
@@ -70,23 +75,23 @@ The repository expects TDD, not “tests eventually.”
 
 A good path is:
 
-1. Create or extend a test in the owning context’s application test directory, such as `src/main/contexts/kanban/application/__tests__/`.
+1. Create or extend a test in the owning feature directory, such as `src/main/features/kanban/__tests__/`.
 2. Run only that test.
 3. Confirm the failure is for the missing behavior, not a typo.
 4. Implement the minimal production code.
 5. Re-run the targeted test, then broader validations.
 
-For application services, prefer behavior-first tests with injected fakes over brittle mock-call snapshots.
+For feature services, prefer behavior-first tests with injected fakes over brittle mock-call snapshots.
 
-### 3. Keep the service adapter boring
+### 3. Keep the IPC adapter boring
 
-A service method should ideally look like this in spirit:
+An IPC method should ideally:
 
-- validate/reshape IPC input if needed
-- call one application service method
+- validate or reshape transport input if needed
+- call one feature or platform method
 - return the result
 
-If a service method starts assembling JSON, coordinating transactions, cleaning child records, and writing comments, stop and move that logic down a layer.
+If an IPC method starts assembling JSON, coordinating transactions, cleaning child records, and writing comments, stop and move that logic down a layer.
 
 ### 4. Delete superseded code
 
@@ -94,9 +99,9 @@ Cradle currently allows destructive refactors. If an old helper or compatibility
 
 Examples of what to remove instead of preserving:
 
-- dead lib-level orchestration replaced by application services
+- dead horizontal buckets replaced by feature-first ownership
 - obsolete config toggles or compatibility branches
-- stale docs that describe an architecture that no longer exists
+- stale docs that pretend the old structure is still canonical
 
 ## Testing strategy that works in this repo
 
@@ -104,16 +109,16 @@ This repository mixes Node-side unit tests with Electron runtime validation. Tha
 
 ### Recommended testing pyramid here
 
-- **Application tests**: prefer injected fakes and behavior assertions.
-- **Service tests**: add when adapter behavior itself matters.
-- **Typecheck/build**: always run after backend refactors.
+- **Feature tests**: prefer injected fakes and behavior assertions.
+- **IPC adapter tests**: add when transport behavior itself matters.
+- **Typecheck/build**: always run after main-process refactors.
 - **Focused E2E**: run the smallest feature tags that prove the user journey still works.
 
-### Verified commands
+### Suggested commands
 
 Run from repository root:
 
-    pnpm -s vitest run src/main/contexts/kanban/application/__tests__/kanban-query-application.test.ts src/main/contexts/kanban/application/__tests__/kanban-write-application.test.ts src/main/contexts/issue-agent/application/__tests__/issue-delegation-application.test.ts
+    pnpm -s vitest run src/main/features/kanban/__tests__/kanban-query-application.test.ts src/main/features/kanban/__tests__/kanban-write-application.test.ts src/main/features/issue-agent/__tests__/issue-agent-query-application.test.ts src/main/features/issue-agent/__tests__/issue-delegation-application.test.ts src/main/app/ipc/__tests__/issue-agent.test.ts
     pnpm -s tsc --noEmit -p tsconfig.node.json --composite false
     pnpm build
     pnpm e2e:cleanup && pnpm exec cucumber-js --config e2e/cucumber.mjs --tags "@CRADLE-KANBAN-001"
@@ -123,7 +128,7 @@ Run from repository root:
 
 If you use real SQLite in Node-side tests, you may force `better-sqlite3` into a Node ABI build and then break Electron launch until native modules are rebuilt for Electron again.
 
-That is why recent application tests prefer injected fakes when the goal is orchestration correctness rather than persistence-driver validation.
+That is why recent feature tests prefer injected fakes when the goal is orchestration correctness rather than persistence-driver validation.
 
 ## Documentation rules you must follow
 
@@ -159,9 +164,9 @@ The backend is cleaner than before, but it is not done.
 High-value next steps:
 
 1. Shrink `IssueAgentRunner` into smaller orchestration pieces.
-2. Continue decomposing `ChatEngine`, which is still the largest architecture hotspot.
-3. Reconcile session-model overlap only after the current application boundaries are stable.
-4. Tighten `agent-runtime` lifecycle boundaries so provider/credential orchestration keeps shrinking.
+2. Continue decomposing `ChatEngine`, which is still the largest feature hotspot.
+3. Reconcile session-model overlap only after the current app/feature boundaries are stable.
+4. Keep tightening agent-runtime ownership so provider/credential orchestration keeps shrinking.
 
 ## A simple rule of thumb
 

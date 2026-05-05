@@ -7,7 +7,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import type { ITestCaseHookParameter } from '@cucumber/cucumber'
 import { After, Before, setDefaultTimeout, Status } from '@cucumber/cucumber'
 
-import type { CradleWorld } from './world.ts'
+import type { CradleWorld } from './world'
 
 setDefaultTimeout(60_000)
 

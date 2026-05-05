@@ -5,7 +5,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import type { CradleWorld } from '../support/world.ts'
+import type { CradleWorld } from '../support/world'
 
 const KANBAN_SIDEBAR = '[data-testid="kanban-sidebar"]'
 const KANBAN_BOARD = '[data-testid="kanban-board"]'

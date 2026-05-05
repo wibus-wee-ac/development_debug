@@ -1,7 +1,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import type { CradleWorld } from '../support/world.ts'
+import type { CradleWorld } from '../support/world'
 
 const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles|No providers configured yet\./
 

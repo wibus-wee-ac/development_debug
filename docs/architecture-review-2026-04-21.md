@@ -87,18 +87,18 @@ Chat Route (/chat/$sessionId)
 - ACP session / agent hooks 被放在 `workspace` 下，领域命名已经失真，后续会继续扩大错误边界。[src/renderer/src/features/workspace/use-acp-agents.ts](/Users/wibus/dev/Cradle/src/renderer/src/features/workspace/use-acp-agents.ts:1)
 - `settings/acp-settings.tsx` 本质是一个 ACP management feature，但被压成 settings 里的单个 section 文件，已经出现 feature-in-a-file 问题。[src/renderer/src/features/settings/acp-settings.tsx](/Users/wibus/dev/Cradle/src/renderer/src/features/settings/acp-settings.tsx:1)
 - preload 直接暴露 `window.electron`，同时窗口配置仍是 `sandbox: false`；typed IPC 只是约定，不是强封装。[src/preload/index.ts](/Users/wibus/dev/Cradle/src/preload/index.ts:1) [src/main/index.ts](/Users/wibus/dev/Cradle/src/main/index.ts:1)
-- ACP host capability 目前几乎没有安全边界，`requestPermission()` 默认放行第一项，文件读写直接按 agent 给出的路径执行。[src/main/lib/acp-connection.ts](/Users/wibus/dev/Cradle/src/main/lib/acp-connection.ts:1)
-- `ChatEngine` 是明确的 God Object，横跨恢复、编排、持久化、stream 组装、广播和错误塑形。[src/main/lib/chat-engine.ts](/Users/wibus/dev/Cradle/src/main/lib/chat-engine.ts:1)
+- ACP host capability 目前几乎没有安全边界，`requestPermission()` 默认放行第一项，文件读写直接按 agent 给出的路径执行。[src/main/lib/acp/acp-connection.ts](/Users/wibus/dev/Cradle/src/main/lib/acp/acp-connection.ts:1)
+- `ChatEngine` 是明确的 God Object，横跨恢复、编排、持久化、stream 组装、广播和错误塑形。[src/main/lib/chat/chat-engine.ts](/Users/wibus/dev/Cradle/src/main/lib/chat/chat-engine.ts:1)
 
 ### P1 / Medium
 
 - renderer 中 `chat:response-event` 被多处直接订阅，没有统一 event bridge，开始出现 `client-event-listeners` 类型的扩散风险。[src/renderer/src/components/layout/app-layout.tsx](/Users/wibus/dev/Cradle/src/renderer/src/components/layout/app-layout.tsx:1) [src/renderer/src/features/chat/use-chat-session.ts](/Users/wibus/dev/Cradle/src/renderer/src/features/chat/use-chat-session.ts:1) [src/renderer/src/features/chat/ipc-chat-transport.ts](/Users/wibus/dev/Cradle/src/renderer/src/features/chat/ipc-chat-transport.ts:1)
 - `useAcpSessionState` 同时承担 query + mutation，但 mutation 不是 `mutateAsync`，导致调用侧难以保证“远端成功后再持久化偏好”。[src/renderer/src/features/workspace/use-acp-session-state.ts](/Users/wibus/dev/Cradle/src/renderer/src/features/workspace/use-acp-session-state.ts:1)
 - probe session 生命周期只依赖 `agentId`，但其 `cwd` 源自 workspace，存在 stale dependency 风险。[src/renderer/src/features/workspace/new-chat-home.tsx](/Users/wibus/dev/Cradle/src/renderer/src/features/workspace/new-chat-home.tsx:1)
-- `/devtool` 虽然是第二窗口，但大概率仍共用主 renderer bundle 边界，没有真正独立切开。[src/renderer/src/routeTree.gen.ts](/Users/wibus/dev/Cradle/src/renderer/src/routeTree.gen.ts:1) [src/main/lib/ipc-devtool.ts](/Users/wibus/dev/Cradle/src/main/lib/ipc-devtool.ts:1)
+- `/devtool` 虽然是第二窗口，但大概率仍共用主 renderer bundle 边界，没有真正独立切开。[src/renderer/src/routeTree.gen.ts](/Users/wibus/dev/Cradle/src/renderer/src/routeTree.gen.ts:1) [src/main/lib/devtools/ipc-devtool.ts](/Users/wibus/dev/Cradle/src/main/lib/devtools/ipc-devtool.ts:1)
 - `ipc-devtool` 实际上包含 IPC mode 和 ACP mode 两个并列子域，但目录名、README 与实际内容不一致。[src/renderer/src/features/ipc-devtool/README.md](/Users/wibus/dev/Cradle/src/renderer/src/features/ipc-devtool/README.md:1)
-- `ThreadSearchEngine` 仍是全量扫描型实现，消息历史增长后会挤占 Electron main thread。[src/main/lib/thread-search.ts](/Users/wibus/dev/Cradle/src/main/lib/thread-search.ts:1)
-- session 配置写入存在双写者：renderer 通过 `session.updateConfig()` 写，`ChatEngine` 在恢复/建 session 时也写，状态归属不够清晰。[src/main/services/session.ts](/Users/wibus/dev/Cradle/src/main/services/session.ts:1) [src/main/lib/chat-engine.ts](/Users/wibus/dev/Cradle/src/main/lib/chat-engine.ts:1)
+- `ThreadSearchEngine` 仍是全量扫描型实现，消息历史增长后会挤占 Electron main thread。[src/main/lib/chat/thread-search.ts](/Users/wibus/dev/Cradle/src/main/lib/chat/thread-search.ts:1)
+- session 配置写入存在双写者：renderer 通过 `session.updateConfig()` 写，`ChatEngine` 在恢复/建 session 时也写，状态归属不够清晰。[src/main/services/session.ts](/Users/wibus/dev/Cradle/src/main/services/session.ts:1) [src/main/lib/chat/chat-engine.ts](/Users/wibus/dev/Cradle/src/main/lib/chat/chat-engine.ts:1)
 
 ### P2 / Low-Medium
 
@@ -253,7 +253,7 @@ main process 已经形成了一套比较清晰的结构：
 - `src/renderer/src/features/workspace/use-acp-session-state.ts`
 - `src/renderer/src/features/settings/acp-settings.tsx`
 - `src/renderer/src/features/ipc-devtool/`
-- `src/main/lib/chat-engine.ts`
+- `src/main/lib/chat/chat-engine.ts`
 - `src/preload/index.ts`
 
 ### 建议中的更诚实结构

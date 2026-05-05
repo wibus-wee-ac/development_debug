@@ -44,12 +44,12 @@
 - `chat.send` -> provider resume + stream -> update `messages.status/content` + update `sessions.updatedAt`
 - `chat.abort` -> provider cancel -> finalize message as `aborted` + emit completion event
 
-### 3.2 Kanban Delegation
+### 3.2 Issue-Agent Delegation
 
-- `kanban.delegateIssue` -> `issue-delegation-application.delegateIssue` -> write `agent_sessions`, update `kanban_issues.delegateAgentId`, append `kanban_issue_comments`
-- `kanban.runDelegatedIssue` -> `IssueAgentRunner.run` -> create chat session + append `agent_activities`
+- `issueAgent.delegateIssue` -> `issue-delegation-application.delegateIssue` -> write `agent_sessions`, update `kanban_issues.delegateAgentId`, append `kanban_issue_comments`
+- `issueAgent.runDelegatedIssue` -> `IssueAgentRunner.run` -> create chat session + append `agent_activities`
 - `ChatEngine onTurnFinished` -> `IssueAgentRunner.onTurnFinished` -> update `agent_sessions.status` + append response/error activity
-- `kanban.undelegateIssue` -> `issue-delegation-application.undelegateIssue` -> stop active session + clear delegate + append system comment
+- `issueAgent.undelegateIssue` -> `issue-delegation-application.undelegateIssue` -> stop active session + clear delegate + append system comment
 
 ### 3.3 Agent Runtime
 
@@ -84,7 +84,7 @@
 
 ### 4.3 Anti-patterns
 
-- God Object: `src/main/lib/chat-engine.ts`
+- God Object: `src/main/lib/chat/chat-engine.ts`
 - Temporal Coupling: 多处 “先写 DB、再异步启动/恢复 provider” 的顺序耦合
 - Hidden Side Effects: service 方法内隐式写入多个表与评论投影
 - Weak Aggregate Boundary: issue delegation 的状态机未完全抽象为聚合行为
@@ -93,11 +93,11 @@
 
 ### Top Risk Files
 
-1. `src/main/lib/chat-engine.ts` (size + responsibilities)
+1. `src/main/lib/chat/chat-engine.ts` (size + responsibilities)
 2. `src/main/contexts/issue-agent/infrastructure/issue-agent-runner.ts` (委派状态机 + chat bridge + activity projection)
 3. `src/main/services/agent-runtime.ts` (profile lifecycle + credential + provider audit)
-4. `src/main/db/schema.ts` (领域语义重叠集中)
-5. `src/main/services/kanban.ts` (已基本 facade 化，后续主要关注 IPC surface drift)
+4. `src/main/db/schema/` (领域语义现已分模块，但跨上下文引用仍值得持续审视)
+5. `src/main/contexts/issue-agent/infrastructure/issue-agent-runner.ts` 之外，公开 IPC ownership 仍需持续检查是否漂移
 
 ### Highest-Risk Design Issues
 
@@ -116,6 +116,8 @@
 6. 新增 `src/main/contexts/kanban/application/kanban-query-application.ts`，将 Kanban 读侧查询与 linked-issue 投影从 `KanbanService` 下沉。
 7. 删除了 `KanbanService` 中无调用方的 agent session/activity 直接写入 IPC 方法，使其成为纯 facade。
 8. 将活跃的 Kanban 与 issue-agent 后端代码迁移到 `src/main/contexts/`，让目录结构显式表达 ownership。
+9. 新增 `src/main/contexts/issue-agent/application/issue-agent-query-application.ts` 与 `src/main/contexts/issue-agent/interfaces/issue-agent-service.ts`，把 delegation / session / activity 的公开 IPC surface 从 `kanban.*` 正式迁移到 `issueAgent.*`。
+10. 将 `KanbanService` 与 `IssueAgentService` 继续迁入各自 `contexts/*/interfaces/`，让活跃业务上下文的对外 adapter 也回到 owner context，而不是继续挂在根级 `services/` 技术桶下。
 
 ## 7. Target Architecture (Rebuild-Friendly)
 
@@ -185,10 +187,11 @@ events/
 
 ### Files Touched in This Pass
 
-1. `src/main/lib/chat-engine.ts`
+1. `src/main/lib/chat/chat-engine.ts`
 2. `src/main/contexts/issue-agent/infrastructure/issue-agent-runner.ts`
 3. `src/main/services/agent-runtime.ts`
 4. `src/main/contexts/issue-agent/application/issue-delegation-application.ts`
 5. `src/main/contexts/kanban/application/kanban-write-application.ts`
-6. `src/main/services/kanban.ts`
-7. `src/main/lib/README.md`
+6. `src/main/contexts/kanban/interfaces/kanban-service.ts`
+7. `src/main/contexts/issue-agent/interfaces/issue-agent-service.ts`
+8. `src/main/lib/README.md`

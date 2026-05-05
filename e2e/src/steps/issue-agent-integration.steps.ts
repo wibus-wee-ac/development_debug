@@ -5,7 +5,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import type { CradleWorld } from '../support/world.ts'
+import type { CradleWorld } from '../support/world'
 
 const DELEGATE_TRIGGER = '[data-testid="issue-agent-delegate-trigger"]'
 const DELEGATE_OPTIONS = '[data-testid^="issue-agent-option-"]'

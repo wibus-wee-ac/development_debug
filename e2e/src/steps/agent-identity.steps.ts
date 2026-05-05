@@ -1,7 +1,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import type { CradleWorld } from '../support/world.ts'
+import type { CradleWorld } from '../support/world'
 
 const AGENT_CREATE_PAGE = '[data-testid="agent-create"]'
 const AGENT_NAME_INPUT = '[data-testid="agent-detail-name"]'
