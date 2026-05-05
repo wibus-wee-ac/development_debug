@@ -1,14 +1,14 @@
 // Input: Kanban persistence store abstraction, optional Drizzle-backed store factory, and node:crypto IDs
 // Output: Kanban write-side application service for statuses, boards, milestones, issues, comments, relations, context refs, and session links
-// Position: Application-layer mutation boundary between Kanban IPC service and persistence
+// Position: Kanban context application mutation boundary between IPC adapters and persistence
 
 import { randomUUID } from 'node:crypto'
 
 import { and, eq, sql } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
-import { getDb } from '../db'
-import type * as schema from '../db/schema'
+import { getDb } from '../../../db'
+import type * as schema from '../../../db/schema'
 import type {
   KanbanBoard,
   KanbanIssue,
@@ -16,7 +16,7 @@ import type {
   KanbanIssueRelation,
   KanbanMilestone,
   KanbanStatus,
-} from '../db/schema'
+} from '../../../db/schema'
 import {
   kanbanBoards,
   kanbanIssueComments,
@@ -25,11 +25,10 @@ import {
   kanbanMilestones,
   kanbanStatuses,
   sessions,
-} from '../db/schema'
+} from '../../../db/schema'
 
 const defaultNowUnix = (): number => Math.floor(Date.now() / 1000)
 const defaultCreateId = (): string => randomUUID()
-// const loadModule = createRequire(import.meta.url)
 
 interface CreateStatusInput {
   workspaceId: string

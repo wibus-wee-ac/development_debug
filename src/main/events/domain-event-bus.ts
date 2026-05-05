@@ -7,11 +7,11 @@ import type { DomainEvent, DomainEventType } from './domain-events'
 export type DomainEventHandler<TEvent extends DomainEvent> = (event: TEvent) => void | Promise<void>
 
 export interface DomainEventBus {
-  publish<TEvent extends DomainEvent>(event: TEvent): Promise<void>
-  subscribe<TType extends DomainEventType>(
+  publish: <TEvent extends DomainEvent>(event: TEvent) => Promise<void>
+  subscribe: <TType extends DomainEventType>(
     type: TType,
     handler: DomainEventHandler<Extract<DomainEvent, { type: TType }>>,
-  ): () => void
+  ) => () => void
 }
 
 export function createInMemoryDomainEventBus(): DomainEventBus {
@@ -53,4 +53,3 @@ export function createInMemoryDomainEventBus(): DomainEventBus {
     subscribe,
   }
 }
-

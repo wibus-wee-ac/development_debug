@@ -1,6 +1,6 @@
 // Input: Kanban write application service, in-memory fake store, and Kanban schema row types
 // Output: Behavior tests for Kanban write-side commands without native SQLite dependencies
-// Position: Unit/integration test for src/main/application/kanban-write-application.ts
+// Position: Kanban context application test for kanban-write-application.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,7 +11,7 @@ import type {
   KanbanIssueRelation,
   KanbanMilestone,
   KanbanStatus,
-} from '../../db/schema'
+} from '../../../../db/schema'
 import type { KanbanWriteStore } from '../kanban-write-application'
 import {
   createKanbanWriteApplicationService,

@@ -6,6 +6,8 @@ Living execution plans for complex changes are stored here.
 Each plan must follow the repository ExecPlan format and remain self-contained as work evolves.
 Use date-prefixed filenames so contributors can find the latest plan quickly.
 
+Current canonical backend paths after the 2026-05-05 context refactor are under `src/main/contexts/kanban/` and `src/main/contexts/issue-agent/`. Older plans may reference the pre-refactor locations under `src/main/application/` or `src/main/lib/issue-agent-runner.ts`.
+
 ## Files
 
 - **20260418-01-chat-feature.md**: Execution plan for building ACP-backed chat in the Electron app.
@@ -23,3 +25,5 @@ Use date-prefixed filenames so contributors can find the latest plan quickly.
 - **20260504-01-backend-application-event-pipeline.md**: Execution plan for introducing backend application-layer delegation orchestration and a domain event pipeline bridge for chat turn lifecycle.
 - **20260504-02-kanban-write-application-boundary.md**: Execution plan for moving Kanban write-side commands into the application layer, deleting dead delegation code, and validating the thinner IPC facade.
 - **20260505-01-kanban-read-query-boundary.md**: Execution plan for moving Kanban read-side queries into an application-layer query boundary so `KanbanService` can become a pure facade.
+- **20260505-02-main-context-ownership-overhaul.md**: Execution plan for moving active Kanban and issue-agent backend code into context-owned directories under `src/main/contexts/`.
+- **20260505-03-db-schema-context-split.md**: Execution plan for replacing the monolithic main-process DB schema with context-owned modules under `src/main/db/schema/`.

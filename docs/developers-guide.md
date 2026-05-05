@@ -13,8 +13,9 @@ Cradle is not a generic web app with an Electron wrapper bolted on top. The desk
 ### Main process layers
 
 - `src/main/services/`: IPC adapters. These are the stable entrypoints used by the renderer through `window.ipc.*`. Services should keep parameters simple and should not become orchestration blobs.
-- `src/main/application/`: use-case orchestration. If a workflow writes multiple records, coordinates a runner, or owns state transitions, it belongs here.
-- `src/main/lib/`: lower-level orchestration and infrastructure-heavy runtime code. `ChatEngine` and `IssueAgentRunner` still live here today, but new business workflows should not be added here by default.
+- `src/main/contexts/*/application/`: context-owned use-case orchestration. If a workflow writes multiple records, coordinates a runner, or owns state transitions, it belongs in the owning context here.
+- `src/main/contexts/*/infrastructure/`: context-owned runtime implementations that bridge application logic with chat/runtime/process concerns.
+- `src/main/lib/`: lower-level shared infrastructure that has not yet been moved into a specific context. `ChatEngine` still lives here today, but new business workflows should not be added here by default.
 - `src/main/events/`: in-process event pipeline and event-bridge code.
 - `src/main/db/`: schema, initialization, and persistence primitives.
 
@@ -47,9 +48,9 @@ The current backend direction is:
 
 Recent examples:
 
-- `src/main/application/issue-delegation-application.ts` owns Issue delegation commands.
-- `src/main/application/kanban-query-application.ts` owns Kanban read-side filtering, search, ordering, and linked-session projections.
-- `src/main/application/kanban-write-application.ts` owns Kanban write-side commands.
+- `src/main/contexts/issue-agent/application/issue-delegation-application.ts` owns Issue delegation commands.
+- `src/main/contexts/kanban/application/kanban-query-application.ts` owns Kanban read-side filtering, search, ordering, and linked-session projections.
+- `src/main/contexts/kanban/application/kanban-write-application.ts` owns Kanban write-side commands.
 - `src/main/services/kanban.ts` delegates Kanban queries and commands to application services.
 
 That split is deliberate. Do not move new query-side or write-side business rules back into `KanbanService`.
@@ -69,7 +70,7 @@ The repository expects TDD, not “tests eventually.”
 
 A good path is:
 
-1. Create or extend a test in `src/main/application/__tests__/`.
+1. Create or extend a test in the owning context’s application test directory, such as `src/main/contexts/kanban/application/__tests__/`.
 2. Run only that test.
 3. Confirm the failure is for the missing behavior, not a typo.
 4. Implement the minimal production code.
@@ -112,7 +113,7 @@ This repository mixes Node-side unit tests with Electron runtime validation. Tha
 
 Run from repository root:
 
-    pnpm -s vitest run src/main/application/__tests__/kanban-query-application.test.ts src/main/application/__tests__/kanban-write-application.test.ts src/main/application/__tests__/issue-delegation-application.test.ts
+    pnpm -s vitest run src/main/contexts/kanban/application/__tests__/kanban-query-application.test.ts src/main/contexts/kanban/application/__tests__/kanban-write-application.test.ts src/main/contexts/issue-agent/application/__tests__/issue-delegation-application.test.ts
     pnpm -s tsc --noEmit -p tsconfig.node.json --composite false
     pnpm build
     pnpm e2e:cleanup && pnpm exec cucumber-js --config e2e/cucumber.mjs --tags "@CRADLE-KANBAN-001"

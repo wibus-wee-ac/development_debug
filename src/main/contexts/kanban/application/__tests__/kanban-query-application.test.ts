@@ -1,6 +1,6 @@
 // Input: Kanban query application service, in-memory fake store, and Kanban/session schema row types
 // Output: Behavior tests for Kanban read-side queries without native SQLite dependencies
-// Position: Unit/integration test for src/main/application/kanban-query-application.ts
+// Position: Kanban context application test for kanban-query-application.ts
 
 import { describe, expect, it, vi } from 'vitest'
 
@@ -14,7 +14,7 @@ import type {
   KanbanMilestone,
   KanbanStatus,
   Session,
-} from '../../db/schema'
+} from '../../../../db/schema'
 import type { KanbanQueryStore } from '../kanban-query-application'
 import {
   createKanbanQueryApplicationService,

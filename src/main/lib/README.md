@@ -3,8 +3,8 @@
 # src/main/lib
 
 主进程核心库负责聊天编排、文件系统资源管理与各类系统级能力。
-这些模块被 `src/main/services/` 的 IPC Service 组合，对渲染进程暴露后端能力。
-这里的约定是 library 只表达领域语义，不直接承载 UI 或路由状态。
+这些模块被 `src/main/services/` 的 IPC Service 或 `src/main/contexts/*/infrastructure/` 组合，对渲染进程暴露后端能力。
+这里的约定是 library 只保留跨上下文共享基础设施，不直接承载具体 context 的业务实现。
 
 ## Files
 
@@ -18,7 +18,6 @@
 - **chat-provider.ts**: Provider 抽象接口与聊天流事件载荷类型
 - **ipc-devtool-store.ts**: IPC Devtool 事件缓冲与订阅分发
 - **ipc-devtool.ts**: Devtool 窗口与观测能力的主进程集成
-- **issue-agent-runner.ts**: 委派执行 runner，负责 issue prompt 组装、运行时触发与 `chat.turn-finished` 事件消费，并在内存映射缺失时按 `chatSessionId` 回收完成态
 - **safe-storage.ts**: Electron `safeStorage` 的安全存储封装
 - **skills.ts**: Filesystem-first Skills 库，负责 built-in、legacy、global、workspace、agent 五层扫描、CRUD 与导入导出
 - **thread-search.ts**: 基于分词与打分的会话搜索引擎

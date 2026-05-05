@@ -9,4 +9,4 @@ Chat thread history lives here independently from provider runtime memory.
 ## Files
 
 - **index.ts**: Initializes the Better SQLite database, enables SQLite pragmas, and runs Drizzle migrations
-- **schema.ts**: Declares workspace, chat session, message, unified Agent Runtime, audit-log, and Kanban tables plus inferred row types
+- **schema/**: Context-split schema modules plus the canonical `index.ts` barrel used by Drizzle initialization and table imports

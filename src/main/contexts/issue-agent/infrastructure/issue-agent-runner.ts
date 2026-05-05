@@ -1,19 +1,17 @@
-// Input: ChatEngine, domain event bus, Kanban DB tables, workflow rules
+// Input: ChatEngine, domain event bus, issue-agent and Kanban DB tables, workflow rules
 // Output: IssueAgentRunner for delegated issue execution and event-driven completion handling
-// Position: Main-process orchestration service bridging issue delegation with chat runtime
+// Position: Issue-agent context infrastructure runner bridging delegated issues with chat runtime
 
 import { randomUUID } from 'node:crypto'
 
 import { eq } from 'drizzle-orm'
 
-import { getDb } from '../db'
-import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../db/schema'
-import type { DomainEventBus } from '../events/domain-event-bus'
-import type { ChatTurnFinishedDomainEvent } from '../events/domain-events'
-import { ChatEngine } from './chat-engine'
-import { getWorkflowRules } from './workflow-rules'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import { getDb } from '../../../db'
+import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../../../db/schema'
+import type { DomainEventBus } from '../../../events/domain-event-bus'
+import type { ChatTurnFinishedDomainEvent } from '../../../events/domain-events'
+import { ChatEngine } from '../../../lib/chat-engine'
+import { getWorkflowRules } from '../../../lib/workflow-rules'
 
 interface RunIssueInput {
   issueId: string
@@ -22,11 +20,8 @@ interface RunIssueInput {
   agentId?: string
 }
 
-// ── Runner ────────────────────────────────────────────────────────────────────
-
 export class IssueAgentRunner {
   private static instance: IssueAgentRunner
-  /** Tracks in-flight runs by agentSessionId. */
   private readonly activeRuns = new Map<string, { chatSessionId: string, aborted: boolean }>()
   private turnFinishedUnsubscribe: (() => void) | null = null
   private eventBus: DomainEventBus | null = null
@@ -52,40 +47,30 @@ export class IssueAgentRunner {
     this.turnFinishedUnsubscribe = eventBus.subscribe('chat.turn-finished', event => this.onTurnFinishedEvent(event))
   }
 
-  /**
-   * Start agent execution for a delegated issue.
-   * Called after KanbanService.delegateIssue creates the agent session.
-   */
   async run(input: RunIssueInput): Promise<void> {
     const { issueId, agentSessionId, agentProfileId, agentId } = input
     const db = getDb()
 
-    // Load issue
     const issue = db.select().from(kanbanIssues).where(eq(kanbanIssues.id, issueId)).get()
     if (!issue) {
       throw new Error(`Issue ${issueId} not found`)
     }
 
-    // Load workspace for cwd
     const workspace = db.select().from(workspaces).where(eq(workspaces.id, issue.workspaceId)).get()
     if (!workspace) {
       throw new Error(`Workspace ${issue.workspaceId} not found`)
     }
 
-    // Mark agent session active
     const now = () => Math.floor(Date.now() / 1000)
     db.update(agentSessions)
       .set({ status: 'active', updatedAt: now() })
       .where(eq(agentSessions.id, agentSessionId))
       .run()
 
-    // Emit immediate "thinking" activity (must be within 10s per AIG)
     this.addActivity(agentSessionId, 'thought', { body: 'Examining issue...' })
 
-    // Build prompt from issue context (including prior session summaries)
     const prompt = this.buildPrompt(issue, agentSessionId)
 
-    // Inject workflow rules as additional user message content
     const rules = await getWorkflowRules(issue.workspaceId, agentId)
     let fullText = prompt
     if (rules.global || rules.profileSpecific) {
@@ -99,7 +84,6 @@ export class IssueAgentRunner {
       fullText += '---'
     }
 
-    // Create chat session via ChatEngine
     try {
       const chatSessionId = await ChatEngine.getInstance().createAndSend({
         agentId: agentProfileId,
@@ -109,7 +93,6 @@ export class IssueAgentRunner {
         agentIdentityId: agentId,
       })
 
-      // Link chat session to agent session
       db.update(agentSessions)
         .set({ chatSessionId, updatedAt: now() })
         .where(eq(agentSessions.id, agentSessionId))
@@ -118,7 +101,6 @@ export class IssueAgentRunner {
       this.activeRuns.set(agentSessionId, { chatSessionId, aborted: false })
     }
     catch (err) {
-      // Mark session failed
       db.update(agentSessions)
         .set({ status: 'failed', updatedAt: now() })
         .where(eq(agentSessions.id, agentSessionId))
@@ -131,10 +113,6 @@ export class IssueAgentRunner {
     }
   }
 
-  /**
-   * Stop a running agent session.
-   * Works even if the in-memory activeRuns map has lost the entry (e.g. after restart).
-   */
   async stop(agentSessionId: string): Promise<void> {
     const db = getDb()
     const ts = Math.floor(Date.now() / 1000)
@@ -151,7 +129,6 @@ export class IssueAgentRunner {
       this.activeRuns.delete(agentSessionId)
     }
     else {
-      // Fallback: look up the linked chat session from DB and abort it
       const session = db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
       if (session?.chatSessionId) {
         try {
@@ -163,7 +140,6 @@ export class IssueAgentRunner {
       }
     }
 
-    // Always update DB status
     db.update(agentSessions)
       .set({ status: 'stopped', updatedAt: ts })
       .where(eq(agentSessions.id, agentSessionId))
@@ -171,8 +147,6 @@ export class IssueAgentRunner {
 
     this.addActivity(agentSessionId, 'response', { body: 'Stopped by user' })
   }
-
-  // ── Private helpers ─────────────────────────────────────────────────────
 
   private buildPrompt(issue: typeof kanbanIssues.$inferSelect, agentSessionId: string): string {
     const parts: string[] = []
@@ -185,7 +159,6 @@ export class IssueAgentRunner {
       parts.push('')
     }
 
-    // Parse context refs
     try {
       const refs = JSON.parse(issue.contextRefs ?? '[]') as Array<{ type: string, value: string, label?: string }>
       if (refs.length > 0) {
@@ -200,7 +173,6 @@ export class IssueAgentRunner {
       // Ignore invalid JSON
     }
 
-    // Parse labels
     try {
       const labels = JSON.parse(issue.labels) as string[]
       if (labels.length > 0) {
@@ -214,7 +186,6 @@ export class IssueAgentRunner {
     parts.push(`Priority: ${issue.priority}`)
     parts.push('')
 
-    // Include prior agent session summaries for re-delegation context
     const db = getDb()
     const priorSessions = db
       .select()
@@ -228,7 +199,6 @@ export class IssueAgentRunner {
       parts.push('This issue was previously worked on by other agents. Here is what they did:')
       parts.push('')
       for (const ps of priorSessions) {
-        // Get response/error activities from this session
         const activities = db
           .select()
           .from(agentActivities)
@@ -276,7 +246,6 @@ export class IssueAgentRunner {
       createdAt: now,
     }).run()
 
-    // Project response/error activities to comments
     if (issueId && (type === 'response' || type === 'error')) {
       const body = (content as { body?: string }).body ?? JSON.stringify(content)
       db.insert(kanbanIssueComments).values({

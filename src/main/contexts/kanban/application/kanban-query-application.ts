@@ -1,12 +1,12 @@
 // Input: Kanban query store abstraction, optional Drizzle-backed store factory, and schema row types
 // Output: Kanban read-side application service for statuses, boards, milestones, issues, comments, relations, and session-linked projections
-// Position: Application-layer query boundary between Kanban IPC service and persistence
+// Position: Kanban context application query boundary between IPC adapters and persistence
 
 import { eq, or } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
-import { getDb } from '../db'
-import type * as schema from '../db/schema'
+import { getDb } from '../../../db'
+import type * as schema from '../../../db/schema'
 import type {
   AgentActivity,
   AgentSession,
@@ -17,7 +17,7 @@ import type {
   KanbanMilestone,
   KanbanStatus,
   Session,
-} from '../db/schema'
+} from '../../../db/schema'
 import {
   agentActivities,
   agentSessions,
@@ -28,7 +28,7 @@ import {
   kanbanMilestones,
   kanbanStatuses,
   sessions,
-} from '../db/schema'
+} from '../../../db/schema'
 
 interface ListIssuesParams {
   workspaceId: string

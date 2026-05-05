@@ -94,7 +94,7 @@
 ### Top Risk Files
 
 1. `src/main/lib/chat-engine.ts` (size + responsibilities)
-2. `src/main/lib/issue-agent-runner.ts` (委派状态机 + chat bridge + activity projection)
+2. `src/main/contexts/issue-agent/infrastructure/issue-agent-runner.ts` (委派状态机 + chat bridge + activity projection)
 3. `src/main/services/agent-runtime.ts` (profile lifecycle + credential + provider audit)
 4. `src/main/db/schema.ts` (领域语义重叠集中)
 5. `src/main/services/kanban.ts` (已基本 facade 化，后续主要关注 IPC surface drift)
@@ -111,10 +111,11 @@
 1. `ChatEngine` 增加 `onTurnFinished` 生命周期事件。
 2. `IssueAgentRunner` 从 polling 完成检测改为事件驱动收口。
 3. `AgentRuntimeService.removeProfile` 删除了 `PRAGMA foreign_keys = OFF`，改为显式事务清理依赖。
-4. 新增 `src/main/application/issue-delegation-application.ts`，并在后续切片中删除了旧的 `src/main/lib/issue-delegation.ts`。
-5. 新增 `src/main/application/kanban-write-application.ts`，将 Kanban 写侧命令从 `KanbanService` 下沉。
-6. 新增 `src/main/application/kanban-query-application.ts`，将 Kanban 读侧查询与 linked-issue 投影从 `KanbanService` 下沉。
+4. 新增 `src/main/contexts/issue-agent/application/issue-delegation-application.ts`，并在后续切片中删除了旧的 `src/main/lib/issue-delegation.ts`。
+5. 新增 `src/main/contexts/kanban/application/kanban-write-application.ts`，将 Kanban 写侧命令从 `KanbanService` 下沉。
+6. 新增 `src/main/contexts/kanban/application/kanban-query-application.ts`，将 Kanban 读侧查询与 linked-issue 投影从 `KanbanService` 下沉。
 7. 删除了 `KanbanService` 中无调用方的 agent session/activity 直接写入 IPC 方法，使其成为纯 facade。
+8. 将活跃的 Kanban 与 issue-agent 后端代码迁移到 `src/main/contexts/`，让目录结构显式表达 ownership。
 
 ## 7. Target Architecture (Rebuild-Friendly)
 
@@ -185,9 +186,9 @@ events/
 ### Files Touched in This Pass
 
 1. `src/main/lib/chat-engine.ts`
-2. `src/main/lib/issue-agent-runner.ts`
+2. `src/main/contexts/issue-agent/infrastructure/issue-agent-runner.ts`
 3. `src/main/services/agent-runtime.ts`
-4. `src/main/application/issue-delegation-application.ts`
-5. `src/main/application/kanban-write-application.ts`
+4. `src/main/contexts/issue-agent/application/issue-delegation-application.ts`
+5. `src/main/contexts/kanban/application/kanban-write-application.ts`
 6. `src/main/services/kanban.ts`
 7. `src/main/lib/README.md`

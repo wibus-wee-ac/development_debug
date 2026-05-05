@@ -1,19 +1,19 @@
 // Input: Drizzle DB context, issue/agent schema tables, and a dynamically resolved delegation runner
 // Output: Issue delegation application service with delegate/run/stop/undelegate commands
-// Position: Application-layer orchestration boundary between IPC services and lib runners
+// Position: Issue-agent context application orchestration boundary between IPC adapters and runtime infrastructure
 
 import { randomUUID } from 'node:crypto'
 
 import { and, eq } from 'drizzle-orm'
 
-import { getDb } from '../db'
-import type { AgentSession } from '../db/schema'
-import { agentProfiles, agentSessions, kanbanIssueComments, kanbanIssues } from '../db/schema'
+import { getDb } from '../../../db'
+import type { AgentSession } from '../../../db/schema'
+import { agentProfiles, agentSessions, kanbanIssueComments, kanbanIssues } from '../../../db/schema'
 
 const defaultNowUnix = (): number => Math.floor(Date.now() / 1000)
 
 async function resolveDefaultRunner(): Promise<IssueDelegationRunner> {
-  const { IssueAgentRunner } = await import('../lib/issue-agent-runner')
+  const { IssueAgentRunner } = await import('../infrastructure/issue-agent-runner')
   return IssueAgentRunner.getInstance()
 }
 

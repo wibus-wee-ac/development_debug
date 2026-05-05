@@ -1,13 +1,15 @@
 // Input: IssueDelegationApplicationService, mocked DB context, and mocked runner
 // Output: Behavior tests for delegation state transitions and comments projection
-// Position: Unit test for src/main/application/issue-delegation-application.ts
+// Position: Issue-agent context application test for issue-delegation-application.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type {
+  IssueDelegationDbContext,
+  IssueDelegationRunner,
+} from '../issue-delegation-application'
 import {
   createIssueDelegationApplicationService,
-  type IssueDelegationDbContext,
-  type IssueDelegationRunner,
 } from '../issue-delegation-application'
 
 const selectGetQueue: unknown[] = []
@@ -27,9 +29,11 @@ const insertRun = vi.fn()
 const insertValues = vi.fn(() => ({ run: insertRun }))
 const insert = vi.fn(() => ({ values: insertValues }))
 
-const transaction = vi.fn((fn: (tx: IssueDelegationDbContext) => unknown) => fn(mockDb as unknown as IssueDelegationDbContext))
+let mockDb: IssueDelegationDbContext
 
-const mockDb = {
+const transaction = vi.fn((fn: (tx: IssueDelegationDbContext) => unknown) => fn(mockDb))
+
+mockDb = {
   select,
   update,
   insert,
@@ -40,7 +44,7 @@ vi.mock('node:crypto', () => ({
   randomUUID: vi.fn(() => 'session-1'),
 }))
 
-vi.mock('../../db', () => ({
+vi.mock('../../../../db', () => ({
   getDb: () => mockDb,
 }))
 

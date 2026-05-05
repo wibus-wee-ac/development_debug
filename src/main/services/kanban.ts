@@ -4,15 +4,15 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import { createIssueDelegationApplicationService } from '../application/issue-delegation-application'
+import { createIssueDelegationApplicationService } from '../contexts/issue-agent/application/issue-delegation-application'
 import {
   createKanbanQueryApplicationService,
   type KanbanQueryApplicationService,
-} from '../application/kanban-query-application'
+} from '../contexts/kanban/application/kanban-query-application'
 import {
   createKanbanWriteApplicationService,
   type KanbanWriteApplicationService,
-} from '../application/kanban-write-application'
+} from '../contexts/kanban/application/kanban-write-application'
 import type {
   AgentActivity,
   AgentSession,
@@ -25,7 +25,7 @@ import type {
 } from '../db/schema'
 import {
   type IssueDelegationApplicationService,
-} from '../application/issue-delegation-application'
+} from '../contexts/issue-agent/application/issue-delegation-application'
 
 export class KanbanService extends IpcService {
   static readonly groupName = 'kanban'
