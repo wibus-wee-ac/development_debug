@@ -1,6 +1,6 @@
 // Input: Kanban application services and Kanban schema row types
 // Output: KanbanService — thin IPC facade for Kanban queries, commands, and linked-issue projections
-// Position: Context-owned IPC adapter for the Kanban feature
+// Position: App-level IPC adapter for the Kanban feature
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 

@@ -1,6 +1,6 @@
 // Input: Issue-agent query application service, in-memory fake store, and issue-agent schema row types
 // Output: Behavior tests for issue-agent session/activity queries without native SQLite dependencies
-// Position: Issue-agent context application test for issue-agent-query-application.ts
+// Position: Issue-agent feature query test for issue-agent-query.ts
 
 import { describe, expect, it, vi } from 'vitest'
 

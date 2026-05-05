@@ -1,6 +1,6 @@
 // Input: Issue-agent query store abstraction, optional Drizzle-backed store factory, and issue-agent schema row types
 // Output: Issue-agent read-side application service for agent sessions and activity projections
-// Position: Issue-agent context application query boundary between IPC adapters and persistence
+// Position: Issue-agent feature query module between IPC adapters and persistence
 
 import { eq } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'

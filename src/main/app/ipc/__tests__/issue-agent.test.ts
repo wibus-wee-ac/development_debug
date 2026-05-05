@@ -1,6 +1,6 @@
 // Input: IssueAgentService, mocked issue-agent application/query services, and IPC runtime stubs
 // Output: Unit tests for issue-agent IPC delegation and query forwarding
-// Position: Context-owned IPC adapter test for src/main/app/ipc/issue-agent.ts
+// Position: App-level IPC adapter test for src/main/app/ipc/issue-agent.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

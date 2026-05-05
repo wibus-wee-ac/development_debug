@@ -2,7 +2,7 @@
 
 # Main/App/IPC
 
-IPC adapters 暴露主进程能力给 renderer 与 CLI，同时保持 transport 层尽量薄。
+这些 app-owned IPC adapters 暴露主进程能力给 renderer 与 CLI，同时保持 transport 层尽量薄。
 它们负责输入输出整形与路由，不负责 feature 业务语义本身。
 若某段逻辑开始像 use case 或 orchestrator，就应下沉到 `features/` 或 `platform/`。
 

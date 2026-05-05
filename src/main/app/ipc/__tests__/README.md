@@ -2,7 +2,7 @@
 
 # Main/App/IPC/__tests__
 
-这些测试验证 IPC adapters 的参数整形、路由与轻量协作契约。
+这些测试验证 app-owned IPC adapters 的参数整形、路由与轻量协作契约。
 测试不会启动完整 Electron 应用，而是聚焦 app-level transport surface。
 当 IPC surface 改名、改路由或改 owner 时，应优先在这里补回归。
 

@@ -1,6 +1,6 @@
 // Input: issue-agent application/query services and issue-agent schema row types
 // Output: IssueAgentService — thin IPC facade for delegation commands and agent-session queries
-// Position: Context-owned IPC adapter for the issue-agent feature
+// Position: App-level IPC adapter for the issue-agent feature
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 

@@ -1,6 +1,6 @@
 // Input: ChatEngine, domain event bus, issue-agent and Kanban DB tables, workflow rules
 // Output: IssueAgentRunner for delegated issue execution and event-driven completion handling
-// Position: Issue-agent context infrastructure runner bridging delegated issues with chat runtime
+// Position: Issue-agent feature runtime bridging delegated issues with chat execution
 
 import { randomUUID } from 'node:crypto'
 
@@ -18,6 +18,12 @@ interface RunIssueInput {
   agentSessionId: string
   agentProfileId: string
   agentId?: string
+}
+
+export interface IssueAgentRuntime {
+  bindDomainEventBus: (eventBus: DomainEventBus) => void
+  run: (input: RunIssueInput) => Promise<void>
+  stop: (agentSessionId: string) => Promise<void>
 }
 
 export class IssueAgentRunner {
@@ -319,4 +325,8 @@ export class IssueAgentRunner {
       : 'Completed work on issue'
     this.addActivity(agentSessionId, 'response', { body: completionLabel }, agentSession.issueId)
   }
+}
+
+export function getIssueAgentRuntime(): IssueAgentRuntime {
+  return IssueAgentRunner.getInstance()
 }

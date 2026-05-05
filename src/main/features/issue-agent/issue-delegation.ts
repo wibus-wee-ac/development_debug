@@ -1,27 +1,36 @@
-// Input: Drizzle DB context, issue/agent schema tables, and a dynamically resolved delegation runner
-// Output: Issue delegation application service with delegate/run/stop/undelegate commands
-// Position: Issue-agent context application orchestration boundary between IPC adapters and runtime infrastructure
+// Input: Issue-agent store adapter, delegated runtime runner, and issue/agent schema row types
+// Output: Issue delegation application service plus a Drizzle-backed store for delegate/run/stop/undelegate commands
+// Position: Issue-agent feature write-side orchestration between IPC adapters and runtime infrastructure
 
 import { randomUUID } from 'node:crypto'
 
 import { and, eq } from 'drizzle-orm'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
-import { getDb } from '../../db'
-import type { AgentSession } from '../../db/schema'
+import type * as schema from '../../db/schema'
+import type { AgentProfile, AgentSession } from '../../db/schema'
 import { agentProfiles, agentSessions, kanbanIssueComments, kanbanIssues } from '../../db/schema'
 
 const defaultNowUnix = (): number => Math.floor(Date.now() / 1000)
 
 async function resolveDefaultRunner(): Promise<IssueDelegationRunner> {
-  const { IssueAgentRunner } = await import('./issue-agent-runner')
-  return IssueAgentRunner.getInstance()
+  const { getIssueAgentRuntime } = await import('./issue-agent-runner')
+  return getIssueAgentRuntime()
 }
 
-export interface IssueDelegationDbContext {
-  select: () => { from: (table: unknown) => { where: (condition: unknown) => { get: () => unknown, all: () => unknown[] }, all: () => unknown[] } }
-  update: (table: unknown) => { set: (values: Record<string, unknown>) => { where: (condition: unknown) => { run: () => void } } }
-  insert: (table: unknown) => { values: (values: Record<string, unknown>) => { run: () => void } }
-  transaction: (tx: (db: IssueDelegationDbContext) => unknown) => unknown
+export interface IssueDelegationStore {
+  getAgentProfile: (agentProfileId: string) => Pick<AgentProfile, 'id' | 'name'> | undefined
+  createDelegation: (input: {
+    issueId: string
+    agentProfileId: string
+    agentProfileName: string
+    sessionId: string
+    timestamp: number
+  }) => AgentSession | undefined
+  removeDelegation: (input: {
+    issueId: string
+    timestamp: number
+  }) => void
 }
 
 export interface IssueDelegationRunner {
@@ -47,61 +56,113 @@ export interface IssueDelegationApplicationService {
 }
 
 interface IssueDelegationApplicationDeps {
-  db?: IssueDelegationDbContext
+  store?: IssueDelegationStore
   runner?: IssueDelegationRunner
   nowUnix?: () => number
+}
+
+export function createDrizzleIssueDelegationStore(
+  db: BetterSQLite3Database<typeof schema>,
+): IssueDelegationStore {
+  return {
+    getAgentProfile(agentProfileId) {
+      return db
+        .select({ id: agentProfiles.id, name: agentProfiles.name })
+        .from(agentProfiles)
+        .where(eq(agentProfiles.id, agentProfileId))
+        .get()
+    },
+    createDelegation({ issueId, agentProfileId, agentProfileName, sessionId, timestamp }) {
+      return db.transaction((tx) => {
+        tx.update(agentSessions)
+          .set({ status: 'stopped', updatedAt: timestamp })
+          .where(and(
+            eq(agentSessions.issueId, issueId),
+            eq(agentSessions.status, 'active'),
+          ))
+          .run()
+
+        tx.update(kanbanIssues)
+          .set({ delegateAgentId: agentProfileId, updatedAt: timestamp })
+          .where(eq(kanbanIssues.id, issueId))
+          .run()
+
+        tx.insert(agentSessions).values({
+          id: sessionId,
+          issueId,
+          agentProfileId,
+          status: 'created',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }).run()
+
+        tx.insert(kanbanIssueComments).values({
+          id: randomUUID(),
+          issueId,
+          content: `Delegated to ${agentProfileName}`,
+          authorKind: 'system.delegated',
+          authorId: null,
+          createdAt: timestamp,
+        }).run()
+
+        return tx.select().from(agentSessions).where(eq(agentSessions.id, sessionId)).get()
+      })
+    },
+    removeDelegation({ issueId, timestamp }) {
+      db.transaction((tx) => {
+        tx.update(agentSessions)
+          .set({ status: 'stopped', updatedAt: timestamp })
+          .where(and(
+            eq(agentSessions.issueId, issueId),
+            eq(agentSessions.status, 'active'),
+          ))
+          .run()
+
+        tx.update(kanbanIssues)
+          .set({ delegateAgentId: null, updatedAt: timestamp })
+          .where(eq(kanbanIssues.id, issueId))
+          .run()
+
+        tx.insert(kanbanIssueComments).values({
+          id: randomUUID(),
+          issueId,
+          content: 'Delegation removed',
+          authorKind: 'system.undelegated',
+          authorId: null,
+          createdAt: timestamp,
+        }).run()
+      })
+    },
+  }
+}
+
+async function resolveDefaultStore(): Promise<IssueDelegationStore> {
+  const { getDb } = await import('../../db')
+  return createDrizzleIssueDelegationStore(getDb())
 }
 
 export function createIssueDelegationApplicationService(
   deps: IssueDelegationApplicationDeps = {},
 ): IssueDelegationApplicationService {
-  const db = deps.db ?? (getDb() as unknown as IssueDelegationDbContext)
   const nowUnix = deps.nowUnix ?? defaultNowUnix
 
   const getRunner = async (): Promise<IssueDelegationRunner> => deps.runner ?? resolveDefaultRunner()
+  const getStore = async (): Promise<IssueDelegationStore> => deps.store ?? resolveDefaultStore()
 
   const delegateIssue: IssueDelegationApplicationService['delegateIssue'] = async ({ issueId, agentProfileId }) => {
-    const profile = db.select().from(agentProfiles).where(eq(agentProfiles.id, agentProfileId)).get() as { id: string, name: string } | undefined
+    const store = await getStore()
+    const profile = store.getAgentProfile(agentProfileId)
     if (!profile) {
       throw new Error(`Agent profile ${agentProfileId} not found`)
     }
 
-    const ts = nowUnix()
-    const sessionId = randomUUID()
-    db.transaction((tx) => {
-      tx.update(agentSessions)
-        .set({ status: 'stopped', updatedAt: ts })
-        .where(and(
-          eq(agentSessions.issueId, issueId),
-          eq(agentSessions.status, 'active'),
-        ))
-        .run()
-
-      tx.update(kanbanIssues)
-        .set({ delegateAgentId: agentProfileId, updatedAt: ts })
-        .where(eq(kanbanIssues.id, issueId))
-        .run()
-
-      tx.insert(agentSessions).values({
-        id: sessionId,
-        issueId,
-        agentProfileId,
-        status: 'created',
-        createdAt: ts,
-        updatedAt: ts,
-      }).run()
-
-      tx.insert(kanbanIssueComments).values({
-        id: randomUUID(),
-        issueId,
-        content: `Delegated to ${profile.name}`,
-        authorKind: 'system.delegated',
-        authorId: null,
-        createdAt: ts,
-      }).run()
+    const created = store.createDelegation({
+      issueId,
+      agentProfileId,
+      agentProfileName: profile.name,
+      sessionId: randomUUID(),
+      timestamp: nowUnix(),
     })
-
-    const created = db.select().from(agentSessions).where(eq(agentSessions.id, sessionId)).get() as AgentSession | undefined
     if (!created) {
       throw new Error(`Delegation session was not created for issue ${issueId}`)
     }
@@ -119,30 +180,8 @@ export function createIssueDelegationApplicationService(
   }
 
   const undelegateIssue: IssueDelegationApplicationService['undelegateIssue'] = async (issueId) => {
-    const ts = nowUnix()
-    db.transaction((tx) => {
-      tx.update(agentSessions)
-        .set({ status: 'stopped', updatedAt: ts })
-        .where(and(
-          eq(agentSessions.issueId, issueId),
-          eq(agentSessions.status, 'active'),
-        ))
-        .run()
-
-      tx.update(kanbanIssues)
-        .set({ delegateAgentId: null, updatedAt: ts })
-        .where(eq(kanbanIssues.id, issueId))
-        .run()
-
-      tx.insert(kanbanIssueComments).values({
-        id: randomUUID(),
-        issueId,
-        content: 'Delegation removed',
-        authorKind: 'system.undelegated',
-        authorId: null,
-        createdAt: ts,
-      }).run()
-    })
+    const store = await getStore()
+    store.removeDelegation({ issueId, timestamp: nowUnix() })
   }
 
   return {

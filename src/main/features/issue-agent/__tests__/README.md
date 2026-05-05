@@ -9,4 +9,4 @@
 ## Files
 
 - **issue-agent-query-application.test.ts**: 验证 agent session/activity 查询的排序与过滤行为
-- **issue-delegation-application.test.ts**: 验证 delegate/run/stop/undelegate 的写侧规则
+- **issue-delegation-application.test.ts**: 验证 delegate/run/stop/undelegate 的写侧规则与 store 边界
