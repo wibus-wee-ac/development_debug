@@ -8,7 +8,7 @@
 
 ## Files
 
-- **acp.ts**: 已废弃的 ACP 兼容模块，当前不再注册
+- **acp.ts**: ACP 相关 IPC service，目前仍由主进程注册用于兼容与调试路径
 - **agent-runtime.ts**: 统一 Agent Profile 与 Provider 能力的 IPC service
 - **chat.ts**: 聊天 IPC service，转发创建、发送、终止与消息读取到 `ChatEngine`
 - **cli.ts**: 已废弃的 CLI 兼容模块，当前不再注册
@@ -20,4 +20,4 @@
 - **skills.ts**: Skills IPC service，负责 global、workspace、agent 三个可写层与 legacy/built-in 只读层的路由
 - **usage.ts**: token usage 聚合统计接口
 - **workflow-rules.ts**: 工作流规则的读取、保存、删除与列表接口
-- **kanban.ts**: Kanban IPC facade，查询留在 service，写侧命令与委派流程分别由 `kanban-write-application` 和 `issue-delegation-application` 负责编排
+- **kanban.ts**: Kanban IPC facade，读侧查询与写侧命令分别委托给 `kanban-query-application` / `kanban-write-application`，委派流程由 `issue-delegation-application` 编排

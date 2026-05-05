@@ -1,18 +1,18 @@
-// Input: getDb, kanban schema tables, drizzle-orm operators, and Kanban/issue application services
-// Output: KanbanService — IPC facade for Kanban queries, commands, delegation, and agent activities
+// Input: Kanban application services and Kanban schema row types
+// Output: KanbanService — thin IPC facade for Kanban queries, commands, and delegation workflows
 // Position: Main-process IPC adapter for the Kanban feature
 
-import { randomUUID } from 'node:crypto'
-
 import { IpcMethod, IpcService } from '@cradle/ipc'
-import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm'
 
 import { createIssueDelegationApplicationService } from '../application/issue-delegation-application'
+import {
+  createKanbanQueryApplicationService,
+  type KanbanQueryApplicationService,
+} from '../application/kanban-query-application'
 import {
   createKanbanWriteApplicationService,
   type KanbanWriteApplicationService,
 } from '../application/kanban-write-application'
-import { getDb } from '../db'
 import type {
   AgentActivity,
   AgentSession,
@@ -24,33 +24,23 @@ import type {
   KanbanStatus,
 } from '../db/schema'
 import {
-  agentActivities,
-  agentSessions,
-  kanbanBoards,
-  kanbanIssueComments,
-  kanbanIssueRelations,
-  kanbanIssues,
-  kanbanMilestones,
-  kanbanStatuses,
-  sessions,
-} from '../db/schema'
-import {
   type IssueDelegationApplicationService,
 } from '../application/issue-delegation-application'
-
-const now = (): number => Math.floor(Date.now() / 1000)
 
 export class KanbanService extends IpcService {
   static readonly groupName = 'kanban'
   private readonly delegationApp: IssueDelegationApplicationService
+  private readonly kanbanQueryApp: KanbanQueryApplicationService
   private readonly kanbanWriteApp: KanbanWriteApplicationService
 
   constructor(
     delegationApp: IssueDelegationApplicationService = createIssueDelegationApplicationService(),
+    kanbanQueryApp: KanbanQueryApplicationService = createKanbanQueryApplicationService(),
     kanbanWriteApp: KanbanWriteApplicationService = createKanbanWriteApplicationService(),
   ) {
     super()
     this.delegationApp = delegationApp
+    this.kanbanQueryApp = kanbanQueryApp
     this.kanbanWriteApp = kanbanWriteApp
   }
 
@@ -58,12 +48,7 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   listStatuses(workspaceId: string): KanbanStatus[] {
-    return getDb()
-      .select()
-      .from(kanbanStatuses)
-      .where(eq(kanbanStatuses.workspaceId, workspaceId))
-      .orderBy(asc(kanbanStatuses.order))
-      .all()
+    return this.kanbanQueryApp.listStatuses(workspaceId)
   }
 
   @IpcMethod()
@@ -97,16 +82,7 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   listBoards(workspaceId?: string): KanbanBoard[] {
-    const db = getDb()
-    if (workspaceId) {
-      return db
-        .select()
-        .from(kanbanBoards)
-        .where(eq(kanbanBoards.workspaceId, workspaceId))
-        .orderBy(desc(kanbanBoards.createdAt))
-        .all()
-    }
-    return db.select().from(kanbanBoards).orderBy(desc(kanbanBoards.createdAt)).all()
+    return this.kanbanQueryApp.listBoards(workspaceId)
   }
 
   @IpcMethod()
@@ -135,12 +111,7 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   listMilestones(workspaceId: string): KanbanMilestone[] {
-    return getDb()
-      .select()
-      .from(kanbanMilestones)
-      .where(eq(kanbanMilestones.workspaceId, workspaceId))
-      .orderBy(desc(kanbanMilestones.createdAt))
-      .all()
+    return this.kanbanQueryApp.listMilestones(workspaceId)
   }
 
   @IpcMethod()
@@ -179,61 +150,17 @@ export class KanbanService extends IpcService {
     labels?: string[] | null
     statusId?: string | null
   }): KanbanIssue[] {
-    const db = getDb()
-    const conditions = [eq(kanbanIssues.workspaceId, params.workspaceId)]
-
-    if (params.milestoneId != null) {
-      conditions.push(eq(kanbanIssues.milestoneId, params.milestoneId))
-    }
-    if (params.parentIssueId != null) {
-      conditions.push(eq(kanbanIssues.parentIssueId, params.parentIssueId))
-    }
-    if (params.priority != null) {
-      conditions.push(eq(kanbanIssues.priority, params.priority as KanbanIssue['priority']))
-    }
-    if (params.statusId !== undefined) {
-      if (params.statusId === null) {
-        conditions.push(sql`${kanbanIssues.statusId} IS NULL`)
-      }
-      else {
-        conditions.push(eq(kanbanIssues.statusId, params.statusId))
-      }
-    }
-    if (params.labels && params.labels.length > 0) {
-      for (const label of params.labels) {
-        conditions.push(like(kanbanIssues.labels, `%"${label}"%`))
-      }
-    }
-
-    return db
-      .select()
-      .from(kanbanIssues)
-      .where(and(...conditions))
-      .orderBy(desc(kanbanIssues.createdAt))
-      .all()
+    return this.kanbanQueryApp.listIssues(params)
   }
 
   @IpcMethod()
   searchIssues(query: string, limit = 20): KanbanIssue[] {
-    if (!query.trim()) {
-      return []
-    }
-    const pattern = `%${query.trim()}%`
-    return getDb()
-      .select()
-      .from(kanbanIssues)
-      .where(or(
-        like(kanbanIssues.title, pattern),
-        like(kanbanIssues.description, pattern),
-      ))
-      .orderBy(desc(kanbanIssues.updatedAt))
-      .limit(limit)
-      .all()
+    return this.kanbanQueryApp.searchIssues(query, limit)
   }
 
   @IpcMethod()
   getIssue(id: string): KanbanIssue | undefined {
-    return getDb().select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()
+    return this.kanbanQueryApp.getIssue(id)
   }
 
   @IpcMethod()
@@ -279,12 +206,7 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   listComments(issueId: string): KanbanIssueComment[] {
-    return getDb()
-      .select()
-      .from(kanbanIssueComments)
-      .where(eq(kanbanIssueComments.issueId, issueId))
-      .orderBy(asc(kanbanIssueComments.createdAt))
-      .all()
+    return this.kanbanQueryApp.listComments(issueId)
   }
 
   @IpcMethod()
@@ -306,17 +228,7 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   listRelations(issueId: string): KanbanIssueRelation[] {
-    return getDb()
-      .select()
-      .from(kanbanIssueRelations)
-      .where(
-        or(
-          eq(kanbanIssueRelations.sourceIssueId, issueId),
-          eq(kanbanIssueRelations.targetIssueId, issueId),
-        ),
-      )
-      .orderBy(asc(kanbanIssueRelations.createdAt))
-      .all()
+    return this.kanbanQueryApp.listRelations(issueId)
   }
 
   @IpcMethod()
@@ -366,84 +278,14 @@ export class KanbanService extends IpcService {
 
   @IpcMethod()
   getAgentSessions(issueId: string): AgentSession[] {
-    return getDb()
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.issueId, issueId))
-      .orderBy(desc(agentSessions.createdAt))
-      .all()
-  }
-
-  @IpcMethod()
-  updateAgentSessionStatus(sessionId: string, status: AgentSession['status']): void {
-    getDb().update(agentSessions)
-      .set({ status, updatedAt: now() })
-      .where(eq(agentSessions.id, sessionId))
-      .run()
-  }
-
-  @IpcMethod()
-  updateAgentSessionChatSession(sessionId: string, chatSessionId: string): void {
-    getDb().update(agentSessions)
-      .set({ chatSessionId, updatedAt: now() })
-      .where(eq(agentSessions.id, sessionId))
-      .run()
+    return this.kanbanQueryApp.getAgentSessions(issueId)
   }
 
   // ── Agent Activities ────────────────────────────────────────────────────
 
   @IpcMethod()
   getAgentActivities(agentSessionId: string): AgentActivity[] {
-    return getDb()
-      .select()
-      .from(agentActivities)
-      .where(eq(agentActivities.agentSessionId, agentSessionId))
-      .orderBy(asc(agentActivities.createdAt))
-      .all()
-  }
-
-  @IpcMethod()
-  addAgentActivity(input: {
-    agentSessionId: string
-    type: AgentActivity['type']
-    content: string
-    signal?: string | null
-    signalMetadata?: string | null
-  }): AgentActivity {
-    const db = getDb()
-    const id = randomUUID()
-    db.insert(agentActivities).values({
-      id,
-      agentSessionId: input.agentSessionId,
-      type: input.type,
-      content: input.content,
-      signal: input.signal ?? null,
-      signalMetadata: input.signalMetadata ?? null,
-      createdAt: now(),
-    }).run()
-
-    const activity = db.select().from(agentActivities).where(eq(agentActivities.id, id)).get()!
-
-    // Auto-create comment for response and error activities
-    if (input.type === 'response' || input.type === 'error') {
-      const session = db.select().from(agentSessions).where(eq(agentSessions.id, input.agentSessionId)).get()
-      if (session) {
-        const parsed = JSON.parse(input.content) as { body?: string }
-        if (parsed.body) {
-          db.insert(kanbanIssueComments).values({
-            id: randomUUID(),
-            issueId: session.issueId,
-            content: parsed.body,
-            authorKind: 'agent',
-            authorId: session.agentProfileId,
-            agentActivityId: id,
-            createdAt: now(),
-          }).run()
-        }
-      }
-    }
-
-    return activity
+    return this.kanbanQueryApp.getAgentActivities(agentSessionId)
   }
 
   // ── Context Refs ────────────────────────────────────────────────────────
@@ -471,38 +313,7 @@ export class KanbanService extends IpcService {
     status: KanbanStatus | null
     agentSession: AgentSession | null
   } | null {
-    const db = getDb()
-
-    // 1. Check auto-link via agentSessions
-    const agentSession = db
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.chatSessionId, chatSessionId))
-      .get()
-
-    if (agentSession) {
-      const issue = db.select().from(kanbanIssues).where(eq(kanbanIssues.id, agentSession.issueId)).get()
-      if (issue) {
-        const status = issue.statusId
-          ? db.select().from(kanbanStatuses).where(eq(kanbanStatuses.id, issue.statusId)).get() ?? null
-          : null
-        return { issue, status, agentSession }
-      }
-    }
-
-    // 2. Check manual link via sessions.linkedIssueId
-    const session = db.select().from(sessions).where(eq(sessions.id, chatSessionId)).get()
-    if (session?.linkedIssueId) {
-      const issue = db.select().from(kanbanIssues).where(eq(kanbanIssues.id, session.linkedIssueId)).get()
-      if (issue) {
-        const status = issue.statusId
-          ? db.select().from(kanbanStatuses).where(eq(kanbanStatuses.id, issue.statusId)).get() ?? null
-          : null
-        return { issue, status, agentSession: null }
-      }
-    }
-
-    return null
+    return this.kanbanQueryApp.getLinkedIssue(chatSessionId)
   }
 
   @IpcMethod()

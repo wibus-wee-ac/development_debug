@@ -160,6 +160,8 @@ Index on `agent_session_id`.
 - `getAgentActivities(agentSessionId)` — list all activities for a session
 - `addAgentActivity(agentSessionId, type, content, signal?, signalMetadata?)` — append immutable activity
 
+> Revision note (2026-05-05): `addAgentActivity` and the related session-update IPC methods were later removed from `KanbanService` after boundary cleanup showed they had no callers. The current canonical implementation keeps activity/session writes inside the issue-agent runtime path and exposes read/query behavior through application-layer services. See `docs/exec-plans/20260505-01-kanban-read-query-boundary.md`.
+
 **UI: Delegate Picker**
 
 A dropdown in the issue panel. Shows:
@@ -195,7 +197,7 @@ On the issue card in the board view, show a small bot badge with the agent's ini
   - System: no icon, muted italic text, smaller
 - Agent-authored comments link to the source activity (click to expand full session view)
 
-**Validation:** Manually call `addAgentActivity` with type `response`. Check that a comment was auto-created on the issue with `author_kind='agent'`. Check the issue panel renders it with bot badge.
+**Validation:** Historical validation note — the original proposal used `addAgentActivity` as an IPC hook. In the current architecture this projection is produced inside the issue-agent runtime path rather than via a public Kanban IPC method.
 
 
 ### Milestone 3: Issue Context Refs
@@ -353,7 +355,7 @@ The overall feature is accepted when:
 ## Interfaces and Dependencies
 
 - Internal: `IssueAgentRunner` depends on `KanbanService`, `SessionService`, `ChatEngine`, `AgentRuntimeService`
-- IPC: Extends `kanban` group with `delegateIssue`, `undelegateIssue`, `getAgentSessions`, `getAgentActivities`, `addAgentActivity`, context ref CRUD
+- IPC: Historical proposal extended `kanban` with `delegateIssue`, `undelegateIssue`, `getAgentSessions`, `getAgentActivities`, `addAgentActivity`, context ref CRUD. Current implementation removed `addAgentActivity` from the public IPC surface after it proved unused.
 - Events: `kanban:issue-updated` for delegate changes, new `agent:activity-created` for live feed updates
 - Schema: 2 new tables (`agent_sessions`, `agent_activities`), 4 new columns on `kanban_issues`, 3 new columns on `kanban_issue_comments`
 - No new npm dependencies

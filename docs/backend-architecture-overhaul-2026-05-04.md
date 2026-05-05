@@ -78,7 +78,7 @@
 ### 4.2 Major Boundary Violations
 
 1. `ChatEngine` 同时承担应用服务 + 领域规则 + 基础设施细节
-2. `KanbanService` 仍保留查询职责，但写侧与委派编排已经下沉到 `application` 层
+2. `IssueAgentRunner` 仍同时承担委派状态机、chat bridge、activity/comment 投影与运行时收口
 3. 会话模型并存导致语义不清（chat session vs runtime session vs issue agent session）
 4. 多个 singleton 跨上下文直连，导致生命周期和可替换性弱
 
@@ -94,10 +94,10 @@
 ### Top Risk Files
 
 1. `src/main/lib/chat-engine.ts` (size + responsibilities)
-2. `src/main/services/kanban.ts` (跨域入口多)
-3. `src/main/lib/issue-agent-runner.ts` (委派状态机 + chat bridge)
-4. `src/main/services/agent-runtime.ts` (profile lifecycle + credential + provider audit)
-5. `src/main/db/schema.ts` (领域语义重叠集中)
+2. `src/main/lib/issue-agent-runner.ts` (委派状态机 + chat bridge + activity projection)
+3. `src/main/services/agent-runtime.ts` (profile lifecycle + credential + provider audit)
+4. `src/main/db/schema.ts` (领域语义重叠集中)
+5. `src/main/services/kanban.ts` (已基本 facade 化，后续主要关注 IPC surface drift)
 
 ### Highest-Risk Design Issues
 
@@ -113,6 +113,8 @@
 3. `AgentRuntimeService.removeProfile` 删除了 `PRAGMA foreign_keys = OFF`，改为显式事务清理依赖。
 4. 新增 `src/main/application/issue-delegation-application.ts`，并在后续切片中删除了旧的 `src/main/lib/issue-delegation.ts`。
 5. 新增 `src/main/application/kanban-write-application.ts`，将 Kanban 写侧命令从 `KanbanService` 下沉。
+6. 新增 `src/main/application/kanban-query-application.ts`，将 Kanban 读侧查询与 linked-issue 投影从 `KanbanService` 下沉。
+7. 删除了 `KanbanService` 中无调用方的 agent session/activity 直接写入 IPC 方法，使其成为纯 facade。
 
 ## 7. Target Architecture (Rebuild-Friendly)
 
@@ -160,7 +162,7 @@ events/
    - `chat-message-repository`
    - `chat-event-bus`
 2. 定义 issue delegation 的显式状态转换（created -> active -> completed/failed/stopped）
-3. 清理 `KanbanService`：仅保留 facade + DTO mapping
+3. 清理 `KanbanService`：读写 facade 已完成，下一步聚焦 `IssueAgentRunner` 的拆分与职责收缩
 
 ### P1 (Model Collapse)
 

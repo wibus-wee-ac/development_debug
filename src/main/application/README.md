@@ -8,5 +8,6 @@
 
 ## Files
 
+- **kanban-query-application.ts**: Kanban 读侧应用服务，封装排序、过滤、搜索与会话关联投影等查询用例
 - **kanban-write-application.ts**: Kanban 写侧应用服务，封装状态、看板、里程碑、Issue、评论、关联、上下文引用与会话链接等命令用例
 - **issue-delegation-application.ts**: Issue 委派相关应用服务，封装 delegate/run/stop/undelegate 用例
