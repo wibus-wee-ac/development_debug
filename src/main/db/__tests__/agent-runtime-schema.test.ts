@@ -10,7 +10,6 @@ describe('agent runtime schema', () => {
   it('exports unified agent runtime tables', () => {
     expect(schema.agentProfiles).toBeDefined()
     expect(schema.agentCredentials).toBeDefined()
-    expect(schema.runtimeSessions).toBeDefined()
     expect(schema.runtimeAuditLog).toBeDefined()
   })
 
@@ -21,5 +20,9 @@ describe('agent runtime schema', () => {
 
   it('does not export legacy CLI agent tables', () => {
     expect('cliAgents' in schema).toBe(false)
+  })
+
+  it('does not export the legacy runtimeSessions table', () => {
+    expect('runtimeSessions' in schema).toBe(false)
   })
 })

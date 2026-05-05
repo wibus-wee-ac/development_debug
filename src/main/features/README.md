@@ -9,6 +9,7 @@
 ## Files
 
 - **agent-runtime/**: provider catalog、凭证与 runtime provider 合约
+- **backend-control-plane/**: Cradle-owned backend bindings、runs 与 capability snapshots
 - **chat/**: 聊天会话编排、provider 抽象与 thread search
 - **issue-agent/**: issue delegation、runner 与 agent session/activity 查询
 - **kanban/**: Kanban 查询与写侧命令

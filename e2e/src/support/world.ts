@@ -160,7 +160,12 @@ export class CradleWorld extends World {
         // Override userData so tests don't pollute the real profile
         `--user-data-dir=${userDataPath}`,
       ],
-      env: buildE2ELaunchEnv(process.env, homePath),
+      env: buildE2ELaunchEnv(
+        Object.fromEntries(
+          Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+        ),
+        homePath,
+      ),
     })
 
     // Grab the first renderer window
@@ -184,8 +189,11 @@ export class CradleWorld extends World {
    * The first argument exposed to `fn` is the result of `require('electron')`.
    */
   // eslint-disable-next-line ts/no-explicit-any
-  async mainProcess<T = unknown>(fn: (electron: any) => T | Promise<T>): Promise<T> {
-    return this.app.evaluate(fn) as Promise<T>
+  async mainProcess<T = unknown, A = undefined>(
+    fn: (electron: any, arg: A) => T | Promise<T>,
+    arg?: A,
+  ): Promise<T> {
+    return this.app.evaluate(fn as never, arg as never) as Promise<T>
   }
 }
 

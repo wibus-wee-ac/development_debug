@@ -8,11 +8,12 @@
 
 ## Files
 
+- **backend-control-plane.ts**: backend binding、run 与 capability snapshot 相关表
 - **index.ts**: Schema barrel，聚合导出所有 context-specific schema 模块
 - **shared.ts**: 共享列片段与 `workspaces` 表
 - **identity.ts**: Agent identity / credential 相关表
-- **chat.ts**: Session、message、usage log 相关表
-- **runtime.ts**: Runtime session 与 runtime audit 相关表
+- **chat.ts**: Product session、message、usage log 相关表；不再承载 backend session 状态
+- **runtime.ts**: Runtime audit 相关表
 - **acp.ts**: ACP agent 与 ACP audit 相关表
 - **kanban.ts**: Kanban 状态、看板、里程碑、Issue、评论、关联相关表
 - **issue-agent.ts**: Issue Agent session / activity 相关表

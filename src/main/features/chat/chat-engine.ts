@@ -12,6 +12,7 @@ import type { WebContents } from 'electron'
 
 import { getProviderCatalog } from '../agent-runtime/catalog-instance'
 import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
+import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
 import { agentProfiles as agentProfilesTable, agents as agentsTable, messages, sessions, usageLogs, workspaces } from '../../db/schema'
@@ -30,6 +31,7 @@ type MessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
 interface Draft {
   chatSessionId: string
+  runId: string | null
   messageId: string
   userMessageId: string
   agentId: string
@@ -83,8 +85,6 @@ interface PrepareTurnArgs {
   newSession?: {
     workspaceId: string
     title: string
-    modelId: string | null
-    configSnapshot: string | null
   }
 }
 
@@ -166,8 +166,12 @@ export class ChatEngine {
     // Forward agent title updates → chat:session-title with chatSessionId mapping.
     this.titleUnsubscribe = AcpConnectionManager.getInstance().onSessionTitle(
       (acpSessionId, title) => {
-        const rows = db.select().from(sessions).where(eq(sessions.providerSessionId, acpSessionId)).all()
-        for (const row of rows) {
+        const bindings = getBackendControlPlaneService().listBindingsByBackendSessionId(acpSessionId)
+        for (const binding of bindings) {
+          const row = db.select().from(sessions).where(eq(sessions.id, binding.chatSessionId)).get()
+          if (!row) {
+            continue
+          }
           db.update(sessions)
             .set({ title, updatedAt: nowUnix() })
             .where(eq(sessions.id, row.id))
@@ -234,6 +238,7 @@ export class ChatEngine {
 
     const fallbackTitle = text.length > 50 ? `${text.slice(0, 50)}...` : text
     const { modelId, configSnapshot } = extractSessionMeta(runtimeSession.providerStateSnapshot)
+    const requestedModelId = optsModelId ?? modelId
 
     const draft = this.prepareTurn({
       chatSessionId,
@@ -246,10 +251,25 @@ export class ChatEngine {
       newSession: {
         workspaceId,
         title: fallbackTitle,
-        modelId,
-        configSnapshot,
       },
     })
+
+    const controlPlane = getBackendControlPlaneService()
+    controlPlane.attachBinding({
+      chatSessionId,
+      agentProfileId: profile.id,
+      providerKind: runtimeSession.providerKind,
+      backendSessionId: runtimeSession.providerSessionId,
+      backendStateSnapshot: runtimeSession.providerStateSnapshot,
+      requestedModelId,
+      configSnapshot,
+    })
+    draft.runId = controlPlane.startRun({
+      chatSessionId,
+      messageId: draft.messageId,
+      origin: 'user',
+    }).id
+    this.recordSessionCapabilitySnapshot(profile.id, profile.providerKind, runtimeSession.providerStateSnapshot)
 
     this.runStream(draft, text).catch((err) => {
       console.error('[ChatEngine] runStream failed (createAndSend):', err)
@@ -269,7 +289,9 @@ export class ChatEngine {
     }
 
     const profile = this.loadProfile(session.agentProfileId)
-    const provider = this.getChatProvider(session.providerKind as ProviderKind)
+    const provider = this.getChatProvider(profile.providerKind)
+    const controlPlane = getBackendControlPlaneService()
+    const binding = controlPlane.getBinding(chatSessionId)
 
     const workspace = getDb()
       .select()
@@ -285,9 +307,9 @@ export class ChatEngine {
       id: session.id,
       chatSessionId: session.id,
       agentProfileId: session.agentProfileId,
-      providerKind: session.providerKind as ProviderKind,
-      providerSessionId: session.providerSessionId ?? null,
-      providerStateSnapshot: session.providerStateSnapshot ?? null,
+      providerKind: binding?.providerKind ?? profile.providerKind,
+      providerSessionId: binding?.backendSessionId ?? null,
+      providerStateSnapshot: binding?.backendStateSnapshot ?? null,
     }
 
     const runtimeSession = await provider.resumeChatSession({
@@ -295,19 +317,17 @@ export class ChatEngine {
       profile,
       workspacePath: cwd,
     })
-
-    // Persist any updated session state (e.g., new providerSessionId after reconnect)
-    if (runtimeSession.providerSessionId !== session.providerSessionId) {
-      getDb()
-        .update(sessions)
-        .set({
-          providerSessionId: runtimeSession.providerSessionId,
-          providerStateSnapshot: runtimeSession.providerStateSnapshot,
-          updatedAt: nowUnix(),
-        })
-        .where(eq(sessions.id, chatSessionId))
-        .run()
-    }
+    const resumedMeta = extractSessionMeta(runtimeSession.providerStateSnapshot)
+    controlPlane.attachBinding({
+      chatSessionId,
+      agentProfileId: profile.id,
+      providerKind: runtimeSession.providerKind,
+      backendSessionId: runtimeSession.providerSessionId,
+      backendStateSnapshot: runtimeSession.providerStateSnapshot,
+      requestedModelId: binding?.requestedModelId ?? resumedMeta.modelId,
+      configSnapshot: binding?.configSnapshot ?? resumedMeta.configSnapshot,
+    })
+    this.recordSessionCapabilitySnapshot(profile.id, profile.providerKind, runtimeSession.providerStateSnapshot)
 
     // prepareTurn re-checks the draft map atomically (sync), so any race
     // between this line and the fail-fast guard above is still rejected.
@@ -316,8 +336,13 @@ export class ChatEngine {
       agentId: session.agentProfileId,
       runtimeSession,
       userText: text,
-      modelId: session.modelId ?? undefined,
+      modelId: binding?.requestedModelId ?? resumedMeta.modelId ?? undefined,
     })
+    draft.runId = controlPlane.startRun({
+      chatSessionId,
+      messageId: draft.messageId,
+      origin: 'user',
+    }).id
 
     this.runStream(draft, text).catch((err) => {
       console.error('[ChatEngine] runStream failed (send):', err)
@@ -354,10 +379,12 @@ export class ChatEngine {
     if (!session) {
       throw new Error(`Chat session ${chatSessionId} not found`)
     }
+    const controlPlane = getBackendControlPlaneService()
+    const binding = controlPlane.getBinding(chatSessionId)
 
     // If there's already a stored provider session ID, try to verify/resume it
-    if (session.providerSessionId) {
-      return { liveAcpSessionId: session.providerSessionId, continuity: 'active' }
+    if (binding?.backendSessionId) {
+      return { liveAcpSessionId: binding.backendSessionId, continuity: 'active' }
     }
 
     // No session ID — need to reconnect via the provider
@@ -372,23 +399,28 @@ export class ChatEngine {
     }
 
     const profile = this.loadProfile(session.agentProfileId)
-    const provider = this.getChatProvider(session.providerKind as ProviderKind)
+    const provider = this.getChatProvider(profile.providerKind)
     const storedSession: ProviderSession = {
       id: session.id,
       chatSessionId: session.id,
       agentProfileId: session.agentProfileId,
-      providerKind: session.providerKind as ProviderKind,
+      providerKind: binding?.providerKind ?? profile.providerKind,
       providerSessionId: null,
-      providerStateSnapshot: session.providerStateSnapshot ?? null,
+      providerStateSnapshot: binding?.backendStateSnapshot ?? null,
     }
     const resumed = await provider.resumeChatSession({ runtimeSession: storedSession, profile, workspacePath: cwd })
-    const liveSessionId = resumed.providerSessionId ?? chatSessionId
-
-    getDb()
-      .update(sessions)
-      .set({ providerSessionId: liveSessionId, updatedAt: nowUnix() })
-      .where(eq(sessions.id, chatSessionId))
-      .run()
+    const resumedMeta = extractSessionMeta(resumed.providerStateSnapshot)
+    const updatedBinding = controlPlane.attachBinding({
+      chatSessionId,
+      agentProfileId: profile.id,
+      providerKind: resumed.providerKind,
+      backendSessionId: resumed.providerSessionId,
+      backendStateSnapshot: resumed.providerStateSnapshot,
+      requestedModelId: binding?.requestedModelId ?? resumedMeta.modelId,
+      configSnapshot: binding?.configSnapshot ?? resumedMeta.configSnapshot,
+    })
+    this.recordSessionCapabilitySnapshot(profile.id, profile.providerKind, resumed.providerStateSnapshot)
+    const liveSessionId = updatedBinding.backendSessionId ?? chatSessionId
 
     return { liveAcpSessionId: liveSessionId, continuity: 'reset' }
   }
@@ -499,11 +531,6 @@ export class ChatEngine {
             title: newSession.title,
             agentProfileId: agentId,
             agentId: agentIdentityId ?? null,
-            providerKind: runtimeSession.providerKind,
-            providerSessionId: runtimeSession.providerSessionId,
-            providerStateSnapshot: runtimeSession.providerStateSnapshot,
-            modelId: newSession.modelId,
-            configSnapshot: newSession.configSnapshot,
           })
           .run()
       }
@@ -535,6 +562,7 @@ export class ChatEngine {
 
     const draft: Draft = {
       chatSessionId,
+      runId: null,
       messageId: assistantMsgId,
       userMessageId: userMsgId,
       agentId,
@@ -728,6 +756,18 @@ export class ChatEngine {
 
     await dbTask
     await this.flushNow(draft, finalStatus, finalError)
+    if (draft.runId) {
+      getBackendControlPlaneService().finishRun({
+        runId: draft.runId,
+        status: finalStatus,
+        stopReason: finalStatus === 'complete'
+          ? 'response.completed'
+          : draft.cancelled
+            ? 'response.cancelled'
+            : 'response.failed',
+        errorText: finalError,
+      })
+    }
     this.drafts.delete(draft.chatSessionId)
 
     // Index completed message in FTS
@@ -751,13 +791,13 @@ export class ChatEngine {
     // Persist token usage if the provider reported it
     if (finalStatus === 'complete' && provider?.lastUsage) {
       try {
-        const session = getDb().select().from(sessions).where(eq(sessions.id, draft.chatSessionId)).get()
+        const binding = getBackendControlPlaneService().getBinding(draft.chatSessionId)
         getDb().insert(usageLogs).values({
           id: randomUUID(),
           sessionId: draft.chatSessionId,
           messageId: draft.messageId,
           agentProfileId: draft.agentId,
-          modelId: draft.modelId ?? session?.modelId ?? null,
+          modelId: draft.modelId ?? binding?.requestedModelId ?? null,
           promptTokens: provider.lastUsage.promptTokens,
           completionTokens: provider.lastUsage.completionTokens,
           totalTokens: provider.lastUsage.totalTokens,
@@ -875,6 +915,22 @@ export class ChatEngine {
         this.subscribers.delete(wc)
       }
     }
+  }
+
+  private recordSessionCapabilitySnapshot(
+    agentProfileId: string,
+    providerKind: ProviderKind,
+    providerStateSnapshot: string | null,
+  ): void {
+    if (!providerStateSnapshot) {
+      return
+    }
+    getBackendControlPlaneService().recordCapabilitySnapshot({
+      agentProfileId,
+      providerKind,
+      source: 'session_start',
+      capabilitiesJson: providerStateSnapshot,
+    })
   }
 }
 

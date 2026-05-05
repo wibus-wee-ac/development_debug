@@ -8,6 +8,6 @@
 
 ## Files
 
-- **e2e-world-utils.test.ts**: 验证 E2E artifact 路径与 launch env 默认值
+- **e2e-world-utils.test.ts**: 验证 E2E artifact 路径与隐藏窗口 launch env 默认值
 - **mock-llm-server.test.ts**: 验证 mock LLM server 的流式响应、错误与重启隔离
 - **session-preferences.test.ts**: 验证全局 chat preferences 的提取与重放逻辑

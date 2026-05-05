@@ -20,6 +20,24 @@ import type {
   ProviderKind,
 } from '../runtime-provider-types'
 
+class MemoryCapabilityRecorder {
+  readonly snapshots: Array<{
+    agentProfileId: string
+    providerKind: ProviderKind
+    source: 'probe' | 'session_start'
+    capabilitiesJson: string
+  }> = []
+
+  recordCapabilitySnapshot(input: {
+    agentProfileId: string
+    providerKind: ProviderKind
+    source: 'probe' | 'session_start'
+    capabilitiesJson: string
+  }): void {
+    this.snapshots.push(input)
+  }
+}
+
 class MemoryProfileStore implements AgentProfileStore {
   private readonly profiles = new Map<string, AgentProfile>()
 
@@ -86,10 +104,12 @@ describe('agentRuntimeApplicationService', () => {
   let profileStore: MemoryProfileStore
   let auditStore: MemoryAuditStore
   let credentialStore: CredentialVault
+  let capabilityRecorder: MemoryCapabilityRecorder
 
   beforeEach(() => {
     profileStore = new MemoryProfileStore()
     auditStore = new MemoryAuditStore()
+    capabilityRecorder = new MemoryCapabilityRecorder()
     credentialStore = new CredentialVault({
       encrypt: text => `encrypted:${text}`,
       decrypt: encrypted => encrypted.replace('encrypted:', ''),
@@ -100,6 +120,7 @@ describe('agentRuntimeApplicationService', () => {
     const service = createAgentRuntimeApplicationService({
       profileStore,
       auditStore,
+      capabilityRecorder,
       catalog: new ProviderCatalog([createProvider('openai-compatible')]),
       credentialStore,
     })
@@ -121,6 +142,7 @@ describe('agentRuntimeApplicationService', () => {
     const service = createAgentRuntimeApplicationService({
       profileStore,
       auditStore,
+      capabilityRecorder,
       catalog: new ProviderCatalog([createProvider('openai-compatible')]),
       credentialStore,
     })
@@ -150,12 +172,21 @@ describe('agentRuntimeApplicationService', () => {
         errorText: null,
       },
     ])
+    expect(capabilityRecorder.snapshots).toEqual([
+      {
+        agentProfileId: 'test-profile',
+        providerKind: 'openai-compatible',
+        source: 'probe',
+        capabilitiesJson: JSON.stringify({ providerKind: 'openai-compatible' }),
+      },
+    ])
   })
 
   it('lists models through the provider and records audit', async () => {
     const service = createAgentRuntimeApplicationService({
       profileStore,
       auditStore,
+      capabilityRecorder,
       catalog: new ProviderCatalog([createProvider('openai-compatible')]),
       credentialStore,
     })
@@ -191,6 +222,7 @@ describe('agentRuntimeApplicationService', () => {
     const service = createAgentRuntimeApplicationService({
       profileStore,
       auditStore,
+      capabilityRecorder,
       catalog: new ProviderCatalog([createProvider('openai-compatible')]),
       credentialStore,
     })
@@ -209,6 +241,7 @@ describe('agentRuntimeApplicationService', () => {
     const service = createAgentRuntimeApplicationService({
       profileStore,
       auditStore,
+      capabilityRecorder,
       catalog: new ProviderCatalog([createProvider('openai-compatible')]),
       credentialStore,
     })

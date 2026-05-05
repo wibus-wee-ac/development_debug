@@ -24,7 +24,7 @@ export function slugifyScenarioName(name: string): string {
   return finalValue || 'unnamed-scenario'
 }
 
-export function buildE2ELaunchEnv(baseEnv: NodeJS.ProcessEnv, homePath: string): NodeJS.ProcessEnv {
+export function buildE2ELaunchEnv(baseEnv: Record<string, string>, homePath: string): Record<string, string> {
   return {
     ...baseEnv,
     NODE_ENV: 'test',

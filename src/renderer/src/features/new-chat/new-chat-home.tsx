@@ -137,8 +137,6 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
             workspaceId: effectiveWorkspaceId,
             title: selectedProfile.name,
             agentProfileId: selectedProfile.id,
-            providerKind: selectedProfile.providerKind,
-            providerSessionId: null,
           })
           queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
           openTab('chat', { sessionId: session.id })

@@ -10,5 +10,5 @@ Issue Agent feature 负责 issue delegation、runner 协调与 agent session/act
 
 - **issue-agent-query.ts**: agent session 与 activity 的查询排序/过滤逻辑
 - **issue-agent-runner.ts**: issue-agent 执行器，负责绑定聊天完成事件与 issue 状态推进
-- **issue-delegation.ts**: 委派、取消委派、启动与停止的写侧用例与 Drizzle store 边界
+- **issue-delegation.ts**: 委派、取消委派、启动与停止的纯写侧规则；默认 store/runner 装配留给 app owner
 - **__tests__/**: issue-agent feature 回归测试

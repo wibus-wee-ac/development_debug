@@ -8,7 +8,7 @@ Agent Runtime feature 统一管理 provider catalog、profile 元数据与凭证
 
 ## Files
 
-- **agent-runtime.ts**: profile CRUD、provider probe/listModels、credential 与审计的 feature-owned application service 与 DB stores
+- **agent-runtime.ts**: profile CRUD、provider probe/listModels、credential、审计与 probe capability capture 的 feature-owned application service 与 DB stores
 - **catalog-instance.ts**: provider catalog 的进程级单例初始化与访问入口
 - **credential-vault.ts**: 统一的凭证加密、解密与脱敏元数据逻辑
 - **provider-catalog.ts**: Provider 注册与查找容器

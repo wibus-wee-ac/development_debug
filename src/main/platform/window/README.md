@@ -8,7 +8,7 @@ Window platform bucket 负责主窗口与 tear-off 窗口的显示策略、激�
 
 ## Files
 
-- **window-activation.ts**: 控制窗口 reveal/focus 行为，避免测试模式抢占前台
-- **window-display-policy.ts**: 根据环境变量判定窗口是否应抑制激活
+- **window-activation.ts**: 控制窗口 reveal/focus/hide 行为，避免测试模式抢占前台或弹窗打扰
+- **window-display-policy.ts**: 根据环境变量判定窗口应显示、后台显示还是保持隐藏
 - **window-manager.ts**: session tear-off 窗口的创建、复用与订阅管理
 - **__tests__/**: window platform 回归测试

@@ -15,12 +15,12 @@
 - **dev.ts**: 仅开发模式可用的辅助 IPC，如打开目录与强制重载
 - **git.ts**: Git 状态、分支与提交图相关 IPC adapter
 - **ipc-devtool.ts**: devtool 窗口、事件快照与清理接口
-- **issue-agent.ts**: issue delegation 与 agent session/activity 查询的 IPC adapter
+- **issue-agent.ts**: issue delegation 与 agent session/activity 查询的 IPC adapter，并负责默认 store/runner 装配
 - **kanban.ts**: Kanban 查询与写侧命令的 IPC adapter
 - **preferences.ts**: 全局聊天偏好持久化接口
 - **pty.ts**: PTY 会话创建、写入、调整尺寸与进程控制接口
 - **search.ts**: 会话线程搜索接口
-- **session.ts**: 会话元数据、provider handle 与消息读取接口
+- **session.ts**: 会话元数据与消息读取接口；backend handle/model 由 control-plane feature 持久化
 - **skills.ts**: skills inventory、创建、导入与来源抓取接口
 - **usage.ts**: token usage 聚合统计接口
 - **window.ts**: tear-off 窗口管理接口

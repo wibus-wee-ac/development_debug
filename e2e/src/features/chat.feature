@@ -90,3 +90,15 @@
     而且 最后一条 AI 消息应包含"Hello from mock LLM!"
     而且 最后一条 AI 消息持久化状态应为"complete"
     而且 聊天中不应出现错误提示
+
+  @P1 @CRADLE-CHAT-009
+  场景: 首条消息会持久化 backend binding 与已完成 run
+    假如 我已配置 Mock LLM Provider
+    而且 我已添加了一个工作区
+    而且 我已导航到新建聊天页面
+    当 我在新建聊天输入框中输入"请建立一次 control plane 回归会话"
+    而且 我点击发送按钮
+    那么 应该跳转到聊天视图
+    而且 聊天状态最终应为"idle"
+    而且 当前聊天会话应持久化一条 backend binding
+    而且 当前聊天会话应持久化一条状态为"complete"的 backend run

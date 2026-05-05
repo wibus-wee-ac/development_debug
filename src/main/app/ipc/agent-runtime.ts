@@ -15,6 +15,7 @@ import {
   createDbCredentialStore,
   createDbRuntimeAuditStore,
 } from '../../features/agent-runtime/agent-runtime'
+import { getBackendControlPlaneService } from '../../features/backend-control-plane/backend-control-plane'
 import { getProviderCatalog } from '../../features/agent-runtime/catalog-instance'
 import type {
   CredentialMetadata,
@@ -36,6 +37,7 @@ function createDefaultAgentRuntimeApplication(): AgentRuntimeApplicationService 
       decrypt: decryptSecret,
     }),
     auditStore: createDbRuntimeAuditStore(db),
+    capabilityRecorder: getBackendControlPlaneService(),
     catalog: getProviderCatalog(),
   })
 }

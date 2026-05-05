@@ -8,7 +8,7 @@ Chat feature 负责会话编排、provider 抽象与 thread search。
 
 ## Files
 
-- **chat-engine.ts**: 聊天主编排器，负责消息写入、响应流广播、会话恢复与 Skills 注入
+- **chat-engine.ts**: 聊天主编排器，负责 product session 消息写入、响应流广播，并通过 backend control-plane 持久化 binding/run 生命周期
 - **chat-provider.ts**: provider 抽象接口与聊天流事件载荷类型
 - **thread-search.ts**: 会话线程搜索引擎
 - **__tests__/**: chat feature 的主进程回归测试

@@ -21,13 +21,6 @@ export const sessions = sqliteTable('sessions', {
     .references(() => agents.id, { onDelete: 'set null' }),
   linkedIssueId: text('linked_issue_id')
     .references(() => kanbanIssues.id, { onDelete: 'set null' }),
-  providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
-  }).notNull(),
-  providerSessionId: text('provider_session_id'),
-  providerStateSnapshot: text('provider_state_snapshot'),
-  modelId: text('model_id'),
-  configSnapshot: text('config_snapshot'),
   pinned: int('pinned').notNull().default(0),
   ...timestamps(),
 })

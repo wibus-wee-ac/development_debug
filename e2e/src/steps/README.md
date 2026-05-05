@@ -10,7 +10,7 @@
 
 - **agent-identity.steps.ts**: Agent 设置导航与创建页面断言步骤，跟随当前 `agent-create` / `agent-detail-name` 锚点而不是旧表单 selector
 - **agent-runtime-settings.steps.ts**: Provider 设置导航与 profile UI 断言步骤
-- **chat.steps.ts**: 模拟 LLM 的聊天端到端步骤，覆盖成功、停止、错误与刷新恢复，并使用更长的慢流响应稳定验证 stop/reload 分支
+- **chat.steps.ts**: 模拟 LLM 的聊天端到端步骤，覆盖成功、停止、错误、刷新恢复，并通过 ESM-safe 的主进程 DB 断言验证 backend control-plane 持久化
 - **issue-agent-integration.steps.ts**: Issue 委派给 Agent、关联会话状态与取消委派步骤
 - **kanban.steps.ts**: 看板、Issue 与评论 CRUD 步骤，使用看板区域内的作用域断言避免设置浮层文本歧义，并把空状态提示断言绑定到页面主内容而不是侧栏
 - **skills.steps.ts**: Skills CRUD、导入导出，以及 agent-private skills 文件落盘断言；导入流程走当前多步骤 Import Dialog，Agent 私有技能场景通过点击 Agent 行进入内嵌 detail/skills 视图

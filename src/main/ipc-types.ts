@@ -59,7 +59,6 @@ export type {
   AgentCredential,
   AgentProfile,
   RuntimeAuditEntry,
-  RuntimeSession,
 } from './db/schema'
 export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 export type { AgentActivity, AgentSession } from './db/schema'

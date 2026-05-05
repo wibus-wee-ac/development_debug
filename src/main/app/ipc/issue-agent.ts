@@ -1,14 +1,26 @@
-// Input: issue-agent application/query services and issue-agent schema row types
+// Input: issue-agent application/query services, DB wiring, runtime wiring, and issue-agent schema row types
 // Output: IssueAgentService — thin IPC facade for delegation commands and agent-session queries
-// Position: App-level IPC adapter for the issue-agent feature
+// Position: App-level IPC adapter that composes default issue-agent feature dependencies
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
+import { getDb } from '../../db'
 import type { AgentActivity, AgentSession } from '../../db/schema'
 import type { IssueAgentQueryApplicationService } from '../../features/issue-agent/issue-agent-query'
 import { createIssueAgentQueryApplicationService } from '../../features/issue-agent/issue-agent-query'
+import { getIssueAgentRuntime } from '../../features/issue-agent/issue-agent-runner'
 import type { IssueDelegationApplicationService } from '../../features/issue-agent/issue-delegation'
-import { createIssueDelegationApplicationService } from '../../features/issue-agent/issue-delegation'
+import {
+  createDrizzleIssueDelegationStore,
+  createIssueDelegationApplicationService,
+} from '../../features/issue-agent/issue-delegation'
+
+function createDefaultIssueDelegationApplication(): IssueDelegationApplicationService {
+  return createIssueDelegationApplicationService({
+    store: createDrizzleIssueDelegationStore(getDb()),
+    runner: getIssueAgentRuntime(),
+  })
+}
 
 export class IssueAgentService extends IpcService {
   static readonly groupName = 'issueAgent'
@@ -16,7 +28,7 @@ export class IssueAgentService extends IpcService {
   private readonly issueAgentQueryApp: IssueAgentQueryApplicationService
 
   constructor(
-    delegationApp: IssueDelegationApplicationService = createIssueDelegationApplicationService(),
+    delegationApp: IssueDelegationApplicationService = createDefaultIssueDelegationApplication(),
     issueAgentQueryApp: IssueAgentQueryApplicationService = createIssueAgentQueryApplicationService(),
   ) {
     super()

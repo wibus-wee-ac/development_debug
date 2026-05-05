@@ -1,6 +1,6 @@
-// Input: Issue-agent store adapter, delegated runtime runner, and issue/agent schema row types
+// Input: Injected issue-agent store/runner adapters plus issue/agent schema row types
 // Output: Issue delegation application service plus a Drizzle-backed store for delegate/run/stop/undelegate commands
-// Position: Issue-agent feature write-side orchestration between IPC adapters and runtime infrastructure
+// Position: Issue-agent feature write-side rules with app-level dependency wiring kept outside this file
 
 import { randomUUID } from 'node:crypto'
 
@@ -12,11 +12,6 @@ import type { AgentProfile, AgentSession } from '../../db/schema'
 import { agentProfiles, agentSessions, kanbanIssueComments, kanbanIssues } from '../../db/schema'
 
 const defaultNowUnix = (): number => Math.floor(Date.now() / 1000)
-
-async function resolveDefaultRunner(): Promise<IssueDelegationRunner> {
-  const { getIssueAgentRuntime } = await import('./issue-agent-runner')
-  return getIssueAgentRuntime()
-}
 
 export interface IssueDelegationStore {
   getAgentProfile: (agentProfileId: string) => Pick<AgentProfile, 'id' | 'name'> | undefined
@@ -56,8 +51,8 @@ export interface IssueDelegationApplicationService {
 }
 
 interface IssueDelegationApplicationDeps {
-  store?: IssueDelegationStore
-  runner?: IssueDelegationRunner
+  store: IssueDelegationStore
+  runner: IssueDelegationRunner
   nowUnix?: () => number
 }
 
@@ -136,21 +131,13 @@ export function createDrizzleIssueDelegationStore(
   }
 }
 
-async function resolveDefaultStore(): Promise<IssueDelegationStore> {
-  const { getDb } = await import('../../db')
-  return createDrizzleIssueDelegationStore(getDb())
-}
-
 export function createIssueDelegationApplicationService(
-  deps: IssueDelegationApplicationDeps = {},
+  deps: IssueDelegationApplicationDeps,
 ): IssueDelegationApplicationService {
   const nowUnix = deps.nowUnix ?? defaultNowUnix
-
-  const getRunner = async (): Promise<IssueDelegationRunner> => deps.runner ?? resolveDefaultRunner()
-  const getStore = async (): Promise<IssueDelegationStore> => deps.store ?? resolveDefaultStore()
+  const { runner, store } = deps
 
   const delegateIssue: IssueDelegationApplicationService['delegateIssue'] = async ({ issueId, agentProfileId }) => {
-    const store = await getStore()
     const profile = store.getAgentProfile(agentProfileId)
     if (!profile) {
       throw new Error(`Agent profile ${agentProfileId} not found`)
@@ -170,17 +157,14 @@ export function createIssueDelegationApplicationService(
   }
 
   const runDelegatedIssue: IssueDelegationApplicationService['runDelegatedIssue'] = async (input) => {
-    const runner = await getRunner()
     await runner.run(input)
   }
 
   const stopAgentSession: IssueDelegationApplicationService['stopAgentSession'] = async (agentSessionId) => {
-    const runner = await getRunner()
     await runner.stop(agentSessionId)
   }
 
   const undelegateIssue: IssueDelegationApplicationService['undelegateIssue'] = async (issueId) => {
-    const store = await getStore()
     store.removeDelegation({ issueId, timestamp: nowUnix() })
   }
 

@@ -1,6 +1,6 @@
-// Input: @cradle/ipc decorators, drizzle-orm, DB schema
+// Input: @cradle/ipc decorators, drizzle-orm, and DB schema
 // Output: SessionService — IPC surface for session CRUD and message reads (writes owned by ChatEngine)
-// Position: Main-process IPC service registered in src/main/index.ts
+// Position: Main-process IPC service for session metadata and message reads; backend control-plane state is persisted elsewhere
 
 import { randomUUID } from 'node:crypto'
 
@@ -9,7 +9,7 @@ import { desc, eq } from 'drizzle-orm'
 
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
-import { messages, sessions } from '../../db/schema'
+import { backendSessionBindings, messages, sessions } from '../../db/schema'
 import { PtyManager } from '../../platform/pty/pty-manager'
 import { ThreadSearchEngine } from '../../features/chat/thread-search'
 
@@ -36,14 +36,7 @@ export class SessionService extends IpcService {
     workspaceId: string
     title: string
     agentProfileId: string
-    providerKind: Session['providerKind']
     id?: string
-    providerSessionId?: string | null
-    providerStateSnapshot?: string | null
-    /** Snapshot of the initial model ID. */
-    modelId?: string
-    /** JSON snapshot of initial config options. */
-    configSnapshot?: string
   }): Session {
     const db = getDb()
     const id = input.id ?? randomUUID()
@@ -54,11 +47,6 @@ export class SessionService extends IpcService {
         workspaceId: input.workspaceId,
         title: input.title,
         agentProfileId: input.agentProfileId,
-        providerKind: input.providerKind,
-        providerSessionId: input.providerSessionId ?? null,
-        providerStateSnapshot: input.providerStateSnapshot ?? null,
-        modelId: input.modelId ?? null,
-        configSnapshot: input.configSnapshot ?? null,
       })
       .returning()
       .get()
@@ -79,19 +67,6 @@ export class SessionService extends IpcService {
     getDb()
       .update(sessions)
       .set({ title: input.title, updatedAt: Math.floor(Date.now() / 1000) })
-      .where(eq(sessions.id, input.id))
-      .run()
-  }
-
-  @IpcMethod()
-  updateConfig(input: { id: string, modelId: string | null, configSnapshot: string | null }): void {
-    getDb()
-      .update(sessions)
-      .set({
-        modelId: input.modelId,
-        configSnapshot: input.configSnapshot,
-        updatedAt: Math.floor(Date.now() / 1000),
-      })
       .where(eq(sessions.id, input.id))
       .run()
   }
@@ -129,11 +104,16 @@ export class SessionService extends IpcService {
       return ''
     }
     const msgs = db.select().from(messages).where(eq(messages.sessionId, sessionId)).orderBy(messages.createdAt).all()
+    const binding = db
+      .select()
+      .from(backendSessionBindings)
+      .where(eq(backendSessionBindings.chatSessionId, sessionId))
+      .get()
 
     const lines: string[] = []
     lines.push(`# ${session.title}`)
     lines.push('')
-    lines.push(`> Model: ${session.modelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`)
+    lines.push(`> Model: ${binding?.requestedModelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`)
     lines.push('')
 
     for (const msg of msgs) {

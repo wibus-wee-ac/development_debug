@@ -20,6 +20,54 @@ type PersistedChatMessage = {
   errorText?: string | null
 }
 
+type PersistedBackendBinding = {
+  chatSessionId: string
+  backendSessionId: string | null
+  requestedModelId: string | null
+}
+
+type PersistedBackendRun = {
+  chatSessionId: string
+  status: string
+  stopReason: string | null
+}
+
+async function queryPersistedSessionRow<T>(
+  world: CradleWorld,
+  sql: string,
+  sessionId: string,
+): Promise<T | null> {
+  return world.mainProcess<T | null, { sessionId: string, sql: string }>(
+    async (electron, { sessionId, sql }) => {
+      const getBuiltinModule = process.getBuiltinModule?.bind(process)
+
+      if (!getBuiltinModule) {
+        throw new Error('process.getBuiltinModule unavailable in Electron evaluate context')
+      }
+
+      const path = getBuiltinModule('node:path')
+      const moduleApi = getBuiltinModule('node:module')
+      const requireFromApp = moduleApi.createRequire(path.join(electron.app.getAppPath(), 'package.json'))
+      const Database = requireFromApp('better-sqlite3')
+
+      if (!Database) {
+        throw new Error('better-sqlite3 default export unavailable in Electron main process')
+      }
+
+      const dbPath = path.join(electron.app.getPath('userData'), 'cradle.db')
+      const db = new Database(dbPath, { readonly: true })
+
+      try {
+        return (db.prepare(sql).get(sessionId) as T | undefined) ?? null
+      }
+      finally {
+        db.close()
+      }
+    },
+    { sessionId, sql },
+  )
+}
+
 async function getChatView(world: CradleWorld) {
   const chatView = world.page.locator('[data-testid="chat-view"]')
   await expect(chatView).toBeVisible({ timeout: CHAT_VIEW_TIMEOUT })
@@ -258,4 +306,45 @@ Then('当前聊天会话标识应保持不变', async function (this: CradleWorl
   const previousSessionId = this.recall<string>('currentChatSessionId')
   const chatView = await getChatView(this)
   await expect(chatView).toHaveAttribute('data-chat-session-id', previousSessionId, { timeout: CHAT_STATUS_TIMEOUT })
+})
+
+Then('当前聊天会话应持久化一条 backend binding', async function (this: CradleWorld) {
+  const chatSessionId = await getCurrentChatSessionId(this)
+  const binding = await queryPersistedSessionRow<PersistedBackendBinding>(
+    this,
+    `
+      SELECT
+        chat_session_id AS chatSessionId,
+        backend_session_id AS backendSessionId,
+        requested_model_id AS requestedModelId
+      FROM backend_session_bindings
+      WHERE chat_session_id = ?
+      LIMIT 1
+    `,
+    chatSessionId,
+  )
+
+  expect(binding).not.toBeNull()
+  expect(binding).toEqual(expect.objectContaining({ chatSessionId }))
+})
+
+Then('当前聊天会话应持久化一条状态为{string}的 backend run', async function (this: CradleWorld, status: string) {
+  const chatSessionId = await getCurrentChatSessionId(this)
+  const run = await queryPersistedSessionRow<PersistedBackendRun>(
+    this,
+    `
+      SELECT
+        chat_session_id AS chatSessionId,
+        status,
+        stop_reason AS stopReason
+      FROM backend_runs
+      WHERE chat_session_id = ?
+      ORDER BY started_at DESC
+      LIMIT 1
+    `,
+    chatSessionId,
+  )
+
+  expect(run).not.toBeNull()
+  expect(run).toEqual(expect.objectContaining({ chatSessionId, status }))
 })

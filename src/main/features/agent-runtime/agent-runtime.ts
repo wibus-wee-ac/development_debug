@@ -1,6 +1,6 @@
 // Input: agent profile store, runtime audit store, provider catalog, and credential store dependencies
-// Output: Agent runtime application service plus DB-backed stores for profiles, credentials, and audit logging
-// Position: Feature-owned coordination for profile CRUD, provider probe/models, and credential workflows
+// Output: Agent runtime application service plus DB-backed stores for profiles, credentials, audit logging, and capability capture
+// Position: Feature-owned coordination for profile CRUD, provider probe/models, credential workflows, and probe capability snapshots
 
 import { randomUUID } from 'node:crypto'
 
@@ -13,8 +13,8 @@ import {
   agentProfiles,
   agents,
   agentSessions,
+  backendCapabilitySnapshots,
   runtimeAuditLog,
-  runtimeSessions,
   sessions,
   usageLogs,
 } from '../../db/schema'
@@ -32,6 +32,7 @@ import type {
   ProviderKind,
   ProviderProbeResult,
 } from './runtime-provider-types'
+import type { BackendCapabilityRecorder } from '../backend-control-plane/backend-control-plane'
 
 export type EditableAgentProfile = Omit<AgentProfile, 'createdAt' | 'updatedAt'>
 
@@ -120,7 +121,7 @@ export function createDbAgentProfileStore(
 
         tx.delete(agents).where(eq(agents.providerId, id)).run()
         tx.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
-        tx.delete(runtimeSessions).where(eq(runtimeSessions.agentProfileId, id)).run()
+        tx.delete(backendCapabilitySnapshots).where(eq(backendCapabilitySnapshots.agentProfileId, id)).run()
         tx.delete(runtimeAuditLog).where(eq(runtimeAuditLog.agentProfileId, id)).run()
         tx.delete(usageLogs).where(eq(usageLogs.agentProfileId, id)).run()
         if (ownedSessionIds.length > 0) {
@@ -215,6 +216,7 @@ interface AgentRuntimeApplicationDeps {
   profileStore: AgentProfileStore
   credentialStore: AgentRuntimeCredentialStore
   auditStore: RuntimeAuditStore
+  capabilityRecorder?: BackendCapabilityRecorder
   catalog?: ProviderCatalog
 }
 
@@ -256,6 +258,12 @@ export function createAgentRuntimeApplicationService(
       subject: profile.name,
       ok: result.ok,
       errorText: result.errorText ?? null,
+    })
+    deps.capabilityRecorder?.recordCapabilitySnapshot({
+      agentProfileId: profile.id,
+      providerKind: profile.providerKind,
+      source: 'probe',
+      capabilitiesJson: JSON.stringify(result.details ?? {}),
     })
     return result
   }

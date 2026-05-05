@@ -256,8 +256,6 @@ export function NewChatPage() {
           workspaceId: selectedWorkspaceId,
           title: selectedProfile.name,
           agentProfileId: selectedProfile.id,
-          providerKind: selectedProfile.providerKind,
-          providerSessionId: null,
         })
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(selectedWorkspaceId) })
         void openTab('chat', { sessionId: session.id })
