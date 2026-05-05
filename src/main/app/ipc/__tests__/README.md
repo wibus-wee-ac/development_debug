@@ -8,7 +8,7 @@
 
 ## Files
 
-- **agent-runtime.test.ts**: 覆盖 profile CRUD、provider probe 与凭证脱敏行为
+- **agent-runtime.test.ts**: 覆盖 agent-runtime IPC adapter 对 feature application service 的转发行为
 - **issue-agent.test.ts**: 覆盖 issue-agent IPC adapter 的委派路由与 runner 协作
 - **preferences.test.ts**: 覆盖全局聊天偏好的读取与更新
 - **session.test.ts**: 覆盖会话元数据写入与读取契约

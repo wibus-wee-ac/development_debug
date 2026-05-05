@@ -192,6 +192,41 @@ Cradle should first build a strong internal boundary:
 
 Once these boundaries survive real Codex, Claude, and ACP integrations, the stable pure pieces can be extracted deliberately.
 
+## Design References
+
+设计 Cradle 内部 schema 时，最值得参考的不是某一个协议，而是分层抄：
+
+When designing Cradle's internal schema, the best reference is not any single protocol, but a layered combination:
+
+Codex App Server 抄“agent run / thread / turn / item / approval”的领域模型。 
+
+Copy the domain model of "agent run / thread / turn / item / approval" from Codex App Server, as it is the most mature and complete representation of coding-agent execution lifecycle.
+
+Responses API's style of "streaming event naming, delta/completed lifecycle, typed output items" for the timeline event design, as it is a widely adopted convention for agent response streaming.
+
+Copy the protocol boundary of "client-agent decoupling, JSON-RPC, capability negotiation" from ACP, as it is designed for flexible client integration and supports a wide range of agent backends.
+
+Copy the engineering discipline of "initialize capability exchange, request/notification/response patterns, backward compatibility rules" from LSP, as it is a proven model for maintaining stable integrations while evolving features.
+
+Copy the observability structure of "event envelope, traceability, source/id/type/time, resource/attributes" from CloudEvents and OpenTelemetry, as it provides a robust framework for logging and monitoring agent interactions.
+
+Don't look for a so-called "schema design bible". If it exists, it would say: first define a stable envelope, then define domain payloads; first define capabilities, then features; first define lifecycle state machines, then UI; any provider-specific fields should be in metadata and not pollute the core model.
+
+| Cradle concept  | Codex App Server | Claude Agent SDK             | ACP                 | Notes                       |
+| --------------- | ---------------- | ---------------------------- | ------------------- | --------------------------- |
+| Session         | Thread?          | SDK session/state?           | Session             | Cradle session is app-owned |
+| Run             | Turn             | streamed run/query           | prompt turn         | one user delegation         |
+| Timeline item   | Item/event       | RunItemStreamEvent/raw event | protocol update     | normalized                  |
+| Approval        | approval request | interruption/approval        | permission request? | product-owned               |
+| Skill inventory | codex skills?    | Claude skills?               | maybe capability    | Cradle owns inventory       |
+
+## Implementation Notes
+
+Backend adapters produce typed events.
+Reducers produce product state.
+Renderers consume projections.
+Capabilities, not backend names, drive behavior.
+
 ## Practical Direction
 
 The next architecture work should focus on concepts, not package layout.

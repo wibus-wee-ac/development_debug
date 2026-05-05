@@ -10,20 +10,24 @@ import { eq, sql } from 'drizzle-orm'
 import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../../resources/icon.png?asset'
+import { getDb, initDb } from '../db'
+import { acpAgents } from '../db/schema'
+import { initializeIpcDevtool, subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
+import { bridgeChatTurnFinishedEvents } from '../events/chat-turn-finished-bridge'
+import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
+import {
+  createDbCredentialStore,
+} from '../features/agent-runtime/agent-runtime'
 import { initProviderCatalog } from '../features/agent-runtime/catalog-instance'
 import { acpChatProvider } from '../features/agent-runtime/providers/acp-chat-provider'
 import { cliTuiProvider } from '../features/agent-runtime/providers/cli-tui-provider'
 import { OpenAICompatibleProvider } from '../features/agent-runtime/providers/openai-compatible-provider'
-import { IssueAgentRunner } from '../features/issue-agent/issue-agent-runner'
-import { getDb, initDb } from '../db'
-import { acpAgents, agentCredentials } from '../db/schema'
-import { bridgeChatTurnFinishedEvents } from '../events/chat-turn-finished-bridge'
-import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
 import { ChatEngine } from '../features/chat/chat-engine'
-import { initializeIpcDevtool, subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
+import { ThreadSearchEngine } from '../features/chat/thread-search'
+import { IssueAgentRunner } from '../features/issue-agent/issue-agent-runner'
 import { PtyManager } from '../platform/pty/pty-manager'
-import { decryptSecret } from '../platform/storage/safe-storage'
 import { startSocketServer, stopSocketServer } from '../platform/socket/socket-server'
+import { decryptSecret, encryptSecret } from '../platform/storage/safe-storage'
 import { revealWindow } from '../platform/window/window-activation'
 import { AcpService } from './ipc/acp'
 import { AgentService } from './ipc/agent'
@@ -46,18 +50,12 @@ import { WorkspaceService } from './ipc/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
 
 function bootstrapProviderCatalog(): void {
+  const credentialStore = createDbCredentialStore(getDb(), {
+    encrypt: encryptSecret,
+    decrypt: decryptSecret,
+  })
   const openAIProvider = new OpenAICompatibleProvider({
-    readSecret: (credentialRef) => {
-      const row = getDb()
-        .select()
-        .from(agentCredentials)
-        .where(eq(agentCredentials.id, credentialRef))
-        .get()
-      if (!row) {
-        throw new Error(`Credential not found: ${credentialRef}`)
-      }
-      return decryptSecret(row.encryptedSecret)
-    },
+    readSecret: credentialRef => credentialStore.readSecret(credentialRef),
   })
 
   initProviderCatalog([acpChatProvider, cliTuiProvider, openAIProvider])
@@ -123,7 +121,6 @@ app.whenReady().then(() => {
 
   // Rebuild FTS index if empty (first run after migration)
   try {
-    const { ThreadSearchEngine } = require('../features/chat/thread-search') as typeof import('../features/chat/thread-search')
     const ftsCount = getDb().all<{ cnt: number }>(sql`SELECT count(*) as cnt FROM messages_fts`)
     if (ftsCount[0]?.cnt === 0) {
       ThreadSearchEngine.getInstance().rebuildIndex()

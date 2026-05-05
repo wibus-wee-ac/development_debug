@@ -10,7 +10,7 @@
 
 - **acp.ts**: ACP registry、安装、运行时 session、审计与指标的 IPC adapter
 - **agent.ts**: Agent identity 的 CRUD IPC adapter
-- **agent-runtime.ts**: provider catalog、profile 与凭证管理的 IPC adapter
+- **agent-runtime.ts**: agent-runtime feature 的薄 IPC adapter，转发 profile、probe、models 与凭证命令
 - **chat.ts**: ChatEngine 的会话创建、发送、终止与消息读取接口
 - **dev.ts**: 仅开发模式可用的辅助 IPC，如打开目录与强制重载
 - **git.ts**: Git 状态、分支与提交图相关 IPC adapter

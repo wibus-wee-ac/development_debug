@@ -2,6 +2,8 @@
 // Output: ThreadSearchEngine singleton — jieba-tokenized title+content search across sessions/messages
 // Position: Chat/search capability module (L2) used by the SearchService IPC layer
 
+import { Jieba } from '@node-rs/jieba'
+import { dict } from '@node-rs/jieba/dict'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 
 import { getDb } from '../../db'
@@ -60,8 +62,7 @@ const CONTENT_WEIGHT = 1
 
 export class ThreadSearchEngine {
   private static instance: ThreadSearchEngine
-  // eslint-disable-next-line ts/no-explicit-any
-  private jieba: any = null
+  private jieba: Jieba | null = null
 
   static getInstance(): ThreadSearchEngine {
     if (!ThreadSearchEngine.instance) {
@@ -208,7 +209,7 @@ export class ThreadSearchEngine {
       const titleRanges = findMatches(session.title, tokens)
       const snippets: ThreadSearchSnippet[] = entry.snippets
         .slice(0, snippetsPerHit)
-        .map((s) => ({
+        .map(s => ({
           text: s.text,
           ranges: extractMarkRanges(s.text),
           messageRole: 'assistant' as const,
@@ -359,18 +360,13 @@ export class ThreadSearchEngine {
     return hits.slice(0, limit)
   }
 
-  // eslint-disable-next-line ts/no-explicit-any
-  private getJieba(): any {
+  private getJieba(): Jieba | null {
     if (this.jieba) {
       return this.jieba
     }
     try {
-      // Lazy-require so renderer typechecks don't drag in the native module
-      // and so startup cost (≈10 MB dict) is paid on first query, not boot.
-      // eslint-disable-next-line ts/no-require-imports
-      const { Jieba } = require('@node-rs/jieba') as typeof import('@node-rs/jieba')
-      // eslint-disable-next-line ts/no-require-imports
-      const { dict } = require('@node-rs/jieba/dict') as typeof import('@node-rs/jieba/dict')
+      // Keep instance creation lazy so startup cost (≈10 MB dict) is only paid
+      // on first query/index operation, not during app boot.
       this.jieba = Jieba.withDict(dict)
     }
     catch (err) {

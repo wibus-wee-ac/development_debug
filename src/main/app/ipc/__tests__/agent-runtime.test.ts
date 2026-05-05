@@ -1,22 +1,24 @@
-// Input: AgentRuntimeService with fake repository, provider catalog, and credential vault
-// Output: Unit tests for unified agent profile IPC behavior
-// Position: Service-layer test coverage for the Agent Runtime IPC surface
+// Input: AgentRuntimeService with mocked agent runtime application service
+// Output: Unit tests for agent-runtime IPC forwarding behavior
+// Position: App-level IPC adapter test for src/main/app/ipc/agent-runtime.ts
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CredentialVault } from '../../../features/agent-runtime/credential-vault'
-import { ProviderCatalog } from '../../../features/agent-runtime/provider-catalog'
-import type { AgentProfile, AgentProvider, ProviderKind } from '../../../features/agent-runtime/runtime-provider-types'
-import type { AgentProfileRepository } from '../agent-runtime'
+import type {
+  AgentRuntimeApplicationService,
+} from '../../../features/agent-runtime/agent-runtime'
+import type { CredentialMetadata } from '../../../features/agent-runtime/credential-vault'
+import type {
+  ModelDescriptor,
+  ProviderProbeResult,
+} from '../../../features/agent-runtime/runtime-provider-types'
 import { AgentRuntimeService } from '../agent-runtime'
 
-vi.mock('../../../db', () => {
-  const mockDb = {
-    insert: () => ({ values: () => ({ run: () => {} }) }),
+vi.mock('../../../db/index.ts', () => ({
+  getDb: () => ({
     select: () => ({ from: () => ({ where: () => ({ get: () => undefined, all: () => [] }) }) }),
-  }
-  return { getDb: () => mockDb }
-})
+  }),
+}))
 
 vi.mock('electron', () => ({
   ipcMain: {
@@ -30,72 +32,48 @@ vi.mock('../../../platform/storage/safe-storage', () => ({
   decryptSecret: (text: string) => text.replace('encrypted:', ''),
 }))
 
-class MemoryProfileRepository implements AgentProfileRepository {
-  private readonly profiles = new Map<string, AgentProfile>()
-
-  listProfiles(): AgentProfile[] {
-    return [...this.profiles.values()]
-  }
-
-  getProfile(id: string): AgentProfile | undefined {
-    return this.profiles.get(id)
-  }
-
-  upsertProfile(input: Omit<AgentProfile, 'createdAt' | 'updatedAt'>): AgentProfile {
-    const now = 100
-    const existing = this.profiles.get(input.id)
-    const profile = {
-      ...input,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    }
-    this.profiles.set(input.id, profile)
-    return profile
-  }
-
-  removeProfile(id: string): void {
-    this.profiles.delete(id)
-  }
-}
-
-function createProvider(providerKind: ProviderKind): AgentProvider {
-  return {
-    providerKind,
-    probe: async profile => ({
-      ok: true,
-      label: profile.name,
-      version: '1.0.0',
-      details: { providerKind },
-      errorText: null,
-    }),
-    listModels: async () => [
-      {
-        id: 'test-model',
-        label: 'Test Model',
-        providerKind,
-        contextWindow: 128000,
-      },
-    ],
-  }
-}
-
 describe('agentRuntimeService', () => {
-  let repository: MemoryProfileRepository
+  let appService: AgentRuntimeApplicationService
   let service: AgentRuntimeService
 
   beforeEach(() => {
-    repository = new MemoryProfileRepository()
-    service = new AgentRuntimeService({
-      repository,
-      catalog: new ProviderCatalog([createProvider('openai-compatible')]),
-      credentialVault: new CredentialVault({
-        encrypt: text => `encrypted:${text}`,
-        decrypt: encrypted => encrypted.replace('encrypted:', ''),
-      }),
-    })
+    const probeResult: ProviderProbeResult = {
+      ok: true,
+      label: 'Test Profile',
+      version: '1.0.0',
+      details: { providerKind: 'openai-compatible' },
+      errorText: null,
+    }
+    const models: ModelDescriptor[] = [{
+      id: 'test-model',
+      label: 'Test Model',
+      providerKind: 'openai-compatible',
+      contextWindow: 128000,
+    }]
+    const credentials: CredentialMetadata[] = [{
+      id: 'credential-1',
+      providerKind: 'openai-compatible',
+      label: 'OpenAI-compatible',
+      maskedSecret: 'sk-...cdef',
+      createdAt: 100,
+      updatedAt: 100,
+    }]
+
+    appService = {
+      listProfiles: vi.fn(() => [{ id: 'test-profile' } as never]),
+      getProfile: vi.fn(() => ({ id: 'test-profile' } as never)),
+      upsertProfile: vi.fn(input => ({ ...input, createdAt: 100, updatedAt: 100 } as never)),
+      removeProfile: vi.fn(),
+      probeProfile: vi.fn(async () => probeResult),
+      listModels: vi.fn(async () => models),
+      saveCredential: vi.fn(() => credentials[0]),
+      removeCredential: vi.fn(),
+      listCredentials: vi.fn(() => credentials),
+    }
+    service = new AgentRuntimeService(appService)
   })
 
-  it('stores and lists unified agent profiles', () => {
+  it('forwards profile lifecycle calls to the feature application service', () => {
     const profile = service.upsertProfile({
       id: 'test-profile',
       name: 'Test Profile',
@@ -106,19 +84,24 @@ describe('agentRuntimeService', () => {
     })
 
     expect(profile.providerKind).toBe('openai-compatible')
-    expect(service.listProfiles()).toEqual([profile])
-  })
+    expect(service.listProfiles()).toEqual([{ id: 'test-profile' }])
+    expect(service.getProfile('test-profile')).toEqual({ id: 'test-profile' })
+    service.removeProfile('test-profile')
 
-  it('probes a profile through its registered provider', async () => {
-    service.upsertProfile({
+    expect(appService.upsertProfile).toHaveBeenCalledWith({
       id: 'test-profile',
       name: 'Test Profile',
       providerKind: 'openai-compatible',
       enabled: true,
-      configJson: '{}',
+      configJson: '{"baseUrl":"http://localhost","model":"gpt-4o"}',
       credentialRef: null,
     })
+    expect(appService.listProfiles).toHaveBeenCalled()
+    expect(appService.getProfile).toHaveBeenCalledWith('test-profile')
+    expect(appService.removeProfile).toHaveBeenCalledWith('test-profile')
+  })
 
+  it('forwards probe, model listing, and credential calls to the feature application service', async () => {
     await expect(service.probeProfile('test-profile')).resolves.toEqual({
       ok: true,
       label: 'Test Profile',
@@ -126,16 +109,37 @@ describe('agentRuntimeService', () => {
       details: { providerKind: 'openai-compatible' },
       errorText: null,
     })
-  })
+    await expect(service.listModels('test-profile')).resolves.toEqual([{
+      id: 'test-model',
+      label: 'Test Model',
+      providerKind: 'openai-compatible',
+      contextWindow: 128000,
+    }])
 
-  it('saves API credentials without exposing the plaintext secret', () => {
     const metadata = service.saveCredential({
       providerKind: 'openai-compatible',
       label: 'OpenAI-compatible',
       secret: 'sk-test-abcdef',
     })
+    service.removeCredential('credential-1')
 
     expect(metadata.maskedSecret).toBe('sk-...cdef')
-    expect(JSON.stringify(service.listCredentials())).not.toContain('sk-test-abcdef')
+    expect(service.listCredentials()).toEqual([{
+      id: 'credential-1',
+      providerKind: 'openai-compatible',
+      label: 'OpenAI-compatible',
+      maskedSecret: 'sk-...cdef',
+      createdAt: 100,
+      updatedAt: 100,
+    }])
+    expect(appService.probeProfile).toHaveBeenCalledWith('test-profile')
+    expect(appService.listModels).toHaveBeenCalledWith('test-profile')
+    expect(appService.saveCredential).toHaveBeenCalledWith({
+      providerKind: 'openai-compatible',
+      label: 'OpenAI-compatible',
+      secret: 'sk-test-abcdef',
+    })
+    expect(appService.removeCredential).toHaveBeenCalledWith('credential-1')
+    expect(appService.listCredentials).toHaveBeenCalled()
   })
 })

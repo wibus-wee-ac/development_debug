@@ -8,6 +8,7 @@
 
 ## Files
 
+- **agent-runtime-application.test.ts**: 验证 feature-owned agent runtime application service 的 profile、probe、models 与 credential 协调行为
 - **credential-vault.test.ts**: 验证凭证保存、读取与脱敏逻辑
 - **openai-compatible-provider.test.ts**: 验证 OpenAI-compatible provider 的请求与恢复行为
 - **provider-catalog.test.ts**: 验证 provider catalog 的注册与解析语义
