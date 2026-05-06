@@ -6,6 +6,7 @@ import type { MatchRange, ThreadSearchHit, ThreadSearchSnippet } from '@main/ipc
 
 const FALLBACK_WORKSPACE_ID = 'unknown-workspace'
 const FALLBACK_SESSION_ID = 'unknown-session'
+const FTS_MARK_TAG_RE = /<\/?mark>/g
 
 type PartialThreadSearchSnippet = Partial<ThreadSearchSnippet>
 
@@ -21,9 +22,12 @@ function normalizeSnippet(
   snippet: Partial<ThreadSearchSnippet> | undefined,
   index: number,
 ): ThreadSearchSnippet {
+  const ranges = normalizeRanges(snippet?.ranges)
+  const rawText = typeof snippet?.text === 'string' ? snippet.text : ''
+
   return {
-    text: typeof snippet?.text === 'string' ? snippet.text : '',
-    ranges: normalizeRanges(snippet?.ranges),
+    text: ranges.length > 0 ? rawText.replace(FTS_MARK_TAG_RE, '') : rawText,
+    ranges,
     messageRole: snippet?.messageRole === 'assistant' ? 'assistant' : 'user',
     messageId:
       typeof snippet?.messageId === 'string' && snippet.messageId.length > 0

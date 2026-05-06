@@ -9,15 +9,15 @@ Kanban UI files should track the current coss primitive API names such as `*Cont
 
 ## Files
 
-- **use-kanban.ts**: TanStack Query hooks + mutations for all kanban IPC calls (boards, statuses, issues, comments, relations, delegation, session↔issue linking)
-- **kanban-board-view.tsx**: Main board view — columns + integrated right-slide issue detail panel (no route navigation), DnD context, status manager popover
-- **kanban-column.tsx**: Single status column with droppable zone, sortable cards, selected-issue highlight, and stable column identifiers for E2E assertions
-- **kanban-sidebar.tsx**: Left sidebar — board list, milestones, board creation, back button
+- **use-kanban.ts**: TanStack Query hooks + mutations for all kanban IPC calls (boards, statuses, issues, comments, relations, delegation, session↔issue linking), including board-level issue search queries
+- **kanban-board-view.tsx**: Main board view — columns + integrated right-slide issue detail panel (no route navigation), DnD context, status manager popover, and workspace-scoped issue search backed by `kanban.searchIssues`
+- **kanban-column.tsx**: Single status column with droppable zone, sortable cards, and stable column / dropzone identifiers for E2E assertions
+- **kanban-sidebar.tsx**: Left sidebar — board list, board creation / deletion actions, milestones, back button, and stable E2E anchors for board menus
 - **issue-card.tsx**: Minimal issue card — priority, title, labels, animated agent presence indicator
-- **issue-detail.tsx**: Sheet-style issue detail panel — inline properties, description, sub-issues, agent workspace, relations, context refs, unified activity timeline, and live invalidation while delegated agent sessions are running
+- **issue-detail.tsx**: Sheet-style issue detail panel — inline title / description / priority editing, delete action, agent workspace, relations, context refs, unified activity timeline, and stable E2E anchors for edit / delete flows
 - **issue-panel.tsx**: (Legacy) Old full-page issue detail, no longer actively used
 - **create-issue-dialog.tsx**: Issue creation dialog with property chips (status, priority, milestone)
-- **status-manager.tsx**: Workspace-level status management UI with drag-to-reorder
+- **status-manager.tsx**: Workspace-level status management UI with create / rename / delete / drag-to-reorder flows and stable row anchors for E2E assertions
 - **priority-icon.tsx**: Colored priority icon atom (none/low/medium/high/urgent)
 - **status-icon.tsx**: Colored circle status indicator atom
 - **priority-constants.ts**: Priority label map and sort order constants

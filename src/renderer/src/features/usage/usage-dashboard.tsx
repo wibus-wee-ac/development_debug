@@ -103,12 +103,12 @@ export function UsageDashboard() {
   const hasData = summary && summary.totalTokens > 0
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto" data-testid="usage-dashboard">
       <div className="mx-auto max-w-4xl px-8 py-10">
         {/* Header row with streak */}
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground">Usage</h1>
+            <h1 className="text-lg font-semibold text-foreground" data-testid="usage-dashboard-title">Usage</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">Token consumption over the past year</p>
           </div>
           {stats && stats.currentStreak > 0 && (
@@ -122,12 +122,15 @@ export function UsageDashboard() {
         {/* Stat pills row */}
         {stats && hasData && (
           <div className="mt-6 flex flex-wrap gap-3">
-            <Pill label="Today" value={formatTokens(stats.todayTokens)} />
-            <Pill label="Avg / day" value={formatTokens(stats.avgDailyTokens)} />
-            <Pill label="Active days" value={String(stats.activeDays)} />
-            <Pill label="Best streak" value={`${stats.longestStreak}d`} />
+            <Pill label="Today" value={formatTokens(stats.todayTokens)} dataTestId="usage-pill-today-tokens" />
+            <Pill label="Prompt" value={formatTokens(summary!.totalPromptTokens)} dataTestId="usage-pill-prompt-tokens" />
+            <Pill label="Completion" value={formatTokens(summary!.totalCompletionTokens)} dataTestId="usage-pill-completion-tokens" />
+            <Pill label="Turns" value={String(summary!.totalTurns)} dataTestId="usage-pill-total-turns" />
+            <Pill label="Avg / day" value={formatTokens(stats.avgDailyTokens)} dataTestId="usage-pill-avg-daily-tokens" />
+            <Pill label="Active days" value={String(stats.activeDays)} dataTestId="usage-pill-active-days" />
+            <Pill label="Best streak" value={`${stats.longestStreak}d`} dataTestId="usage-pill-best-streak" />
             {stats.peakDay && (
-              <Pill label="Peak" value={`${formatTokens(stats.peakDay.totalTokens)} on ${stats.peakDay.date.slice(5)}`} />
+              <Pill label="Peak" value={`${formatTokens(stats.peakDay.totalTokens)} on ${stats.peakDay.date.slice(5)}`} dataTestId="usage-pill-peak-day" />
             )}
           </div>
         )}
@@ -140,7 +143,7 @@ export function UsageDashboard() {
               <Sparkline data={daily} />
             </div>
             <div className="text-right">
-              <p className="text-3xl font-semibold tabular-nums text-foreground">{formatTokens(summary!.totalTokens)}</p>
+              <p className="text-3xl font-semibold tabular-nums text-foreground" data-testid="usage-total-tokens">{formatTokens(summary!.totalTokens)}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">total tokens</p>
             </div>
           </div>
@@ -181,7 +184,7 @@ export function UsageDashboard() {
 
         {/* Empty state */}
         {summary && summary.totalTokens === 0 && (
-          <div className="mt-20 text-center">
+          <div className="mt-20 text-center" data-testid="usage-empty-state">
             <p className="text-sm text-muted-foreground">
               No usage data yet — send a message to start tracking
             </p>
@@ -192,11 +195,11 @@ export function UsageDashboard() {
   )
 }
 
-function Pill({ label, value }: { label: string, value: string }) {
+function Pill({ label, value, dataTestId }: { label: string, value: string, dataTestId?: string }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <span className="text-xs font-medium tabular-nums text-foreground">{value}</span>
+    <div className="flex items-center gap-1.5 rounded-full border border-border/40 px-3 py-1" data-testid={dataTestId}>
+      <span className="text-[10px] text-muted-foreground" data-testid={dataTestId ? `${dataTestId}-label` : undefined}>{label}</span>
+      <span className="text-xs font-medium tabular-nums text-foreground" data-testid={dataTestId ? `${dataTestId}-value` : undefined}>{value}</span>
     </div>
   )
 }

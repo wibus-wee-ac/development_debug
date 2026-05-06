@@ -46,6 +46,33 @@ describe('normalizeThreadSearchHit', () => {
       },
     ])
   })
+
+  it('strips FTS mark tags from snippets while preserving highlight ranges', () => {
+    const hit = normalizeThreadSearchHit({
+      sessionId: 'session-1',
+      workspaceId: 'workspace-1',
+      sessionTitle: 'Deploy failure',
+      snippets: [
+        {
+          messageId: 'message-1',
+          messageRole: 'user',
+          text: 'Alpha <mark>Beta</mark> Gamma',
+          ranges: [{ start: 6, end: 10 }],
+          createdAt: 42,
+        },
+      ],
+    })
+
+    expect(hit.snippets).toEqual([
+      {
+        messageId: 'message-1',
+        messageRole: 'user',
+        text: 'Alpha Beta Gamma',
+        ranges: [{ start: 6, end: 10 }],
+        createdAt: 42,
+      },
+    ])
+  })
 })
 
 describe('normalizeThreadSearchHits', () => {

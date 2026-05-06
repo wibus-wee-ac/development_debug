@@ -1,0 +1,113 @@
+// Input: Cucumber step bindings, Playwright assertions, and shared chat alias state from chat.steps.ts
+// Output: Thin GlobalSearchDialog E2E steps covering title highlights, snippet highlights, and opening matched sessions
+// Position: Focused search step layer for the real global search entry point
+
+import { Then, When } from '@cucumber/cucumber'
+import { expect } from '@playwright/test'
+
+import type { CradleWorld } from '../support/world'
+
+const GLOBAL_SEARCH_TIMEOUT = 15_000
+const SESSION_ALIASES_KEY = 'chat.session-aliases'
+const TAB_PILL = '[data-testid^="tab-pill-"]'
+
+type SessionAlias = {
+  id: string
+  firstUserText: string
+}
+
+function recallSessionAlias(world: CradleWorld, alias: string): SessionAlias {
+  const aliases = world.maybeRecall<Record<string, SessionAlias>>(SESSION_ALIASES_KEY) ?? {}
+  const session = aliases[alias]
+
+  if (!session) {
+    throw new Error(`Missing remembered chat session alias: ${alias}`)
+  }
+
+  return session
+}
+
+function globalSearchInput(world: CradleWorld) {
+  return world.page.locator('[data-testid="global-search-input"]')
+}
+
+function threadResult(world: CradleWorld, sessionId: string) {
+  return world.page.locator(`[data-testid="global-search-thread-result-${sessionId}"]`)
+}
+
+async function openGlobalSearch(world: CradleWorld): Promise<void> {
+  console.warn('[step] open global search dialog')
+  await world.page.keyboard.press(process.platform === 'darwin' ? 'Meta+K' : 'Control+K')
+  await expect(globalSearchInput(world)).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+}
+
+async function getActiveChatView(world: CradleWorld) {
+  const activeTab = world.page.locator(`${TAB_PILL}[data-tab-active="true"]`).first()
+  await expect(activeTab).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+
+  const activeTabTestId = await activeTab.getAttribute('data-testid')
+  if (!activeTabTestId) {
+    throw new Error('Expected active tab pill to expose a data-testid')
+  }
+
+  const activeTabId = activeTabTestId.replace('tab-pill-', '')
+  const chatView = world.page.locator(`[data-testid="tab-content-${activeTabId}"] [data-testid="chat-view"]`).first()
+  await expect(chatView).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  return chatView
+}
+
+When('我打开全局搜索对话框', async function (this: CradleWorld) {
+  await openGlobalSearch(this)
+})
+
+When('我在全局搜索中输入{string}', async function (this: CradleWorld, query: string) {
+  console.warn(`[step] type global search query: ${query}`)
+  const input = globalSearchInput(this)
+  await expect(input).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  await input.fill(query)
+})
+
+Then('全局搜索中应该显示会话{string}的标题高亮{string}', async function (this: CradleWorld, alias: string, query: string) {
+  console.warn(`[step] assert global search title highlight for alias: ${alias}`)
+  const session = recallSessionAlias(this, alias)
+  const result = threadResult(this, session.id)
+  const title = result.locator(`[data-testid="global-search-thread-title-${session.id}"]`)
+
+  await expect(result).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  await expect(title).toContainText(session.firstUserText, { timeout: GLOBAL_SEARCH_TIMEOUT })
+  await expect(title.locator('mark')).toContainText(query, { timeout: GLOBAL_SEARCH_TIMEOUT })
+})
+
+Then('全局搜索中应该显示会话{string}的消息片段高亮{string}', async function (this: CradleWorld, alias: string, query: string) {
+  console.warn(`[step] assert global search snippet highlight for alias: ${alias}`)
+  const session = recallSessionAlias(this, alias)
+  const result = threadResult(this, session.id)
+  const snippet = result
+    .locator('[data-testid^="global-search-thread-snippet-"]')
+    .filter({ hasText: query })
+    .first()
+
+  await expect(result).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  await expect(snippet).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  await expect(snippet).toContainText(query, { timeout: GLOBAL_SEARCH_TIMEOUT })
+  await expect(snippet).not.toContainText('<mark>')
+  await expect(snippet.locator('mark').first()).toContainText(query, { timeout: GLOBAL_SEARCH_TIMEOUT })
+})
+
+When('我从全局搜索打开会话{string}', async function (this: CradleWorld, alias: string) {
+  console.warn(`[step] open chat session from global search: ${alias}`)
+  const session = recallSessionAlias(this, alias)
+  const result = threadResult(this, session.id)
+
+  await expect(result).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  await result.click()
+  await expect(globalSearchInput(this)).toHaveCount(0, { timeout: GLOBAL_SEARCH_TIMEOUT })
+})
+
+Then('当前聊天视图应该打开会话{string}', async function (this: CradleWorld, alias: string) {
+  console.warn(`[step] assert current chat view session: ${alias}`)
+  const session = recallSessionAlias(this, alias)
+  const chatView = await getActiveChatView(this)
+
+  await expect(chatView).toHaveAttribute('data-chat-session-id', session.id, { timeout: GLOBAL_SEARCH_TIMEOUT })
+})

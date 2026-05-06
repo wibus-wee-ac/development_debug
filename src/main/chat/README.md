@@ -9,8 +9,8 @@ Chat feature 负责会话编排、timeline-driven chat projection 与 thread sea
 ## Files
 
 - **chat-engine.ts**: 聊天主编排器，负责 product session 消息写入、事务化 timeline→assistant snapshot 投影、会话级 timeline 广播，以及 backend control-plane binding/run 生命周期
-- **chat-turn-context.ts**: 单回合上下文解析器，只组装 agent-owned system prompt 与历史消息，不再把 bundled workflow / skills catalog 塞进模型上下文
+- **chat-turn-context.ts**: 单回合上下文解析器，只组装 agent-owned system prompt 与历史消息；assistant 历史文本按 `backend_runs.messageId -> backend_timeline_events.runId` 精确回放，不再把整个 session 的 delta 错拼到每一轮上下文里
 - **chat-turn-persistence.ts**: 事务化持久化助手，把 timeline event、assistant message snapshot、session updatedAt 与 terminal run 状态一起提交
 - **chat-turn-projector.ts**: 单回合 assistant message 投影器，把 Cradle timeline facts 映射为持久化 UIMessage 快照与 renderer 复用的 chat chunks
-- **thread-search.ts**: 会话线程搜索引擎
+- **thread-search.ts**: 会话线程搜索引擎；缺失 `messages_fts` 时优雅退回 legacy 搜索/跳过索引维护，而不是把会话删除等主流程拖死
 - **__tests__/**: chat feature 的主进程回归测试

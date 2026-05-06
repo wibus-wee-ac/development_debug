@@ -26,6 +26,7 @@ import {
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PackageIcon,
+  PencilIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
@@ -36,7 +37,7 @@ import {
   ZapIcon,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
@@ -71,6 +72,9 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const clearUnread = useSessionActivityStore(s => s.clearUnread)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [draftTitle, setDraftTitle] = useState(session.title)
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   // Clear unread badge when user navigates to this session
   useEffect(() => {
@@ -78,6 +82,27 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       clearUnread(session.id)
     }
   }, [isActive, isUnread, clearUnread, session.id])
+
+  useEffect(() => {
+    if (!isRenaming) {
+      return
+    }
+
+    setDraftTitle(session.title)
+    const frame = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [isRenaming, session.title])
+
+  const invalidateSessionQueries = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: ['chat-session', session.id] }),
+    ])
+  }, [queryClient, session.id, workspaceId])
 
   const handleClick = useCallback(() => {
     openTab('chat', { sessionId: session.id })
@@ -95,6 +120,29 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     await ipc?.session.togglePin(session.id)
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
   }, [session.id, workspaceId, queryClient])
+
+  const handleRename = useCallback(async (nextTitleRaw: string) => {
+    const nextTitle = nextTitleRaw.trim()
+    setIsRenaming(false)
+    setDraftTitle(session.title)
+
+    if (!nextTitle || nextTitle === session.title) {
+      return
+    }
+
+    await ipc?.session.updateTitle({ id: session.id, title: nextTitle })
+    await invalidateSessionQueries()
+  }, [invalidateSessionQueries, session.id, session.title])
+
+  const handleRenameCancel = useCallback(() => {
+    setDraftTitle(session.title)
+    setIsRenaming(false)
+  }, [session.title])
+
+  const handleStartRename = useCallback(() => {
+    setDraftTitle(session.title)
+    setIsRenaming(true)
+  }, [session.title])
 
   const handleExport = useCallback(async () => {
     const md = await ipc?.session.exportAsMarkdown(session.id)
@@ -124,60 +172,104 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
 
   return (
     <div
-      draggable
+      draggable={!isRenaming}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       className={cn(
-        'group flex w-full items-center gap-1.5 rounded-md text-left text-xs transition-colors hover:bg-accent/60 cursor-grab active:cursor-grabbing',
+        'group flex w-full items-center gap-1.5 rounded-md text-left text-xs transition-colors hover:bg-accent/60',
+        !isRenaming && 'cursor-grab active:cursor-grabbing',
         isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
       data-testid={`session-item-${session.id}`}
+      data-session-pinned={session.pinned ? 'true' : 'false'}
     >
-      <button
-        type="button"
-        onClick={handleClick}
-        className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
-      >
-        {session.pinned ? (
-          <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" />
-        ) : null}
-        <span className="min-w-0 flex-1 truncate text-left">{session.title}</span>
-        {isUnread && !isActive && (
-          <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
-        )}
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          {formatRelativeTime(session.updatedAt)}
-        </span>
-      </button>
-      <Menu>
-        <MenuTrigger
-          render={(
+      {isRenaming
+        ? (
+          <div
+            className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
+            onClick={e => e.stopPropagation()}
+          >
+            {session.pinned ? (
+              <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
+            ) : null}
+            <input
+              ref={renameInputRef}
+              value={draftTitle}
+              onChange={e => setDraftTitle(e.target.value)}
+              onBlur={() => { void handleRename(draftTitle) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void handleRename(draftTitle)
+                }
+                else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  handleRenameCancel()
+                }
+              }}
+              data-testid={`session-rename-input-${session.id}`}
+              className="min-w-0 flex-1 bg-transparent text-left text-xs text-sidebar-foreground/90 outline-none placeholder:text-muted-foreground/40"
+            />
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {formatRelativeTime(session.updatedAt)}
+            </span>
+          </div>
+        )
+        : (
+          <>
             <button
               type="button"
-              className="shrink-0 rounded p-0.5 mr-2 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
-              onClick={e => e.stopPropagation()}
-              aria-label="会话菜单"
-            />
-          )}
-        >
-          <MoreHorizontalIcon className="size-3" aria-hidden="true" />
-        </MenuTrigger>
-        <MenuPopup align="start" side="bottom" sideOffset={4}>
-          <MenuItem onClick={handleTogglePin}>
-            {session.pinned ? <PinOffIcon /> : <PinIcon />}
-            {session.pinned ? '取消置顶' : '置顶'}
-          </MenuItem>
-          <MenuItem onClick={handleExport}>
-            <ClipboardCopyIcon />
-            复制为 Markdown
-          </MenuItem>
-          <MenuSeparator />
-          <MenuItem variant="destructive" onClick={handleDelete}>
-            <Trash2Icon />
-            删除会话
-          </MenuItem>
-        </MenuPopup>
-      </Menu>
+              onClick={handleClick}
+              data-testid={`session-open-${session.id}`}
+              className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
+            >
+              {session.pinned ? (
+                <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
+              ) : null}
+              <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{session.title}</span>
+              {isUnread && !isActive && (
+                <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
+              )}
+              <span className="shrink-0 text-[11px] text-muted-foreground">
+                {formatRelativeTime(session.updatedAt)}
+              </span>
+            </button>
+            <Menu>
+              <MenuTrigger
+                render={(
+                  <button
+                    type="button"
+                    className="shrink-0 rounded p-0.5 mr-2 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
+                    onClick={e => e.stopPropagation()}
+                    aria-label="会话菜单"
+                  />
+                )}
+                data-testid={`session-menu-trigger-${session.id}`}
+              >
+                <MoreHorizontalIcon className="size-3" aria-hidden="true" />
+              </MenuTrigger>
+              <MenuPopup align="start" side="bottom" sideOffset={4}>
+                <MenuItem onClick={handleStartRename} data-testid={`session-menu-rename-${session.id}`}>
+                  <PencilIcon />
+                  重命名
+                </MenuItem>
+                <MenuItem onClick={handleTogglePin} data-testid={`session-menu-toggle-pin-${session.id}`}>
+                  {session.pinned ? <PinOffIcon /> : <PinIcon />}
+                  {session.pinned ? '取消置顶' : '置顶'}
+                </MenuItem>
+                <MenuItem onClick={handleExport} data-testid={`session-menu-copy-markdown-${session.id}`}>
+                  <ClipboardCopyIcon />
+                  复制为 Markdown
+                </MenuItem>
+                <MenuSeparator />
+                <MenuItem variant="destructive" onClick={handleDelete} data-testid={`session-menu-delete-${session.id}`}>
+                  <Trash2Icon />
+                  删除会话
+                </MenuItem>
+              </MenuPopup>
+            </Menu>
+          </>
+        )}
     </div>
   )
 }
@@ -219,6 +311,7 @@ function WorkspaceGroup({
         <button
           type="button"
           onClick={openWorkspaceHome}
+          data-testid={`workspace-open-${workspace.id}`}
           className="flex min-w-0 flex-1 items-center px-1 py-1.5 text-left"
         >
           <span className="truncate text-xs font-medium text-sidebar-foreground/90">
@@ -432,6 +525,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="用量"
             collapsed={collapsed}
             onClick={() => openTab('usage')}
+            dataTestId="nav-usage"
           />
           <TopNavItem
             icon={<SettingsIcon className="size-4" />}

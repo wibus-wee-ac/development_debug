@@ -120,13 +120,19 @@ export function KanbanSidebar() {
                   <MenuTrigger
                     className="opacity-0 group-hover:opacity-100 transition-opacity mr-1"
                   >
-                    <Button variant="ghost" size="icon-xs" className="text-muted-foreground/40">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-muted-foreground/40"
+                      data-testid={`kanban-board-menu-trigger-${board.id}`}
+                    >
                       <MoreHorizontalIcon />
                     </Button>
                   </MenuTrigger>
                   <MenuPopup side="right" align="start">
                     <MenuItem
                       variant="destructive"
+                      data-testid={`kanban-board-delete-${board.id}`}
                       onClick={() => {
                         deleteBoard.mutate(board.id)
                         if (isActive) {

@@ -12,7 +12,7 @@ import { setWorldConstructor, World } from '@cucumber/cucumber'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { _electron as electron } from '@playwright/test'
 
-import { MockLlmServer, type MockLlmFailureMode } from './mock-llm-server'
+import { MockLlmServer, type MockLlmFailureMode, type MockToolCall } from './mock-llm-server'
 import {
   buildE2ELaunchEnv,
   buildScenarioArtifactPaths,
@@ -110,6 +110,9 @@ export class CradleWorld extends World {
 
   async configureMockLlmProvider(options: {
     responseText?: string
+    responseTexts?: string[]
+    reasoningText?: string
+    toolCalls?: MockToolCall[]
     chunkDelay?: number
     failureMode?: MockLlmFailureMode
     errorStatusCode?: number

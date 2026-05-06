@@ -153,10 +153,12 @@ function AddProviderDialog({
         credentialRef,
       })
 
+      let shouldClose = false
       try {
         const result = await ipc.agentRuntime.probeProfile(profileId)
         setStatusOk(result.ok)
         setStatusText(result.ok ? `${result.label} ready` : (result.errorText ?? 'Probe failed'))
+        shouldClose = result.ok
       }
       catch {
         setStatusOk(false)
@@ -164,7 +166,7 @@ function AddProviderDialog({
       }
 
       onAdded()
-      if (statusOk !== false) {
+      if (shouldClose) {
         onOpenChange(false)
         setForm(defaultFields('openai-compatible'))
       }
@@ -177,7 +179,7 @@ function AddProviderDialog({
     finally {
       setBusy(false)
     }
-  }, [form, profileId, onAdded, onOpenChange, statusOk])
+  }, [form, profileId, onAdded, onOpenChange])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -210,19 +212,19 @@ function AddProviderDialog({
             <>
               <div className="grid gap-1.5">
                 <Label>Name</Label>
-                <Input value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
+                <Input data-testid="provider-name" value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
               </div>
               <div className="grid gap-1.5">
                 <Label>Base URL</Label>
-                <Input value={form.fields.baseUrl} onChange={e => setForm({ ...form, fields: { ...form.fields, baseUrl: e.target.value } })} placeholder="https://api.openai.com/v1" />
+                <Input data-testid="provider-baseurl" value={form.fields.baseUrl} onChange={e => setForm({ ...form, fields: { ...form.fields, baseUrl: e.target.value } })} placeholder="https://api.openai.com/v1" />
               </div>
               <div className="grid gap-1.5">
                 <Label>Model</Label>
-                <Input value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="gpt-4o" />
+                <Input data-testid="provider-model" value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="gpt-4o" />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key</Label>
-                <Input type="password" value={form.fields.apiKey} onChange={e => setForm({ ...form, fields: { ...form.fields, apiKey: e.target.value } })} placeholder="sk-..." />
+                <Input data-testid="provider-apikey" type="password" value={form.fields.apiKey} onChange={e => setForm({ ...form, fields: { ...form.fields, apiKey: e.target.value } })} placeholder="sk-..." />
               </div>
             </>
           )}
@@ -363,6 +365,15 @@ function EditProviderDialog({
   const [command, setCommand] = useState(parsed.executable ?? parsed.cmd ?? '')
   const [busy, setBusy] = useState(false)
 
+  useEffect(() => {
+    setName(profile.name)
+    setEnabled(profile.enabled)
+    setApiKey('')
+    setBaseUrl(parsed.baseUrl ?? '')
+    setModel(parsed.model ?? '')
+    setCommand(parsed.executable ?? parsed.cmd ?? '')
+  }, [profile, parsed])
+
   const handleSave = useCallback(async () => {
     if (!ipc) {
       return
@@ -433,7 +444,7 @@ function EditProviderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" showCloseButton>
+      <DialogContent className="sm:max-w-md" showCloseButton data-testid="provider-edit-dialog">
         <DialogHeader>
           <DialogTitle>Edit Provider</DialogTitle>
           <DialogDescription>Modify provider configuration.</DialogDescription>
@@ -441,22 +452,22 @@ function EditProviderDialog({
         <div className="grid gap-4 py-2">
           <div className="grid gap-1.5">
             <Label>Name</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} />
+            <Input data-testid="provider-edit-name" value={name} onChange={e => setName(e.target.value)} />
           </div>
 
           {profile.providerKind === 'openai-compatible' && (
             <>
               <div className="grid gap-1.5">
                 <Label>Base URL</Label>
-                <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
+                <Input data-testid="provider-edit-baseurl" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
               </div>
               <div className="grid gap-1.5">
                 <Label>Model</Label>
-                <Input value={model} onChange={e => setModel(e.target.value)} />
+                <Input data-testid="provider-edit-model" value={model} onChange={e => setModel(e.target.value)} />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
-                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
+                <Input data-testid="provider-edit-apikey" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
               </div>
             </>
           )}
@@ -465,15 +476,15 @@ function EditProviderDialog({
             <>
               <div className="grid gap-1.5">
                 <Label>Base URL</Label>
-                <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+                <Input data-testid="provider-edit-baseurl" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
               </div>
               <div className="grid gap-1.5">
                 <Label>Model</Label>
-                <Input value={model} onChange={e => setModel(e.target.value)} placeholder="codex-mini-latest" />
+                <Input data-testid="provider-edit-model" value={model} onChange={e => setModel(e.target.value)} placeholder="codex-mini-latest" />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
-                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
+                <Input data-testid="provider-edit-apikey" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
               </div>
             </>
           )}
@@ -482,15 +493,15 @@ function EditProviderDialog({
             <>
               <div className="grid gap-1.5">
                 <Label>Base URL</Label>
-                <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.anthropic.com/v1" />
+                <Input data-testid="provider-edit-baseurl" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.anthropic.com/v1" />
               </div>
               <div className="grid gap-1.5">
                 <Label>Model</Label>
-                <Input value={model} onChange={e => setModel(e.target.value)} placeholder="claude-sonnet-4-20250514" />
+                <Input data-testid="provider-edit-model" value={model} onChange={e => setModel(e.target.value)} placeholder="claude-sonnet-4-20250514" />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
-                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." />
+                <Input data-testid="provider-edit-apikey" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." />
               </div>
             </>
           )}
@@ -507,6 +518,7 @@ function EditProviderDialog({
             <button
               type="button"
               onClick={() => setEnabled(!enabled)}
+              data-testid="provider-edit-enabled"
               className={cn(
                 'text-[11px] px-2 py-0.5 rounded-md font-medium transition-colors',
                 enabled
@@ -520,7 +532,7 @@ function EditProviderDialog({
         </div>
         <DialogFooter variant="bare">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onClick={() => void handleSave()} disabled={busy}>
+          <Button size="sm" onClick={() => void handleSave()} disabled={busy} data-testid="provider-edit-save">
             {busy && <Spinner className="size-3.5" />}
             Save
           </Button>
@@ -560,27 +572,31 @@ function ProviderCard({
   const subtitle = [kind?.label ?? profile.providerKind, detail].filter(Boolean).join(' · ')
 
   return (
-    <SettingsRow
-      label={profile.name}
-      description={subtitle}
-      className="group cursor-pointer rounded-lg -mx-3 px-3 hover:bg-accent"
-      onClick={onEdit}
-    >
-      <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
-        <Switch
-          size="sm"
-          checked={profile.enabled}
-          onCheckedChange={onToggle}
-        />
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
-        >
-          <TrashIcon className="size-3.5" />
-        </button>
-      </div>
-    </SettingsRow>
+    <div data-testid={`agent-profile-row-${profile.id}`}>
+      <SettingsRow
+        label={profile.name}
+        description={subtitle}
+        className="group cursor-pointer rounded-lg -mx-3 px-3 hover:bg-accent"
+        onClick={onEdit}
+      >
+        <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+          <Switch
+            size="sm"
+            checked={profile.enabled}
+            onCheckedChange={onToggle}
+            data-testid={`agent-profile-toggle-${profile.id}`}
+          />
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
+            data-testid={`agent-profile-remove-${profile.id}`}
+          >
+            <TrashIcon className="size-3.5" />
+          </button>
+        </div>
+      </SettingsRow>
+    </div>
   )
 }
 

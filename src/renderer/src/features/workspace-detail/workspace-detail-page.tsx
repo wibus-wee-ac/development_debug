@@ -5,6 +5,7 @@
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { Button } from '@renderer/components/ui/button'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
+import { WORKSPACES_QUERY_KEY } from '@renderer/features/workspace/use-workspace'
 import { SkillManager } from '@renderer/features/skills/skill-manager'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
@@ -125,6 +126,7 @@ function InlineEditTitle({
     return (
       <input
         ref={inputRef}
+        data-testid="workspace-detail-title-input"
         value={draft}
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
@@ -144,6 +146,7 @@ function InlineEditTitle({
     <button
       type="button"
       onClick={() => setEditing(true)}
+      data-testid="workspace-detail-title-trigger"
       className="group inline-flex items-center gap-2 text-left"
     >
       <span className="text-lg font-semibold text-foreground">{value}</span>
@@ -157,11 +160,13 @@ function InlineEditTitle({
 function DocumentSection({
   id,
   filename,
+  testId,
   file,
   placeholder,
 }: {
   id: string
   filename: string
+  testId?: string
   file: { content: string | null, loading: boolean, saving: boolean, save: (md: string) => Promise<unknown> }
   placeholder: string
 }) {
@@ -179,7 +184,7 @@ function DocumentSection({
   }
 
   return (
-    <section id={id}>
+    <section id={id} data-testid={testId}>
       <div className="flex items-center gap-2 mb-3">
         <span className="text-[12px] font-mono text-muted-foreground">{filename}</span>
         {file.saving && (
@@ -383,7 +388,10 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const handleRename = useCallback(async (newName: string) => {
     if (!ipc) { return }
     await ipc.workspace.update({ id: workspaceId, name: newName })
-    await queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] }),
+      queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+    ])
   }, [workspaceId, queryClient])
 
   const handleOpenInFinder = useCallback(() => {
@@ -482,7 +490,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             {/* Header */}
             <div className="mb-6">
               <InlineEditTitle value={workspace.name} onSave={handleRename} />
-              <p className="text-[12px] text-muted-foreground font-mono mt-1 truncate">
+              <p data-testid="workspace-detail-path" className="text-[12px] text-muted-foreground font-mono mt-1 truncate">
                 {workspace.path}
               </p>
             </div>
@@ -526,6 +534,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
               <DocumentSection
                 id="section-agents"
                 filename="AGENTS.md"
+                testId="workspace-detail-agents-section"
                 file={agents}
                 placeholder="配置 Agent 指令..."
               />

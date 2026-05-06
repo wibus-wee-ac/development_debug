@@ -20,7 +20,7 @@
 - **preferences.ts**: 全局聊天偏好持久化接口
 - **pty.ts**: PTY 会话创建、写入、调整尺寸与进程控制接口
 - **search.ts**: 会话线程搜索接口
-- **session.ts**: 会话元数据与消息读取接口；backend handle/model 由 control-plane feature 持久化
+- **session.ts**: 会话元数据与消息读取接口；会话删除会同步清理 FTS 索引，Markdown 导出会按 backend timeline 重建 assistant 正文，backend handle/model 由 control-plane feature 持久化
 - **skills.ts**: skills inventory、创建、导入与来源抓取接口
 - **usage.ts**: token usage 聚合统计接口
 - **window.ts**: tear-off 窗口管理接口

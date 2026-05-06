@@ -202,6 +202,7 @@ function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) =
     return (
       <motion.textarea
         ref={ref}
+        data-testid="issue-title-input"
         className="w-full text-[26px] font-semibold bg-transparent outline-none text-foreground leading-[1.2] resize-none overflow-hidden tracking-tight"
         value={draft}
         onChange={(e) => {
@@ -224,6 +225,7 @@ function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) =
 
   return (
     <motion.h1
+      data-testid="issue-title-display"
       className="text-[26px] font-semibold text-foreground leading-[1.2] tracking-tight text-wrap-pretty cursor-text select-none"
       onClick={() => setEditing(true)}
       whileHover={{ opacity: 0.7 }}
@@ -993,7 +995,7 @@ function PropertyPanel({
         <div className="flex items-center h-9">
           <span className="w-20 shrink-0 text-[12px] text-muted-foreground">Priority</span>
           <Select value={priority} onValueChange={p => onPatch({ priority: p })}>
-            <SelectTrigger size="sm" className={propTriggerCls}>
+            <SelectTrigger size="sm" className={propTriggerCls} data-testid="issue-priority-trigger">
               <span className="flex items-center gap-2">
                 <PriorityIcon priority={priority} className="size-3" />
                 <span className="text-foreground">{currentPriority?.label ?? 'No priority'}</span>
@@ -1001,7 +1003,7 @@ function PropertyPanel({
             </SelectTrigger>
             <SelectContent position="popper" sideOffset={4} align="start">
               {PRIORITY_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>
+                <SelectItem key={o.value} value={o.value} data-testid={`issue-priority-option-${o.value}`}>
                   <span className="flex items-center gap-2">
                     <PriorityIcon priority={o.value} className="size-3" />
                     {o.label}
@@ -1191,14 +1193,19 @@ export function IssueDetail({
   return (
     <motion.div
       data-testid="issue-detail-panel"
+      data-issue-id={issue.id}
       className="flex h-full flex-col bg-background"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
     >
       {/* ── Top bar — frosted glass ──────────────────────── */}
-      <div className="flex items-center gap-3 px-5 h-12 shrink-0 backdrop-blur-xl bg-background/70 border-b border-border z-10">
+      <div
+        data-testid="issue-detail-header"
+        className="flex items-center gap-3 px-5 h-12 shrink-0 backdrop-blur-xl bg-background/70 border-b border-border z-10"
+      >
         <motion.button
+          data-testid="issue-detail-close-btn"
           className="flex items-center justify-center size-7 rounded-lg text-text-tertiary hover:text-foreground hover:bg-accent transition-colors duration-150"
           onClick={onClose}
           whileTap={{ scale: 0.9 }}
@@ -1221,6 +1228,7 @@ export function IssueDetail({
         <Menu>
           <MenuTrigger>
             <motion.button
+              data-testid="issue-detail-menu-trigger"
               className="size-7 flex items-center justify-center rounded-lg text-text-dim hover:text-foreground hover:bg-accent transition-colors duration-150"
               whileTap={{ scale: 0.9 }}
             >
@@ -1230,6 +1238,7 @@ export function IssueDetail({
           <MenuPopup align="end">
             <MenuItem
               variant="destructive"
+              data-testid="issue-detail-delete-issue"
               onClick={() => { deleteIssue.mutate(issue.id); onClose() }}
             >
               <Trash2Icon />
@@ -1255,6 +1264,7 @@ export function IssueDetail({
 
             {/* Description */}
             <motion.div
+              data-testid="issue-description-editor"
               className="mt-8"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}

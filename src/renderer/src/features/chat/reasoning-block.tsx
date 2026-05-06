@@ -17,10 +17,11 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
   const isStreaming = state === 'streaming'
 
   return (
-    <div className="my-1">
+    <div className="my-1" data-testid="chat-reasoning-block">
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
+        data-testid="chat-reasoning-toggle"
         className={cn(
           'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors',
           'text-muted-foreground hover:text-foreground hover:bg-muted/50',
@@ -35,7 +36,10 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
       </button>
 
       {expanded && (
-        <div className="mt-1 ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed">
+        <div
+          data-testid="chat-reasoning-content"
+          className="mt-1 ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed"
+        >
           <Streamdown animated isAnimating={isStreaming}>
             {text}
           </Streamdown>

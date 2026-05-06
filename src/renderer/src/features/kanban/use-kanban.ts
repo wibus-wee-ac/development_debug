@@ -12,6 +12,7 @@ export const kanbanKeys = {
   statuses: (workspaceId: string) => ['kanban', 'statuses', workspaceId] as const,
   milestones: (workspaceId: string) => ['kanban', 'milestones', workspaceId] as const,
   issues: (params: Record<string, unknown>) => ['kanban', 'issues', params] as const,
+  searchIssues: (query: string, limit: number) => ['kanban', 'searchIssues', query, limit] as const,
   issue: (id: string) => ['kanban', 'issue', id] as const,
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
@@ -207,6 +208,17 @@ export function useIssues(params: IssueFilterParams) {
     queryKey: kanbanKeys.issues(params),
     queryFn: () => ipc ? ipc.kanban.listIssues(params) : Promise.resolve([]),
     enabled: !!params.workspaceId,
+  })
+}
+
+export function useSearchIssues(query: string, limit = 20, enabled = true) {
+  const trimmed = query.trim()
+
+  return useQuery({
+    queryKey: kanbanKeys.searchIssues(trimmed, limit),
+    queryFn: () => ipc ? ipc.kanban.searchIssues(trimmed, limit) : Promise.resolve([]),
+    enabled: enabled && trimmed.length > 0,
+    staleTime: 5_000,
   })
 }
 

@@ -17,12 +17,6 @@ import { AgentDetailPage } from './agent-detail'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const KIND_LABELS: Record<string, string> = {
-  'openai-compatible': 'OpenAI',
-  'acp-chat': 'ACP',
-  'cli-tui': 'CLI',
-}
-
 function buildAvatarUrl(style: string, seed: string): string {
   return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
 }
@@ -44,6 +38,7 @@ function AgentRow({
 }) {
   const provider = profiles.find(p => p.id === agent.providerId)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
+  const providerLabel = provider?.name || provider?.providerKind
 
   return (
     <div
@@ -64,20 +59,21 @@ function AgentRow({
           alt={agent.name}
           className="size-full object-cover"
           crossOrigin="anonymous"
+          data-testid={`agent-row-avatar-${agent.id}`}
         />
       </div>
 
       {/* Info */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium">{agent.name}</span>
-          {provider && (
+          <span className="truncate text-sm font-medium" data-testid={`agent-row-name-${agent.id}`}>{agent.name}</span>
+          {providerLabel && (
             <span className="shrink-0 rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {KIND_LABELS[provider.providerKind] ?? provider.providerKind}
+              {providerLabel}
             </span>
           )}
           {agent.modelId && (
-            <span className="max-w-32 shrink-0 truncate rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <span className="max-w-32 shrink-0 truncate rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground" data-testid={`agent-row-model-${agent.id}`}>
               {agent.modelId}
             </span>
           )}

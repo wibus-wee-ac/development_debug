@@ -29,7 +29,9 @@ import {
   FileIcon,
   MessageSquareIcon,
   SettingsIcon,
+  SparklesIcon,
   TerminalIcon,
+  UserIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -209,13 +211,14 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} className="max-w-2xl">
-      <Command shouldFilter={false}>
+      <Command shouldFilter={false} data-testid="global-search-dialog">
         <div className="overflow-hidden rounded-xl!">
           <CommandInput
             placeholder="搜索对话、文件、Issue、命令..."
             value={query}
             onValueChange={setQuery}
             aria-label="全局搜索"
+            data-testid="global-search-input"
           />
           <div>
             <CommandEmpty className="not-empty:py-12">
@@ -288,15 +291,10 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                             close()
                             openTab('chat', { sessionId: hit.sessionId })
                           }}
-                          className="flex items-center gap-2.5 px-2.5 py-1.5"
+                          className="flex-col items-stretch gap-1.5 px-2.5 py-2"
+                          data-testid={`global-search-thread-result-${hit.sessionId}`}
                         >
-                          <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 flex-1 truncate text-sm">
-                            <HighlightedText text={hit.sessionTitle} ranges={hit.titleRanges ?? []} />
-                          </span>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
-                            {group.label}
-                          </span>
+                          <ThreadSearchResultRow hit={hit} workspaceLabel={group.label} />
                         </CommandItem>
                       )))}
                   </CommandGroup>
@@ -385,6 +383,76 @@ function GroupHeader({ label, count }: { label: string, count: number }) {
       <span className="text-[10px] text-muted-foreground">
         {count}
         {' 个结果'}
+      </span>
+    </div>
+  )
+}
+
+function ThreadSearchResultRow({
+  hit,
+  workspaceLabel,
+}: {
+  hit: ThreadSearchHit
+  workspaceLabel: string
+}) {
+  const snippets = hit.snippets ?? []
+
+  return (
+    <>
+      <div className="flex items-center gap-2.5">
+        <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span
+          className="min-w-0 flex-1 truncate text-sm"
+          data-testid={`global-search-thread-title-${hit.sessionId}`}
+        >
+          <HighlightedText text={hit.sessionTitle} ranges={hit.titleRanges ?? []} />
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">
+          {workspaceLabel}
+        </span>
+      </div>
+
+      {snippets.length > 0
+        ? (
+          <div className="flex flex-col gap-1 pl-6">
+            {snippets.slice(0, 2).map(snippet => (
+              <ThreadSearchSnippetRow key={snippet.messageId} snippet={snippet} />
+            ))}
+          </div>
+        )
+        : (
+          <div className="pl-6 text-[11px] text-muted-foreground">
+            仅标题匹配
+          </div>
+        )}
+    </>
+  )
+}
+
+function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippets'][number] }) {
+  const isUser = snippet.messageRole === 'user'
+
+  return (
+    <div
+      className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground"
+      data-testid={`global-search-thread-snippet-${snippet.messageId}`}
+    >
+      <span
+        className={cn(
+          'mt-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm',
+          isUser
+            ? 'bg-primary/10 text-primary'
+            : 'bg-foreground/10 text-foreground/70',
+        )}
+        title={isUser ? '用户' : '助手'}
+        aria-hidden="true"
+      >
+        {isUser
+          ? <UserIcon className="size-2.5" />
+          : <SparklesIcon className="size-2.5" />}
+      </span>
+      <span className="min-w-0 line-clamp-2 wrap-break-word">
+        <HighlightedText text={snippet.text} ranges={snippet.ranges ?? []} />
       </span>
     </div>
   )

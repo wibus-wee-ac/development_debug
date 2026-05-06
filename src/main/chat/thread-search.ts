@@ -375,32 +375,42 @@ export class ThreadSearchEngine {
    * Should be called after a message reaches `complete` status.
    */
   indexMessage(sessionId: string, sessionTitle: string, messageId: string, content: string): void {
-    const text = extractSearchableText(content)
-    if (!text) {
+    if (!this.hasFtsTable()) {
       return
     }
-    const jieba = this.getJieba()
-    const segmented = jieba
-      ? (jieba.cutForSearch(text, true) as string[]).join(' ')
-      : text
-    const segmentedTitle = jieba
-      ? (jieba.cutForSearch(sessionTitle, true) as string[]).join(' ')
-      : sessionTitle
+
+    const indexedValues = this.buildIndexedValues(sessionTitle, content)
+    if (!indexedValues) {
+      return
+    }
 
     const db = getDb()
     // Use messageId hash as rowid for upsert. FTS5 contentless tables
     // require explicit rowid management.
     const rowid = this.hashId(messageId)
     db.run(sql`INSERT OR REPLACE INTO messages_fts(rowid, session_id, session_title, searchable_text)
-      VALUES (${rowid}, ${sessionId}, ${segmentedTitle}, ${segmented})`)
+      VALUES (${rowid}, ${sessionId}, ${indexedValues.segmentedTitle}, ${indexedValues.segmentedText})`)
   }
 
   /**
    * Remove all FTS entries for a session.
    */
   removeSessionFromIndex(sessionId: string): void {
+    if (!this.hasFtsTable()) {
+      return
+    }
+
     const db = getDb()
-    db.run(sql`DELETE FROM messages_fts WHERE session_id = ${sessionId}`)
+    const rows = db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(eq(messages.sessionId, sessionId))
+      .all()
+
+    for (const row of rows) {
+      const rowid = this.hashId(row.id)
+      db.run(sql`DELETE FROM messages_fts WHERE rowid = ${rowid}`)
+    }
   }
 
   /**
@@ -408,6 +418,10 @@ export class ThreadSearchEngine {
    * Useful after migration or for repair.
    */
   rebuildIndex(): void {
+    if (!this.hasFtsTable()) {
+      return
+    }
+
     const db = getDb()
     // Clear existing FTS data
     db.run(sql`DELETE FROM messages_fts`)
@@ -434,6 +448,34 @@ export class ThreadSearchEngine {
       hash = ((hash << 5) - hash + id.charCodeAt(i)) | 0
     }
     return Math.abs(hash)
+  }
+
+  private hasFtsTable(): boolean {
+    const db = getDb()
+    const rows = db.all<{ name: string }>(
+      sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'messages_fts' LIMIT 1`,
+    )
+    return rows.length > 0
+  }
+
+  private buildIndexedValues(sessionTitle: string, content: string): {
+    segmentedTitle: string
+    segmentedText: string
+  } | null {
+    const text = extractSearchableText(content)
+    if (!text) {
+      return null
+    }
+
+    const jieba = this.getJieba()
+    const segmentedText = jieba
+      ? (jieba.cutForSearch(text, true) as string[]).join(' ')
+      : text
+    const segmentedTitle = jieba
+      ? (jieba.cutForSearch(sessionTitle, true) as string[]).join(' ')
+      : sessionTitle
+
+    return { segmentedTitle, segmentedText }
   }
 }
 

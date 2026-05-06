@@ -9,7 +9,7 @@ import { desc, eq } from 'drizzle-orm'
 
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
-import { backendSessionBindings, messages, sessions } from '../../db/schema'
+import { backendRuns, backendSessionBindings, backendTimelineEvents, messages, sessions } from '../../db/schema'
 import { ptyManager } from '../../pty/pty-manager'
 import { threadSearchEngine } from '../../chat/thread-search'
 
@@ -120,10 +120,40 @@ export class SessionService extends IpcService {
       const role = msg.role === 'user' ? 'User' : 'Assistant'
       lines.push(`## ${role}`)
       lines.push('')
-      lines.push(msg.content)
+      lines.push(msg.role === 'assistant' ? extractAssistantMarkdownText(db, msg.id, msg.content) : msg.content)
       lines.push('')
     }
 
     return lines.join('\n')
   }
+}
+
+function extractAssistantMarkdownText(
+  db: ReturnType<typeof getDb>,
+  messageId: string,
+  fallbackContent: string,
+): string {
+  const run = db
+    .select({ id: backendRuns.id })
+    .from(backendRuns)
+    .where(eq(backendRuns.messageId, messageId))
+    .orderBy(desc(backendRuns.startedAt))
+    .get()
+
+  if (!run) {
+    return fallbackContent
+  }
+
+  const assistantText = db
+    .select({ payloadJson: backendTimelineEvents.payloadJson })
+    .from(backendTimelineEvents)
+    .where(eq(backendTimelineEvents.runId, run.id))
+    .orderBy(backendTimelineEvents.sequenceNumber)
+    .all()
+    .map(row => JSON.parse(row.payloadJson) as { type: string, delta?: string })
+    .filter(event => event.type === 'assistant.text.delta')
+    .map(event => event.delta ?? '')
+    .join('')
+
+  return assistantText || fallbackContent
 }

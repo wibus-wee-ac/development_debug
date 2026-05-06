@@ -108,7 +108,7 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
   }
 
   return (
-    <div>
+    <div data-testid="usage-heatmap">
       <svg
         ref={svgRef}
         width={svgWidth}
@@ -157,6 +157,9 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
               height={CELL_SIZE}
               rx={CELL_RADIUS}
               ry={CELL_RADIUS}
+              data-testid="usage-heatmap-cell"
+              data-date={cell.date}
+              data-has-usage={cell.tokens > 0 ? 'true' : 'false'}
               fill={cellColor(intensity)}
               opacity={intensity === 0 ? 0.08 : 1}
               stroke={isHovered ? 'var(--color-foreground)' : 'none'}
@@ -172,19 +175,20 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
       {/* Tooltip */}
       {hoveredCell && (
         <div
+          data-testid="usage-heatmap-tooltip"
           className="pointer-events-none fixed z-50 rounded-lg border border-border bg-popover px-3 py-2 text-popover-foreground shadow-md"
           style={{
             left: tooltipPos.x + 12,
             top: tooltipPos.y - 50,
           }}
         >
-          <p className="text-xs font-medium text-foreground">
+          <p className="text-xs font-medium text-foreground" data-testid="usage-heatmap-tooltip-date">
             {hoveredCell.date}
           </p>
           {hoveredCell.tokens > 0
             ? (
               <div className="mt-1 space-y-0.5">
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground" data-testid="usage-heatmap-tooltip-metrics">
                   {hoveredCell.tokens.toLocaleString()}
                   {' '}
                   tokens
@@ -198,7 +202,7 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
               </div>
             )
             : (
-              <p className="mt-0.5 text-[11px] text-muted-foreground">No usage</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground" data-testid="usage-heatmap-tooltip-metrics">No usage</p>
             )}
         </div>
       )}

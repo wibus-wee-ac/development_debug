@@ -29,6 +29,7 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+  useEffect(() => { setName(status.name) }, [status.name])
 
   function handleNameSave() {
     const trimmed = name.trim()
@@ -49,9 +50,10 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
     <div
       ref={setNodeRef}
       style={style}
+      data-testid={`status-row-${status.id}`}
       className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/30 group"
     >
-      <button className="cursor-grab text-muted-foreground/30" {...attributes} {...listeners}>
+      <button className="cursor-grab text-muted-foreground/30" data-testid={`status-drag-${status.id}`} {...attributes} {...listeners}>
         <GripVerticalIcon className="size-3" />
       </button>
 
@@ -60,6 +62,7 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
           className="size-3 rounded-full shrink-0"
           style={{ backgroundColor: status.color ?? '#64748b' }}
           onClick={() => setShowColors(v => !v)}
+          data-testid={`status-color-${status.id}`}
         />
         {showColors && (
           <div className="absolute left-0 top-5 z-10 flex flex-wrap w-20 gap-1 rounded-md border border-border/50 bg-popover p-1.5">
@@ -85,6 +88,7 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
             value={name}
             onChange={e => setName(e.target.value)}
             onBlur={handleNameSave}
+            data-testid={`status-input-${status.id}`}
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleNameSave()
               if (e.key === 'Escape') { setName(status.name); setEditing(false) }
@@ -94,6 +98,7 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
         )
         : (
           <span
+            data-testid={`status-name-${status.id}`}
             className="flex-1 text-[13px] truncate cursor-text"
             onClick={() => setEditing(true)}
           >
@@ -104,6 +109,7 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
       <button
         className="text-muted-foreground/20 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
         onClick={() => deleteStatus.mutate({ id: status.id, workspaceId })}
+        data-testid={`status-delete-${status.id}`}
       >
         <TrashIcon className="size-3" />
       </button>
@@ -136,12 +142,12 @@ export function StatusManager({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div>
+    <div data-testid="status-manager">
       <p className="text-[12px] text-muted-foreground mb-2">Statuses</p>
 
       <DndContext sensors={sensors} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
         <SortableContext items={statuses.map(s => s.id)} strategy={verticalListSortingStrategy}>
-          <div className="flex flex-col gap-px">
+          <div className="flex flex-col gap-px" data-testid="status-manager-list">
             {statuses.map(s => (
               <StatusRow key={s.id} status={s} workspaceId={workspaceId} />
             ))}

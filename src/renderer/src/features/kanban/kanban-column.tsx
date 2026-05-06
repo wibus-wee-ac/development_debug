@@ -59,7 +59,13 @@ function SortableIssueCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      data-testid={`issue-sortable-${issue.id}`}
+      {...attributes}
+      {...listeners}
+    >
       <IssueCard issue={issue} onClick={onClick} isDragging={isDragging} isSelected={isSelected} done={done} />
     </div>
   )
@@ -115,7 +121,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
       {/* Column header */}
       <div className="flex items-center gap-1.5 px-0.5 pb-1">
         <span className={cn('size-1.5 shrink-0 rounded-full', getAccentClass(status.color))} />
-        <span className="text-[13px] font-medium text-foreground">{status.name}</span>
+        <span className="text-[13px] font-medium text-foreground" data-testid={`kanban-column-title-${status.id}`}>{status.name}</span>
         <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-text-tertiary">
           {issues.length}
         </span>
@@ -134,6 +140,7 @@ export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selec
       {/* Issue list */}
       <div
         ref={setNodeRef}
+        data-testid={`kanban-column-dropzone-${status.id}`}
         className={cn(
           'flex flex-col gap-1.5 min-h-10 rounded-lg transition-colors',
           isOver && 'bg-foreground/3',

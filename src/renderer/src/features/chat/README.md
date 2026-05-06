@@ -23,7 +23,7 @@ persisted snapshot observation so mid-flight refreshes do not corrupt the active
 - **mention-panel.tsx**: Fuzzy file picker above composer using fzf with highlighted matches
 - **message-bubble.tsx**: Renders a single UIMessage with Streamdown markdown, reasoning blocks, tool call blocks, and copy action; memoized so unchanged history rows do not re-render during streaming
 - **model-picker.tsx**: Button-triggered Combobox with searchable list for picking the active ACP model; controlled open state so callers can open it after reconnecting
-- **reasoning-block.tsx**: Collapsible thinking chain display with Streamdown markdown rendering inside
-- **tool-call-block.tsx**: Collapsible tool invocation display with status icons and state machine; renders tool input and terminal state without depending on unused output payloads
+- **reasoning-block.tsx**: Collapsible thinking chain display with Streamdown markdown rendering inside, plus stable toggle/content anchors for E2E assertions
+- **tool-call-block.tsx**: Collapsible tool invocation display with status icons and state machine; renders tool input、output（含无执行结果时的占位文案）与 stable E2E anchors
 - **use-chat-session.test.ts**: Passive snapshot/reload regression tests for chat status derivation, renderer-visible state precedence, and stop-action abort forwarding
 - **index.ts**: Barrel file re-exporting public API

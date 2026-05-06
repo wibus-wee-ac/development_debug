@@ -35,6 +35,8 @@ export interface MockToolDefinition {
 export interface MockLlmServerOptions {
   /** Fixed response text the "assistant" will stream back. Default: 'Hello from mock LLM!' */
   responseText?: string
+  /** Per-request response texts used in order for deterministic multi-turn scenarios. */
+  responseTexts?: string[]
   /** Simulated delay (ms) between SSE chunks. Default: 10 */
   chunkDelay?: number
   /** Deterministic failure mode for request/stream error scenarios. */
@@ -57,6 +59,7 @@ export class MockLlmServer {
   private server: Server | null = null
   private port = 0
   private responseText: string
+  private readonly responseTexts: string[] | null
   private chunkDelay: number
   private readonly failureMode: MockLlmFailureMode
   private readonly errorStatusCode: number
@@ -71,6 +74,7 @@ export class MockLlmServer {
 
   constructor(opts: MockLlmServerOptions = {}) {
     this.responseText = opts.responseText ?? 'Hello from mock LLM!'
+    this.responseTexts = opts.responseTexts?.length ? [...opts.responseTexts] : null
     this.chunkDelay = opts.chunkDelay ?? 10
     this.failureMode = opts.failureMode ?? 'none'
     this.errorStatusCode = opts.errorStatusCode ?? 500
@@ -177,6 +181,7 @@ export class MockLlmServer {
       const body = Buffer.concat(chunks).toString('utf8')
       this.recordRequest(req, body)
       this.turnCount++
+      const responseText = this.getResponseTextForTurn(this.turnCount)
 
       if (this.failureMode === 'http-error') {
         res.writeHead(this.errorStatusCode, { 'Content-Type': 'application/json' })
@@ -202,7 +207,7 @@ export class MockLlmServer {
         void this.streamToolCallResponse(res)
       }
       else {
-        void this.streamResponse(res)
+        void this.streamResponse(res, responseText)
       }
     })
   }
@@ -216,7 +221,15 @@ export class MockLlmServer {
     })
   }
 
-  private async streamResponse(res: ServerResponse): Promise<void> {
+  private getResponseTextForTurn(turnIndex: number): string {
+    if (!this.responseTexts?.length) {
+      return this.responseText
+    }
+
+    return this.responseTexts[Math.min(turnIndex - 1, this.responseTexts.length - 1)]!
+  }
+
+  private async streamResponse(res: ServerResponse, responseText: string): Promise<void> {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -241,7 +254,7 @@ export class MockLlmServer {
       await this.delay(this.chunkDelay)
     }
 
-    const words = this.responseText.split(' ')
+    const words = responseText.split(' ')
 
     // Stream content word by word
     for (let i = 0; i < words.length; i++) {

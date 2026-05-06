@@ -82,21 +82,28 @@ function ModelSelect({
 }) {
   const { models, isLoading } = useAgentModels(profileId)
 
+  useEffect(() => {
+    if (!profileId || modelId !== null || models.length === 0) {
+      return
+    }
+    onModelChange(models[0]!.id)
+  }, [profileId, modelId, models, onModelChange])
+
   if (!profileId) {
-    return <span className="text-[11px] text-muted-foreground/50">—</span>
+    return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">—</span>
   }
 
   if (isLoading) {
-    return <Spinner className="size-3 text-muted-foreground" />
+    return <Spinner className="size-3 text-muted-foreground" data-testid="agent-model-loading" />
   }
 
   if (models.length === 0) {
-    return <span className="text-[11px] text-muted-foreground/50">No models</span>
+    return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">No models</span>
   }
 
   return (
     <Select value={modelId ?? models[0]?.id ?? undefined} onValueChange={onModelChange}>
-      <SelectTrigger size="sm" className="h-7 text-xs">
+      <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-model-select">
         <SelectValue placeholder="Model" />
       </SelectTrigger>
       <SelectContent>
@@ -319,6 +326,7 @@ export function AgentDetailPage({
         <button
           type="button"
           onClick={onBack}
+          data-testid="agent-detail-back"
           className="flex items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeftIcon className="size-3.5" />
@@ -333,6 +341,7 @@ export function AgentDetailPage({
               <AlertDialogTrigger asChild>
                 <button
                   type="button"
+                  data-testid="agent-detail-delete-trigger"
                   className="text-[11px] text-muted-foreground/40 transition-colors hover:text-destructive"
                 >
                   Delete
@@ -356,6 +365,7 @@ export function AgentDetailPage({
                   <AlertDialogAction
                     onClick={() => void handleDelete()}
                     className="bg-destructive text-white hover:bg-destructive/90"
+                    data-testid="agent-detail-delete-confirm"
                   >
                     Delete
                   </AlertDialogAction>
@@ -373,6 +383,7 @@ export function AgentDetailPage({
           <motion.button
             type="button"
             onClick={shuffleAvatar}
+            data-testid="agent-avatar-preview"
             className="group relative size-18 cursor-pointer overflow-hidden rounded-2xl bg-foreground/5"
             title="Click to shuffle"
             whileTap={{ scale: 0.91 }}
@@ -395,6 +406,7 @@ export function AgentDetailPage({
           <Select value={avatarStyle} onValueChange={setAvatarStyle}>
             <SelectTrigger
               size="sm"
+              data-testid="agent-avatar-style"
               className="h-5 w-18 border-0 bg-transparent px-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground"
             >
               <SelectValue />
@@ -427,6 +439,7 @@ export function AgentDetailPage({
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Add a tagline..."
+              data-testid="agent-detail-description"
               className="bg-transparent text-[12px] text-muted-foreground outline-none placeholder:text-muted-foreground/25"
             />
           </div>
@@ -440,7 +453,7 @@ export function AgentDetailPage({
                 setModelId(null)
               }}
             >
-              <SelectTrigger size="sm" className="h-7 text-xs">
+              <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-provider-select">
                 <SelectValue placeholder="Provider" />
               </SelectTrigger>
               <SelectContent>
@@ -458,7 +471,7 @@ export function AgentDetailPage({
               <div
                 className={cn(
                   'flex gap-px rounded-md bg-foreground/6 p-px',
-                  isAuto && 'pointer-events-none opacity-30',
+                  isAuto && 'opacity-30',
                 )}
               >
                 {(['low', 'medium', 'high'] as const).map(level => (
@@ -466,6 +479,7 @@ export function AgentDetailPage({
                     key={level}
                     type="button"
                     onClick={() => setThinkingEffort(level)}
+                    data-testid={`agent-thinking-${level}`}
                     className={cn(
                       'h-6.5 rounded-[5px] px-2.5 text-[11px] font-medium capitalize transition-colors',
                       thinkingEffort === level
@@ -480,6 +494,7 @@ export function AgentDetailPage({
               <button
                 type="button"
                 onClick={() => setThinkingEffort(isAuto ? 'medium' : 'auto')}
+                data-testid="agent-thinking-auto"
                 className={cn(
                   'h-6.5 rounded-md px-2.5 text-[11px] transition-colors',
                   isAuto
@@ -504,6 +519,7 @@ export function AgentDetailPage({
           onChange={e => setSystemPrompt(e.target.value)}
           placeholder="Optional instructions for this agent..."
           rows={5}
+          data-testid="agent-detail-system-prompt"
           className={cn(
             'w-full resize-none rounded-md bg-foreground/4 px-3 py-2.5 text-[12px] outline-none',
             'text-foreground placeholder:text-muted-foreground/30',

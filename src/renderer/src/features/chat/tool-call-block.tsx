@@ -71,10 +71,24 @@ interface ToolCallBlockProps {
   errorText?: string
 }
 
+function formatToolPanelValue(value: unknown, fallback: string): string {
+  if (typeof value === 'string') {
+    return value.length > 0 ? value : fallback
+  }
+
+  if (typeof value === 'undefined') {
+    return fallback
+  }
+
+  return JSON.stringify(value, null, 2)
+}
+
 export function ToolCallBlock({
   toolName,
+  toolCallId,
   state,
   input,
+  output,
   errorText,
 }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(false)
@@ -92,10 +106,11 @@ export function ToolCallBlock({
         : LoaderCircleIcon
 
   return (
-    <div className="my-0.5">
+    <div className="my-0.5" data-testid={`chat-tool-call-${toolCallId}`} data-tool-name={toolName}>
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
+        data-testid={`chat-tool-call-toggle-${toolCallId}`}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors w-full text-left',
           'text-muted-foreground hover:text-foreground hover:bg-muted/50',
@@ -119,27 +134,39 @@ export function ToolCallBlock({
       </button>
 
       {expanded && (
-        <div className="mt-1 ml-2 space-y-1.5 border-l-2 border-muted pl-3 text-xs">
+        <div
+          className="mt-1 ml-2 space-y-1.5 border-l-2 border-muted pl-3 text-xs"
+          data-testid={`chat-tool-call-content-${toolCallId}`}
+        >
           {input !== undefined && (
             <div>
-              <span className="text-muted-foreground text-[10px] uppercase tracking-wider">Input</span>
-              <pre className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-wrap break-all">
-                {typeof input === 'string' ? input : JSON.stringify(input, null, 2)}
+              <span className="text-[10px] text-muted-foreground/60">Input</span>
+              <pre
+                className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-wrap break-all"
+                data-testid={`chat-tool-call-input-${toolCallId}`}
+              >
+                {formatToolPanelValue(input, 'No input captured')}
               </pre>
             </div>
           )}
-          {/* {output !== undefined && (
+          {(output !== undefined || isDone) && (
             <div>
-              <span className="text-muted-foreground/50 text-[10px] uppercase tracking-wider">Output</span>
-              <pre className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all">
-                {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
+              <span className="text-[10px] text-muted-foreground/60">Output</span>
+              <pre
+                className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all"
+                data-testid={`chat-tool-call-output-${toolCallId}`}
+              >
+                {formatToolPanelValue(output, 'No output captured')}
               </pre>
             </div>
-          )} */}
+          )}
           {errorText && (
             <div>
-              <span className="text-destructive/70 text-[10px] uppercase tracking-wider">Error</span>
-              <pre className="mt-0.5 rounded bg-destructive/5 p-2 text-destructive/80 whitespace-pre-wrap break-all">
+              <span className="text-[10px] text-destructive/70">Error</span>
+              <pre
+                className="mt-0.5 rounded bg-destructive/5 p-2 text-destructive/80 whitespace-pre-wrap break-all"
+                data-testid={`chat-tool-call-error-${toolCallId}`}
+              >
                 {errorText}
               </pre>
             </div>
