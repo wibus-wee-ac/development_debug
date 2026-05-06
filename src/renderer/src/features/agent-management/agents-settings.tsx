@@ -386,21 +386,30 @@ const PROVIDER_KINDS: Array<{ id: ProviderKind, label: string, description: stri
   { id: 'openai-compatible', label: 'OpenAI-compatible', description: 'Any OpenAI-compatible REST API' },
   { id: 'acp-chat', label: 'ACP Chat', description: 'Custom ACP agent via npx or global install' },
   { id: 'cli-tui', label: 'CLI / TUI', description: 'Terminal-based interactive AI tool' },
+  { id: 'codex', label: 'Codex', description: 'OpenAI Codex App Server' },
+  { id: 'claude-agent', label: 'Claude Agent', description: 'Claude Agent SDK (Anthropic)' },
 ]
 
 interface OpenAIFields { name: string, baseUrl: string, model: string, apiKey: string }
 interface AcpFields { name: string, packageName: string, distributionType: 'npx' | 'global' }
 interface CliTuiFields { name: string, command: string }
 
+interface CodexFields { name: string, baseUrl: string, model: string, apiKey: string }
+interface ClaudeAgentFields { name: string, baseUrl: string, model: string, apiKey: string }
+
 type ProviderFields
   = | { kind: 'openai-compatible', fields: OpenAIFields }
   | { kind: 'acp-chat', fields: AcpFields }
   | { kind: 'cli-tui', fields: CliTuiFields }
+  | { kind: 'codex', fields: CodexFields }
+  | { kind: 'claude-agent', fields: ClaudeAgentFields }
 
 const DEFAULT_NAMES: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
   'acp-chat': 'Local ACP',
   'cli-tui': 'Local CLI',
+  'codex': 'Codex',
+  'claude-agent': 'Claude Agent',
 }
 
 function defaultFields(kind: ProviderKind): ProviderFields {
@@ -408,6 +417,8 @@ function defaultFields(kind: ProviderKind): ProviderFields {
     case 'openai-compatible': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', apiKey: '' } }
     case 'acp-chat': return { kind, fields: { name: DEFAULT_NAMES[kind], packageName: '', distributionType: 'npx' } }
     case 'cli-tui': return { kind, fields: { name: DEFAULT_NAMES[kind], command: 'claude' } }
+    case 'codex': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: 'codex-mini-latest', apiKey: '' } }
+    case 'claude-agent': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514', apiKey: '' } }
   }
 }
 
@@ -416,6 +427,8 @@ function buildConfigJson(pf: ProviderFields): string {
     case 'openai-compatible': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
     case 'acp-chat': return JSON.stringify({ distributionType: pf.fields.distributionType, cmd: pf.fields.packageName, args: [] })
     case 'cli-tui': return JSON.stringify({ executable: pf.fields.command, args: [] })
+    case 'codex': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
+    case 'claude-agent': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
   }
 }
 
@@ -543,6 +556,72 @@ function ProfileForm({ form, setForm }: { form: ProviderFields, setForm: (f: Pro
           />
         </div>
       )}
+
+      {form.kind === 'codex' && (
+        <>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pf-baseurl">Base URL</Label>
+            <Input
+              id="pf-baseurl"
+              value={form.fields.baseUrl}
+              onChange={(e) => { setForm({ kind: form.kind, fields: { ...form.fields, baseUrl: e.target.value } }) }}
+              placeholder="https://api.openai.com/v1"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pf-model">Model</Label>
+            <Input
+              id="pf-model"
+              value={form.fields.model}
+              onChange={(e) => { setForm({ kind: form.kind, fields: { ...form.fields, model: e.target.value } }) }}
+              placeholder="codex-mini-latest"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pf-apikey">API Key</Label>
+            <Input
+              id="pf-apikey"
+              type="password"
+              value={form.fields.apiKey}
+              onChange={(e) => { setForm({ kind: form.kind, fields: { ...form.fields, apiKey: e.target.value } }) }}
+              placeholder="sk-…"
+            />
+          </div>
+        </>
+      )}
+
+      {form.kind === 'claude-agent' && (
+        <>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pf-baseurl">Base URL</Label>
+            <Input
+              id="pf-baseurl"
+              value={form.fields.baseUrl}
+              onChange={(e) => { setForm({ kind: form.kind, fields: { ...form.fields, baseUrl: e.target.value } }) }}
+              placeholder="https://api.anthropic.com/v1"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pf-model">Model</Label>
+            <Input
+              id="pf-model"
+              value={form.fields.model}
+              onChange={(e) => { setForm({ kind: form.kind, fields: { ...form.fields, model: e.target.value } }) }}
+              placeholder="claude-sonnet-4-20250514"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pf-apikey">API Key</Label>
+            <Input
+              id="pf-apikey"
+              type="password"
+              value={form.fields.apiKey}
+              onChange={(e) => { setForm({ kind: form.kind, fields: { ...form.fields, apiKey: e.target.value } }) }}
+              placeholder="sk-ant-…"
+            />
+          </div>
+        </>
+      )}
     </div>
   )
 }
@@ -553,6 +632,8 @@ const KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
   'acp-chat': 'ACP',
   'cli-tui': 'CLI',
+  'codex': 'Codex',
+  'claude-agent': 'Claude',
 }
 
 function ProfileRow({ profile, onRemove, onToggle }: { profile: AgentProfile, onRemove: () => void, onToggle: () => void }) {
@@ -734,6 +815,22 @@ export function AgentsSettings() {
       if (form.kind === 'openai-compatible' && form.fields.apiKey) {
         const meta = await ipc.agentRuntime.saveCredential({
           providerKind: 'openai-compatible',
+          label: form.fields.name,
+          secret: form.fields.apiKey,
+        })
+        credentialRef = meta.id
+      }
+      else if (form.kind === 'codex' && form.fields.apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'codex',
+          label: form.fields.name,
+          secret: form.fields.apiKey,
+        })
+        credentialRef = meta.id
+      }
+      else if (form.kind === 'claude-agent' && form.fields.apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'claude-agent',
           label: form.fields.name,
           secret: form.fields.apiKey,
         })

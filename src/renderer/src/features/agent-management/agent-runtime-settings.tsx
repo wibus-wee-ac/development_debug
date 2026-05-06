@@ -30,12 +30,16 @@ const PROVIDER_KINDS: Array<{ id: ProviderKind, label: string, description: stri
   { id: 'openai-compatible', label: 'OpenAI-compatible', description: 'Any OpenAI API compatible endpoint' },
   { id: 'acp-chat', label: 'ACP Chat', description: 'Local Agent Communication Protocol' },
   { id: 'cli-tui', label: 'CLI TUI', description: 'Command-line agent interface' },
+  { id: 'codex', label: 'Codex', description: 'OpenAI Codex App Server' },
+  { id: 'claude-agent', label: 'Claude Agent', description: 'Claude Agent SDK (Anthropic)' },
 ]
 
 const DEFAULT_NAMES: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
   'acp-chat': 'Local ACP',
   'cli-tui': 'Local CLI',
+  'codex': 'Codex',
+  'claude-agent': 'Claude Agent',
 }
 
 const WHITESPACE_RE = /\s+/g
@@ -50,17 +54,23 @@ function buildProfileId(name: string, kind: ProviderKind): string {
 interface OpenAIFields { name: string, baseUrl: string, model: string, apiKey: string }
 interface AcpFields { name: string, packageName: string, distributionType: 'npx' | 'global' }
 interface CliTuiFields { name: string, command: string }
+interface CodexFields { name: string, baseUrl: string, model: string, apiKey: string }
+interface ClaudeAgentFields { name: string, baseUrl: string, model: string, apiKey: string }
 
 type ProviderFields
   = | { kind: 'openai-compatible', fields: OpenAIFields }
   | { kind: 'acp-chat', fields: AcpFields }
   | { kind: 'cli-tui', fields: CliTuiFields }
+  | { kind: 'codex', fields: CodexFields }
+  | { kind: 'claude-agent', fields: ClaudeAgentFields }
 
 function defaultFields(kind: ProviderKind): ProviderFields {
   switch (kind) {
     case 'openai-compatible': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', apiKey: '' } }
     case 'acp-chat': return { kind, fields: { name: DEFAULT_NAMES[kind], packageName: '', distributionType: 'npx' } }
     case 'cli-tui': return { kind, fields: { name: DEFAULT_NAMES[kind], command: 'claude' } }
+    case 'codex': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: 'codex-mini-latest', apiKey: '' } }
+    case 'claude-agent': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514', apiKey: '' } }
   }
 }
 
@@ -69,6 +79,8 @@ function buildConfigJson(pf: ProviderFields): string {
     case 'openai-compatible': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
     case 'acp-chat': return JSON.stringify({ distributionType: pf.fields.distributionType, cmd: pf.fields.packageName, args: [] })
     case 'cli-tui': return JSON.stringify({ executable: pf.fields.command, args: [] })
+    case 'codex': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
+    case 'claude-agent': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
   }
 }
 
@@ -110,6 +122,22 @@ function AddProviderDialog({
       if (form.kind === 'openai-compatible' && form.fields.apiKey) {
         const meta = await ipc.agentRuntime.saveCredential({
           providerKind: 'openai-compatible',
+          label: form.fields.name,
+          secret: form.fields.apiKey,
+        })
+        credentialRef = meta.id
+      }
+      else if (form.kind === 'codex' && form.fields.apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'codex',
+          label: form.fields.name,
+          secret: form.fields.apiKey,
+        })
+        credentialRef = meta.id
+      }
+      else if (form.kind === 'claude-agent' && form.fields.apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'claude-agent',
           label: form.fields.name,
           secret: form.fields.apiKey,
         })
@@ -235,12 +263,57 @@ function AddProviderDialog({
             </>
           )}
 
+          {form.kind === 'codex' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Name</Label>
+                <Input data-testid="provider-name" value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Base URL</Label>
+                <Input data-testid="provider-baseurl" value={form.fields.baseUrl} onChange={e => setForm({ ...form, fields: { ...form.fields, baseUrl: e.target.value } })} placeholder="https://api.openai.com/v1" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Model</Label>
+                <Input data-testid="provider-model" value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="codex-mini-latest" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>API Key</Label>
+                <Input data-testid="provider-apikey" type="password" value={form.fields.apiKey} onChange={e => setForm({ ...form, fields: { ...form.fields, apiKey: e.target.value } })} placeholder="sk-..." />
+              </div>
+            </>
+          )}
+
+          {form.kind === 'claude-agent' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Name</Label>
+                <Input data-testid="provider-name" value={form.fields.name} onChange={e => setForm({ ...form, fields: { ...form.fields, name: e.target.value } })} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Base URL</Label>
+                <Input data-testid="provider-baseurl" value={form.fields.baseUrl} onChange={e => setForm({ ...form, fields: { ...form.fields, baseUrl: e.target.value } })} placeholder="https://api.anthropic.com/v1" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Model</Label>
+                <Input data-testid="provider-model" value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="claude-sonnet-4-20250514" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>API Key</Label>
+                <Input data-testid="provider-apikey" type="password" value={form.fields.apiKey} onChange={e => setForm({ ...form, fields: { ...form.fields, apiKey: e.target.value } })} placeholder="sk-ant-..." />
+              </div>
+            </>
+          )}
+
           {/* Status message */}
           {statusText && (
-            <div className={cn(
-              'flex items-center gap-2 text-[12px]',
-              statusOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
-            )}
+            <div
+              data-testid="provider-status"
+              data-status-ok={statusOk ? 'true' : 'false'}
+              className={cn(
+                'flex items-center gap-2 text-[12px]',
+                statusOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-destructive',
+              )}
             >
               {statusOk ? <CheckCircleIcon className="size-3.5" /> : <XCircleIcon className="size-3.5" />}
               {statusText}
@@ -250,7 +323,7 @@ function AddProviderDialog({
 
         <DialogFooter variant="bare">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button size="sm" onClick={() => void handleSubmit()} disabled={busy}>
+          <Button data-testid="provider-submit" size="sm" onClick={() => void handleSubmit()} disabled={busy}>
             {busy && <Spinner className="size-3.5" />}
             Add Provider
           </Button>
@@ -305,9 +378,31 @@ function EditProviderDialog({
         })
         credentialRef = meta.id
       }
+      else if (profile.providerKind === 'codex' && apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'codex',
+          label: name,
+          secret: apiKey,
+        })
+        credentialRef = meta.id
+      }
+      else if (profile.providerKind === 'claude-agent' && apiKey) {
+        const meta = await ipc.agentRuntime.saveCredential({
+          providerKind: 'claude-agent',
+          label: name,
+          secret: apiKey,
+        })
+        credentialRef = meta.id
+      }
 
       let configJson = profile.configJson
       if (profile.providerKind === 'openai-compatible') {
+        configJson = JSON.stringify({ baseUrl, model })
+      }
+      else if (profile.providerKind === 'codex') {
+        configJson = JSON.stringify({ baseUrl, model })
+      }
+      else if (profile.providerKind === 'claude-agent') {
         configJson = JSON.stringify({ baseUrl, model })
       }
       else if (profile.providerKind === 'cli-tui') {
@@ -362,6 +457,40 @@ function EditProviderDialog({
               <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
                 <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
+              </div>
+            </>
+          )}
+
+          {profile.providerKind === 'codex' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Base URL</Label>
+                <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.openai.com/v1" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Model</Label>
+                <Input value={model} onChange={e => setModel(e.target.value)} placeholder="codex-mini-latest" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>API Key (leave empty to keep current)</Label>
+                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
+              </div>
+            </>
+          )}
+
+          {profile.providerKind === 'claude-agent' && (
+            <>
+              <div className="grid gap-1.5">
+                <Label>Base URL</Label>
+                <Input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.anthropic.com/v1" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>Model</Label>
+                <Input value={model} onChange={e => setModel(e.target.value)} placeholder="claude-sonnet-4-20250514" />
+              </div>
+              <div className="grid gap-1.5">
+                <Label>API Key (leave empty to keep current)</Label>
+                <Input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." />
               </div>
             </>
           )}
@@ -499,7 +628,7 @@ export function AgentRuntimeSettings() {
         title="Providers"
         description="Configure AI provider profiles for use in sessions."
         action={(
-          <Button size="sm" onClick={() => setDialogOpen(true)}>
+          <Button data-testid="add-provider-btn" size="sm" onClick={() => setDialogOpen(true)}>
             <PlusIcon className="size-3.5" />
             Add
           </Button>

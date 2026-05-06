@@ -18,7 +18,7 @@ export const backendSessionBindings = sqliteTable('backend_session_bindings', {
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
   providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent'],
   }).notNull(),
   backendSessionId: text('backend_session_id'),
   backendStateSnapshot: text('backend_state_snapshot'),
@@ -53,7 +53,7 @@ export const backendCapabilitySnapshots = sqliteTable('backend_capability_snapsh
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
   providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent'],
   }).notNull(),
   source: text('source', {
     enum: ['probe', 'session_start'],

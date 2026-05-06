@@ -12,7 +12,7 @@ export const runtimeAuditLog = sqliteTable('runtime_audit_log', {
   id: int('id').primaryKey({ autoIncrement: true }),
   agentProfileId: text('agent_profile_id').references(() => agentProfiles.id, { onDelete: 'set null' }),
   providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent'],
   }).notNull(),
   action: text('action').notNull(),
   subject: text('subject'),

@@ -70,6 +70,33 @@ export type TimelineInputEvent
     output?: string | null
   })
   | (TimelineEventBase & {
+    type: 'tool_call.started'
+    itemId: string
+    toolName: string
+    toolInput?: string | null
+  })
+  | (TimelineEventBase & {
+    type: 'tool_call.output.delta'
+    itemId: string
+    delta: string
+  })
+  | (TimelineEventBase & {
+    type: 'tool_call.completed'
+    itemId: string
+    result?: string | null
+  })
+  | (TimelineEventBase & {
+    type: 'file_change.started'
+    itemId: string
+    paths: string[]
+  })
+  | (TimelineEventBase & {
+    type: 'file_change.completed'
+    itemId: string
+    paths: string[]
+    status: 'completed' | 'failed'
+  })
+  | (TimelineEventBase & {
     type: 'approval.requested'
     approvalId: string
     prompt: string
@@ -168,6 +195,53 @@ export function parseTimelineInputEvent(value: unknown): TimelineInputEvent {
         output: readOptionalString(record.output, 'output'),
         source,
       }
+
+    case 'tool_call.started':
+      return {
+        type,
+        itemId: readString(record.itemId, 'itemId'),
+        toolName: readString(record.toolName, 'toolName'),
+        toolInput: readOptionalString(record.toolInput, 'toolInput'),
+        source,
+      }
+
+    case 'tool_call.output.delta':
+      return {
+        type,
+        itemId: readString(record.itemId, 'itemId'),
+        delta: readString(record.delta, 'delta'),
+        source,
+      }
+
+    case 'tool_call.completed':
+      return {
+        type,
+        itemId: readString(record.itemId, 'itemId'),
+        result: readOptionalString(record.result, 'result'),
+        source,
+      }
+
+    case 'file_change.started':
+      return {
+        type,
+        itemId: readString(record.itemId, 'itemId'),
+        paths: readStringArray(record.paths, 'paths'),
+        source,
+      }
+
+    case 'file_change.completed': {
+      const status = readString(record.status, 'status')
+      if (status !== 'completed' && status !== 'failed') {
+        throw new Error(`Invalid file_change status: ${status}`)
+      }
+      return {
+        type,
+        itemId: readString(record.itemId, 'itemId'),
+        paths: readStringArray(record.paths, 'paths'),
+        status,
+        source,
+      }
+    }
 
     case 'approval.requested':
       return {
@@ -314,4 +388,16 @@ function readOptionalRecord(value: unknown, field: string): Record<string, unkno
     return null
   }
   return asRecord(value, field)
+}
+
+function readStringArray(value: unknown, field: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`Expected ${field} to be an array`)
+  }
+  return value.map((item, i) => {
+    if (typeof item !== 'string') {
+      throw new TypeError(`Expected ${field}[${i}] to be a string`)
+    }
+    return item
+  })
 }

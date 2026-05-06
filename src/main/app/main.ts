@@ -21,7 +21,9 @@ import {
 } from '../agent-runtime/agent-runtime'
 import { initProviderCatalog } from '../agent-runtime/catalog-instance'
 import { acpChatProvider } from '../agent-runtime/providers/acp-chat-provider'
+import { ClaudeAgentProvider } from '../agent-runtime/providers/claude-agent-provider'
 import { cliTuiProvider } from '../agent-runtime/providers/cli-tui-provider'
+import { CodexProvider } from '../agent-runtime/providers/codex-provider'
 import { OpenAICompatibleProvider } from '../agent-runtime/providers/openai-compatible-provider'
 import { createApprovalBroadcastSubscriber } from '../approval/approval-broadcast'
 import { getApprovalService } from '../approval/approval-service'
@@ -35,6 +37,7 @@ import { initPackCodebaseWasm } from '../pack-codebase/pack-codebase'
 import { acpConnectionManager } from '../acp/acp-connection'
 import { ptyManager } from '../pty/pty-manager'
 import { initSignalBroadcaster } from '../signal/broadcaster'
+import { scanSkills } from '../skills/skills'
 import { startSocketServer, stopSocketServer } from '../socket/socket-server'
 import { decryptSecret, encryptSecret } from '../storage/safe-storage'
 import { revealWindow } from '../window/window-activation'
@@ -65,11 +68,19 @@ function bootstrapProviderCatalog(): void {
     encrypt: encryptSecret,
     decrypt: decryptSecret,
   })
-  const openAIProvider = new OpenAICompatibleProvider({
-    readSecret: credentialRef => credentialStore.readSecret(credentialRef),
-  })
+  const readSecret = (credentialRef: string) => credentialStore.readSecret(credentialRef)
 
-  initProviderCatalog([acpChatProvider, cliTuiProvider, openAIProvider])
+  // Resolve active Cradle-owned skill SKILL.md paths for injection into codex/claude-agent
+  const resolveSkillPaths = (workspacePath: string): string[] => {
+    const entries = scanSkills({ workspacePath: workspacePath === '.' ? undefined : workspacePath })
+    return entries.map(e => e.location)
+  }
+
+  const openAIProvider = new OpenAICompatibleProvider({ readSecret })
+  const codexProvider = new CodexProvider({ readSecret, resolveSkillPaths })
+  const claudeAgentProvider = new ClaudeAgentProvider({ readSecret, resolveSkillPaths })
+
+  initProviderCatalog([acpChatProvider, cliTuiProvider, openAIProvider, codexProvider, claudeAgentProvider])
 }
 
 function createWindow(): BrowserWindow {

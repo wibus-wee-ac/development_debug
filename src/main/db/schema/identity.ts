@@ -10,7 +10,7 @@ export const agentProfiles = sqliteTable('agent_profiles', {
   id: textPk(),
   name: text('name').notNull(),
   providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent'],
   }).notNull(),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
   configJson: text('config_json').notNull().default('{}'),
@@ -21,7 +21,7 @@ export const agentProfiles = sqliteTable('agent_profiles', {
 export const agentCredentials = sqliteTable('agent_credentials', {
   id: textPk(),
   providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible'],
+    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent'],
   }).notNull(),
   label: text('label').notNull(),
   encryptedSecret: text('encrypted_secret').notNull(),

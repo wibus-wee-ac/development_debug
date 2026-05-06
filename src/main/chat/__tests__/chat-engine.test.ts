@@ -24,7 +24,7 @@ type BindingRecord = {
   id: string
   chatSessionId: string
   agentProfileId: string
-  providerKind: 'acp-chat' | 'cli-tui' | 'openai-compatible'
+  providerKind: 'acp-chat' | 'cli-tui' | 'openai-compatible' | 'codex' | 'claude-agent'
   backendSessionId: string | null
   backendStateSnapshot: string | null
   requestedModelId: string | null

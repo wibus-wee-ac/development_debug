@@ -1,0 +1,222 @@
+// Input: AgentProfile config, credential reader, Codex SDK
+// Output: CodexProvider that maps Codex App Server streams into typed timeline facts
+// Position: Concrete Agent Runtime provider for OpenAI Codex CLI-backed agent sessions — thin orchestration shell
+
+import { randomUUID } from 'node:crypto'
+
+import type { Thread } from '@openai/codex-sdk'
+import { Codex } from '@openai/codex-sdk'
+
+import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
+import type { CodexAdapterState } from '../adapters/codex-adapter'
+import { mapCodexThreadEvent } from '../adapters/codex-adapter'
+import { enrichModelsFromRegistry } from '../model-info-registry'
+import type { ProviderDeps } from '../provider-base'
+import {
+  buildFallbackModelList,
+  CodexConfigSchema,
+  normalizeBaseUrl,
+  parseConfigWith,
+  resolveApiKey,
+} from '../provider-base'
+import type {
+  AgentProfile,
+  CancelTurnInput,
+  ChatRuntimeProvider,
+  ModelDescriptor,
+  ProviderKind,
+  ProviderProbeResult,
+  ResumeChatSessionInput,
+  RuntimeSession,
+  StartChatSessionInput,
+  StreamTurnInput,
+  TokenUsage,
+} from '../runtime-provider-types'
+
+const PROVIDER_KIND: ProviderKind = 'codex'
+
+export type CodexProviderDeps = ProviderDeps
+
+export class CodexProvider implements ChatRuntimeProvider {
+  readonly providerKind = PROVIDER_KIND
+
+  private readonly activeThreads = new Map<string, { thread: Thread, abortController: AbortController }>()
+  private _lastUsage: TokenUsage | null = null
+  get lastUsage(): TokenUsage | null { return this._lastUsage }
+
+  constructor(private readonly deps: CodexProviderDeps) {}
+
+  // ── Probe / ListModels ────────────────────────────────────────────────────
+
+  async probe(profile: AgentProfile): Promise<ProviderProbeResult> {
+    const config = parseConfigWith(profile.configJson, CodexConfigSchema)
+    const apiKey = resolveApiKey(profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (!apiKey) {
+      return {
+        ok: false,
+        label: profile.name,
+        version: null,
+        details: { baseUrl: config.baseUrl ?? null },
+        errorText: 'API key is required (credential or OPENAI_API_KEY env)',
+      }
+    }
+    return {
+      ok: true,
+      label: profile.name,
+      version: null,
+      details: { baseUrl: config.baseUrl ?? null, model: config.model ?? null },
+      errorText: null,
+    }
+  }
+
+  async listModels(profile: AgentProfile): Promise<ModelDescriptor[]> {
+    const config = parseConfigWith(profile.configJson, CodexConfigSchema)
+    const baseUrl = normalizeBaseUrl(config.baseUrl ?? 'https://api.openai.com/v1')
+    const apiKey = resolveApiKey(profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (!apiKey) {
+      return []
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      })
+      if (!response.ok) {
+        return buildFallbackModelList(PROVIDER_KIND, config.model)
+      }
+      const data = await response.json() as { data?: Array<{ id: string }> }
+      if (!data.data || !Array.isArray(data.data)) {
+        return []
+      }
+
+      const models: ModelDescriptor[] = data.data.map(m => ({
+        id: m.id,
+        label: m.id,
+        providerKind: PROVIDER_KIND,
+        contextWindow: null,
+      }))
+      return enrichModelsFromRegistry(models)
+    }
+    catch {
+      return buildFallbackModelList(PROVIDER_KIND, config.model)
+    }
+  }
+
+  // ── Session Lifecycle ─────────────────────────────────────────────────────
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      agentProfileId: input.profile.id,
+      providerKind: PROVIDER_KIND,
+      providerSessionId: null,
+      providerStateSnapshot: null,
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  // ── Stream Turn ───────────────────────────────────────────────────────────
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
+    const { runtimeSession, profile, message, modelId: inputModelId } = input
+    const config = parseConfigWith(profile.configJson, CodexConfigSchema)
+    const apiKey = resolveApiKey(profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const effectiveModel = inputModelId ?? config.model
+
+    if (!apiKey) {
+      throw new Error('Codex provider requires an API key')
+    }
+
+    const abortController = new AbortController()
+
+    // Inject Cradle-owned skill paths
+    const skillPaths = config.skillPaths ?? this.deps.resolveSkillPaths?.('.') ?? []
+    const codexConfigObj: Record<string, string | string[]> = {}
+    if (skillPaths.length > 0) {
+      codexConfigObj.instructions_paths = skillPaths
+    }
+
+    const codex = new Codex({
+      apiKey,
+      baseUrl: config.baseUrl,
+      config: Object.keys(codexConfigObj).length > 0 ? codexConfigObj : undefined,
+    })
+
+    const threadOptions = {
+      model: effectiveModel,
+      workingDirectory: '.' as const,
+      sandboxMode: config.sandboxMode ?? ('workspace-write' as const),
+      approvalPolicy: config.approvalPolicy ?? ('on-failure' as const),
+      modelReasoningEffort: config.reasoningEffort ?? ('high' as const),
+      additionalDirectories: config.additionalDirectories,
+    }
+
+    const thread = runtimeSession.providerSessionId
+      ? codex.resumeThread(runtimeSession.providerSessionId, threadOptions)
+      : codex.startThread(threadOptions)
+
+    this.activeThreads.set(runtimeSession.chatSessionId, { thread, abortController })
+    this._lastUsage = null
+
+    const textItemId = randomUUID()
+    let threadId: string | null = null
+    const adapterState: CodexAdapterState = { textItemId, assistantStarted: false }
+
+    try {
+      const { events } = await thread.runStreamed(message, { signal: abortController.signal })
+
+      for await (const event of events) {
+        if (abortController.signal.aborted) {
+          break
+        }
+
+        // Delegate mapping to pure adapter function
+        const result = mapCodexThreadEvent(event, adapterState)
+        adapterState.assistantStarted = result.assistantStarted
+        for (const te of result.events) {
+          yield te
+        }
+
+        if (event.type === 'thread.started') {
+          threadId = event.thread_id
+        }
+
+        if (event.type === 'turn.completed') {
+          this._lastUsage = {
+            promptTokens: event.usage.input_tokens,
+            completionTokens: event.usage.output_tokens,
+            totalTokens: event.usage.input_tokens + event.usage.output_tokens,
+          }
+        }
+      }
+
+      // Final completed event
+      if (adapterState.assistantStarted) {
+        yield {
+          type: 'assistant.message.completed',
+          itemId: textItemId,
+          source: { backend: PROVIDER_KIND, eventType: 'turn.completed', itemId: textItemId },
+        }
+      }
+
+      if (threadId) {
+        runtimeSession.providerSessionId = threadId
+      }
+    }
+    finally {
+      this.activeThreads.delete(runtimeSession.chatSessionId)
+    }
+  }
+
+  async cancelTurn(input: CancelTurnInput): Promise<void> {
+    const entry = this.activeThreads.get(input.runtimeSession.chatSessionId)
+    if (entry) {
+      entry.abortController.abort()
+      this.activeThreads.delete(input.runtimeSession.chatSessionId)
+    }
+  }
+}

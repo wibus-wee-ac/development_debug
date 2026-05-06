@@ -8,6 +8,8 @@ export type ProviderKind
   = 'acp-chat'
     | 'cli-tui'
     | 'openai-compatible'
+    | 'codex'
+    | 'claude-agent'
 
 export interface AgentProfile {
   id: string

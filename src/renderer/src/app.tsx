@@ -90,8 +90,8 @@ export function App() {
       }
 
       const [sessionRows, workspaceRows] = await Promise.all([
-        Promise.all(chatSessionIds.map(sessionId => ipc.session.get(sessionId))),
-        Promise.all(workspaceIds.map(workspaceId => ipc.workspace.get(workspaceId))),
+        Promise.all(chatSessionIds.map(sessionId => ipc!.session.get(sessionId))),
+        Promise.all(workspaceIds.map(workspaceId => ipc!.workspace.get(workspaceId))),
       ])
 
       if (cancelled) {

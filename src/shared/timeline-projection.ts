@@ -17,6 +17,11 @@ export interface ProjectableTimelineEvent {
   output?: string | null
   error?: string
   exitCode?: number | null
+  toolName?: string
+  toolInput?: string | null
+  result?: string | null
+  paths?: string[]
+  status?: string
   // Persistence metadata (ignored by projector)
   id?: string
   runId?: string
@@ -87,6 +92,58 @@ export function projectTimelineEventToChunks(event: ProjectableTimelineEvent): U
     case 'approval.resolved':
     case 'run.failed':
       return []
+
+    case 'tool_call.started': {
+      const chunks: UIMessageChunk[] = [{
+        type: 'tool-input-start',
+        toolCallId: event.itemId!,
+        toolName: event.toolName ?? 'tool',
+      }]
+      if (event.toolInput) {
+        chunks.push({
+          type: 'tool-input-available',
+          toolCallId: event.itemId!,
+          toolName: event.toolName ?? 'tool',
+          input: event.toolInput,
+        })
+      }
+      return chunks
+    }
+
+    case 'tool_call.output.delta':
+      return []
+
+    case 'tool_call.completed': {
+      if (!event.result) {
+        return []
+      }
+      return [{
+        type: 'tool-output-available',
+        toolCallId: event.itemId!,
+        output: event.result,
+      }]
+    }
+
+    case 'file_change.started': {
+      return [{
+        type: 'tool-input-start',
+        toolCallId: event.itemId!,
+        toolName: 'file_change',
+      }, {
+        type: 'tool-input-available',
+        toolCallId: event.itemId!,
+        toolName: 'file_change',
+        input: (event.paths ?? []).join(', '),
+      }]
+    }
+
+    case 'file_change.completed': {
+      return [{
+        type: 'tool-output-available',
+        toolCallId: event.itemId!,
+        output: `${event.status}: ${(event.paths ?? []).join(', ')}`,
+      }]
+    }
 
     default:
       return []

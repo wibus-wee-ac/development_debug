@@ -2,7 +2,7 @@
 // Output: Pure async generator that yields TimelineInputEvent with bookend lifecycle events
 // Position: Chat feature streaming coordinator — drives provider without DB/broadcast knowledge
 
-import type { ChatRuntimeProvider, StreamTurnInput } from '../agent-runtime/runtime-provider-types'
+import type { ChatRuntimeProvider, ProviderKind, StreamTurnInput } from '../agent-runtime/runtime-provider-types'
 import type { TimelineInputEvent } from '../backend-control-plane/timeline-events'
 
 export interface TurnCoordinatorInput {
@@ -39,7 +39,7 @@ export async function* coordinateTurn(
     event: {
       type: 'run.started',
       source: {
-        backend: providerKind as 'acp-chat' | 'cli-tui' | 'openai-compatible',
+        backend: providerKind as ProviderKind,
         eventType: 'chat.turn.started',
         metadata: {},
       },
@@ -85,7 +85,7 @@ function buildTerminalEvent(
   providerKind: string,
 ): TimelineInputEvent {
   const source = {
-    backend: providerKind as 'acp-chat' | 'cli-tui' | 'openai-compatible',
+    backend: providerKind as ProviderKind,
     eventType: `chat.turn.${status}`,
   }
 
