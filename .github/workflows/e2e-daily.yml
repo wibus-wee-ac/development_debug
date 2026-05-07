@@ -12,6 +12,10 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   e2e:
     name: Full E2E Suite
