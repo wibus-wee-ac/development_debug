@@ -34,3 +34,7 @@ Current canonical main-process backend paths after the 2026-05-05 ownership refa
 - **20260505-08-approval-mediation-foundation.md**: Execution plan for adding a shared approval queue and renderer surface for interactive backends without faking uniform approval semantics where they do not exist.
 - **20260505-09-skills-routing-control-plane.md**: Execution plan for adding product-owned skill routing intent and compatibility mapping while keeping skill content filesystem-first.
 - **20260505-10-skills-cache-and-ipc-thinning.md**: Execution plan for adding in-process skills scan caching and moving `workspace` / `acp` business semantics out of thick IPC adapters into feature-owned application services.
+- **20260505-11-singleton-dehydration-frontend-projection.md**: Execution plan for removing singleton-driven frontend message assumptions and projecting chat UI directly from dehydrated timeline facts.
+- **20260505-12-uimessage-dehydration.md**: Execution plan for migrating renderer chat state to pure UI messages dehydrated from timeline facts.
+- **20260507-01-observability-with-minimal-conversions.md**: Execution plan for sharpening observability without introducing broad conversion layers.
+- **20260507-02-session-await-resume-runtime.md**: Execution plan for introducing a product-owned session await/resume runtime, CLI registration contract, awaiting projection, and later GitHub adapters without making Kanban the owner.
