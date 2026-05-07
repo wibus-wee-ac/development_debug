@@ -6,7 +6,7 @@ import { useChat } from '@ai-sdk/react'
 import { ipc } from '@renderer/lib/ipc'
 import type { ChatStatus, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { projectEventsToAssistantMessage, type ProjectableTimelineEvent } from '../../../../shared/timeline-projection'
+import { projectEventsToAssistantMessage } from '../../../../shared/timeline-projection'
 
 import { createIpcChatTransport } from './ipc-chat-transport'
 import { useChatTimelineEvent } from './use-chat-events'
@@ -95,7 +95,7 @@ function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
     }
   }
 
-  return projectEventsToAssistantMessage(group.messageId, group.events as unknown as ProjectableTimelineEvent[])
+  return projectEventsToAssistantMessage(group.messageId, group.events)
 }
 
 export function useChatSession(chatSessionId: string | null, options?: {

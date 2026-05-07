@@ -304,29 +304,3 @@ export function projectEventsToAssistantMessage(
 
   return { id: messageId, role: 'assistant', parts }
 }
-
-/** Grouped events by messageId for multi-message projection. */
-export interface MessageTimelineGroup {
-  messageId: string
-  role: 'user' | 'assistant'
-  events: ProjectableTimelineEvent[]
-  /** For user messages that have no events, provide the text directly. */
-  userText?: string
-}
-
-/**
- * Project grouped timeline data into UIMessage[].
- * User messages are reconstructed from text; assistant messages from events.
- */
-export function projectGroupsToMessages(groups: MessageTimelineGroup[]): UIMessage[] {
-  return groups.map((group) => {
-    if (group.role === 'user') {
-      return {
-        id: group.messageId,
-        role: 'user' as const,
-        parts: [{ type: 'text' as const, text: group.userText ?? '' }],
-      }
-    }
-    return projectEventsToAssistantMessage(group.messageId, group.events)
-  })
-}

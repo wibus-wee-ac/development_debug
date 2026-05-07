@@ -17,5 +17,5 @@ Chat feature 负责会话编排、timeline-driven persistence/query 与 thread s
 - **session-title-sync.ts**: ACP title → chat session title 同步桥，作为 composition-root integration wiring 独立存在
 - **turn-repository.ts**: 事务化 timeline 持久化仓储；assistant message content 不再写入 UIMessage JSON，delta 写入可 debounce
 - **broadcast.ts**: 订阅 chat timeline 领域事件，并通过 signal broadcaster 推送 raw timeline event 给显式 watch 了 session 的 renderer；实时 chunks 投影现在在 renderer 本地完成
-- **thread-search.ts**: 会话线程搜索引擎；增量索引与 rebuild 都以 timeline-derived assistant 文本为准，缺失 `messages_fts` 时优雅退回 legacy 搜索/跳过索引维护
+- **thread-search.ts**: 会话线程搜索引擎；legacy fallback、增量索引与 rebuild 都以 timeline-derived assistant 文本为准，不再解析旧 UIMessage JSON content
 - **__tests__/**: chat feature 的主进程回归测试

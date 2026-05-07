@@ -1,4 +1,4 @@
-// Input: @node-rs/jieba (lazy-init with default dict), drizzle-orm DB, UIMessage JSON decoder
+// Input: @node-rs/jieba (lazy-init with default dict), drizzle-orm DB, and timeline-derived assistant text helper
 // Output: ThreadSearchEngine singleton — jieba-tokenized title+content search across sessions/messages
 // Position: Chat/search capability module (L2) used by the SearchService IPC layer
 
@@ -289,7 +289,9 @@ export class ThreadSearchEngine {
         if (msg.role !== 'user' && msg.role !== 'assistant') {
           continue
         }
-        const text = extractSearchableText(msg.content)
+        const text = msg.role === 'assistant'
+          ? extractAssistantTextByMessageId(db, msg.id)
+          : msg.content
         if (!text) {
           continue
         }
@@ -439,7 +441,7 @@ export class ThreadSearchEngine {
     for (const msg of messageRows) {
       const title = sessionTitleById.get(msg.sessionId) ?? ''
       const content = msg.role === 'assistant'
-        ? extractAssistantTextByMessageId(db, msg.id) || msg.content
+        ? extractAssistantTextByMessageId(db, msg.id)
         : msg.content
       this.indexMessage(msg.sessionId, title, msg.id, content)
     }
@@ -466,15 +468,14 @@ export class ThreadSearchEngine {
     segmentedTitle: string
     segmentedText: string
   } | null {
-    const text = extractSearchableText(content)
-    if (!text) {
+    if (!content.trim()) {
       return null
     }
 
     const jieba = this.getJieba()
     const segmentedText = jieba
-      ? (jieba.cutForSearch(text, true) as string[]).join(' ')
-      : text
+      ? (jieba.cutForSearch(content, true) as string[]).join(' ')
+      : content
     const segmentedTitle = jieba
       ? (jieba.cutForSearch(sessionTitle, true) as string[]).join(' ')
       : sessionTitle
@@ -592,37 +593,6 @@ function extractSnippet(
     }
   }
   return { text: snippetText, ranges: shifted }
-}
-
-/**
- * Pull searchable plain text out of a UIMessage-encoded `messages.content`
- * blob — concatenating every `text` and `reasoning` part. Falls back to the
- * raw string when the JSON shape isn't recognised.
- */
-function extractSearchableText(content: string): string {
-  if (!content) {
-    return ''
-  }
-  try {
-    const parsed = JSON.parse(content) as { parts?: unknown }
-    if (!Array.isArray(parsed.parts)) {
-      return typeof content === 'string' ? content : ''
-    }
-    const out: string[] = []
-    for (const part of parsed.parts) {
-      if (!part || typeof part !== 'object') {
-        continue
-      }
-      const p = part as { type?: unknown, text?: unknown }
-      if ((p.type === 'text' || p.type === 'reasoning') && typeof p.text === 'string') {
-        out.push(p.text)
-      }
-    }
-    return out.join('\n')
-  }
-  catch {
-    return content
-  }
 }
 
 // ── Module-level singleton ────────────────────────────────────────────────────

@@ -35,9 +35,7 @@ import { acpAgents } from '../db/schema'
 import { initializeIpcDevtool, subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
 import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
 import {
-  createIssueAgentCompletionSubscriber,
   createIssueAgentRuntime,
-  setIssueAgentRuntime,
 } from '../issue-agent/issue-agent-runner'
 import { initObservabilityService, OBSERVABILITY_CODES } from '../observability/service'
 import type { ObservabilitySink } from '../observability/sink'
@@ -56,7 +54,6 @@ import { ChatService } from './ipc/chat'
 import { DevService } from './ipc/dev'
 import { GitService } from './ipc/git'
 import { IpcDevtoolService } from './ipc/ipc-devtool'
-import { IssueAgentService } from './ipc/issue-agent'
 import { KanbanService } from './ipc/kanban'
 import { PackCodebaseService } from './ipc/pack-codebase'
 import { PreferencesService } from './ipc/preferences'
@@ -68,6 +65,7 @@ import { UsageService } from './ipc/usage'
 import { WindowService } from './ipc/window'
 import { WorkflowRulesService } from './ipc/workflow-rules'
 import { WorkspaceService } from './ipc/workspace'
+import { createIssueAgentService } from './ipc/issue-agent'
 import { restoreWindowState, saveWindowState } from './store/app'
 
 let closeObservability: (() => Promise<void>) | null = null
@@ -199,11 +197,10 @@ app.whenReady().then(() => {
   })
   chatEngine.bindEventBus(domainEventBus)
   const issueAgentRuntime = createIssueAgentRuntime({ chat: chatEngine })
-  setIssueAgentRuntime(issueAgentRuntime)
-  createIssueAgentCompletionSubscriber({
-    eventBus: domainEventBus,
-    runtime: issueAgentRuntime,
+  domainEventBus.subscribe('chat.turn-finished', event => {
+    issueAgentRuntime.handleChatTurnFinished(event.payload)
   })
+  const issueAgentService = createIssueAgentService({ runner: issueAgentRuntime })
 
   // Create unified signal broadcaster — single push gateway for all renderer events
   const signalBroadcaster = initSignalBroadcaster()
@@ -280,7 +277,7 @@ app.whenReady().then(() => {
     WindowService,
     GitService,
     KanbanService,
-    IssueAgentService,
+    issueAgentService,
     UsageService,
     SkillsService,
     WorkflowRulesService,

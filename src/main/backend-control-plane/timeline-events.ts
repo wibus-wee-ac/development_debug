@@ -299,21 +299,6 @@ export function decodeTimelineInputEvent(input: {
   })
 }
 
-export function getTimelineEventChatStatus(
-  event: TimelineInputEvent | BackendTimelineEvent,
-): 'streaming' | 'complete' | 'aborted' | 'failed' {
-  switch (event.type) {
-    case 'run.completed':
-      return 'complete'
-    case 'run.aborted':
-      return 'aborted'
-    case 'run.failed':
-      return 'failed'
-    default:
-      return 'streaming'
-  }
-}
-
 function readSource(value: unknown): TimelineSource {
   const record = asRecord(value)
   return {

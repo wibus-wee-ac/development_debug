@@ -1,40 +1,47 @@
-// Input: issue-agent application/query services, DB wiring, runtime wiring, and issue-agent schema row types
-// Output: IssueAgentService — thin IPC facade for delegation commands and agent-session queries
-// Position: App-level IPC adapter that composes default issue-agent feature dependencies
+// Input: issue-agent application/query services, DB wiring, and issue-agent schema row types
+// Output: IssueAgentService plus an app-owned factory for explicit runtime injection
+// Position: App-level IPC adapter that composes issue-agent IPC dependencies inside the composition root
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
 import { getDb } from '../../db'
 import type { AgentActivity, AgentSession } from '../../db/schema'
+import type { IssueAgentRuntime } from '../../issue-agent/issue-agent-runner'
 import type { IssueAgentQueryApplicationService } from '../../issue-agent/issue-agent-query'
 import { createIssueAgentQueryApplicationService } from '../../issue-agent/issue-agent-query'
-import { getIssueAgentRuntime } from '../../issue-agent/issue-agent-runner'
 import type { IssueDelegationApplicationService } from '../../issue-agent/issue-delegation'
 import {
   createDrizzleIssueDelegationStore,
   createIssueDelegationApplicationService,
 } from '../../issue-agent/issue-delegation'
 
-function createDefaultIssueDelegationApplication(): IssueDelegationApplicationService {
-  return createIssueDelegationApplicationService({
-    store: createDrizzleIssueDelegationStore(getDb()),
-    runner: getIssueAgentRuntime(),
-  })
+export function createIssueAgentService(deps: {
+  runner: IssueAgentRuntime
+  delegationApp?: IssueDelegationApplicationService
+  issueAgentQueryApp?: IssueAgentQueryApplicationService
+}): IssueAgentService {
+  return new IssueAgentService(
+    deps.delegationApp
+      ?? createIssueDelegationApplicationService({
+        store: createDrizzleIssueDelegationStore(getDb()),
+        runner: deps.runner,
+      }),
+    deps.issueAgentQueryApp ?? createIssueAgentQueryApplicationService(),
+  )
 }
 
 export class IssueAgentService extends IpcService {
   static readonly groupName = 'issueAgent'
-  private readonly delegationApp: IssueDelegationApplicationService
-  private readonly issueAgentQueryApp: IssueAgentQueryApplicationService
 
   constructor(
-    delegationApp: IssueDelegationApplicationService = createDefaultIssueDelegationApplication(),
+    private readonly delegationApp: IssueDelegationApplicationService,
     issueAgentQueryApp: IssueAgentQueryApplicationService = createIssueAgentQueryApplicationService(),
   ) {
     super()
-    this.delegationApp = delegationApp
     this.issueAgentQueryApp = issueAgentQueryApp
   }
+
+  private readonly issueAgentQueryApp: IssueAgentQueryApplicationService
 
   @IpcMethod()
   async delegateIssue(issueId: string, agentProfileId: string, _agentId?: string): Promise<AgentSession> {

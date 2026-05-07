@@ -1,5 +1,5 @@
-// Input: Chat runtime port, issue/agent tables, workflow rules, and domain event bus wiring
-// Output: Issue-agent runtime for delegated issue execution plus a composition-root completion subscriber
+// Input: Chat runtime port, issue/agent tables, and workflow rules
+// Output: Issue-agent runtime factory for delegated issue execution and completion handling
 // Position: Issue-agent feature runtime boundary between delegation commands and chat completion events
 
 import { randomUUID } from 'node:crypto'
@@ -8,7 +8,6 @@ import { eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
 import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../db/schema'
-import type { DomainEventBus } from '../events/domain-event-bus'
 import type { ChatTurnFinishedPayload } from '../events/domain-events'
 import { getWorkflowRules } from '../workflow-rules/workflow-rules'
 
@@ -334,24 +333,4 @@ function addActivity(
 
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000)
-}
-
-export function createIssueAgentCompletionSubscriber(deps: {
-  eventBus: DomainEventBus
-  runtime: IssueAgentRuntimeInternal
-}): () => void {
-  return deps.eventBus.subscribe('chat.turn-finished', event => deps.runtime.handleChatTurnFinished(event.payload))
-}
-
-let issueAgentRuntime: IssueAgentRuntimeInternal | null = null
-
-export function setIssueAgentRuntime(runtime: IssueAgentRuntimeInternal): void {
-  issueAgentRuntime = runtime
-}
-
-export function getIssueAgentRuntime(): IssueAgentRuntime {
-  if (!issueAgentRuntime) {
-    throw new Error('IssueAgentRuntime not initialized. Call setIssueAgentRuntime() in the composition root first.')
-  }
-  return issueAgentRuntime
 }

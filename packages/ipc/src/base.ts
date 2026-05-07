@@ -266,20 +266,39 @@ export interface IpcServiceConstructor {
   readonly groupName: string
 }
 
-type CreateServicesResult<T extends readonly IpcServiceConstructor[]> = {
+export type IpcServiceDefinition = IpcServiceConstructor | IpcService
+
+type CreateServicesConstructorsResult<T extends readonly IpcServiceConstructor[]> = {
   [K in T[number] as K['groupName']]: InstanceType<K>
 }
 
+function isServiceInstance(definition: IpcServiceDefinition): definition is IpcService {
+  return definition instanceof IpcService
+}
+
 export function createServices<T extends readonly IpcServiceConstructor[]>(
-  serviceConstructors: T,
-): CreateServicesResult<T> {
+  serviceDefinitions: T,
+): CreateServicesConstructorsResult<T>
+
+export function createServices(
+  serviceDefinitions: readonly IpcServiceDefinition[],
+): Record<string, IpcService>
+
+export function createServices(
+  serviceDefinitions: readonly IpcServiceDefinition[],
+): Record<string, IpcService> {
   // eslint-disable-next-line ts/no-explicit-any
-  const services = {} as any
-  for (const ServiceConstructor of serviceConstructors) {
+  const services: Record<string, IpcService> = {}
+  for (const definition of serviceDefinitions) {
+    const service = isServiceInstance(definition)
+      ? definition
+      : new definition()
+    const ServiceConstructor = service.constructor as typeof IpcService
+
     if (!ServiceConstructor.groupName) {
       throw new Error(`Service ${ServiceConstructor.name} must define a static readonly groupName.`)
     }
-    services[ServiceConstructor.groupName] = new ServiceConstructor()
+    services[ServiceConstructor.groupName] = service
   }
   return services
 }

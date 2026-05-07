@@ -8,6 +8,6 @@
 
 ## Files
 
-- **main.ts**: 主进程 composition root，初始化 DB、provider catalog、chat/issue-agent subscribers、signal wiring、窗口与 socket server
+- **main.ts**: 主进程 composition root，初始化 DB、provider catalog、chat/issue-agent subscribers、显式构造需注入 runtime 的 IPC service 实例、signal wiring、窗口与 socket server
 - **ipc/**: 所有主进程 IPC adapters，把 renderer/CLI 调用路由到 feature 或 platform
 - **store/**: app-wide 持久化 store，如窗口状态与全局聊天偏好

@@ -19,7 +19,7 @@ export type ChatMessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 export interface ChatTimelineGroup {
   messageId: string
   role: 'user' | 'assistant'
-  events: Array<Record<string, unknown>>
+  events: BackendTimelineEvent[]
   userText?: string
   status: ChatMessageStatus
   errorText?: string
@@ -108,7 +108,7 @@ function loadLatestRunsByMessageId(
 function loadTimelineByRunId(
   db: DrizzleDb,
   runIds: string[],
-): Map<string, Array<Record<string, unknown>>> {
+): Map<string, BackendTimelineEvent[]> {
   if (runIds.length === 0) {
     return new Map()
   }
@@ -132,9 +132,7 @@ function loadTimelineByRunId(
     bucket.sort((left, right) => left.sequenceNumber - right.sequenceNumber)
   }
 
-  return new Map(
-    Array.from(timelineByRunId.entries(), ([runId, events]) => [runId, events as unknown as Array<Record<string, unknown>>]),
-  )
+  return timelineByRunId
 }
 
 function decodeBackendTimelineRow(row: BackendTimelineRow): BackendTimelineEvent {
