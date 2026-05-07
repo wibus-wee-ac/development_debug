@@ -77,29 +77,43 @@ export class CodexProvider implements ChatRuntimeProvider {
       return []
     }
 
+    let models: ModelDescriptor[]
     try {
       const response = await fetch(`${baseUrl}/models`, {
         headers: { Authorization: `Bearer ${apiKey}` },
       })
       if (!response.ok) {
-        return buildFallbackModelList(PROVIDER_KIND, config.model)
+        models = buildFallbackModelList(PROVIDER_KIND, config.model)
       }
-      const data = await response.json() as { data?: Array<{ id: string }> }
-      if (!data.data || !Array.isArray(data.data)) {
-        return []
+      else {
+        const data = await response.json() as { data?: Array<{ id: string }> }
+        if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+          models = buildFallbackModelList(PROVIDER_KIND, config.model)
+        }
+        else {
+          const raw: ModelDescriptor[] = data.data.map(m => ({
+            id: m.id,
+            label: m.id,
+            providerKind: PROVIDER_KIND,
+            contextWindow: null,
+          }))
+          models = await enrichModelsFromRegistry(raw)
+        }
       }
-
-      const models: ModelDescriptor[] = data.data.map(m => ({
-        id: m.id,
-        label: m.id,
-        providerKind: PROVIDER_KIND,
-        contextWindow: null,
-      }))
-      return enrichModelsFromRegistry(models)
     }
     catch {
-      return buildFallbackModelList(PROVIDER_KIND, config.model)
+      models = buildFallbackModelList(PROVIDER_KIND, config.model)
     }
+
+    // Apply per-provider model allow-list (undefined = all, [] = none, [...] = filter)
+    const { enabledModels } = config
+    if (enabledModels === undefined) {
+      return models
+    }
+    if (enabledModels.length === 0) {
+      return []
+    }
+    return models.filter(m => enabledModels.includes(m.id))
   }
 
   // ── Session Lifecycle ─────────────────────────────────────────────────────

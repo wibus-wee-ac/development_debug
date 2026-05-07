@@ -11,9 +11,6 @@ export interface LayoutSlots {
   panel?: ReactNode
   hasAside?: boolean
   hasPanel?: boolean
-  title?: ReactNode
-  workspace?: ReactNode
-  gitBranch?: ReactNode
 }
 
 interface RegistrationState {

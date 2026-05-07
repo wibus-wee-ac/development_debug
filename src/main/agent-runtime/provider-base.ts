@@ -12,6 +12,7 @@ export const BaseProviderConfig = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   apiKey: z.string().optional(),
+  enabledModels: z.array(z.string()).optional(),
   skillPaths: z.array(z.string()).optional(),
   additionalDirectories: z.array(z.string()).optional(),
 })

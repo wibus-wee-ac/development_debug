@@ -7,7 +7,6 @@ import { defineTab, useTabsContext } from '@cradle/tabs'
 import { RightAside } from '@renderer/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '@renderer/components/layout/use-layout-slots'
 import type { ChatMessageRow } from '@renderer/features/chat/use-chat-session'
-import { GitBranchControl } from '@renderer/features/git'
 import { ShellView } from '@renderer/features/tui/shell-view'
 import { ipc } from '@renderer/lib/ipc'
 import { useQuery } from '@tanstack/react-query'
@@ -48,7 +47,6 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
     staleTime: 60_000,
   })
 
-  const workspaceName = workspace?.name ?? null
   const workspacePath = workspace?.path ?? null
 
   const hasWorkspace = !!(workspaceId && workspacePath)
@@ -80,20 +78,12 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
     [hasWorkspace, workspacePath, sessionId, shellGen],
   )
 
-  const gitBranch = useMemo(
-    () => <GitBranchControl workspacePath={workspacePath} />,
-    [workspacePath],
-  )
-
   useRegisterLayoutSlots(sessionId, useMemo(() => ({
     hasAside: true,
     hasPanel: hasWorkspace,
-    title: session?.title ?? undefined,
-    workspace: workspaceName ?? undefined,
-    gitBranch,
     aside,
     panel,
-  }), [hasWorkspace, session?.title, workspaceName, gitBranch, aside, panel]))
+  }), [hasWorkspace, aside, panel]))
 
   return (
     <Suspense fallback={null}>

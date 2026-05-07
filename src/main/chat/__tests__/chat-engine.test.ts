@@ -576,6 +576,51 @@ describe('chatEngine', () => {
     expect(state.messages).toHaveLength(2)
   })
 
+  it('marks turn as failed when provider completes without any output events', async () => {
+    mocks.getProviderCatalog.mockReturnValue({
+      get: () => ({
+        providerKind: 'acp-chat' as const,
+        probe: async () => ({ ok: true, label: 'ACP', version: '1.0.0', details: {}, errorText: null }),
+        listModels: async () => [],
+        startChatSession: async () => ({
+          id: 'backend-session-empty',
+          chatSessionId: 'chat-ignored',
+          agentProfileId: 'profile-1',
+          providerKind: 'acp-chat' as const,
+          providerSessionId: 'backend-session-empty',
+          providerStateSnapshot: JSON.stringify({ models: { currentModelId: 'claude-4' } }),
+        }),
+        resumeChatSession: async () => {
+          throw new Error('resume not expected in this test')
+        },
+        streamTurn: async function* streamTurn() {
+          // Intentionally no assistant/timeline output events.
+        },
+        cancelTurn: async () => {},
+        lastUsage: null,
+      }),
+    })
+
+    await chatEngine.createAndSend({
+      agentId: 'profile-1',
+      workspaceId: 'workspace-1',
+      cwd: '/tmp/workspace',
+      text: 'empty output',
+      modelId: 'claude-4',
+    })
+
+    await vi.waitFor(() => {
+      expect(state.backendRuns[0]?.status).toBe('failed')
+    })
+
+    expect(state.backendRuns[0]?.errorText).toContain('Provider finished without any assistant output events')
+    const latestAssistant = [...state.messages].reverse().find(message => message.role === 'assistant')
+    expect(latestAssistant?.status).toBe('failed')
+    expect(latestAssistant?.errorText).toContain('Provider finished without any assistant output events')
+    expect(state.backendTimelineEvents.some(event => event.eventType === 'run.failed')).toBe(true)
+    expect(state.backendTimelineEvents.some(event => event.eventType === 'run.completed')).toBe(false)
+  })
+
   it('persists the assistant snapshot as soon as a timeline delta is stored', async () => {
     let releaseTurn: (() => void) | undefined
     const turnBlocked = new Promise<void>((resolve) => {

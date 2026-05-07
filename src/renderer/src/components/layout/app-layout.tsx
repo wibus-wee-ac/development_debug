@@ -22,23 +22,17 @@ const INSTANT = { duration: 0 } as const
 
 interface AppLayoutProps {
   children?: ReactNode
-  /** Header title breadcrumb segment */
-  title?: ReactNode
-  /** Header workspace breadcrumb segment */
-  workspace?: ReactNode
   /** Show aside toggle in header */
   hasAside?: boolean
   /** Show bottom panel toggle in header */
   hasPanel?: boolean
-  /** Optional git branch control in header */
-  gitBranch?: ReactNode
   /** Right aside content */
   aside?: ReactNode
   /** Bottom panel content */
   panel?: ReactNode
 }
 
-export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitBranch, aside, panel }: AppLayoutProps) {
+export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
 
   useGlobalEventListeners()
@@ -51,9 +45,6 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
   const resolvedPanel = slots.panel ?? panel
   const resolvedHasAside = slots.hasAside ?? hasAside
   const resolvedHasPanel = slots.hasPanel ?? hasPanel
-  const resolvedTitle = slots.title ?? title
-  const resolvedWorkspace = slots.workspace ?? workspace
-  const resolvedGitBranch = slots.gitBranch ?? gitBranch
 
   const {
     isSettings,
@@ -70,11 +61,8 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
       <AppHeader
-        title={resolvedTitle}
-        workspace={resolvedWorkspace}
         hasAside={resolvedHasAside}
         hasPanel={resolvedHasPanel}
-        gitBranch={resolvedGitBranch}
       />
 
       {/* ── Content area ───────────────────────────────────────────────── */}

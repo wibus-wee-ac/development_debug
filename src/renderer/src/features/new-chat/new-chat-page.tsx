@@ -173,6 +173,7 @@ export function NewChatPage() {
   // ── Derived ──
   const selectedProfile = profiles.find(p => p.id === effectiveProfileId) ?? null
   const selectedWorkspace = workspaces.find(w => w.id === selectedWorkspaceId) ?? null
+
   const effectiveModel = useMemo(() => selectedModel ?? models[0] ?? null, [selectedModel, models])
   const showModelPicker = selectedProfile && selectedProfile.providerKind !== 'cli-tui' && (isLoadingModels || models.length > 0)
   const isCliTui = selectedProfile?.providerKind === 'cli-tui'

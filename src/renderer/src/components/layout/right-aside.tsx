@@ -1,9 +1,9 @@
-// Input: FileTree, GitPanel, IssueAsidePanel, workspaceId prop, sessionId prop, motion/react
+// Input: FileTree, GitPanel, IssueAsidePanel, GitBranchControl, workspaceId prop, sessionId prop, motion/react
 // Output: RightAside component — tabbed right aside panel with File Tree, Git, and Issue tabs
 // Position: Slot content for AppLayout aside prop; shown when asideOpen=true
 
 import { IssueAsidePanel } from '@renderer/features/kanban/issue-aside-panel'
-import { GitPanel } from '@renderer/features/git'
+import { GitBranchControl, GitPanel } from '@renderer/features/git'
 import { PackCodebaseDialog } from '@renderer/features/pack-codebase/pack-codebase-dialog'
 import { FileTree } from '@renderer/features/workspace/file-tree'
 import { useQuery } from '@tanstack/react-query'

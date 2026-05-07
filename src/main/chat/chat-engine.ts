@@ -98,6 +98,14 @@ interface SerializedChatError {
   }
 }
 
+interface TurnOutputDiagnostics {
+  emittedEventCount: number
+  assistantBoundaryCount: number
+  assistantTextCharCount: number
+  reasoningTextCharCount: number
+  toolEventCount: number
+}
+
 export type ChatTurnStatus = 'complete' | 'aborted' | 'failed'
 
 export interface ChatTurnFinishedEvent {
@@ -670,6 +678,13 @@ export class ChatEngine {
     let finalStatus: MessageStatus = 'complete'
     let finalError: string | null = null
     let provider: ChatRuntimeProvider | null = null
+    const turnOutputDiagnostics: TurnOutputDiagnostics = {
+      emittedEventCount: 0,
+      assistantBoundaryCount: 0,
+      assistantTextCharCount: 0,
+      reasoningTextCharCount: 0,
+      toolEventCount: 0,
+    }
 
     const emitTimelineEvent = (
       event: TimelineInputEvent,
@@ -766,24 +781,31 @@ export class ChatEngine {
         const { event } = yield_
         if (yield_.type === 'terminal') {
           // Terminal event — determine final status from the event type
-          finalStatus = event.type === 'run.completed'
+          const terminalEvent = this.resolveTerminalEventWithDiagnostics(
+            event,
+            draft.runtimeSession.providerKind,
+            turnOutputDiagnostics,
+          )
+
+          finalStatus = terminalEvent.type === 'run.completed'
             ? 'complete'
-            : event.type === 'run.aborted'
+            : terminalEvent.type === 'run.aborted'
               ? 'aborted'
               : 'failed'
-          finalError = event.type === 'run.failed' ? event.error : null
+          finalError = terminalEvent.type === 'run.failed' ? terminalEvent.error : null
 
           if (finalStatus === 'failed') {
-            console.error('[ChatEngine] prompt failed', {
+            console.error('[ChatEngine] turn failed', {
               chatSessionId: draft.chatSessionId,
               messageId: draft.messageId,
               agentId: draft.agentId,
               providerSessionId: draft.runtimeSession.providerSessionId,
               error: finalError,
+              diagnostics: turnOutputDiagnostics,
             })
           }
 
-          emitTimelineEvent(event, {
+          emitTimelineEvent(terminalEvent, {
             messageStatus: finalStatus,
             errorText: finalError,
             runCompletion: {
@@ -798,6 +820,7 @@ export class ChatEngine {
           })
         }
         else {
+          accumulateTurnOutputDiagnostics(turnOutputDiagnostics, event)
           emitTimelineEvent(event)
         }
       }
@@ -907,6 +930,23 @@ export class ChatEngine {
     }
   }
 
+  private resolveTerminalEventWithDiagnostics(
+    event: Extract<TimelineInputEvent, { type: 'run.completed' | 'run.aborted' | 'run.failed' }>,
+    providerKind: ProviderKind,
+    diagnostics: TurnOutputDiagnostics,
+  ): Extract<TimelineInputEvent, { type: 'run.completed' | 'run.aborted' | 'run.failed' }> {
+    if (event.type !== 'run.completed') {
+      return event
+    }
+
+    const validation = validateTurnOutput(diagnostics)
+    if (validation.ok) {
+      return event
+    }
+
+    return buildEmptyOutputFailureEvent(event, providerKind, diagnostics)
+  }
+
   private broadcastGlobal<T extends { chatSessionId: string }>(
     _channel: string,
     payload: T,
@@ -930,6 +970,81 @@ export class ChatEngine {
       source: 'session_start',
       capabilitiesJson: providerStateSnapshot,
     })
+  }
+}
+
+interface TurnOutputValidationResult {
+  ok: boolean
+  errorText: string | null
+}
+
+function accumulateTurnOutputDiagnostics(
+  diagnostics: TurnOutputDiagnostics,
+  event: TimelineInputEvent,
+): void {
+  diagnostics.emittedEventCount += 1
+
+  switch (event.type) {
+    case 'assistant.message.started':
+    case 'assistant.message.completed':
+      diagnostics.assistantBoundaryCount += 1
+      break
+    case 'assistant.text.delta':
+      diagnostics.assistantTextCharCount += event.delta.length
+      break
+    case 'reasoning.delta':
+      diagnostics.reasoningTextCharCount += event.delta.length
+      break
+    case 'command.started':
+    case 'command.output.delta':
+    case 'command.completed':
+    case 'tool_call.started':
+    case 'tool_call.output.delta':
+    case 'tool_call.completed':
+    case 'file_change.started':
+    case 'file_change.completed':
+    case 'approval.requested':
+    case 'approval.resolved':
+      diagnostics.toolEventCount += 1
+      break
+    default:
+      break
+  }
+}
+
+function validateTurnOutput(diagnostics: TurnOutputDiagnostics): TurnOutputValidationResult {
+  const hasTextOutput = diagnostics.assistantTextCharCount > 0 || diagnostics.reasoningTextCharCount > 0
+  const hasToolOutput = diagnostics.toolEventCount > 0
+
+  if (hasTextOutput || hasToolOutput) {
+    return { ok: true, errorText: null }
+  }
+
+  return {
+    ok: false,
+    errorText: `Provider finished without any assistant output events (events=${diagnostics.emittedEventCount}, assistant_boundaries=${diagnostics.assistantBoundaryCount}, assistant_text_chars=${diagnostics.assistantTextCharCount}, reasoning_chars=${diagnostics.reasoningTextCharCount}, tool_events=${diagnostics.toolEventCount})`,
+  }
+}
+
+function buildEmptyOutputFailureEvent(
+  originalEvent: Extract<TimelineInputEvent, { type: 'run.completed' }>,
+  providerKind: ProviderKind,
+  diagnostics: TurnOutputDiagnostics,
+): Extract<TimelineInputEvent, { type: 'run.failed' }> {
+  const validation = validateTurnOutput(diagnostics)
+  const errorText = validation.errorText ?? 'Provider finished without assistant output events'
+
+  return {
+    type: 'run.failed',
+    error: errorText,
+    source: {
+      backend: providerKind,
+      eventType: 'chat.turn.failed.empty-output',
+      metadata: {
+        terminalEventType: originalEvent.type,
+        diagnostics,
+      },
+    },
   }
 }
 

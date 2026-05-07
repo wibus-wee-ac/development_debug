@@ -15,7 +15,6 @@ import { useLayoutStore } from '@renderer/store/layout'
 import { useCradleNavigation, useIsActiveTab } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  AlignJustifyIcon,
   BarChart3Icon,
   ClipboardCopyIcon,
   FolderClosedIcon,
@@ -34,7 +33,6 @@ import {
   SettingsIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
-  ZapIcon,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -502,16 +500,6 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             shortcut="⌘K"
             collapsed={collapsed}
             onClick={openSearch}
-          />
-          <TopNavItem
-            icon={<AlignJustifyIcon className="size-4" />}
-            label="插件"
-            collapsed={collapsed}
-          />
-          <TopNavItem
-            icon={<ZapIcon className="size-4" />}
-            label="自动化"
-            collapsed={collapsed}
           />
           <TopNavItem
             icon={<LayoutDashboardIcon className="size-4" />}

@@ -125,12 +125,12 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
       data-tab-pinned={tab.pinned ? 'true' : 'false'}
       className={cn(
         'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium',
-        tab.pinned ? 'px-3.5' : 'pl-3.5 pr-7',
+        tab.pinned ? 'px-3' : 'pl-3 pr-7',
         'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden',
         isActive
           ? cn(
             'bg-background text-foreground',
-            'inset-shadow-sm inset-shadow-white/10',
+            'shadow-xs',
             activeTabClassName,
           )
           : cn('text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-foreground/3', tabClassName),
@@ -150,7 +150,7 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
           className={cn(
             'absolute right-1 top-1/2 z-10 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-transparent p-0',
             isActive
-              ? 'opacity-0 group-hover:opacity-60 hover:opacity-100!'
+              ? 'opacity-40 hover:opacity-100!'
               : 'opacity-0 group-hover:opacity-60 hover:opacity-100!',
             'transition-opacity hover:bg-foreground/10',
           )}
@@ -253,7 +253,7 @@ export const TabBar = memo(({ className, tabClassName, activeTabClassName, rende
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div
         className={cn(
-          'flex items-center gap-0.5 overflow-hidden px-0.5',
+          'flex items-center gap-1 overflow-hidden px-0.5',
           className,
         )}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}

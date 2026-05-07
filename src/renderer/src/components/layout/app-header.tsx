@@ -11,19 +11,14 @@ import { ipc } from '@renderer/lib/ipc'
 import { useLayoutStore } from '@renderer/store/layout'
 import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, XIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
 import { useCallback } from 'react'
 
 interface AppHeaderProps {
-  title?: ReactNode
-  workspace?: ReactNode
   hasAside?: boolean
   hasPanel?: boolean
-  /** Optional third breadcrumb segment rendered after workspace/title (e.g. git branch control) */
-  gitBranch?: ReactNode
 }
 
-export function AppHeader({ title, workspace, hasAside = false, hasPanel = false, gitBranch }: AppHeaderProps) {
+export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, isSettings } = useLayoutStore()
   const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
@@ -85,8 +80,9 @@ export function AppHeader({ title, workspace, hasAside = false, hasPanel = false
       )}
 
       {/* Tab bar */}
-      <div className="flex-1 min-w-0 ml-0.5 mr-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div className="flex-1 min-w-0 ml-0.5 mr-1 h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <TabBar
+          className="h-full"
           onNewTab={handleNewTab}
           onTabActivated={handleTabActivated}
           onTabTearOff={handleTabTearOff}
@@ -96,42 +92,6 @@ export function AppHeader({ title, workspace, hasAside = false, hasPanel = false
           renderTooltip={renderTooltip}
         />
       </div>
-
-      {(workspace || title || gitBranch) && (
-        <div
-          className="mr-1 flex min-w-0 max-w-[40%] shrink items-center gap-1 text-[11px]"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          data-testid="app-header-breadcrumbs"
-        >
-          {workspace && (
-            <div
-              className="min-w-0 truncate rounded-md bg-accent/50 px-2 py-1 text-muted-foreground"
-              data-testid="app-header-workspace"
-            >
-              {workspace}
-            </div>
-          )}
-          {workspace && (title || gitBranch) && (
-            <span className="shrink-0 text-muted-foreground/35" aria-hidden="true">/</span>
-          )}
-          {title && (
-            <div
-              className="min-w-0 truncate text-muted-foreground/70"
-              data-testid="app-header-title"
-            >
-              {title}
-            </div>
-          )}
-          {title && gitBranch && (
-            <span className="shrink-0 text-muted-foreground/35" aria-hidden="true">/</span>
-          )}
-          {gitBranch && (
-            <div className="shrink-0" data-testid="app-header-git-branch">
-              {gitBranch}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>

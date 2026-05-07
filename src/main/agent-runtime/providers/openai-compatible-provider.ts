@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import OpenAI from 'openai'
 
 import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
+import { enrichModelsFromRegistry } from '../model-info-registry'
 import type {
   AgentProfile,
   CancelTurnInput,
@@ -28,6 +29,7 @@ interface OpenAICompatibleProviderDeps {
 interface OpenAICompatibleConfig {
   baseUrl?: string
   model?: string
+  enabledModels?: string[]
 }
 
 interface OpenAICompatibleToolCallDelta {
@@ -51,6 +53,7 @@ interface ToolCallAccumulator {
   toolInput: string
 }
 
+const TRAILING_SLASH_RE = /\/$/
 const TOOL_CALL_NO_RUNTIME_OUTPUT = 'Tool call emitted without runtime execution'
 
 type OpenAICompatibleStream = AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
@@ -111,19 +114,59 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
   }
 
   async listModels(profile: AgentProfile): Promise<ModelDescriptor[]> {
-    if (profile.credentialRef) {
-      this.deps.readSecret(profile.credentialRef)
-    }
     const config = parseConfig(profile.configJson)
-    if (!config.model) {
+    if (!config.baseUrl) {
       return []
     }
-    return [{
-      id: config.model,
-      label: config.model,
-      providerKind: this.providerKind,
-      contextWindow: null,
-    }]
+
+    const apiKey = profile.credentialRef
+      ? this.deps.readSecret(profile.credentialRef)
+      : null
+
+    let models: ModelDescriptor[] = []
+    try {
+      const modelsUrl = `${config.baseUrl.replace(TRAILING_SLASH_RE, '')}/models`
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`
+      }
+
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10_000)
+      const response = await fetch(modelsUrl, { headers, signal: controller.signal })
+      clearTimeout(timeout)
+
+      if (response.ok) {
+        const data = await response.json() as { data?: Array<{ id: string }> }
+        if (Array.isArray(data.data) && data.data.length > 0) {
+          models = data.data.map(m => ({
+            id: m.id,
+            label: m.id,
+            providerKind: this.providerKind,
+            contextWindow: null,
+          }))
+          models = await enrichModelsFromRegistry(models)
+        }
+      }
+    }
+    catch {
+      // fetch failed — fall through to config.model fallback
+    }
+
+    // If API returned nothing, fall back to the model saved in configJson
+    if (models.length === 0 && config.model) {
+      models = [{ id: config.model, label: config.model, providerKind: this.providerKind, contextWindow: null }]
+    }
+
+    // Apply per-provider model allow-list (undefined = all, [] = none, [...] = filter)
+    const { enabledModels } = config
+    if (enabledModels === undefined) {
+      return models
+    }
+    if (enabledModels.length === 0) {
+      return []
+    }
+    return models.filter(m => enabledModels.includes(m.id))
   }
 
   // ── ChatRuntimeProvider ───────────────────────────────────────────────────
@@ -150,7 +193,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
     const effectiveModel = inputModelId ?? config.model
     if (!config.baseUrl || !effectiveModel) {
-      throw new Error('OpenAI-compatible provider requires baseUrl and model in configJson')
+      throw new Error('OpenAI-compatible provider requires baseUrl and a selected modelId')
     }
 
     const apiKey = profile.credentialRef
@@ -364,10 +407,11 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
 function parseConfig(configJson: string): OpenAICompatibleConfig {
   try {
-    const parsed = JSON.parse(configJson) as OpenAICompatibleConfig
+    const parsed = JSON.parse(configJson) as Record<string, unknown>
     return {
       baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : undefined,
       model: typeof parsed.model === 'string' ? parsed.model : undefined,
+      enabledModels: Array.isArray(parsed.enabledModels) ? parsed.enabledModels as string[] : undefined,
     }
   }
   catch {

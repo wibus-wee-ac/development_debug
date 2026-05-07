@@ -2,7 +2,7 @@
 // Output: AgentRuntimeSettings component — Linear-style provider management
 // Position: Settings feature section for Agent Runtime provider configuration
 
-import type { AgentProfile, ProviderKind } from '@main/ipc-types'
+import type { AgentProfile, ModelDescriptor, ProviderKind } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
+import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { cn } from '@renderer/lib/cn'
@@ -58,7 +59,7 @@ interface CodexFields { name: string, baseUrl: string, model: string, apiKey: st
 interface ClaudeAgentFields { name: string, baseUrl: string, model: string, apiKey: string }
 
 type ProviderFields
-  = | { kind: 'openai-compatible', fields: OpenAIFields }
+  = { kind: 'openai-compatible', fields: OpenAIFields }
   | { kind: 'acp-chat', fields: AcpFields }
   | { kind: 'cli-tui', fields: CliTuiFields }
   | { kind: 'codex', fields: CodexFields }
@@ -66,7 +67,7 @@ type ProviderFields
 
 function defaultFields(kind: ProviderKind): ProviderFields {
   switch (kind) {
-    case 'openai-compatible': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o', apiKey: '' } }
+    case 'openai-compatible': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: '', apiKey: '' } }
     case 'acp-chat': return { kind, fields: { name: DEFAULT_NAMES[kind], packageName: '', distributionType: 'npx' } }
     case 'cli-tui': return { kind, fields: { name: DEFAULT_NAMES[kind], command: 'claude' } }
     case 'codex': return { kind, fields: { name: DEFAULT_NAMES[kind], baseUrl: 'https://api.openai.com/v1', model: 'codex-mini-latest', apiKey: '' } }
@@ -76,11 +77,11 @@ function defaultFields(kind: ProviderKind): ProviderFields {
 
 function buildConfigJson(pf: ProviderFields): string {
   switch (pf.kind) {
-    case 'openai-compatible': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
+    case 'openai-compatible': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model || undefined })
     case 'acp-chat': return JSON.stringify({ distributionType: pf.fields.distributionType, cmd: pf.fields.packageName, args: [] })
     case 'cli-tui': return JSON.stringify({ executable: pf.fields.command, args: [] })
-    case 'codex': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
-    case 'claude-agent': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model })
+    case 'codex': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model || undefined })
+    case 'claude-agent': return JSON.stringify({ baseUrl: pf.fields.baseUrl, model: pf.fields.model || undefined })
   }
 }
 
@@ -219,8 +220,8 @@ function AddProviderDialog({
                 <Input data-testid="provider-baseurl" value={form.fields.baseUrl} onChange={e => setForm({ ...form, fields: { ...form.fields, baseUrl: e.target.value } })} placeholder="https://api.openai.com/v1" />
               </div>
               <div className="grid gap-1.5">
-                <Label>Model</Label>
-                <Input data-testid="provider-model" value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="gpt-4o" />
+                <Label>Default Model</Label>
+                <Input data-testid="provider-model" value={form.fields.model} onChange={e => setForm({ ...form, fields: { ...form.fields, model: e.target.value } })} placeholder="gpt-4o (fallback if /models unavailable)" />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key</Label>
@@ -335,6 +336,110 @@ function AddProviderDialog({
   )
 }
 
+// ── Shared Available Models field ─────────────────────────────────────────────
+
+// Sentinel stored in enabledModels state to represent "all models disabled"
+const ALL_DISABLED_SENTINEL = '__all_disabled__'
+
+function AvailableModelsField({
+  loading,
+  models,
+  enabledModels,
+  onToggle,
+  onShowAll,
+  onDisableAll,
+}: {
+  loading: boolean
+  models: ModelDescriptor[]
+  enabledModels: string[]
+  onToggle: (id: string, checked: boolean) => void
+  onShowAll: () => void
+  onDisableAll: () => void
+}) {
+  const [filter, setFilter] = useState('')
+  const allDisabled = enabledModels.length === 1 && enabledModels[0] === ALL_DISABLED_SENTINEL
+  const visible = filter.trim()
+    ? models.filter(m => (m.label || m.id).toLowerCase().includes(filter.toLowerCase()))
+    : models
+
+  function isChecked(id: string) {
+    if (allDisabled) return false
+    return enabledModels.length === 0 || enabledModels.includes(id)
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-center justify-between">
+        <Label>Available Models</Label>
+        <div className="flex items-center gap-1">
+          {(enabledModels.length > 0) && (
+            <Button type="button" variant="ghost" size="sm" onClick={onShowAll} className="h-auto py-0 text-[11px] text-muted-foreground">
+              Show all
+            </Button>
+          )}
+          {!allDisabled && (
+            <Button type="button" variant="ghost" size="sm" onClick={onDisableAll} className="h-auto py-0 text-[11px] text-muted-foreground">
+              Disable all
+            </Button>
+          )}
+        </div>
+      </div>
+      {loading
+        ? (
+          <div className="flex items-center gap-2 py-2 text-[12px] text-muted-foreground">
+            <Spinner className="size-3" />
+            Fetching models…
+          </div>
+        )
+        : models.length === 0
+          ? (
+            <p className="text-[12px] text-muted-foreground py-1">
+              No models returned from API. Save first if you changed the base URL or API key.
+            </p>
+          )
+          : (
+            <>
+              <Input
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                placeholder="Filter models…"
+                className="h-7 text-[12px]"
+              />
+              <div className="max-h-40 overflow-y-auto rounded-md border border-border/40 divide-y divide-border/20">
+                {visible.map(m => (
+                  <label
+                    key={m.id}
+                    className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-accent/40 transition-colors"
+                  >
+                    <Checkbox
+                      checked={isChecked(m.id)}
+                      onCheckedChange={checked => onToggle(m.id, !!checked)}
+                    />
+                    <span className="text-[12px] truncate">{m.label || m.id}</span>
+                    {m.contextWindow && (
+                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">
+                        {(m.contextWindow / 1000).toFixed(0)}k
+                      </span>
+                    )}
+                  </label>
+                ))}
+                {visible.length === 0 && (
+                  <p className="px-3 py-2 text-[12px] text-muted-foreground">No matching models.</p>
+                )}
+              </div>
+            </>
+          )}
+      <p className="text-[11px] text-muted-foreground/60">
+        {allDisabled
+          ? 'No models enabled'
+          : enabledModels.length === 0
+            ? 'All models shown in chat'
+            : `${enabledModels.length} model${enabledModels.length === 1 ? '' : 's'} enabled`}
+      </p>
+    </div>
+  )
+}
+
 // ── Edit Provider Dialog ───────────────────────────────────────────────────────
 
 function EditProviderDialog({
@@ -362,8 +467,17 @@ function EditProviderDialog({
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(parsed.baseUrl ?? '')
   const [model, setModel] = useState(parsed.model ?? '')
+  const [enabledModels, setEnabledModels] = useState<string[]>(
+    !Array.isArray(parsed.enabledModels)
+      ? []
+      : parsed.enabledModels.length === 0
+        ? [ALL_DISABLED_SENTINEL]
+        : parsed.enabledModels,
+  )
   const [command, setCommand] = useState(parsed.executable ?? parsed.cmd ?? '')
   const [busy, setBusy] = useState(false)
+  const [availableModels, setAvailableModels] = useState<ModelDescriptor[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
 
   useEffect(() => {
     setName(profile.name)
@@ -371,8 +485,36 @@ function EditProviderDialog({
     setApiKey('')
     setBaseUrl(parsed.baseUrl ?? '')
     setModel(parsed.model ?? '')
+    setEnabledModels(
+      !Array.isArray(parsed.enabledModels)
+        ? []
+        : parsed.enabledModels.length === 0
+          ? [ALL_DISABLED_SENTINEL]
+          : parsed.enabledModels,
+    )
     setCommand(parsed.executable ?? parsed.cmd ?? '')
   }, [profile, parsed])
+
+  // Auto-fetch available models when dialog opens for providers that support it
+  useEffect(() => {
+    const supportsModels = profile.providerKind === 'openai-compatible'
+      || profile.providerKind === 'codex'
+      || profile.providerKind === 'claude-agent'
+    if (!open || !supportsModels || !ipc) {
+      return
+    }
+    setModelsLoading(true)
+    ipc.agentRuntime.listModels(profile.id)
+      .then((models) => {
+        setAvailableModels(models as ModelDescriptor[])
+      })
+      .catch(() => {
+        setAvailableModels([])
+      })
+      .finally(() => {
+        setModelsLoading(false)
+      })
+  }, [open, profile.id, profile.providerKind])
 
   const handleSave = useCallback(async () => {
     if (!ipc) {
@@ -408,13 +550,16 @@ function EditProviderDialog({
 
       let configJson = profile.configJson
       if (profile.providerKind === 'openai-compatible') {
-        configJson = JSON.stringify({ baseUrl, model })
+        const cleanEnabled = enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
+        configJson = JSON.stringify({ baseUrl, model: model || undefined, enabledModels: cleanEnabled.length > 0 ? cleanEnabled : enabledModels[0] === ALL_DISABLED_SENTINEL ? [] : undefined })
       }
       else if (profile.providerKind === 'codex') {
-        configJson = JSON.stringify({ baseUrl, model })
+        const cleanEnabled = enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
+        configJson = JSON.stringify({ baseUrl, model: model || undefined, enabledModels: cleanEnabled.length > 0 ? cleanEnabled : enabledModels[0] === ALL_DISABLED_SENTINEL ? [] : undefined })
       }
       else if (profile.providerKind === 'claude-agent') {
-        configJson = JSON.stringify({ baseUrl, model })
+        const cleanEnabled = enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
+        configJson = JSON.stringify({ baseUrl, model: model || undefined, enabledModels: cleanEnabled.length > 0 ? cleanEnabled : enabledModels[0] === ALL_DISABLED_SENTINEL ? [] : undefined })
       }
       else if (profile.providerKind === 'cli-tui') {
         configJson = JSON.stringify({ executable: command, args: [] })
@@ -440,7 +585,7 @@ function EditProviderDialog({
     finally {
       setBusy(false)
     }
-  }, [profile, name, enabled, apiKey, baseUrl, model, command, parsed, onSaved, onOpenChange])
+  }, [profile, name, enabled, apiKey, baseUrl, model, enabledModels, command, parsed, onSaved, onOpenChange])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -462,13 +607,38 @@ function EditProviderDialog({
                 <Input data-testid="provider-edit-baseurl" value={baseUrl} onChange={e => setBaseUrl(e.target.value)} />
               </div>
               <div className="grid gap-1.5">
-                <Label>Model</Label>
-                <Input data-testid="provider-edit-model" value={model} onChange={e => setModel(e.target.value)} />
-              </div>
-              <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
                 <Input data-testid="provider-edit-apikey" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
               </div>
+              <div className="grid gap-1.5">
+                <Label>Default Model</Label>
+                <Input
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                  placeholder="e.g. gpt-4o (fallback if /models fails)"
+                />
+              </div>
+              <AvailableModelsField
+                loading={modelsLoading}
+                models={availableModels}
+                enabledModels={enabledModels}
+                onToggle={(id, checked) => {
+                  if (checked) {
+                    setEnabledModels(prev => {
+                      const base = prev[0] === ALL_DISABLED_SENTINEL || prev.length === 0 ? availableModels.map(x => x.id) : prev
+                      return [...base.filter(x => x !== id), id]
+                    })
+                  }
+                  else {
+                    setEnabledModels(prev => {
+                      const base = prev[0] === ALL_DISABLED_SENTINEL ? [] : prev.length === 0 ? availableModels.map(x => x.id) : prev
+                      return base.filter(x => x !== id)
+                    })
+                  }
+                }}
+                onShowAll={() => setEnabledModels([])}
+                onDisableAll={() => setEnabledModels([ALL_DISABLED_SENTINEL])}
+              />
             </>
           )}
 
@@ -480,12 +650,33 @@ function EditProviderDialog({
               </div>
               <div className="grid gap-1.5">
                 <Label>Model</Label>
-                <Input data-testid="provider-edit-model" value={model} onChange={e => setModel(e.target.value)} placeholder="codex-mini-latest" />
+                <Input value={model} onChange={e => setModel(e.target.value)} placeholder="codex-mini-latest" />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
                 <Input data-testid="provider-edit-apikey" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-..." />
               </div>
+              <AvailableModelsField
+                loading={modelsLoading}
+                models={availableModels}
+                enabledModels={enabledModels}
+                onToggle={(id, checked) => {
+                  if (checked) {
+                    setEnabledModels(prev => {
+                      const base = prev[0] === ALL_DISABLED_SENTINEL || prev.length === 0 ? availableModels.map(x => x.id) : prev
+                      return [...base.filter(x => x !== id), id]
+                    })
+                  }
+                  else {
+                    setEnabledModels(prev => {
+                      const base = prev[0] === ALL_DISABLED_SENTINEL ? [] : prev.length === 0 ? availableModels.map(x => x.id) : prev
+                      return base.filter(x => x !== id)
+                    })
+                  }
+                }}
+                onShowAll={() => setEnabledModels([])}
+                onDisableAll={() => setEnabledModels([ALL_DISABLED_SENTINEL])}
+              />
             </>
           )}
 
@@ -497,12 +688,33 @@ function EditProviderDialog({
               </div>
               <div className="grid gap-1.5">
                 <Label>Model</Label>
-                <Input data-testid="provider-edit-model" value={model} onChange={e => setModel(e.target.value)} placeholder="claude-sonnet-4-20250514" />
+                <Input value={model} onChange={e => setModel(e.target.value)} placeholder="claude-sonnet-4-20250514" />
               </div>
               <div className="grid gap-1.5">
                 <Label>API Key (leave empty to keep current)</Label>
                 <Input data-testid="provider-edit-apikey" type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-ant-..." />
               </div>
+              <AvailableModelsField
+                loading={modelsLoading}
+                models={availableModels}
+                enabledModels={enabledModels}
+                onToggle={(id, checked) => {
+                  if (checked) {
+                    setEnabledModels(prev => {
+                      const base = prev[0] === ALL_DISABLED_SENTINEL || prev.length === 0 ? availableModels.map(x => x.id) : prev
+                      return [...base.filter(x => x !== id), id]
+                    })
+                  }
+                  else {
+                    setEnabledModels(prev => {
+                      const base = prev[0] === ALL_DISABLED_SENTINEL ? [] : prev.length === 0 ? availableModels.map(x => x.id) : prev
+                      return base.filter(x => x !== id)
+                    })
+                  }
+                }}
+                onShowAll={() => setEnabledModels([])}
+                onDisableAll={() => setEnabledModels([ALL_DISABLED_SENTINEL])}
+              />
             </>
           )}
 
