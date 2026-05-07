@@ -54,7 +54,7 @@ export const useObservabilityDevtoolStore = create<ObservabilityDevtoolState>((s
     await window.ipcDevtool.flushObservability()
   },
   exportBundle: async (input = {}) => {
-    const bundle = await window.ipcDevtool.exportObservabilityBundle(input) as Record<string, unknown>
+    const bundle = await window.ipcDevtool.exportObservabilityBundle(input)
     return JSON.stringify(bundle, null, 2)
   },
   selectIndex: selectedIndex => set({ selectedIndex }),

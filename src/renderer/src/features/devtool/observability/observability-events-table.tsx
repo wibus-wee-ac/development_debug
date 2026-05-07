@@ -39,10 +39,10 @@ export function ObservabilityEventsTable() {
         </thead>
         <tbody>
           {events.map((entry, index) => {
-            const payload = entry.payload
             const timestamp = entry.kind === 'event'
-              ? payload.recordedAt
-              : payload.lastRecordedAt
+              ? entry.payload.recordedAt
+              : entry.payload.lastRecordedAt
+            const payload = entry.payload
             return (
               <tr
                 key={`${entry.kind}-${payload.id}-${index}`}

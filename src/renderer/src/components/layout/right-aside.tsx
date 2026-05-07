@@ -2,13 +2,13 @@
 // Output: RightAside component — tabbed right aside panel with File Tree, Git, and Issue tabs
 // Position: Slot content for AppLayout aside prop; shown when asideOpen=true
 
+import { GitPanel } from '@renderer/features/git'
 import { IssueAsidePanel } from '@renderer/features/kanban/issue-aside-panel'
-import { GitBranchControl, GitPanel } from '@renderer/features/git'
 import { PackCodebaseDialog } from '@renderer/features/pack-codebase/pack-codebase-dialog'
 import { FileTree } from '@renderer/features/workspace/file-tree'
-import { useQuery } from '@tanstack/react-query'
-import { ipc } from '@renderer/lib/ipc'
 import { cn } from '@renderer/lib/cn'
+import { ipc } from '@renderer/lib/ipc'
+import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, FolderTreeIcon, GitBranchIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useState } from 'react'

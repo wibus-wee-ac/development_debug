@@ -16,5 +16,5 @@ Place domain-specific content components in `features/` instead.
 - **dev-bottom-bar.tsx**: Dev-only slim footer inside `AppLayout` with a single button that opens the IPC devtool second window
 - **layout-slots-context.tsx**: React context + `LayoutSlotsProvider` for per-tab layout slot injection (aside, panel, hasAside, hasPanel, title, workspace, gitBranch). Consumed by `AppLayout` and used by tab content components via `useRegisterLayoutSlots`.
 - **resize-handle.tsx**: Draggable handle for resizing sidebar, aside, and panel widths/heights.
-- **right-aside.tsx**: Tabbed right side panel with File Tree, Git, and Issue tabs; accepts workspaceId, workspacePath, and sessionId props, and exposes stable tab/content `data-testid` anchors for E2E navigation
+- **right-aside.tsx**: Tabbed right side panel with File Tree, Git, and Issue tabs; accepts workspaceId, workspacePath, and sessionId props, can launch the pack-codebase dialog from the file tree flow, and exposes stable tab/content `data-testid` anchors for E2E navigation
 - **use-layout-slots.ts**: `useLayoutSlotsCtx` and `useRegisterLayoutSlots` hooks for reading and registering layout slots from tab content components.
