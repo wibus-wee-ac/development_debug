@@ -18,9 +18,9 @@ export interface TurnCoordinatorResult {
   errorText: string | null
 }
 
-export type TurnYield =
-  | { type: 'delta', event: TimelineInputEvent }
-  | { type: 'terminal', event: TimelineInputEvent }
+export type TurnYield
+  = | { type: 'delta', event: TimelineInputEvent }
+    | { type: 'terminal', event: TimelineInputEvent }
 
 /**
  * Drives the provider's streamTurn() generator and yields each TimelineInputEvent.
@@ -49,6 +49,7 @@ export async function* coordinateTurn(
 
   let finalStatus: 'complete' | 'aborted' | 'failed' = 'complete'
   let finalError: string | null = null
+  let finalErrorCode: string | number | null = null
 
   try {
     for await (const event of provider.streamTurn(streamInput)) {
@@ -68,12 +69,19 @@ export async function* coordinateTurn(
   catch (err) {
     finalStatus = signal.aborted ? 'aborted' : 'failed'
     if (!signal.aborted) {
-      finalError = serializeError(err)
+      const serialized = serializeError(err)
+      finalError = serialized.text
+      finalErrorCode = serialized.code ?? null
     }
   }
 
   // Bookend: terminal event
-  const terminalEvent: TimelineInputEvent = buildTerminalEvent(finalStatus, finalError, providerKind)
+  const terminalEvent: TimelineInputEvent = buildTerminalEvent(
+    finalStatus,
+    finalError,
+    providerKind,
+    finalErrorCode,
+  )
   yield { event: terminalEvent, type: 'terminal' }
 
   return { status: finalStatus, errorText: finalError }
@@ -83,27 +91,37 @@ function buildTerminalEvent(
   status: 'complete' | 'aborted' | 'failed',
   errorText: string | null,
   providerKind: string,
+  errorCode: string | number | null,
 ): TimelineInputEvent {
-  const source = {
-    backend: providerKind as ProviderKind,
-    eventType: `chat.turn.${status}`,
-  }
+  const baseSource = { backend: providerKind as ProviderKind, eventType: `chat.turn.${status}` }
 
   switch (status) {
     case 'complete':
-      return { type: 'run.completed', source }
+      return { type: 'run.completed', source: baseSource }
     case 'aborted':
-      return { type: 'run.aborted', source }
+      return { type: 'run.aborted', source: baseSource }
     case 'failed':
-      return { type: 'run.failed', error: errorText ?? 'unknown error', source }
+      return {
+        type: 'run.failed',
+        error: errorText ?? 'unknown error',
+        source: errorCode === null
+          ? baseSource
+          : {
+              ...baseSource,
+              metadata: { errorCode },
+            },
+      }
   }
 }
 
-function serializeError(err: unknown): string {
+function serializeError(err: unknown): { text: string, code?: string | number } {
   if (err instanceof Error) {
     const code = (err as unknown as Record<string, unknown>).code
     const codePrefix = code !== undefined ? `[code ${String(code)}] ` : ''
-    return `${codePrefix}${err.message}`
+    return {
+      text: `${codePrefix}${err.message}`,
+      code: typeof code === 'string' || typeof code === 'number' ? code : undefined,
+    }
   }
-  return String(err)
+  return { text: String(err) }
 }

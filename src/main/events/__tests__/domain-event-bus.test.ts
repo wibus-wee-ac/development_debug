@@ -69,4 +69,23 @@ describe('inMemoryDomainEventBus', () => {
       'after:publish',
     ])
   })
+
+  it('captures handler failures and continues delivering to later handlers', async () => {
+    const onHandlerError = vi.fn()
+    const bus = createInMemoryDomainEventBus({ onHandlerError })
+    const trace: string[] = []
+
+    bus.subscribe('chat.turn-finished', async () => {
+      trace.push('first')
+      throw new Error('boom')
+    })
+    bus.subscribe('chat.turn-finished', async () => {
+      trace.push('second')
+    })
+
+    await bus.publish(buildTurnFinishedEvent())
+
+    expect(trace).toEqual(['first', 'second'])
+    expect(onHandlerError).toHaveBeenCalledTimes(1)
+  })
 })

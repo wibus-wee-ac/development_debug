@@ -14,8 +14,17 @@ export interface DomainEventBus {
   ) => () => void
 }
 
-export function createInMemoryDomainEventBus(): DomainEventBus {
+export interface DomainEventBusOptions {
+  onHandlerError?: (input: {
+    event: DomainEvent
+    error: unknown
+    handler: DomainEventHandler<DomainEvent>
+  }) => void | Promise<void>
+}
+
+export function createInMemoryDomainEventBus(options: DomainEventBusOptions = {}): DomainEventBus {
   const handlers = new Map<DomainEventType, Set<DomainEventHandler<DomainEvent>>>()
+  const onHandlerError = options.onHandlerError
 
   const publish: DomainEventBus['publish'] = async (event) => {
     const subscribers = handlers.get(event.type)
@@ -23,7 +32,14 @@ export function createInMemoryDomainEventBus(): DomainEventBus {
       return
     }
     for (const handler of [...subscribers]) {
-      await handler(event)
+      try {
+        await handler(event)
+      }
+      catch (error) {
+        if (onHandlerError) {
+          await onHandlerError({ event, error, handler })
+        }
+      }
     }
   }
 

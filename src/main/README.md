@@ -16,4 +16,5 @@
 - **devtools/**: 主进程调试后端与观测缓冲
 - **db/**: SQLite 初始化、schema 与持久化入口
 - **events/**: 进程内领域事件与桥接器
+- **observability/**: 本地观测事件、incident 规则、批量持久化与调试导出
 - **__tests__/**: 跨 feature/platform 的根级主进程回归测试

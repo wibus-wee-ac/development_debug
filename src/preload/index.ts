@@ -9,6 +9,7 @@ const SIGNAL_CHANNEL = 'cradle:signal'
 const ACP_DEVTOOL_EVENT_CHANNEL = 'acp-devtool:event'
 const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
 const AGENT_CONTEXT_DEVTOOL_EVENT_CHANNEL = 'agent-context-devtool:event'
+const OBSERVABILITY_DEVTOOL_EVENT_CHANNEL = 'observability-devtool:event'
 
 // ── Unified Signal Bridge ─────────────────────────────────────────────────────
 // One subscribe gateway for ALL push events from main process.
@@ -56,6 +57,17 @@ const ipcDevtool = {
     electronAPI.ipcRenderer.on(AGENT_CONTEXT_DEVTOOL_EVENT_CHANNEL, wrapped)
     return () => {
       electronAPI.ipcRenderer.removeListener(AGENT_CONTEXT_DEVTOOL_EVENT_CHANNEL, wrapped)
+    }
+  },
+  getObservabilitySnapshot: () => electronAPI.ipcRenderer.invoke('ipcDevtool.getObservabilitySnapshot'),
+  clearObservability: () => electronAPI.ipcRenderer.invoke('ipcDevtool.clearObservability'),
+  flushObservability: () => electronAPI.ipcRenderer.invoke('ipcDevtool.flushObservability'),
+  exportObservabilityBundle: (input: unknown) => electronAPI.ipcRenderer.invoke('ipcDevtool.exportObservabilityBundle', input),
+  onObservabilityEvent: (listener: (event: unknown) => void) => {
+    const wrapped = (_event: unknown, payload: unknown) => listener(payload)
+    electronAPI.ipcRenderer.on(OBSERVABILITY_DEVTOOL_EVENT_CHANNEL, wrapped)
+    return () => {
+      electronAPI.ipcRenderer.removeListener(OBSERVABILITY_DEVTOOL_EVENT_CHANNEL, wrapped)
     }
   },
 }

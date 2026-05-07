@@ -11,11 +11,7 @@ import { eq, sql } from 'drizzle-orm'
 import { app, BrowserWindow, shell } from 'electron'
 
 import icon from '../../../resources/icon.png?asset'
-import { getDb, initDb } from '../db'
-import { acpAgents } from '../db/schema'
-import { initializeIpcDevtool, subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
-import { bridgeChatTurnFinishedEvents } from '../events/chat-turn-finished-bridge'
-import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
+import { acpConnectionManager } from '../acp/acp-connection'
 import {
   createDbCredentialStore,
 } from '../agent-runtime/agent-runtime'
@@ -27,14 +23,20 @@ import { CodexProvider } from '../agent-runtime/providers/codex-provider'
 import { OpenAICompatibleProvider } from '../agent-runtime/providers/openai-compatible-provider'
 import { createApprovalBroadcastSubscriber } from '../approval/approval-broadcast'
 import { getApprovalService } from '../approval/approval-service'
-import { chatEngine } from '../chat/chat-engine'
 import { createBroadcastSubscriber } from '../chat/broadcast'
+import { chatEngine } from '../chat/chat-engine'
 import { createFtsSubscriber } from '../chat/fts-subscriber'
-import { createUsageSubscriber } from '../chat/usage-subscriber'
 import { threadSearchEngine } from '../chat/thread-search'
+import { createUsageSubscriber } from '../chat/usage-subscriber'
+import { getDb, initDb } from '../db'
+import { acpAgents } from '../db/schema'
+import { initializeIpcDevtool, subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
+import { bridgeChatTurnFinishedEvents } from '../events/chat-turn-finished-bridge'
+import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
 import { issueAgentRunner } from '../issue-agent/issue-agent-runner'
+import { initObservabilityService, OBSERVABILITY_CODES } from '../observability/service'
+import type { ObservabilitySink } from '../observability/sink'
 import { initPackCodebaseWasm } from '../pack-codebase/pack-codebase'
-import { acpConnectionManager } from '../acp/acp-connection'
 import { ptyManager } from '../pty/pty-manager'
 import { initSignalBroadcaster } from '../signal/broadcaster'
 import { scanSkills } from '../skills/skills'
@@ -63,7 +65,9 @@ import { WorkflowRulesService } from './ipc/workflow-rules'
 import { WorkspaceService } from './ipc/workspace'
 import { restoreWindowState, saveWindowState } from './store/app'
 
-function bootstrapProviderCatalog(): void {
+let closeObservability: (() => Promise<void>) | null = null
+
+function bootstrapProviderCatalog(observability: ObservabilitySink): void {
   const credentialStore = createDbCredentialStore(getDb(), {
     encrypt: encryptSecret,
     decrypt: decryptSecret,
@@ -77,7 +81,7 @@ function bootstrapProviderCatalog(): void {
   }
 
   const openAIProvider = new OpenAICompatibleProvider({ readSecret })
-  const codexProvider = new CodexProvider({ readSecret, resolveSkillPaths })
+  const codexProvider = new CodexProvider({ readSecret, resolveSkillPaths, observability })
   const claudeAgentProvider = new ClaudeAgentProvider({ readSecret, resolveSkillPaths })
 
   initProviderCatalog([acpChatProvider, cliTuiProvider, openAIProvider, codexProvider, claudeAgentProvider])
@@ -161,14 +165,33 @@ app.whenReady().then(() => {
 
   initializeIpcDevtool()
   initPackCodebaseWasm()
+  const observabilityService = initObservabilityService()
+  closeObservability = () => observabilityService.shutdown()
 
   // Bootstrap provider catalog (must happen after DB init)
-  bootstrapProviderCatalog()
+  bootstrapProviderCatalog(observabilityService)
 
   // Bootstrap chat engine (crash recovery + transport hooks)
+  chatEngine.bindObservability(observabilityService)
   chatEngine.initialize()
 
-  const domainEventBus = createInMemoryDomainEventBus()
+  const domainEventBus = createInMemoryDomainEventBus({
+    onHandlerError: ({ event, error, handler }) => {
+      observabilityService.record({
+        source: 'domain-event-bus',
+        code: OBSERVABILITY_CODES.domainEventHandlerFailed,
+        severity: 'error',
+        category: 'event-bus',
+        message: `Domain event handler failed for ${event.type}`,
+        attrs: {
+          handlerName: handler.name || 'anonymous',
+          eventType: event.type,
+          eventId: event.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      })
+    },
+  })
   chatEngine.bindEventBus(domainEventBus)
   issueAgentRunner.bindDomainEventBus(domainEventBus)
   bridgeChatTurnFinishedEvents({
@@ -178,6 +201,7 @@ app.whenReady().then(() => {
 
   // Create unified signal broadcaster — single push gateway for all renderer events
   const signalBroadcaster = initSignalBroadcaster()
+  observabilityService.bindSignalBroadcaster(signalBroadcaster)
   chatEngine.bindSignalBroadcaster(signalBroadcaster)
   ptyManager.bindBroadcaster(signalBroadcaster)
 
@@ -292,6 +316,11 @@ app.whenReady().then(() => {
 // explicitly with Cmd + Q.
 app.on('before-quit', () => {
   stopSocketServer()
+  if (closeObservability) {
+    void closeObservability().catch((error) => {
+      console.error('[main] observability shutdown failed:', error)
+    })
+  }
 })
 
 app.on('window-all-closed', () => {

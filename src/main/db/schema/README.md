@@ -17,3 +17,4 @@
 - **acp.ts**: ACP agent 与 ACP audit 相关表
 - **kanban.ts**: Kanban 状态、看板、里程碑、Issue、评论、关联相关表
 - **issue-agent.ts**: Issue Agent session / activity 相关表
+- **observability.ts**: local observability append-only events 与 dedupe incident 相关表

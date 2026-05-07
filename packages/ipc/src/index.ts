@@ -46,3 +46,13 @@ export type {
 export type {
   AgentContextEvent,
 } from './agent-context-events'
+
+// Shared Observability devtool/event model
+export type {
+  ObservabilityCategory,
+  ObservabilityDevtoolEvent,
+  ObservabilityEvent,
+  ObservabilityIncident,
+  ObservabilitySeverity,
+  ObservabilitySource,
+} from './observability-events'

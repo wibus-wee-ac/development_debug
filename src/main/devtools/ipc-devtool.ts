@@ -13,6 +13,7 @@ import { BrowserWindow } from 'electron'
 import { subscribeAcpDevtool } from './acp-devtool-store'
 import { subscribeAgentContextDevtool } from './agent-context-devtool-store'
 import { IpcDevtoolStore } from './ipc-devtool-store'
+import { subscribeObservabilityDevtool } from './observability-devtool-store'
 
 export const IPC_DEVTOOL_EVENT_CHANNEL = 'ipc-devtool:event'
 
@@ -41,6 +42,7 @@ export function subscribeRuntimeDevtools(webContents: WebContents): Array<() => 
     subscribeIpcDevtool(webContents),
     subscribeAcpDevtool(webContents),
     subscribeAgentContextDevtool(webContents),
+    subscribeObservabilityDevtool(webContents),
   ]
 }
 

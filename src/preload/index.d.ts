@@ -2,7 +2,12 @@
 // Output: Global Window typing for the unified signal bridge
 // Position: Type declaration surface for the isolated preload bridge
 
-import type { AcpDevtoolEvent, AgentContextEvent, IpcObservedEvent } from '@cradle/ipc'
+import type {
+  AcpDevtoolEvent,
+  AgentContextEvent,
+  IpcObservedEvent,
+  ObservabilityDevtoolEvent,
+} from '@cradle/ipc'
 import type { ElectronAPI } from '@electron-toolkit/preload'
 
 import type { IpcServices } from '../main/ipc-types'
@@ -29,6 +34,13 @@ interface IpcDevtoolApi {
   getAgentContextSnapshot: () => ReturnType<IpcServices['ipcDevtool']['getAgentContextSnapshot']>
   clearAgentContext: () => ReturnType<IpcServices['ipcDevtool']['clearAgentContext']>
   onAgentContextEvent: (listener: (event: AgentContextEvent) => void) => () => void
+  getObservabilitySnapshot: () => ReturnType<IpcServices['ipcDevtool']['getObservabilitySnapshot']>
+  clearObservability: () => ReturnType<IpcServices['ipcDevtool']['clearObservability']>
+  flushObservability: () => ReturnType<IpcServices['ipcDevtool']['flushObservability']>
+  exportObservabilityBundle: (
+    input: Parameters<IpcServices['ipcDevtool']['exportObservabilityBundle']>[0],
+  ) => ReturnType<IpcServices['ipcDevtool']['exportObservabilityBundle']>
+  onObservabilityEvent: (listener: (event: ObservabilityDevtoolEvent) => void) => () => void
 }
 
 declare global {

@@ -7,23 +7,26 @@ import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { WebContents } from 'electron'
 
+import { acpConnectionManager } from '../acp/acp-connection'
+import { getProviderCatalog } from '../agent-runtime/catalog-instance'
+import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
+import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
+import type { BackendTimelineEvent, TimelineInputEvent } from '../backend-control-plane/timeline-events'
 import { getDb } from '../db'
 import type { Message, Session } from '../db/schema'
 import { agentProfiles as agentProfilesTable, backendTimelineEvents, messages, sessions, workspaces } from '../db/schema'
 import { getAgentContextDevtoolStore } from '../devtools/agent-context-devtool-store'
 import type { DomainEventBus } from '../events/domain-event-bus'
-import { acpConnectionManager } from '../acp/acp-connection'
+import { OBSERVABILITY_CODES } from '../observability/service'
+import type { ObservabilitySink } from '../observability/sink'
+import { noopObservabilitySink } from '../observability/sink'
 import type { SignalBroadcaster } from '../signal/broadcaster'
-import { getProviderCatalog } from '../agent-runtime/catalog-instance'
-import type { ChatRuntimeProvider, ProviderKind, RuntimeSession as ProviderSession } from '../agent-runtime/runtime-provider-types'
-import { getBackendControlPlaneService } from '../backend-control-plane/backend-control-plane'
-import type { BackendTimelineEvent, TimelineInputEvent } from '../backend-control-plane/timeline-events'
 import { resolveChatTurnContext } from './chat-turn-context'
+import type { TimelineChunkProjector } from './timeline-chunk-projector'
+import { createTimelineChunkProjector } from './timeline-chunk-projector'
 import { coordinateTurn } from './turn-coordinator'
 import type { TurnRepository } from './turn-repository'
 import { createTurnRepository } from './turn-repository'
-import type { TimelineChunkProjector } from './timeline-chunk-projector'
-import { createTimelineChunkProjector } from './timeline-chunk-projector'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -120,6 +123,7 @@ export interface ChatTurnFinishedEvent {
 // ── Engine ────────────────────────────────────────────────────────────────────
 
 export class ChatEngine {
+  private observability: ObservabilitySink
   private readonly drafts = new Map<string, Draft>()
   private readonly subscribers = new Set<WebContents>()
   private readonly sessionWatchers = new Map<string, Map<WebContents, number>>()
@@ -129,6 +133,14 @@ export class ChatEngine {
   private _repository: TurnRepository | null = null
   private eventBus: DomainEventBus | null = null
   private signalBroadcaster: SignalBroadcaster | null = null
+
+  constructor(options?: { observability?: ObservabilitySink }) {
+    this.observability = options?.observability ?? noopObservabilitySink
+  }
+
+  bindObservability(sink: ObservabilitySink): void {
+    this.observability = sink
+  }
 
   private getRepository(): TurnRepository {
     if (!this._repository) {
@@ -187,6 +199,7 @@ export class ChatEngine {
     this.subscribers.clear()
     this.sessionWatchers.clear()
     this._repository = null
+    this.observability = noopObservabilitySink
     this.initialized = false
   }
 
@@ -795,6 +808,22 @@ export class ChatEngine {
           finalError = terminalEvent.type === 'run.failed' ? terminalEvent.error : null
 
           if (finalStatus === 'failed') {
+            const observabilityCode = resolveTurnFailureObservabilityCode(terminalEvent)
+            this.observability.record({
+              source: 'chat-engine',
+              code: observabilityCode,
+              severity: 'error',
+              category: 'chat',
+              message: finalError ?? 'Chat turn failed',
+              chatSessionId: draft.chatSessionId,
+              runId: draft.runId ?? undefined,
+              messageId: draft.messageId,
+              attrs: {
+                agentId: draft.agentId,
+                providerSessionId: draft.runtimeSession.providerSessionId,
+                diagnostics: turnOutputDiagnostics,
+              },
+            })
             console.error('[ChatEngine] turn failed', {
               chatSessionId: draft.chatSessionId,
               messageId: draft.messageId,
@@ -832,6 +861,19 @@ export class ChatEngine {
       finalError = serializedError.text
 
       if (!draft.abortController.signal.aborted) {
+        this.observability.record({
+          source: 'chat-engine',
+          code: OBSERVABILITY_CODES.turnStreamFailed,
+          severity: 'error',
+          category: 'chat',
+          message: finalError ?? 'Chat stream failed outside coordinator',
+          chatSessionId: draft.chatSessionId,
+          runId: draft.runId ?? undefined,
+          messageId: draft.messageId,
+          attrs: {
+            payload: serializedError.payload,
+          },
+        })
         console.error('[ChatEngine] runStream outer failure', {
           chatSessionId: draft.chatSessionId,
           messageId: draft.messageId,
@@ -1046,6 +1088,25 @@ function buildEmptyOutputFailureEvent(
       },
     },
   }
+}
+
+function resolveTurnFailureObservabilityCode(
+  event: Extract<TimelineInputEvent, { type: 'run.failed' | 'run.aborted' | 'run.completed' }>,
+): string {
+  if (event.type !== 'run.failed') {
+    return OBSERVABILITY_CODES.turnStreamFailed
+  }
+
+  if (event.source.eventType === 'chat.turn.failed.empty-output') {
+    return OBSERVABILITY_CODES.chatEmptyOutputCompletion
+  }
+
+  const metadata = event.source.metadata
+  const errorCode = metadata && typeof metadata.errorCode === 'string'
+    ? metadata.errorCode
+    : null
+
+  return errorCode ?? OBSERVABILITY_CODES.turnStreamFailed
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

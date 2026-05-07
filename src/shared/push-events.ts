@@ -3,6 +3,7 @@
 // Position: Shared contract defining every push topic and its payload shape
 
 import type { ApprovalRequestedPayload, ApprovalResolvedPayload } from './approval-events'
+import type { ObservabilityIncident } from '@cradle/ipc'
 import type {
   ChatSessionActivityPayload,
   ChatSessionTitlePayload,
@@ -59,6 +60,9 @@ export interface PushEventMap {
   // Approval
   'approval:requested': ApprovalRequestedPayload
   'approval:resolved': ApprovalResolvedPayload
+
+  // Observability
+  'observability:incident': ObservabilityIncident
 }
 
 export type PushTopic = keyof PushEventMap
