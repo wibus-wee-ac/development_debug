@@ -1,11 +1,8 @@
-// Input: ProviderKind from runtime provider types and AI SDK UIMessageChunk projection contract
-// Output: Typed timeline event unions, runtime parsers, reducers, and chat projection helpers
+// Input: ProviderKind from runtime provider types and shared timeline projection contract
+// Output: Typed timeline event unions, runtime parsers, and chat-status helpers for backend timeline facts
 // Position: Core event-first model for Cradle-owned backend timeline facts under the backend control-plane owner
 
-import type { UIMessageChunk } from 'ai'
-
 import type { ProviderKind } from '../agent-runtime/runtime-provider-types'
-import { projectTimelineEventToChunks } from '../../shared/timeline-projection'
 
 export const TIMELINE_SCHEMA_VERSION = 'cradle.timeline.v1' as const
 
@@ -126,12 +123,6 @@ export type BackendTimelineEvent = TimelineInputEvent & {
   sequenceNumber: number
   schemaVersion: typeof TIMELINE_SCHEMA_VERSION
   createdAt: number
-}
-
-export function projectTimelineEventToChatChunks(
-  event: TimelineInputEvent | BackendTimelineEvent,
-): UIMessageChunk[] {
-  return projectTimelineEventToChunks(event)
 }
 
 export function parseTimelineInputEvent(value: unknown): TimelineInputEvent {

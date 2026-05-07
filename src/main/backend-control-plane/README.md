@@ -9,6 +9,6 @@ Backend control plane 负责 Cradle 自己拥有的 backend binding、run lifecy
 ## Files
 
 - **backend-control-plane.ts**: DB-backed store、application service 与 singleton accessor，负责 binding/run/timeline/capability 持久化入口
-- **timeline-events.ts**: typed timeline event unions、runtime parser、reducer 与 chat projection helpers
+- **timeline-events.ts**: typed timeline event unions、runtime parser、codec 与 chat-status helper；`UIMessageChunk` 投影已下沉到 shared timeline projector
 - **types.ts**: backend binding、run、timeline、capability snapshot 与 store/service 合约
 - **__tests__/**: control-plane feature 的行为回归测试

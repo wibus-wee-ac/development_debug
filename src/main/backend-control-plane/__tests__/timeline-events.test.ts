@@ -1,4 +1,4 @@
-// Input: timeline event parsers and chat projection helpers
+// Input: backend timeline parsers and the shared timeline chunk projector
 // Output: Regression tests for typed backend timeline facts and projection semantics
 // Position: Feature-level RED/GREEN guardrail for the Plan 07 breaking timeline rewrite
 
@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   parseTimelineInputEvent,
-  projectTimelineEventToChatChunks,
 } from '../timeline-events'
+import { projectTimelineEventToChunks } from '../../../shared/timeline-projection'
 
 describe('timeline events', () => {
   it('parses typed assistant text events at runtime', () => {
@@ -50,7 +50,7 @@ describe('timeline events', () => {
         type: 'run.completed',
         source: { backend: 'openai-compatible', eventType: 'response.completed' },
       }),
-    ].flatMap(projectTimelineEventToChatChunks)
+    ].flatMap(projectTimelineEventToChunks)
 
     expect(chunks).toEqual([
       { type: 'text-start', id: 'msg-1' },

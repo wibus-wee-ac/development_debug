@@ -9,4 +9,4 @@ When timeline vocabulary, append ordering, or reducer semantics change, update t
 ## Files
 
 - **backend-control-plane.test.ts**: Service-level regression tests for binding upserts, run lifecycle, capability snapshots, and monotonic timeline append behavior
-- **timeline-events.test.ts**: Typed timeline parser/reducer/projection regression tests for the Plan 07 rewrite
+- **timeline-events.test.ts**: Typed timeline parser regression tests plus shared timeline chunk projection guardrail for the Plan 07 rewrite
