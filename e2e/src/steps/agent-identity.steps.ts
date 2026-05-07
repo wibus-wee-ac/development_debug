@@ -1,16 +1,11 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const AGENT_CREATE_PAGE = '[data-testid="agent-create"]'
 const AGENT_NAME_INPUT = '[data-testid="agent-detail-name"]'
-const NON_SLUG_CHAR_RE = /[^a-z0-9]+/g
-const EDGE_DASH_RE = /^-+|-+$/g
-
-function slugifyName(name: string): string {
-  return name.trim().toLowerCase().replace(NON_SLUG_CHAR_RE, '-').replace(EDGE_DASH_RE, '') || 'item'
-}
 
 async function selectOption(world: CradleWorld, triggerSelector: string, value: string) {
   const trigger = world.page.locator(triggerSelector)
@@ -20,6 +15,129 @@ async function selectOption(world: CradleWorld, triggerSelector: string, value: 
   const option = world.page.getByRole('option', { name: value })
   await expect(option).toBeVisible({ timeout: 10_000 })
   await option.click()
+}
+
+function getProviderRows(world: CradleWorld, name: string) {
+  return world.page.locator('[data-testid^="agent-profile-row-"]').filter({ hasText: name })
+}
+
+async function ensureSettingsOpen(world: CradleWorld): Promise<void> {
+  const agentsNav = world.page.locator('[data-testid="settings-nav-agents"]')
+  if (await agentsNav.isVisible().catch(() => false)) {
+    return
+  }
+
+  const settingsBtn = world.page.locator('[data-testid="settings-btn"]')
+  await expect(settingsBtn).toBeVisible({ timeout: 15_000 })
+  await settingsBtn.click()
+}
+
+async function openSettingsSection(world: CradleWorld, navTestId: string, pageSelector: string): Promise<void> {
+  await ensureSettingsOpen(world)
+
+  const navItem = world.page.locator(`[data-testid="${navTestId}"]`)
+  await expect(navItem).toBeVisible({ timeout: 5_000 })
+  await navItem.click()
+  await expect(world.page.locator(pageSelector)).toBeVisible({ timeout: 10_000 })
+}
+
+async function ensureAgentMockProviderBaseUrl(world: CradleWorld, modelId: string): Promise<string> {
+  if (world.mockLlmServer) {
+    await world.mockLlmServer.stop()
+  }
+
+  world.mockLlmServer = new MockLlmServer({
+    models: [
+      { id: modelId, owned_by: 'agent-identity-e2e' },
+    ],
+  })
+  world.mockLlmBaseUrl = await world.mockLlmServer.start()
+  return world.mockLlmBaseUrl
+}
+
+async function createProviderViaUi(world: CradleWorld, providerName: string, modelId: string): Promise<void> {
+  await openSettingsSection(world, 'settings-nav-providers', '[data-testid="agent-runtime-settings"]')
+
+  const existingRow = getProviderRows(world, providerName).first()
+  if (await existingRow.isVisible().catch(() => false)) {
+    return
+  }
+
+  const addProviderButton = world.page.locator('[data-testid="add-provider-btn"]')
+  await expect(addProviderButton).toBeVisible({ timeout: 10_000 })
+  await addProviderButton.click()
+
+  await selectOption(world, '[data-testid="agent-provider-kind"]', 'OpenAI-compatible')
+
+  const nameInput = world.page.locator('[data-testid="provider-name"]')
+  await expect(nameInput).toBeVisible({ timeout: 10_000 })
+  await nameInput.fill(providerName)
+
+  const baseUrlInput = world.page.locator('[data-testid="provider-baseurl"]')
+  await expect(baseUrlInput).toBeVisible({ timeout: 10_000 })
+  await baseUrlInput.fill(await ensureAgentMockProviderBaseUrl(world, modelId))
+
+  const modelInput = world.page.locator('[data-testid="provider-model"]')
+  await expect(modelInput).toBeVisible({ timeout: 10_000 })
+  await modelInput.fill(modelId)
+
+  const apiKeyInput = world.page.locator('[data-testid="provider-apikey"]')
+  await expect(apiKeyInput).toBeVisible({ timeout: 10_000 })
+  await apiKeyInput.fill('agent-identity-test-key')
+
+  const submitButton = world.page.locator('[data-testid="provider-submit"]')
+  await expect(submitButton).toBeVisible({ timeout: 10_000 })
+  await submitButton.click()
+
+  await expect(getProviderRows(world, providerName).first()).toBeVisible({ timeout: 15_000 })
+}
+
+async function openAgentList(world: CradleWorld): Promise<void> {
+  await openSettingsSection(world, 'settings-nav-agents', '[data-testid="agent-list"]')
+}
+
+async function createAgentViaUi(
+  world: CradleWorld,
+  agentName: string,
+  providerName: string,
+  modelId: string,
+  thinkingEffort: 'low' | 'medium' | 'high' | 'auto',
+): Promise<void> {
+  await createProviderViaUi(world, providerName, modelId)
+  await openAgentList(world)
+
+  const existingRow = getAgentRows(world, agentName).first()
+  if (await existingRow.isVisible().catch(() => false)) {
+    return
+  }
+
+  const newAgentButton = world.page.locator('[data-testid="new-agent-btn"]')
+  await expect(newAgentButton).toBeVisible({ timeout: 10_000 })
+  await newAgentButton.click()
+
+  const nameInput = world.page.locator(AGENT_NAME_INPUT)
+  await expect(nameInput).toBeVisible({ timeout: 10_000 })
+  await nameInput.fill(agentName)
+
+  await selectOption(world, '[data-testid="agent-provider-select"]', providerName)
+  await selectOption(world, '[data-testid="agent-model-select"]', modelId)
+
+  const thinkingButton = world.page.locator(`[data-testid="agent-thinking-${thinkingEffort}"]`)
+  await expect(thinkingButton).toBeVisible({ timeout: 10_000 })
+  await thinkingButton.click()
+
+  const saveButton = world.page.locator('[data-testid="agent-detail-save"]')
+  await expect(saveButton).toBeEnabled({ timeout: 10_000 })
+  await saveButton.click()
+
+  await expect(world.page.locator('[data-testid="agent-detail-delete-trigger"]')).toBeVisible({ timeout: 10_000 })
+
+  const backButton = world.page.locator('[data-testid="agent-detail-back"]')
+  await expect(backButton).toBeVisible({ timeout: 10_000 })
+  await backButton.click()
+
+  await expect(world.page.locator('[data-testid="agent-list"]')).toBeVisible({ timeout: 10_000 })
+  await expect(getAgentRows(world, agentName).first()).toBeVisible({ timeout: 10_000 })
 }
 
 function getAgentRows(world: CradleWorld, name: string) {
@@ -37,16 +155,7 @@ When('我点击"Agents"导航项', async function (this: CradleWorld) {
 
 Given('我已进入 Agent 列表页面', async function (this: CradleWorld) {
   console.warn('[step] navigate to Agent list settings')
-  const settingsBtn = this.page.locator('[data-testid="settings-btn"]')
-  await expect(settingsBtn).toBeVisible({ timeout: 15000 })
-  await settingsBtn.click()
-
-  const navItem = this.page.locator('[data-testid="settings-nav-agents"]')
-  await expect(navItem).toBeVisible({ timeout: 5000 })
-  await navItem.click()
-
-  const agentList = this.page.locator('[data-testid="agent-list"]')
-  await expect(agentList).toBeVisible({ timeout: 5000 })
+  await openAgentList(this)
 })
 
 Then('我应该看到 Agent 列表页面', async function (this: CradleWorld) {
@@ -106,29 +215,7 @@ Given('我已准备名为{string}模型为{string}的 Agent Provider', async fun
   modelId: string,
 ) {
   console.warn(`[step] prepare provider ${providerName} (${modelId})`)
-  const providerId = `e2e-provider-${slugifyName(providerName)}`
-
-  await this.page.evaluate(async ({ providerId, providerName, modelId }) => {
-    // eslint-disable-next-line ts/no-explicit-any
-    const ipcRenderer = (window as any).electron?.ipcRenderer
-    if (!ipcRenderer?.invoke) {
-      throw new Error('electron.ipcRenderer not available')
-    }
-
-    await ipcRenderer.invoke('agentRuntime.upsertProfile', {
-      id: providerId,
-      name: providerName,
-      providerKind: 'openai-compatible',
-      enabled: true,
-      configJson: JSON.stringify({
-        baseUrl: 'https://example.invalid/v1',
-        model: modelId,
-      }),
-      credentialRef: null,
-    })
-  }, { providerId, providerName, modelId })
-
-  this.remember(`provider:${providerName}`, providerId)
+  await createProviderViaUi(this, providerName, modelId)
 })
 
 Given('我已有一个名称为{string}、Provider 为{string}、Model 为{string}、Thinking Effort 为{string}的 Agent', async function (
@@ -139,28 +226,7 @@ Given('我已有一个名称为{string}、Provider 为{string}、Model 为{strin
   thinkingEffort: 'low' | 'medium' | 'high' | 'auto',
 ) {
   console.warn(`[step] prepare agent ${agentName}`)
-  const providerId = this.recall<string>(`provider:${providerName}`)
-
-  const created = await this.page.evaluate(async ({ agentName, providerId, modelId, thinkingEffort }) => {
-    // eslint-disable-next-line ts/no-explicit-any
-    const ipcRenderer = (window as any).electron?.ipcRenderer
-    if (!ipcRenderer?.invoke) {
-      throw new Error('electron.ipcRenderer not available')
-    }
-
-    return ipcRenderer.invoke('agent.create', {
-      name: agentName,
-      description: null,
-      avatarStyle: 'bottts-neutral',
-      avatarSeed: `seed-${agentName}`,
-      providerId,
-      modelId,
-      thinkingEffort,
-      configJson: '{}',
-    }) as Promise<{ id: string }>
-  }, { agentName, providerId, modelId, thinkingEffort })
-
-  this.remember(`agent:${agentName}`, created.id)
+  await createAgentViaUi(this, agentName, providerName, modelId, thinkingEffort)
 })
 
 When('我填写 Agent 名称为{string}', async function (this: CradleWorld, name: string) {

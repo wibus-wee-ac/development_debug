@@ -5,12 +5,6 @@ import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles|No providers configured yet\./
-const NON_SLUG_CHAR_RE = /[^a-z0-9]+/g
-const EDGE_DASH_RE = /^-+|-+$/g
-
-function slugifyName(name: string): string {
-  return name.trim().toLowerCase().replace(NON_SLUG_CHAR_RE, '-').replace(EDGE_DASH_RE, '') || 'provider'
-}
 
 function parseEnabledState(enabledText: string): boolean {
   if (enabledText === '启用') {
@@ -26,31 +20,17 @@ function getProviderRows(world: CradleWorld, name: string) {
   return world.page.locator('[data-testid^="agent-profile-row-"]').filter({ hasText: name })
 }
 
-async function createOpenAICompatibleProvider(
-  world: CradleWorld,
-  options: { name: string, baseUrl: string, model: string, enabled: boolean },
-) {
-  const profileId = `e2e-provider-${slugifyName(options.name)}`
+async function openAgentRuntimeSettings(world: CradleWorld): Promise<void> {
+  const settingsBtn = world.page.locator('[data-testid="settings-btn"]')
+  await expect(settingsBtn).toBeVisible({ timeout: 15000 })
+  await settingsBtn.click()
 
-  await world.page.evaluate(async ({ profileId, ...input }) => {
-    // eslint-disable-next-line ts/no-explicit-any
-    const ipcRenderer = (window as any).electron?.ipcRenderer
-    if (!ipcRenderer?.invoke) {
-      throw new Error('electron.ipcRenderer not available')
-    }
+  const navItem = world.page.locator('[data-testid="settings-nav-providers"]')
+  await expect(navItem).toBeVisible({ timeout: 5000 })
+  await navItem.click()
 
-    await ipcRenderer.invoke('agentRuntime.upsertProfile', {
-      id: profileId,
-      name: input.name,
-      providerKind: 'openai-compatible',
-      enabled: input.enabled,
-      configJson: JSON.stringify({
-        baseUrl: input.baseUrl,
-        model: input.model,
-      }),
-      credentialRef: null,
-    })
-  }, { profileId, ...options })
+  const settings = world.page.locator('[data-testid="agent-runtime-settings"]')
+  await expect(settings).toBeVisible({ timeout: 5000 })
 }
 
 async function ensureMockProviderBaseUrl(world: CradleWorld): Promise<string> {
@@ -102,16 +82,7 @@ When('我点击"Providers"导航项', async function (this: CradleWorld) {
 
 Given('我已进入 Agent Runtime 设置页面', async function (this: CradleWorld) {
   console.warn('[step] navigate to Agent Runtime settings')
-  const settingsBtn = this.page.locator('[data-testid="settings-btn"]')
-  await expect(settingsBtn).toBeVisible({ timeout: 15000 })
-  await settingsBtn.click()
-
-  const navItem = this.page.locator('[data-testid="settings-nav-providers"]')
-  await expect(navItem).toBeVisible({ timeout: 5000 })
-  await navItem.click()
-
-  const settings = this.page.locator('[data-testid="agent-runtime-settings"]')
-  await expect(settings).toBeVisible({ timeout: 5000 })
+  await openAgentRuntimeSettings(this)
 })
 
 Then('我应该看到 Agent Runtime 设置页面', async function (this: CradleWorld) {
@@ -208,22 +179,6 @@ Then('Provider 对话框应保持打开', async function (this: CradleWorld) {
   const dialog = this.page.getByRole('dialog')
   await expect(dialog).toBeVisible({ timeout: 5000 })
   await expect(this.page.locator('[data-testid="provider-submit"]')).toBeVisible({ timeout: 5000 })
-})
-
-Given('我已有一个名为{string}、Base URL 为{string}、模型为{string}、启用状态为{string}的 OpenAI-compatible Provider', async function (
-  this: CradleWorld,
-  name: string,
-  baseUrl: string,
-  model: string,
-  enabledText: string,
-) {
-  console.warn(`[step] prepare existing provider: ${name}`)
-  await createOpenAICompatibleProvider(this, {
-    name,
-    baseUrl,
-    model,
-    enabled: parseEnabledState(enabledText),
-  })
 })
 
 When('我打开名为{string}的 Provider', async function (this: CradleWorld, name: string) {

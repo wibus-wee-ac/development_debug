@@ -3,18 +3,18 @@
 # Output: Skills 真实 UI E2E 覆盖，覆盖全局 / 工作区 / Agent 三个 scope 的创建、查看、编辑、删除与导入
 # Position: Skills 端到端用户旅程定义
 
-@cradle @P1
+@cradle
 功能: Skills 管理
 
   作为用户，我可以通过真实 UI 管理全局、工作区与 Agent 专属 Skills
 
-  @CRADLE-SKILLS-001
+  @P1 @CRADLE-SKILLS-001
   场景: 导航到全局 Skills 设置页面
     当 我点击设置按钮
     而且 我点击"Skills"导航项
     那么 我应该看到全局 Skills 页面
 
-  @CRADLE-SKILLS-002
+  @P1 @CRADLE-SKILLS-002
   场景: 在全局 Skills 页面创建 Skill
     假如 我已进入全局 Skills 页面
     当 我新建一个全局 Skill
@@ -28,7 +28,7 @@
       Use this skill carefully.
       """
 
-  @CRADLE-SKILLS-003
+  @P1 @CRADLE-SKILLS-003
   场景: 导入全局 Skill 后可以查看详情
     假如 我已进入全局 Skills 页面
     而且 我准备了一个待导入的 Skill 目录
@@ -41,7 +41,7 @@
       # Imported Demo
       """
 
-  @CRADLE-SKILLS-004
+  @P1 @CRADLE-SKILLS-004
   场景: 在工作区详情页创建 Workspace Skill
     假如 我已打开一个工作区详情页
     当 我切换到 Workspace Skills 标签
@@ -56,7 +56,7 @@
       Scoped to one repo.
       """
 
-  @CRADLE-SKILLS-005
+  @P1 @CRADLE-SKILLS-005
   场景: 通过真实 Settings UI 为 Agent 创建专属 Skill
     假如 我已通过真实 Settings UI 创建一个 Agent "Skill Keeper"
     当 我打开 Agent "Skill Keeper" 的 Skills 管理
@@ -72,7 +72,7 @@
       Private to one agent.
       """
 
-  @CRADLE-SKILLS-006
+  @P1 @CRADLE-SKILLS-006
   场景: 在全局 Skills 页面编辑并删除 Skill
     假如 我已进入全局 Skills 页面
     而且 我新建一个全局 Skill
@@ -99,7 +99,7 @@
     当 我删除当前 Skill
     那么 我不应该看到 Skill "global-demo-updated"
 
-  @CRADLE-SKILLS-007
+  @P1 @CRADLE-SKILLS-007
   场景: 在工作区 Skills 页面编辑并删除 Skill
     假如 我已打开一个工作区详情页
     当 我切换到 Workspace Skills 标签
@@ -127,7 +127,7 @@
     当 我删除当前 Skill
     那么 我不应该看到 Skill "workspace-demo-updated"
 
-  @CRADLE-SKILLS-008
+  @P1 @CRADLE-SKILLS-008
   场景: 通过真实 Settings UI 编辑并删除 Agent 专属 Skill
     假如 我已通过真实 Settings UI 创建一个 Agent "Skill Editor"
     当 我打开 Agent "Skill Editor" 的 Skills 管理

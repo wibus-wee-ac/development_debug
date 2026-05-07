@@ -3,11 +3,12 @@
 # Output: Workflow Rules 的真实 UI E2E 覆盖，覆盖全局规则与 Agent 专属规则的保存、scope 切换与重开后的可见结果
 # Position: Workflow Rules 端到端用户旅程定义
 
-@cradle @P1 @CRADLE-WORKFLOW-RULES-001
+@cradle
 功能: Workflow Rules 管理
 
   作为用户，我可以在工作区详情页通过真实 UI 管理全局与 Agent 专属 Workflow Rules
 
+  @P1 @CRADLE-WORKFLOW-RULES-001
   场景: 保存并重新打开 All Agents 规则
     假如 我已打开一个 Workflow Rules 工作区详情页
     当 我切换到 Workflow 标签
@@ -33,7 +34,7 @@
       Keep updates concise and actionable.
       """
 
-  @CRADLE-WORKFLOW-RULES-002
+  @P1 @CRADLE-WORKFLOW-RULES-002
   场景: 保存 Agent 专属规则并验证 scope 切换与重新打开
     假如 我已通过真实 UI 创建一个 Workflow Agent "Workflow Agent"
     而且 我已打开该 Workflow Agent 可用的工作区详情页

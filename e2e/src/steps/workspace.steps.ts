@@ -8,19 +8,9 @@ import { basename, join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow } from '../support/database'
 import type { CradleWorld } from '../support/world'
 
-interface PersistedWorkspaceRow {
-  id: string
-  name: string
-  path: string
-  createdAt: number
-  updatedAt: number
-}
-
 interface WorkspaceFixture {
-  id?: string
   dir: string
   name: string
   agentsHeading: string
@@ -28,7 +18,7 @@ interface WorkspaceFixture {
 }
 
 const WORKSPACE_FIXTURES_KEY = 'workspace.fixtures'
-const CURRENT_WORKSPACE_ID_KEY = 'workspace.current-id'
+const CURRENT_WORKSPACE_DIR_KEY = 'workspace.current-dir'
 
 async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
   await world.app.evaluate(async ({ dialog }, targetPath) => {
@@ -64,19 +54,15 @@ function recallWorkspaceFixtures(world: CradleWorld): WorkspaceFixture[] {
 }
 
 function setCurrentWorkspace(world: CradleWorld, fixture: WorkspaceFixture): void {
-  if (!fixture.id) {
-    throw new Error(`Workspace fixture ${fixture.name} has no persisted id`)
-  }
-
-  world.remember(CURRENT_WORKSPACE_ID_KEY, fixture.id)
+  world.remember(CURRENT_WORKSPACE_DIR_KEY, fixture.dir)
 }
 
 function recallCurrentWorkspace(world: CradleWorld): WorkspaceFixture {
-  const currentWorkspaceId = world.recall<string>(CURRENT_WORKSPACE_ID_KEY)
-  const fixture = recallWorkspaceFixtures(world).find(workspace => workspace.id === currentWorkspaceId)
+  const currentWorkspaceDir = world.recall<string>(CURRENT_WORKSPACE_DIR_KEY)
+  const fixture = recallWorkspaceFixtures(world).find(workspace => workspace.dir === currentWorkspaceDir)
 
   if (!fixture) {
-    throw new Error(`Missing current workspace fixture for id ${currentWorkspaceId}`)
+    throw new Error(`Missing current workspace fixture for dir ${currentWorkspaceDir}`)
   }
 
   return fixture
@@ -94,7 +80,7 @@ function recallWorkspaceByOrdinal(world: CradleWorld, ordinal: number): Workspac
 
 function updateRememberedWorkspaceName(world: CradleWorld, workspaceId: string, nextName: string): void {
   const fixtures = recallWorkspaceFixtures(world)
-  const target = fixtures.find(fixture => fixture.id === workspaceId)
+  const target = fixtures.find(fixture => fixture.dir === workspaceId)
 
   if (!target) {
     throw new Error(`Missing workspace fixture for rename: ${workspaceId}`)
@@ -104,21 +90,8 @@ function updateRememberedWorkspaceName(world: CradleWorld, workspaceId: string, 
   rememberWorkspaceFixtures(world, fixtures)
 }
 
-async function queryWorkspaceByPath(world: CradleWorld, dirPath: string): Promise<PersistedWorkspaceRow | null> {
-  return queryDatabaseRow<PersistedWorkspaceRow>(
-    world,
-    `
-      select
-        id,
-        name,
-        path,
-        created_at as createdAt,
-        updated_at as updatedAt
-      from workspaces
-      where path = ?
-    `,
-    [dirPath],
-  )
+function workspaceButtonByName(world: CradleWorld, name: string) {
+  return world.page.locator('[data-testid^="workspace-open-"]').filter({ hasText: name }).first()
 }
 
 async function addWorkspaceFromPicker(world: CradleWorld, fixture: WorkspaceFixture): Promise<void> {
@@ -128,21 +101,7 @@ async function addWorkspaceFromPicker(world: CradleWorld, fixture: WorkspaceFixt
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
 
-  await expect.poll(async () => {
-    const persisted = await queryWorkspaceByPath(world, fixture.dir)
-    return persisted?.id ?? null
-  }, { timeout: 10_000 }).not.toBeNull()
-
-  const persisted = await queryWorkspaceByPath(world, fixture.dir)
-
-  if (!persisted) {
-    throw new Error(`Workspace was not persisted for path ${fixture.dir}`)
-  }
-
-  fixture.id = persisted.id
-  fixture.name = persisted.name
-
-  await expect(world.page.locator(`[data-testid="workspace-open-${persisted.id}"]`)).toContainText(fixture.name, { timeout: 10_000 })
+  await expect(workspaceButtonByName(world, fixture.name)).toContainText(fixture.name, { timeout: 10_000 })
 }
 
 function activeWorkspaceDetailPage(world: CradleWorld) {
@@ -150,11 +109,7 @@ function activeWorkspaceDetailPage(world: CradleWorld) {
 }
 
 async function openWorkspaceDetail(world: CradleWorld, fixture: WorkspaceFixture): Promise<void> {
-  if (!fixture.id) {
-    throw new Error(`Workspace fixture ${fixture.name} has not been persisted yet`)
-  }
-
-  const button = world.page.locator(`[data-testid="workspace-open-${fixture.id}"]`)
+  const button = workspaceButtonByName(world, fixture.name)
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
 
@@ -187,9 +142,10 @@ Then('我应该看到"添加工作区"按钮', async function (this: CradleWorld
 })
 
 When('我通过原生对话框添加工作区', async function (this: CradleWorld) {
+  const dir = this.createTempWorkspaceDir()
   const fixture = {
-    dir: this.createTempWorkspaceDir(),
-    name: '',
+    dir,
+    name: basename(dir),
     agentsHeading: 'Added Workspace Operating Model',
     agentsBody: 'Added workspace overview content used for end-to-end verification.',
   }
@@ -206,9 +162,10 @@ Then('工作区列表中应该有 {int} 个工作区', async function (this: Cra
 
 Given('我已添加了一个工作区', async function (this: CradleWorld) {
   console.warn('[step] setup: add one workspace')
+  const dir = this.createTempWorkspaceDir()
   const fixture = {
-    dir: this.createTempWorkspaceDir(),
-    name: '',
+    dir,
+    name: basename(dir),
     agentsHeading: 'Single Workspace Operating Model',
     agentsBody: 'Single workspace overview content used for end-to-end verification.',
   }
@@ -278,7 +235,7 @@ When('我将工作区重命名为 {string}', async function (this: CradleWorld, 
 
   await expect(detailPage.locator('[data-testid="workspace-detail-title-trigger"]')).toContainText(nextName, { timeout: 10_000 })
 
-  updateRememberedWorkspaceName(this, fixture.id!, nextName)
+  updateRememberedWorkspaceName(this, fixture.dir, nextName)
 })
 
 Then('工作区详情页标题应该是 {string}', async function (this: CradleWorld, expectedName: string) {
@@ -296,7 +253,7 @@ Then('工作区列表中应该包含这 {int} 个工作区', async function (thi
   await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(count, { timeout: 10_000 })
 
   for (const fixture of fixtures) {
-    await expect(this.page.locator(`[data-testid="workspace-open-${fixture.id}"]`)).toContainText(fixture.name, { timeout: 10_000 })
+    await expect(workspaceButtonByName(this, fixture.name)).toContainText(fixture.name, { timeout: 10_000 })
   }
 })
 

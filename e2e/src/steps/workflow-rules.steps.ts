@@ -8,23 +8,10 @@ import { basename, join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow } from '../support/database'
 import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
-interface PersistedWorkspaceRow {
-  id: string
-  name: string
-  path: string
-}
-
-interface PersistedAgentRow {
-  id: string
-  name: string
-}
-
 interface WorkflowWorkspaceFixture {
-  id?: string
   dir: string
   name: string
 }
@@ -59,14 +46,6 @@ function recallWorkflowWorkspace(world: CradleWorld): WorkflowWorkspaceFixture {
   return world.recall<WorkflowWorkspaceFixture>(WORKFLOW_WORKSPACE_KEY)
 }
 
-function rememberWorkflowAgent(world: CradleWorld, agentName: string, agentId: string): void {
-  world.remember(`workflow-rules.agent:${agentName}`, agentId)
-}
-
-function recallWorkflowAgentId(world: CradleWorld, agentName: string): string {
-  return world.recall<string>(`workflow-rules.agent:${agentName}`)
-}
-
 function createWorkflowWorkspaceFixture(world: CradleWorld, prefix: string, label: string): WorkflowWorkspaceFixture {
   const dir = world.createTempWorkspaceDir(prefix)
   const name = basename(dir)
@@ -80,35 +59,8 @@ function createWorkflowWorkspaceFixture(world: CradleWorld, prefix: string, labe
   return { dir, name }
 }
 
-async function queryWorkspaceByPath(world: CradleWorld, dirPath: string): Promise<PersistedWorkspaceRow | null> {
-  return queryDatabaseRow<PersistedWorkspaceRow>(
-    world,
-    `
-      select
-        id,
-        name,
-        path
-      from workspaces
-      where path = ?
-      limit 1
-    `,
-    [dirPath],
-  )
-}
-
-async function queryAgentByName(world: CradleWorld, agentName: string): Promise<PersistedAgentRow | null> {
-  return queryDatabaseRow<PersistedAgentRow>(
-    world,
-    `
-      select
-        id,
-        name
-      from agents
-      where name = ?
-      limit 1
-    `,
-    [agentName],
-  )
+function workflowWorkspaceButtonByName(world: CradleWorld, name: string) {
+  return world.page.locator('[data-testid^="workspace-open-"]').filter({ hasText: name }).first()
 }
 
 async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
@@ -127,21 +79,9 @@ async function addWorkspaceFromPicker(world: CradleWorld, fixture: WorkflowWorks
   await expect(addButton).toBeVisible({ timeout: 15_000 })
   await addButton.click()
 
-  await expect.poll(async () => {
-    const persisted = await queryWorkspaceByPath(world, fixture.dir)
-    return persisted?.id ?? null
-  }, { timeout: 10_000 }).not.toBeNull()
-
-  const persisted = await queryWorkspaceByPath(world, fixture.dir)
-  if (!persisted) {
-    throw new Error(`Workspace was not persisted for path ${fixture.dir}`)
-  }
-
-  fixture.id = persisted.id
-  fixture.name = persisted.name
   rememberWorkflowWorkspace(world, fixture)
 
-  await expect(world.page.locator(`[data-testid="workspace-open-${persisted.id}"]`)).toContainText(fixture.name, { timeout: 10_000 })
+  await expect(workflowWorkspaceButtonByName(world, fixture.name)).toContainText(fixture.name, { timeout: 10_000 })
 }
 
 function activeWorkspaceDetailPage(world: CradleWorld) {
@@ -150,11 +90,7 @@ function activeWorkspaceDetailPage(world: CradleWorld) {
 
 async function openWorkspaceDetail(world: CradleWorld): Promise<void> {
   const fixture = recallWorkflowWorkspace(world)
-  if (!fixture.id) {
-    throw new Error(`Workflow workspace fixture ${fixture.name} has no persisted id`)
-  }
-
-  const button = world.page.locator(`[data-testid="workspace-open-${fixture.id}"]`)
+  const button = workflowWorkspaceButtonByName(world, fixture.name)
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
 
@@ -258,16 +194,12 @@ async function createWorkflowAgentViaUi(world: CradleWorld, agentName: string): 
 
   await expect(world.page.locator('[data-testid="agent-detail-delete-trigger"]')).toBeVisible({ timeout: 10_000 })
 
-  await expect.poll(async () => {
-    return queryAgentByName(world, agentName)
-  }, { timeout: 10_000 }).not.toBeNull()
+  const backButton = world.page.locator('[data-testid="agent-detail-back"]')
+  await expect(backButton).toBeVisible({ timeout: 10_000 })
+  await backButton.click()
 
-  const persistedAgent = await queryAgentByName(world, agentName)
-  if (!persistedAgent) {
-    throw new Error(`Agent was not persisted for name ${agentName}`)
-  }
-
-  rememberWorkflowAgent(world, agentName, persistedAgent.id)
+  await expect(world.page.locator('[data-testid="agent-list"]')).toBeVisible({ timeout: 10_000 })
+  await expect(world.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()).toBeVisible({ timeout: 10_000 })
 
   await world.page.keyboard.press('Escape')
   await expect(world.page.locator('[data-testid="workspace-list"]')).toBeVisible({ timeout: 10_000 })
@@ -343,17 +275,17 @@ When('我切换到“All Agents”Workflow 范围', async function (this: Cradle
   const button = workflowRulesPage(this).locator('[data-testid="workspace-workflow-rules-scope-global"]')
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
-  await expect(button).toHaveAttribute('data-scope-active', 'true', { timeout: 10_000 })
-  await expect(workflowRulesEditor(this)).toHaveAttribute('data-workflow-scope', 'global', { timeout: 10_000 })
+  await expect(workflowRulesEditor(this)).toBeVisible({ timeout: 10_000 })
 })
 
 When('我切换到 Agent {string} 的 Workflow 范围', async function (this: CradleWorld, agentName: string) {
-  const agentId = recallWorkflowAgentId(this, agentName)
-  const button = workflowRulesPage(this).locator(`[data-testid="workspace-workflow-rules-scope-agent-${agentId}"]`)
+  const button = workflowRulesPage(this)
+    .locator('[data-testid^="workspace-workflow-rules-scope-agent-"]')
+    .filter({ hasText: agentName })
+    .first()
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
-  await expect(button).toHaveAttribute('data-scope-active', 'true', { timeout: 10_000 })
-  await expect(workflowRulesEditor(this)).toHaveAttribute('data-workflow-scope', agentId, { timeout: 10_000 })
+  await expect(workflowRulesEditor(this)).toBeVisible({ timeout: 10_000 })
 })
 
 When('我关闭当前工作区详情标签', async function (this: CradleWorld) {

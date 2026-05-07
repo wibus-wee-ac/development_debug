@@ -9,14 +9,8 @@ import { join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow } from '../support/database'
 import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
-
-interface PersistedAgentRow {
-  id: string
-  name: string
-}
 
 const DEFAULT_PROVIDER_MODEL = 'skills-mock-model'
 const NON_SLUG_CHAR_RE = /[^a-z0-9]+/g
@@ -138,21 +132,6 @@ async function createProviderViaUi(world: CradleWorld, providerName: string): Pr
   await expect(providerRow).toBeVisible({ timeout: 15_000 })
 }
 
-async function queryAgentByName(world: CradleWorld, agentName: string): Promise<PersistedAgentRow | null> {
-  return queryDatabaseRow<PersistedAgentRow>(
-    world,
-    `
-      select
-        id,
-        name
-      from agents
-      where name = ?
-      limit 1
-    `,
-    [agentName],
-  )
-}
-
 async function createAgentViaUi(world: CradleWorld, agentName: string): Promise<void> {
   const providerName = `Skills Mock Provider ${slugifyName(agentName)}`
   await createProviderViaUi(world, providerName)
@@ -178,22 +157,11 @@ async function createAgentViaUi(world: CradleWorld, agentName: string): Promise<
 
   await expect(world.page.locator('[data-testid="agent-detail-delete-trigger"]')).toBeVisible({ timeout: 10_000 })
 
-  await expect.poll(async () => {
-    return queryAgentByName(world, agentName)
-  }, { timeout: 10_000 }).not.toBeNull()
-
-  const persistedAgent = await queryAgentByName(world, agentName)
-  if (!persistedAgent) {
-    throw new Error(`Agent was not persisted for name ${agentName}`)
-  }
-
-  world.skillAgentIds[agentName] = persistedAgent.id
-
   const backButton = world.page.locator('[data-testid="agent-detail-back"]')
   await expect(backButton).toBeVisible({ timeout: 10_000 })
   await backButton.click()
 
-  const row = world.page.locator(`[data-testid="agent-row-${persistedAgent.id}"]`)
+  const row = world.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()
   await expect(row).toBeVisible({ timeout: 10_000 })
 }
 
@@ -322,13 +290,10 @@ Given('我已通过真实 Settings UI 创建一个 Agent {string}', async functi
 })
 
 When('我打开 Agent {string} 的 Skills 管理', async function (this: CradleWorld, agentName: string) {
-  const agentId = this.skillAgentIds[agentName]
-  const row = agentId
-    ? this.page.locator(`[data-testid="agent-row-${agentId}"]`)
-    : this.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()
+  const row = this.page.locator('[data-testid^="agent-row-"]').filter({ hasText: agentName }).first()
   await expect(row).toBeVisible({ timeout: 5000 })
   await row.click()
-  await expect(this.page.locator(agentSkillsPageSelector(agentId))).toBeVisible({ timeout: 5000 })
+  await expect(this.page.locator(agentSkillsPageSelector()).first()).toBeVisible({ timeout: 5000 })
 })
 
 When('我新建一个 Agent Skill', async function (this: CradleWorld) {

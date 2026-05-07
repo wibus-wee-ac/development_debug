@@ -1,10 +1,10 @@
 # language: zh-CN
-@cradle @P1
+@cradle
 功能: 全局键盘快捷键
 
   作为用户，我希望通过真实键盘快捷键快速操作应用外壳、布局和标签页
 
-  @CRADLE-SHORTCUTS-001
+  @P1 @CRADLE-SHORTCUTS-001
   场景: 使用快捷键打开设置并退出设置
     假如 应用 shell 已加载
     当 我按下打开设置的快捷键
@@ -12,7 +12,7 @@
     当 我按下退出设置的快捷键
     那么 侧边栏应处于主导航模式
 
-  @CRADLE-SHORTCUTS-002
+  @P1 @CRADLE-SHORTCUTS-002
   场景: 使用快捷键切换侧边栏折叠状态
     假如 应用 shell 已加载
     而且 侧边栏应处于展开状态
@@ -21,7 +21,7 @@
     当 我按下切换侧边栏的快捷键
     那么 侧边栏应处于展开状态
 
-  @CRADLE-SHORTCUTS-003
+  @P1 @CRADLE-SHORTCUTS-003
   场景: 在带工作区的聊天标签页中切换右侧与底部面板
     假如 我已准备好一个带工作区的聊天标签页
     那么 右侧 aside 应处于关闭状态
@@ -35,7 +35,7 @@
     当 我按下切换底部 panel 的快捷键
     那么 底部 panel 应处于关闭状态
 
-  @CRADLE-SHORTCUTS-004
+  @P1 @CRADLE-SHORTCUTS-004
   场景: 使用快捷键创建、切换并关闭标签页
     假如 应用 shell 已加载
     而且 仅保留一个初始标签页

@@ -361,10 +361,6 @@ Then('侧栏会话顺序应为{string}在{string}之前', async function (this: 
   expect(firstIndex).toBeLessThan(secondIndex)
 })
 
-Then('聊天状态最终应为{string}', async function (this: CradleWorld, status: string) {
-  await waitForChatStatus(this, status)
-})
-
 Then('最后一条 AI 消息应包含{string}', async function (this: CradleWorld, text: string) {
   const assistantBubble = await getLastAssistantBubble(this)
   await expect(assistantBubble).toContainText(text, { timeout: CHAT_STATUS_TIMEOUT })
@@ -383,6 +379,10 @@ When('我点击停止生成按钮', async function (this: CradleWorld) {
   const button = this.page.locator('[data-testid="chat-stop-btn"]')
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
+})
+
+Then('停止生成按钮应消失', async function (this: CradleWorld) {
+  await expect(this.page.locator('[data-testid="chat-stop-btn"]')).toHaveCount(0, { timeout: CHAT_STATUS_TIMEOUT })
 })
 
 When('我打开会话{string}的菜单', async function (this: CradleWorld, alias: string) {

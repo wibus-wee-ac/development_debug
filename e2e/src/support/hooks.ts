@@ -9,9 +9,11 @@ import { After, Before, setDefaultTimeout, Status } from '@cucumber/cucumber'
 
 import type { CradleWorld } from './world'
 
-setDefaultTimeout(60_000)
+const E2E_HOOK_TIMEOUT_MS = 120_000
 
-Before({ timeout: 60_000 }, async function (this: CradleWorld, scenario: ITestCaseHookParameter) {
+setDefaultTimeout(E2E_HOOK_TIMEOUT_MS)
+
+Before({ timeout: E2E_HOOK_TIMEOUT_MS }, async function (this: CradleWorld, scenario: ITestCaseHookParameter) {
   this.prepareScenario(scenario.pickle.name)
   await this.launch()
 

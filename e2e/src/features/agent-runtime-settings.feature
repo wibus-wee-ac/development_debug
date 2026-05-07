@@ -72,8 +72,15 @@
 
   @P1 @CRADLE-AGENT-RUNTIME-006
   场景: 编辑已有 OpenAI-compatible profile
-    假如 我已有一个名为"Legacy OpenAI"、Base URL 为"https://legacy.example/v1"、模型为"gpt-4o-mini"、启用状态为"启用"的 OpenAI-compatible Provider
-    而且 我已进入 Agent Runtime 设置页面
+    假如 我已进入 Agent Runtime 设置页面
+    当 我点击添加 Provider 按钮
+    而且 我在 Provider 类型下拉选择"OpenAI-compatible"
+    而且 我在 Provider 表单填写 Name 为"Legacy OpenAI"
+    而且 我在 Provider 表单填写 Base URL 为 Mock 地址
+    而且 我在 Provider 表单填写 Model 为"gpt-4o-mini"
+    而且 我在 Provider 表单填写 API Key 为"legacy-key"
+    而且 我点击提交 Provider 按钮
+    那么 Provider 列表中应显示名为"Legacy OpenAI"的 profile
     当 我打开名为"Legacy OpenAI"的 Provider
     而且 我编辑 Provider Name 为"Updated OpenAI"
     而且 我编辑 Provider Base URL 为"https://updated.example/v1"
@@ -84,15 +91,29 @@
 
   @P1 @CRADLE-AGENT-RUNTIME-007
   场景: 删除已有 profile
-    假如 我已有一个名为"Disposable Provider"、Base URL 为"https://delete.example/v1"、模型为"gpt-4o-mini"、启用状态为"启用"的 OpenAI-compatible Provider
-    而且 我已进入 Agent Runtime 设置页面
+    假如 我已进入 Agent Runtime 设置页面
+    当 我点击添加 Provider 按钮
+    而且 我在 Provider 类型下拉选择"OpenAI-compatible"
+    而且 我在 Provider 表单填写 Name 为"Disposable Provider"
+    而且 我在 Provider 表单填写 Base URL 为 Mock 地址
+    而且 我在 Provider 表单填写 Model 为"gpt-4o-mini"
+    而且 我在 Provider 表单填写 API Key 为"delete-key"
+    而且 我点击提交 Provider 按钮
+    那么 Provider 列表中应显示名为"Disposable Provider"的 profile
     当 我移除名为"Disposable Provider"的 Provider
     那么 Provider 列表中不应显示名为"Disposable Provider"的 profile
 
   @P1 @CRADLE-AGENT-RUNTIME-008
   场景: 切换 profile 启用状态
-    假如 我已有一个名为"Switchable Provider"、Base URL 为"https://toggle.example/v1"、模型为"gpt-4o-mini"、启用状态为"启用"的 OpenAI-compatible Provider
-    而且 我已进入 Agent Runtime 设置页面
+    假如 我已进入 Agent Runtime 设置页面
+    当 我点击添加 Provider 按钮
+    而且 我在 Provider 类型下拉选择"OpenAI-compatible"
+    而且 我在 Provider 表单填写 Name 为"Switchable Provider"
+    而且 我在 Provider 表单填写 Base URL 为 Mock 地址
+    而且 我在 Provider 表单填写 Model 为"gpt-4o-mini"
+    而且 我在 Provider 表单填写 API Key 为"toggle-key"
+    而且 我点击提交 Provider 按钮
+    那么 Provider 列表中应显示名为"Switchable Provider"的 profile
     当 我切换名为"Switchable Provider"的 Provider 启用状态
     那么 名为"Switchable Provider"的 Provider 应处于"禁用"状态
     当 我切换名为"Switchable Provider"的 Provider 启用状态

@@ -6,7 +6,6 @@ import type { DataTable } from '@cucumber/cucumber'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect, type Locator } from '@playwright/test'
 
-import { queryDatabaseRow } from '../support/database'
 import type { CradleWorld } from '../support/world'
 
 const KANBAN_SIDEBAR = '[data-testid="kanban-sidebar"]'
@@ -39,10 +38,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   medium: 'Medium',
   high: 'High',
   urgent: 'Urgent',
-}
-
-type CountRow = {
-  count: number
 }
 
 function boardButtonByName(world: CradleWorld, name: string): Locator {
@@ -111,16 +106,11 @@ async function ensureDefaultStatuses(world: CradleWorld): Promise<void> {
   await expect(visibleKanbanBoard(world).locator(KANBAN_COLUMN)).toHaveCount(2, { timeout: 10_000 })
 }
 
-async function getPersistedStatusCount(world: CradleWorld): Promise<number> {
-  const row = await queryDatabaseRow<CountRow>(world, 'SELECT COUNT(*) AS count FROM kanban_statuses', [])
-  return row?.count ?? 0
-}
-
 async function createNamedBoard(world: CradleWorld, name: string): Promise<void> {
   await openKanbanPage(world)
   await createBoard(world, name)
 
-  if (await getPersistedStatusCount(world) === 0) {
+  if (await visibleKanbanBoard(world).locator(KANBAN_COLUMN).count() === 0) {
     await ensureDefaultStatuses(world)
     return
   }

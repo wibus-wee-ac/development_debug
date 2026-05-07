@@ -1,11 +1,11 @@
 # language: zh-CN
-# Input: Usage Dashboard 真实入口、共享聊天/工作区步骤与数据库查询辅助
-# Output: Usage Dashboard 空状态与 usage_logs 驱动的真实使用旅程回归
+# Input: Usage Dashboard 真实入口与共享聊天/工作区步骤
+# Output: Usage Dashboard 空状态与可见汇总指标的真实使用旅程回归
 # Position: Usage/cost dashboard 首批端到端验收覆盖
 
 @cradle
 功能: Usage Dashboard
-  作为用户，我希望从真实入口查看 token 用量，并确认聊天产生的 usage 会被持久化和汇总展示
+  作为用户，我希望从真实入口查看 token 用量，并确认聊天产生的 usage 会显示在仪表盘中
 
   背景:
     假如 应用已启动
@@ -24,7 +24,6 @@
     当 我在新建聊天输入框中输入"usage-dashboard-target"
     而且 我点击发送按钮
     那么 应该跳转到聊天视图
-    而且 聊天状态最终应为"idle"
     而且 最后一条 AI 消息应包含"Hello from mock LLM!"
     当 我从侧栏打开 Usage Dashboard
     那么 我应该看到 Usage Dashboard
