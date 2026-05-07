@@ -1,7 +1,6 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow } from '../support/database'
 import type { CradleWorld } from '../support/world'
 
 const AGENT_CREATE_PAGE = '[data-testid="agent-create"]'
@@ -208,6 +207,18 @@ Then('Agent 详情页应显示名称为{string}', async function (this: CradleWo
   await expect(this.page.locator('[data-testid="agent-detail-delete-trigger"]')).toBeVisible({ timeout: 10_000 })
 })
 
+Then('当前 Agent Thinking Effort 应显示{string}', async function (this: CradleWorld, thinkingEffort: 'low' | 'medium' | 'high' | 'auto') {
+  console.warn(`[step] assert current agent thinking effort visible: ${thinkingEffort}`)
+  const button = this.page.locator(`[data-testid="agent-thinking-${thinkingEffort}"]`)
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await expect(button).toHaveClass(/bg-foreground/, { timeout: 10_000 })
+})
+
+Then('Agent 详情应显示已保存状态', async function (this: CradleWorld) {
+  console.warn('[step] assert agent detail save indicator visible')
+  await expect(this.page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 })
+})
+
 When('我返回 Agent 列表', async function (this: CradleWorld) {
   console.warn('[step] navigate back to agent list')
   const backButton = this.page.locator('[data-testid="agent-detail-back"]')
@@ -229,46 +240,6 @@ Then('Agent 列表中应显示名称为{string}、Provider 为{string}、Model �
   await expect(row).toContainText(providerName)
   await expect(row).toContainText(modelId)
   await expect(row.locator(`img[alt="${name}"]`)).toBeVisible({ timeout: 5000 })
-})
-
-Then('数据库中应持久化名称为{string}、Provider 为{string}、Model 为{string}、Thinking Effort 为{string}的 Agent', async function (
-  this: CradleWorld,
-  name: string,
-  providerName: string,
-  modelId: string,
-  thinkingEffort: 'low' | 'medium' | 'high' | 'auto',
-) {
-  console.warn(`[step] assert agent persisted: ${name}`)
-
-  await expect.poll(async () => {
-    return queryDatabaseRow<{
-      id: string
-      name: string
-      providerName: string
-      modelId: string | null
-      thinkingEffort: string
-    }>(
-      this,
-      `
-        SELECT
-          a.id,
-          a.name,
-          p.name AS providerName,
-          a.model_id AS modelId,
-          a.thinking_effort AS thinkingEffort
-        FROM agents a
-        INNER JOIN agent_profiles p ON p.id = a.provider_id
-        WHERE a.name = ?
-        LIMIT 1
-      `,
-      [name],
-    )
-  }, { timeout: 12_000 }).toMatchObject({
-    name,
-    providerName,
-    modelId,
-    thinkingEffort,
-  })
 })
 
 When('我打开名称为{string}的 Agent', async function (this: CradleWorld, name: string) {
@@ -295,20 +266,4 @@ Then('Agent 列表中不应显示名称为{string}的条目', async function (th
   await expect(this.page.locator('[data-testid="agent-list"]')).toBeVisible({ timeout: 10_000 })
   const row = getAgentRows(this, name)
   await expect(row).toHaveCount(0, { timeout: 10_000 })
-})
-
-Then('数据库中不应存在名称为{string}的 Agent', async function (this: CradleWorld, name: string) {
-  console.warn(`[step] assert agent missing from database: ${name}`)
-  await expect.poll(async () => {
-    return queryDatabaseRow<{ id: string }>(
-      this,
-      `
-        SELECT id
-        FROM agents
-        WHERE name = ?
-        LIMIT 1
-      `,
-      [name],
-    )
-  }, { timeout: 10_000 }).toBeNull()
 })

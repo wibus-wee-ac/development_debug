@@ -67,7 +67,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
 
   if (!workspacePath) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4 text-center">
+      <div className="flex flex-1 items-center justify-center p-4 text-center" data-testid="git-panel-empty-workspace">
         <p className="text-xs text-muted-foreground">请先选择 Workspace</p>
       </div>
     )
@@ -75,7 +75,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
 
   if (statusError) {
     return (
-      <div className="flex flex-1 items-center justify-center p-4 text-center">
+      <div className="flex flex-1 items-center justify-center p-4 text-center" data-testid="git-panel-error">
         <div className="flex flex-col items-center gap-2">
           <GitGraphIcon className="size-5 text-muted-foreground/30" />
           <p className="text-xs text-muted-foreground">不是 Git 仓库或无权限</p>
@@ -85,9 +85,9 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" data-testid="git-panel">
       {/* Status bar */}
-      <div className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1">
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1" data-testid="git-panel-status-bar">
         {statusLoading
           ? (
             <div className="h-5 w-24 animate-pulse rounded bg-muted/60" />
@@ -104,6 +104,8 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
                     'flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors',
                     'text-foreground/80 hover:text-foreground hover:bg-accent/60',
                   )}
+                  data-testid="git-panel-branch-trigger"
+                  data-branch-name={status.branch}
                 >
                   <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/60" aria-hidden />
                   <span className="max-w-28 truncate font-medium">{status.branch}</span>
@@ -133,6 +135,7 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
           onClick={() => { void handleFetch() }}
           disabled={fetching}
           className="text-muted-foreground hover:text-foreground"
+          data-testid="git-panel-fetch"
         >
           <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} aria-hidden />
         </Button>
@@ -141,29 +144,35 @@ export function GitPanel({ workspacePath }: GitPanelProps) {
       {/* Commit graph */}
       {graphLoading
         ? (
-          <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-1 items-center justify-center" data-testid="git-commit-graph-loading">
             <RefreshCwIcon className="size-4 animate-spin text-muted-foreground/30" aria-hidden />
           </div>
         )
         : layoutCommits.length === 0
           ? (
-            <div className="flex flex-1 items-center justify-center p-4">
+            <div className="flex flex-1 items-center justify-center p-4" data-testid="git-commit-graph-empty">
               <p className="text-xs text-muted-foreground">暂无 commit</p>
             </div>
           )
           : (
             <div className="flex min-h-0 flex-1 flex-col">
               <TooltipProvider delayDuration={700}>
-                <VList
-                  ref={vListRef}
-                  className="flex-1 [&::-webkit-scrollbar]:hidden"
-                  itemSize={ROW_HEIGHT}
-                  onScroll={handleRangeChange}
+                <div
+                  className="flex-1"
+                  data-testid="git-commit-graph"
+                  data-commit-count={String(layoutCommits.length)}
                 >
-                  {layoutCommits.map(commit => (
-                    <GitGraphRow key={commit.sha} commit={commit} />
-                  ))}
-                </VList>
+                  <VList
+                    ref={vListRef}
+                    className="flex-1 [&::-webkit-scrollbar]:hidden"
+                    itemSize={ROW_HEIGHT}
+                    onScroll={handleRangeChange}
+                  >
+                    {layoutCommits.map(commit => (
+                      <GitGraphRow key={commit.sha} commit={commit} />
+                    ))}
+                  </VList>
+                </div>
               </TooltipProvider>
               {graphFetching && !graphLoading && (
                 <div className="flex shrink-0 items-center justify-center py-1.5">

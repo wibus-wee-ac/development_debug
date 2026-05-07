@@ -56,6 +56,9 @@ export function AppSidebar() {
         animate={{ width: currentWidth }}
         transition={SIDEBAR_SPRING}
         style={{ width: currentWidth }}
+        data-testid="app-sidebar"
+        data-sidebar-mode={sidebarMode}
+        data-sidebar-collapsed={collapsed ? 'true' : 'false'}
       >
         {/* Traffic light spacer — drag region matching AppHeader height */}
         <div className="h-9.5 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />

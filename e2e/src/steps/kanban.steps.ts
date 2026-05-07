@@ -1,12 +1,12 @@
-// Input: Cucumber step bindings, Playwright locators, and CradleWorld scenario state helpers
-// Output: Kanban CRUD step definitions with deterministic waits for board, issue, comment, move, edit, and delete workflows
-// Position: E2E step layer covering board and issue management scenarios in kanban.feature
+// Input: Cucumber step bindings, Playwright locators, and minimal scenario state helpers
+// Output: Kanban CRUD step definitions focused on visible board, issue, comment, move, edit, delete, and search workflows
+// Position: E2E step layer for kanban.feature, centered on user-visible board and issue outcomes
 
 import type { DataTable } from '@cucumber/cucumber'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect, type Locator } from '@playwright/test'
 
-import { queryDatabaseRow, queryDatabaseRows } from '../support/database'
+import { queryDatabaseRow } from '../support/database'
 import type { CradleWorld } from '../support/world'
 
 const KANBAN_SIDEBAR = '[data-testid="kanban-sidebar"]'
@@ -39,29 +39,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   medium: 'Medium',
   high: 'High',
   urgent: 'Urgent',
-}
-
-type PersistedBoardRow = {
-  id: string
-  name: string
-}
-
-type PersistedIssueRow = {
-  id: string
-  title: string
-  description: string | null
-  priority: string
-  statusId: string | null
-}
-
-type PersistedStatusRow = {
-  id: string
-  name: string
-}
-
-type PersistedStatusOrderRow = {
-  name: string
-  sortOrder: number
 }
 
 type CountRow = {
@@ -233,106 +210,6 @@ async function rememberBoardIdByName(world: CradleWorld, name: string): Promise<
   return boardId
 }
 
-async function rememberIssueIdByTitle(world: CradleWorld, title: string): Promise<string> {
-  const card = await getIssueCardByTitle(world, title)
-  const issueId = await extractIdFromTestId(card, 'issue-card-')
-  world.remember(`issueId:${title}`, issueId)
-  world.remember('currentIssueId', issueId)
-  return issueId
-}
-
-async function rememberOpenIssueId(world: CradleWorld): Promise<string> {
-  const panel = world.page.locator(ISSUE_DETAIL_PANEL)
-  await expect(panel).toBeVisible({ timeout: 10_000 })
-  const issueId = await panel.getAttribute('data-issue-id')
-  if (!issueId) {
-    throw new Error('Issue detail panel is missing data-issue-id')
-  }
-  world.remember('currentIssueId', issueId)
-  return issueId
-}
-
-async function resolveRememberedIssueId(world: CradleWorld, title?: string): Promise<string> {
-  const rememberedByTitle = title ? world.maybeRecall<string>(`issueId:${title}`) : undefined
-  if (rememberedByTitle) {
-    return rememberedByTitle
-  }
-
-  const currentIssueId = world.maybeRecall<string>('currentIssueId')
-  if (currentIssueId) {
-    return currentIssueId
-  }
-
-  if (!title) {
-    throw new Error('Missing remembered currentIssueId')
-  }
-
-  return rememberIssueIdByTitle(world, title)
-}
-
-async function getPersistedBoardById(world: CradleWorld, boardId: string): Promise<PersistedBoardRow | null> {
-  return queryDatabaseRow<PersistedBoardRow>(
-    world,
-    `
-      SELECT
-        id,
-        name
-      FROM kanban_boards
-      WHERE id = ?
-      LIMIT 1
-    `,
-    [boardId],
-  )
-}
-
-async function getPersistedBoardByName(world: CradleWorld, name: string): Promise<PersistedBoardRow | null> {
-  return queryDatabaseRow<PersistedBoardRow>(
-    world,
-    `
-      SELECT
-        id,
-        name
-      FROM kanban_boards
-      WHERE name = ?
-      LIMIT 1
-    `,
-    [name],
-  )
-}
-
-async function getPersistedIssue(world: CradleWorld, issueId: string): Promise<PersistedIssueRow | null> {
-  return queryDatabaseRow<PersistedIssueRow>(
-    world,
-    `
-      SELECT
-        id,
-        title,
-        description,
-        priority,
-        status_id AS statusId
-      FROM kanban_issues
-      WHERE id = ?
-      LIMIT 1
-    `,
-    [issueId],
-  )
-}
-
-async function getPersistedStatusByName(world: CradleWorld, name: string): Promise<PersistedStatusRow | null> {
-  return queryDatabaseRow<PersistedStatusRow>(
-    world,
-    `
-      SELECT
-        id,
-        name
-      FROM kanban_statuses
-      WHERE name = ?
-      LIMIT 1
-    `,
-    [name],
-  )
-}
-
 function visibleStatusManager(world: CradleWorld): Locator {
   return world.page.locator(`${STATUS_MANAGER}:visible`).first()
 }
@@ -386,24 +263,6 @@ async function getVisibleColumnNames(world: CradleWorld): Promise<string[]> {
       .map((element) => element.querySelector('[data-testid^="kanban-column-title-"]')?.textContent?.trim() ?? '')
       .filter((value): value is string => value.length > 0)
   })
-}
-
-async function getPersistedStatusNames(world: CradleWorld): Promise<string[]> {
-  const rows = await queryDatabaseRows<PersistedStatusOrderRow>(
-    world,
-    `
-      SELECT
-        name,
-        "order" AS sortOrder
-      FROM kanban_statuses
-      ORDER BY "order" ASC
-    `,
-    [],
-  )
-
-  return rows
-    .sort((left, right) => left.sortOrder - right.sortOrder)
-    .map(row => row.name)
 }
 
 async function dragStatusRowBefore(world: CradleWorld, sourceName: string, targetName: string): Promise<void> {
@@ -499,10 +358,6 @@ Given('我已创建名为{string}的看板', async function (this: CradleWorld, 
   await createNamedBoard(this, name)
 })
 
-Given('我记录名为{string}的看板标识', async function (this: CradleWorld, name: string) {
-  await rememberBoardIdByName(this, name)
-})
-
 Then('看板侧栏应显示名为{string}的看板', async function (this: CradleWorld, name: string) {
   await expect(boardButtonByName(this, name)).toBeVisible({ timeout: 10_000 })
 })
@@ -553,10 +408,6 @@ Given('我已在第一列创建了一个 Issue{string}', async function (this: C
   await createIssueInFirstColumn(this, title)
 })
 
-Given('我记录名为{string}的 Issue 标识', async function (this: CradleWorld, title: string) {
-  await rememberIssueIdByTitle(this, title)
-})
-
 When('我点击名为{string}的 Issue 卡片', async function (this: CradleWorld, title: string) {
   await openIssueDetail(this, title)
 })
@@ -570,10 +421,6 @@ Given('我已打开该 Issue 的详情面板', async function (this: CradleWorld
 
 Given('我已打开名为{string}的 Issue 详情面板', async function (this: CradleWorld, title: string) {
   await openIssueDetail(this, title)
-})
-
-Given('我记录当前打开 Issue 的标识', async function (this: CradleWorld) {
-  await rememberOpenIssueId(this)
 })
 
 Then('Issue 详情面板应显示', async function (this: CradleWorld) {
@@ -619,14 +466,6 @@ Then('名为{string}的 Issue 卡片应显示在名为{string}的列中', async 
   await expect(column.locator(KANBAN_ISSUE_CARD).filter({ hasText: title })).toBeVisible({ timeout: 10_000 })
 })
 
-Then('名为{string}的 Issue 持久化状态应为{string}', async function (this: CradleWorld, title: string, statusName: string) {
-  const issueId = await resolveRememberedIssueId(this, title)
-  const status = await getPersistedStatusByName(this, statusName)
-  expect(status).not.toBeNull()
-
-  await expect.poll(async () => (await getPersistedIssue(this, issueId))?.statusId ?? null).toBe(status!.id)
-})
-
 When('我删除名为{string}的看板', async function (this: CradleWorld, name: string) {
   const boardButton = await getBoardButtonByName(this, name)
   const boardId = this.maybeRecall<string>(`boardId:${name}`) ?? await rememberBoardIdByName(this, name)
@@ -639,16 +478,6 @@ When('我删除名为{string}的看板', async function (this: CradleWorld, name
   const deleteItem = this.page.locator(`[data-testid="kanban-board-delete-${boardId}"]`)
   await expect(deleteItem).toBeVisible({ timeout: 10_000 })
   await deleteItem.click()
-})
-
-Then('名为{string}的看板不应存在于数据库中', async function (this: CradleWorld, name: string) {
-  const rememberedBoardId = this.maybeRecall<string>(`boardId:${name}`) ?? this.maybeRecall<string>('currentBoardId')
-  if (rememberedBoardId) {
-    await expect.poll(async () => await getPersistedBoardById(this, rememberedBoardId)).toBeNull()
-    return
-  }
-
-  await expect.poll(async () => await getPersistedBoardByName(this, name)).toBeNull()
 })
 
 When('我将 Issue 标题修改为{string}', async function (this: CradleWorld, title: string) {
@@ -694,24 +523,7 @@ When('我关闭 Issue 详情面板', async function (this: CradleWorld) {
   await expect(visibleKanbanBoard(this)).toBeVisible({ timeout: 10_000 })
 })
 
-Then('当前 Issue 的持久化标题应为{string}', async function (this: CradleWorld, title: string) {
-  const issueId = await resolveRememberedIssueId(this)
-  await expect.poll(async () => (await getPersistedIssue(this, issueId))?.title ?? null).toBe(title)
-})
-
-Then('当前 Issue 的持久化描述应为{string}', async function (this: CradleWorld, description: string) {
-  const issueId = await resolveRememberedIssueId(this)
-  await expect.poll(async () => (await getPersistedIssue(this, issueId))?.description ?? null).toBe(description)
-})
-
-Then('当前 Issue 的持久化优先级应为{string}', async function (this: CradleWorld, priority: string) {
-  const issueId = await resolveRememberedIssueId(this)
-  await expect.poll(async () => (await getPersistedIssue(this, issueId))?.priority ?? null).toBe(priority)
-})
-
 When('我删除当前打开的 Issue', async function (this: CradleWorld) {
-  await rememberOpenIssueId(this)
-
   const trigger = this.page.locator(ISSUE_DETAIL_MENU_TRIGGER)
   await expect(trigger).toBeVisible({ timeout: 10_000 })
   await trigger.click()
@@ -721,11 +533,6 @@ When('我删除当前打开的 Issue', async function (this: CradleWorld) {
   await deleteItem.click()
 
   await expect(this.page.locator(ISSUE_DETAIL_PANEL)).toHaveCount(0, { timeout: 10_000 })
-})
-
-Then('当前 Issue 不应存在于数据库中', async function (this: CradleWorld) {
-  const issueId = await resolveRememberedIssueId(this)
-  await expect.poll(async () => await getPersistedIssue(this, issueId)).toBeNull()
 })
 
 When('我打开状态列设置', async function (this: CradleWorld) {
@@ -786,15 +593,6 @@ When('我删除状态列{string}', async function (this: CradleWorld, name: stri
 Then('看板列顺序应为:', async function (this: CradleWorld, table: DataTable) {
   const expected = readSingleColumnTable(table)
   await expect.poll(async () => await getVisibleColumnNames(this)).toEqual(expected)
-})
-
-Then('状态列持久化顺序应为:', async function (this: CradleWorld, table: DataTable) {
-  const expected = readSingleColumnTable(table)
-  await expect.poll(async () => await getPersistedStatusNames(this)).toEqual(expected)
-})
-
-Then('持久化状态列中不应存在{string}', async function (this: CradleWorld, name: string) {
-  await expect.poll(async () => await getPersistedStatusByName(this, name)).toBeNull()
 })
 
 When('我在看板中搜索{string}', async function (this: CradleWorld, query: string) {

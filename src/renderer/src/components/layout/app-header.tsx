@@ -23,7 +23,7 @@ interface AppHeaderProps {
   gitBranch?: ReactNode
 }
 
-export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
+export function AppHeader({ title, workspace, hasAside = false, hasPanel = false, gitBranch }: AppHeaderProps) {
   'use no memo'
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, isSettings } = useLayoutStore()
   const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
@@ -97,6 +97,42 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
         />
       </div>
 
+      {(workspace || title || gitBranch) && (
+        <div
+          className="mr-1 flex min-w-0 max-w-[40%] shrink items-center gap-1 text-[11px]"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          data-testid="app-header-breadcrumbs"
+        >
+          {workspace && (
+            <div
+              className="min-w-0 truncate rounded-md bg-accent/50 px-2 py-1 text-muted-foreground"
+              data-testid="app-header-workspace"
+            >
+              {workspace}
+            </div>
+          )}
+          {workspace && (title || gitBranch) && (
+            <span className="shrink-0 text-muted-foreground/35" aria-hidden="true">/</span>
+          )}
+          {title && (
+            <div
+              className="min-w-0 truncate text-muted-foreground/70"
+              data-testid="app-header-title"
+            >
+              {title}
+            </div>
+          )}
+          {title && gitBranch && (
+            <span className="shrink-0 text-muted-foreground/35" aria-hidden="true">/</span>
+          )}
+          {gitBranch && (
+            <div className="shrink-0" data-testid="app-header-git-branch">
+              {gitBranch}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         {hasPanel && (
@@ -106,6 +142,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
             className={cn('text-muted-foreground', bottomPanelOpen && 'text-foreground')}
             onClick={toggleBottomPanel}
             title="切换底部面板"
+            data-testid="app-header-panel-toggle"
           >
             <PanelBottomIcon />
           </Button>
@@ -117,6 +154,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
             className={cn('text-muted-foreground', asideOpen && 'text-foreground')}
             onClick={toggleAside}
             title="切换右侧面板"
+            data-testid="app-header-aside-toggle"
           >
             <PanelRightIcon />
           </Button>

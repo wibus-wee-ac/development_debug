@@ -327,12 +327,14 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
 
 function AgentDelegatePicker({
   issueId,
+  workspaceId,
   delegateAgentId,
   sessions,
   onDelegate,
   onUndelegate,
 }: {
   issueId: string
+  workspaceId: string
   delegateAgentId: string | null | undefined
   sessions: AgentSession[]
   onDelegate: (agentProfileId: string, agentId?: string) => void
@@ -420,6 +422,7 @@ function AgentDelegatePicker({
           className="flex items-center gap-1 h-6 px-2 rounded-md text-[10px] font-medium bg-foreground/5 text-foreground hover:bg-foreground/10 transition-colors duration-150"
           onClick={() => startSession.mutate({
             issueId,
+            workspaceId,
             agentSessionId: latestSession.id,
             agentProfileId: latestSession.agentProfileId,
           })}
@@ -1019,6 +1022,7 @@ function PropertyPanel({
           <span className="w-20 shrink-0 text-[12px] text-muted-foreground">Agent</span>
           <AgentDelegatePicker
             issueId={issueId}
+            workspaceId={workspaceId}
             delegateAgentId={issue.delegateAgentId}
             sessions={agentSessions}
             onDelegate={onDelegate}
@@ -1343,6 +1347,7 @@ export function IssueDetail({
                   if (session?.id) {
                     startAgentSession.mutate({
                       issueId,
+                      workspaceId,
                       agentSessionId: session.id,
                       agentProfileId: session.agentProfileId,
                       agentId,

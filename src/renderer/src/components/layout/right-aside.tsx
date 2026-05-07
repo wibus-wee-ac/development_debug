@@ -54,7 +54,7 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
   }, [])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside" data-active-tab={activeTab}>
       {/* ── Tab bar ─────────────────────────────────────── */}
       <div className="flex shrink-0 items-center gap-0.5 border-b border-border/30 px-2 py-1.5">
         {TABS.map(({ id, label, icon: Icon }) => (
@@ -62,6 +62,8 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
             key={id}
             type="button"
             onClick={() => setActiveTab(id)}
+            data-testid={`right-aside-tab-${id}`}
+            data-active={activeTab === id ? 'true' : 'false'}
             className={cn(
               'relative flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors select-none z-10',
               activeTab === id
@@ -87,18 +89,26 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
       {/* ── Tab content ─────────────────────────────────── */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {activeTab === 'files' && (
-          <FileTree
-            workspaceId={workspaceId}
-            workspacePath={workspacePath}
-            onPackRequested={workspaceId ? handlePackRequested : undefined}
-          />
+          <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-files">
+            <FileTree
+              workspaceId={workspaceId}
+              workspacePath={workspacePath}
+              onPackRequested={workspaceId ? handlePackRequested : undefined}
+            />
+          </div>
         )}
-        {activeTab === 'git' && <GitPanel workspacePath={workspacePath} />}
+        {activeTab === 'git' && (
+          <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-git">
+            <GitPanel workspacePath={workspacePath} />
+          </div>
+        )}
         {activeTab === 'issue' && sessionId && (
-          <IssueAsidePanel sessionId={sessionId} workspaceId={workspaceId} />
+          <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-issue">
+            <IssueAsidePanel sessionId={sessionId} workspaceId={workspaceId} />
+          </div>
         )}
         {activeTab === 'issue' && !sessionId && (
-          <div className="flex flex-1 items-center justify-center">
+          <div className="flex flex-1 items-center justify-center" data-testid="right-aside-panel-issue-empty">
             <p className="text-[11px] text-muted-foreground">未选择会话</p>
           </div>
         )}

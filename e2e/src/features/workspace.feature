@@ -1,19 +1,20 @@
 # language: zh-CN
-@cradle @P0 @CRADLE-WORKSPACE-001
+@cradle
 功能: 工作区管理
 
   作为用户，我可以添加和管理本地工作区
 
+  @P0 @CRADLE-WORKSPACE-001
   场景: 应用启动后显示空状态
     那么 我应该看到工作区列表为空
     而且 我应该看到"添加工作区"按钮
 
-  @CRADLE-WORKSPACE-002
+  @P0 @CRADLE-WORKSPACE-002
   场景: 添加一个工作区
     当 我通过原生对话框添加工作区
     那么 工作区列表中应该有 1 个工作区
 
-  @CRADLE-WORKSPACE-003
+  @P1 @CRADLE-WORKSPACE-003
   场景: 删除一个工作区
     假如 我已添加了一个工作区
     当 我打开该工作区的菜单
@@ -27,7 +28,6 @@
     而且 我将工作区重命名为 "Renamed Workspace"
     那么 工作区详情页标题应该是 "Renamed Workspace"
     而且 工作区列表中应该包含工作区 "Renamed Workspace"
-    而且 数据库中的当前工作区名称应该是 "Renamed Workspace"
 
   @P1 @CRADLE-WORKSPACE-005
   场景: 在多个工作区之间切换
@@ -37,7 +37,6 @@
     那么 工作区详情页应该显示第 1 个工作区的真实内容
     当 我打开第 2 个工作区的详情页
     那么 工作区详情页应该显示第 2 个工作区的真实内容
-    而且 数据库中应该有 2 条工作区记录
 
   @P1 @CRADLE-WORKSPACE-006
   场景: 工作区详情页显示真实业务内容

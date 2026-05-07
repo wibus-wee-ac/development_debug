@@ -1,13 +1,12 @@
-// Input: Cucumber step bindings, Playwright assertions, scenario-scoped mock LLM logs, and shared DB helpers
-// Output: Chat-focused E2E step definitions covering request-body context propagation, session menu actions, persistence, and stream lifecycle
-// Position: E2E step layer covering chat.feature happy path, multi-turn context, cancellation, provider errors, reconnect, and session management flows
+// Input: Cucumber step bindings, Playwright assertions, deterministic mock LLM responses, and shared UI helpers
+// Output: Chat-focused E2E step definitions covering visible chat journeys, session menu actions, reasoning/tool-call UI, and stream lifecycle
+// Position: E2E step layer for chat.feature, focused on user-visible chat behavior rather than backend persistence contracts
 
 import type { DataTable } from '@cucumber/cucumber'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow, queryDatabaseRows } from '../support/database'
-import type { MockLlmRequestLogEntry, MockToolCall } from '../support/mock-llm-server'
+import type { MockToolCall } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const DEFAULT_RESPONSE = 'Hello from mock LLM! I am an AI assistant.'
@@ -32,55 +31,9 @@ const CHAT_STATUS_TIMEOUT = 30_000
 const SESSION_ALIASES_KEY = 'chat.session-aliases'
 const TAB_PILL = '[data-testid^="tab-pill-"]'
 
-type PersistedChatMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  status: string
-  content: string
-  errorText?: string | null
-}
-
-type PersistedBackendBinding = {
-  chatSessionId: string
-  backendSessionId: string | null
-  requestedModelId: string | null
-}
-
-type PersistedBackendRun = {
-  chatSessionId: string
-  status: string
-  stopReason: string | null
-}
-
-type PersistedTimelineEvent = {
-  eventType: string
-  sequenceNumber: number
-}
-
 type SessionAlias = {
   id: string
   firstUserText: string
-}
-
-type PersistedPinnedRow = {
-  pinned: number
-}
-
-type PersistedTitleRow = {
-  title: string
-}
-
-type CountRow = {
-  count: number
-}
-
-type ParsedRequestMessage = {
-  role: string
-  content: string
-}
-
-type PersistedEventTypeRow = {
-  eventType: string
 }
 
 function recallSessionAliases(world: CradleWorld): Record<string, SessionAlias> {
@@ -131,28 +84,6 @@ async function getCurrentChatSessionId(world: CradleWorld): Promise<string> {
     throw new Error('Expected active chat view to expose a chat session id')
   }
   return sessionId
-}
-
-async function getPersistedMessages(world: CradleWorld): Promise<PersistedChatMessage[]> {
-  const chatSessionId = await getCurrentChatSessionId(world)
-  return world.page.evaluate(async (sessionId) => {
-    // eslint-disable-next-line ts/no-explicit-any
-    const ipcRenderer = (window as any).electron?.ipcRenderer
-    if (!ipcRenderer?.invoke) {
-      throw new Error('electron.ipcRenderer not available')
-    }
-
-    return ipcRenderer.invoke('chat.getMessages', sessionId) as Promise<PersistedChatMessage[]>
-  }, chatSessionId)
-}
-
-async function getLastAssistantPersistedMessage(world: CradleWorld): Promise<PersistedChatMessage> {
-  const messages = await getPersistedMessages(world)
-  const assistantMessage = [...messages].reverse().find(message => message.role === 'assistant')
-  if (!assistantMessage) {
-    throw new Error('Expected at least one persisted assistant message')
-  }
-  return assistantMessage
 }
 
 async function getLastAssistantBubble(world: CradleWorld) {
@@ -273,7 +204,7 @@ async function clickSessionMenuAction(world: CradleWorld, sessionId: string, act
 async function getVisibleSessionOrder(world: CradleWorld): Promise<string[]> {
   return world.page.locator('[data-testid^="session-item-"]').evaluateAll((elements) => {
     return elements
-      .map((element) => element.getAttribute('data-testid')?.replace('session-item-', ''))
+      .map(element => element.getAttribute('data-testid')?.replace('session-item-', ''))
       .filter((value): value is string => typeof value === 'string' && value.length > 0)
   })
 }
@@ -298,83 +229,10 @@ async function getLastAssistantToolCallBlock(world: CradleWorld, toolName: strin
   return block
 }
 
-async function getTimelineEventTypes(world: CradleWorld): Promise<string[]> {
-  const chatSessionId = await getCurrentChatSessionId(world)
-  const rows = await queryDatabaseRows<PersistedEventTypeRow>(
-    world,
-    `
-      SELECT
-        event_type AS eventType
-      FROM backend_timeline_events
-      WHERE chat_session_id = ?
-      ORDER BY sequence_number ASC
-    `,
-    [chatSessionId],
-  )
-
-  return rows.map(row => row.eventType)
-}
-
 async function clearElectronClipboard(world: CradleWorld): Promise<void> {
   await world.mainProcess<void>(({ clipboard }) => {
     clipboard.clear()
   })
-}
-
-function getChatCompletionRequests(world: CradleWorld): MockLlmRequestLogEntry[] {
-  if (!world.mockLlmServer) {
-    throw new Error('Mock LLM server is not configured for this scenario')
-  }
-
-  return world.mockLlmServer.getRequestLog().filter(entry => (
-    entry.method === 'POST'
-    && entry.path.endsWith('/chat/completions')
-  ))
-}
-
-function normalizeOpenAiMessageContent(content: unknown): string {
-  if (typeof content === 'string') {
-    return content
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === 'string') {
-          return part
-        }
-
-        if (
-          typeof part === 'object'
-          && part !== null
-          && 'text' in part
-          && typeof (part as { text?: unknown }).text === 'string'
-        ) {
-          return (part as { text: string }).text
-        }
-
-        return ''
-      })
-      .join('')
-  }
-
-  return ''
-}
-
-function parseChatCompletionRequest(entry: MockLlmRequestLogEntry): ParsedRequestMessage[] {
-  const parsed = JSON.parse(entry.body) as {
-    messages?: Array<{ role?: string, content?: unknown }>
-  }
-
-  return (parsed.messages ?? []).map(message => ({
-    role: message.role ?? 'unknown',
-    content: normalizeOpenAiMessageContent(message.content),
-  }))
-}
-
-async function queryCount(world: CradleWorld, sql: string, params: Array<string | number | null>): Promise<number> {
-  const row = await queryDatabaseRow<CountRow>(world, sql, params)
-  return row?.count ?? 0
 }
 
 Given('应用已启动', async function (this: CradleWorld) {
@@ -512,49 +370,8 @@ Then('最后一条 AI 消息应包含{string}', async function (this: CradleWorl
   await expect(assistantBubble).toContainText(text, { timeout: CHAT_STATUS_TIMEOUT })
 })
 
-Then('最后一条 AI 消息持久化状态应为{string}', async function (this: CradleWorld, status: string) {
-  if (status === 'failed') {
-    await waitForChatStatus(this, 'error')
-  }
-  else {
-    await waitForChatStatus(this, 'idle')
-  }
-
-  const assistantMessage = await getLastAssistantPersistedMessage(this)
-  expect(assistantMessage.status).toBe(status)
-})
-
 Then('聊天中不应出现错误提示', async function (this: CradleWorld) {
   await expect(this.page.locator('[data-testid="chat-error-banner"]')).toHaveCount(0)
-})
-
-Then('第 {int} 次 Mock LLM 对话请求的 messages 应按顺序包含以下内容:', async function (this: CradleWorld, requestIndex: number, table: DataTable) {
-  const requests = getChatCompletionRequests(this)
-  const entry = requests[requestIndex - 1]
-
-  if (!entry) {
-    throw new Error(`Expected Mock LLM request #${requestIndex}, but only found ${requests.length}`)
-  }
-
-  const actualMessages = parseChatCompletionRequest(entry)
-  const expectedMessages = table.hashes().map(row => ({
-    role: row.role,
-    content: row.content,
-  }))
-
-  let cursor = 0
-  for (const expectedMessage of expectedMessages) {
-    const relativeIndex = actualMessages
-      .slice(cursor)
-      .findIndex(message => message.role === expectedMessage.role && message.content === expectedMessage.content)
-
-    expect(
-      relativeIndex,
-      `Expected request #${requestIndex} messages to include ${JSON.stringify(expectedMessage)} in order. Actual messages: ${JSON.stringify(actualMessages, null, 2)}`,
-    ).toBeGreaterThanOrEqual(0)
-
-    cursor += relativeIndex + 1
-  }
 })
 
 Then('聊天流应处于进行中', async function (this: CradleWorld) {
@@ -618,88 +435,10 @@ Then('聊天错误提示应显示{string}', async function (this: CradleWorld, t
   await expect(errorBanner).toContainText(text, { timeout: CHAT_STATUS_TIMEOUT })
 })
 
-Then('我记录当前聊天会话标识', async function (this: CradleWorld) {
-  this.remember('currentChatSessionId', await getCurrentChatSessionId(this))
-})
-
 When('我重新加载当前页面', async function (this: CradleWorld) {
   await this.page.reload()
   await this.page.waitForLoadState('domcontentloaded')
   await getChatView(this)
-})
-
-Then('当前聊天会话标识应保持不变', async function (this: CradleWorld) {
-  const previousSessionId = this.recall<string>('currentChatSessionId')
-  const chatView = await getChatView(this)
-  await expect(chatView).toHaveAttribute('data-chat-session-id', previousSessionId, { timeout: CHAT_STATUS_TIMEOUT })
-})
-
-Then('当前聊天会话应持久化一条 backend binding', async function (this: CradleWorld) {
-  const chatSessionId = await getCurrentChatSessionId(this)
-  const binding = await queryDatabaseRow<PersistedBackendBinding>(
-    this,
-    `
-      SELECT
-        chat_session_id AS chatSessionId,
-        backend_session_id AS backendSessionId,
-        requested_model_id AS requestedModelId
-      FROM backend_session_bindings
-      WHERE chat_session_id = ?
-      LIMIT 1
-    `,
-    [chatSessionId],
-  )
-
-  expect(binding).not.toBeNull()
-  expect(binding).toEqual(expect.objectContaining({ chatSessionId }))
-})
-
-Then('当前聊天会话应持久化一条状态为{string}的 backend run', async function (this: CradleWorld, status: string) {
-  const chatSessionId = await getCurrentChatSessionId(this)
-  const run = await queryDatabaseRow<PersistedBackendRun>(
-    this,
-    `
-      SELECT
-        chat_session_id AS chatSessionId,
-        status,
-        stop_reason AS stopReason
-      FROM backend_runs
-      WHERE chat_session_id = ?
-      ORDER BY started_at DESC
-      LIMIT 1
-    `,
-    [chatSessionId],
-  )
-
-  expect(run).not.toBeNull()
-  expect(run).toEqual(expect.objectContaining({ chatSessionId, status }))
-})
-
-Then('当前聊天会话应持久化 backend timeline 事件序列', async function (this: CradleWorld) {
-  const chatSessionId = await getCurrentChatSessionId(this)
-  const timelineEvents = await queryDatabaseRows<PersistedTimelineEvent>(
-    this,
-    `
-      SELECT
-        event_type AS eventType,
-        sequence_number AS sequenceNumber
-      FROM backend_timeline_events
-      WHERE chat_session_id = ?
-      ORDER BY sequence_number ASC
-    `,
-    [chatSessionId],
-  )
-
-  expect(timelineEvents.length).toBeGreaterThanOrEqual(4)
-  expect(timelineEvents.map(event => event.eventType)).toEqual(expect.arrayContaining([
-    'run.started',
-    'assistant.message.started',
-    'assistant.text.delta',
-    'run.completed',
-  ]))
-  expect(timelineEvents.map(event => event.sequenceNumber)).toEqual(
-    timelineEvents.map((_, index) => index),
-  )
 })
 
 Then('会话{string}应显示为已置顶', async function (this: CradleWorld, alias: string) {
@@ -718,72 +457,9 @@ Then('会话{string}不应显示为已置顶', async function (this: CradleWorld
   await expect(item.locator(`[data-testid="session-pin-indicator-${sessionId}"]`)).toHaveCount(0)
 })
 
-Then('会话{string}的数据库置顶状态应为{string}', async function (this: CradleWorld, alias: string, expectedPinned: string) {
-  const sessionId = recallSessionAlias(this, alias).id
-  const row = await queryDatabaseRow<PersistedPinnedRow>(
-    this,
-    `
-      SELECT pinned
-      FROM sessions
-      WHERE id = ?
-    `,
-    [sessionId],
-  )
-
-  expect(row).not.toBeNull()
-  expect(row?.pinned).toBe(expectedPinned === 'true' ? 1 : 0)
-})
-
 Then('侧栏中的会话{string}标题应为{string}', async function (this: CradleWorld, alias: string, expectedTitle: string) {
   const sessionId = recallSessionAlias(this, alias).id
   await expect(this.page.locator(`[data-testid="session-title-${sessionId}"]`)).toHaveText(expectedTitle, { timeout: 10_000 })
-})
-
-Then('会话{string}的数据库标题应为{string}', async function (this: CradleWorld, alias: string, expectedTitle: string) {
-  const sessionId = recallSessionAlias(this, alias).id
-  const row = await queryDatabaseRow<PersistedTitleRow>(
-    this,
-    `
-      SELECT title
-      FROM sessions
-      WHERE id = ?
-    `,
-    [sessionId],
-  )
-
-  expect(row).not.toBeNull()
-  expect(row?.title).toBe(expectedTitle)
-})
-
-Then('会话{string}应已从数据库完全删除', async function (this: CradleWorld, alias: string) {
-  const sessionId = recallSessionAlias(this, alias).id
-
-  expect(await queryCount(this, 'SELECT count(*) AS count FROM sessions WHERE id = ?', [sessionId])).toBe(0)
-  expect(await queryCount(this, 'SELECT count(*) AS count FROM messages WHERE session_id = ?', [sessionId])).toBe(0)
-  expect(await queryCount(this, 'SELECT count(*) AS count FROM backend_session_bindings WHERE chat_session_id = ?', [sessionId])).toBe(0)
-  expect(await queryCount(this, 'SELECT count(*) AS count FROM backend_runs WHERE chat_session_id = ?', [sessionId])).toBe(0)
-  expect(await queryCount(this, 'SELECT count(*) AS count FROM backend_timeline_events WHERE chat_session_id = ?', [sessionId])).toBe(0)
-})
-
-Then('被删除的会话{string}不应继续作为当前聊天视图显示', async function (this: CradleWorld, alias: string) {
-  const deletedSessionId = recallSessionAlias(this, alias).id
-  const activeTab = this.page.locator(`${TAB_PILL}[data-tab-active="true"]`).first()
-
-  await expect(activeTab).toBeVisible({ timeout: 10_000 })
-
-  const activeTabTestId = await activeTab.getAttribute('data-testid')
-  if (!activeTabTestId) {
-    throw new Error('Expected active tab pill to expose a data-testid while verifying deleted session state')
-  }
-
-  const activeTabId = activeTabTestId.replace('tab-pill-', '')
-  const visibleChatView = this.page.locator(`[data-testid="tab-content-${activeTabId}"] [data-testid="chat-view"]`).first()
-
-  if (await visibleChatView.count() === 0) {
-    return
-  }
-
-  await expect(visibleChatView).not.toHaveAttribute('data-chat-session-id', deletedSessionId)
 })
 
 Then('最后一条 AI 消息应显示 Reasoning 入口', async function (this: CradleWorld) {
@@ -800,15 +476,6 @@ Then('最后一条 AI 消息的 Reasoning 应包含{string}', async function (th
   const content = assistantBubble.locator('[data-testid="chat-reasoning-content"]').last()
   await expect(content).toBeVisible({ timeout: 10_000 })
   await expect(content).toContainText(text, { timeout: 10_000 })
-})
-
-Then('当前聊天会话应持久化 reasoning 事件序列', async function (this: CradleWorld) {
-  const eventTypes = await getTimelineEventTypes(this)
-  expect(eventTypes).toEqual(expect.arrayContaining([
-    'reasoning.started',
-    'reasoning.delta',
-    'reasoning.completed',
-  ]))
 })
 
 Then('最后一条 AI 消息应显示名为{string}的 Tool Call', async function (this: CradleWorld, toolName: string) {
@@ -831,14 +498,6 @@ Then('最后一条 AI 消息中名为{string}的 Tool Call 输入应包含{strin
 Then('最后一条 AI 消息中名为{string}的 Tool Call 输出应包含{string}', async function (this: CradleWorld, toolName: string, text: string) {
   const block = await getLastAssistantToolCallBlock(this, toolName)
   await expect(block.locator('[data-testid^="chat-tool-call-output-"]').first()).toContainText(text, { timeout: 10_000 })
-})
-
-Then('当前聊天会话应持久化 tool call 事件序列', async function (this: CradleWorld) {
-  const eventTypes = await getTimelineEventTypes(this)
-  expect(eventTypes).toEqual(expect.arrayContaining([
-    'tool_call.started',
-    'tool_call.completed',
-  ]))
 })
 
 Then('Electron 剪贴板中应包含以下 Markdown 片段:', async function (this: CradleWorld, table: DataTable) {

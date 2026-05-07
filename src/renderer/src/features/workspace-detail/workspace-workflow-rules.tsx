@@ -42,18 +42,27 @@ function RuleEditor({
   const { data } = useWorkflowRule(workspaceId, agentId)
   const saveMutation = useSaveWorkflowRule()
 
-  const content = agentId ? (data?.profileSpecific ?? null) : (data?.global ?? null)
+  const content = data === undefined
+    ? null
+    : agentId
+      ? (data.profileSpecific ?? null)
+      : (data.global ?? null)
 
   const handleSave = (md: string) => {
     saveMutation.mutate({ workspaceId, agentId, content: md })
   }
 
   return (
-    <MarkdownEditor
-      content={content ?? ''}
-      onSave={handleSave}
-      placeholder={placeholder}
-    />
+    <div
+      data-testid="workspace-workflow-rules-editor"
+      data-workflow-scope={agentId ?? 'global'}
+    >
+      <MarkdownEditor
+        content={content}
+        onSave={handleSave}
+        placeholder={placeholder}
+      />
+    </div>
   )
 }
 
@@ -85,12 +94,14 @@ export function WorkspaceWorkflowRules({
     : null
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="workspace-workflow-rules-page">
       {/* Scope selector */}
-      <div className="flex gap-1.5">
+      <div className="flex gap-1.5" data-testid="workspace-workflow-rules-scope-selector">
         <button
           type="button"
           onClick={() => setSelectedAgentId(null)}
+          data-testid="workspace-workflow-rules-scope-global"
+          data-scope-active={!selectedAgentId ? 'true' : 'false'}
           className={cn(
             'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors',
             !selectedAgentId
@@ -106,6 +117,8 @@ export function WorkspaceWorkflowRules({
             key={agent.id}
             type="button"
             onClick={() => setSelectedAgentId(agent.id)}
+            data-testid={`workspace-workflow-rules-scope-agent-${agent.id}`}
+            data-scope-active={selectedAgentId === agent.id ? 'true' : 'false'}
             className={cn(
               'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors',
               selectedAgentId === agent.id
@@ -133,6 +146,7 @@ export function WorkspaceWorkflowRules({
         {!selectedAgentId
           ? (
             <RuleEditor
+              key="workflow-rule-global"
               workspaceId={workspaceId}
               agentId={null}
               placeholder="Define what agents should do when assigned a task..."
@@ -140,6 +154,7 @@ export function WorkspaceWorkflowRules({
           )
           : activeScope && (
             <RuleEditor
+              key={`workflow-rule-agent-${selectedAgentId}`}
               workspaceId={workspaceId}
               agentId={selectedAgentId}
               placeholder={`Instructions specific to ${activeScope.name}...`}

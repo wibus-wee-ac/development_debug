@@ -1,0 +1,44 @@
+# language: zh-CN
+# Input: Shared workspace, chat, and kanban E2E steps plus deterministic mock LLM setup
+# Output: First-run user journeys covering initial workspace import, first chat, first board, and first issue creation
+# Position: High-priority journey coverage for the product's first-use value path
+@cradle
+功能: 首次用户旅程
+
+  作为第一次使用 Cradle 的用户，我希望能够从零开始完成聊天与看板的核心路径
+
+  背景:
+    假如 应用已启动
+
+  @P0 @CRADLE-JOURNEY-001
+  场景: 首次打开应用后添加工作区并开始第一段聊天
+    假如 我已配置 Mock LLM Provider
+    当 我通过原生对话框添加工作区
+    而且 我点击"新建聊天"导航项
+    那么 我应该看到新建聊天页面
+    当 我在新建聊天输入框中输入"这是第一次聊天"
+    而且 我点击发送按钮
+    那么 应该跳转到聊天视图
+    而且 我应该看到用户消息"这是第一次聊天"
+    而且 聊天状态最终应为"idle"
+    而且 最后一条 AI 消息应包含"Hello from mock LLM!"
+    而且 聊天中不应出现错误提示
+
+  @P0 @CRADLE-JOURNEY-002
+  场景: 首次打开应用后创建第一个看板与第一条 Issue
+    当 我通过原生对话框添加工作区
+    而且 我点击看板导航按钮
+    而且 我点击新建看板按钮
+    而且 我输入看板名称"首次看板"并回车
+    那么 看板侧栏应显示名为"首次看板"的看板
+    而且 看板视图应显示
+    当 我打开状态列设置
+    而且 我新增状态列"To Do"
+    而且 我新增状态列"In Progress"
+    而且 我关闭状态列设置
+    当 我点击第一个列的添加按钮
+    而且 我输入 Issue 标题"首次 Issue"并回车
+    那么 该列应显示一张名为"首次 Issue"的卡片
+    当 我点击名为"首次 Issue"的 Issue 卡片
+    那么 Issue 详情面板应显示
+    而且 面板标题应为"首次 Issue"

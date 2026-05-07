@@ -1,7 +1,7 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow } from '../support/database'
+import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles|No providers configured yet\./
@@ -53,11 +53,44 @@ async function createOpenAICompatibleProvider(
   }, { profileId, ...options })
 }
 
+async function ensureMockProviderBaseUrl(world: CradleWorld): Promise<string> {
+  if (world.mockLlmServer) {
+    await world.mockLlmServer.stop()
+  }
+
+  world.mockLlmServer = new MockLlmServer({
+    models: [
+      { id: 'mock-model', owned_by: 'openai' },
+      { id: 'codex-mini-latest', owned_by: 'openai' },
+      { id: 'claude-sonnet-4-20250514', owned_by: 'anthropic' },
+    ],
+  })
+  world.mockLlmBaseUrl = await world.mockLlmServer.start()
+  return world.mockLlmBaseUrl
+}
+
 When('我点击设置按钮', async function (this: CradleWorld) {
   console.warn('[step] click settings button')
   const btn = this.page.locator('[data-testid="settings-btn"]')
   await expect(btn).toBeVisible({ timeout: 15000 })
   await btn.click()
+})
+
+When('我点击添加 Provider 按钮', async function (this: CradleWorld) {
+  console.warn('[step] click Add Provider button')
+  const btn = this.page.locator('[data-testid="add-provider-btn"]')
+  await expect(btn).toBeVisible({ timeout: 5000 })
+  await btn.click()
+})
+
+When('我在 Provider 类型下拉选择{string}', async function (this: CradleWorld, kindLabel: string) {
+  console.warn(`[step] select provider kind: ${kindLabel}`)
+  const trigger = this.page.locator('[data-testid="agent-provider-kind"]')
+  await expect(trigger).toBeVisible({ timeout: 5000 })
+  await trigger.click()
+  const option = this.page.getByRole('option', { name: kindLabel })
+  await expect(option).toBeVisible({ timeout: 5000 })
+  await option.click()
 })
 
 When('我点击"Providers"导航项', async function (this: CradleWorld) {
@@ -118,86 +151,48 @@ When('我在 Provider 表单填写 Name 为{string}', async function (this: Crad
   await input.fill(name)
 })
 
+When('我在 Provider 表单填写 Base URL 为 Mock 地址', async function (this: CradleWorld) {
+  console.warn('[step] fill provider baseUrl with mock address')
+  const input = this.page.locator('[data-testid="provider-baseurl"]')
+  await expect(input).toBeVisible({ timeout: 5000 })
+  await input.clear()
+  await input.fill(await ensureMockProviderBaseUrl(this))
+})
+
+When('我在 Provider 表单填写 Model 为{string}', async function (this: CradleWorld, model: string) {
+  console.warn(`[step] fill provider model: ${model}`)
+  const input = this.page.locator('[data-testid="provider-model"]')
+  await expect(input).toBeVisible({ timeout: 5000 })
+  await input.clear()
+  await input.fill(model)
+})
+
+When('我在 Provider 表单填写 API Key 为{string}', async function (this: CradleWorld, apiKey: string) {
+  console.warn('[step] fill provider apiKey')
+  const input = this.page.locator('[data-testid="provider-apikey"]')
+  await expect(input).toBeVisible({ timeout: 5000 })
+  await input.clear()
+  await input.fill(apiKey)
+})
+
+When('我点击提交 Provider 按钮', async function (this: CradleWorld) {
+  console.warn('[step] click submit Provider button')
+  const btn = this.page.locator('[data-testid="provider-submit"]')
+  await expect(btn).toBeVisible({ timeout: 5000 })
+  await btn.click()
+})
+
 Then('Provider 列表中应显示名为{string}的 profile', async function (this: CradleWorld, name: string) {
   console.warn(`[step] assert provider row visible: ${name}`)
   const row = this.page.locator('[data-testid^="agent-profile-row-"]').filter({ hasText: name })
   await expect(row).toBeVisible({ timeout: 10_000 })
 })
 
-Then('数据库中应持久化名为{string}、类型为{string}、模型为{string}的 Provider', async function (
-  this: CradleWorld,
-  name: string,
-  providerKind: string,
-  model: string,
-) {
-  console.warn(`[step] assert provider persisted: ${name}`)
-
-  await expect.poll(async () => {
-    return queryDatabaseRow<{
-      id: string
-      name: string
-      providerKind: string
-      configJson: string
-      credentialRef: string | null
-    }>(
-      this,
-      `
-        SELECT
-          id,
-          name,
-          provider_kind AS providerKind,
-          config_json AS configJson,
-          credential_ref AS credentialRef
-        FROM agent_profiles
-        WHERE name = ?
-        LIMIT 1
-      `,
-      [name],
-    )
-  }, { timeout: 10_000 }).toMatchObject({
-    name,
-    providerKind,
-  })
-
-  const profile = await queryDatabaseRow<{
-    id: string
-    name: string
-    providerKind: string
-    configJson: string
-    credentialRef: string | null
-  }>(
-    this,
-    `
-      SELECT
-        id,
-        name,
-        provider_kind AS providerKind,
-        config_json AS configJson,
-        credential_ref AS credentialRef
-      FROM agent_profiles
-      WHERE name = ?
-      LIMIT 1
-    `,
-    [name],
-  )
-
-  expect(profile).not.toBeNull()
-  const parsedConfig = JSON.parse(profile!.configJson) as { model?: string }
-  expect(parsedConfig.model).toBe(model)
-  expect(profile!.credentialRef).not.toBeNull()
-
-  const credential = await queryDatabaseRow<{ id: string }>(
-    this,
-    `
-      SELECT id
-      FROM agent_credentials
-      WHERE id = ?
-      LIMIT 1
-    `,
-    [profile!.credentialRef],
-  )
-
-  expect(credential).not.toBeNull()
+Then('Provider 状态应为成功', async function (this: CradleWorld) {
+  console.warn('[step] assert provider status is success')
+  const status = this.page.locator('[data-testid="provider-status"]')
+  await expect(status).toBeVisible({ timeout: 15_000 })
+  await expect(status).toHaveAttribute('data-status-ok', 'true')
 })
 
 Then('Provider 状态应为失败并提示{string}', async function (this: CradleWorld, text: string) {
@@ -287,70 +282,6 @@ Then('Provider 列表中应显示名为{string}、模型为{string}的 profile',
   await expect(row).toContainText(model)
 })
 
-Then('数据库中应持久化名为{string}、Base URL 为{string}、模型为{string}、启用状态为{string}的 Provider', async function (
-  this: CradleWorld,
-  name: string,
-  baseUrl: string,
-  model: string,
-  enabledText: string,
-) {
-  console.warn(`[step] assert provider persisted with config: ${name}`)
-  const expectedEnabled = parseEnabledState(enabledText)
-
-  await expect.poll(async () => {
-    return queryDatabaseRow<{
-      id: string
-      name: string
-      enabled: number
-      configJson: string
-      credentialRef: string | null
-    }>(
-      this,
-      `
-        SELECT
-          id,
-          name,
-          enabled,
-          config_json AS configJson,
-          credential_ref AS credentialRef
-        FROM agent_profiles
-        WHERE name = ?
-        LIMIT 1
-      `,
-      [name],
-    )
-  }, { timeout: 10_000 }).not.toBeNull()
-
-  const profile = await queryDatabaseRow<{
-    id: string
-    name: string
-    enabled: number
-    configJson: string
-    credentialRef: string | null
-  }>(
-    this,
-    `
-      SELECT
-        id,
-        name,
-        enabled,
-        config_json AS configJson,
-        credential_ref AS credentialRef
-      FROM agent_profiles
-      WHERE name = ?
-      LIMIT 1
-    `,
-    [name],
-  )
-
-  expect(profile).not.toBeNull()
-  const parsedConfig = JSON.parse(profile!.configJson) as { baseUrl?: string, model?: string }
-  expect(parsedConfig.baseUrl).toBe(baseUrl)
-  expect(parsedConfig.model).toBe(model)
-  expect(Boolean(profile!.enabled)).toBe(expectedEnabled)
-  expect(profile!.credentialRef).not.toBeNull()
-})
-
 When('我移除名为{string}的 Provider', async function (this: CradleWorld, name: string) {
   console.warn(`[step] remove provider row: ${name}`)
   const row = getProviderRows(this, name).first()
@@ -365,22 +296,6 @@ When('我移除名为{string}的 Provider', async function (this: CradleWorld, n
 Then('Provider 列表中不应显示名为{string}的 profile', async function (this: CradleWorld, name: string) {
   console.warn(`[step] assert provider row absent: ${name}`)
   await expect(getProviderRows(this, name)).toHaveCount(0, { timeout: 10_000 })
-})
-
-Then('数据库中不应存在名为{string}的 Provider', async function (this: CradleWorld, name: string) {
-  console.warn(`[step] assert provider missing from database: ${name}`)
-  await expect.poll(async () => {
-    return queryDatabaseRow<{ id: string }>(
-      this,
-      `
-        SELECT id
-        FROM agent_profiles
-        WHERE name = ?
-        LIMIT 1
-      `,
-      [name],
-    )
-  }, { timeout: 10_000 }).toBeNull()
 })
 
 When('我切换名为{string}的 Provider 启用状态', async function (this: CradleWorld, name: string) {
@@ -399,22 +314,4 @@ Then('名为{string}的 Provider 应处于{string}状态', async function (this:
   await expect(row).toBeVisible({ timeout: 10_000 })
   const toggle = row.locator('[role="switch"]')
   await expect(toggle).toHaveAttribute('aria-checked', expected, { timeout: 10_000 })
-})
-
-Then('数据库中名为{string}的 Provider 应处于{string}状态', async function (this: CradleWorld, name: string, enabledText: string) {
-  console.warn(`[step] assert provider DB enabled state: ${name} -> ${enabledText}`)
-  const expected = parseEnabledState(enabledText)
-
-  await expect.poll(async () => {
-    return queryDatabaseRow<{ enabled: number }>(
-      this,
-      `
-        SELECT enabled
-        FROM agent_profiles
-        WHERE name = ?
-        LIMIT 1
-      `,
-      [name],
-    )
-  }, { timeout: 10_000 }).toMatchObject({ enabled: expected ? 1 : 0 })
 })

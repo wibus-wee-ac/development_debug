@@ -115,6 +115,8 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
               }}
               transition={dragging === 'panel' ? INSTANT : SPRING}
               className="bg-background border-t border-border overflow-hidden shrink-0"
+              data-testid="app-layout-bottom-panel"
+              data-panel-open={bottomPanelOpen ? 'true' : 'false'}
             >
               <div style={{ height: bottomPanelHeight }}>{resolvedPanel}</div>
             </motion.div>
@@ -148,6 +150,8 @@ export function AppLayout({ children, title, workspace, hasAside, hasPanel, gitB
               }}
               transition={dragging === 'aside' ? INSTANT : SPRING}
               className="flex shrink-0 overflow-hidden bg-sidebar"
+              data-testid="app-layout-right-aside"
+              data-aside-open={asideOpen ? 'true' : 'false'}
             >
               <div
                 className="flex flex-col flex-1 overflow-hidden"

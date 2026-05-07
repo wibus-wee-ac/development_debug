@@ -1,6 +1,8 @@
-// Input: CradleWorld main-process bridge plus readonly SQL statements and positional params
-// Output: Shared SQLite query helpers for E2E persistence assertions
-// Position: E2E support utility reused by step definitions that need database verification
+/**
+ * @deprecated YOU MUST NOT USE THIS FUNCTION TO MUTATE THE DATABASE.
+ *
+ * In e2e test, we shouldn't use database to ensure test data setup, instead we should use UI to drive the app to the state we want to test.
+ */
 
 import type { CradleWorld } from './world'
 
@@ -11,6 +13,9 @@ interface QueryInput {
   params: SqliteParam[]
 }
 
+/**
+ * @deprecated YOU MUST NOT USE THIS FUNCTION TO MUTATE THE DATABASE. In e2e test, we shouldn't use database to ensure test data setup, instead we should use UI to drive the app to the state we want to test.
+ */
 export async function queryDatabaseRow<T>(
   world: CradleWorld,
   sql: string,
@@ -47,6 +52,9 @@ export async function queryDatabaseRow<T>(
   )
 }
 
+/**
+ * @deprecated YOU MUST NOT USE THIS FUNCTION TO MUTATE THE DATABASE. In e2e test, we shouldn't use database to ensure test data setup, instead we should use UI to drive the app to the state we want to test.
+ */
 export async function queryDatabaseRows<T>(
   world: CradleWorld,
   sql: string,

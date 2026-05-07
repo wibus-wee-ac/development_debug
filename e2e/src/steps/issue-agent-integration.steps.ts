@@ -12,7 +12,10 @@ const DELEGATE_OPTIONS = '[data-testid^="issue-agent-option-"]'
 const AGENT_SESSION = '[data-testid="issue-agent-session"]'
 const AGENT_SESSION_PHASE = '[data-testid="issue-agent-session-phase"]'
 const AGENT_SESSION_OPEN_CHAT = '[data-testid="issue-agent-session-open-chat"]'
+const AGENT_SESSION_RERUN = '[data-testid="issue-agent-rerun-btn"]'
+const AGENT_RUNNING_INDICATOR = '[data-testid="issue-agent-running-indicator"]'
 const ISSUE_ACTIVITY_TIMELINE = '[data-testid="issue-activity-timeline"]'
+const SESSION_ITEM = '[data-testid^="session-item-"]'
 const STARTED_AGENT_SESSION_STATUS = /^(created|active|completed)$/
 
 async function selectAgentForCurrentIssue(world: CradleWorld, agentName: string): Promise<void> {
@@ -36,6 +39,13 @@ When('我将当前 Issue 委派给{string}', async function (this: CradleWorld, 
   await selectAgentForCurrentIssue(this, agentName)
 })
 
+When('我重新运行当前 Issue 的 Agent 会话', async function (this: CradleWorld) {
+  console.warn('[step] rerun current delegated issue agent session')
+  const button = this.page.locator(AGENT_SESSION_RERUN)
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
+})
+
 Then('当前 Issue 的 Agent 会话应开始运行', async function (this: CradleWorld) {
   await expect(this.page.locator(AGENT_SESSION)).toBeVisible({ timeout: 10_000 })
   await waitForAgentSessionStatus(this, STARTED_AGENT_SESSION_STATUS)
@@ -45,8 +55,21 @@ Then('当前 Issue 的 Agent 会话最终应完成', async function (this: Cradl
   await waitForAgentSessionStatus(this, 'completed')
 })
 
+Then('当前 Issue 的 Agent 会话应显示可重新运行', async function (this: CradleWorld) {
+  await expect(this.page.locator(AGENT_SESSION_RERUN)).toBeVisible({ timeout: 30_000 })
+})
+
+Then('当前 Issue 应显示 Agent 正在运行', async function (this: CradleWorld) {
+  await expect(this.page.locator(AGENT_RUNNING_INDICATOR)).toBeVisible({ timeout: 10_000 })
+  await waitForAgentSessionStatus(this, /^(created|active)$/)
+})
+
 Then('Activity 时间线应显示{string}', async function (this: CradleWorld, text: string) {
   await expect(this.page.locator(ISSUE_ACTIVITY_TIMELINE).locator(`text=${text}`)).toBeVisible({ timeout: 30_000 })
+})
+
+Then('侧栏会话列表应显示{int}个会话项', async function (this: CradleWorld, count: number) {
+  await expect(this.page.locator(SESSION_ITEM)).toHaveCount(count, { timeout: 30_000 })
 })
 
 Then('我可以打开当前 Issue 的 Agent 聊天会话', async function (this: CradleWorld) {

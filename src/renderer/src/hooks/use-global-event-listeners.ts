@@ -27,14 +27,17 @@ export function useGlobalEventListeners() {
   // Panel + tab keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const isBackquote = e.key === '`' || e.code === 'Backquote'
+      const isKeyB = e.key === 'b' || e.key === 'B' || e.key === '∫' || e.code === 'KeyB'
+
       // Ctrl+` → toggle bottom panel
-      if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === '`') {
+      if (e.ctrlKey && !e.metaKey && !e.altKey && isBackquote) {
         e.preventDefault()
         toggleBottomPanel()
         return
       }
       // Cmd+Option+B → toggle right aside (e.key is '∫' on macOS when Option is held)
-      if (e.metaKey && e.altKey && !e.ctrlKey && (e.key === 'b' || e.key === 'B' || e.key === '∫')) {
+      if (e.metaKey && e.altKey && !e.ctrlKey && isKeyB) {
         e.preventDefault()
         toggleAside()
         return

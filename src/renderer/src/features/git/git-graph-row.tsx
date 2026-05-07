@@ -172,6 +172,10 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
     <div
       className="flex items-center hover:bg-accent/30 transition-colors"
       style={{ height: ROW_HEIGHT }}
+      data-testid="git-graph-row"
+      data-commit-sha={commit.sha}
+      data-commit-subject={commit.subject}
+      data-commit-head={commit.refs.some(ref => ref.startsWith('HEAD -> ')) ? 'true' : 'false'}
     >
       {/* Graph SVG — shrinks with lane count */}
       <svg

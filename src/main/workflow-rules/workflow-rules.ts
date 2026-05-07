@@ -4,7 +4,7 @@
 
 import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const CRADLE_DIR = join(homedir(), '.cradle')
 const WORKFLOWS_DIR = join(CRADLE_DIR, 'workflows')
@@ -38,28 +38,29 @@ export interface WorkflowRules {
   profileSpecific: string | null
 }
 
+async function readOptionalWorkflowFile(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, 'utf-8')
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null
+    }
+    throw error
+  }
+}
+
 export async function getWorkflowRules(
   workspaceId: string,
   agentProfileId?: string,
 ): Promise<WorkflowRules> {
-  let global: string | null = null
-  let profileSpecific: string | null = null
+  const globalRulePath = getGlobalRulePath(workspaceId)
+  const profileRulePath = agentProfileId ? getAgentRulePath(workspaceId, agentProfileId) : null
 
-  try {
-    global = await readFile(getGlobalRulePath(workspaceId), 'utf-8')
-  }
-  catch {
-    // File does not exist — no global rules
-  }
-
-  if (agentProfileId) {
-    try {
-      profileSpecific = await readFile(getAgentRulePath(workspaceId, agentProfileId), 'utf-8')
-    }
-    catch {
-      // File does not exist — no profile-specific rules
-    }
-  }
+  const global = await readOptionalWorkflowFile(globalRulePath)
+  const profileSpecific = profileRulePath
+    ? await readOptionalWorkflowFile(profileRulePath)
+    : null
 
   return { global, profileSpecific }
 }
@@ -73,7 +74,7 @@ export async function saveWorkflowRule(
     ? getAgentRulePath(workspaceId, agentProfileId)
     : getGlobalRulePath(workspaceId)
 
-  await mkdir(join(filePath, '..'), { recursive: true })
+  await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, content, 'utf-8')
 }
 

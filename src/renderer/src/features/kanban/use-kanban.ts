@@ -5,6 +5,8 @@
 import { ipc } from '@renderer/lib/ipc'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { sessionsQueryKey } from '../workspace/use-session'
+
 // ── Query keys ────────────────────────────────────────────────────────────────
 
 export const kanbanKeys = {
@@ -369,11 +371,20 @@ export function useStopAgentSession() {
 export function useStartAgentSession() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (vars: { issueId: string, agentSessionId: string, agentProfileId: string, agentId?: string }) => {
+    mutationFn: async (vars: {
+      issueId: string
+      workspaceId?: string
+      agentSessionId: string
+      agentProfileId: string
+      agentId?: string
+    }) => {
       await ipc!.issueAgent.runDelegatedIssue(vars.issueId, vars.agentSessionId, vars.agentProfileId, vars.agentId)
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+      if (vars.workspaceId) {
+        qc.invalidateQueries({ queryKey: sessionsQueryKey(vars.workspaceId) })
+      }
     },
   })
 }

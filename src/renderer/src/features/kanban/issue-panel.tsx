@@ -1247,6 +1247,7 @@ export function IssueProperties({
               if (latestSession.status === 'created') {
                 startAgentSession.mutate({
                   issueId,
+                  workspaceId,
                   agentSessionId: latestSession.id,
                   agentProfileId: latestSession.agentProfileId
                 })

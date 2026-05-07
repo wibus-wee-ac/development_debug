@@ -36,6 +36,8 @@ export function GitBranchControl({ workspacePath }: GitBranchControlProps) {
             'flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs transition-colors',
             'text-muted-foreground hover:text-foreground hover:bg-accent/60',
           )}
+          data-testid="git-branch-control-trigger"
+          data-branch-name={status.branch}
         >
           <GitBranchIcon className="size-3 shrink-0" aria-hidden />
           <span className="max-w-28 truncate">{status.branch}</span>

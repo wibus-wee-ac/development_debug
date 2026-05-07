@@ -148,6 +148,7 @@ export function BranchPicker({
         side="bottom"
         align="start"
         sideOffset={6}
+        data-testid="git-branch-picker"
       >
         {creating
           ? (
@@ -160,6 +161,7 @@ export function BranchPicker({
                   className="h-7 flex-1 text-xs font-mono"
                   placeholder="feature/my-branch"
                   value={newName}
+                  data-testid="git-branch-create-input"
                   onChange={(e) => {
                     setNewName(e.target.value)
                     setCreateError(null)
@@ -181,6 +183,7 @@ export function BranchPicker({
                   onClick={cancelCreating}
                   className="shrink-0 text-muted-foreground"
                   aria-label="取消"
+                  data-testid="git-branch-create-cancel"
                 >
                   <XIcon className="size-3.5" />
                 </Button>
@@ -204,6 +207,7 @@ export function BranchPicker({
                   type="button"
                   disabled={!newName.trim() || createLoading}
                   onClick={() => { void handleCreate() }}
+                  data-testid="git-branch-create-submit"
                   className={cn(
                     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
                     newName.trim() && !createLoading
@@ -230,6 +234,7 @@ export function BranchPicker({
                   className="h-7 text-xs"
                   placeholder="搜索或切换分支…"
                   value={search}
+                  data-testid="git-branch-search"
                   onChange={(e) => {
                     setSearch(e.target.value)
                   }}
@@ -242,6 +247,7 @@ export function BranchPicker({
                   onClick={() => { void handleFetch() }}
                   disabled={fetching}
                   className="shrink-0"
+                  data-testid="git-branch-fetch"
                 >
                   <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} />
                 </Button>
@@ -259,6 +265,10 @@ export function BranchPicker({
                         key={b.name}
                         type="button"
                         onClick={() => { void handleCheckout(b.name) }}
+                        data-testid="git-branch-option"
+                        data-branch-scope="local"
+                        data-branch-name={b.name}
+                        data-branch-current={b.name === currentBranch ? 'true' : 'false'}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/60 transition-colors"
                       >
                         <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/50" aria-hidden />
@@ -281,6 +291,10 @@ export function BranchPicker({
                         key={b.name}
                         type="button"
                         onClick={() => { void handleCheckout(b.name) }}
+                        data-testid="git-branch-option"
+                        data-branch-scope="remote"
+                        data-branch-name={b.name}
+                        data-branch-current="false"
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/60 transition-colors"
                       >
                         <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/30" aria-hidden />
@@ -303,6 +317,7 @@ export function BranchPicker({
                   type="button"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
                   onClick={startCreating}
+                  data-testid="git-branch-start-create"
                 >
                   <PlusIcon className="size-3 shrink-0" aria-hidden />
                   新建分支…

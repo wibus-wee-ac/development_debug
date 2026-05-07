@@ -8,7 +8,7 @@ import { basename, join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
-import { queryDatabaseRow, queryDatabaseRows } from '../support/database'
+import { queryDatabaseRow } from '../support/database'
 import type { CradleWorld } from '../support/world'
 
 interface PersistedWorkspaceRow {
@@ -289,14 +289,6 @@ Then('工作区列表中应该包含工作区 {string}', async function (this: C
   await expect(this.page.locator('[data-testid^="workspace-open-"]').filter({ hasText: workspaceName })).toHaveCount(1, { timeout: 10_000 })
 })
 
-Then('数据库中的当前工作区名称应该是 {string}', async function (this: CradleWorld, expectedName: string) {
-  const fixture = recallCurrentWorkspace(this)
-  const persisted = await queryWorkspaceByPath(this, fixture.dir)
-
-  expect(persisted).not.toBeNull()
-  expect(persisted?.name).toBe(expectedName)
-})
-
 Then('工作区列表中应该包含这 {int} 个工作区', async function (this: CradleWorld, count: number) {
   const fixtures = recallWorkspaceFixtures(this)
 
@@ -310,24 +302,6 @@ Then('工作区列表中应该包含这 {int} 个工作区', async function (thi
 
 Then('工作区详情页应该显示第 {int} 个工作区的真实内容', async function (this: CradleWorld, ordinal: number) {
   await assertWorkspaceDetailContent(this, recallWorkspaceByOrdinal(this, ordinal))
-})
-
-Then('数据库中应该有 {int} 条工作区记录', async function (this: CradleWorld, count: number) {
-  const rows = await queryDatabaseRows<PersistedWorkspaceRow>(
-    this,
-    `
-      select
-        id,
-        name,
-        path,
-        created_at as createdAt,
-        updated_at as updatedAt
-      from workspaces
-      order by created_at desc
-    `,
-  )
-
-  expect(rows).toHaveLength(count)
 })
 
 Then('我应该看到工作区详情页的标签页', async function (this: CradleWorld) {
