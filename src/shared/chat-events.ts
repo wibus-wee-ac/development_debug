@@ -1,18 +1,15 @@
-// Input: Typed timeline events and AI SDK chat chunk projection types
+// Input: Typed timeline events and chat turn status types
 // Output: Chat push event payload types for IPC channels
 // Position: Shared types used by main (ChatEngine), preload (chatPush), and renderer (chat event hooks)
 
-import type { UIMessageChunk } from 'ai'
-
 import type { BackendTimelineEvent } from '../main/backend-control-plane/timeline-events'
-import type { ChatTurnStatus } from '../main/chat/chat-engine'
+import type { ChatTurnStatus } from '../main/chat/chat-turn-executor'
 
 /** Payload for the `chat:timeline-event` IPC push channel. */
 export interface ChatTimelineEventPayload {
   chatSessionId: string
   messageId: string
   event: BackendTimelineEvent
-  chunks: UIMessageChunk[]
 }
 
 /** Payload for the `chat:session-title` IPC push channel. */

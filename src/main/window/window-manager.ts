@@ -1,4 +1,4 @@
-// Input: Electron BrowserWindow, ChatEngine, PtyManager, subscribeRuntimeDevtools
+// Input: Electron BrowserWindow, SignalBroadcaster, and subscribeRuntimeDevtools
 // Output: WindowManager singleton — creates and manages session tear-off windows
 // Position: Window capability manager for spawning independent session windows
 
@@ -7,7 +7,6 @@ import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import { BrowserWindow } from 'electron'
 
-import { chatEngine } from '../chat/chat-engine'
 import { subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
 import { getSignalBroadcaster } from '../signal/broadcaster'
 import { revealOrFocusExistingWindow, revealWindow } from './window-activation'
@@ -62,9 +61,8 @@ export class WindowManager {
     })
 
     win.webContents.once('did-finish-load', () => {
-      // Subscribe streaming events so chat updates reach this window
+      // Subscribe unified push events so chat and runtime updates reach this window.
       getSignalBroadcaster().subscribe(win.webContents)
-      chatEngine.subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
     })
 

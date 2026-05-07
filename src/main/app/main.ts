@@ -25,15 +25,20 @@ import { createApprovalBroadcastSubscriber } from '../approval/approval-broadcas
 import { getApprovalService } from '../approval/approval-service'
 import { createBroadcastSubscriber } from '../chat/broadcast'
 import { chatEngine } from '../chat/chat-engine'
+import { chatSessionWatchRegistry } from '../chat/session-watch-registry'
+import { createChatSessionTitleSync } from '../chat/session-title-sync'
 import { createFtsSubscriber } from '../chat/fts-subscriber'
 import { threadSearchEngine } from '../chat/thread-search'
 import { createUsageSubscriber } from '../chat/usage-subscriber'
 import { getDb, initDb } from '../db'
 import { acpAgents } from '../db/schema'
 import { initializeIpcDevtool, subscribeRuntimeDevtools } from '../devtools/ipc-devtool'
-import { bridgeChatTurnFinishedEvents } from '../events/chat-turn-finished-bridge'
 import { createInMemoryDomainEventBus } from '../events/domain-event-bus'
-import { issueAgentRunner } from '../issue-agent/issue-agent-runner'
+import {
+  createIssueAgentCompletionSubscriber,
+  createIssueAgentRuntime,
+  setIssueAgentRuntime,
+} from '../issue-agent/issue-agent-runner'
 import { initObservabilityService, OBSERVABILITY_CODES } from '../observability/service'
 import type { ObservabilitySink } from '../observability/sink'
 import { initPackCodebaseWasm } from '../pack-codebase/pack-codebase'
@@ -193,23 +198,24 @@ app.whenReady().then(() => {
     },
   })
   chatEngine.bindEventBus(domainEventBus)
-  issueAgentRunner.bindDomainEventBus(domainEventBus)
-  bridgeChatTurnFinishedEvents({
-    source: chatEngine,
+  const issueAgentRuntime = createIssueAgentRuntime({ chat: chatEngine })
+  setIssueAgentRuntime(issueAgentRuntime)
+  createIssueAgentCompletionSubscriber({
     eventBus: domainEventBus,
+    runtime: issueAgentRuntime,
   })
 
   // Create unified signal broadcaster — single push gateway for all renderer events
   const signalBroadcaster = initSignalBroadcaster()
   observabilityService.bindSignalBroadcaster(signalBroadcaster)
-  chatEngine.bindSignalBroadcaster(signalBroadcaster)
   ptyManager.bindBroadcaster(signalBroadcaster)
+  createChatSessionTitleSync({ broadcaster: signalBroadcaster })
 
   // Wire domain event subscribers (Open/Closed — add new behaviors here)
   createBroadcastSubscriber({
     eventBus: domainEventBus,
     broadcaster: signalBroadcaster,
-    getSessionWatchers: () => chatEngine.getSessionWatchers(),
+    getSessionWatchers: () => chatSessionWatchRegistry.getSessionWatchers(),
   })
   createFtsSubscriber({
     eventBus: domainEventBus,
@@ -296,7 +302,6 @@ app.whenReady().then(() => {
 
   const mainWindow = createWindow()
   signalBroadcaster.subscribe(mainWindow.webContents)
-  chatEngine.subscribe(mainWindow.webContents)
   subscribeRuntimeDevtools(mainWindow.webContents)
 
   app.on('activate', () => {
@@ -305,7 +310,6 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) {
       const win = createWindow()
       signalBroadcaster.subscribe(win.webContents)
-      chatEngine.subscribe(win.webContents)
       subscribeRuntimeDevtools(win.webContents)
     }
   })

@@ -6,7 +6,7 @@
 import { defineTab, useTabsContext } from '@cradle/tabs'
 import { RightAside } from '@renderer/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '@renderer/components/layout/use-layout-slots'
-import type { ChatMessageRow } from '@renderer/features/chat/use-chat-session'
+import type { ChatTimelineGroupRow } from '@renderer/features/chat/use-chat-session'
 import { ShellView } from '@renderer/features/tui/shell-view'
 import { TuiView } from '@renderer/features/tui/tui-view'
 import { ipc } from '@renderer/lib/ipc'
@@ -16,7 +16,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 
 const ChatView = lazy(() => import('@renderer/features/chat/chat-view').then(m => ({ default: m.ChatView })))
 
-function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatMessageRow[] }) {
+function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatTimelineGroupRow[] }) {
   const { sessionId } = params
   const { store } = useTabsContext()
   const [shellGen, setShellGen] = useState(0)
@@ -103,7 +103,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
 
   return (
     <Suspense fallback={null}>
-      <ChatView sessionId={sessionId} initialMessageRows={loaderData} />
+      <ChatView sessionId={sessionId} initialTimelineGroups={loaderData} />
     </Suspense>
   )
 }
@@ -117,7 +117,7 @@ export const chatTab = defineTab({
     if (!ipc) {
       return []
     }
-    return ipc.chat.getMessages(params.sessionId)
+    return ipc.chat.getSessionTimeline(params.sessionId)
   },
   loaderFallback: (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>

@@ -1,16 +1,23 @@
-// Input: IpcService decorator framework, ChatEngine singleton
-// Output: ChatService IPC surface — thin forwarder delegating to ChatEngine
+// Input: IpcService decorator framework, chat engine shell, chat timeline query, and session watch registry
+// Output: ChatService IPC surface — thin forwarder over chat commands, chat read model, and watch registration
 // Position: Main-process IPC layer (L2 surface) for chat feature
 
 import { getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
 
-import type { ChatMessage, EnsureLiveResult } from '../../chat/chat-engine'
+import type { ChatEngine, EnsureLiveResult } from '../../chat/chat-engine'
 import { chatEngine } from '../../chat/chat-engine'
+import { chatSessionWatchRegistry, type ChatSessionWatchRegistry } from '../../chat/session-watch-registry'
+import { createChatTimelineQuery, type ChatTimelineQuery } from '../../chat/timeline-query'
 
 export class ChatService extends IpcService {
   static readonly groupName = 'chat'
-  private get engine() {
-    return chatEngine
+
+  constructor(
+    private readonly engine: ChatEngine = chatEngine,
+    private readonly query: ChatTimelineQuery = createChatTimelineQuery(),
+    private readonly watchRegistry: ChatSessionWatchRegistry = chatSessionWatchRegistry,
+  ) {
+    super()
   }
 
   @IpcMethod()
@@ -37,13 +44,13 @@ export class ChatService extends IpcService {
   }
 
   @IpcMethod()
-  getMessages(chatSessionId: string): ChatMessage[] {
-    return this.engine.getMessages(chatSessionId)
+  getSessionTimeline(chatSessionId: string) {
+    return this.query.getSessionTimeline(chatSessionId)
   }
 
   @IpcMethod()
-  getSessionTimeline(chatSessionId: string) {
-    return this.engine.getSessionTimeline(chatSessionId)
+  hasActiveTurn(chatSessionId: string): boolean {
+    return this.engine.hasDraft(chatSessionId)
   }
 
   @IpcMethod()
@@ -53,11 +60,11 @@ export class ChatService extends IpcService {
 
   @IpcMethod()
   watchSession(chatSessionId: string): void {
-    this.engine.watchSession(getIpcContext().sender, chatSessionId)
+    this.watchRegistry.watchSession(getIpcContext().sender, chatSessionId)
   }
 
   @IpcMethod()
   unwatchSession(chatSessionId: string): void {
-    this.engine.unwatchSession(getIpcContext().sender, chatSessionId)
+    this.watchRegistry.unwatchSession(getIpcContext().sender, chatSessionId)
   }
 }

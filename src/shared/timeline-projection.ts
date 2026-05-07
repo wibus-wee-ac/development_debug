@@ -1,6 +1,6 @@
-// Input: Raw BackendTimelineEvent[] from DB or live push
-// Output: UIMessage[] ready for AI SDK useChat consumption
-// Position: Shared pure projector — usable in both main-process and renderer
+// Input: Raw timeline events from DB hydration or live push
+// Output: UIMessageChunk[] for live streaming plus UIMessage[] for hydration replay
+// Position: Shared pure projector — single projection contract reused across main/renderer boundaries
 
 import type { UIMessage, UIMessageChunk } from 'ai'
 
@@ -10,6 +10,7 @@ export type { UIMessageChunk }
 /** Minimal timeline event shape needed for projection. */
 export interface ProjectableTimelineEvent {
   type: string
+  source?: unknown
   itemId?: string
   delta?: string
   command?: string

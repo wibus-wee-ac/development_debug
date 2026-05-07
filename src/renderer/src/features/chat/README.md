@@ -3,20 +3,19 @@
 # Features/Chat
 
 Renderer-side view layer for chat.
-All orchestration lives in the main-process `ChatEngine`
-(`src/main/features/chat/chat-engine.ts`); this directory is a thin view that drives
-AI SDK's `useChat` through a custom `ChatTransport` which forwards to `ipc.chat`.
-Streaming updates now arrive as typed timeline payloads plus projected `UIMessageChunk`s
-on the session-scoped `chat:timeline-event` IPC channel, consumed through the preload
-`chatPush` wrapper and the unified `use-chat-events` hook. The transport no longer knows
-backend-native event shapes; it simply consumes chat projection chunks after registering a
-main-process watch for the active session, while reload/reconnect paths fall back to
-persisted snapshot observation so mid-flight refreshes do not corrupt the active assistant message.
+Main-process orchestration now lives behind a thin `ChatEngine` shell plus explicit
+timeline query / watch-registry modules; this directory rebuilds `UIMessage` state from
+raw timeline groups and streaming `UIMessageChunk`s rather than trusting a backend UI snapshot.
+Streaming updates arrive on the session-scoped `chat:timeline-event` signal, while initial
+hydration and reload/recovery both pull `ipc.chat.getSessionTimeline()` and project locally.
+The transport now receives raw timeline events and projects `UIMessageChunk`s locally via the
+shared timeline projector after registering a main-process watch for the active session; reconnect
+checks use the explicit `ipc.chat.hasActiveTurn()` probe instead of legacy message rows.
 
 ## Files
 
-- **use-chat-session.ts**: Hook wrapping `useChat` — loads initial snapshot via `ipc.chat.getMessages`, keeps reload/reconnect views in sync by passively observing persisted streaming drafts, refetches on timeline events when this renderer is not the active stream owner, forwards stop actions to both local `useChat` and `ipc.chat.abort`, throttles streamed UI updates, logs raw `useChat` errors, and exposes `{ messages, status, error, sendMessage, stop, isReady }`
-- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + session watch registration + subscribe to `chatPush.onTimelineEvent`; guards stream teardown races so late IPC events from an old page do not throw after navigation; consumes projected `UIMessageChunk`s directly
+- **use-chat-session.ts**: Hook wrapping `useChat` — 以 `ipc.chat.getSessionTimeline()` 作为唯一 hydration 读模型，在 renderer 本地投影 `UIMessage`，被动观察 timeline signal 做 reload/recovery，同步 stop 到 `ipc.chat.abort`，并暴露 `{ messages, status, error, sendMessage, stop, isReady }`
+- **ipc-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to our IPC — `sendMessages` → `ipc.chat.send` + session watch registration + subscribe to raw `chat:timeline-event`；renderer 本地把单个 event 投影成 `UIMessageChunk[]` 再喂给 AI SDK，reconnect 通过 `ipc.chat.hasActiveTurn()` 判断是否仍有活跃 turn
 - **use-chat-events.ts**: Unified chat event bridge — renderer-side session watch registration for timeline consumers, plus global terminal activity dispatch via `useGlobalChatSessionActivityEvent`
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls
 - **composer.tsx**: Rich input with @ path autocomplete, inline send/stop toggle, fzf fuzzy file search

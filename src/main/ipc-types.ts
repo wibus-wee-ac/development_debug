@@ -70,7 +70,8 @@ export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation,
 export type { AgentActivity, AgentSession } from './db/schema'
 export type { CredentialMetadata } from './agent-runtime/credential-vault'
 export type { ModelDescriptor, ProviderKind, ProviderProbeResult } from './agent-runtime/runtime-provider-types'
-export type { ChatMessage, EnsureLiveResult } from './chat/chat-engine'
+export type { EnsureLiveResult } from './chat/chat-engine'
+export type { ChatTimelineGroup } from './chat/timeline-query'
 export type {
   MatchRange,
   ThreadSearchHit,

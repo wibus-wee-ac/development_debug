@@ -6,6 +6,7 @@ import type { ChatTimelineEventPayload } from '@shared/chat-events'
 import { ipc } from '@renderer/lib/ipc'
 import { subscribe } from '@renderer/lib/signal'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
+import { projectTimelineEventToChunks } from '../../../../shared/timeline-projection'
 
 function extractText(parts: UIMessage['parts']): string {
   return parts
@@ -103,7 +104,8 @@ function buildChunkStream(
       if (data.chatSessionId !== chatSessionId || closed) {
         return
       }
-      const { event, chunks } = data
+      const { event } = data
+      const chunks = projectTimelineEventToChunks(event)
 
       for (const chunk of chunks) {
         safeEnqueue(chunk)
@@ -183,8 +185,7 @@ export function createIpcChatTransport(chatSessionId: string): ChatTransport<UIM
       if (!ipc) {
         return null
       }
-      const rows = await ipc.chat.getMessages(chatSessionId)
-      const isStreaming = rows.some(r => r.status === 'streaming')
+      const isStreaming = await ipc.chat.hasActiveTurn(chatSessionId)
       if (!isStreaming) {
         return null
       }

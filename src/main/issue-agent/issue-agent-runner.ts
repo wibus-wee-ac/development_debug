@@ -1,6 +1,6 @@
-// Input: ChatEngine, domain event bus, issue-agent and Kanban DB tables, workflow rules
-// Output: IssueAgentRunner for delegated issue execution and event-driven completion handling
-// Position: Issue-agent feature runtime bridging delegated issues with chat execution
+// Input: Chat runtime port, issue/agent tables, workflow rules, and domain event bus wiring
+// Output: Issue-agent runtime for delegated issue execution plus a composition-root completion subscriber
+// Position: Issue-agent feature runtime boundary between delegation commands and chat completion events
 
 import { randomUUID } from 'node:crypto'
 
@@ -9,8 +9,7 @@ import { eq } from 'drizzle-orm'
 import { getDb } from '../db'
 import { agentActivities, agentSessions, kanbanIssueComments, kanbanIssues, workspaces } from '../db/schema'
 import type { DomainEventBus } from '../events/domain-event-bus'
-import type { ChatTurnFinishedDomainEvent } from '../events/domain-events'
-import { chatEngine } from '../chat/chat-engine'
+import type { ChatTurnFinishedPayload } from '../events/domain-events'
 import { getWorkflowRules } from '../workflow-rules/workflow-rules'
 
 interface RunIssueInput {
@@ -20,30 +19,34 @@ interface RunIssueInput {
   agentId?: string
 }
 
+type IssueAgentChatRuntime = {
+  createAndSend: (input: {
+    agentId: string
+    workspaceId: string
+    cwd: string
+    text: string
+    modelId?: string
+    thinkingEffort?: 'low' | 'medium' | 'high'
+    agentIdentityId?: string
+  }) => Promise<string>
+  abort: (chatSessionId: string) => Promise<void>
+}
+
 export interface IssueAgentRuntime {
-  bindDomainEventBus: (eventBus: DomainEventBus) => void
   run: (input: RunIssueInput) => Promise<void>
   stop: (agentSessionId: string) => Promise<void>
 }
 
-export class IssueAgentRunner {
-  private readonly activeRuns = new Map<string, { chatSessionId: string, aborted: boolean }>()
-  private turnFinishedUnsubscribe: (() => void) | null = null
-  private eventBus: DomainEventBus | null = null
+type IssueAgentRuntimeInternal = IssueAgentRuntime & {
+  handleChatTurnFinished: (payload: ChatTurnFinishedPayload) => void
+}
 
-  bindDomainEventBus(eventBus: DomainEventBus): void {
-    if (this.eventBus === eventBus) {
-      return
-    }
-    if (this.turnFinishedUnsubscribe) {
-      this.turnFinishedUnsubscribe()
-      this.turnFinishedUnsubscribe = null
-    }
-    this.eventBus = eventBus
-    this.turnFinishedUnsubscribe = eventBus.subscribe('chat.turn-finished', event => this.onTurnFinishedEvent(event))
-  }
+export function createIssueAgentRuntime(deps: {
+  chat: IssueAgentChatRuntime
+}): IssueAgentRuntimeInternal {
+  const activeRuns = new Map<string, { chatSessionId: string, aborted: boolean }>()
 
-  async run(input: RunIssueInput): Promise<void> {
+  async function run(input: RunIssueInput): Promise<void> {
     const { issueId, agentSessionId, agentProfileId, agentId } = input
     const db = getDb()
 
@@ -57,31 +60,19 @@ export class IssueAgentRunner {
       throw new Error(`Workspace ${issue.workspaceId} not found`)
     }
 
-    const now = () => Math.floor(Date.now() / 1000)
     db.update(agentSessions)
-      .set({ status: 'active', updatedAt: now() })
+      .set({ status: 'active', updatedAt: nowUnix() })
       .where(eq(agentSessions.id, agentSessionId))
       .run()
 
-    this.addActivity(agentSessionId, 'thought', { body: 'Examining issue...' })
+    addActivity(agentSessionId, 'thought', { body: 'Examining issue...' })
 
-    const prompt = this.buildPrompt(issue, agentSessionId)
-
+    const prompt = buildPrompt(issue, agentSessionId)
     const rules = await getWorkflowRules(issue.workspaceId, agentId)
-    let fullText = prompt
-    if (rules.global || rules.profileSpecific) {
-      fullText += '\n\n---\n## Workflow Rules\n\n'
-      if (rules.global) {
-        fullText += `${rules.global}\n\n`
-      }
-      if (rules.profileSpecific) {
-        fullText += `${rules.profileSpecific}\n`
-      }
-      fullText += '---'
-    }
+    const fullText = appendWorkflowRules(prompt, rules)
 
     try {
-      const chatSessionId = await chatEngine.createAndSend({
+      const chatSessionId = await deps.chat.createAndSend({
         agentId: agentProfileId,
         workspaceId: issue.workspaceId,
         cwd: workspace.path,
@@ -90,175 +81,61 @@ export class IssueAgentRunner {
       })
 
       db.update(agentSessions)
-        .set({ chatSessionId, updatedAt: now() })
+        .set({ chatSessionId, updatedAt: nowUnix() })
         .where(eq(agentSessions.id, agentSessionId))
         .run()
 
-      this.activeRuns.set(agentSessionId, { chatSessionId, aborted: false })
+      activeRuns.set(agentSessionId, { chatSessionId, aborted: false })
     }
-    catch (err) {
+    catch (error) {
       db.update(agentSessions)
-        .set({ status: 'failed', updatedAt: now() })
+        .set({ status: 'failed', updatedAt: nowUnix() })
         .where(eq(agentSessions.id, agentSessionId))
         .run()
 
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      this.addActivity(agentSessionId, 'error', { body: errorMsg }, issueId)
-
-      throw err
+      const errorText = error instanceof Error ? error.message : String(error)
+      addActivity(agentSessionId, 'error', { body: errorText }, issueId)
+      throw error
     }
   }
 
-  async stop(agentSessionId: string): Promise<void> {
+  async function stop(agentSessionId: string): Promise<void> {
     const db = getDb()
-    const ts = Math.floor(Date.now() / 1000)
-    const run = this.activeRuns.get(agentSessionId)
+    const run = activeRuns.get(agentSessionId)
 
     if (run) {
       run.aborted = true
       try {
-        await chatEngine.abort(run.chatSessionId)
+        await deps.chat.abort(run.chatSessionId)
       }
       catch {
-        // Best-effort abort
+        // Best-effort abort.
       }
-      this.activeRuns.delete(agentSessionId)
+      activeRuns.delete(agentSessionId)
     }
     else {
       const session = db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
       if (session?.chatSessionId) {
         try {
-          await chatEngine.abort(session.chatSessionId)
+          await deps.chat.abort(session.chatSessionId)
         }
         catch {
-          // Best-effort abort
+          // Best-effort abort.
         }
       }
     }
 
     db.update(agentSessions)
-      .set({ status: 'stopped', updatedAt: ts })
+      .set({ status: 'stopped', updatedAt: nowUnix() })
       .where(eq(agentSessions.id, agentSessionId))
       .run()
 
-    this.addActivity(agentSessionId, 'response', { body: 'Stopped by user' })
+    addActivity(agentSessionId, 'response', { body: 'Stopped by user' })
   }
 
-  private buildPrompt(issue: typeof kanbanIssues.$inferSelect, agentSessionId: string): string {
-    const parts: string[] = []
-
-    parts.push(`# Issue: ${issue.title}`)
-    parts.push('')
-
-    if (issue.description) {
-      parts.push(issue.description)
-      parts.push('')
-    }
-
-    try {
-      const refs = JSON.parse(issue.contextRefs ?? '[]') as Array<{ type: string, value: string, label?: string }>
-      if (refs.length > 0) {
-        parts.push('## Context')
-        for (const ref of refs) {
-          parts.push(`- [${ref.type}] ${ref.label ?? ref.value}`)
-        }
-        parts.push('')
-      }
-    }
-    catch {
-      // Ignore invalid JSON
-    }
-
-    try {
-      const labels = JSON.parse(issue.labels) as string[]
-      if (labels.length > 0) {
-        parts.push(`Labels: ${labels.join(', ')}`)
-      }
-    }
-    catch {
-      // Ignore
-    }
-
-    parts.push(`Priority: ${issue.priority}`)
-    parts.push('')
-
+  function handleChatTurnFinished(payload: ChatTurnFinishedPayload): void {
     const db = getDb()
-    const priorSessions = db
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.issueId, issue.id))
-      .all()
-      .filter(s => s.id !== agentSessionId && (s.status === 'completed' || s.status === 'stopped' || s.status === 'failed'))
-
-    if (priorSessions.length > 0) {
-      parts.push('## Prior Agent Work')
-      parts.push('This issue was previously worked on by other agents. Here is what they did:')
-      parts.push('')
-      for (const ps of priorSessions) {
-        const activities = db
-          .select()
-          .from(agentActivities)
-          .where(eq(agentActivities.agentSessionId, ps.id))
-          .all()
-          .filter(a => a.type === 'response' || a.type === 'error')
-
-        const statusLabel = ps.status === 'completed' ? 'completed' : ps.status === 'stopped' ? 'stopped by user' : 'failed'
-        parts.push(`- Session (${statusLabel}):`)
-        for (const act of activities) {
-          try {
-            const content = JSON.parse(act.content) as { body?: string }
-            if (content.body && content.body !== 'Stopped by user' && content.body !== 'Completed work on issue') {
-              const excerpt = content.body.length > 200 ? `${content.body.slice(0, 200)}...` : content.body
-              parts.push(`  ${excerpt}`)
-            }
-          }
-          catch {
-            // skip malformed
-          }
-        }
-      }
-      parts.push('')
-    }
-
-    parts.push('Please work on this issue. When done, summarize what you changed.')
-
-    return parts.join('\n')
-  }
-
-  private addActivity(
-    agentSessionId: string,
-    type: 'thought' | 'action' | 'response' | 'elicitation' | 'error' | 'prompt',
-    content: Record<string, unknown>,
-    issueId?: string,
-  ): void {
-    const db = getDb()
-    const now = Math.floor(Date.now() / 1000)
-
-    db.insert(agentActivities).values({
-      id: randomUUID(),
-      agentSessionId,
-      type,
-      content: JSON.stringify(content),
-      createdAt: now,
-    }).run()
-
-    if (issueId && (type === 'response' || type === 'error')) {
-      const body = (content as { body?: string }).body ?? JSON.stringify(content)
-      db.insert(kanbanIssueComments).values({
-        id: randomUUID(),
-        issueId,
-        content: body,
-        authorKind: 'agent',
-        authorId: null,
-        createdAt: now,
-      }).run()
-    }
-  }
-
-  private onTurnFinishedEvent(event: ChatTurnFinishedDomainEvent): void {
-    const payload = event.payload
-    const db = getDb()
-    const matchingRun = [...this.activeRuns.entries()].find(([, run]) => run.chatSessionId === payload.chatSessionId)
+    const matchingRun = [...activeRuns.entries()].find(([, run]) => run.chatSessionId === payload.chatSessionId)
     const fallbackSession = matchingRun
       ? null
       : db
@@ -274,7 +151,7 @@ export class IssueAgentRunner {
 
     const run = matchingRun?.[1]
     if (matchingRun) {
-      this.activeRuns.delete(agentSessionId)
+      activeRuns.delete(agentSessionId)
     }
     if (run?.aborted) {
       return
@@ -282,26 +159,23 @@ export class IssueAgentRunner {
 
     const agentSession = fallbackSession
       ?? db.select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
-    if (!agentSession) {
-      return
-    }
-    if (agentSession.status === 'stopped') {
+    if (!agentSession || agentSession.status === 'stopped') {
       return
     }
 
-    const ts = Math.floor(Date.now() / 1000)
     const nextStatus = payload.status === 'failed'
       ? 'failed'
       : payload.status === 'aborted'
         ? 'stopped'
         : 'completed'
+
     db.update(agentSessions)
-      .set({ status: nextStatus, updatedAt: ts })
+      .set({ status: nextStatus, updatedAt: nowUnix() })
       .where(eq(agentSessions.id, agentSessionId))
       .run()
 
     if (payload.status === 'failed') {
-      this.addActivity(
+      addActivity(
         agentSessionId,
         'error',
         { body: payload.errorText ?? 'Agent turn failed' },
@@ -310,15 +184,174 @@ export class IssueAgentRunner {
       return
     }
 
-    const completionLabel = payload.status === 'aborted'
-      ? 'Stopped by user'
-      : 'Completed work on issue'
-    this.addActivity(agentSessionId, 'response', { body: completionLabel }, agentSession.issueId)
+    addActivity(
+      agentSessionId,
+      'response',
+      { body: payload.status === 'aborted' ? 'Stopped by user' : 'Completed work on issue' },
+      agentSession.issueId,
+    )
+  }
+
+  return {
+    run,
+    stop,
+    handleChatTurnFinished,
   }
 }
 
-export const issueAgentRunner = new IssueAgentRunner()
+function appendWorkflowRules(
+  prompt: string,
+  rules: Awaited<ReturnType<typeof getWorkflowRules>>,
+): string {
+  if (!rules.global && !rules.profileSpecific) {
+    return prompt
+  }
+
+  let fullText = `${prompt}\n\n---\n## Workflow Rules\n\n`
+  if (rules.global) {
+    fullText += `${rules.global}\n\n`
+  }
+  if (rules.profileSpecific) {
+    fullText += `${rules.profileSpecific}\n`
+  }
+  fullText += '---'
+  return fullText
+}
+
+function buildPrompt(issue: typeof kanbanIssues.$inferSelect, agentSessionId: string): string {
+  const parts: string[] = []
+
+  parts.push(`# Issue: ${issue.title}`)
+  parts.push('')
+
+  if (issue.description) {
+    parts.push(issue.description)
+    parts.push('')
+  }
+
+  try {
+    const refs = JSON.parse(issue.contextRefs ?? '[]') as Array<{ type: string, value: string, label?: string }>
+    if (refs.length > 0) {
+      parts.push('## Context')
+      for (const ref of refs) {
+        parts.push(`- [${ref.type}] ${ref.label ?? ref.value}`)
+      }
+      parts.push('')
+    }
+  }
+  catch {
+    // Ignore invalid JSON.
+  }
+
+  try {
+    const labels = JSON.parse(issue.labels) as string[]
+    if (labels.length > 0) {
+      parts.push(`Labels: ${labels.join(', ')}`)
+    }
+  }
+  catch {
+    // Ignore invalid labels JSON.
+  }
+
+  parts.push(`Priority: ${issue.priority}`)
+  parts.push('')
+
+  const db = getDb()
+  const priorSessions = db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.issueId, issue.id))
+    .all()
+    .filter(session => session.id !== agentSessionId && (session.status === 'completed' || session.status === 'stopped' || session.status === 'failed'))
+
+  if (priorSessions.length > 0) {
+    parts.push('## Prior Agent Work')
+    parts.push('This issue was previously worked on by other agents. Here is what they did:')
+    parts.push('')
+    for (const priorSession of priorSessions) {
+      const activities = db
+        .select()
+        .from(agentActivities)
+        .where(eq(agentActivities.agentSessionId, priorSession.id))
+        .all()
+        .filter(activity => activity.type === 'response' || activity.type === 'error')
+
+      const statusLabel = priorSession.status === 'completed'
+        ? 'completed'
+        : priorSession.status === 'stopped'
+          ? 'stopped by user'
+          : 'failed'
+      parts.push(`- Session (${statusLabel}):`)
+      for (const activity of activities) {
+        try {
+          const content = JSON.parse(activity.content) as { body?: string }
+          if (content.body && content.body !== 'Stopped by user' && content.body !== 'Completed work on issue') {
+            const excerpt = content.body.length > 200 ? `${content.body.slice(0, 200)}...` : content.body
+            parts.push(`  ${excerpt}`)
+          }
+        }
+        catch {
+          // Ignore malformed activity payloads.
+        }
+      }
+    }
+    parts.push('')
+  }
+
+  parts.push('Please work on this issue. When done, summarize what you changed.')
+  return parts.join('\n')
+}
+
+function addActivity(
+  agentSessionId: string,
+  type: 'thought' | 'action' | 'response' | 'elicitation' | 'error' | 'prompt',
+  content: Record<string, unknown>,
+  issueId?: string,
+): void {
+  const db = getDb()
+  const now = nowUnix()
+
+  db.insert(agentActivities).values({
+    id: randomUUID(),
+    agentSessionId,
+    type,
+    content: JSON.stringify(content),
+    createdAt: now,
+  }).run()
+
+  if (issueId && (type === 'response' || type === 'error')) {
+    const body = (content as { body?: string }).body ?? JSON.stringify(content)
+    db.insert(kanbanIssueComments).values({
+      id: randomUUID(),
+      issueId,
+      content: body,
+      authorKind: 'agent',
+      authorId: null,
+      createdAt: now,
+    }).run()
+  }
+}
+
+function nowUnix(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+export function createIssueAgentCompletionSubscriber(deps: {
+  eventBus: DomainEventBus
+  runtime: IssueAgentRuntimeInternal
+}): () => void {
+  return deps.eventBus.subscribe('chat.turn-finished', event => deps.runtime.handleChatTurnFinished(event.payload))
+}
+
+let issueAgentRuntime: IssueAgentRuntimeInternal | null = null
+
+export function setIssueAgentRuntime(runtime: IssueAgentRuntimeInternal): void {
+  issueAgentRuntime = runtime
+}
 
 export function getIssueAgentRuntime(): IssueAgentRuntime {
-  return issueAgentRunner
+  if (!issueAgentRuntime) {
+    throw new Error('IssueAgentRuntime not initialized. Call setIssueAgentRuntime() in the composition root first.')
+  }
+  return issueAgentRuntime
 }

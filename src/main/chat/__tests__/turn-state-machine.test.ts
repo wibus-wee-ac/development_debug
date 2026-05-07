@@ -1,23 +1,21 @@
-// Input: TimelineChunkProjector and typed timeline events
+// Input: Shared timeline chunk projector and typed timeline events
 // Output: Unit tests for chunk projection from domain events
-// Position: Chat feature regression guard for real-time broadcast chunk generation
+// Position: Chat feature regression guard for the shared real-time chunk projection contract
 
 import { describe, expect, it } from 'vitest'
 
-import { createTimelineChunkProjector } from '../timeline-chunk-projector'
+import { projectTimelineEventToChunks } from '../../../shared/timeline-projection'
 
-describe('timelineChunkProjector', () => {
+describe('projectTimelineEventToChunks', () => {
   it('projects reasoning events to reasoning chunks', () => {
-    const projector = createTimelineChunkProjector()
-
-    const startChunks = projector.apply({
+    const startChunks = projectTimelineEventToChunks({
       type: 'reasoning.started',
       itemId: 'reasoning-1',
       source: { backend: 'acp-chat', eventType: 'reasoning.started' },
     })
     expect(startChunks).toEqual([{ type: 'reasoning-start', id: 'reasoning-1' }])
 
-    const deltaChunks = projector.apply({
+    const deltaChunks = projectTimelineEventToChunks({
       type: 'reasoning.delta',
       itemId: 'reasoning-1',
       delta: '思考中',
@@ -25,7 +23,7 @@ describe('timelineChunkProjector', () => {
     })
     expect(deltaChunks).toEqual([{ type: 'reasoning-delta', id: 'reasoning-1', delta: '思考中' }])
 
-    const endChunks = projector.apply({
+    const endChunks = projectTimelineEventToChunks({
       type: 'reasoning.completed',
       itemId: 'reasoning-1',
       source: { backend: 'acp-chat', eventType: 'reasoning.completed' },
@@ -34,9 +32,7 @@ describe('timelineChunkProjector', () => {
   })
 
   it('projects command lifecycle to tool chunks', () => {
-    const projector = createTimelineChunkProjector()
-
-    const startChunks = projector.apply({
+    const startChunks = projectTimelineEventToChunks({
       type: 'command.started',
       itemId: 'cmd-1',
       command: 'bash',
@@ -48,7 +44,7 @@ describe('timelineChunkProjector', () => {
       { type: 'tool-input-available', toolCallId: 'cmd-1', toolName: 'bash', input: 'echo hello' },
     ])
 
-    const completeChunks = projector.apply({
+    const completeChunks = projectTimelineEventToChunks({
       type: 'command.completed',
       itemId: 'cmd-1',
       exitCode: 0,
@@ -61,9 +57,7 @@ describe('timelineChunkProjector', () => {
   })
 
   it('returns text-delta chunk for assistant text', () => {
-    const projector = createTimelineChunkProjector()
-
-    const chunks = projector.apply({
+    const chunks = projectTimelineEventToChunks({
       type: 'assistant.text.delta',
       itemId: 'text-1',
       delta: 'hello',
@@ -76,9 +70,7 @@ describe('timelineChunkProjector', () => {
   })
 
   it('returns finish chunk for run.completed', () => {
-    const projector = createTimelineChunkProjector()
-
-    const chunks = projector.apply({
+    const chunks = projectTimelineEventToChunks({
       type: 'run.completed',
       source: { backend: 'openai-compatible', eventType: 'response.completed' },
     })

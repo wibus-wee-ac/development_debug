@@ -18,14 +18,13 @@ export function createBroadcastSubscriber(deps: BroadcastSubscriberDeps): () => 
   const { eventBus, broadcaster, getSessionWatchers } = deps
 
   return eventBus.subscribe('chat.timeline-event-persisted', (event) => {
-    const { chatSessionId, messageId, event: timelineEvent, chunks, terminal } = event.payload
+    const { chatSessionId, messageId, event: timelineEvent, terminal } = event.payload
 
     // Push timeline event to session watchers only
     const payload: ChatTimelineEventPayload = {
       chatSessionId,
       messageId,
       event: timelineEvent,
-      chunks,
     }
 
     const sessionWatchers = getSessionWatchers().get(chatSessionId)

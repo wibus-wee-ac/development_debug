@@ -8,5 +8,4 @@
 
 ## Files
 
-- **chat-turn-finished-bridge.test.ts**: 验证 chat turn 完成信号被桥接并发布为领域事件
 - **domain-event-bus.test.ts**: 事件总线订阅、发布与取消订阅的行为测试

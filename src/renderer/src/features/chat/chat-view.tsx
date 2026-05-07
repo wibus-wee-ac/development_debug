@@ -14,13 +14,13 @@ import { ChatMinimap } from './chat-minimap'
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
-import type { ChatMessageRow } from './use-chat-session'
+import type { ChatTimelineGroupRow } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 
 interface ChatViewProps {
   sessionId: string | null
-  /** Pre-loaded message rows from a route loader; eliminates empty-state flash on first visit. */
-  initialMessageRows?: ChatMessageRow[]
+  /** Pre-loaded timeline groups from a route loader; eliminates empty-state flash on first visit. */
+  initialTimelineGroups?: ChatTimelineGroupRow[]
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
   /** Custom toolbar rendered in the composer left slot */
@@ -33,13 +33,13 @@ interface ChatViewProps {
 
 export function ChatView({
   sessionId,
-  initialMessageRows,
+  initialTimelineGroups,
   availableFiles = [],
   composerToolbar,
   composerContextBar,
   placeholder,
 }: ChatViewProps) {
-  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialMessageRows })
+  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialTimelineGroups })
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)

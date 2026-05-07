@@ -8,6 +8,7 @@ import * as schema from '../../db/schema'
 import { createInMemoryDomainEventBus } from '../../events/domain-event-bus'
 import { chatEngine } from '../chat-engine'
 import { createBroadcastSubscriber } from '../broadcast'
+import { createChatSessionWatchRegistry } from '../session-watch-registry'
 
 type FakeDbState = {
   agentProfiles: Array<typeof schema.agentProfiles.$inferSelect>
@@ -425,6 +426,7 @@ describe('chatEngine', () => {
   let state: FakeDbState
   let controlPlane: ReturnType<typeof createControlPlaneHarness>
   let mockBroadcaster: { broadcastGlobal: ReturnType<typeof vi.fn>, broadcastFiltered: ReturnType<typeof vi.fn>, subscribe: ReturnType<typeof vi.fn> }
+  let watchRegistry: ReturnType<typeof createChatSessionWatchRegistry>
 
   beforeEach(() => {
     state = {
@@ -510,6 +512,7 @@ describe('chatEngine', () => {
     // Wire event bus + broadcast subscriber so domain events reach IPC
     const eventBus = createInMemoryDomainEventBus()
     chatEngine.bindEventBus(eventBus)
+    watchRegistry = createChatSessionWatchRegistry()
     mockBroadcaster = {
       broadcastGlobal: vi.fn(),
       broadcastFiltered: vi.fn(),
@@ -518,7 +521,7 @@ describe('chatEngine', () => {
     createBroadcastSubscriber({
       eventBus,
       broadcaster: mockBroadcaster as never,
-      getSessionWatchers: () => chatEngine.getSessionWatchers(),
+      getSessionWatchers: () => watchRegistry.getSessionWatchers(),
     })
   })
 
@@ -882,12 +885,9 @@ describe('chatEngine', () => {
 
     const watcher = createFakeWebContents()
     const bystander = createFakeWebContents()
-    const engine = chatEngine
-    engine.subscribe(watcher as never)
-    engine.subscribe(bystander as never)
-    ;(engine as { watchSession?: (webContents: unknown, chatSessionId: string) => void }).watchSession?.(watcher, 'chat-1')
+    watchRegistry.watchSession(watcher as never, 'chat-1')
 
-    await engine.send('chat-1', '开始吧')
+    await chatEngine.send('chat-1', '开始吧')
     await vi.waitFor(() => {
       expect(state.backendRuns[0]?.status).toBe('complete')
     })

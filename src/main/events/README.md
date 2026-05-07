@@ -8,6 +8,5 @@
 
 ## Files
 
-- **chat-turn-finished-bridge.ts**: 把 ChatEngine turn finished 生命周期桥接到 `chat.turn-finished` 领域事件
 - **domain-event-bus.ts**: 进程内领域事件总线实现，提供订阅与发布能力
-- **domain-events.ts**: 领域事件类型定义，当前包含 chat turn 完成事件
+- **domain-events.ts**: 领域事件类型定义，当前包含 chat timeline persisted、chat message completed 与 chat turn finished 等事件；这些事件现在由 chat write-side runtime 直接发布

@@ -1,13 +1,12 @@
-// Input: Shared projectEventsToAssistantMessage and TimelineChunkProjector
+// Input: Shared assistant-message projector and shared timeline chunk projector
 // Output: Regression tests ensuring the shared projector produces correct UIMessage output
 // Position: TDD safety net for the UIMessage dehydration migration (ExecPlan 20260505-12)
 
 import { describe, expect, it } from 'vitest'
 
 import type { ProjectableTimelineEvent } from '../../../shared/timeline-projection'
-import { projectEventsToAssistantMessage } from '../../../shared/timeline-projection'
+import { projectEventsToAssistantMessage, projectTimelineEventToChunks } from '../../../shared/timeline-projection'
 import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
-import { createTimelineChunkProjector } from '../timeline-chunk-projector'
 
 describe('projection parity: shared projector produces correct UIMessage', () => {
   it('simple text conversation (text-start → delta × N → text-end)', () => {
@@ -123,9 +122,8 @@ describe('projection parity: shared projector produces correct UIMessage', () =>
     ])
   })
 
-  it('timelineChunkProjector.apply returns correct chunks', () => {
-    const projector = createTimelineChunkProjector()
-    const chunks = projector.apply({
+  it('projectTimelineEventToChunks returns correct chunks', () => {
+    const chunks = projectTimelineEventToChunks({
       type: 'assistant.text.delta',
       itemId: 'text-1',
       delta: 'hello',

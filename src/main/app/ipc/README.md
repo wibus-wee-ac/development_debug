@@ -11,11 +11,11 @@
 - **acp.ts**: ACP feature application service 的薄 IPC adapter，转发 registry、安装状态、runtime session 与审计查询
 - **agent.ts**: Agent identity 的 CRUD IPC adapter
 - **agent-runtime.ts**: agent-runtime feature 的薄 IPC adapter，转发 profile、probe、models 与凭证命令
-- **chat.ts**: ChatEngine 的会话创建、发送、终止、消息读取，以及 renderer 会话级 timeline watch / unwatch 接口
+- **chat.ts**: chat 写侧命令、timeline 读侧查询与 renderer session watch / unwatch 的薄 IPC adapter；不再把读模型和订阅状态挂在 ChatEngine 上
 - **dev.ts**: 仅开发模式可用的辅助 IPC，如打开目录与强制重载
 - **git.ts**: Git 状态、分支与提交图相关 IPC adapter
 - **ipc-devtool.ts**: devtool 窗口、事件快照与清理接口
-- **issue-agent.ts**: issue delegation 与 agent session/activity 查询的 IPC adapter，并负责默认 store/runner 装配
+- **issue-agent.ts**: issue delegation 与 agent session/activity 查询的 IPC adapter，并负责默认 store/runtime 装配
 - **kanban.ts**: Kanban 查询与写侧命令的 IPC adapter
 - **preferences.ts**: 全局聊天偏好持久化接口
 - **pty.ts**: PTY 会话创建、写入、调整尺寸与进程控制接口

@@ -2,11 +2,12 @@
 // Output: Minimal turn context resolver for agent name, agent-owned system prompt, and prior chat history
 // Position: Chat feature helper that defines the current model-context boundary for one turn
 
-import { and, desc, eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { getDb } from '../db'
-import { agents as agentsTable, backendRuns, backendTimelineEvents, messages, sessions, workspaces } from '../db/schema'
+import { agents as agentsTable, messages, sessions, workspaces } from '../db/schema'
 import type { ProviderKind } from '../agent-runtime/runtime-provider-types'
+import { extractAssistantTextByMessageId } from './timeline-query'
 
 const ACP_AGENT_ID_PREFIX_RE = /^acp:/
 
@@ -58,7 +59,7 @@ export function resolveChatTurnContext(args: {
         role: row.role as 'user' | 'assistant',
         content: row.role === 'user'
           ? row.content
-          : extractAssistantText(db, row.id),
+          : extractAssistantTextByMessageId(db, row.id),
       }))
 
   return {
@@ -83,32 +84,4 @@ function readAgentSystemPrompt(configJson: string | null | undefined): string | 
   catch {
     return undefined
   }
-}
-
-function extractAssistantText(db: ReturnType<typeof getDb>, assistantMessageId: string): string {
-  const run = db
-    .select({ id: backendRuns.id })
-    .from(backendRuns)
-    .where(eq(backendRuns.messageId, assistantMessageId))
-    .orderBy(desc(backendRuns.startedAt))
-    .get()
-
-  if (!run) {
-    return ''
-  }
-
-  const events = db
-    .select()
-    .from(backendTimelineEvents)
-    .where(
-      eq(backendTimelineEvents.runId, run.id),
-    )
-    .orderBy(backendTimelineEvents.sequenceNumber)
-    .all()
-
-  return events
-    .map(e => JSON.parse(e.payloadJson) as { type: string, delta?: string })
-    .filter(e => e.type === 'assistant.text.delta')
-    .map(e => e.delta ?? '')
-    .join('')
 }

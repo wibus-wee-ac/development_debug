@@ -1,6 +1,6 @@
-// Input: @ai-sdk/react useChat, ipc-chat-transport, ipc.chat, and chat timeline push events
+// Input: @ai-sdk/react useChat, ipc-chat-transport, ipc.chat timeline queries, and chat timeline push events
 // Output: useChatSession — renderer chat hook with local streaming plus passive snapshot recovery after reload
-// Position: Feature hook for chat feature; renderer-side view layer bridging useChat with persisted ChatEngine state
+// Position: Feature hook for chat feature; renderer-side view layer bridging useChat with persisted timeline state
 
 import { useChat } from '@ai-sdk/react'
 import { ipc } from '@renderer/lib/ipc'
@@ -11,8 +11,8 @@ import { projectEventsToAssistantMessage, type ProjectableTimelineEvent } from '
 import { createIpcChatTransport } from './ipc-chat-transport'
 import { useChatTimelineEvent } from './use-chat-events'
 
-/** Raw message row as returned by `ipc.chat.getMessages`. */
-export type ChatMessageRow = Awaited<ReturnType<NonNullable<typeof ipc>['chat']['getMessages']>>[number]
+/** Timeline hydration row as returned by `ipc.chat.getSessionTimeline`. */
+export type ChatTimelineGroupRow = Awaited<ReturnType<NonNullable<typeof ipc>['chat']['getSessionTimeline']>>[number]
 
 export type PublicStatus = 'idle' | 'streaming' | 'error'
 
@@ -32,7 +32,7 @@ function mapStatus(status: ChatStatus): PublicStatus {
 }
 
 export function derivePassiveChatState(
-  rows: Array<Pick<ChatMessageRow, 'role' | 'status' | 'errorText'>>,
+  rows: Array<{ role: string, status: string, errorText?: string | null }>,
 ): ChatSnapshotState {
   if (rows.some(row => row.status === 'streaming')) {
     return { status: 'streaming' }
@@ -51,20 +51,6 @@ export function derivePassiveChatState(
 
   return { status: 'idle' }
 }
-
-type TimelineGroup = { role: string, status: string, events: unknown[], errorText?: string }
-
-function deriveTimelineState(groups: TimelineGroup[]): ChatSnapshotState {
-  if (groups.some(g => g.status === 'streaming')) {
-    return { status: 'streaming' }
-  }
-  const failed = [...groups].reverse().find(g => g.role === 'assistant' && g.status === 'failed')
-  if (failed) {
-    return { status: 'error', error: failed.errorText }
-  }
-  return { status: 'idle' }
-}
-
 export function resolveVisibleChatState(
   liveStatus: PublicStatus,
   passiveStatus: PublicStatus,
@@ -100,33 +86,36 @@ const EMPTY_CHAT_ID = '__cradle_empty_chat__'
 const STREAM_RENDER_THROTTLE_MS = 50
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 
+function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
+  if (group.role === 'user') {
+    return {
+      id: group.messageId,
+      role: 'user',
+      parts: [{ type: 'text', text: group.userText ?? '' }],
+    }
+  }
+
+  return projectEventsToAssistantMessage(group.messageId, group.events as unknown as ProjectableTimelineEvent[])
+}
+
 export function useChatSession(chatSessionId: string | null, options?: {
   /**
-   * Pre-loaded message rows from a TanStack Router loader or similar source.
+  * Pre-loaded timeline groups from a TanStack Router loader or similar source.
    * When provided, `isReady` is true immediately (no empty-state flash) and
    * the hook still re-fetches in the background for streaming + freshness.
    */
-  initialMessageRows?: ChatMessageRow[]
+  initialTimelineGroups?: ChatTimelineGroupRow[]
 }) {
-  const { initialMessageRows } = options ?? {}
+  const { initialTimelineGroups } = options ?? {}
 
   const transport = useMemo(
     () => (chatSessionId ? createIpcChatTransport(chatSessionId) : undefined),
     [chatSessionId],
   )
 
-  // Initial messages for useChat — captured once per session.
-  // Since messages.content is now plain text (user) or empty (assistant),
-  // we provide a simple bootstrapping set. Full hydration happens in syncSnapshot().
   const cachedInitialMessages = useMemo(
-    () => initialMessageRows?.map((r): UIMessage => ({
-      id: r.id,
-      role: r.role,
-      parts: r.role === 'user' && r.content
-        ? [{ type: 'text', text: r.content }]
-        : [],
-    })),
-    [chatSessionId],
+    () => initialTimelineGroups?.map(projectTimelineGroup),
+    [initialTimelineGroups],
   )
 
   const chat = useChat<UIMessage>({
@@ -153,11 +142,13 @@ export function useChatSession(chatSessionId: string | null, options?: {
     chatRef.current = chat
   }, [chat])
 
-  // Lazily initialise — if a loader already provided rows for THIS session, we
+  // Lazily initialise — if a loader already provided timeline groups for THIS session, we
   // are ready before the first paint.  useState's initialiser runs exactly once
   // so this never causes an extra re-render when chatSessionId later changes.
-  const [isReady, setIsReady] = useState(() => !!(chatSessionId && initialMessageRows?.length))
-  const [snapshotState, setSnapshotState] = useState<ChatSnapshotState>({ status: 'idle' })
+  const [isReady, setIsReady] = useState(() => !!(chatSessionId && initialTimelineGroups))
+  const [snapshotState, setSnapshotState] = useState<ChatSnapshotState>(() => initialTimelineGroups
+    ? derivePassiveChatState(initialTimelineGroups)
+    : { status: 'idle' })
   const snapshotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const syncSnapshot = useCallback(async () => {
@@ -168,18 +159,9 @@ export function useChatSession(chatSessionId: string | null, options?: {
     // Project UIMessages from raw timeline events (sole hydration path)
     const timeline = await ipc.chat.getSessionTimeline(chatSessionId)
     if (timeline.length > 0) {
-      const projected = timeline.map((group) => {
-        if (group.role === 'user') {
-          return {
-            id: group.messageId,
-            role: 'user' as const,
-            parts: [{ type: 'text' as const, text: group.userText ?? '' }],
-          }
-        }
-        return projectEventsToAssistantMessage(group.messageId, group.events as unknown as ProjectableTimelineEvent[])
-      })
+      const projected = timeline.map(projectTimelineGroup)
       chatRef.current.setMessages(projected)
-      setSnapshotState(deriveTimelineState(timeline))
+      setSnapshotState(derivePassiveChatState(timeline))
     }
     else {
       chatRef.current.setMessages([])
@@ -217,9 +199,9 @@ export function useChatSession(chatSessionId: string | null, options?: {
       return
     }
 
-    // If we have pre-loaded rows for this exact session we are already ready —
+    // If we have pre-loaded timeline groups for this exact session we are already ready —
     // do NOT reset to false before the fetch completes (that is the flash).
-    if (!initialMessageRows?.length) {
+    if (!initialTimelineGroups) {
       setIsReady(false)
     }
 
@@ -239,7 +221,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
         snapshotSyncTimerRef.current = null
       }
     }
-  }, [chatSessionId, initialMessageRows?.length, syncSnapshot])
+  }, [chatSessionId, initialTimelineGroups, syncSnapshot])
 
   // Covers the passive observer case (reload, secondary window, or route remount).
   // When this renderer is not the one actively assembling the stream, we mirror

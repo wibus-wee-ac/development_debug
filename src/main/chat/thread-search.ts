@@ -8,6 +8,7 @@ import { desc, eq, inArray, sql } from 'drizzle-orm'
 
 import { getDb } from '../db'
 import { messages, sessions, workspaces } from '../db/schema'
+import { extractAssistantTextByMessageId } from './timeline-query'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -437,7 +438,10 @@ export class ThreadSearchEngine {
 
     for (const msg of messageRows) {
       const title = sessionTitleById.get(msg.sessionId) ?? ''
-      this.indexMessage(msg.sessionId, title, msg.id, msg.content)
+      const content = msg.role === 'assistant'
+        ? extractAssistantTextByMessageId(db, msg.id) || msg.content
+        : msg.content
+      this.indexMessage(msg.sessionId, title, msg.id, content)
     }
   }
 

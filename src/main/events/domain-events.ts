@@ -1,8 +1,6 @@
-// Input: Chat turn completion payload from ChatEngine lifecycle hooks
+// Input: Chat timeline/message completion payloads from chat write-side runtime
 // Output: Typed domain event contracts for in-process backend event routing
 // Position: Shared event type definitions for src/main/events consumers and publishers
-
-import type { UIMessageChunk } from 'ai'
 
 import type { BackendTimelineEvent } from '../backend-control-plane/timeline-events'
 
@@ -20,7 +18,6 @@ export interface ChatTimelineEventPersistedPayload {
   messageId: string
   runId: string
   event: BackendTimelineEvent
-  chunks: UIMessageChunk[]
   /** Whether this is a terminal event (run.completed, run.aborted, run.failed). */
   terminal: boolean
 }
