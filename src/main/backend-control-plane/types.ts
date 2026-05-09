@@ -37,7 +37,7 @@ export interface BackendCapabilitySnapshot {
   id: string
   agentProfileId: string
   providerKind: ProviderKind
-  source: 'probe' | 'session_start'
+  source: 'health_check' | 'session_start'
   capabilitiesJson: string
   recordedAt: number
 }

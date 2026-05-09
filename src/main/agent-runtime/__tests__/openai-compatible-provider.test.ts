@@ -45,10 +45,10 @@ describe('openAICompatibleProvider', () => {
     expect(readSecret).toHaveBeenCalledWith('credential-1')
   })
 
-  it('returns probe failure when Base URL is missing', async () => {
+  it('returns a health-check failure when Base URL is missing', async () => {
     const provider = new OpenAICompatibleProvider({ readSecret: vi.fn() })
 
-    await expect(provider.probe({ ...profile, configJson: '{}' })).resolves.toMatchObject({
+    await expect(provider.checkHealth({ ...profile, configJson: '{}' })).resolves.toMatchObject({
       ok: false,
       label: 'OpenAI Local',
       errorText: 'Base URL is required',

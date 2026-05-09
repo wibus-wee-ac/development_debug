@@ -164,14 +164,14 @@ export function AgentDetailPage({
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
   const initialConfig = useMemo(() => parseConfigJson(agent?.configJson), [agent?.configJson])
-  const enabledProviders = useMemo(() => profiles.filter(p => p.enabled), [profiles])
+  const enabledProfiles = useMemo(() => profiles.filter(p => p.enabled), [profiles])
 
   const [name, setName] = useState(agent?.name ?? '')
   const [description, setDescription] = useState(agent?.description ?? '')
   const [avatarStyle, setAvatarStyle] = useState<string>(agent?.avatarStyle ?? AVATAR_STYLES[0].id)
   const [avatarSeed, setAvatarSeed] = useState(() => agent?.avatarSeed ?? generateSeed())
-  const [providerId, setProviderId] = useState<string | null>(
-    agent?.providerId ?? enabledProviders[0]?.id ?? null,
+  const [agentProfileId, setAgentProfileId] = useState<string | null>(
+    agent?.agentProfileId ?? enabledProfiles[0]?.id ?? null,
   )
   const [modelId, setModelId] = useState<string | null>(agent?.modelId ?? null)
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(
@@ -187,10 +187,10 @@ export function AgentDetailPage({
   const savedClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!providerId && enabledProviders[0]) {
-      setProviderId(enabledProviders[0].id)
+    if (!agentProfileId && enabledProfiles[0]) {
+      setAgentProfileId(enabledProfiles[0].id)
     }
-  }, [enabledProviders, providerId])
+  }, [enabledProfiles, agentProfileId])
 
   useEffect(() => {
     if (!agent) {
@@ -200,7 +200,7 @@ export function AgentDetailPage({
     setDescription(agent.description ?? '')
     setAvatarStyle(agent.avatarStyle)
     setAvatarSeed(agent.avatarSeed)
-    setProviderId(agent.providerId)
+    setAgentProfileId(agent.agentProfileId)
     setModelId(agent.modelId ?? null)
     setThinkingEffort((agent.thinkingEffort as ThinkingEffort) ?? 'auto')
     setSystemPrompt(parseConfigJson(agent.configJson).systemPrompt)
@@ -215,15 +215,15 @@ export function AgentDetailPage({
       || description !== (agent!.description ?? '')
       || avatarStyle !== agent!.avatarStyle
       || avatarSeed !== agent!.avatarSeed
-      || providerId !== agent!.providerId
+      || agentProfileId !== agent!.agentProfileId
       || modelId !== (agent!.modelId ?? null)
       || thinkingEffort !== ((agent!.thinkingEffort as ThinkingEffort) ?? 'auto')
       || systemPrompt !== initialConfig.systemPrompt
     )
-  }, [isCreate, name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, systemPrompt, agent, initialConfig])
+  }, [isCreate, name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt, agent, initialConfig])
 
   const doSave = useCallback(async () => {
-    if (!name.trim() || !providerId) {
+    if (!name.trim() || !agentProfileId) {
       return
     }
     setSaveState('saving')
@@ -237,7 +237,7 @@ export function AgentDetailPage({
           description: description.trim() || null,
           avatarStyle,
           avatarSeed,
-          providerId,
+          agentProfileId,
           modelId,
           thinkingEffort,
           configJson,
@@ -253,7 +253,7 @@ export function AgentDetailPage({
       setSaveState('error')
       setSaveError(err instanceof Error ? err.message : String(err))
     }
-  }, [name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, systemPrompt, initialConfig.baseConfig, agent, updateAgent])
+  }, [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt, initialConfig.baseConfig, agent, updateAgent])
 
   // Auto-save debounce for edit mode
   useEffect(() => {
@@ -273,10 +273,10 @@ export function AgentDetailPage({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, systemPrompt])
+  }, [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt])
 
   const handleCreate = useCallback(async () => {
-    if (!name.trim() || !providerId) {
+    if (!name.trim() || !agentProfileId) {
       return
     }
     setCreateSaving(true)
@@ -287,7 +287,7 @@ export function AgentDetailPage({
         description: description.trim() || null,
         avatarStyle,
         avatarSeed,
-        providerId,
+        agentProfileId,
         modelId,
         thinkingEffort,
         configJson: stringifyConfigJson(systemPrompt, {}),
@@ -300,7 +300,7 @@ export function AgentDetailPage({
     finally {
       setCreateSaving(false)
     }
-  }, [name, description, avatarStyle, avatarSeed, providerId, modelId, thinkingEffort, systemPrompt, createAgent, onCreated])
+  }, [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt, createAgent, onCreated])
 
   const handleDelete = useCallback(async () => {
     if (!agent) {
@@ -447,17 +447,17 @@ export function AgentDetailPage({
           {/* Model config — compact inline row */}
           <div className="flex flex-wrap items-center gap-2">
             <Select
-              value={providerId ?? undefined}
+              value={agentProfileId ?? undefined}
               onValueChange={(v) => {
-                setProviderId(v)
+                setAgentProfileId(v)
                 setModelId(null)
               }}
             >
               <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-provider-select">
-                <SelectValue placeholder="Provider" />
+                <SelectValue placeholder="Profile" />
               </SelectTrigger>
               <SelectContent>
-                {enabledProviders.map(p => (
+                {enabledProfiles.map(p => (
                   <SelectItem key={p.id} value={p.id} className="text-xs">
                     {p.name}
                   </SelectItem>
@@ -465,7 +465,7 @@ export function AgentDetailPage({
               </SelectContent>
             </Select>
 
-            <ModelSelect profileId={providerId} modelId={modelId} onModelChange={setModelId} />
+            <ModelSelect profileId={agentProfileId} modelId={modelId} onModelChange={setModelId} />
 
             <div className="flex items-center gap-1">
               <div
@@ -540,7 +540,7 @@ export function AgentDetailPage({
             <Button
               size="sm"
               onClick={() => void handleCreate()}
-              disabled={!isDirty || createSaving || !name.trim() || !providerId}
+              disabled={!isDirty || createSaving || !name.trim() || !agentProfileId}
               data-testid="agent-detail-save"
             >
               {createSaving && <Spinner className="size-3.5" />}

@@ -1,0 +1,521 @@
+// Input: DbAccessor, jieba tokenizer, and timeline-derived assistant text helper
+// Output: thread search engine with FTS-first and legacy fallback behavior
+// Position: apps/server/src/modules/search/thread-search.engine.ts
+
+import { Jieba } from '@node-rs/jieba'
+import { dict } from '@node-rs/jieba/dict'
+import {
+  backendRuns,
+  backendTimelineEvents,
+  messages,
+  sessions,
+  workspaces,
+} from '@cradle/db'
+import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { injectable } from 'tsyringe'
+
+import { DbAccessor } from '../../database/db-accessor'
+
+export interface MatchRange {
+  start: number
+  end: number
+}
+
+export interface ThreadSearchSnippet {
+  text: string
+  ranges: MatchRange[]
+  messageRole: 'user' | 'assistant'
+  messageId: string
+  createdAt: number
+}
+
+export interface ThreadSearchHit {
+  sessionId: string
+  workspaceId: string
+  workspaceName: string | null
+  sessionTitle: string
+  titleRanges: MatchRange[]
+  snippets: ThreadSearchSnippet[]
+  matchCount: number
+  score: number
+  updatedAt: number
+}
+
+export interface ThreadSearchParams {
+  query: string
+  workspaceId?: string
+  limit?: number
+  snippetsPerHit?: number
+}
+
+const DEFAULT_LIMIT = 50
+const DEFAULT_SNIPPETS_PER_HIT = 3
+const SNIPPET_BEFORE = 40
+const SNIPPET_AFTER = 120
+const ELLIPSIS = '…'
+const TITLE_WEIGHT = 10
+const CONTENT_WEIGHT = 1
+
+@injectable()
+export class ThreadSearchEngine {
+  private jieba: Jieba | null = null
+
+  constructor(private readonly dbAccessor: DbAccessor) {}
+
+  tokenize(query: string): string[] {
+    const trimmed = query.trim()
+    if (!trimmed) {
+      return []
+    }
+
+    const jieba = this.getJieba()
+    const segments = jieba ? jieba.cutForSearch(trimmed, true) : [trimmed]
+    const seen = new Set<string>()
+    const tokens: string[] = []
+    for (const token of [trimmed, ...segments]) {
+      const clean = typeof token === 'string' ? token.trim() : ''
+      if (!clean) {
+        continue
+      }
+      const key = clean.toLowerCase()
+      if (seen.has(key)) {
+        continue
+      }
+      seen.add(key)
+      tokens.push(clean)
+    }
+    return tokens
+  }
+
+  search(params: ThreadSearchParams): ThreadSearchHit[] {
+    try {
+      return this.searchFts(params)
+    }
+    catch {
+      return this.searchLegacy(params)
+    }
+  }
+
+  private searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
+    const tokens = this.tokenize(params.query)
+    if (tokens.length === 0) {
+      return []
+    }
+
+    const limit = params.limit ?? DEFAULT_LIMIT
+    const snippetsPerHit = params.snippetsPerHit ?? DEFAULT_SNIPPETS_PER_HIT
+    const db = this.dbAccessor.get()
+    const jieba = this.getJieba()
+    const ftsQuery = jieba
+      ? (jieba.cutForSearch(params.query.trim(), true) as string[]).filter(token => token.trim()).join(' ')
+      : params.query.trim()
+
+    if (!ftsQuery) {
+      return []
+    }
+
+    const rows = db.all<{
+      rowid: number
+      session_id: string
+      session_title: string
+      snippet: string
+      rank: number
+    }>(sql`
+      SELECT rowid, session_id, session_title,
+             snippet(messages_fts, 2, '<mark>', '</mark>', '…', 48) AS snippet,
+             rank
+      FROM messages_fts
+      WHERE messages_fts MATCH ${ftsQuery}
+      ORDER BY rank
+      LIMIT ${limit * 3}
+    `)
+
+    if (rows.length === 0) {
+      return this.searchLegacy(params)
+    }
+
+    const sessionMap = new Map<string, {
+      sessionTitle: string
+      snippets: Array<{ text: string, rank: number, rowid: number }>
+      bestRank: number
+    }>()
+
+    for (const row of rows) {
+      if (params.workspaceId) {
+        const session = db.select().from(sessions).where(eq(sessions.id, row.session_id)).get()
+        if (!session || session.workspaceId !== params.workspaceId) {
+          continue
+        }
+      }
+
+      const entry = sessionMap.get(row.session_id) ?? {
+        sessionTitle: row.session_title,
+        snippets: [],
+        bestRank: row.rank,
+      }
+      entry.snippets.push({ text: row.snippet, rank: row.rank, rowid: row.rowid })
+      if (row.rank < entry.bestRank) {
+        entry.bestRank = row.rank
+      }
+      sessionMap.set(row.session_id, entry)
+    }
+
+    const sessionIds = [...sessionMap.keys()]
+    const sessionRows = db.select().from(sessions).where(inArray(sessions.id, sessionIds)).all()
+    const sessionById = new Map(sessionRows.map(session => [session.id, session]))
+    const workspaceIds = [...new Set(sessionRows.map(session => session.workspaceId))]
+    const workspaceRows = db.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)).all()
+    const workspaceNameById = new Map(workspaceRows.map(workspace => [workspace.id, workspace.name]))
+
+    const hits: ThreadSearchHit[] = []
+    for (const [sessionId, entry] of sessionMap) {
+      const session = sessionById.get(sessionId)
+      if (!session) {
+        continue
+      }
+
+      const titleRanges = findMatches(session.title, tokens)
+      const snippets: ThreadSearchSnippet[] = entry.snippets.slice(0, snippetsPerHit).map(snippet => ({
+        text: snippet.text,
+        ranges: extractMarkRanges(snippet.text),
+        messageRole: 'assistant',
+        messageId: String(snippet.rowid),
+        createdAt: session.updatedAt,
+      }))
+
+      hits.push({
+        sessionId,
+        workspaceId: session.workspaceId,
+        workspaceName: workspaceNameById.get(session.workspaceId) ?? null,
+        sessionTitle: session.title,
+        titleRanges,
+        snippets,
+        matchCount: titleRanges.length + entry.snippets.length,
+        score: Math.abs(entry.bestRank) * 100 + titleRanges.length * TITLE_WEIGHT,
+        updatedAt: session.updatedAt,
+      })
+    }
+
+    hits.sort((left, right) => right.score - left.score || right.updatedAt - left.updatedAt)
+    return hits.slice(0, limit)
+  }
+
+  private searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
+    const tokens = this.tokenize(params.query)
+    if (tokens.length === 0) {
+      return []
+    }
+
+    const limit = params.limit ?? DEFAULT_LIMIT
+    const snippetsPerHit = params.snippetsPerHit ?? DEFAULT_SNIPPETS_PER_HIT
+    const db = this.dbAccessor.get()
+
+    const sessionRows = params.workspaceId
+      ? db.select().from(sessions).where(eq(sessions.workspaceId, params.workspaceId)).orderBy(desc(sessions.updatedAt)).all()
+      : db.select().from(sessions).orderBy(desc(sessions.updatedAt)).all()
+
+    if (sessionRows.length === 0) {
+      return []
+    }
+
+    const workspaceIds = [...new Set(sessionRows.map(session => session.workspaceId))]
+    const workspaceRows = db.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)).all()
+    const workspaceNameById = new Map(workspaceRows.map(workspace => [workspace.id, workspace.name]))
+    const sessionIds = sessionRows.map(session => session.id)
+    const messageRows = db.select().from(messages).where(inArray(messages.sessionId, sessionIds)).all()
+
+    const messagesBySession = new Map<string, typeof messageRows>()
+    for (const row of messageRows) {
+      const bucket = messagesBySession.get(row.sessionId) ?? []
+      bucket.push(row)
+      messagesBySession.set(row.sessionId, bucket)
+    }
+
+    const hits: ThreadSearchHit[] = []
+    for (const session of sessionRows) {
+      const titleRanges = findMatches(session.title, tokens)
+      const messageCandidates = messagesBySession.get(session.id) ?? []
+      const candidateSnippets: Array<ThreadSearchSnippet & { matchCount: number }> = []
+      let contentMatchCount = 0
+
+      for (const message of messageCandidates) {
+        const text = message.role === 'assistant'
+          ? this.extractAssistantTextByMessageId(message.id, message.content)
+          : message.content
+        if (!text) {
+          continue
+        }
+
+        const ranges = findMatches(text, tokens)
+        if (ranges.length === 0) {
+          continue
+        }
+        contentMatchCount += ranges.length
+        const snippet = extractSnippet(text, ranges)
+        candidateSnippets.push({
+          text: snippet.text,
+          ranges: snippet.ranges,
+          messageRole: message.role,
+          messageId: message.id,
+          createdAt: message.createdAt,
+          matchCount: ranges.length,
+        })
+      }
+
+      const matchCount = titleRanges.length + contentMatchCount
+      if (matchCount === 0) {
+        continue
+      }
+
+      candidateSnippets.sort((left, right) => {
+        if (right.matchCount !== left.matchCount) {
+          return right.matchCount - left.matchCount
+        }
+        return right.createdAt - left.createdAt
+      })
+
+      hits.push({
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        workspaceName: workspaceNameById.get(session.workspaceId) ?? null,
+        sessionTitle: session.title,
+        titleRanges,
+        snippets: candidateSnippets.slice(0, snippetsPerHit).map(({ matchCount: _ignored, ...snippet }) => snippet),
+        matchCount,
+        score: titleRanges.length * TITLE_WEIGHT + contentMatchCount * CONTENT_WEIGHT,
+        updatedAt: session.updatedAt,
+      })
+    }
+
+    hits.sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+      return right.updatedAt - left.updatedAt
+    })
+    return hits.slice(0, limit)
+  }
+
+  indexMessage(sessionId: string, sessionTitle: string, messageId: string, content: string): void {
+    if (!this.hasFtsTable()) {
+      return
+    }
+
+    const indexedValues = this.buildIndexedValues(sessionTitle, content)
+    if (!indexedValues) {
+      return
+    }
+
+    const db = this.dbAccessor.get()
+    const rowid = this.hashId(messageId)
+    db.run(sql`INSERT OR REPLACE INTO messages_fts(rowid, session_id, session_title, searchable_text)
+      VALUES (${rowid}, ${sessionId}, ${indexedValues.segmentedTitle}, ${indexedValues.segmentedText})`)
+  }
+
+  removeSessionFromIndex(sessionId: string): void {
+    if (!this.hasFtsTable()) {
+      return
+    }
+
+    const db = this.dbAccessor.get()
+    const rows = db.select({ id: messages.id }).from(messages).where(eq(messages.sessionId, sessionId)).all()
+    for (const row of rows) {
+      db.run(sql`DELETE FROM messages_fts WHERE rowid = ${this.hashId(row.id)}`)
+    }
+  }
+
+  rebuildIndex(): void {
+    if (!this.hasFtsTable()) {
+      return
+    }
+
+    const db = this.dbAccessor.get()
+    db.run(sql`DELETE FROM messages_fts`)
+
+    const sessionRows = db.select().from(sessions).all()
+    const sessionTitleById = new Map(sessionRows.map(session => [session.id, session.title]))
+    const messageRows = db.select().from(messages).where(eq(messages.status, 'complete')).all()
+
+    for (const message of messageRows) {
+      const title = sessionTitleById.get(message.sessionId) ?? ''
+      const content = message.role === 'assistant'
+        ? this.extractAssistantTextByMessageId(message.id, message.content)
+        : message.content
+      this.indexMessage(message.sessionId, title, message.id, content)
+    }
+  }
+
+  private extractAssistantTextByMessageId(messageId: string, fallbackContent: string): string {
+    const db = this.dbAccessor.get()
+    const run = db
+      .select({ id: backendRuns.id })
+      .from(backendRuns)
+      .where(eq(backendRuns.messageId, messageId))
+      .orderBy(desc(backendRuns.startedAt))
+      .get()
+
+    if (!run) {
+      return fallbackContent
+    }
+
+    const rows = db
+      .select({ eventType: backendTimelineEvents.eventType, payloadJson: backendTimelineEvents.payloadJson })
+      .from(backendTimelineEvents)
+      .where(eq(backendTimelineEvents.runId, run.id))
+      .orderBy(backendTimelineEvents.sequenceNumber)
+      .all()
+
+    const text = rows
+      .filter(row => row.eventType === 'assistant.text.delta')
+      .map(row => safeParseDelta(row.payloadJson))
+      .join('')
+
+    return text || fallbackContent
+  }
+
+  private hasFtsTable(): boolean {
+    const rows = this.dbAccessor.get().all<{ name: string }>(sql`
+      SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'messages_fts' LIMIT 1
+    `)
+    return rows.length > 0
+  }
+
+  private buildIndexedValues(sessionTitle: string, content: string): { segmentedTitle: string, segmentedText: string } | null {
+    if (!content.trim()) {
+      return null
+    }
+
+    const jieba = this.getJieba()
+    const segmentedText = jieba ? (jieba.cutForSearch(content, true) as string[]).join(' ') : content
+    const segmentedTitle = jieba ? (jieba.cutForSearch(sessionTitle, true) as string[]).join(' ') : sessionTitle
+    return { segmentedTitle, segmentedText }
+  }
+
+  private getJieba(): Jieba | null {
+    if (this.jieba) {
+      return this.jieba
+    }
+    try {
+      this.jieba = Jieba.withDict(dict)
+    }
+    catch {
+      this.jieba = null
+    }
+    return this.jieba
+  }
+
+  private hashId(id: string): number {
+    let hash = 0
+    for (let index = 0; index < id.length; index++) {
+      hash = ((hash << 5) - hash + id.charCodeAt(index)) | 0
+    }
+    return Math.abs(hash)
+  }
+}
+
+function safeParseDelta(payloadJson: string): string {
+  try {
+    const parsed = JSON.parse(payloadJson) as { delta?: string }
+    return typeof parsed.delta === 'string' ? parsed.delta : ''
+  }
+  catch {
+    return ''
+  }
+}
+
+function extractMarkRanges(html: string): MatchRange[] {
+  const ranges: MatchRange[] = []
+  let plainIndex = 0
+  let index = 0
+  while (index < html.length) {
+    if (html.startsWith('<mark>', index)) {
+      index += 6
+      const start = plainIndex
+      while (index < html.length && !html.startsWith('</mark>', index)) {
+        plainIndex++
+        index++
+      }
+      ranges.push({ start, end: plainIndex })
+      if (html.startsWith('</mark>', index)) {
+        index += 7
+      }
+    }
+    else {
+      plainIndex++
+      index++
+    }
+  }
+  return ranges
+}
+
+function findMatches(text: string, tokens: string[]): MatchRange[] {
+  if (!text) {
+    return []
+  }
+
+  const lowerText = text.toLowerCase()
+  const raw: MatchRange[] = []
+  for (const token of tokens) {
+    if (!token) {
+      continue
+    }
+    const lowerToken = token.toLowerCase()
+    let cursor = 0
+    while (true) {
+      const position = lowerText.indexOf(lowerToken, cursor)
+      if (position === -1) {
+        break
+      }
+      raw.push({ start: position, end: position + token.length })
+      cursor = position + Math.max(token.length, 1)
+    }
+  }
+
+  if (raw.length === 0) {
+    return []
+  }
+
+  raw.sort((left, right) => left.start - right.start || left.end - right.end)
+  const merged: MatchRange[] = []
+  for (const range of raw) {
+    const last = merged.at(-1)
+    if (last && range.start <= last.end) {
+      last.end = Math.max(last.end, range.end)
+    }
+    else {
+      merged.push({ start: range.start, end: range.end })
+    }
+  }
+  return merged
+}
+
+function extractSnippet(text: string, ranges: MatchRange[]): { text: string, ranges: MatchRange[] } {
+  if (ranges.length === 0) {
+    const truncated = text.length > SNIPPET_BEFORE + SNIPPET_AFTER
+      ? `${text.slice(0, SNIPPET_BEFORE + SNIPPET_AFTER)}${ELLIPSIS}`
+      : text
+    return { text: truncated, ranges: [] }
+  }
+
+  const first = ranges[0]
+  const rawStart = Math.max(0, first.start - SNIPPET_BEFORE)
+  const rawEnd = Math.min(text.length, first.start + SNIPPET_AFTER)
+  const leading = rawStart > 0 ? ELLIPSIS : ''
+  const trailing = rawEnd < text.length ? ELLIPSIS : ''
+  const snippetText = `${leading}${text.slice(rawStart, rawEnd)}${trailing}`
+  const offset = leading.length
+
+  const shifted: MatchRange[] = []
+  for (const range of ranges) {
+    if (range.end <= rawStart || range.start >= rawEnd) {
+      continue
+    }
+    const start = Math.max(range.start, rawStart) - rawStart + offset
+    const end = Math.min(range.end, rawEnd) - rawStart + offset
+    if (end > start) {
+      shifted.push({ start, end })
+    }
+  }
+
+  return { text: snippetText, ranges: shifted }
+}

@@ -21,3 +21,4 @@ Keep subdirectory inventories current when files are added or changed.
 - **draft-solutions/**: Working notes and proposal documents that are not yet formal execution plans.
 - **exec-plans/**: Living execution plans that guide complex implementation work, including the session await/resume runtime plan.
 - **for-users/**: End-user and integration-developer documentation set (quick start, user guide, integrations, CLI/API references, data model, troubleshooting).
+- **superpowers/**: Design specs and implementation plans produced via superpowers workflows.

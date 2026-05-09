@@ -638,22 +638,22 @@ const KIND_LABELS: Record<ProviderKind, string> = {
 
 function ProfileRow({ profile, onRemove, onToggle }: { profile: AgentProfile, onRemove: () => void, onToggle: () => void }) {
   const [status, setStatus] = useState<{ ok: boolean | null, text: string | null }>({ ok: null, text: null })
-  const [probing, setProbing] = useState(false)
+  const [checkingHealth, setCheckingHealth] = useState(false)
 
-  const probe = useCallback(async () => {
+  const runHealthCheck = useCallback(async () => {
     if (!ipc) {
       return
     }
-    setProbing(true)
+    setCheckingHealth(true)
     try {
-      const result = await ipc.agentRuntime.probeProfile(profile.id)
+      const result = await ipc.agentRuntime.healthCheckProfile(profile.id)
       setStatus({ ok: result.ok, text: result.ok ? 'Ready' : (result.errorText ?? 'Not available') })
     }
     catch {
-      setStatus({ ok: false, text: 'Probe failed' })
+      setStatus({ ok: false, text: 'Health check failed' })
     }
     finally {
-      setProbing(false)
+      setCheckingHealth(false)
     }
   }, [profile.id])
 
@@ -682,11 +682,11 @@ function ProfileRow({ profile, onRemove, onToggle }: { profile: AgentProfile, on
       </div>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="xs" onClick={probe} disabled={probing}>
-          {probing
+        <Button variant="ghost" size="xs" onClick={runHealthCheck} disabled={checkingHealth}>
+          {checkingHealth
             ? <Spinner className="size-3" />
             : <CircleDotIcon className="size-3" />}
-          Test
+          Check
         </Button>
         {/* Enable/disable toggle */}
         <button
@@ -848,11 +848,11 @@ export function AgentsSettings() {
       })
 
       try {
-        const result = await ipc.agentRuntime.probeProfile(profileId)
-        setAddStatus({ ok: result.ok, text: result.ok ? `${result.label} is ready` : (result.errorText ?? 'Probe failed') })
+        const result = await ipc.agentRuntime.healthCheckProfile(profileId)
+        setAddStatus({ ok: result.ok, text: result.ok ? `${result.label} is ready` : (result.errorText ?? 'Health check failed') })
       }
       catch {
-        setAddStatus({ ok: false, text: 'Saved, but probe failed' })
+        setAddStatus({ ok: false, text: 'Saved, but health check failed' })
       }
 
       await refreshProfiles()

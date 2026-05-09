@@ -13,7 +13,7 @@ import type {
   CancelTurnInput,
   ChatRuntimeProvider,
   ModelDescriptor,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -83,7 +83,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
 
   // ── AgentProvider ─────────────────────────────────────────────────────────
 
-  async probe(profile: AgentProfile): Promise<ProviderProbeResult> {
+  async checkHealth(profile: AgentProfile): Promise<ProviderHealthCheckResult> {
     const config = parseConfig(profile.configJson)
     if (!config.baseUrl) {
       return {

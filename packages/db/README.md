@@ -1,0 +1,16 @@
+<!--
+Output: DB schema package inventory for Cradle.
+Input: Drizzle schema modules and migration artifacts.
+Position: packages/db package index.
+-->
+
+# @cradle/db
+
+Schema and migration artifacts for Cradle server persistence.
+
+## Structure
+
+- **src/index.ts**: Public exports for schema and migration paths.
+- **src/paths.ts**: Helpers for resolving migration folder path.
+- **src/schema/**: Drizzle schema modules.
+- **drizzle/**: Drizzle migration SQL + meta.

@@ -1,0 +1,47 @@
+{
+  "name": "@cradle/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "nodemon",
+    "build": "vite build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@cradle/db": "workspace:*",
+    "@hono/node-server": "^1.19.9",
+    "@node-rs/jieba": "^2.0.1",
+    "@scalar/hono-api-reference": "^0.10.14",
+    "@tsuki-hono/common": "0.0.2",
+    "@tsuki-hono/core": "0.0.2",
+    "@tsuki-hono/openapi": "0.0.2",
+    "better-sqlite3": "^12.9.0",
+    "drizzle-orm": "^0.45.2",
+    "extract-zip": "^2.0.1",
+    "fast-glob": "^3.3.3",
+    "hono": "4.11.9",
+    "ignore": "^7.0.5",
+    "js-yaml": "^4.1.0",
+    "reflect-metadata": "^0.2.2",
+    "repomix": "^1.14.0",
+    "simple-git": "^3.28.0",
+    "tar": "^7.5.13",
+    "tsyringe": "^4.10.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.1",
+    "nodemon": "^3.1.9",
+    "unplugin-swc": "^1.5.9",
+    "vite": "^7.2.6",
+    "vite-node": "^6.0.0",
+    "vite-tsconfig-paths": "^4.3.2",
+    "vitest": "^4.1.4"
+  }
+}

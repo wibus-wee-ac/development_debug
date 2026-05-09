@@ -156,14 +156,14 @@ function AddProviderDialog({
 
       let shouldClose = false
       try {
-        const result = await ipc.agentRuntime.probeProfile(profileId)
+        const result = await ipc.agentRuntime.healthCheckProfile(profileId)
         setStatusOk(result.ok)
-        setStatusText(result.ok ? `${result.label} ready` : (result.errorText ?? 'Probe failed'))
+        setStatusText(result.ok ? `${result.label} ready` : (result.errorText ?? 'Health check failed'))
         shouldClose = result.ok
       }
       catch {
         setStatusOk(false)
-        setStatusText('Saved, but probe failed')
+        setStatusText('Saved, but health check failed')
       }
 
       onAdded()

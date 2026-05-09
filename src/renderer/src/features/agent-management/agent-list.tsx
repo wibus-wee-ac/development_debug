@@ -36,9 +36,9 @@ function AgentRow({
   onRemove: () => void
   onToggle: () => void
 }) {
-  const provider = profiles.find(p => p.id === agent.providerId)
+  const profile = profiles.find(p => p.id === agent.agentProfileId)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
-  const providerLabel = provider?.name || provider?.providerKind
+  const profileLabel = profile?.name || profile?.providerKind
 
   return (
     <div
@@ -67,9 +67,9 @@ function AgentRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-sm font-medium" data-testid={`agent-row-name-${agent.id}`}>{agent.name}</span>
-          {providerLabel && (
+          {profileLabel && (
             <span className="shrink-0 rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {providerLabel}
+              {profileLabel}
             </span>
           )}
           {agent.modelId && (
@@ -150,7 +150,7 @@ export function AgentList() {
     <div className="flex flex-col gap-1" data-testid="agent-list">
       <SettingsSectionHeader
         title="Agents"
-        description="Create AI agents with unique identities bound to your providers."
+        description="Create AI agents with unique identities bound to your runtime profiles."
         action={(
           <Button
             size="sm"

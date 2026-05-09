@@ -93,9 +93,9 @@ function AgentRow({
   onEdit: () => void
   onRemove: () => void
 }) {
-  const provider = profiles.find(p => p.id === agent.providerId)
+  const profile = profiles.find(p => p.id === agent.agentProfileId)
   const subtitle = [
-    provider?.name,
+    profile?.name,
     agent.modelId,
   ].filter(Boolean).join(' · ')
 

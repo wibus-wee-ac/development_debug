@@ -24,14 +24,14 @@ class MemoryCapabilityRecorder {
   readonly snapshots: Array<{
     agentProfileId: string
     providerKind: ProviderKind
-    source: 'probe' | 'session_start'
+    source: 'health_check' | 'session_start'
     capabilitiesJson: string
   }> = []
 
   recordCapabilitySnapshot(input: {
     agentProfileId: string
     providerKind: ProviderKind
-    source: 'probe' | 'session_start'
+    source: 'health_check' | 'session_start'
     capabilitiesJson: string
   }): void {
     this.snapshots.push(input)
@@ -67,11 +67,11 @@ class MemoryProfileStore implements AgentProfileStore {
 }
 
 class MemoryAuditStore implements RuntimeAuditStore {
-  readonly probeEvents: Array<{ profileId: string, providerKind: ProviderKind, subject: string, ok: boolean, errorText: string | null }> = []
+  readonly healthCheckEvents: Array<{ profileId: string, providerKind: ProviderKind, subject: string, ok: boolean, errorText: string | null }> = []
   readonly modelListEvents: Array<{ profileId: string, providerKind: ProviderKind, subject: string, count: number }> = []
 
-  recordProbe(input: { profileId: string, providerKind: ProviderKind, subject: string, ok: boolean, errorText: string | null }): void {
-    this.probeEvents.push(input)
+  recordHealthCheck(input: { profileId: string, providerKind: ProviderKind, subject: string, ok: boolean, errorText: string | null }): void {
+    this.healthCheckEvents.push(input)
   }
 
   recordModelList(input: { profileId: string, providerKind: ProviderKind, subject: string, count: number }): void {
@@ -82,7 +82,7 @@ class MemoryAuditStore implements RuntimeAuditStore {
 function createProvider(providerKind: ProviderKind): AgentProvider {
   return {
     providerKind,
-    probe: async profile => ({
+    checkHealth: async profile => ({
       ok: true,
       label: profile.name,
       version: '1.0.0',
@@ -138,7 +138,7 @@ describe('agentRuntimeApplicationService', () => {
     expect(service.listProfiles()).toEqual([profile])
   })
 
-  it('probes a profile through its registered provider and records audit', async () => {
+  it('runs a health check through the registered provider and records audit', async () => {
     const service = createAgentRuntimeApplicationService({
       profileStore,
       auditStore,
@@ -156,14 +156,14 @@ describe('agentRuntimeApplicationService', () => {
       credentialRef: null,
     })
 
-    await expect(service.probeProfile('test-profile')).resolves.toEqual({
+    await expect(service.healthCheckProfile('test-profile')).resolves.toEqual({
       ok: true,
       label: 'Test Profile',
       version: '1.0.0',
       details: { providerKind: 'openai-compatible' },
       errorText: null,
     })
-    expect(auditStore.probeEvents).toEqual([
+    expect(auditStore.healthCheckEvents).toEqual([
       {
         profileId: 'test-profile',
         providerKind: 'openai-compatible',
@@ -176,7 +176,7 @@ describe('agentRuntimeApplicationService', () => {
       {
         agentProfileId: 'test-profile',
         providerKind: 'openai-compatible',
-        source: 'probe',
+        source: 'health_check',
         capabilitiesJson: JSON.stringify({ providerKind: 'openai-compatible' }),
       },
     ])
@@ -246,6 +246,6 @@ describe('agentRuntimeApplicationService', () => {
       credentialStore,
     })
 
-    await expect(service.probeProfile('missing-profile')).rejects.toThrow('Agent profile not found: missing-profile')
+    await expect(service.healthCheckProfile('missing-profile')).rejects.toThrow('Agent profile not found: missing-profile')
   })
 })

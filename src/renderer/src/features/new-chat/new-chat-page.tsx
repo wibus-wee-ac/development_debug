@@ -160,7 +160,7 @@ export function NewChatPage() {
     () => agents.find(a => a.id === selectedAgentId) ?? null,
     [agents, selectedAgentId],
   )
-  const effectiveProfileId = selectedAgent?.providerId ?? selectedProfileId
+  const effectiveProfileId = selectedAgent?.agentProfileId ?? selectedProfileId
 
   const { models, isLoading: isLoadingModels } = useAgentModels(effectiveProfileId)
   const { sessions } = useSessions(selectedWorkspaceId)

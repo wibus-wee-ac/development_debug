@@ -1,5 +1,5 @@
 // Input: IpcService base plus feature-owned agent runtime application service
-// Output: AgentRuntimeService IPC adapter for unified agent profiles, probes, models, and credentials
+// Output: AgentRuntimeService IPC adapter for unified agent profiles, health checks, models, and credentials
 // Position: App-level IPC adapter for the agent-runtime feature
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
@@ -24,7 +24,7 @@ import type {
 import type {
   AgentProfile,
   ModelDescriptor,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
 } from '../../agent-runtime/runtime-provider-types'
 import { decryptSecret, encryptSecret } from '../../storage/safe-storage'
 
@@ -73,8 +73,8 @@ export class AgentRuntimeService extends IpcService {
   }
 
   @IpcMethod()
-  async probeProfile(id: string): Promise<ProviderProbeResult> {
-    return this.appService.probeProfile(id)
+  async healthCheckProfile(id: string): Promise<ProviderHealthCheckResult> {
+    return this.appService.healthCheckProfile(id)
   }
 
   @IpcMethod()

@@ -1,6 +1,6 @@
 // Input: IpcService base, drizzle DB, agents table schema, AgentRuntimeService for model listing
 // Output: AgentService IPC handler for Agent identity CRUD
-// Position: Main-process service for the Agent identity layer (bound to Providers via providerId)
+// Position: Main-process service for the Agent identity layer (bound to runtime profiles via agentProfileId)
 
 import { randomUUID } from 'node:crypto'
 
@@ -18,7 +18,7 @@ export interface CreateAgentInput {
   description?: string | null
   avatarStyle: string
   avatarSeed: string
-  providerId: string
+  agentProfileId: string
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   configJson?: string
@@ -30,7 +30,7 @@ export interface UpdateAgentInput {
   avatarStyle?: string
   avatarSeed?: string
   avatarUrl?: string | null
-  providerId?: string
+  agentProfileId?: string
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   configJson?: string
@@ -73,7 +73,7 @@ export class AgentService extends IpcService {
         avatarUrl,
         avatarStyle: input.avatarStyle,
         avatarSeed: input.avatarSeed,
-        providerId: input.providerId,
+        agentProfileId: input.agentProfileId,
         modelId: input.modelId ?? null,
         thinkingEffort: input.thinkingEffort ?? 'auto',
         configJson: input.configJson ?? '{}',
@@ -118,8 +118,8 @@ export class AgentService extends IpcService {
     if (avatarUrl !== existing.avatarUrl) {
       set.avatarUrl = avatarUrl
     }
-    if (patch.providerId !== undefined) {
-      set.providerId = patch.providerId
+    if (patch.agentProfileId !== undefined) {
+      set.agentProfileId = patch.agentProfileId
     }
     if (patch.modelId !== undefined) {
       set.modelId = patch.modelId

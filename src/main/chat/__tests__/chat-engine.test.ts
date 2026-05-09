@@ -724,7 +724,7 @@ describe('chatEngine', () => {
       avatarUrl: null,
       avatarStyle: 'bottts-neutral',
       avatarSeed: 'planner',
-      providerId: 'profile-1',
+      agentProfileId: 'profile-1',
       modelId: null,
       thinkingEffort: 'auto',
       configJson: JSON.stringify({ systemPrompt: '只保留 agent prompt' }),

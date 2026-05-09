@@ -1,6 +1,6 @@
 // Input: agent profile store, runtime audit store, provider catalog, and credential store dependencies
 // Output: Agent runtime application service plus DB-backed stores for profiles, credentials, audit logging, and capability capture
-// Position: Feature-owned coordination for profile CRUD, provider probe/models, credential workflows, and probe capability snapshots
+// Position: Feature-owned coordination for profile CRUD, provider health checks/model discovery, credential workflows, and health-check capability snapshots
 
 import { randomUUID } from 'node:crypto'
 
@@ -30,7 +30,7 @@ import type {
   AgentProfile,
   ModelDescriptor,
   ProviderKind,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
 } from './runtime-provider-types'
 import type { BackendCapabilityRecorder } from '../backend-control-plane/backend-control-plane'
 
@@ -51,7 +51,7 @@ export interface AgentRuntimeCredentialStore {
 }
 
 export interface RuntimeAuditStore {
-  recordProbe: (input: {
+  recordHealthCheck: (input: {
     profileId: string
     providerKind: ProviderKind
     subject: string
@@ -71,7 +71,7 @@ export interface AgentRuntimeApplicationService {
   getProfile: (id: string) => AgentProfile | undefined
   upsertProfile: (input: EditableAgentProfile) => AgentProfile
   removeProfile: (id: string) => void
-  probeProfile: (id: string) => Promise<ProviderProbeResult>
+  healthCheckProfile: (id: string) => Promise<ProviderHealthCheckResult>
   listModels: (id: string) => Promise<ModelDescriptor[]>
   saveCredential: (input: SaveCredentialInput) => CredentialMetadata
   removeCredential: (id: string) => void
@@ -119,7 +119,7 @@ export function createDbAgentProfileStore(
           .all()
           .map(row => row.id)
 
-        tx.delete(agents).where(eq(agents.providerId, id)).run()
+        tx.delete(agents).where(eq(agents.agentProfileId, id)).run()
         tx.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
         tx.delete(backendCapabilitySnapshots).where(eq(backendCapabilitySnapshots.agentProfileId, id)).run()
         tx.delete(runtimeAuditLog).where(eq(runtimeAuditLog.agentProfileId, id)).run()
@@ -145,7 +145,7 @@ export function createDbCredentialStore(
       db.insert(agentCredentials)
         .values({
           id,
-          providerKind: input.providerKind,
+          kind: input.providerKind,
           label: input.label,
           encryptedSecret,
           createdAt: now,
@@ -176,7 +176,7 @@ export function createDbCredentialStore(
         const plainSecret = cipher.decrypt(row.encryptedSecret)
         return {
           id: row.id,
-          providerKind: row.providerKind,
+          providerKind: row.kind as ProviderKind,
           label: row.label,
           maskedSecret: maskSecret(plainSecret),
           createdAt: row.createdAt,
@@ -191,11 +191,11 @@ export function createDbRuntimeAuditStore(
   db: BetterSQLite3Database<typeof schema>,
 ): RuntimeAuditStore {
   return {
-    recordProbe({ profileId, providerKind, subject, ok, errorText }) {
+    recordHealthCheck({ profileId, providerKind, subject, ok, errorText }) {
       db.insert(runtimeAuditLog).values({
         agentProfileId: profileId,
         providerKind,
-        action: 'probe',
+        action: 'healthCheck',
         subject,
         details: JSON.stringify({ ok, errorText }),
       }).run()
@@ -249,10 +249,10 @@ export function createAgentRuntimeApplicationService(
     deps.profileStore.removeProfile(id)
   }
 
-  const probeProfile: AgentRuntimeApplicationService['probeProfile'] = async (id) => {
+  const healthCheckProfile: AgentRuntimeApplicationService['healthCheckProfile'] = async (id) => {
     const profile = getProfileOrThrow(id)
-    const result = await catalog.get(profile.providerKind).probe(profile)
-    deps.auditStore.recordProbe({
+    const result = await catalog.get(profile.providerKind).checkHealth(profile)
+    deps.auditStore.recordHealthCheck({
       profileId: profile.id,
       providerKind: profile.providerKind,
       subject: profile.name,
@@ -262,7 +262,7 @@ export function createAgentRuntimeApplicationService(
     deps.capabilityRecorder?.recordCapabilitySnapshot({
       agentProfileId: profile.id,
       providerKind: profile.providerKind,
-      source: 'probe',
+      source: 'health_check',
       capabilitiesJson: JSON.stringify(result.details ?? {}),
     })
     return result
@@ -297,7 +297,7 @@ export function createAgentRuntimeApplicationService(
     getProfile,
     upsertProfile,
     removeProfile,
-    probeProfile,
+    healthCheckProfile,
     listModels,
     saveCredential,
     removeCredential,

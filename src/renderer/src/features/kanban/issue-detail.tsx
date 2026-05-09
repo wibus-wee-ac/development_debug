@@ -351,7 +351,7 @@ function AgentDelegatePicker({
   const isFinished = ['completed', 'failed', 'stopped'].includes(latestSession?.status ?? '')
   const phase = latestSession ? SESSION_PHASE[latestSession.status] ?? SESSION_PHASE.created : null
 
-  const currentAgent = enabledAgents.find(a => a.providerId === delegateAgentId)
+  const currentAgent = enabledAgents.find(a => a.agentProfileId === delegateAgentId)
   const currentProfile = currentAgent ?? enabledProfiles.find(p => p.id === delegateAgentId)
 
   const selectValue = delegateAgentId
@@ -366,7 +366,7 @@ function AgentDelegatePicker({
           if (!val) { onUndelegate(); return }
           if (val.startsWith('agent:')) {
             const a = enabledAgents.find(x => x.id === val.slice(6))
-            if (a) onDelegate(a.providerId, a.id)
+            if (a) onDelegate(a.agentProfileId, a.id)
           }
           else if (val.startsWith('profile:')) {
             onDelegate(val.slice(8))

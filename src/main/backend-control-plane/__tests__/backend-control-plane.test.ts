@@ -216,17 +216,17 @@ describe('backendControlPlaneService', () => {
     )
   })
 
-  it('records probe capability snapshots without needing a chat turn', () => {
+  it('records health-check capability snapshots without needing a chat turn', () => {
     const service = createBackendControlPlaneService({ store })
 
     const snapshot = service.recordCapabilitySnapshot({
       agentProfileId: 'profile-1',
       providerKind: 'acp-chat',
-      source: 'probe',
+      source: 'health_check',
       capabilitiesJson: '{"models":["claude-4"]}',
     })
 
-    expect(snapshot.source).toBe('probe')
+    expect(snapshot.source).toBe('health_check')
     expect(store.capabilitySnapshots).toEqual([
       expect.objectContaining({
         agentProfileId: 'profile-1',

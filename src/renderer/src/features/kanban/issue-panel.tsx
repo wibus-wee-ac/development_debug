@@ -1032,7 +1032,7 @@ export function IssueProperties({
   const currentPriority = PRIORITY_OPTIONS.find((o) => o.value === priority)
   const enabledAgents = agents.filter((a) => a.enabled)
   const enabledProfiles = agentProfiles.filter((p) => p.enabled)
-  const currentDelegateAgent = enabledAgents.find((a) => a.providerId === issue.delegateAgentId)
+  const currentDelegateAgent = enabledAgents.find((a) => a.agentProfileId === issue.delegateAgentId)
   const currentDelegate =
     currentDelegateAgent ?? enabledProfiles.find((p) => p.id === issue.delegateAgentId)
   const activeSession = agentSessions.find((s) => s.status === 'active' || s.status === 'created')
@@ -1149,9 +1149,9 @@ export function IssueProperties({
                 patch({ assigneeKind: 'user', assigneeId: '__self__' })
               } else if (val.startsWith('agent:')) {
                 const agentId = val.slice(6)
-                // Resolve Agent identity → Provider ID
+                // Resolve Agent identity → Agent Profile ID
                 const agentEntity = enabledAgents.find((a) => a.id === agentId)
-                const profileId = agentEntity ? agentEntity.providerId : agentId
+                const profileId = agentEntity ? agentEntity.agentProfileId : agentId
                 patch({ assigneeKind: null, assigneeId: null })
                 delegateIssue.mutate({ issueId, agentProfileId: profileId })
               }

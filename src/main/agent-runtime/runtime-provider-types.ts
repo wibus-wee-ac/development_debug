@@ -22,7 +22,7 @@ export interface AgentProfile {
   updatedAt: number
 }
 
-export interface ProviderProbeResult {
+export interface ProviderHealthCheckResult {
   ok: boolean
   label: string
   version: string | null
@@ -100,7 +100,7 @@ export interface TerminalSessionResult {
 
 export interface AgentProvider {
   readonly providerKind: ProviderKind
-  probe: (profile: AgentProfile) => Promise<ProviderProbeResult>
+  checkHealth: (profile: AgentProfile) => Promise<ProviderHealthCheckResult>
   listModels: (profile: AgentProfile) => Promise<ModelDescriptor[]>
 }
 

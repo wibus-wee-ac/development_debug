@@ -24,7 +24,7 @@ import type {
   ChatRuntimeProvider,
   ModelDescriptor,
   ProviderKind,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -50,9 +50,9 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
 
   constructor(private readonly deps: ClaudeAgentProviderDeps) {}
 
-  // ── Probe / ListModels ────────────────────────────────────────────────────
+  // ── Health Check / ListModels ─────────────────────────────────────────────
 
-  async probe(profile: AgentProfile): Promise<ProviderProbeResult> {
+  async checkHealth(profile: AgentProfile): Promise<ProviderHealthCheckResult> {
     const config = parseConfigWith(profile.configJson, ClaudeAgentConfigSchema)
     const apiKey = resolveApiKey(profile, config.apiKey, 'ANTHROPIC_API_KEY', this.deps)
     if (!apiKey) {

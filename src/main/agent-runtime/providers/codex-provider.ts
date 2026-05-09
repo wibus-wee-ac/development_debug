@@ -28,7 +28,7 @@ import type {
   ChatRuntimeProvider,
   ModelDescriptor,
   ProviderKind,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -64,9 +64,9 @@ export class CodexProvider implements ChatRuntimeProvider {
     this.observability = deps.observability ?? noopObservabilitySink
   }
 
-  // ── Probe / ListModels ────────────────────────────────────────────────────
+  // ── Health Check / ListModels ─────────────────────────────────────────────
 
-  async probe(profile: AgentProfile): Promise<ProviderProbeResult> {
+  async checkHealth(profile: AgentProfile): Promise<ProviderHealthCheckResult> {
     const config = parseConfigWith(profile.configJson, CodexConfigSchema)
     const apiKey = resolveApiKey(profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     if (!apiKey) {

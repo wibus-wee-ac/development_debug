@@ -12,7 +12,7 @@ import { coordinateTurn } from '../turn-coordinator'
 function createMockProvider(events: TimelineInputEvent[]): ChatRuntimeProvider {
   return {
     providerKind: 'openai-compatible',
-    probe: async () => ({ ok: true, label: 'mock', version: '1', details: {}, errorText: null }),
+    checkHealth: async () => ({ ok: true, label: 'mock', version: '1', details: {}, errorText: null }),
     listModels: async () => [],
     startChatSession: async () => ({
       id: 'sess-1',

@@ -229,8 +229,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "provider_id": {
-          "name": "provider_id",
+        "agent_profile_id": {
+          "name": "agent_profile_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -286,12 +286,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "agents_provider_id_agent_profiles_id_fk": {
-          "name": "agents_provider_id_agent_profiles_id_fk",
+        "agents_agent_profile_id_agent_profiles_id_fk": {
+          "name": "agents_agent_profile_id_agent_profiles_id_fk",
           "tableFrom": "agents",
           "tableTo": "agent_profiles",
           "columnsFrom": [
-            "provider_id"
+            "agent_profile_id"
           ],
           "columnsTo": [
             "id"

@@ -6,7 +6,7 @@ import { PtyManager, ptyManager } from '../../pty/pty-manager'
 import type {
   AgentProfile,
   ModelDescriptor,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
   StartTerminalSessionInput,
   StopTerminalSessionInput,
   TerminalRuntimeProvider,
@@ -42,7 +42,7 @@ export class CliTuiProvider implements TerminalRuntimeProvider {
 
   constructor(private readonly ptyManager: PtyManager) {}
 
-  async probe(profile: AgentProfile): Promise<ProviderProbeResult> {
+  async checkHealth(profile: AgentProfile): Promise<ProviderHealthCheckResult> {
     const config = parseConfig(profile.configJson)
     if (!config.executable) {
       return {

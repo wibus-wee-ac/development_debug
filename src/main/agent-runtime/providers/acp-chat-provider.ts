@@ -10,7 +10,7 @@ import type {
   CancelTurnInput,
   ChatRuntimeProvider,
   ModelDescriptor,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -65,7 +65,7 @@ export class AcpChatProvider implements ChatRuntimeProvider {
     return this.connMgr.lastUsage ?? null
   }
 
-  async probe(profile: AgentProfile): Promise<ProviderProbeResult> {
+  async checkHealth(profile: AgentProfile): Promise<ProviderHealthCheckResult> {
     const config = parseAcpConfig(profile.configJson)
     const cmd = config.cmd ?? config.packageName ?? ''
     if (!cmd) {
@@ -88,7 +88,7 @@ export class AcpChatProvider implements ChatRuntimeProvider {
 
   async listModels(profile: AgentProfile): Promise<ModelDescriptor[]> {
     // ACP models are dynamic and only advertised after session creation;
-    // ensure the agent process is running before starting a probe session.
+    // ensure the agent process is running before starting a health-check session.
     await this.ensureConnected(profile)
     const resp = await this.connMgr.newSession(profile.id, '/')
     const availableModels = resp.models?.availableModels ?? []

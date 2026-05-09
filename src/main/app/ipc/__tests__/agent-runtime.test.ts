@@ -10,7 +10,7 @@ import type {
 import type { CredentialMetadata } from '../../../agent-runtime/credential-vault'
 import type {
   ModelDescriptor,
-  ProviderProbeResult,
+  ProviderHealthCheckResult,
 } from '../../../agent-runtime/runtime-provider-types'
 import { AgentRuntimeService } from '../agent-runtime'
 
@@ -37,7 +37,7 @@ describe('agentRuntimeService', () => {
   let service: AgentRuntimeService
 
   beforeEach(() => {
-    const probeResult: ProviderProbeResult = {
+    const healthCheckResult: ProviderHealthCheckResult = {
       ok: true,
       label: 'Test Profile',
       version: '1.0.0',
@@ -64,7 +64,7 @@ describe('agentRuntimeService', () => {
       getProfile: vi.fn(() => ({ id: 'test-profile' } as never)),
       upsertProfile: vi.fn(input => ({ ...input, createdAt: 100, updatedAt: 100 } as never)),
       removeProfile: vi.fn(),
-      probeProfile: vi.fn(async () => probeResult),
+      healthCheckProfile: vi.fn(async () => healthCheckResult),
       listModels: vi.fn(async () => models),
       saveCredential: vi.fn(() => credentials[0]),
       removeCredential: vi.fn(),
@@ -102,7 +102,7 @@ describe('agentRuntimeService', () => {
   })
 
   it('forwards probe, model listing, and credential calls to the feature application service', async () => {
-    await expect(service.probeProfile('test-profile')).resolves.toEqual({
+    await expect(service.healthCheckProfile('test-profile')).resolves.toEqual({
       ok: true,
       label: 'Test Profile',
       version: '1.0.0',
@@ -132,7 +132,7 @@ describe('agentRuntimeService', () => {
       createdAt: 100,
       updatedAt: 100,
     }])
-    expect(appService.probeProfile).toHaveBeenCalledWith('test-profile')
+    expect(appService.healthCheckProfile).toHaveBeenCalledWith('test-profile')
     expect(appService.listModels).toHaveBeenCalledWith('test-profile')
     expect(appService.saveCredential).toHaveBeenCalledWith({
       providerKind: 'openai-compatible',

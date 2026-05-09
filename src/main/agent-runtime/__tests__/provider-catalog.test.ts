@@ -9,7 +9,7 @@ import type { AgentProvider } from '../runtime-provider-types'
 
 const acpProvider: AgentProvider = {
   providerKind: 'acp-chat',
-  probe: async () => ({
+  checkHealth: async () => ({
     ok: true,
     label: 'ACP',
     version: null,
