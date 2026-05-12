@@ -22,10 +22,12 @@ import {
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
 
-import type { TimelineInputEvent, TokenUsage } from '../../runtime-provider-types'
+import type { UIMessageChunk } from 'ai'
+
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type { AcpConnectionRecord } from './config'
 import type { AcpProcessManager } from './process-manager'
-import { AcpTimelineMapper } from './timeline-mapper'
+import { AcpChunkMapper } from './timeline-mapper'
 
 export interface AcpSessionState {
   models: SessionModelState | null
@@ -47,16 +49,16 @@ export interface AcpPermissionResponse {
 export type AcpPermissionHandler = (request: AcpPermissionRequest) => Promise<AcpPermissionResponse>
 
 class ChunkQueue {
-  private buffered: TimelineInputEvent[] = []
+  private buffered: UIMessageChunk[] = []
   private waiters: Array<{
-    resolve: (value: TimelineInputEvent | null) => void
+    resolve: (value: UIMessageChunk | null) => void
     reject: (error: Error) => void
   }> = []
 
   private closed = false
   private failure: Error | null = null
 
-  push(chunk: TimelineInputEvent): void {
+  push(chunk: UIMessageChunk): void {
     if (this.closed) {
       return
     }
@@ -89,7 +91,7 @@ class ChunkQueue {
     }
   }
 
-  async next(): Promise<TimelineInputEvent | null> {
+  async next(): Promise<UIMessageChunk | null> {
     if (this.buffered.length > 0) {
       return this.buffered.shift()!
     }
@@ -99,14 +101,14 @@ class ChunkQueue {
     if (this.closed) {
       return null
     }
-    return new Promise<TimelineInputEvent | null>((resolve, reject) => {
+    return new Promise<UIMessageChunk | null>((resolve, reject) => {
       this.waiters.push({ resolve, reject })
     })
   }
 }
 
 interface SessionChannel {
-  mapper: AcpTimelineMapper
+  mapper: AcpChunkMapper
   queue: ChunkQueue
   closedBy: { kind: 'cancelled' } | { kind: 'disconnected', error: Error } | null
 }
@@ -225,9 +227,9 @@ export class AcpConnectionManager {
     }
   }
 
-  async* prompt(agentId: string, sessionId: string, message: string): AsyncGenerator<TimelineInputEvent, void, void> {
+  async* prompt(agentId: string, sessionId: string, message: string): AsyncGenerator<UIMessageChunk, void, void> {
     const conn = this.getConnection(agentId)
-    const mapper = new AcpTimelineMapper()
+    const mapper = new AcpChunkMapper()
     const queue = new ChunkQueue()
     const channel: SessionChannel = { mapper, queue, closedBy: null }
     conn.channels.set(sessionId, channel)

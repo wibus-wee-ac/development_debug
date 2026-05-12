@@ -11,6 +11,7 @@ import {
   usageLogs,
   workspaces,
 } from '@cradle/db'
+import type { UIMessageChunk } from 'ai'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
@@ -20,21 +21,21 @@ import * as Observability from '../observability/service'
 import * as Profiles from '../profiles/service'
 import type { ProviderKind } from '../providers/types'
 import { getProviderRegistry } from './chat-runtime-provider-registry'
-import type { ChatRuntimeProvider, RuntimeSession, TimelineInputEvent, TokenUsage } from './runtime-provider-types'
-import type { StoredTimelineEvent } from './timeline-events'
-import { decodeTimelineInputEvent, encodeTimelineInputEvent, TIMELINE_SCHEMA_VERSION } from './timeline-events'
+import type { ChatRuntimeProvider, RuntimeSession, TokenUsage } from './runtime-provider-types'
+import type { StoredChunk } from './timeline-events'
+import { decodeChunk, encodeChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
 
 // ── types ──
 
 export type ChatMessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
-export interface ChatTimelineGroup {
+export interface ChatChunkGroup {
   messageId: string
   role: 'user' | 'assistant'
   userText?: string
   status: ChatMessageStatus
   errorText?: string
-  events: StoredTimelineEvent[]
+  chunks: StoredChunk[]
 }
 
 interface SessionRunContext {
@@ -53,7 +54,7 @@ interface ActiveRun {
   modelId: string | null
 }
 
-type RunSubscriber = (event: StoredTimelineEvent, terminal: boolean) => void
+type RunSubscriber = (stored: StoredChunk, terminal: boolean) => void
 
 interface SerializedChatError {
   text: string
@@ -203,11 +204,11 @@ export function getRun(runId: string): BackendRun | undefined {
   return db().select().from(backendRuns).where(eq(backendRuns.id, runId)).get()
 }
 
-function persistEvent(input: {
+function persistChunk(input: {
   sessionId: string
   runId: string
   messageId: string
-  event: TimelineInputEvent
+  chunk: UIMessageChunk
   messageStatus: ChatMessageStatus
   errorText: string | null
   runCompletion?: {
@@ -215,10 +216,10 @@ function persistEvent(input: {
     stopReason: string | null
     errorText: string | null
   }
-}): StoredTimelineEvent {
+}): StoredChunk {
   return db().transaction((tx) => {
     const now = nowUnix()
-    const encoded = encodeTimelineInputEvent(input.event)
+    const encoded = encodeChunk(input.chunk)
     const last = tx.select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, input.runId)).orderBy(desc(backendTimelineEvents.sequenceNumber)).get()
     const sequenceNumber = (last?.sequenceNumber ?? -1) + 1
 
@@ -229,7 +230,7 @@ function persistEvent(input: {
         chatSessionId: input.sessionId,
         sequenceNumber,
         eventType: encoded.eventType,
-        schemaVersion: TIMELINE_SCHEMA_VERSION,
+        schemaVersion: encoded.schemaVersion,
         payloadJson: encoded.payloadJson,
         sourceJson: encoded.sourceJson,
         createdAt: now,
@@ -237,10 +238,12 @@ function persistEvent(input: {
       .returning()
       .get()
 
+    // Accumulate text content for messages table
     const currentMessage = tx.select().from(messages).where(eq(messages.id, input.messageId)).get()
-    const nextContent = input.event.type === 'assistant.text.delta'
-      ? `${currentMessage?.content ?? ''}${input.event.delta}`
-      : currentMessage?.content ?? ''
+    let nextContent = currentMessage?.content ?? ''
+    if (input.chunk.type === 'text-delta') {
+      nextContent += input.chunk.delta
+    }
 
     tx.update(messages)
       .set({
@@ -276,11 +279,7 @@ function persistEvent(input: {
       sequenceNumber: row.sequenceNumber,
       schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
       createdAt: row.createdAt,
-      ...decodeTimelineInputEvent({
-        eventType: row.eventType,
-        payloadJson: row.payloadJson,
-        sourceJson: row.sourceJson,
-      }),
+      chunk: decodeChunk({ payloadJson: row.payloadJson }),
     }
   })
 }
@@ -299,7 +298,7 @@ function insertUsage(input: { sessionId: string, messageId: string, agentProfile
   }).run()
 }
 
-function listRunEvents(runId: string): StoredTimelineEvent[] {
+function listRunChunks(runId: string): StoredChunk[] {
   return db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, runId)).orderBy(backendTimelineEvents.sequenceNumber).all().map(row => ({
     id: row.id,
     runId: row.runId,
@@ -307,11 +306,7 @@ function listRunEvents(runId: string): StoredTimelineEvent[] {
     sequenceNumber: row.sequenceNumber,
     schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
     createdAt: row.createdAt,
-    ...decodeTimelineInputEvent({
-      eventType: row.eventType,
-      payloadJson: row.payloadJson,
-      sourceJson: row.sourceJson,
-    }),
+    chunk: decodeChunk({ payloadJson: row.payloadJson }),
   }))
 }
 
@@ -351,8 +346,8 @@ function readAssistantText(messageId: string): string {
   }
   const rows = db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
   return rows.map((row) => {
-    const event = decodeTimelineInputEvent({ eventType: row.eventType, payloadJson: row.payloadJson, sourceJson: row.sourceJson })
-    return event.type === 'assistant.text.delta' ? event.delta : ''
+    const chunk = decodeChunk({ payloadJson: row.payloadJson })
+    return chunk.type === 'text-delta' ? chunk.delta : ''
   }).join('')
 }
 
@@ -371,7 +366,7 @@ function readAgentSystemPrompt(configJson: string | null | undefined): string | 
 
 // ── public service functions ──
 
-export function getTimeline(sessionId: string): ChatTimelineGroup[] {
+export function getMessageGroups(sessionId: string): ChatChunkGroup[] {
   const context = getSessionRunContext(sessionId)
   if (!context) {
     throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId } })
@@ -392,12 +387,12 @@ export function getTimeline(sessionId: string): ChatTimelineGroup[] {
   }
 
   const runIds = [...new Set(Array.from(latestRunByMessageId.values(), run => run.id))]
-  const eventsByRunId = new Map<string, StoredTimelineEvent[]>()
+  const chunksByRunId = new Map<string, StoredChunk[]>()
 
   if (runIds.length > 0) {
-    const eventRows = db().select().from(backendTimelineEvents).where(inArray(backendTimelineEvents.runId, runIds)).orderBy(backendTimelineEvents.runId, backendTimelineEvents.sequenceNumber).all()
-    for (const row of eventRows) {
-      const bucket = eventsByRunId.get(row.runId) ?? []
+    const chunkRows = db().select().from(backendTimelineEvents).where(inArray(backendTimelineEvents.runId, runIds)).orderBy(backendTimelineEvents.runId, backendTimelineEvents.sequenceNumber).all()
+    for (const row of chunkRows) {
+      const bucket = chunksByRunId.get(row.runId) ?? []
       bucket.push({
         id: row.id,
         runId: row.runId,
@@ -405,13 +400,9 @@ export function getTimeline(sessionId: string): ChatTimelineGroup[] {
         sequenceNumber: row.sequenceNumber,
         schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
         createdAt: row.createdAt,
-        ...decodeTimelineInputEvent({
-          eventType: row.eventType,
-          payloadJson: row.payloadJson,
-          sourceJson: row.sourceJson,
-        }),
+        chunk: decodeChunk({ payloadJson: row.payloadJson }),
       })
-      eventsByRunId.set(row.runId, bucket)
+      chunksByRunId.set(row.runId, bucket)
     }
   }
 
@@ -423,7 +414,7 @@ export function getTimeline(sessionId: string): ChatTimelineGroup[] {
         userText: row.content,
         status: row.status as ChatMessageStatus,
         errorText: row.errorText ?? undefined,
-        events: [],
+        chunks: [],
       }
     }
     const runId = latestRunByMessageId.get(row.id)?.id
@@ -432,7 +423,7 @@ export function getTimeline(sessionId: string): ChatTimelineGroup[] {
       role: 'assistant' as const,
       status: row.status as ChatMessageStatus,
       errorText: row.errorText ?? undefined,
-      events: runId ? eventsByRunId.get(runId) ?? [] : [],
+      chunks: runId ? chunksByRunId.get(runId) ?? [] : [],
     }
   })
 }
@@ -522,6 +513,20 @@ export async function createRun(input: { sessionId: string, text: string, modelI
   }
 }
 
+/**
+ * Single endpoint: create run + return SSE stream.
+ * POST /chat/sessions/:sessionId/response → SSE
+ */
+export async function streamResponse(input: {
+  sessionId: string
+  text: string
+  modelId?: string
+  thinkingEffort?: 'low' | 'medium' | 'high'
+}): Promise<ReadableStream<Uint8Array>> {
+  const result = await createRun(input)
+  return openRunStream(result.runId)
+}
+
 export async function abortRun(runId: string): Promise<void> {
   const active = activeRuns.get(runId)
   if (!active) {
@@ -537,6 +542,18 @@ export async function abortRun(runId: string): Promise<void> {
   }
 
   await active.provider?.cancelTurn({ runtimeSession: active.runtimeSession, profile: context.profile })
+}
+
+/**
+ * Cancel the active run for a session (if any).
+ * POST /chat/sessions/:sessionId/cancel
+ */
+export async function cancelSession(sessionId: string): Promise<void> {
+  const runId = activeRunIdsBySession.get(sessionId)
+  if (!runId) {
+    return // No active run — nothing to cancel
+  }
+  await abortRun(runId)
 }
 
 export async function abortAllRuns(): Promise<void> {
@@ -565,17 +582,17 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
     start: (controller) => {
       let unsubscribe = () => {}
 
-      const writeEvent = (event: StoredTimelineEvent, terminal: boolean) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+      const writeChunk = (stored: StoredChunk, terminal: boolean) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(stored)}\n\n`))
         if (terminal) {
           unsubscribe()
           controller.close()
         }
       }
 
-      for (const event of listRunEvents(runId)) {
-        const terminal = event.type === 'run.completed' || event.type === 'run.aborted' || event.type === 'run.failed'
-        writeEvent(event, terminal)
+      for (const stored of listRunChunks(runId)) {
+        const terminal = stored.chunk.type === 'finish' || stored.chunk.type === 'abort' || stored.chunk.type === 'error'
+        writeChunk(stored, terminal)
         if (terminal) {
           return
         }
@@ -587,7 +604,7 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
       }
 
       const subscribers = runSubscribers.get(runId) ?? new Set<RunSubscriber>()
-      const subscriber: RunSubscriber = (event, terminal) => writeEvent(event, terminal)
+      const subscriber: RunSubscriber = (stored, terminal) => writeChunk(stored, terminal)
       subscribers.add(subscriber)
       runSubscribers.set(runId, subscribers)
 
@@ -630,18 +647,12 @@ async function executeRun(activeRun: ActiveRun, input: {
     fileChangeEventCount: 0,
   }
   let failurePayload: SerializedChatError['payload'] | undefined
-  let finalEvent: TimelineInputEvent = {
-    type: 'run.completed',
-    source: { backend: activeRun.runtimeSession.providerKind, eventType: 'chat.turn.completed' },
-  }
+  let finalChunk: UIMessageChunk = { type: 'finish', finishReason: 'stop' }
 
   try {
-    publish(persist(activeRun, {
-      type: 'run.started',
-      source: { backend: activeRun.runtimeSession.providerKind, eventType: 'chat.turn.started' },
-    }))
+    persist(activeRun, { type: 'start' })
 
-    for await (const event of activeRun.provider!.streamTurn({
+    for await (const chunk of activeRun.provider!.streamTurn({
       runtimeSession: activeRun.runtimeSession,
       profile: input.profile,
       message: input.text,
@@ -650,42 +661,35 @@ async function executeRun(activeRun: ActiveRun, input: {
       systemPrompt: input.systemPrompt,
       history: input.history,
     })) {
-      accumulateTurnOutputDiagnostics(diagnostics, event)
-      publish(persist(activeRun, event))
+      accumulateDiagnostics(diagnostics, chunk)
+      persist(activeRun, chunk)
     }
 
-    finalEvent = resolveTerminalEventWithDiagnostics(finalEvent, activeRun.runtimeSession.providerKind, diagnostics)
+    finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
   }
   catch (error) {
     if (isAbortError(error)) {
-      finalEvent = {
-        type: 'run.aborted',
-        source: { backend: activeRun.runtimeSession.providerKind, eventType: 'chat.turn.aborted' },
-      }
+      finalChunk = { type: 'abort', reason: 'user' }
     }
     else {
       const serializedError = serializeChatError(error)
       failurePayload = serializedError.payload
-      finalEvent = {
-        type: 'run.failed',
-        error: serializedError.text,
-        source: { backend: activeRun.runtimeSession.providerKind, eventType: 'chat.turn.failed' },
-      }
+      finalChunk = { type: 'error', errorText: serializedError.text }
     }
   }
 
   try {
-    const terminal = persist(activeRun, finalEvent)
-    publish(terminal)
+    const terminal = persist(activeRun, finalChunk)
+    publishChunk(terminal)
 
-    if (terminal.event.type === 'run.failed') {
-      const observabilityCode = resolveTurnFailureObservabilityCode(terminal.event)
+    if (finalChunk.type === 'error') {
+      const observabilityCode = resolveTurnFailureObservabilityCode(finalChunk)
       Observability.record({
         source: 'chat-engine',
         code: observabilityCode,
         severity: 'error',
         category: 'chat',
-        message: terminal.event.error,
+        message: finalChunk.errorText,
         chatSessionId: activeRun.sessionId,
         runId: activeRun.runId,
         messageId: activeRun.messageId,
@@ -739,55 +743,55 @@ async function executeRun(activeRun: ActiveRun, input: {
   }
 }
 
-function persist(activeRun: ActiveRun, event: TimelineInputEvent): { event: StoredTimelineEvent, terminal: boolean } {
-  const terminal = event.type === 'run.completed' || event.type === 'run.aborted' || event.type === 'run.failed'
-  const messageStatus: ChatMessageStatus = event.type === 'run.completed'
+function persist(activeRun: ActiveRun, chunk: UIMessageChunk): { stored: StoredChunk, terminal: boolean } {
+  const terminal = chunk.type === 'finish' || chunk.type === 'abort' || chunk.type === 'error'
+  const messageStatus: ChatMessageStatus = chunk.type === 'finish'
     ? 'complete'
-    : event.type === 'run.aborted'
+    : chunk.type === 'abort'
       ? 'aborted'
-      : event.type === 'run.failed'
+      : chunk.type === 'error'
         ? 'failed'
         : 'streaming'
 
-  const stopReason = event.type === 'run.completed'
+  const stopReason = chunk.type === 'finish'
     ? 'response.completed'
-    : event.type === 'run.aborted'
+    : chunk.type === 'abort'
       ? 'response.cancelled'
-      : event.type === 'run.failed'
+      : chunk.type === 'error'
         ? 'response.failed'
         : null
 
   const terminalStatus = messageStatus === 'streaming' ? null : messageStatus
 
-  const storedEvent = persistEvent({
+  const stored = persistChunk({
     sessionId: activeRun.sessionId,
     runId: activeRun.runId,
     messageId: activeRun.messageId,
-    event,
+    chunk,
     messageStatus,
-    errorText: event.type === 'run.failed' ? event.error : null,
+    errorText: chunk.type === 'error' ? chunk.errorText : null,
     runCompletion: terminal && terminalStatus
       ? {
           status: terminalStatus,
           stopReason,
-          errorText: event.type === 'run.failed' ? event.error : null,
+          errorText: chunk.type === 'error' ? chunk.errorText : null,
         }
       : undefined,
   })
 
-  return { event: storedEvent, terminal }
+  return { stored, terminal }
 }
 
-function publish(input: { event: StoredTimelineEvent, terminal: boolean }): void {
-  const subscribers = runSubscribers.get(input.event.runId)
+function publishChunk(input: { stored: StoredChunk, terminal: boolean }): void {
+  const subscribers = runSubscribers.get(input.stored.runId)
   if (!subscribers) {
     return
   }
   for (const subscriber of subscribers) {
-    subscriber(input.event, input.terminal)
+    subscriber(input.stored, input.terminal)
   }
   if (input.terminal) {
-    runSubscribers.delete(input.event.runId)
+    runSubscribers.delete(input.stored.runId)
   }
 }
 
@@ -810,34 +814,23 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && (error.name === 'AbortError' || error.message.includes('aborted'))
 }
 
-function accumulateTurnOutputDiagnostics(diagnostics: TurnOutputDiagnostics, event: TimelineInputEvent): void {
+function accumulateDiagnostics(diagnostics: TurnOutputDiagnostics, chunk: UIMessageChunk): void {
   diagnostics.emittedEventCount += 1
-  switch (event.type) {
-    case 'assistant.message.started':
-    case 'assistant.message.completed':
+  switch (chunk.type) {
+    case 'text-start':
+    case 'text-end':
       diagnostics.assistantBoundaryCount += 1
       break
-    case 'assistant.text.delta':
-      diagnostics.assistantTextCharCount += event.delta.length
+    case 'text-delta':
+      diagnostics.assistantTextCharCount += chunk.delta.length
       break
-    case 'reasoning.delta':
-      diagnostics.reasoningTextCharCount += event.delta.length
+    case 'reasoning-delta':
+      diagnostics.reasoningTextCharCount += chunk.delta.length
       break
-    case 'tool_call.started':
-    case 'tool_call.completed':
+    case 'tool-input-start':
+    case 'tool-input-available':
+    case 'tool-output-available':
       diagnostics.toolEventCount += 1
-      break
-    case 'command.started':
-    case 'command.completed':
-      diagnostics.commandEventCount += 1
-      break
-    case 'command.output.delta':
-      diagnostics.commandEventCount += 1
-      diagnostics.commandOutputCharCount += event.delta.length
-      break
-    case 'file_change.started':
-    case 'file_change.completed':
-      diagnostics.fileChangeEventCount += 1
       break
     default:
       break
@@ -865,46 +858,36 @@ function validateTurnOutput(diagnostics: TurnOutputDiagnostics): TurnOutputValid
   }
 }
 
-function resolveTerminalEventWithDiagnostics(
-  event: TimelineInputEvent,
-  providerKind: ProviderKind,
+function resolveTerminalChunkWithDiagnostics(
+  chunk: UIMessageChunk,
   diagnostics: TurnOutputDiagnostics,
-): TimelineInputEvent {
-  if (event.type !== 'run.completed') {
-    return event
+): UIMessageChunk {
+  if (chunk.type !== 'finish') {
+    return chunk
   }
 
   const validation = validateTurnOutput(diagnostics)
   if (validation.ok) {
-    return event
+    return chunk
   }
 
   const errorText = validation.errorText ?? 'Provider finished without assistant output events'
-  return {
-    type: 'run.failed',
-    error: errorText,
-    source: {
-      backend: providerKind,
-      eventType: 'chat.turn.failed.empty-output',
-      metadata: { terminalEventType: event.type, diagnostics },
-    },
-  }
+  return { type: 'error', errorText }
 }
 
 function resolveTurnFailureObservabilityCode(
-  event: Extract<TimelineInputEvent, { type: 'run.failed' | 'run.aborted' | 'run.completed' }>,
+  chunk: UIMessageChunk,
 ): string {
-  if (event.type !== 'run.failed') {
+  if (chunk.type !== 'error') {
     return OBSERVABILITY_CODES.turnStreamFailed
   }
 
-  if (event.source.eventType === 'chat.turn.failed.empty-output') {
+  // Check if this is an empty-output failure
+  if (chunk.errorText.includes('without any assistant output')) {
     return OBSERVABILITY_CODES.chatEmptyOutputCompletion
   }
 
-  const metadata = event.source.metadata
-  const errorCode = metadata && typeof metadata.errorCode === 'string' ? metadata.errorCode : null
-  return errorCode ?? OBSERVABILITY_CODES.turnStreamFailed
+  return OBSERVABILITY_CODES.turnStreamFailed
 }
 
 function serializeChatError(error: unknown): SerializedChatError {

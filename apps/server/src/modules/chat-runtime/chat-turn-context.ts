@@ -6,7 +6,7 @@ import { agents, backendRuns, backendTimelineEvents, messages, sessions } from '
 import { and, desc, eq } from 'drizzle-orm'
 
 import { db } from '../../infra'
-import { decodeTimelineInputEvent } from './timeline-events'
+import { decodeChunk } from './timeline-events'
 
 export interface ChatTurnContext {
   systemPrompt?: string
@@ -42,8 +42,8 @@ function readAssistantText(messageId: string): string {
   }
   const rows = db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
   return rows.map((row) => {
-    const event = decodeTimelineInputEvent({ eventType: row.eventType, payloadJson: row.payloadJson, sourceJson: row.sourceJson })
-    return event.type === 'assistant.text.delta' ? event.delta : ''
+    const stored = decodeChunk({ eventType: row.eventType, payloadJson: row.payloadJson, sourceJson: row.sourceJson })
+    return stored.chunk.type === 'text-delta' ? (stored.chunk as { type: 'text-delta', delta: string }).delta : ''
   }).join('')
 }
 

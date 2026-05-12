@@ -134,7 +134,7 @@ export const chatTab = defineTab({
   component: ChatTabContent,
   loader: async (params: { sessionId: string }) => {
     try {
-      const res = await fetch(`${SERVER_BASE}/chat/sessions/${params.sessionId}/timeline`)
+      const res = await fetch(`${SERVER_BASE}/chat/sessions/${params.sessionId}/messages`)
       if (!res.ok) {
         return []
       }

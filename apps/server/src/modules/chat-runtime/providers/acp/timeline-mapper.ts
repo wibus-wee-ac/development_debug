@@ -1,6 +1,6 @@
 // Input: ACP SessionUpdate notifications
-// Output: unified chat timeline events for the server chat-runtime owner
-// Position: apps/server chat-runtime ACP event normalization boundary
+// Output: UIMessageChunk for the server chat-runtime
+// Position: apps/server chat-runtime ACP chunk normalization boundary
 
 import { randomUUID } from 'node:crypto'
 
@@ -11,14 +11,13 @@ import type {
   ToolCall,
   ToolCallUpdate,
 } from '@agentclientprotocol/sdk'
+import type { UIMessageChunk } from 'ai'
 
-import type { TimelineInputEvent } from '../../runtime-provider-types'
-
-export class AcpTimelineMapper {
+export class AcpChunkMapper {
   private currentMessageItemId: string | null = null
   private currentReasoningItemId: string | null = null
 
-  convert(update: SessionUpdate): TimelineInputEvent[] {
+  convert(update: SessionUpdate): UIMessageChunk[] {
     switch (update.sessionUpdate) {
       case 'agent_message_chunk':
         return this.handleAgentMessage(update as ContentChunk & { sessionUpdate: 'agent_message_chunk' })
@@ -33,39 +32,23 @@ export class AcpTimelineMapper {
     }
   }
 
-  flush(): TimelineInputEvent[] {
-    const events: TimelineInputEvent[] = []
+  flush(): UIMessageChunk[] {
+    const chunks: UIMessageChunk[] = []
 
     if (this.currentReasoningItemId) {
-      events.push({
-        type: 'reasoning.completed',
-        itemId: this.currentReasoningItemId,
-        source: {
-          backend: 'acp-chat',
-          eventType: 'session.flush',
-          itemId: this.currentReasoningItemId,
-        },
-      })
+      chunks.push({ type: 'reasoning-end', id: this.currentReasoningItemId })
       this.currentReasoningItemId = null
     }
 
     if (this.currentMessageItemId) {
-      events.push({
-        type: 'assistant.message.completed',
-        itemId: this.currentMessageItemId,
-        source: {
-          backend: 'acp-chat',
-          eventType: 'session.flush',
-          itemId: this.currentMessageItemId,
-        },
-      })
+      chunks.push({ type: 'text-end', id: this.currentMessageItemId })
       this.currentMessageItemId = null
     }
 
-    return events
+    return chunks
   }
 
-  private handleAgentMessage(update: ContentChunk): TimelineInputEvent[] {
+  private handleAgentMessage(update: ContentChunk): UIMessageChunk[] {
     const text = extractText(update.content)
     if (text === null) {
       return []
@@ -74,41 +57,15 @@ export class AcpTimelineMapper {
     if (!this.currentMessageItemId) {
       this.currentMessageItemId = randomUUID()
       return [
-        {
-          type: 'assistant.message.started',
-          itemId: this.currentMessageItemId,
-          source: {
-            backend: 'acp-chat',
-            eventType: 'agent_message_chunk',
-            itemId: this.currentMessageItemId,
-          },
-        },
-        {
-          type: 'assistant.text.delta',
-          itemId: this.currentMessageItemId,
-          delta: text,
-          source: {
-            backend: 'acp-chat',
-            eventType: 'agent_message_chunk',
-            itemId: this.currentMessageItemId,
-          },
-        },
+        { type: 'text-start', id: this.currentMessageItemId },
+        { type: 'text-delta', id: this.currentMessageItemId, delta: text },
       ]
     }
 
-    return [{
-      type: 'assistant.text.delta',
-      itemId: this.currentMessageItemId,
-      delta: text,
-      source: {
-        backend: 'acp-chat',
-        eventType: 'agent_message_chunk',
-        itemId: this.currentMessageItemId,
-      },
-    }]
+    return [{ type: 'text-delta', id: this.currentMessageItemId, delta: text }]
   }
 
-  private handleAgentThought(update: ContentChunk): TimelineInputEvent[] {
+  private handleAgentThought(update: ContentChunk): UIMessageChunk[] {
     const text = extractText(update.content)
     if (text === null) {
       return []
@@ -117,107 +74,40 @@ export class AcpTimelineMapper {
     if (!this.currentReasoningItemId) {
       this.currentReasoningItemId = randomUUID()
       return [
-        {
-          type: 'reasoning.started',
-          itemId: this.currentReasoningItemId,
-          source: {
-            backend: 'acp-chat',
-            eventType: 'agent_thought_chunk',
-            itemId: this.currentReasoningItemId,
-          },
-        },
-        {
-          type: 'reasoning.delta',
-          itemId: this.currentReasoningItemId,
-          delta: text,
-          source: {
-            backend: 'acp-chat',
-            eventType: 'agent_thought_chunk',
-            itemId: this.currentReasoningItemId,
-          },
-        },
+        { type: 'reasoning-start', id: this.currentReasoningItemId },
+        { type: 'reasoning-delta', id: this.currentReasoningItemId, delta: text },
       ]
     }
 
-    return [{
-      type: 'reasoning.delta',
-      itemId: this.currentReasoningItemId,
-      delta: text,
-      source: {
-        backend: 'acp-chat',
-        eventType: 'agent_thought_chunk',
-        itemId: this.currentReasoningItemId,
-      },
-    }]
+    return [{ type: 'reasoning-delta', id: this.currentReasoningItemId, delta: text }]
   }
 
-  private handleToolCall(update: ToolCall): TimelineInputEvent[] {
+  private handleToolCall(update: ToolCall): UIMessageChunk[] {
     const output = stringifyPayload(update.rawOutput)
-    const events: TimelineInputEvent[] = [{
-      type: 'command.started',
-      itemId: update.toolCallId,
-      command: update.title,
-      source: {
-        backend: 'acp-chat',
-        eventType: 'tool_call',
-        eventId: update.toolCallId,
-        itemId: update.toolCallId,
-      },
-    }]
+    const chunks: UIMessageChunk[] = [
+      { type: 'tool-input-start', toolCallId: update.toolCallId, toolName: update.title },
+    ]
 
-    if (update.status === 'completed') {
-      events.push({
-        type: 'command.completed',
-        itemId: update.toolCallId,
-        exitCode: 0,
-        output,
-        source: {
-          backend: 'acp-chat',
-          eventType: 'tool_call',
-          eventId: update.toolCallId,
-          itemId: update.toolCallId,
-        },
-      })
+    if (update.status === 'completed' && output) {
+      chunks.push({ type: 'tool-output-available', toolCallId: update.toolCallId, output })
     }
 
-    return events
+    return chunks
   }
 
-  private handleToolCallUpdate(update: ToolCallUpdate): TimelineInputEvent[] {
+  private handleToolCallUpdate(update: ToolCallUpdate): UIMessageChunk[] {
     const output = stringifyPayload(update.rawOutput)
-    const events: TimelineInputEvent[] = []
+    const chunks: UIMessageChunk[] = []
 
     if (output) {
-      events.push({
-        type: 'command.output.delta',
-        itemId: update.toolCallId,
-        stream: 'stdout',
-        delta: output,
-        source: {
-          backend: 'acp-chat',
-          eventType: 'tool_call_update',
-          eventId: update.toolCallId,
-          itemId: update.toolCallId,
-        },
-      })
+      chunks.push({ type: 'tool-input-delta', toolCallId: update.toolCallId, inputTextDelta: output })
     }
 
     if (update.status === 'completed') {
-      events.push({
-        type: 'command.completed',
-        itemId: update.toolCallId,
-        exitCode: 0,
-        output,
-        source: {
-          backend: 'acp-chat',
-          eventType: 'tool_call_update',
-          eventId: update.toolCallId,
-          itemId: update.toolCallId,
-        },
-      })
+      chunks.push({ type: 'tool-output-available', toolCallId: update.toolCallId, output: output || '' })
     }
 
-    return events
+    return chunks
   }
 }
 

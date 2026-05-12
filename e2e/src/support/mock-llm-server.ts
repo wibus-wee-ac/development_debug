@@ -237,12 +237,16 @@ export class MockLlmServer {
     })
 
     const id = `chatcmpl-mock-${Date.now()}`
+    const created = Math.floor(Date.now() / 1000)
+    const model = 'mock-model'
 
     // Stream reasoning if configured
     if (this.reasoningText) {
       const reasoningChunk = {
         id,
         object: 'chat.completion.chunk',
+        created,
+        model,
         choices: [{
           index: 0,
           delta: { role: 'assistant', reasoning_content: this.reasoningText },
@@ -262,6 +266,8 @@ export class MockLlmServer {
       const chunk = {
         id,
         object: 'chat.completion.chunk',
+        created,
+        model,
         choices: [{
           index: 0,
           delta: i === 0 && !this.reasoningText
@@ -279,6 +285,8 @@ export class MockLlmServer {
     const finalChunk = {
       id,
       object: 'chat.completion.chunk',
+      created,
+      model,
       choices: [{
         index: 0,
         delta: {},
@@ -303,11 +311,15 @@ export class MockLlmServer {
     })
 
     const id = `chatcmpl-mock-${Date.now()}`
+    const created = Math.floor(Date.now() / 1000)
+    const model = 'mock-model'
 
     // First chunk with role
     const roleChunk = {
       id,
       object: 'chat.completion.chunk',
+      created,
+      model,
       choices: [{
         index: 0,
         delta: { role: 'assistant', content: null, tool_calls: [] as unknown[] },
@@ -325,6 +337,8 @@ export class MockLlmServer {
       const startChunk = {
         id,
         object: 'chat.completion.chunk',
+        created,
+        model,
         choices: [{
           index: 0,
           delta: {
@@ -346,6 +360,8 @@ export class MockLlmServer {
       const argsChunk = {
         id,
         object: 'chat.completion.chunk',
+        created,
+        model,
         choices: [{
           index: 0,
           delta: {
@@ -366,6 +382,8 @@ export class MockLlmServer {
     const finalChunk = {
       id,
       object: 'chat.completion.chunk',
+      created,
+      model,
       choices: [{
         index: 0,
         delta: {},

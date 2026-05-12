@@ -87,13 +87,13 @@ vi.mock('node:child_process', () => {
   }
 })
 
-interface ChatTimelineGroup {
+interface ChatChunkGroup {
   messageId: string
   role: 'user' | 'assistant'
   userText?: string
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
   errorText?: string
-  events: Array<{ type: string, delta?: string }>
+  chunks: Array<{ chunk: { type: string, delta?: string, [key: string]: unknown } }>
 }
 
 type ElysiaApp = ReturnType<typeof createServerApp>
@@ -129,11 +129,11 @@ async function createAcpProfileAndSession(app: ElysiaApp, workspaceId: string) {
   expect(sessionRes.status).toBe(200)
 }
 
-async function waitForTimelineStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
+async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatChunkGroup['status']): Promise<ChatChunkGroup[]> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/timeline`))
+    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
     if (response.status === 200) {
-      const groups = await response.json() as ChatTimelineGroup[]
+      const groups = await response.json() as ChatChunkGroup[]
       const assistant = groups.find(group => group.role === 'assistant')
       if (assistant?.status === expectedStatus) {
         return groups
@@ -285,7 +285,7 @@ describe('acp chat runtime capability', () => {
 
       await createAcpProfileAndSession(app, 'workspace-acp')
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-acp/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-acp/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Explain ACP runtime ownership' }),
@@ -306,7 +306,7 @@ describe('acp chat runtime capability', () => {
       expect(respondRes.status).toBe(200)
       expect(await respondRes.json()).toEqual({ ok: true })
 
-      const timeline = await waitForTimelineStatus(app, 'session-acp', 'complete')
+      const timeline = await waitForMessageStatus(app, 'session-acp', 'complete')
       expect(timeline).toHaveLength(2)
       expect(timeline[0]).toEqual(expect.objectContaining({
         role: 'user',
@@ -316,17 +316,17 @@ describe('acp chat runtime capability', () => {
 
       const assistant = timeline[1]
       expect(assistant).toEqual(expect.objectContaining({ role: 'assistant', status: 'complete' }))
-      expect(assistant.events.map(event => event.type)).toEqual(expect.arrayContaining([
-        'run.started',
-        'reasoning.started',
-        'reasoning.delta',
-        'assistant.message.started',
-        'assistant.text.delta',
-        'assistant.message.completed',
-        'run.completed',
+      expect(assistant.chunks.map((c: any) => c.chunk.type)).toEqual(expect.arrayContaining([
+        'start',
+        'reasoning-start',
+        'reasoning-delta',
+        'text-start',
+        'text-delta',
+        'text-end',
+        'finish',
       ]))
-      expect(assistant.events.find(event => event.type === 'assistant.text.delta')).toEqual(expect.objectContaining({
-        delta: 'Hello from ACP runtime',
+      expect(assistant.chunks.find((c: any) => c.chunk.type === 'text-delta')).toEqual(expect.objectContaining({
+        chunk: expect.objectContaining({ delta: 'Hello from ACP runtime' }),
       }))
 
       const sessionRes = await app.handle(new Request('http://localhost/sessions/session-acp'))

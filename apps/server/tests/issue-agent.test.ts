@@ -130,8 +130,8 @@ describe('issue-agent capability', () => {
       const encoder = new TextEncoder()
       return new Response(new ReadableStream({
         start(controller) {
-          controller.enqueue(encoder.encode(`data: {"id":"chunk-${completionIndex}-1","choices":[{"delta":{"content":"${responseText}"}}]}\n\n`))
-          controller.enqueue(encoder.encode(`data: {"id":"chunk-${completionIndex}-2","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}}\n\n`))
+          controller.enqueue(encoder.encode(`data: {"id":"chunk-${completionIndex}-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${responseText}"},"finish_reason":null}]}\n\n`))
+          controller.enqueue(encoder.encode(`data: {"id":"chunk-${completionIndex}-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}}\n\n`))
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()
         },

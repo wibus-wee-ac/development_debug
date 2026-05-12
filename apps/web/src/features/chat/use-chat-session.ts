@@ -3,8 +3,8 @@
 // Position: Feature hook for chat feature; renderer-side view layer bridging useChat with persisted HTTP state
 
 import { useChat } from '@ai-sdk/react'
-import { projectEventsToAssistantMessage } from '@shared/timeline-projection'
-import type { ChatStatus, UIMessage } from 'ai'
+import type { ChatStatus, UIMessage, UIMessageChunk } from 'ai'
+import { processUIMessageStream } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { SseChatTransportHandle } from './sse-chat-transport'
@@ -14,8 +14,8 @@ import { useChatTimelineEvent } from './use-chat-events'
 const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
 
 /**
- * Timeline group row as returned by GET /chat/sessions/:sessionId/timeline.
- * Matches the server ChatTimelineGroup shape.
+ * Chunk group row as returned by GET /chat/sessions/:sessionId/messages.
+ * Matches the server ChatChunkGroup shape.
  */
 export type ChatTimelineGroupRow = {
   messageId: string
@@ -23,7 +23,7 @@ export type ChatTimelineGroupRow = {
   userText?: string
   status: string
   errorText?: string
-  events: Array<{ type: string, runId: string, [key: string]: unknown }>
+  chunks: Array<{ chunk: UIMessageChunk, runId: string, [key: string]: unknown }>
 }
 
 export type PublicStatus = 'idle' | 'streaming' | 'error'
@@ -98,7 +98,97 @@ function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
     }
   }
 
-  return projectEventsToAssistantMessage(group.messageId, group.events)
+  return replayChunksToAssistantMessage(group.messageId, group.chunks.map(c => c.chunk))
+}
+
+/**
+ * Replay an array of UIMessageChunk into a single assistant UIMessage.
+ * Uses AI SDK's processUIMessageStream to faithfully reconstruct the message.
+ */
+function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChunk[]): UIMessage {
+  const message: UIMessage = {
+    id: messageId,
+    role: 'assistant',
+    parts: [],
+  }
+
+  // Build parts from chunks manually — simple and deterministic
+  let currentTextPart: { type: 'text', text: string } | null = null
+  let currentReasoningPart: { type: 'reasoning', reasoning: string, details: Array<{ type: 'text', text: string }> } | null = null
+
+  for (const chunk of chunks) {
+    switch (chunk.type) {
+      case 'text-start':
+        currentTextPart = { type: 'text', text: '' }
+        message.parts.push(currentTextPart)
+        break
+      case 'text-delta':
+        if (currentTextPart) {
+          currentTextPart.text += chunk.delta
+        }
+        else {
+          currentTextPart = { type: 'text', text: chunk.delta }
+          message.parts.push(currentTextPart)
+        }
+        break
+      case 'text-end':
+        currentTextPart = null
+        break
+      case 'reasoning-start':
+        currentReasoningPart = { type: 'reasoning', reasoning: '', details: [] }
+        message.parts.push(currentReasoningPart)
+        break
+      case 'reasoning-delta':
+        if (currentReasoningPart) {
+          currentReasoningPart.reasoning += chunk.delta
+        }
+        break
+      case 'reasoning-end':
+        currentReasoningPart = null
+        break
+      case 'tool-input-start':
+        message.parts.push({
+          type: 'tool-invocation',
+          toolInvocation: {
+            toolCallId: chunk.toolCallId,
+            toolName: chunk.toolName,
+            state: 'partial-call',
+            step: 0,
+            args: {},
+          },
+        })
+        break
+      case 'tool-input-available': {
+        const existingTool = message.parts.find(
+          p => p.type === 'tool-invocation' && p.toolInvocation.toolCallId === chunk.toolCallId,
+        )
+        if (existingTool && existingTool.type === 'tool-invocation') {
+          existingTool.toolInvocation = {
+            ...existingTool.toolInvocation,
+            state: 'call',
+            args: chunk.input,
+          }
+        }
+        break
+      }
+      case 'tool-output-available': {
+        const toolPart = message.parts.find(
+          p => p.type === 'tool-invocation' && p.toolInvocation.toolCallId === chunk.toolCallId,
+        )
+        if (toolPart && toolPart.type === 'tool-invocation') {
+          toolPart.toolInvocation = {
+            ...toolPart.toolInvocation,
+            state: 'result',
+            result: chunk.output,
+          }
+        }
+        break
+      }
+      // Ignore other chunk types (start, finish, abort, error, etc.) for message construction
+    }
+  }
+
+  return message
 }
 
 export function useChatSession(chatSessionId: string | null, options?: {
@@ -170,7 +260,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
     }
 
     // Project UIMessages from raw timeline events (sole hydration path)
-    const res = await fetch(`${SERVER_BASE}/chat/sessions/${chatSessionId}/timeline`)
+    const res = await fetch(`${SERVER_BASE}/chat/sessions/${chatSessionId}/messages`)
     if (!res.ok) {
       return
     }

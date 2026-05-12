@@ -12,13 +12,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 
-interface ChatTimelineGroup {
+interface ChatChunkGroup {
   messageId: string
   role: 'user' | 'assistant'
   userText?: string
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
   errorText?: string
-  events: Array<{ type: string, delta?: string }>
+  chunks: Array<{ chunk: { type: string, delta?: string, [key: string]: unknown } }>
 }
 
 type ElysiaApp = ReturnType<typeof createServerApp>
@@ -65,11 +65,11 @@ async function createProfileAndSession(app: ElysiaApp, workspaceId: string) {
   expect(sessionRes.status).toBe(200)
 }
 
-async function waitForTimelineStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
+async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatChunkGroup['status']): Promise<ChatChunkGroup[]> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/timeline`))
+    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
     if (response.status === 200) {
-      const groups = await response.json() as ChatTimelineGroup[]
+      const groups = await response.json() as ChatChunkGroup[]
       const assistant = groups.find(group => group.role === 'assistant')
       if (assistant?.status === expectedStatus) {
         return groups
@@ -120,9 +120,9 @@ describe('chat runtime capability', () => {
         const payload = JSON.parse(String(init?.body)) as { messages: Array<{ role: string, content: string }> }
         expect(payload.messages.at(-1)).toEqual({ role: 'user', content: 'Explain server runtime' })
         return buildSseResponse([
-          'data: {"id":"chunk-1","choices":[{"delta":{"content":"Hello "}}]}\n\n',
-          'data: {"id":"chunk-2","choices":[{"delta":{"content":"from chat runtime"}}]}\n\n',
-          'data: {"id":"chunk-3","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}\n\n',
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Hello "},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"from chat runtime"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-3","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}\n\n',
           'data: [DONE]\n\n',
         ])
       }
@@ -141,27 +141,23 @@ describe('chat runtime capability', () => {
 
       await createProfileAndSession(app, 'workspace-chat')
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Explain server runtime' }),
       }))
       expect(runRes.status).toBe(200)
-      const run = await runRes.json() as { runId: string, assistantMessageId: string, userMessageId: string }
-      expect(run.runId).toBeTruthy()
-      expect(run.assistantMessageId).toBeTruthy()
-      expect(run.userMessageId).toBeTruthy()
 
-      const timeline = await waitForTimelineStatus(app, 'session-chat', 'complete')
+      const timeline = await waitForMessageStatus(app, 'session-chat', 'complete')
       expect(timeline).toHaveLength(2)
       expect(timeline[0]).toEqual(expect.objectContaining({ role: 'user', userText: 'Explain server runtime', status: 'complete' }))
       expect(timeline[1]).toEqual(expect.objectContaining({ role: 'assistant', status: 'complete' }))
-      expect(timeline[1].events.map(event => event.type)).toEqual(expect.arrayContaining([
-        'run.started',
-        'assistant.message.started',
-        'assistant.text.delta',
-        'assistant.message.completed',
-        'run.completed',
+      expect(timeline[1].chunks.map((c: any) => c.chunk.type)).toEqual(expect.arrayContaining([
+        'start',
+        'text-start',
+        'text-delta',
+        'text-end',
+        'finish',
       ]))
 
       const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-chat'))
@@ -209,8 +205,8 @@ describe('chat runtime capability', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.endsWith('/chat/completions')) {
         return buildSseResponse([
-          'data: {"id":"chunk-1","choices":[{"delta":{"content":"Starting "}}]}\n\n',
-          'data: {"id":"chunk-2","choices":[{"delta":{"content":"long reply"}}]}\n\n',
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Starting "},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"long reply"},"finish_reason":null}]}\n\n',
           'data: [DONE]\n\n',
         ], [0, 60, 60])
       }
@@ -229,7 +225,7 @@ describe('chat runtime capability', () => {
 
       await createProfileAndSession(app, 'workspace-chat')
 
-      const missingText = await app.handle(new Request('http://localhost/chat/sessions/session-chat/runs', {
+      const missingText = await app.handle(new Request('http://localhost/chat/sessions/session-chat/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
@@ -237,7 +233,7 @@ describe('chat runtime capability', () => {
       expect(missingText.status).toBe(400)
       expect((await missingText.json()).code).toBe('validation_error')
 
-      const missingSession = await app.handle(new Request('http://localhost/chat/sessions/missing/runs', {
+      const missingSession = await app.handle(new Request('http://localhost/chat/sessions/missing/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'hello' }),
@@ -245,33 +241,22 @@ describe('chat runtime capability', () => {
       expect(missingSession.status).toBe(404)
       expect((await missingSession.json()).code).toBe('chat_session_not_found')
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Abort this run' }),
       }))
       expect(runRes.status).toBe(200)
-      const run = await runRes.json() as { runId: string }
 
-      const abortRes = await app.handle(new Request(`http://localhost/chat/runs/${encodeURIComponent(run.runId)}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status: 'aborted' }),
+      const abortRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat/cancel', {
+        method: 'POST',
       }))
       expect(abortRes.status).toBe(200)
       expect(await abortRes.json()).toEqual({ ok: true })
 
-      const timeline = await waitForTimelineStatus(app, 'session-chat', 'aborted')
+      const timeline = await waitForMessageStatus(app, 'session-chat', 'aborted')
       expect(timeline[1]).toEqual(expect.objectContaining({ role: 'assistant', status: 'aborted' }))
-      expect(timeline[1].events.map(event => event.type)).toContain('run.aborted')
-
-      const missingRun = await app.handle(new Request('http://localhost/chat/runs/missing-run', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ status: 'aborted' }),
-      }))
-      expect(missingRun.status).toBe(404)
-      expect((await missingRun.json()).code).toBe('chat_run_not_found')
+      expect(timeline[1].chunks.map((c: any) => c.chunk.type)).toContain('abort')
     }
     finally {
       shutdownInfra()

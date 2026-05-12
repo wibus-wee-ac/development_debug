@@ -1,5 +1,5 @@
 // Input: Codex SDK ThreadEvent and item types
-// Output: Codex thread event -> unified chat timeline mapper
+// Output: Codex thread event -> UIMessageChunk mapper
 // Position: apps/server/src/modules/chat-runtime/providers/codex/mapper.ts
 
 import type {
@@ -13,139 +13,125 @@ import type {
   ReasoningItem,
   ThreadEvent,
 } from '@openai/codex-sdk'
+import type { UIMessageChunk } from 'ai'
 
-import type { TimelineInputEvent } from '../../runtime-provider-types'
-
-const BACKEND = 'codex' as const
-
-export interface CodexTimelineMapperState {
+export interface CodexChunkMapperState {
   textItemId: string
   assistantStarted: boolean
   openReasoningItemId?: string | null
 }
 
-export function mapCodexThreadEventToTimeline(
+export function mapCodexThreadEventToChunks(
   event: ThreadEvent,
-  state: CodexTimelineMapperState,
-): { events: TimelineInputEvent[], assistantStarted: boolean } {
+  state: CodexChunkMapperState,
+): { chunks: UIMessageChunk[], assistantStarted: boolean } {
   switch (event.type) {
     case 'item.started':
     case 'item.updated':
     case 'item.completed':
       return mapItemEvent(event, state)
     default:
-      return { events: [], assistantStarted: state.assistantStarted }
+      return { chunks: [], assistantStarted: state.assistantStarted }
   }
 }
 
 function mapItemEvent(
   event: ItemStartedEvent | ItemUpdatedEvent | ItemCompletedEvent,
-  state: CodexTimelineMapperState,
-): { events: TimelineInputEvent[], assistantStarted: boolean } {
+  state: CodexChunkMapperState,
+): { chunks: UIMessageChunk[], assistantStarted: boolean } {
   const item = event.item
   let assistantStarted = state.assistantStarted
 
   switch (item.type) {
     case 'agent_message': {
-      const result = mapAgentMessage(item, event.type, state)
-      if (result.events.length > 0 && !assistantStarted) {
+      const result = mapAgentMessage(item, state)
+      if (result.chunks.length > 0 && !assistantStarted) {
         assistantStarted = true
       }
-      return { events: result.events, assistantStarted }
+      return { chunks: result.chunks, assistantStarted }
     }
     case 'reasoning':
-      return { events: mapReasoning(item, event.type), assistantStarted }
+      return { chunks: mapReasoning(item, event.type), assistantStarted }
     case 'command_execution':
-      return { events: mapCommand(item, event.type), assistantStarted }
+      return { chunks: mapCommand(item, event.type), assistantStarted }
     case 'file_change':
-      return { events: mapFileChange(item, event.type), assistantStarted }
+      return { chunks: mapFileChange(item, event.type), assistantStarted }
     case 'mcp_tool_call':
-      return { events: mapMcpToolCall(item, event.type), assistantStarted }
+      return { chunks: mapMcpToolCall(item, event.type), assistantStarted }
     default:
-      return { events: [], assistantStarted }
+      return { chunks: [], assistantStarted }
   }
 }
 
-function mapAgentMessage(item: AgentMessageItem, eventType: string, state: CodexTimelineMapperState): { events: TimelineInputEvent[] } {
-  const events: TimelineInputEvent[] = []
+function mapAgentMessage(item: AgentMessageItem, state: CodexChunkMapperState): { chunks: UIMessageChunk[] } {
+  const chunks: UIMessageChunk[] = []
   const itemId = state.textItemId
 
   if (!state.assistantStarted) {
-    events.push({
-      type: 'assistant.message.started',
-      itemId,
-      source: { backend: BACKEND, eventType, itemId },
-    })
+    chunks.push({ type: 'text-start', id: itemId })
   }
   if (item.text) {
-    events.push({
-      type: 'assistant.text.delta',
-      itemId,
-      delta: item.text,
-      source: { backend: BACKEND, eventType, itemId },
-    })
+    chunks.push({ type: 'text-delta', id: itemId, delta: item.text })
   }
-  return { events }
+  return { chunks }
 }
 
-function mapReasoning(item: ReasoningItem, eventType: string): TimelineInputEvent[] {
+function mapReasoning(item: ReasoningItem, eventType: string): UIMessageChunk[] {
   const itemId = item.id
   if (eventType === 'item.started') {
-    const events: TimelineInputEvent[] = [{ type: 'reasoning.started', itemId, source: { backend: BACKEND, eventType, itemId } }]
+    const chunks: UIMessageChunk[] = [{ type: 'reasoning-start', id: itemId }]
     if (item.text) {
-      events.push({ type: 'reasoning.delta', itemId, delta: item.text, source: { backend: BACKEND, eventType, itemId } })
+      chunks.push({ type: 'reasoning-delta', id: itemId, delta: item.text })
     }
-    return events
+    return chunks
   }
   if (eventType === 'item.completed') {
     return [
-      ...(item.text ? [{ type: 'reasoning.delta' as const, itemId, delta: item.text, source: { backend: BACKEND, eventType, itemId } }] : []),
-      { type: 'reasoning.completed', itemId, source: { backend: BACKEND, eventType, itemId } },
+      ...(item.text ? [{ type: 'reasoning-delta' as const, id: itemId, delta: item.text }] : []),
+      { type: 'reasoning-end' as const, id: itemId },
     ]
   }
   return item.text
-    ? [{ type: 'reasoning.delta', itemId, delta: item.text, source: { backend: BACKEND, eventType, itemId } }]
+    ? [{ type: 'reasoning-delta', id: itemId, delta: item.text }]
     : []
 }
 
-function mapCommand(item: CommandExecutionItem, eventType: string): TimelineInputEvent[] {
-  const itemId = item.id
+function mapCommand(item: CommandExecutionItem, eventType: string): UIMessageChunk[] {
+  // Map command execution to tool calls — commands are essentially tool invocations
+  const toolCallId = item.id
   if (eventType === 'item.started') {
-    return [{ type: 'command.started', itemId, command: item.command, source: { backend: BACKEND, eventType, itemId } }]
+    return [
+      { type: 'tool-input-start', toolCallId, toolName: 'command_execution' },
+      { type: 'tool-input-available', toolCallId, toolName: 'command_execution', input: { command: item.command } },
+    ]
   }
   if (eventType === 'item.completed') {
-    return [{
-      type: 'command.completed',
-      itemId,
-      exitCode: item.exit_code ?? null,
-      output: item.aggregated_output || null,
-      source: { backend: BACKEND, eventType, itemId },
-    }]
+    const output = item.aggregated_output || `exit_code: ${item.exit_code ?? 'unknown'}`
+    return [{ type: 'tool-output-available', toolCallId, output }]
   }
   return item.aggregated_output
-    ? [{ type: 'command.output.delta', itemId, stream: 'stdout', delta: item.aggregated_output, source: { backend: BACKEND, eventType, itemId } }]
+    ? [{ type: 'tool-input-delta', toolCallId, inputTextDelta: item.aggregated_output }]
     : []
 }
 
-function mapFileChange(item: FileChangeItem, eventType: string): TimelineInputEvent[] {
-  const itemId = item.id
+function mapFileChange(item: FileChangeItem, eventType: string): UIMessageChunk[] {
+  // Map file changes to tool calls
+  const toolCallId = item.id
   const paths = item.changes.map(change => change.path)
   if (eventType === 'item.started') {
-    return [{ type: 'file_change.started', itemId, paths, source: { backend: BACKEND, eventType, itemId } }]
+    return [
+      { type: 'tool-input-start', toolCallId, toolName: 'file_change' },
+      { type: 'tool-input-available', toolCallId, toolName: 'file_change', input: { paths } },
+    ]
   }
-  return [{
-    type: 'file_change.completed',
-    itemId,
-    paths,
-    status: item.status === 'completed' ? 'completed' : 'failed',
-    source: { backend: BACKEND, eventType, itemId },
-  }]
+  const status = item.status === 'completed' ? 'completed' : 'failed'
+  return [{ type: 'tool-output-available', toolCallId, output: JSON.stringify({ paths, status }) }]
 }
 
 export function closeOpenCodexReasoning(
   event: ThreadEvent,
-  state: CodexTimelineMapperState,
-): TimelineInputEvent[] {
+  state: CodexChunkMapperState,
+): UIMessageChunk[] {
   const openReasoningItemId = state.openReasoningItemId
   if (!openReasoningItemId) {
     return []
@@ -158,31 +144,22 @@ export function closeOpenCodexReasoning(
   }
 
   state.openReasoningItemId = null
-  return [{
-    type: 'reasoning.completed',
-    itemId: openReasoningItemId,
-    source: { backend: BACKEND, eventType: 'reasoning.auto.completed', itemId: openReasoningItemId },
-  }]
+  return [{ type: 'reasoning-end', id: openReasoningItemId }]
 }
 
-function mapMcpToolCall(item: McpToolCallItem, eventType: string): TimelineInputEvent[] {
-  const itemId = item.id
+function mapMcpToolCall(item: McpToolCallItem, eventType: string): UIMessageChunk[] {
+  const toolCallId = item.id
   if (eventType === 'item.started') {
-    return [{
-      type: 'tool_call.started',
-      itemId,
-      toolName: `${item.server}/${item.tool}`,
-      toolInput: item.arguments ? JSON.stringify(item.arguments) : null,
-      source: { backend: BACKEND, eventType, itemId },
-    }]
+    return [
+      { type: 'tool-input-start', toolCallId, toolName: `${item.server}/${item.tool}` },
+      ...(item.arguments ? [{ type: 'tool-input-available' as const, toolCallId, toolName: `${item.server}/${item.tool}`, input: item.arguments }] : []),
+    ]
   }
   if (eventType === 'item.completed') {
-    return [{
-      type: 'tool_call.completed',
-      itemId,
-      result: item.result ? JSON.stringify(item.result.content) : item.error?.message ?? null,
-      source: { backend: BACKEND, eventType, itemId },
-    }]
+    if (item.error) {
+      return [{ type: 'tool-output-error', toolCallId, errorText: item.error.message }]
+    }
+    return [{ type: 'tool-output-available', toolCallId, output: item.result ? JSON.stringify(item.result.content) : '' }]
   }
   return []
 }

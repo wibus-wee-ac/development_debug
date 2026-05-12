@@ -1,0 +1,4 @@
+// Tool registry index
+// Position: apps/server/src/modules/chat-runtime/engine/tools/index.ts
+
+export { attemptCompletionTool } from './attempt-completion'

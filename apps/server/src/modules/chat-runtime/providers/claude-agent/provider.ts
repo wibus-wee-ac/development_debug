@@ -6,6 +6,8 @@ import { randomUUID } from 'node:crypto'
 
 import type { CanUseTool, Options, Query } from '@anthropic-ai/claude-agent-sdk'
 
+import type { UIMessageChunk } from 'ai'
+
 import * as Approval from '../../../approval/service'
 import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { ProviderKind } from '../../../providers/types'
@@ -16,11 +18,10 @@ import type {
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
-  TimelineInputEvent,
-  TokenUsage,
 } from '../../runtime-provider-types'
-import type { ClaudeAgentTimelineMapperState } from './mapper'
-import { mapClaudeAgentMessageToTimeline } from './mapper'
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
+import type { ClaudeAgentChunkMapperState } from './mapper'
+import { mapClaudeAgentMessageToChunks } from './mapper'
 
 interface ClaudeAgentProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -69,7 +70,7 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
     }
   }
 
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = parseConfigWith(input.profile.configJson, ClaudeAgentConfigSchema)
     const apiKey = resolveApiKey(input.profile, config.apiKey, 'ANTHROPIC_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
@@ -128,7 +129,7 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
     this.activeQueries.set(input.runtimeSession.chatSessionId, { query: activeQuery, abortController })
     this._lastUsage = null
 
-    const mapperState: ClaudeAgentTimelineMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map() }
+    const mapperState: ClaudeAgentChunkMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map() }
 
     try {
       for await (const message of activeQuery) {
@@ -136,11 +137,11 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
           break
         }
 
-        const result = mapClaudeAgentMessageToTimeline(message, mapperState)
+        const result = mapClaudeAgentMessageToChunks(message, mapperState)
         mapperState.assistantStarted = result.assistantStarted
 
-        for (const event of result.events) {
-          yield event
+        for (const chunk of result.chunks) {
+          yield chunk
         }
 
         if (result.sessionId && !input.runtimeSession.providerSessionId) {
@@ -153,11 +154,7 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
       }
 
       if (mapperState.assistantStarted) {
-        yield {
-          type: 'assistant.message.completed',
-          itemId: mapperState.textItemId,
-          source: { backend: PROVIDER_KIND, eventType: 'result', itemId: mapperState.textItemId },
-        }
+        yield { type: 'text-end', id: mapperState.textItemId }
       }
     }
     finally {

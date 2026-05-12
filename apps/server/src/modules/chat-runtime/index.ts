@@ -1,6 +1,5 @@
 import { Elysia } from 'elysia'
 
-import { AppError } from '../../errors/app-error'
 import { ChatRuntimeModel } from './model'
 import * as ChatRuntime from './service'
 
@@ -8,27 +7,14 @@ export const chatRuntime = new Elysia({
   prefix: '/chat',
   detail: { tags: ['chat-runtime'] },
 })
-  .post('/sessions/:sessionId/runs', async ({ params, body }) => {
-    return ChatRuntime.createRun({
+  // POST /chat/sessions/:sessionId/response → SSE stream (send message + get streaming response)
+  .post('/sessions/:sessionId/response', async ({ params, body }) => {
+    const stream = await ChatRuntime.streamResponse({
       sessionId: params.sessionId,
       text: body.text,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
     })
-  }, {
-    detail: { summary: 'Create a chat run' },
-    params: ChatRuntimeModel.sessionIdParams,
-    body: ChatRuntimeModel.createRunBody,
-    response: { 200: ChatRuntimeModel.createRunResponse },
-  })
-  .get('/sessions/:sessionId/timeline', ({ params }) => {
-    return ChatRuntime.getTimeline(params.sessionId)
-  }, {
-    detail: { summary: 'Get chat timeline' },
-    params: ChatRuntimeModel.sessionIdParams,
-  })
-  .get('/runs/:runId/stream', ({ params }) => {
-    const stream = ChatRuntime.openRunStream(params.runId)
     return new Response(stream, {
       headers: {
         'content-type': 'text/event-stream',
@@ -37,22 +23,23 @@ export const chatRuntime = new Elysia({
       },
     })
   }, {
-    detail: { summary: 'Stream run events via SSE' },
-    params: ChatRuntimeModel.runIdParams,
+    detail: { summary: 'Send message and stream response via SSE' },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.responseBody,
   })
-  .patch('/runs/:runId', async ({ params, body }) => {
-    if (body.status !== 'aborted') {
-      throw new AppError({
-        code: 'invalid_chat_runtime_input',
-        status: 400,
-        message: 'Only status "aborted" is supported',
-      })
-    }
-    await ChatRuntime.abortRun(params.runId)
+  // GET /chat/sessions/:sessionId/messages → historical message groups
+  .get('/sessions/:sessionId/messages', ({ params }) => {
+    return ChatRuntime.getMessageGroups(params.sessionId)
+  }, {
+    detail: { summary: 'Get chat message groups' },
+    params: ChatRuntimeModel.sessionIdParams,
+  })
+  // POST /chat/sessions/:sessionId/cancel → abort active run
+  .post('/sessions/:sessionId/cancel', async ({ params }) => {
+    await ChatRuntime.cancelSession(params.sessionId)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Update run status' },
-    params: ChatRuntimeModel.runIdParams,
-    body: ChatRuntimeModel.updateRunBody,
-    response: { 200: ChatRuntimeModel.updateRunResponse },
+    detail: { summary: 'Cancel active run for session' },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.cancelResponse },
   })

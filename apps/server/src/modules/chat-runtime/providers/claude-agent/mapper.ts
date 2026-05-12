@@ -1,17 +1,16 @@
 // Input: Claude Agent SDK message types
-// Output: Claude SDK message -> unified chat timeline mapper
+// Output: Claude SDK message -> UIMessageChunk mapper
 // Position: apps/server/src/modules/chat-runtime/providers/claude-agent/mapper.ts
 
 import { randomUUID } from 'node:crypto'
 
 import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { BetaContentBlock, BetaRawContentBlockDeltaEvent, BetaRawContentBlockStartEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages'
+import type { UIMessageChunk } from 'ai'
 
-import type { TimelineInputEvent, TokenUsage } from '../../runtime-provider-types'
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
 
-const BACKEND = 'claude-agent' as const
-
-export interface ClaudeAgentTimelineMapperState {
+export interface ClaudeAgentChunkMapperState {
   textItemId: string
   assistantStarted: boolean
   /** True when tool calls have been emitted since last text segment — next text gets a fresh ID */
@@ -20,16 +19,16 @@ export interface ClaudeAgentTimelineMapperState {
   activeToolBlockIds: Map<number, string>
 }
 
-export interface ClaudeAgentTimelineMapperResult {
-  events: TimelineInputEvent[]
+export interface ClaudeAgentChunkMapperResult {
+  chunks: UIMessageChunk[]
   assistantStarted: boolean
   sessionId: string | null
   usage: TokenUsage | null
 }
 
-export function mapClaudeAgentMessageToTimeline(msg: SDKMessage, state: ClaudeAgentTimelineMapperState): ClaudeAgentTimelineMapperResult {
-  const base: ClaudeAgentTimelineMapperResult = {
-    events: [],
+export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+  const base: ClaudeAgentChunkMapperResult = {
+    chunks: [],
     assistantStarted: state.assistantStarted,
     sessionId: null,
     usage: null,
@@ -52,22 +51,21 @@ export function mapClaudeAgentMessageToTimeline(msg: SDKMessage, state: ClaudeAg
   }
 }
 
-function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentTimelineMapperState): ClaudeAgentTimelineMapperResult {
-  const events: TimelineInputEvent[] = []
+function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+  const chunks: UIMessageChunk[] = []
   let assistantStarted = state.assistantStarted
 
   // If tool calls happened since last text, rotate to a new text segment ID
   if (state.hadToolCallSinceLastText) {
     state.textItemId = randomUUID()
     state.hadToolCallSinceLastText = false
-    // New text segment starts fresh — the previous one was already completed
     assistantStarted = false
   }
 
   let hadToolCall = false
   for (const block of msg.message.content) {
     const mapped = mapContentBlock(block, state.textItemId, assistantStarted)
-    events.push(...mapped.events)
+    chunks.push(...mapped.chunks)
     if (mapped.assistantStarted) {
       assistantStarted = true
     }
@@ -80,11 +78,11 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentTimelineMapper
     state.hadToolCallSinceLastText = true
   }
 
-  return { events, assistantStarted, sessionId: msg.session_id, usage: null }
+  return { chunks, assistantStarted, sessionId: msg.session_id, usage: null }
 }
 
-function mapUser(msg: SDKUserMessage, state: ClaudeAgentTimelineMapperState): ClaudeAgentTimelineMapperResult {
-  const events: TimelineInputEvent[] = []
+function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+  const chunks: UIMessageChunk[] = []
   const content = msg.message.content
 
   // Extract tool_result blocks from user message content
@@ -97,80 +95,63 @@ function mapUser(msg: SDKUserMessage, state: ClaudeAgentTimelineMapperState): Cl
             ? b.content
             : b.content != null
               ? JSON.stringify(b.content)
-              : null
-          events.push({
-            type: 'tool_call.completed',
-            itemId: b.tool_use_id,
-            result: b.is_error ? `Error: ${output ?? 'Tool execution failed'}` : output,
-            source: { backend: BACKEND, eventType: 'tool_result', itemId: b.tool_use_id },
-          })
+              : ''
+          if (b.is_error) {
+            chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: output || 'Tool execution failed' })
+          }
+          else {
+            chunks.push({ type: 'tool-output-available', toolCallId: b.tool_use_id, output })
+          }
         }
       }
     }
   }
 
-  return { events, assistantStarted: state.assistantStarted, sessionId: msg.session_id ?? null, usage: null }
+  return { chunks, assistantStarted: state.assistantStarted, sessionId: msg.session_id ?? null, usage: null }
 }
 
 function mapContentBlock(
   block: BetaContentBlock,
   textItemId: string,
   assistantStarted: boolean,
-): { events: TimelineInputEvent[], assistantStarted: boolean } {
+): { chunks: UIMessageChunk[], assistantStarted: boolean } {
   switch (block.type) {
     case 'text': {
-      const events: TimelineInputEvent[] = []
+      const chunks: UIMessageChunk[] = []
       if (!assistantStarted) {
-        events.push({
-          type: 'assistant.message.started',
-          itemId: textItemId,
-          source: { backend: BACKEND, eventType: 'assistant', itemId: textItemId },
-        })
+        chunks.push({ type: 'text-start', id: textItemId })
       }
       if (block.text) {
-        events.push({
-          type: 'assistant.text.delta',
-          itemId: textItemId,
-          delta: block.text,
-          source: { backend: BACKEND, eventType: 'assistant.text', itemId: textItemId },
-        })
+        chunks.push({ type: 'text-delta', id: textItemId, delta: block.text })
       }
-      return { events, assistantStarted: true }
+      return { chunks, assistantStarted: true }
     }
     case 'thinking': {
       const itemId = `thinking-${textItemId}`
-      const events: TimelineInputEvent[] = [
-        { type: 'reasoning.started', itemId, source: { backend: BACKEND, eventType: 'assistant.thinking', itemId } },
+      const chunks: UIMessageChunk[] = [
+        { type: 'reasoning-start', id: itemId },
       ]
       if (block.thinking) {
-        events.push({
-          type: 'reasoning.delta',
-          itemId,
-          delta: block.thinking,
-          source: { backend: BACKEND, eventType: 'assistant.thinking', itemId },
-        })
+        chunks.push({ type: 'reasoning-delta', id: itemId, delta: block.thinking })
       }
-      events.push({ type: 'reasoning.completed', itemId, source: { backend: BACKEND, eventType: 'assistant.thinking', itemId } })
-      return { events, assistantStarted }
+      chunks.push({ type: 'reasoning-end', id: itemId })
+      return { chunks, assistantStarted }
     }
     case 'tool_use':
       return {
-        events: [{
-          type: 'tool_call.started',
-          itemId: block.id,
-          toolName: block.name,
-          toolInput: block.input ? JSON.stringify(block.input) : null,
-          source: { backend: BACKEND, eventType: 'tool_use', itemId: block.id },
-        }],
+        chunks: [
+          { type: 'tool-input-start', toolCallId: block.id, toolName: block.name },
+          ...(block.input ? [{ type: 'tool-input-available' as const, toolCallId: block.id, toolName: block.name, input: block.input }] : []),
+        ],
         assistantStarted,
       }
     default:
-      return { events: [], assistantStarted }
+      return { chunks: [], assistantStarted }
   }
 }
 
-function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentTimelineMapperState): ClaudeAgentTimelineMapperResult {
-  const events: TimelineInputEvent[] = []
+function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+  const chunks: UIMessageChunk[] = []
   let assistantStarted = state.assistantStarted
 
   switch (msg.event.type) {
@@ -184,35 +165,20 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentTimel
           assistantStarted = false
         }
         if (!assistantStarted) {
-          events.push({ type: 'assistant.message.started', itemId: state.textItemId, source: { backend: BACKEND, eventType: 'stream_event', itemId: state.textItemId } })
+          chunks.push({ type: 'text-start', id: state.textItemId })
           assistantStarted = true
         }
-        events.push({
-          type: 'assistant.text.delta',
-          itemId: state.textItemId,
-          delta: deltaEvent.delta.text,
-          source: { backend: BACKEND, eventType: 'content_block_delta', itemId: state.textItemId },
-        })
+        chunks.push({ type: 'text-delta', id: state.textItemId, delta: deltaEvent.delta.text })
       }
       else if (deltaEvent.delta.type === 'thinking_delta') {
         const itemId = `thinking-${deltaEvent.index}`
-        events.push({
-          type: 'reasoning.delta',
-          itemId,
-          delta: deltaEvent.delta.thinking,
-          source: { backend: BACKEND, eventType: 'thinking_delta', itemId },
-        })
+        chunks.push({ type: 'reasoning-delta', id: itemId, delta: deltaEvent.delta.thinking })
       }
       else if (deltaEvent.delta.type === 'input_json_delta') {
         const partialJson = (deltaEvent.delta as { type: 'input_json_delta', partial_json: string }).partial_json
         const toolId = state.activeToolBlockIds.get(deltaEvent.index)
         if (toolId && partialJson) {
-          events.push({
-            type: 'tool_call.input.delta',
-            itemId: toolId,
-            delta: partialJson,
-            source: { backend: BACKEND, eventType: 'input_json_delta', itemId: toolId },
-          })
+          chunks.push({ type: 'tool-input-delta', toolCallId: toolId, inputTextDelta: partialJson })
         }
       }
       break
@@ -221,27 +187,21 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentTimel
       const startEvent = msg.event as BetaRawContentBlockStartEvent
       if (startEvent.content_block.type === 'thinking') {
         const itemId = `thinking-${startEvent.index}`
-        events.push({ type: 'reasoning.started', itemId, source: { backend: BACKEND, eventType: 'content_block_start', itemId } })
+        chunks.push({ type: 'reasoning-start', id: itemId })
       }
       else if (startEvent.content_block.type === 'tool_use') {
         state.hadToolCallSinceLastText = true
         state.activeToolBlockIds.set(startEvent.index, startEvent.content_block.id)
-        events.push({
-          type: 'tool_call.started',
-          itemId: startEvent.content_block.id,
-          toolName: startEvent.content_block.name,
-          toolInput: null,
-          source: { backend: BACKEND, eventType: 'content_block_start', itemId: startEvent.content_block.id },
-        })
+        chunks.push({ type: 'tool-input-start', toolCallId: startEvent.content_block.id, toolName: startEvent.content_block.name })
       }
       break
     }
   }
 
-  return { events, assistantStarted, sessionId: msg.session_id, usage: null }
+  return { chunks, assistantStarted, sessionId: msg.session_id, usage: null }
 }
 
-function mapResult(msg: SDKResultMessage, state: ClaudeAgentTimelineMapperState): ClaudeAgentTimelineMapperResult {
+function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const usage = msg.usage
     ? {
         promptTokens: msg.usage.input_tokens ?? 0,
@@ -250,5 +210,5 @@ function mapResult(msg: SDKResultMessage, state: ClaudeAgentTimelineMapperState)
       }
     : null
 
-  return { events: [], assistantStarted: state.assistantStarted, sessionId: msg.session_id, usage }
+  return { chunks: [], assistantStarted: state.assistantStarted, sessionId: msg.session_id, usage }
 }

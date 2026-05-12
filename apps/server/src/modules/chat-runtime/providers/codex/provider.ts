@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto'
 import type { Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
 
+import type { UIMessageChunk } from 'ai'
+
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
 import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
@@ -18,11 +20,10 @@ import type {
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
-  TimelineInputEvent,
-  TokenUsage,
 } from '../../runtime-provider-types'
-import type { CodexTimelineMapperState } from './mapper'
-import { closeOpenCodexReasoning, mapCodexThreadEventToTimeline } from './mapper'
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
+import type { CodexChunkMapperState } from './mapper'
+import { closeOpenCodexReasoning, mapCodexThreadEventToChunks } from './mapper'
 
 interface CodexProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -78,7 +79,7 @@ export class CodexProvider implements ChatRuntimeProvider {
     }
   }
 
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = parseConfigWith(input.profile.configJson, CodexConfigSchema)
     const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
@@ -118,7 +119,7 @@ export class CodexProvider implements ChatRuntimeProvider {
     this._lastUsage = null
 
     const textItemId = randomUUID()
-    const mapperState: CodexTimelineMapperState = { textItemId, assistantStarted: false, openReasoningItemId: null }
+    const mapperState: CodexChunkMapperState = { textItemId, assistantStarted: false, openReasoningItemId: null }
     const diagnostics: CodexStreamDiagnostics = {
       totalEvents: 0,
       mappedEvents: 0,
@@ -137,9 +138,9 @@ export class CodexProvider implements ChatRuntimeProvider {
 
         collectCodexStreamDiagnostics(diagnostics, event)
 
-        for (const syntheticEvent of closeOpenCodexReasoning(event, mapperState)) {
+        for (const syntheticChunk of closeOpenCodexReasoning(event, mapperState)) {
           diagnostics.mappedEvents += 1
-          yield syntheticEvent
+          yield syntheticChunk
         }
 
         if (event.type === 'turn.failed') {
@@ -149,7 +150,7 @@ export class CodexProvider implements ChatRuntimeProvider {
           throw new Error(formatCodexThreadFailure(event, diagnostics))
         }
 
-        const result = mapCodexThreadEventToTimeline(event, mapperState)
+        const result = mapCodexThreadEventToChunks(event, mapperState)
         if (event.type === 'item.started' && event.item.type === 'reasoning') {
           mapperState.openReasoningItemId = event.item.id
         }
@@ -157,9 +158,9 @@ export class CodexProvider implements ChatRuntimeProvider {
           mapperState.openReasoningItemId = null
         }
         mapperState.assistantStarted = result.assistantStarted
-        diagnostics.mappedEvents += result.events.length
-        for (const mappedEvent of result.events) {
-          yield mappedEvent
+        diagnostics.mappedEvents += result.chunks.length
+        for (const chunk of result.chunks) {
+          yield chunk
         }
 
         if (event.type === 'thread.started') {
@@ -174,9 +175,9 @@ export class CodexProvider implements ChatRuntimeProvider {
         }
       }
 
-      for (const syntheticEvent of closeOpenCodexReasoning({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } } as ThreadEvent, mapperState)) {
+      for (const syntheticChunk of closeOpenCodexReasoning({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } } as ThreadEvent, mapperState)) {
         diagnostics.mappedEvents += 1
-        yield syntheticEvent
+        yield syntheticChunk
       }
 
       if (threadId) {
@@ -204,11 +205,7 @@ export class CodexProvider implements ChatRuntimeProvider {
       }
 
       if (mapperState.assistantStarted) {
-        yield {
-          type: 'assistant.message.completed',
-          itemId: textItemId,
-          source: { backend: PROVIDER_KIND, eventType: 'turn.completed', itemId: textItemId },
-        }
+        yield { type: 'text-end', id: textItemId }
       }
     }
     finally {

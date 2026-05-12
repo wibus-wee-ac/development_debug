@@ -37,12 +37,12 @@ vi.mock('@openai/codex-sdk', () => ({
   },
 }))
 
-interface ChatTimelineGroup {
+interface ChatChunkGroup {
   messageId: string
   role: 'user' | 'assistant'
   userText?: string
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
-  events: Array<{ type: string, delta?: string, command?: string, paths?: string[] }>
+  chunks: Array<{ chunk: { type: string, delta?: string, [key: string]: unknown } }>
 }
 
 type ElysiaApp = ReturnType<typeof createServerApp>
@@ -73,11 +73,11 @@ function makeAsyncSequence<T>(items: T[]) {
   }
 }
 
-async function waitForTimelineStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
+async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatChunkGroup['status']): Promise<ChatChunkGroup[]> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/timeline`))
+    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
     if (response.status === 200) {
-      const groups = await response.json() as ChatTimelineGroup[]
+      const groups = await response.json() as ChatChunkGroup[]
       const assistant = groups.find(group => group.role === 'assistant')
       if (assistant?.status === expectedStatus) {
         return groups
@@ -248,23 +248,23 @@ describe('sdk-backed providers in unified chat runtime', () => {
         expect.objectContaining({ id: 'claude-sonnet-4-20250514', providerKind: 'claude-agent' }),
       ])
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Hello Claude' }),
       }))
       expect(runRes.status).toBe(200)
 
-      const timeline = await waitForTimelineStatus(app, 'session-claude', 'complete')
+      const timeline = await waitForMessageStatus(app, 'session-claude', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      expect(assistant?.events.map(event => event.type)).toEqual(expect.arrayContaining([
-        'run.started',
-        'reasoning.started',
-        'reasoning.delta',
-        'assistant.message.started',
-        'assistant.text.delta',
-        'assistant.message.completed',
-        'run.completed',
+      expect(assistant?.chunks.map((c: any) => c.chunk.type)).toEqual(expect.arrayContaining([
+        'start',
+        'reasoning-start',
+        'reasoning-delta',
+        'text-start',
+        'text-delta',
+        'text-end',
+        'finish',
       ]))
 
       const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-claude'))
@@ -370,26 +370,25 @@ describe('sdk-backed providers in unified chat runtime', () => {
         expect.objectContaining({ id: 'gpt-5-codex', providerKind: 'codex' }),
       ])
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-codex/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-codex/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Hello Codex' }),
       }))
       expect(runRes.status).toBe(200)
 
-      const timeline = await waitForTimelineStatus(app, 'session-codex', 'complete')
+      const timeline = await waitForMessageStatus(app, 'session-codex', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      expect(assistant?.events.map(event => event.type)).toEqual(expect.arrayContaining([
-        'run.started',
-        'reasoning.started',
-        'reasoning.completed',
-        'assistant.message.started',
-        'assistant.text.delta',
-        'command.started',
-        'command.completed',
-        'file_change.completed',
-        'assistant.message.completed',
-        'run.completed',
+      expect(assistant?.chunks.map((c: any) => c.chunk.type)).toEqual(expect.arrayContaining([
+        'start',
+        'reasoning-start',
+        'reasoning-end',
+        'text-start',
+        'text-delta',
+        'tool-input-start',
+        'tool-output-available',
+        'text-end',
+        'finish',
       ]))
 
       expect(sdkMocks.codexStartThread).toHaveBeenCalledWith(expect.objectContaining({
@@ -493,35 +492,35 @@ describe('sdk-backed providers in unified chat runtime', () => {
         secret: 'sk-ant-tool-test',
       })
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-tool/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-tool/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Run echo hello' }),
       }))
       expect(runRes.status).toBe(200)
 
-      const timeline = await waitForTimelineStatus(app, 'session-claude-tool', 'complete')
+      const timeline = await waitForMessageStatus(app, 'session-claude-tool', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      const eventTypes = assistant?.events.map(event => event.type) ?? []
+      const eventTypes = assistant?.chunks.map((c: any) => c.chunk.type) ?? []
 
-      // Regression: tool_call.started and tool_call.completed must both be emitted
-      expect(eventTypes).toContain('tool_call.started')
-      expect(eventTypes).toContain('tool_call.completed')
+      // Regression: tool-input-start and tool-output-available must both be emitted
+      expect(eventTypes).toContain('tool-input-start')
+      expect(eventTypes).toContain('tool-output-available')
 
       // Verify ordering: started before completed
-      const startedIdx = eventTypes.indexOf('tool_call.started')
-      const completedIdx = eventTypes.indexOf('tool_call.completed')
+      const startedIdx = eventTypes.indexOf('tool-input-start')
+      const completedIdx = eventTypes.indexOf('tool-output-available')
       expect(startedIdx).toBeLessThan(completedIdx)
 
       // Verify the full lifecycle events are present
       expect(eventTypes).toEqual(expect.arrayContaining([
-        'run.started',
-        'tool_call.started',
-        'tool_call.completed',
-        'assistant.message.started',
-        'assistant.text.delta',
-        'assistant.message.completed',
-        'run.completed',
+        'start',
+        'tool-input-start',
+        'tool-output-available',
+        'text-start',
+        'text-delta',
+        'text-end',
+        'finish',
       ]))
     }
     finally {
@@ -612,20 +611,20 @@ describe('sdk-backed providers in unified chat runtime', () => {
         secret: 'sk-ant-err-test',
       })
 
-      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-err/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-err/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Run false command' }),
       }))
       expect(runRes.status).toBe(200)
 
-      const timeline = await waitForTimelineStatus(app, 'session-claude-err', 'complete')
+      const timeline = await waitForMessageStatus(app, 'session-claude-err', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      const eventTypes = assistant?.events.map(event => event.type) ?? []
+      const eventTypes = assistant?.chunks.map((c: any) => c.chunk.type) ?? []
 
-      // Regression: tool_call.completed must be emitted even for error results
-      expect(eventTypes).toContain('tool_call.started')
-      expect(eventTypes).toContain('tool_call.completed')
+      // Regression: tool-output-error must be emitted for error results
+      expect(eventTypes).toContain('tool-input-start')
+      expect(eventTypes).toContain('tool-output-error')
     }
     finally {
       shutdownInfra()
@@ -648,9 +647,9 @@ describe('sdk-backed providers in unified chat runtime', () => {
 })
 
 describe('claude-agent mapper: input_json_delta streaming', () => {
-  it('maps content_block_delta with input_json_delta to tool_call.input.delta events', async () => {
-    const { mapClaudeAgentMessageToTimeline } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = Parameters<typeof mapClaudeAgentMessageToTimeline>[1]
+  it('maps content_block_delta with input_json_delta to tool-input-delta chunks', async () => {
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'text-1',
@@ -660,7 +659,7 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
     }
 
     // 1. content_block_start for tool_use — should record the tool block ID
-    const startResult = mapClaudeAgentMessageToTimeline({
+    const startResult = mapClaudeAgentMessageToChunks({
       type: 'stream_event',
       session_id: 'sess-1',
       event: {
@@ -670,13 +669,13 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       },
     } as any, state)
 
-    expect(startResult.events).toEqual([
-      expect.objectContaining({ type: 'tool_call.started', itemId: 'toolu_input_delta', toolName: 'bash' }),
+    expect(startResult.chunks).toEqual([
+      expect.objectContaining({ type: 'tool-input-start', toolCallId: 'toolu_input_delta', toolName: 'bash' }),
     ])
     expect(state.activeToolBlockIds.get(0)).toBe('toolu_input_delta')
 
-    // 2. content_block_delta with input_json_delta — should emit tool_call.input.delta
-    const delta1 = mapClaudeAgentMessageToTimeline({
+    // 2. content_block_delta with input_json_delta — should emit tool-input-delta
+    const delta1 = mapClaudeAgentMessageToChunks({
       type: 'stream_event',
       session_id: 'sess-1',
       event: {
@@ -686,15 +685,14 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       },
     } as any, state)
 
-    expect(delta1.events).toEqual([{
-      type: 'tool_call.input.delta',
-      itemId: 'toolu_input_delta',
-      delta: '{"command"',
-      source: expect.objectContaining({ backend: 'claude-agent', eventType: 'input_json_delta' }),
+    expect(delta1.chunks).toEqual([{
+      type: 'tool-input-delta',
+      toolCallId: 'toolu_input_delta',
+      inputTextDelta: '{"command"',
     }])
 
     // 3. Second delta
-    const delta2 = mapClaudeAgentMessageToTimeline({
+    const delta2 = mapClaudeAgentMessageToChunks({
       type: 'stream_event',
       session_id: 'sess-1',
       event: {
@@ -704,17 +702,16 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       },
     } as any, state)
 
-    expect(delta2.events).toEqual([{
-      type: 'tool_call.input.delta',
-      itemId: 'toolu_input_delta',
-      delta: ':"echo hi"}',
-      source: expect.objectContaining({ backend: 'claude-agent', eventType: 'input_json_delta' }),
+    expect(delta2.chunks).toEqual([{
+      type: 'tool-input-delta',
+      toolCallId: 'toolu_input_delta',
+      inputTextDelta: ':"echo hi"}',
     }])
   })
 
   it('ignores input_json_delta with empty partial_json', async () => {
-    const { mapClaudeAgentMessageToTimeline } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = Parameters<typeof mapClaudeAgentMessageToTimeline>[1]
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'text-1',
@@ -723,7 +720,7 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       activeToolBlockIds: new Map([[0, 'toolu_empty']]),
     }
 
-    const result = mapClaudeAgentMessageToTimeline({
+    const result = mapClaudeAgentMessageToChunks({
       type: 'stream_event',
       session_id: 'sess-1',
       event: {
@@ -733,12 +730,12 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       },
     } as any, state)
 
-    expect(result.events).toEqual([])
+    expect(result.chunks).toEqual([])
   })
 
   it('ignores input_json_delta for unknown block index', async () => {
-    const { mapClaudeAgentMessageToTimeline } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = Parameters<typeof mapClaudeAgentMessageToTimeline>[1]
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'text-1',
@@ -747,7 +744,7 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       activeToolBlockIds: new Map(),
     }
 
-    const result = mapClaudeAgentMessageToTimeline({
+    const result = mapClaudeAgentMessageToChunks({
       type: 'stream_event',
       session_id: 'sess-1',
       event: {
@@ -757,6 +754,6 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       },
     } as any, state)
 
-    expect(result.events).toEqual([])
+    expect(result.chunks).toEqual([])
   })
 })

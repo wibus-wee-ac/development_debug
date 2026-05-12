@@ -2,6 +2,8 @@
 // Output: ACP Chat provider bound to the unified server `/chat` runtime
 // Position: apps/server chat-runtime ACP provider implementation
 
+import type { UIMessageChunk } from 'ai'
+
 import type {
   CancelTurnInput,
   ChatRuntimeProvider,
@@ -9,9 +11,8 @@ import type {
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
-  TimelineInputEvent,
-  TokenUsage,
 } from '../../runtime-provider-types'
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import { buildAcpConnectionRecord } from './config'
 import type { AcpConnectionManager } from './connection-manager'
 
@@ -109,7 +110,7 @@ export class AcpChatProvider implements ChatRuntimeProvider {
     })
   }
 
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<TimelineInputEvent, void, void> {
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const acpSessionId = input.runtimeSession.providerSessionId
     if (!acpSessionId) {
       throw new Error('Cannot stream ACP turn without a provider session ID')
