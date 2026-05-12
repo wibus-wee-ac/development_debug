@@ -8,6 +8,7 @@ import {
   backendTimelineEvents,
   messages,
   sessions,
+  stepUsage as stepUsageTable,
   usageLogs,
   workspaces,
 } from '@cradle/db'
@@ -20,10 +21,11 @@ import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
 import * as Profiles from '../profiles/service'
 import type { ProviderKind } from '../providers/types'
+import { estimateCost } from '../usage/pricing'
 import { getProviderRegistry } from './chat-runtime-provider-registry'
 import type { ChatRuntimeProvider, RuntimeSession, TokenUsage } from './runtime-provider-types'
-import type { StoredChunk } from './timeline-events'
-import { decodeChunk, encodeChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
+import type { StoredChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
+import { decodeChunk, encodeChunk } from './timeline-events'
 
 // ── types ──
 
@@ -719,6 +721,29 @@ async function executeRun(activeRun: ActiveRun, input: {
         modelId: activeRun.modelId,
         usage,
       })
+    }
+
+    // Write per-step usage if the provider supports it
+    const provider = activeRun.provider as { lastStepUsages?: Array<{ stepNumber: number, stepType: string, modelId?: string, usage: TokenUsage }> }
+    const steps = provider.lastStepUsages ?? []
+    if (steps.length > 0) {
+      const fallbackModelId = activeRun.modelId ?? 'gpt-4o'
+      for (const step of steps) {
+        const effectiveModelId = step.modelId ?? fallbackModelId
+        db().insert(stepUsageTable).values({
+          id: randomUUID(),
+          runId: activeRun.runId,
+          sessionId: activeRun.sessionId,
+          stepNumber: step.stepNumber,
+          stepType: step.stepType,
+          modelId: effectiveModelId,
+          promptTokens: step.usage.promptTokens,
+          completionTokens: step.usage.completionTokens,
+          totalTokens: step.usage.totalTokens,
+          estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
+          createdAt: nowUnix(),
+        }).run()
+      }
     }
   }
   catch (error) {

@@ -52,4 +52,44 @@ export const UsageModel = {
   sessionParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
   }),
+
+  // ── Cost Dashboard models ──
+
+  dateRangeQuery: t.Object({
+    from: t.Optional(t.String({ format: 'date' })),
+    to: t.Optional(t.String({ format: 'date' })),
+  }),
+
+  costSummary: t.Object({
+    totalCostUsd: t.Number(),
+    totalPromptTokens: t.Number(),
+    totalCompletionTokens: t.Number(),
+    totalTokens: t.Number(),
+    byModel: t.Array(t.Object({
+      modelId: t.String(),
+      costUsd: t.Number(),
+      promptTokens: t.Number(),
+      completionTokens: t.Number(),
+      totalTokens: t.Number(),
+      count: t.Number(),
+    })),
+  }),
+
+  sessionCost: t.Array(t.Object({
+    sessionId: t.String(),
+    costUsd: t.Number(),
+    promptTokens: t.Number(),
+    completionTokens: t.Number(),
+    totalTokens: t.Number(),
+    stepCount: t.Number(),
+  })),
+
+  dailyCost: t.Array(t.Object({
+    date: t.String(),
+    costUsd: t.Number(),
+    promptTokens: t.Number(),
+    completionTokens: t.Number(),
+    totalTokens: t.Number(),
+    stepCount: t.Number(),
+  })),
 }

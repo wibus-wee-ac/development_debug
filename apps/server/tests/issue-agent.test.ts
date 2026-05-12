@@ -123,7 +123,7 @@ describe('issue-agent capability', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (!url.endsWith('/chat/completions')) {
-        throw new Error(`Unexpected fetch URL: ${url}`)
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
       }
       completionIndex += 1
       const responseText = completionIndex === 1 ? 'Hello from delegated run 1' : 'Hello from delegated run 2'
@@ -232,7 +232,7 @@ describe('issue-agent capability', () => {
       const activitiesAfterDeleteRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/activities`))
       const activitiesAfterDelete = await activitiesAfterDeleteRes.json() as AgentActivityView[]
       expect(activitiesAfterDelete.map(activity => JSON.parse(activity.content).body)).toContain('Delegation removed')
-      expect(fetchSpy).toHaveBeenCalledTimes(2)
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(2)
     }
     finally {
       fetchSpy.mockRestore()

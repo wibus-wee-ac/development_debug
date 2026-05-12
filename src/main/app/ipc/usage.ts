@@ -6,7 +6,7 @@ import { IpcMethod, IpcService } from '@cradle/ipc'
 import { sql } from 'drizzle-orm'
 
 import { getDb } from '../../db'
-import { usageLogs } from '../../db/schema'
+import { stepUsage, usageLogs } from '../../db/schema'
 
 export interface DailyUsage {
   date: string
@@ -265,5 +265,95 @@ export class UsageService extends IpcService {
       completionTokens: row?.completion_tokens ?? 0,
       count: row?.count ?? 0,
     }
+  }
+
+  @IpcMethod()
+  getCostSummary(): {
+    totalCostUsd: number
+    totalPromptTokens: number
+    totalCompletionTokens: number
+    totalTokens: number
+    byModel: Array<{ modelId: string, costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, count: number }>
+  } {
+    const db = getDb()
+    const totals = db.get<{
+      cost: number
+      prompt_tokens: number
+      completion_tokens: number
+      total_tokens: number
+    }>(sql`
+      SELECT
+        COALESCE(SUM(${stepUsage.estimatedCostUsd}), 0) AS cost,
+        COALESCE(SUM(${stepUsage.promptTokens}), 0) AS prompt_tokens,
+        COALESCE(SUM(${stepUsage.completionTokens}), 0) AS completion_tokens,
+        COALESCE(SUM(${stepUsage.totalTokens}), 0) AS total_tokens
+      FROM ${stepUsage}
+    `)
+    const byModel = db.all<{
+      model_id: string
+      cost: number
+      prompt_tokens: number
+      completion_tokens: number
+      total_tokens: number
+      count: number
+    }>(sql`
+      SELECT
+        ${stepUsage.modelId} AS model_id,
+        COALESCE(SUM(${stepUsage.estimatedCostUsd}), 0) AS cost,
+        COALESCE(SUM(${stepUsage.promptTokens}), 0) AS prompt_tokens,
+        COALESCE(SUM(${stepUsage.completionTokens}), 0) AS completion_tokens,
+        COALESCE(SUM(${stepUsage.totalTokens}), 0) AS total_tokens,
+        COUNT(*) AS count
+      FROM ${stepUsage}
+      WHERE ${stepUsage.modelId} IS NOT NULL
+      GROUP BY ${stepUsage.modelId}
+      ORDER BY cost DESC
+    `)
+    return {
+      totalCostUsd: totals?.cost ?? 0,
+      totalPromptTokens: totals?.prompt_tokens ?? 0,
+      totalCompletionTokens: totals?.completion_tokens ?? 0,
+      totalTokens: totals?.total_tokens ?? 0,
+      byModel: byModel.map(r => ({
+        modelId: r.model_id,
+        costUsd: r.cost,
+        promptTokens: r.prompt_tokens,
+        completionTokens: r.completion_tokens,
+        totalTokens: r.total_tokens,
+        count: r.count,
+      })),
+    }
+  }
+
+  @IpcMethod()
+  getDailyCost(): Array<{ date: string, costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, stepCount: number }> {
+    const db = getDb()
+    const rows = db.all<{
+      date: string
+      cost: number
+      prompt_tokens: number
+      completion_tokens: number
+      total_tokens: number
+      step_count: number
+    }>(sql`
+      SELECT
+        date(${stepUsage.createdAt}, 'unixepoch') AS date,
+        COALESCE(SUM(${stepUsage.estimatedCostUsd}), 0) AS cost,
+        COALESCE(SUM(${stepUsage.promptTokens}), 0) AS prompt_tokens,
+        COALESCE(SUM(${stepUsage.completionTokens}), 0) AS completion_tokens,
+        COALESCE(SUM(${stepUsage.totalTokens}), 0) AS total_tokens,
+        COUNT(*) AS step_count
+      FROM ${stepUsage}
+      GROUP BY date(${stepUsage.createdAt}, 'unixepoch')
+      ORDER BY date ASC
+    `)
+    return rows.map(r => ({
+      date: r.date,
+      costUsd: r.cost,
+      promptTokens: r.prompt_tokens,
+      completionTokens: r.completion_tokens,
+      totalTokens: r.total_tokens,
+      stepCount: r.step_count,
+    }))
   }
 }

@@ -25,3 +25,18 @@ export const usage = new Elysia({
     params: UsageModel.sessionParams,
     response: { 200: UsageModel.sessionUsage },
   })
+  .get('/cost/summary', ({ query }) => Usage.getCostSummary(query.from, query.to), {
+    detail: { summary: 'Get cost summary with model breakdown' },
+    query: UsageModel.dateRangeQuery,
+    response: { 200: UsageModel.costSummary },
+  })
+  .get('/cost/sessions', ({ query }) => Usage.getSessionsCost(query.from, query.to), {
+    detail: { summary: 'Get per-session cost breakdown' },
+    query: UsageModel.dateRangeQuery,
+    response: { 200: UsageModel.sessionCost },
+  })
+  .get('/cost/daily', ({ query }) => Usage.getDailyCost(query.from, query.to), {
+    detail: { summary: 'Get daily cost trend' },
+    query: UsageModel.dateRangeQuery,
+    response: { 200: UsageModel.dailyCost },
+  })

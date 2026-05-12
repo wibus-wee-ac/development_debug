@@ -4,6 +4,7 @@
 
 import type { UIMessageChunk } from 'ai'
 
+import { lookupContextWindow } from '../../../providers/model-info-registry'
 import {
   OpenAICompatibleConfigSchema,
   parseConfigWith,
@@ -25,14 +26,26 @@ interface OpenAICompatibleProviderDeps {
   readSecret: (credentialRef: string) => string
 }
 
+export interface StepUsageEntry {
+  stepNumber: number
+  stepType: string
+  modelId?: string
+  usage: TokenUsage
+}
+
 export class OpenAICompatibleProvider implements ChatRuntimeProvider {
   readonly providerKind = 'openai-compatible' as const satisfies ProviderKind
 
   private readonly activeTurns = new Map<string, AbortController>()
   private _lastUsage: TokenUsage | null = null
+  private _lastStepUsages: StepUsageEntry[] = []
 
   get lastUsage(): TokenUsage | null {
     return this._lastUsage
+  }
+
+  get lastStepUsages(): StepUsageEntry[] {
+    return this._lastStepUsages
   }
 
   constructor(private readonly deps: OpenAICompatibleProviderDeps) {}
@@ -84,6 +97,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
     const abortController = new AbortController()
     this.activeTurns.set(runtimeSession.chatSessionId, abortController)
     this._lastUsage = null
+    this._lastStepUsages = []
 
     try {
       const apiFormat = detectApiFormat(config.baseUrl)
@@ -100,6 +114,8 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         config.maxMessages ?? 50,
       )
 
+      const contextWindow = await lookupContextWindow(effectiveModel) ?? 128_000
+
       yield* executeAiSdkTurn({
         model,
         messages,
@@ -108,6 +124,12 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         abortSignal: abortController.signal,
         providerOptions,
         onUsage: (usage) => { this._lastUsage = usage },
+        onStepFinish: (step) => { this._lastStepUsages.push(step) },
+        approvalContext: {
+          chatSessionId: runtimeSession.chatSessionId,
+          providerKind: this.providerKind,
+        },
+        contextWindow,
       })
     }
     catch (error) {
@@ -150,12 +172,20 @@ function createAbortError(): Error {
 }
 
 function isAbortError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
+  if (!(error instanceof Error)) {
+    return false
+  }
   // Standard AbortError (DOMException or custom)
-  if (error.name === 'AbortError') return true
+  if (error.name === 'AbortError') {
+    return true
+  }
   // AI SDK wraps abort as various error messages
-  if (error.message.includes('aborted') || error.message.includes('abort')) return true
+  if (error.message.includes('aborted') || error.message.includes('abort')) {
+    return true
+  }
   // AI SDK's AbortError from node-fetch or undici
-  if (error.message.includes('This operation was aborted')) return true
+  if (error.message.includes('This operation was aborted')) {
+    return true
+  }
   return false
 }

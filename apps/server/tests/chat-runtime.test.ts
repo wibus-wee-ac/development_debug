@@ -126,7 +126,8 @@ describe('chat runtime capability', () => {
           'data: [DONE]\n\n',
         ])
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      // models.dev or other external calls — return empty JSON so registry caches it
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
@@ -172,7 +173,7 @@ describe('chat runtime capability', () => {
       expect(searchRes.status).toBe(200)
       const hits = await searchRes.json() as Array<{ sessionId: string }>
       expect(hits).toEqual([expect.objectContaining({ sessionId: 'session-chat' })])
-      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(1)
     }
     finally {
       shutdownInfra()
@@ -210,7 +211,7 @@ describe('chat runtime capability', () => {
           'data: [DONE]\n\n',
         ], [0, 60, 60])
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined

@@ -75,3 +75,16 @@ export async function enrichModelsFromRegistry(models: ModelDescriptor[]): Promi
     }
   })
 }
+
+/**
+ * Look up the context window for a single model ID.
+ * Returns null if the model is not found in the registry.
+ */
+export async function lookupContextWindow(modelId: string): Promise<number | null> {
+  const data = await fetchModelsDevData()
+  if (!data) {
+    return null
+  }
+  const info = findModel(data, modelId)
+  return info?.limit?.context ?? null
+}

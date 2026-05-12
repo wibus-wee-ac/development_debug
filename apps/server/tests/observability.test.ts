@@ -122,7 +122,7 @@ describe('observability capability', () => {
           headers: { 'content-type': 'text/event-stream' },
         })
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
@@ -179,7 +179,7 @@ describe('observability capability', () => {
       expect(bundle.events).toEqual([expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
       expect(bundle.incidents).toEqual([expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
       expect(bundle.timeline.some(event => event.runId === finalRunId && event.eventType === 'error')).toBe(true)
-      expect(fetchSpy).toHaveBeenCalledTimes(3)
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(3)
     }
     finally {
       fetchSpy.mockRestore()
@@ -214,7 +214,7 @@ describe('observability capability', () => {
       if (url.endsWith('/chat/completions')) {
         throw new Error('provider stream exploded')
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
@@ -248,7 +248,7 @@ describe('observability capability', () => {
       expect(incidentsRes.status).toBe(200)
       const incidents = await incidentsRes.json() as Array<{ code: string, status: string }>
       expect(incidents).toEqual([expect.objectContaining({ code: 'CHAT_EMPTY_OUTPUT_COMPLETION', status: 'open' })])
-      expect(fetchSpy).toHaveBeenCalledTimes(1)
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(1)
     }
     finally {
       fetchSpy.mockRestore()

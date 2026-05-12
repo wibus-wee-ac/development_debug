@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
+import { approvalAudit } from '@cradle/db'
+
 import { AppError } from '../../errors/app-error'
+import { db } from '../../infra'
 import * as SessionService from '../session/service'
 
 // ── types ──
@@ -98,6 +101,21 @@ export function respond(approvalId: string, response: ApprovalResponse): void {
   pending.delete(approvalId)
   entry.resolve(response)
   emitResolved(approvalId, response)
+
+  // Record audit entry
+  try {
+    const toolName = extractToolName(entry.approval.prompt)
+    db().insert(approvalAudit).values({
+      id: randomUUID(),
+      sessionId: entry.approval.chatSessionId,
+      toolName,
+      decision: response.decision,
+      selectedOptionId: response.selectedOptionId,
+    }).run()
+  }
+  catch (e) {
+    console.warn('[approval] audit write failed', e)
+  }
 }
 
 export function rejectPendingBySession(chatSessionId: string): number {
@@ -138,6 +156,13 @@ export function onResolved(listener: ApprovalResolvedListener): () => void {
 }
 
 // ── helpers ──
+
+const TOOL_NAME_RE = /^Allow tool "(.+?)"\?/
+
+function extractToolName(prompt: string): string {
+  const match = prompt.match(TOOL_NAME_RE)
+  return match?.[1] ?? prompt.slice(0, 100)
+}
 
 function emitRequested(approval: PendingApproval): void {
   for (const listener of [...requestedListeners]) {

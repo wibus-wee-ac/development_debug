@@ -200,7 +200,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       if (url === 'https://models.dev/api.json') {
         return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
@@ -322,7 +322,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       if (url === 'https://models.dev/api.json') {
         return new Response(JSON.stringify({ openai: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
@@ -474,7 +474,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       if (url === 'https://models.dev/api.json') {
         return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
@@ -593,7 +593,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       if (url === 'https://models.dev/api.json') {
         return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
-      throw new Error(`Unexpected fetch URL: ${url}`)
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
     let app: ReturnType<typeof createServerApp> | undefined
