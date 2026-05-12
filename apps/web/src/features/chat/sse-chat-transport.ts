@@ -35,20 +35,35 @@ function buildChunkStreamFromResponse(
   })
 
   const closeCleanly = () => {
-    if (closed) return
+    if (closed) {
+      return
+    }
     closed = true
-    try { ctrl.close() } catch { /* Already closed */ }
+    try {
+      ctrl.close()
+    }
+    catch { /* Already closed */ }
   }
 
   const closeWithError = (err: unknown) => {
-    if (closed) return
+    if (closed) {
+      return
+    }
     closed = true
-    try { ctrl.error(err) } catch { /* Already closed */ }
+    try {
+      ctrl.error(err)
+    }
+    catch { /* Already closed */ }
   }
 
   const safeEnqueue = (chunk: UIMessageChunk) => {
-    if (closed) return
-    try { ctrl.enqueue(chunk) } catch { /* Stream closed by consumer */ }
+    if (closed) {
+      return
+    }
+    try {
+      ctrl.enqueue(chunk)
+    }
+    catch { /* Stream closed by consumer */ }
   }
 
   void (async () => {
@@ -63,16 +78,22 @@ function buildChunkStreamFromResponse(
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          break
+        }
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
+          if (!line.startsWith('data: ')) {
+            continue
+          }
           const data = line.slice(6).trim()
-          if (!data) continue
+          if (!data) {
+            continue
+          }
 
           let stored: StoredChunkShape
           try {
@@ -153,6 +174,7 @@ export function createSseChatTransport(chatSessionId: string): SseChatTransportH
 
       return buildChunkStreamFromResponse(res, chatSessionId)
     },
+    reconnectToStream: async () => null,
   }
 
   const abort = async (): Promise<void> => {

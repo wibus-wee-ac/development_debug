@@ -21,7 +21,6 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
-
 import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../engine/ai-sdk-engine'

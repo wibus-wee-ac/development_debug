@@ -4,6 +4,7 @@
 
 import type { UIMessageChunk } from 'ai'
 
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
   ChatRuntimeProvider,
@@ -12,7 +13,6 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
-import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import { buildAcpConnectionRecord } from './config'
 import type { AcpConnectionManager } from './connection-manager'
 

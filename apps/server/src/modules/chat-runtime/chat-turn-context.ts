@@ -42,8 +42,8 @@ function readAssistantText(messageId: string): string {
   }
   const rows = db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
   return rows.map((row) => {
-    const stored = decodeChunk({ eventType: row.eventType, payloadJson: row.payloadJson, sourceJson: row.sourceJson })
-    return stored.chunk.type === 'text-delta' ? (stored.chunk as { type: 'text-delta', delta: string }).delta : ''
+    const chunk = decodeChunk({ payloadJson: row.payloadJson })
+    return chunk.type === 'text-delta' ? (chunk as { type: 'text-delta', delta: string }).delta : ''
   }).join('')
 }
 

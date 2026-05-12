@@ -5,12 +5,12 @@
 import { randomUUID } from 'node:crypto'
 
 import type { CanUseTool, Options, Query } from '@anthropic-ai/claude-agent-sdk'
-
 import type { UIMessageChunk } from 'ai'
 
 import * as Approval from '../../../approval/service'
 import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { ProviderKind } from '../../../providers/types'
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
   ChatRuntimeProvider,
@@ -19,7 +19,6 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
-import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type { ClaudeAgentChunkMapperState } from './mapper'
 import { mapClaudeAgentMessageToChunks } from './mapper'
 

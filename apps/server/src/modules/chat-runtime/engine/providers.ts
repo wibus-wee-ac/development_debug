@@ -13,6 +13,8 @@ export interface ModelConfig {
   apiKey: string
   baseUrl?: string
   modelId: string
+  /** When 'responses', use Responses API (reasoning support). When 'chat-completions', use legacy Chat Completions API. Default: 'chat-completions'. */
+  apiMode?: 'responses' | 'chat-completions'
 }
 
 /**
@@ -20,10 +22,16 @@ export interface ModelConfig {
  * Falls back to 'openai' (most compatible).
  */
 export function detectApiFormat(baseUrl: string | undefined): ApiFormat {
-  if (!baseUrl) return 'openai'
+  if (!baseUrl) {
+    return 'openai'
+  }
   const lower = baseUrl.toLowerCase()
-  if (lower.includes('anthropic')) return 'anthropic'
-  if (lower.includes('generativelanguage.googleapis.com') || lower.includes('google')) return 'google'
+  if (lower.includes('anthropic')) {
+    return 'anthropic'
+  }
+  if (lower.includes('generativelanguage.googleapis.com') || lower.includes('google')) {
+    return 'google'
+  }
   return 'openai'
 }
 
@@ -41,8 +49,11 @@ export function createLanguageModel(config: ModelConfig): LanguageModel {
         apiKey: config.apiKey,
         baseURL: config.baseUrl,
       })
-      // Use .chat() to force Chat Completions API (/chat/completions)
-      // Default provider() uses Responses API (/responses) which most third-party APIs don't support
+      // 'responses' uses the Responses API (supports reasoning/thinking)
+      // 'chat-completions' uses legacy Chat Completions API (compatible with third-party APIs)
+      if (config.apiMode === 'responses') {
+        return provider(config.modelId)
+      }
       return provider.chat(config.modelId)
     }
     case 'anthropic': {

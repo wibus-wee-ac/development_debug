@@ -6,13 +6,13 @@ import { randomUUID } from 'node:crypto'
 
 import type { Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
-
 import type { UIMessageChunk } from 'ai'
 
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
 import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { ProviderKind } from '../../../providers/types'
+import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
   ChatRuntimeProvider,
@@ -21,7 +21,6 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
-import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type { CodexChunkMapperState } from './mapper'
 import { closeOpenCodexReasoning, mapCodexThreadEventToChunks } from './mapper'
 

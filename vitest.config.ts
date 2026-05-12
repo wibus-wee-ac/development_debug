@@ -1,7 +1,3 @@
-// Input: Node path resolver and Vitest config helpers
-// Output: Shared Vitest configuration for main-process and renderer unit tests
-// Position: Repository-level test runner configuration
-
 import { resolve } from 'node:path'
 
 import { defineConfig } from 'vitest/config'
@@ -11,8 +7,6 @@ export default defineConfig({
     alias: {
       '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
       '@cradle/tabs': resolve('packages/tabs/src/index.ts'),
-      '@main': resolve('src/main'),
-      '@renderer': resolve('src/renderer/src'),
       '@shared': resolve('src/shared'),
     },
   },

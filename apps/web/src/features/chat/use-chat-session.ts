@@ -4,7 +4,6 @@
 
 import { useChat } from '@ai-sdk/react'
 import type { ChatStatus, UIMessage, UIMessageChunk } from 'ai'
-import { processUIMessageStream } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { SseChatTransportHandle } from './sse-chat-transport'
@@ -114,7 +113,7 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
 
   // Build parts from chunks manually — simple and deterministic
   let currentTextPart: { type: 'text', text: string } | null = null
-  let currentReasoningPart: { type: 'reasoning', reasoning: string, details: Array<{ type: 'text', text: string }> } | null = null
+  let currentReasoningPart: { type: 'reasoning', text: string, reasoning: string, details: Array<{ type: 'text', text: string }> } | null = null
 
   for (const chunk of chunks) {
     switch (chunk.type) {
@@ -135,12 +134,13 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         currentTextPart = null
         break
       case 'reasoning-start':
-        currentReasoningPart = { type: 'reasoning', reasoning: '', details: [] }
+        currentReasoningPart = { type: 'reasoning', text: '', reasoning: '', details: [] }
         message.parts.push(currentReasoningPart)
         break
       case 'reasoning-delta':
         if (currentReasoningPart) {
           currentReasoningPart.reasoning += chunk.delta
+          currentReasoningPart.text += chunk.delta
         }
         break
       case 'reasoning-end':
@@ -148,39 +148,30 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         break
       case 'tool-input-start':
         message.parts.push({
-          type: 'tool-invocation',
-          toolInvocation: {
-            toolCallId: chunk.toolCallId,
-            toolName: chunk.toolName,
-            state: 'partial-call',
-            step: 0,
-            args: {},
-          },
-        })
+          type: 'dynamic-tool',
+          toolCallId: chunk.toolCallId,
+          toolName: chunk.toolName,
+          state: 'input-streaming',
+          input: undefined,
+        } as any)
         break
       case 'tool-input-available': {
         const existingTool = message.parts.find(
-          p => p.type === 'tool-invocation' && p.toolInvocation.toolCallId === chunk.toolCallId,
-        )
-        if (existingTool && existingTool.type === 'tool-invocation') {
-          existingTool.toolInvocation = {
-            ...existingTool.toolInvocation,
-            state: 'call',
-            args: chunk.input,
-          }
+          p => (p.type === 'dynamic-tool') && (p as any).toolCallId === chunk.toolCallId,
+        ) as any
+        if (existingTool) {
+          existingTool.state = 'input-available'
+          existingTool.input = chunk.input
         }
         break
       }
       case 'tool-output-available': {
         const toolPart = message.parts.find(
-          p => p.type === 'tool-invocation' && p.toolInvocation.toolCallId === chunk.toolCallId,
-        )
-        if (toolPart && toolPart.type === 'tool-invocation') {
-          toolPart.toolInvocation = {
-            ...toolPart.toolInvocation,
-            state: 'result',
-            result: chunk.output,
-          }
+          p => (p.type === 'dynamic-tool') && (p as any).toolCallId === chunk.toolCallId,
+        ) as any
+        if (toolPart) {
+          toolPart.state = 'output-available'
+          toolPart.output = chunk.output
         }
         break
       }
@@ -360,7 +351,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
     // so we preserve the backend error in snapshotState as a fallback.
     if (data.event.type === 'run.failed') {
       wasLocallyDrivingRef.current = false
-      const error = data.event.error || undefined
+      const error = (typeof data.event.error === 'string' ? data.event.error : undefined)
       setSnapshotState({ status: 'error', error })
       if (currentStatus !== 'streaming' && currentStatus !== 'submitted') {
         scheduleSnapshotSync(0)

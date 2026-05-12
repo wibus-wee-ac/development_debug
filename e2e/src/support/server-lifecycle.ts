@@ -14,8 +14,10 @@ const ROOT = resolve(__dirname, '..', '..', '..')
 
 interface E2EServerInstance {
   serverProcess: ChildProcess
+  webProcess: ChildProcess | null
   dataDir: string
   serverUrl: string
+  webUrl: string | null
 }
 
 let instance: E2EServerInstance | null = null
@@ -23,6 +25,11 @@ let instance: E2EServerInstance | null = null
 /** Exported so CradleWorld can override its serverUrl. */
 export function getManagedServerUrl(): string | null {
   return instance?.serverUrl ?? null
+}
+
+/** Exported so CradleWorld can override its webUrl. */
+export function getManagedWebUrl(): string | null {
+  return instance?.webUrl ?? null
 }
 
 async function waitForReady(url: string, label: string, timeoutMs = 30_000): Promise<void> {
@@ -46,7 +53,7 @@ async function waitForReady(url: string, label: string, timeoutMs = 30_000): Pro
  * If CRADLE_SERVER_URL is set, we assume the user is managing the server themselves.
  * Otherwise, we start an isolated server with a temp data directory.
  */
-BeforeAll({ timeout: 60_000 }, async () => {
+BeforeAll({ timeout: 120_000 }, async () => {
   // If user explicitly provides a server URL, don't start a managed server
   if (process.env.CRADLE_SERVER_URL) {
     return
@@ -83,9 +90,42 @@ BeforeAll({ timeout: 60_000 }, async () => {
   const serverUrl = `http://127.0.0.1:${serverPort}`
   await waitForReady(`${serverUrl}/health`, 'Managed E2E Server')
 
-  instance = { serverProcess, dataDir, serverUrl }
   // eslint-disable-next-line no-console
   console.log(`[e2e] Managed server started at ${serverUrl} (data: ${dataDir})`)
+
+  // Start a web dev server pointing to the managed API server
+  let webProcess: ChildProcess | null = null
+  let webUrl: string | null = null
+
+  if (!process.env.CRADLE_WEB_URL) {
+    const webPort = serverPort + 100 // e.g. 21449 -> 21549
+    webProcess = spawn('npx', ['vite', '--port', String(webPort), '--strictPort'], {
+      cwd: join(ROOT, 'apps', 'web'),
+      env: {
+        ...process.env,
+        VITE_SERVER_URL: serverUrl,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    webProcess.stdout?.on('data', (chunk: Buffer) => {
+      if (process.env.CRADLE_E2E_VERBOSE) {
+        process.stderr.write(`[web] ${chunk.toString()}`)
+      }
+    })
+    webProcess.stderr?.on('data', (chunk: Buffer) => {
+      if (process.env.CRADLE_E2E_VERBOSE) {
+        process.stderr.write(`[web:err] ${chunk.toString()}`)
+      }
+    })
+
+    webUrl = `http://localhost:${webPort}`
+    await waitForReady(webUrl, 'Managed E2E Web', 30_000)
+    // eslint-disable-next-line no-console
+    console.log(`[e2e] Managed web dev server started at ${webUrl}`)
+  }
+
+  instance = { serverProcess, webProcess, dataDir, serverUrl, webUrl }
 })
 
 AfterAll({ timeout: 15_000 }, async () => {
@@ -93,7 +133,19 @@ AfterAll({ timeout: 15_000 }, async () => {
     return
   }
 
-  const { serverProcess, dataDir } = instance
+  const { serverProcess, webProcess, dataDir } = instance
+
+  // Kill web dev server first
+  if (webProcess) {
+    webProcess.kill('SIGTERM')
+    await new Promise<void>((resolve) => {
+      webProcess.on('exit', () => resolve())
+      setTimeout(() => {
+        webProcess.kill('SIGKILL')
+        resolve()
+      }, 3000)
+    })
+  }
 
   serverProcess.kill('SIGTERM')
 

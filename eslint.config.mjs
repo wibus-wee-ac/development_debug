@@ -27,7 +27,7 @@ export default defineConfig(
       '@eslint-react/hooks-extra/no-direct-set-state-in-use-effect': 0,
       'no-restricted-syntax': 0,
       'react-google-translate/no-conditional-text-nodes-with-siblings': 0,
-      // Electron: process / Buffer are always available as globals
+      // Node globals in server code
       'node/prefer-global/process': 'off',
       'node/prefer-global/buffer': 'off',
       'style/indent': 'off',

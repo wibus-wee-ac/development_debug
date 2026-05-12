@@ -106,6 +106,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         apiKey,
         baseUrl: config.baseUrl,
         modelId: effectiveModel,
+        apiMode: config.apiMode,
       })
 
       const messages = buildModelMessages(

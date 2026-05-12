@@ -13,7 +13,7 @@ import { chromium } from '@playwright/test'
 
 import type { MockLlmFailureMode, MockToolCall } from './mock-llm-server'
 import { MockLlmServer } from './mock-llm-server'
-import { getManagedServerUrl } from './server-lifecycle'
+import { getManagedServerUrl, getManagedWebUrl } from './server-lifecycle'
 import type { ScenarioArtifactPaths } from './world-utils'
 import {
   buildScenarioArtifactPaths,
@@ -51,11 +51,13 @@ export class CradleWorld extends World {
 
   get params(): WorldParameters {
     const base = this.parameters as WorldParameters
-    const managedUrl = getManagedServerUrl()
-    if (managedUrl) {
-      return { ...base, serverUrl: managedUrl }
+    const managedServerUrl = getManagedServerUrl()
+    const managedWebUrl = getManagedWebUrl()
+    return {
+      ...base,
+      ...(managedServerUrl ? { serverUrl: managedServerUrl } : {}),
+      ...(managedWebUrl ? { webUrl: managedWebUrl } : {}),
     }
-    return base
   }
 
   static nextScenarioIndex(): number {

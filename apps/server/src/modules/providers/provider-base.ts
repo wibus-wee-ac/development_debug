@@ -19,6 +19,8 @@ export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
   enabledModels: true,
 }).extend({
   maxMessages: z.number().optional(),
+  /** 'responses' uses OpenAI Responses API (supports reasoning); 'chat-completions' uses legacy Chat Completions API */
+  apiMode: z.enum(['responses', 'chat-completions']).optional(),
 })
 
 export const CodexConfigSchema = BaseProviderConfig.extend({

@@ -1,21 +1,18 @@
 {
-  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
   "compilerOptions": {
     "composite": true,
+    "target": "ES2022",
     "experimentalDecorators": true,
     "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "paths": {
-      "@main/*": [
-        "src/main/*"
-      ],
-      "@renderer/*": [
-        "src/renderer/src/*"
-      ],
-      "@shared/*": [
-        "src/shared/*"
-      ]
+      "@shared/*": ["src/shared/*"]
     },
-    "types": ["electron-vite/node"]
+    "types": ["node"],
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true
   },
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": ["src/shared/**/*", "src/cli/**/*"]
 }

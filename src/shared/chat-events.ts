@@ -1,15 +1,13 @@
-// Input: Typed timeline events and chat turn status types
-// Output: Chat push event payload types for IPC channels
-// Position: Shared types used by main (ChatEngine), preload (chatPush), and renderer (chat event hooks)
+// Shared chat event payload types for SSE/push channels
 
-import type { BackendTimelineEvent } from '../main/backend-control-plane/timeline-events'
-import type { ChatTurnStatus } from '../main/chat/chat-turn-executor'
+/** Chat turn status values. */
+export type ChatTurnStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
 /** Payload for the `chat:timeline-event` IPC push channel. */
 export interface ChatTimelineEventPayload {
   chatSessionId: string
   messageId: string
-  event: BackendTimelineEvent
+  event: Record<string, unknown>
 }
 
 /** Payload for the `chat:session-title` IPC push channel. */
