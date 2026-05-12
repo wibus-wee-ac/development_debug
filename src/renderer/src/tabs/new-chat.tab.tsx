@@ -19,5 +19,7 @@ function NewChatTabContent({ params: _params }: { params: Record<string, never> 
 
 export const newChatTab = defineTab({
   type: 'new-chat' as const,
-  label: '新建聊天', icon: MessageSquarePlusIcon, component: NewChatTabContent,
+  label: '新建聊天',
+icon: MessageSquarePlusIcon,
+component: NewChatTabContent,
 })

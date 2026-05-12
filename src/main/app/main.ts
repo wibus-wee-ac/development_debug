@@ -25,9 +25,9 @@ import { createApprovalBroadcastSubscriber } from '../approval/approval-broadcas
 import { getApprovalService } from '../approval/approval-service'
 import { createBroadcastSubscriber } from '../chat/broadcast'
 import { chatEngine } from '../chat/chat-engine'
-import { chatSessionWatchRegistry } from '../chat/session-watch-registry'
-import { createChatSessionTitleSync } from '../chat/session-title-sync'
 import { createFtsSubscriber } from '../chat/fts-subscriber'
+import { createChatSessionTitleSync } from '../chat/session-title-sync'
+import { chatSessionWatchRegistry } from '../chat/session-watch-registry'
 import { threadSearchEngine } from '../chat/thread-search'
 import { createUsageSubscriber } from '../chat/usage-subscriber'
 import { getDb, initDb } from '../db'
@@ -54,6 +54,7 @@ import { ChatService } from './ipc/chat'
 import { DevService } from './ipc/dev'
 import { GitService } from './ipc/git'
 import { IpcDevtoolService } from './ipc/ipc-devtool'
+import { createIssueAgentService } from './ipc/issue-agent'
 import { KanbanService } from './ipc/kanban'
 import { PackCodebaseService } from './ipc/pack-codebase'
 import { PreferencesService } from './ipc/preferences'
@@ -65,7 +66,6 @@ import { UsageService } from './ipc/usage'
 import { WindowService } from './ipc/window'
 import { WorkflowRulesService } from './ipc/workflow-rules'
 import { WorkspaceService } from './ipc/workspace'
-import { createIssueAgentService } from './ipc/issue-agent'
 import { restoreWindowState, saveWindowState } from './store/app'
 
 let closeObservability: (() => Promise<void>) | null = null
@@ -197,7 +197,7 @@ app.whenReady().then(() => {
   })
   chatEngine.bindEventBus(domainEventBus)
   const issueAgentRuntime = createIssueAgentRuntime({ chat: chatEngine })
-  domainEventBus.subscribe('chat.turn-finished', event => {
+  domainEventBus.subscribe('chat.turn-finished', (event) => {
     issueAgentRuntime.handleChatTurnFinished(event.payload)
   })
   const issueAgentService = createIssueAgentService({ runner: issueAgentRuntime })

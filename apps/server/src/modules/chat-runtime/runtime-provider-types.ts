@@ -27,6 +27,7 @@ export type TimelineInputEvent
     | (TimelineEventBase & { type: 'reasoning.delta', itemId: string, delta: string })
     | (TimelineEventBase & { type: 'reasoning.completed', itemId: string })
     | (TimelineEventBase & { type: 'tool_call.started', itemId: string, toolName: string, toolInput?: string | null })
+    | (TimelineEventBase & { type: 'tool_call.input.delta', itemId: string, delta: string })
     | (TimelineEventBase & { type: 'tool_call.completed', itemId: string, result?: string | null })
     | (TimelineEventBase & { type: 'command.started', itemId: string, command: string })
     | (TimelineEventBase & { type: 'command.output.delta', itemId: string, stream: 'stdout' | 'stderr', delta: string })

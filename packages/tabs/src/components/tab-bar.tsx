@@ -11,6 +11,8 @@ import { memo, useCallback, useRef } from 'react'
 import { cn } from '../cn'
 import { useTabsContext } from '../context'
 import type { TabInstance } from '../store'
+import type { ScreenCoordinates } from './screen-coordinates'
+import { getEventScreenCoordinates, isPointerOutsideWindow } from './screen-coordinates'
 
 export interface TabBarProps {
   /** CSS class for the outer container */
@@ -51,49 +53,6 @@ interface TabPillProps {
   renderTooltip?: (tab: TabInstance, children: React.ReactElement) => React.ReactNode
   onActivate: (id: string) => void
   onClose: (e: React.MouseEvent, id: string) => void
-}
-
-interface ScreenCoordinates {
-  screenX: number
-  screenY: number
-}
-
-export function getEventScreenCoordinates(event: Event | null): ScreenCoordinates | null {
-  if (!event) {
-    return null
-  }
-
-  const pointerLike = event as Event & Partial<ScreenCoordinates>
-  if (typeof pointerLike.screenX === 'number' && typeof pointerLike.screenY === 'number') {
-    return { screenX: pointerLike.screenX, screenY: pointerLike.screenY }
-  }
-
-  const touchLike = event as Event & {
-    touches?: ArrayLike<ScreenCoordinates>
-    changedTouches?: ArrayLike<ScreenCoordinates>
-  }
-  const touch = touchLike.changedTouches?.[0] ?? touchLike.touches?.[0]
-  if (touch && typeof touch.screenX === 'number' && typeof touch.screenY === 'number') {
-    return { screenX: touch.screenX, screenY: touch.screenY }
-  }
-
-  return null
-}
-
-export function isPointerOutsideWindow(
-  pointer: ScreenCoordinates | null,
-  windowBounds: Pick<Window, 'screenX' | 'screenY' | 'outerWidth' | 'outerHeight'>,
-): boolean {
-  if (!pointer) {
-    return false
-  }
-
-  return (
-    pointer.screenX < windowBounds.screenX
-    || pointer.screenX > windowBounds.screenX + windowBounds.outerWidth
-    || pointer.screenY < windowBounds.screenY
-    || pointer.screenY > windowBounds.screenY + windowBounds.outerHeight
-  )
 }
 
 const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName, renderCloseIcon, renderTabIcon, renderTooltip, onActivate, onClose }: TabPillProps) => {

@@ -1,29 +1,29 @@
-// Input: Cucumber World base, Playwright Electron launcher, filesystem sandbox helpers
-// Output: CradleWorld test harness exposing Electron app/page handles plus isolated HOME and userData paths
+// Input: Cucumber World base, Playwright browser launcher, mock LLM server helpers
+// Output: CradleWorld test harness exposing browser/page handles and server API wrappers
 // Position: Shared end-to-end support world used by all Cucumber features and step definitions
 
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import type { IWorldOptions } from '@cucumber/cucumber'
 import { setWorldConstructor, World } from '@cucumber/cucumber'
-import type { ElectronApplication, Page } from '@playwright/test'
-import { _electron as electron } from '@playwright/test'
+import type { Browser, BrowserContext, Page } from '@playwright/test'
+import { chromium } from '@playwright/test'
 
-import { MockLlmServer, type MockLlmFailureMode, type MockToolCall } from './mock-llm-server'
+import type { MockLlmFailureMode, MockToolCall } from './mock-llm-server'
+import { MockLlmServer } from './mock-llm-server'
+import { getManagedServerUrl } from './server-lifecycle'
+import type { ScenarioArtifactPaths } from './world-utils'
 import {
-  buildE2ELaunchEnv,
   buildScenarioArtifactPaths,
-  type ScenarioArtifactPaths,
 } from './world-utils'
 
 // ── World parameters (from cucumber.mjs worldParameters) ─────────────────────
 
 interface WorldParameters {
-  appPath: string
-  appArgs?: string[]
+  webUrl: string
+  serverUrl: string
 }
 
 // ── Custom world ──────────────────────────────────────────────────────────────
@@ -31,7 +31,8 @@ interface WorldParameters {
 export class CradleWorld extends World {
   private static scenarioCounter = 0
 
-  app!: ElectronApplication
+  browser!: Browser
+  context!: BrowserContext
   page!: Page
   skillWorkspaceDir?: string
   skillImportSourceDir?: string
@@ -49,24 +50,12 @@ export class CradleWorld extends World {
   }
 
   get params(): WorldParameters {
-    return this.parameters as WorldParameters
-  }
-
-  /** Returns the isolated userData path used during E2E tests. */
-  static get e2eUserDataPath(): string {
-    const platform = process.platform
-    const name = 'cradle-e2e'
-    if (platform === 'darwin') {
-      return join(homedir(), 'Library', 'Application Support', name)
+    const base = this.parameters as WorldParameters
+    const managedUrl = getManagedServerUrl()
+    if (managedUrl) {
+      return { ...base, serverUrl: managedUrl }
     }
-    if (platform === 'win32') {
-      return join(process.env.APPDATA ?? homedir(), name)
-    }
-    return join(homedir(), '.config', name)
-  }
-
-  static get e2eHomePath(): string {
-    return join(CradleWorld.e2eUserDataPath, 'home')
+    return base
   }
 
   static nextScenarioIndex(): number {
@@ -125,55 +114,39 @@ export class CradleWorld extends World {
     this.mockLlmServer = new MockLlmServer(options)
     this.mockLlmBaseUrl = await this.mockLlmServer.start()
 
-    await this.page.evaluate(async ({ baseUrl }) => {
-      // eslint-disable-next-line ts/no-explicit-any
-      const ipcRenderer = (window as any).electron?.ipcRenderer
-      if (!ipcRenderer?.invoke) {
-        throw new Error('electron.ipcRenderer not available')
-      }
-
-      await ipcRenderer.invoke('agentRuntime.upsertProfile', {
-        id: 'mock-llm-profile',
+    const response = await fetch(`${this.params.serverUrl}/profiles/mock-llm-profile`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         name: 'Mock LLM',
         providerKind: 'openai-compatible',
         enabled: true,
-        configJson: JSON.stringify({
-          baseUrl,
+        config: {
+          baseUrl: this.mockLlmBaseUrl,
           model: 'mock-model',
-        }),
+        },
         credentialRef: null,
-      })
-    }, { baseUrl: this.mockLlmBaseUrl })
+      }),
+    })
+    if (!response.ok) {
+      throw new Error(`Failed to configure mock LLM provider: ${response.status} ${await response.text()}`)
+    }
   }
 
   async launch(): Promise<void> {
-    const userDataPath = CradleWorld.e2eUserDataPath
-    const homePath = CradleWorld.e2eHomePath
-    // Wipe entire userData to clear DB, localStorage, and persisted store state
-    if (existsSync(userDataPath)) {
-      rmSync(userDataPath, { recursive: true })
+    // Reset server state for clean test isolation
+    const resetResponse = await fetch(`${this.params.serverUrl}/test/reset`, { method: 'POST' })
+    if (!resetResponse.ok) {
+      throw new Error(`Failed to reset server state: ${resetResponse.status} ${await resetResponse.text()}`)
     }
-    mkdirSync(userDataPath, { recursive: true })
-    mkdirSync(homePath, { recursive: true })
 
-    this.app = await electron.launch({
-      args: [
-        this.params.appPath,
-        ...(this.params.appArgs ?? []),
-        // Override userData so tests don't pollute the real profile
-        `--user-data-dir=${userDataPath}`,
-      ],
-      env: buildE2ELaunchEnv(
-        Object.fromEntries(
-          Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
-        ),
-        homePath,
-      ),
+    // Launch browser
+    this.browser = await chromium.launch({ headless: !process.env.CRADLE_E2E_HEADED })
+    this.context = await this.browser.newContext({
+      permissions: ['clipboard-read', 'clipboard-write'],
     })
-
-    // Grab the first renderer window
-    this.page = await this.app.firstWindow()
-    // Ensure the window is fully loaded before steps run
+    this.page = await this.context.newPage()
+    await this.page.goto(this.params.webUrl)
     await this.page.waitForLoadState('domcontentloaded')
   }
 
@@ -183,20 +156,16 @@ export class CradleWorld extends World {
       this.mockLlmServer = null
       this.mockLlmBaseUrl = ''
     }
-
-    await this.app?.close()
+    await this.context?.close()
+    await this.browser?.close()
   }
 
   /**
-   * Evaluates a function inside the Electron main process.
-   * The first argument exposed to `fn` is the result of `require('electron')`.
+   * @deprecated mainProcess() is not available in web mode. Use page.evaluate() or server API instead.
    */
-  // eslint-disable-next-line ts/no-explicit-any
-  async mainProcess<T = unknown, A = undefined>(
-    fn: (electron: any, arg: A) => T | Promise<T>,
-    arg?: A,
-  ): Promise<T> {
-    return this.app.evaluate(fn as never, arg as never) as Promise<T>
+
+  async mainProcess<T = unknown>(_fn: unknown, _arg?: unknown): Promise<T> {
+    throw new Error('mainProcess() is not available in web mode. Use page.evaluate() or server API instead.')
   }
 }
 

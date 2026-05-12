@@ -2,41 +2,20 @@
 // Output: runtime provider registry for chat-runtime module
 // Position: apps/server/src/modules/chat-runtime/chat-runtime-provider-registry.ts
 
-import { inject, injectable } from 'tsyringe'
-
-import { ObservabilityService } from '../observability/observability.service'
+import { record as recordObservability } from '../observability/service'
 import type { ProviderKind } from '../providers/types'
-import { SecretsService } from '../secrets/secrets.service'
+import * as Secrets from '../secrets/service'
 import { AcpConnectionManager } from './providers/acp/connection-manager'
+import { AcpProcessManager } from './providers/acp/process-manager'
 import { AcpChatProvider } from './providers/acp/provider'
-import { AcpRuntimeIntegration } from './providers/acp/runtime-integration'
+import { wireAcpIntegration } from './providers/acp/runtime-integration'
 import { ClaudeAgentProvider } from './providers/claude-agent/provider'
 import { CodexProvider } from './providers/codex/provider'
 import { OpenAICompatibleProvider } from './providers/openai-compatible/provider'
 import type { ChatRuntimeProvider } from './runtime-provider-types'
 
-@injectable()
 export class ChatRuntimeProviderRegistry {
   private readonly providers = new Map<ProviderKind, ChatRuntimeProvider>()
-
-  constructor(
-    @inject(SecretsService) secrets: SecretsService,
-    @inject(ObservabilityService) observability: ObservabilityService,
-    @inject(AcpConnectionManager) acpRuntime: AcpConnectionManager,
-    @inject(AcpRuntimeIntegration) _acpRuntimeIntegration: AcpRuntimeIntegration,
-  ) {
-    this.register(new AcpChatProvider({ runtime: acpRuntime }))
-    this.register(new OpenAICompatibleProvider({
-      readSecret: secretRef => secrets.readSecret(secretRef),
-    }))
-    this.register(new ClaudeAgentProvider({
-      readSecret: secretRef => secrets.readSecret(secretRef),
-    }))
-    this.register(new CodexProvider({
-      readSecret: secretRef => secrets.readSecret(secretRef),
-      observability,
-    }))
-  }
 
   register(provider: ChatRuntimeProvider): void {
     this.providers.set(provider.providerKind, provider)
@@ -45,4 +24,30 @@ export class ChatRuntimeProviderRegistry {
   get(providerKind: ProviderKind): ChatRuntimeProvider | undefined {
     return this.providers.get(providerKind)
   }
+}
+
+let registry: ChatRuntimeProviderRegistry | null = null
+
+export function getProviderRegistry(): ChatRuntimeProviderRegistry {
+  if (!registry) {
+    registry = new ChatRuntimeProviderRegistry()
+    const acpRuntime = new AcpConnectionManager(new AcpProcessManager())
+    wireAcpIntegration(acpRuntime)
+    registry.register(new AcpChatProvider({ runtime: acpRuntime }))
+    registry.register(new OpenAICompatibleProvider({
+      readSecret: secretRef => Secrets.readSecret(secretRef),
+    }))
+    registry.register(new ClaudeAgentProvider({
+      readSecret: secretRef => Secrets.readSecret(secretRef),
+    }))
+    registry.register(new CodexProvider({
+      readSecret: secretRef => Secrets.readSecret(secretRef),
+      recordObservability,
+    }))
+  }
+  return registry
+}
+
+export function registerProvider(provider: ChatRuntimeProvider): void {
+  getProviderRegistry().register(provider)
 }

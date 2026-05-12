@@ -13,7 +13,7 @@ import type {
   TokenUsage,
 } from '../../runtime-provider-types'
 import { buildAcpConnectionRecord } from './config'
-import { AcpConnectionManager } from './connection-manager'
+import type { AcpConnectionManager } from './connection-manager'
 
 interface AcpChatProviderDeps {
   runtime: AcpConnectionManager

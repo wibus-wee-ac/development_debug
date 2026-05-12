@@ -2,15 +2,14 @@
 // Output: integration tests for profile CRUD, provider metadata, and secret masking
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
+import { createServerApp } from '../src/app'
+import { shutdownInfra } from '../src/infra'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -38,13 +37,11 @@ describe('profiles capability', () => {
       })
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const saveSecret = await hono.request('/secrets', {
+      app = createServerApp()
+      const saveSecret = await app.handle(new Request('http://localhost/secrets', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -52,12 +49,12 @@ describe('profiles capability', () => {
           label: 'Primary OpenAI Key',
           secret: 'sk-test-abcdef',
         }),
-      })
+      }))
       expect(saveSecret.status).toBe(200)
       const secret = await saveSecret.json()
       expect(secret.maskedSecret).toBe('sk-...cdef')
 
-      const createProfile = await hono.request('/profiles/profile-1', {
+      const createProfile = await app.handle(new Request('http://localhost/profiles/profile-1', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -67,7 +64,7 @@ describe('profiles capability', () => {
           config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
           credentialRef: secret.id,
         }),
-      })
+      }))
       expect(createProfile.status).toBe(200)
       const profile = await createProfile.json()
       expect(profile).toEqual(expect.objectContaining({
@@ -77,17 +74,17 @@ describe('profiles capability', () => {
         credentialRef: secret.id,
       }))
 
-      const listProfiles = await hono.request('/profiles')
+      const listProfiles = await app.handle(new Request('http://localhost/profiles'))
       expect(listProfiles.status).toBe(200)
       expect(await listProfiles.json()).toEqual([
         expect.objectContaining({ id: 'profile-1' }),
       ])
 
-      const getProfile = await hono.request('/profiles/profile-1')
+      const getProfile = await app.handle(new Request('http://localhost/profiles/profile-1'))
       expect(getProfile.status).toBe(200)
       expect(await getProfile.json()).toEqual(expect.objectContaining({ id: 'profile-1' }))
 
-      const healthCheckRes = await hono.request('/providers/health-check', {
+      const healthCheckRes = await app.handle(new Request('http://localhost/providers/health-check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -97,7 +94,7 @@ describe('profiles capability', () => {
           config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
           secretRef: secret.id,
         }),
-      })
+      }))
       expect(healthCheckRes.status).toBe(200)
       expect(await healthCheckRes.json()).toEqual({
         ok: true,
@@ -107,7 +104,7 @@ describe('profiles capability', () => {
         errorText: null,
       })
 
-      const modelsRes = await hono.request('/providers/models', {
+      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -117,7 +114,7 @@ describe('profiles capability', () => {
           config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
           secretRef: secret.id,
         }),
-      })
+      }))
       expect(modelsRes.status).toBe(200)
       expect(await modelsRes.json()).toEqual([
         expect.objectContaining({ id: 'gpt-4o-mini', providerKind: 'openai-compatible' }),
@@ -125,7 +122,7 @@ describe('profiles capability', () => {
       ])
       expect(fetchSpy).toHaveBeenCalledTimes(1)
 
-      const listSecrets = await hono.request('/secrets')
+      const listSecrets = await app.handle(new Request('http://localhost/secrets'))
       expect(listSecrets.status).toBe(200)
       const secrets = await listSecrets.json()
       expect(secrets).toEqual([
@@ -133,24 +130,21 @@ describe('profiles capability', () => {
       ])
       expect(JSON.stringify(secrets)).not.toContain('sk-test-abcdef')
 
-      const deleteProfile = await hono.request('/profiles/profile-1', { method: 'DELETE' })
+      const deleteProfile = await app.handle(new Request('http://localhost/profiles/profile-1', { method: 'DELETE' }))
       expect(deleteProfile.status).toBe(200)
       expect(await deleteProfile.json()).toEqual({ ok: true })
 
-      const afterDelete = await hono.request('/profiles/profile-1')
-      expect(afterDelete.status).toBe(200)
-      expect(await afterDelete.json()).toBeNull()
+      const afterDelete = await app.handle(new Request('http://localhost/profiles/profile-1'))
+      expect(afterDelete.status).toBe(404)
 
-      const removeSecret = await hono.request(`/secrets/${secret.id}`, {
+      const removeSecret = await app.handle(new Request(`http://localhost/secrets/${secret.id}`, {
         method: 'DELETE',
-      })
+      }))
       expect(removeSecret.status).toBe(200)
       expect(await removeSecret.json()).toEqual({ ok: true })
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
@@ -174,21 +168,19 @@ describe('profiles capability', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     delete process.env.CRADLE_CREDENTIAL_SECRET
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const invalidProfile = await hono.request('/profiles/profile-bad', {
+      app = createServerApp()
+      const invalidProfile = await app.handle(new Request('http://localhost/profiles/profile-bad', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ providerKind: 'openai-compatible' }),
-      })
+      }))
       expect(invalidProfile.status).toBe(400)
-      expect((await invalidProfile.json()).code).toBe('invalid_profile_input')
+      expect((await invalidProfile.json()).code).toBe('validation_error')
 
-      const saveSecret = await hono.request('/secrets', {
+      const saveSecret = await app.handle(new Request('http://localhost/secrets', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -196,13 +188,13 @@ describe('profiles capability', () => {
           label: 'Missing Secret Config',
           secret: 'sk-test-abcdef',
         }),
-      })
+      }))
       expect(saveSecret.status).toBe(500)
       expect((await saveSecret.json()).code).toBe('secret_not_configured')
 
       process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-profiles'
 
-      const unsupportedProfile = await hono.request('/profiles/profile-unsupported', {
+      const unsupportedProfile = await app.handle(new Request('http://localhost/profiles/profile-unsupported', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -211,18 +203,18 @@ describe('profiles capability', () => {
           enabled: true,
           config: {},
         }),
-      })
+      }))
       expect(unsupportedProfile.status).toBe(200)
 
-      const invalidProviderBody = await hono.request('/providers/health-check', {
+      const invalidProviderBody = await app.handle(new Request('http://localhost/providers/health-check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ providerKind: 'openai-compatible' }),
-      })
+      }))
       expect(invalidProviderBody.status).toBe(400)
-      expect((await invalidProviderBody.json()).code).toBe('invalid_provider_input')
+      expect((await invalidProviderBody.json()).code).toBe('validation_error')
 
-      const unavailableProvider = await hono.request('/providers/health-check', {
+      const unavailableProvider = await app.handle(new Request('http://localhost/providers/health-check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -232,14 +224,12 @@ describe('profiles capability', () => {
           config: {},
           secretRef: null,
         }),
-      })
+      }))
       expect(unavailableProvider.status).toBe(501)
       expect((await unavailableProvider.json()).code).toBe('provider_not_available')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR

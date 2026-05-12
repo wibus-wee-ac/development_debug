@@ -4,9 +4,9 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { getEventScreenCoordinates, isPointerOutsideWindow } from '../components/tab-bar'
+import { getEventScreenCoordinates, isPointerOutsideWindow } from '../components/screen-coordinates'
 
-describe('TabBar tear-off helpers', () => {
+describe('tabBar tear-off helpers', () => {
   it('reads screen coordinates from pointer-like events', () => {
     const event = {
       screenX: 320,

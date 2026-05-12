@@ -13,6 +13,9 @@ import { getBundledResourcePath } from '../resources/bundled-resources'
 
 const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/
 const UNSAFE_PATH_RE = /[/\\]|\.\./
+const LEADING_NEWLINE_RE = /^\r?\n/
+const NON_SLUG_CHAR_RE = /[^a-z0-9._-]+/g
+const TRIM_DASH_RE = /^-+|-+$/g
 const CRADLE_DIR_PARTS = ['.cradle'] as const
 
 const SCOPE_PRIORITY: Record<SkillScope, number> = {
@@ -420,7 +423,6 @@ function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] 
 
   const result: SkillCatalogEntry[] = []
   for (const { skillDir, skillPath } of candidates) {
-
     try {
       const parsed = parseSkillDocument(fs.readFileSync(skillPath, 'utf8'))
       result.push({
@@ -509,7 +511,7 @@ function parseSkillDocument(content: string): ParsedSkillDocument {
     frontmatter,
     name,
     description,
-    body: content.slice(match[0].length).replace(/^\r?\n/, ''),
+    body: content.slice(match[0].length).replace(LEADING_NEWLINE_RE, ''),
   }
 }
 
@@ -540,8 +542,8 @@ function toSkillDirName(name: string): string {
   return name
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(NON_SLUG_CHAR_RE, '-')
+    .replace(TRIM_DASH_RE, '')
 }
 
 function assertSafeId(id: string): void {

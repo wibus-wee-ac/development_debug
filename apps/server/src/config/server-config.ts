@@ -5,7 +5,6 @@
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-import { injectable } from 'tsyringe'
 import { z } from 'zod'
 
 const logLevels = ['debug', 'info', 'warn', 'error'] as const
@@ -58,7 +57,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   }
 }
 
-@injectable()
 export class ServerConfig {
   private readonly config = loadServerConfig()
 

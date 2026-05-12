@@ -70,4 +70,3 @@ export function getObservabilityDevtoolStore(): ObservabilityDevtoolStore {
 export function subscribeObservabilityDevtool(webContents: WebContents): () => void {
   return store.subscribe(webContents)
 }
-

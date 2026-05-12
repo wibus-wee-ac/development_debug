@@ -1,0 +1,51 @@
+import { Elysia, t } from 'elysia'
+
+import { GitModel } from './model'
+import * as Git from './service'
+
+export const git = new Elysia({
+  prefix: '/workspaces',
+  detail: { tags: ['git'] },
+})
+  .get('/:id/git/status', ({ params }) => Git.getStatus(params.id), {
+    detail: { summary: 'Get git status' },
+    params: GitModel.idParams,
+    response: { 200: GitModel.statusView },
+  })
+  .get('/:id/git/branches', ({ params }) => Git.getBranches(params.id), {
+    detail: { summary: 'Get git branches' },
+    params: GitModel.idParams,
+    response: { 200: GitModel.branchesView },
+  })
+  .get('/:id/git/graph', ({ params, query }) => Git.getGraph(params.id, query.limit ?? 100), {
+    detail: { summary: 'Get git graph' },
+    params: GitModel.idParams,
+    query: GitModel.graphQuery,
+    response: { 200: t.Array(GitModel.graphCommitView) },
+  })
+  .post('/:id/git/checkout', async ({ params, body }) => {
+    await Git.checkout(params.id, body.branch)
+    return { ok: true as const }
+  }, {
+    detail: { summary: 'Checkout branch' },
+    params: GitModel.idParams,
+    body: GitModel.checkoutBody,
+    response: { 200: t.Object({ ok: t.Literal(true) }) },
+  })
+  .post('/:id/git/branches', async ({ params, body }) => {
+    await Git.createBranch(params.id, body.name, body.from)
+    return { ok: true as const }
+  }, {
+    detail: { summary: 'Create branch' },
+    params: GitModel.idParams,
+    body: GitModel.createBranchBody,
+    response: { 200: t.Object({ ok: t.Literal(true) }) },
+  })
+  .post('/:id/git/fetch', async ({ params }) => {
+    await Git.fetch(params.id)
+    return { ok: true as const }
+  }, {
+    detail: { summary: 'Fetch remote' },
+    params: GitModel.idParams,
+    response: { 200: t.Object({ ok: t.Literal(true) }) },
+  })

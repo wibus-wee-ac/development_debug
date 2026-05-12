@@ -26,7 +26,16 @@
     "e2e:test": "cucumber-js --config e2e/cucumber.mjs",
     "e2e:cleanup": "tsx e2e/scripts/cleanup.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "dev:web": "pnpm --filter @cradle/web dev",
+    "dev:server": "pnpm --filter @cradle/server dev",
+    "dev:fullstack": "concurrently --names server,web -c blue,green \"pnpm dev:server\" \"pnpm dev:web\"",
+    "build:web": "pnpm --filter @cradle/web build",
+    "build:server": "pnpm --filter @cradle/server build",
+    "test:server": "pnpm --filter @cradle/server test",
+    "typecheck:server": "pnpm --filter @cradle/server exec tsc --noEmit",
+    "typecheck:apps-web": "pnpm --filter @cradle/web exec tsc --noEmit",
+    "generate:web": "pnpm --filter @cradle/web generate"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",
@@ -138,6 +147,7 @@
     "@vitejs/plugin-react": "^5.1.1",
     "babel-plugin-react-compiler": "^1.0.0",
     "commander": "^14.0.3",
+    "concurrently": "^9.2.1",
     "drizzle-kit": "^0.31.10",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",

@@ -35,7 +35,8 @@ describe('server config', () => {
 
       expect(cfg.dbPath).toBe(dbPath)
       expect(existsSync(join(root, 'nested'))).toBe(true)
-    } finally {
+    }
+ finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
@@ -52,9 +53,10 @@ describe('server config', () => {
       expect(cfg.dataDir).toBe(root)
       expect(cfg.dbPath).toBe(join(root, 'cradle.db'))
       expect(() => loadServerConfig({ CRADLE_DATA_DIR: '  ', CRADLE_DB_PATH: '' })).toThrow(
-        /CRADLE_DATA_DIR or CRADLE_DB_PATH/
+        /CRADLE_DATA_DIR or CRADLE_DB_PATH/,
       )
-    } finally {
+    }
+ finally {
       rmSync(root, { recursive: true, force: true })
     }
   })

@@ -133,4 +133,81 @@ describe('projection parity: shared projector produces correct UIMessage', () =>
       { type: 'text-delta', id: 'text-1', delta: 'hello' },
     ])
   })
+
+  it('tool_call lifecycle: started → completed transitions to output-available', () => {
+    const events: TimelineInputEvent[] = [
+      { type: 'tool_call.started', itemId: 'toolu_abc', toolName: 'bash', toolInput: '{"command":"echo hi"}', source: { backend: 'claude-agent', eventType: 'tool_use', itemId: 'toolu_abc' } },
+      { type: 'tool_call.completed', itemId: 'toolu_abc', result: 'hi\n', source: { backend: 'claude-agent', eventType: 'tool_result', itemId: 'toolu_abc' } },
+    ]
+
+    const result = projectEventsToAssistantMessage('msg-1', events as ProjectableTimelineEvent[])
+    expect(result.parts).toEqual([
+      { type: 'tool-bash', toolName: 'bash', toolCallId: 'toolu_abc', state: 'output-available', input: '{"command":"echo hi"}', output: 'hi\n' },
+    ])
+  })
+
+  it('tool_call without completed stays in input-available (spinner regression)', () => {
+    const events: TimelineInputEvent[] = [
+      { type: 'tool_call.started', itemId: 'toolu_abc', toolName: 'bash', toolInput: '{"command":"echo hi"}', source: { backend: 'claude-agent', eventType: 'tool_use', itemId: 'toolu_abc' } },
+    ]
+
+    const result = projectEventsToAssistantMessage('msg-1', events as ProjectableTimelineEvent[])
+    expect(result.parts).toEqual([
+      expect.objectContaining({ type: 'tool-bash', toolCallId: 'toolu_abc', state: 'input-available' }),
+    ])
+  })
+
+  it('tool_call.completed with empty result still transitions to output-available', () => {
+    const events: TimelineInputEvent[] = [
+      { type: 'tool_call.started', itemId: 'toolu_empty', toolName: 'bash', toolInput: '{}', source: { backend: 'claude-agent', eventType: 'tool_use', itemId: 'toolu_empty' } },
+      { type: 'tool_call.completed', itemId: 'toolu_empty', result: '', source: { backend: 'claude-agent', eventType: 'tool_result', itemId: 'toolu_empty' } },
+    ]
+
+    const result = projectEventsToAssistantMessage('msg-1', events as ProjectableTimelineEvent[])
+    expect(result.parts).toEqual([
+      expect.objectContaining({ type: 'tool-bash', toolCallId: 'toolu_empty', state: 'output-available', output: '' }),
+    ])
+  })
+
+  it('tool_call.completed with null result still transitions to output-available', () => {
+    const events: TimelineInputEvent[] = [
+      { type: 'tool_call.started', itemId: 'toolu_null', toolName: 'bash', toolInput: '{}', source: { backend: 'claude-agent', eventType: 'tool_use', itemId: 'toolu_null' } },
+      { type: 'tool_call.completed', itemId: 'toolu_null', source: { backend: 'claude-agent', eventType: 'tool_result', itemId: 'toolu_null' } },
+    ]
+
+    const result = projectEventsToAssistantMessage('msg-1', events as ProjectableTimelineEvent[])
+    expect(result.parts).toEqual([
+      expect.objectContaining({ type: 'tool-bash', toolCallId: 'toolu_null', state: 'output-available', output: '' }),
+    ])
+  })
+
+  it('tool_call.input.delta accumulates partial JSON into tool input', () => {
+    const events: TimelineInputEvent[] = [
+      { type: 'tool_call.started', itemId: 'toolu_delta', toolName: 'bash', toolInput: null, source: { backend: 'claude-agent', eventType: 'content_block_start', itemId: 'toolu_delta' } },
+      { type: 'tool_call.input.delta', itemId: 'toolu_delta', delta: '{"com', source: { backend: 'claude-agent', eventType: 'input_json_delta', itemId: 'toolu_delta' } },
+      { type: 'tool_call.input.delta', itemId: 'toolu_delta', delta: 'mand":', source: { backend: 'claude-agent', eventType: 'input_json_delta', itemId: 'toolu_delta' } },
+      { type: 'tool_call.input.delta', itemId: 'toolu_delta', delta: '"echo hi"}', source: { backend: 'claude-agent', eventType: 'input_json_delta', itemId: 'toolu_delta' } },
+      { type: 'tool_call.completed', itemId: 'toolu_delta', result: 'hi\n', source: { backend: 'claude-agent', eventType: 'tool_result', itemId: 'toolu_delta' } },
+    ]
+
+    const result = projectEventsToAssistantMessage('msg-1', events as ProjectableTimelineEvent[])
+    expect(result.parts).toEqual([
+      expect.objectContaining({
+        type: 'tool-bash',
+        toolCallId: 'toolu_delta',
+        state: 'output-available',
+        input: '{"command":"echo hi"}',
+        output: 'hi\n',
+      }),
+    ])
+  })
+
+  it('projectTimelineEventToChunks returns empty for tool_call.input.delta', () => {
+    const chunks = projectTimelineEventToChunks({
+      type: 'tool_call.input.delta',
+      itemId: 'toolu_abc',
+      delta: '{"partial":',
+    })
+    expect(chunks).toEqual([])
+  })
 })

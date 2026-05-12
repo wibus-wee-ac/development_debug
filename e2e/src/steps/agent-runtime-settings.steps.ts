@@ -5,6 +5,7 @@ import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles|No providers configured yet\./
+const ADD_PROVIDER_RE = /Add Provider|Add/i
 
 function parseEnabledState(enabledText: string): boolean {
   if (enabledText === '启用') {
@@ -93,7 +94,7 @@ Then('我应该看到 Agent Runtime 设置页面', async function (this: CradleW
 
 Then('我应该看到 Provider 类型选择', async function (this: CradleWorld) {
   console.warn('[step] assert provider kind selector visible')
-  const addButton = this.page.getByRole('button', { name: /Add Provider|Add/i })
+  const addButton = this.page.getByRole('button', { name: ADD_PROVIDER_RE })
   await expect(addButton).toBeVisible({ timeout: 5000 })
   await addButton.click()
   const selector = this.page.locator('[data-testid="agent-provider-kind"]')

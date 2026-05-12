@@ -2,8 +2,9 @@
 // Output: Unified push event map — single source of truth for all main→renderer signals
 // Position: Shared contract defining every push topic and its payload shape
 
-import type { ApprovalRequestedPayload, ApprovalResolvedPayload } from './approval-events'
 import type { ObservabilityIncident } from '@cradle/ipc'
+
+import type { ApprovalRequestedPayload, ApprovalResolvedPayload } from './approval-events'
 import type {
   ChatSessionActivityPayload,
   ChatSessionTitlePayload,

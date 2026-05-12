@@ -1,0 +1,54 @@
+import { Elysia, t } from 'elysia'
+
+import { AppError } from '../../errors/app-error'
+import { AgentIdentityModel } from './model'
+import * as AgentIdentity from './service'
+
+export const agentIdentity = new Elysia({
+  prefix: '/agents',
+  detail: { tags: ['agent-identity'] },
+})
+  .get('/', ({ query }) => {
+    const enabled = query.enabled === 'true' ? true : query.enabled === 'false' ? false : undefined
+    return AgentIdentity.list({ enabled, agentProfileId: query.agentProfileId })
+  }, {
+    detail: { summary: 'List agents' },
+    query: AgentIdentityModel.listQuery,
+    response: { 200: t.Array(AgentIdentityModel.agent) },
+  })
+  .get('/:id', ({ params }) => {
+    const agent = AgentIdentity.get(params.id)
+    if (!agent) {
+      throw new AppError({ code: 'agent_not_found', status: 404, message: 'Agent not found' })
+    }
+    return agent
+  }, {
+    detail: { summary: 'Get agent by ID' },
+    params: AgentIdentityModel.idParams,
+    response: { 200: AgentIdentityModel.agent },
+  })
+  .post('/', ({ body }) => AgentIdentity.create(body), {
+    detail: { summary: 'Create agent' },
+    body: AgentIdentityModel.createBody,
+    response: { 200: AgentIdentityModel.agent },
+  })
+  .patch('/:id', ({ params, body }) => {
+    const agent = AgentIdentity.update(params.id, body)
+    if (!agent) {
+      throw new AppError({ code: 'agent_not_found', status: 404, message: 'Agent not found' })
+    }
+    return agent
+  }, {
+    detail: { summary: 'Update agent' },
+    params: AgentIdentityModel.idParams,
+    body: AgentIdentityModel.updateBody,
+    response: { 200: AgentIdentityModel.agent },
+  })
+  .delete('/:id', ({ params }) => {
+    AgentIdentity.remove(params.id)
+    return { ok: true as const }
+  }, {
+    detail: { summary: 'Delete agent' },
+    params: AgentIdentityModel.idParams,
+    response: { 200: t.Object({ ok: t.Literal(true) }) },
+  })

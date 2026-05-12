@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { eq, inArray } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
+import type { BackendCapabilityRecorder } from '../backend-control-plane/backend-control-plane'
 import type * as schema from '../db/schema'
 import {
   agentCredentials,
@@ -29,10 +30,9 @@ import type { ProviderCatalog } from './provider-catalog'
 import type {
   AgentProfile,
   ModelDescriptor,
-  ProviderKind,
   ProviderHealthCheckResult,
+  ProviderKind,
 } from './runtime-provider-types'
-import type { BackendCapabilityRecorder } from '../backend-control-plane/backend-control-plane'
 
 export type EditableAgentProfile = Omit<AgentProfile, 'createdAt' | 'updatedAt'>
 

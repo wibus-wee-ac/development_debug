@@ -2,8 +2,6 @@
 // Output: integration tests for ACP chat execution, approvals, title sync, and usage writes
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +9,9 @@ import { PassThrough } from 'node:stream'
 
 import { workspaces } from '@cradle/db'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 const acpMocks = vi.hoisted(() => {
   let client: {
@@ -42,7 +43,10 @@ vi.mock('@agentclientprotocol/sdk', () => {
     closed = new Promise<void>(() => {})
 
     constructor(createClient: (agent: unknown) => unknown) {
-      acpMocks.setClient(createClient({}))
+      acpMocks.setClient(createClient({}) as {
+        requestPermission: (params: unknown) => Promise<unknown>
+        sessionUpdate: (params: unknown) => Promise<void>
+      })
     }
 
     initialize = (...args: unknown[]) => acpMocks.initialize(...args)
@@ -83,9 +87,6 @@ vi.mock('node:child_process', () => {
   }
 })
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
-
 interface ChatTimelineGroup {
   messageId: string
   role: 'user' | 'assistant'
@@ -95,14 +96,14 @@ interface ChatTimelineGroup {
   events: Array<{ type: string, delta?: string }>
 }
 
-type HonoApp = Awaited<ReturnType<typeof createConfiguredApp>> extends { getInstance: () => infer T } ? T : never
+type ElysiaApp = ReturnType<typeof createServerApp>
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-async function createAcpProfileAndSession(hono: HonoApp, workspaceId: string) {
-  const profileRes = await hono.request('/profiles/profile-acp', {
+async function createAcpProfileAndSession(app: ElysiaApp, workspaceId: string) {
+  const profileRes = await app.handle(new Request('http://localhost/profiles/profile-acp', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -112,10 +113,10 @@ async function createAcpProfileAndSession(hono: HonoApp, workspaceId: string) {
       config: { distributionType: 'npx', cmd: '@demo/acp-agent', args: ['--stdio'] },
       credentialRef: null,
     }),
-  })
+  }))
   expect(profileRes.status).toBe(200)
 
-  const sessionRes = await hono.request('/sessions', {
+  const sessionRes = await app.handle(new Request('http://localhost/sessions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -124,13 +125,13 @@ async function createAcpProfileAndSession(hono: HonoApp, workspaceId: string) {
       title: 'ACP Runtime Session',
       agentProfileId: 'profile-acp',
     }),
-  })
+  }))
   expect(sessionRes.status).toBe(200)
 }
 
-async function waitForTimelineStatus(hono: HonoApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
+async function waitForTimelineStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await hono.request(`/chat/sessions/${encodeURIComponent(sessionId)}/timeline`)
+    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/timeline`))
     if (response.status === 200) {
       const groups = await response.json() as ChatTimelineGroup[]
       const assistant = groups.find(group => group.role === 'assistant')
@@ -144,9 +145,9 @@ async function waitForTimelineStatus(hono: HonoApp, sessionId: string, expectedS
   throw new Error(`Timed out waiting for assistant status ${expectedStatus}`)
 }
 
-async function waitForPendingApproval(hono: HonoApp, chatSessionId: string): Promise<{ id: string, prompt: string, options: Array<{ optionId: string }> }> {
+async function waitForPendingApproval(app: ElysiaApp, chatSessionId: string): Promise<{ id: string, prompt: string, options: Array<{ optionId: string }> }> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await hono.request(`/approvals?chatSessionId=${encodeURIComponent(chatSessionId)}`)
+    const response = await app.handle(new Request(`http://localhost/approvals?chatSessionId=${encodeURIComponent(chatSessionId)}`))
     if (response.status === 200) {
       const approvals = await response.json() as Array<{ id: string, prompt: string, options: Array<{ optionId: string }> }>
       if (approvals.length > 0) {
@@ -272,42 +273,40 @@ describe('acp chat runtime capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({
+      app = createServerApp()
+      db().insert(workspaces).values({
         id: 'workspace-acp',
         name: 'Workspace ACP',
         path: workspaceRoot,
       }).run()
 
-      await createAcpProfileAndSession(hono, 'workspace-acp')
+      await createAcpProfileAndSession(app, 'workspace-acp')
 
-      const runRes = await hono.request('/chat/sessions/session-acp/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-acp/runs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Explain ACP runtime ownership' }),
-      })
+      }))
       expect(runRes.status).toBe(200)
 
-      const approval = await waitForPendingApproval(hono, 'session-acp')
+      const approval = await waitForPendingApproval(app, 'session-acp')
       expect(approval.prompt).toBe('Write workspace file')
 
-      const respondRes = await hono.request(`/approvals/${encodeURIComponent(approval.id)}/respond`, {
+      const respondRes = await app.handle(new Request(`http://localhost/approvals/${encodeURIComponent(approval.id)}/respond`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           decision: 'approved',
           selectedOptionId: approval.options[0]!.optionId,
         }),
-      })
+      }))
       expect(respondRes.status).toBe(200)
       expect(await respondRes.json()).toEqual({ ok: true })
 
-      const timeline = await waitForTimelineStatus(hono, 'session-acp', 'complete')
+      const timeline = await waitForTimelineStatus(app, 'session-acp', 'complete')
       expect(timeline).toHaveLength(2)
       expect(timeline[0]).toEqual(expect.objectContaining({
         role: 'user',
@@ -330,15 +329,15 @@ describe('acp chat runtime capability', () => {
         delta: 'Hello from ACP runtime',
       }))
 
-      const sessionRes = await hono.request('/sessions/session-acp')
+      const sessionRes = await app.handle(new Request('http://localhost/sessions/session-acp'))
       expect(sessionRes.status).toBe(200)
       expect((await sessionRes.json()).title).toBe('ACP Session Renamed')
 
-      const approvalsAfterRes = await hono.request('/approvals?chatSessionId=session-acp')
+      const approvalsAfterRes = await app.handle(new Request('http://localhost/approvals?chatSessionId=session-acp'))
       expect(approvalsAfterRes.status).toBe(200)
       expect(await approvalsAfterRes.json()).toEqual([])
 
-      const usageRes = await hono.request('/usage/sessions/session-acp')
+      const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-acp'))
       expect(usageRes.status).toBe(200)
       expect(await usageRes.json()).toEqual(expect.objectContaining({
         promptTokens: 7,
@@ -347,9 +346,7 @@ describe('acp chat runtime capability', () => {
       }))
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {

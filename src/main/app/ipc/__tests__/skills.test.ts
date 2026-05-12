@@ -4,6 +4,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { SkillsService } from '../skills'
+
 const { listSkillInventory, createSkillDocument } = vi.hoisted(() => ({
   listSkillInventory: vi.fn(),
   createSkillDocument: vi.fn(),
@@ -35,8 +37,6 @@ vi.mock('../../../skills/skills', () => ({
   listSkillInventory,
   createSkillDocument,
 }))
-
-import { SkillsService } from '../skills'
 
 describe('skillsService', () => {
   let service: SkillsService

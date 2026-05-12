@@ -4,13 +4,13 @@
 
 import { describe, expect, it, vi } from 'vitest'
 
+import { createServices, IpcMethod, IpcService } from './base'
+
 vi.mock('electron', () => ({
   ipcMain: {
     handle: vi.fn(),
   },
 }))
-
-import { createServices, IpcMethod, IpcService } from './base'
 
 class TestService extends IpcService {
   static readonly groupName = 'test'

@@ -4,7 +4,8 @@
 
 import type { DataTable } from '@cucumber/cucumber'
 import { Given, Then, When } from '@cucumber/cucumber'
-import { expect, type Locator } from '@playwright/test'
+import type { Locator } from '@playwright/test'
+import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world'
 
@@ -242,7 +243,7 @@ async function closeStatusManager(world: CradleWorld): Promise<void> {
 async function getVisibleStatusManagerNames(world: CradleWorld): Promise<string[]> {
   return visibleStatusManager(world).locator(STATUS_ROW).evaluateAll((elements) => {
     return elements
-      .map((element) => element.querySelector('[data-testid^="status-name-"]')?.textContent?.trim() ?? '')
+      .map(element => element.querySelector('[data-testid^="status-name-"]')?.textContent?.trim() ?? '')
       .filter((value): value is string => value.length > 0)
   })
 }
@@ -250,7 +251,7 @@ async function getVisibleStatusManagerNames(world: CradleWorld): Promise<string[
 async function getVisibleColumnNames(world: CradleWorld): Promise<string[]> {
   return visibleKanbanBoard(world).locator(KANBAN_COLUMN).evaluateAll((elements) => {
     return elements
-      .map((element) => element.querySelector('[data-testid^="kanban-column-title-"]')?.textContent?.trim() ?? '')
+      .map(element => element.querySelector('[data-testid^="kanban-column-title-"]')?.textContent?.trim() ?? '')
       .filter((value): value is string => value.length > 0)
   })
 }

@@ -11,13 +11,17 @@ export class DevService extends IpcService {
 
   @IpcMethod()
   async openUserData(): Promise<void> {
-    if (!is.dev) { return }
+    if (!is.dev) {
+      return
+    }
     await shell.openPath(app.getPath('userData'))
   }
 
   @IpcMethod()
   hardReload(): void {
-    if (!is.dev) { return }
+    if (!is.dev) {
+      return
+    }
     try {
       getIpcContext().sender.reloadIgnoringCache()
     }

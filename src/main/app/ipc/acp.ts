@@ -5,10 +5,6 @@
 import { IpcMethod, IpcService } from '@cradle/ipc'
 import { app } from 'electron'
 
-import { getDb } from '../../db'
-import type { AcpAgent, AcpAuditEntry } from '../../db/schema'
-import type { AcpApplicationService } from '../../acp-feature/acp'
-import { createAcpApplicationService, createDbAcpStore } from '../../acp-feature/acp'
 import { acpConnectionManager } from '../../acp/acp-connection'
 import {
   getAgentInstallDir,
@@ -20,6 +16,10 @@ import type { ProcessMetrics } from '../../acp/acp-process-manager'
 import { acpProcessManager } from '../../acp/acp-process-manager'
 import type { RegistryAgent } from '../../acp/acp-registry'
 import { fetchRegistry, getSupportedDistributionTypes } from '../../acp/acp-registry'
+import type { AcpApplicationService } from '../../acp-feature/acp'
+import { createAcpApplicationService, createDbAcpStore } from '../../acp-feature/acp'
+import { getDb } from '../../db'
+import type { AcpAgent, AcpAuditEntry } from '../../db/schema'
 
 function createDefaultAcpApplication(): AcpApplicationService {
   return createAcpApplicationService({

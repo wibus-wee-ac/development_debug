@@ -2,8 +2,6 @@
 // Output: integration tests for board seeding, issue core loop, and comments core loop
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,8 +9,8 @@ import { join } from 'node:path'
 import { workspaces } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 interface KanbanStatus {
   id: string
@@ -45,32 +43,30 @@ describe('kanban capability', () => {
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({
+      app = createServerApp()
+      db().insert(workspaces).values({
         id: 'workspace-kanban',
         name: 'Workspace Kanban',
         path: workspaceRoot,
       }).run()
 
-      const createBoard = await hono.request('/kanban/boards', {
+      const createBoard = await app.handle(new Request('http://localhost/kanban/boards', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ workspaceId: 'workspace-kanban', name: 'Backend Board' }),
-      })
+      }))
       expect(createBoard.status).toBe(200)
       const board = await createBoard.json() as KanbanBoard
       expect(board).toEqual(expect.objectContaining({ name: 'Backend Board', workspaceId: 'workspace-kanban' }))
 
-      const listBoards = await hono.request('/kanban/boards?workspaceId=workspace-kanban')
+      const listBoards = await app.handle(new Request('http://localhost/kanban/boards?workspaceId=workspace-kanban'))
       expect(listBoards.status).toBe(200)
       expect(await listBoards.json()).toEqual([expect.objectContaining({ id: board.id, name: 'Backend Board' })])
 
-      const listStatuses = await hono.request('/kanban/statuses?workspaceId=workspace-kanban')
+      const listStatuses = await app.handle(new Request('http://localhost/kanban/statuses?workspaceId=workspace-kanban'))
       expect(listStatuses.status).toBe(200)
       const statuses = await listStatuses.json() as KanbanStatus[]
       expect(statuses.map(status => status.name)).toEqual(['To Do', 'In Progress'])
@@ -78,7 +74,7 @@ describe('kanban capability', () => {
       const todoStatusId = statuses[0].id
       const inProgressStatusId = statuses[1].id
 
-      const createIssue = await hono.request('/kanban/issues', {
+      const createIssue = await app.handle(new Request('http://localhost/kanban/issues', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -88,60 +84,58 @@ describe('kanban capability', () => {
           priority: 'high',
           statusId: todoStatusId,
         }),
-      })
+      }))
       expect(createIssue.status).toBe(200)
       const issue = await createIssue.json() as KanbanIssue
       expect(issue).toEqual(expect.objectContaining({ title: 'Server issue', statusId: todoStatusId, priority: 'high' }))
 
-      const updateIssue = await hono.request(`/kanban/issues/${encodeURIComponent(issue.id)}`, {
+      const updateIssue = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ title: 'Updated issue', description: 'Updated description' }),
-      })
+      }))
       expect(updateIssue.status).toBe(200)
       expect(await updateIssue.json()).toEqual(expect.objectContaining({ title: 'Updated issue', description: 'Updated description' }))
 
-      const moveIssue = await hono.request(`/kanban/issues/${encodeURIComponent(issue.id)}`, {
+      const moveIssue = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ statusId: inProgressStatusId }),
-      })
+      }))
       expect(moveIssue.status).toBe(200)
       expect(await moveIssue.json()).toEqual(expect.objectContaining({ statusId: inProgressStatusId }))
 
-      const listIssues = await hono.request('/kanban/issues?workspaceId=workspace-kanban')
+      const listIssues = await app.handle(new Request('http://localhost/kanban/issues?workspaceId=workspace-kanban'))
       expect(listIssues.status).toBe(200)
       expect(await listIssues.json()).toEqual([expect.objectContaining({ id: issue.id, statusId: inProgressStatusId })])
 
-      const addComment = await hono.request(`/kanban/issues/${encodeURIComponent(issue.id)}/comments`, {
+      const addComment = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/comments`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ content: 'Looks good to me' }),
-      })
+      }))
       expect(addComment.status).toBe(200)
       const comment = await addComment.json() as { id: string, content: string, issueId: string }
       expect(comment).toEqual(expect.objectContaining({ issueId: issue.id, content: 'Looks good to me' }))
 
-      const listComments = await hono.request(`/kanban/issues/${encodeURIComponent(issue.id)}/comments`)
+      const listComments = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/comments`))
       expect(listComments.status).toBe(200)
       expect(await listComments.json()).toEqual([expect.objectContaining({ id: comment.id, content: 'Looks good to me' })])
 
-      const deleteComment = await hono.request(`/kanban/comments/${encodeURIComponent(comment.id)}`, { method: 'DELETE' })
+      const deleteComment = await app.handle(new Request(`http://localhost/kanban/comments/${encodeURIComponent(comment.id)}`, { method: 'DELETE' }))
       expect(deleteComment.status).toBe(200)
       expect(await deleteComment.json()).toEqual({ ok: true })
 
-      const deleteIssue = await hono.request(`/kanban/issues/${encodeURIComponent(issue.id)}`, { method: 'DELETE' })
+      const deleteIssue = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}`, { method: 'DELETE' }))
       expect(deleteIssue.status).toBe(200)
       expect(await deleteIssue.json()).toEqual({ ok: true })
 
-      const issuesAfterDelete = await hono.request('/kanban/issues?workspaceId=workspace-kanban')
+      const issuesAfterDelete = await app.handle(new Request('http://localhost/kanban/issues?workspaceId=workspace-kanban'))
       expect(issuesAfterDelete.status).toBe(200)
       expect(await issuesAfterDelete.json()).toEqual([])
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
@@ -158,46 +152,42 @@ describe('kanban capability', () => {
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({
+      app = createServerApp()
+      db().insert(workspaces).values({
         id: 'workspace-kanban',
         name: 'Workspace Kanban',
         path: workspaceRoot,
       }).run()
 
-      const invalidBoard = await hono.request('/kanban/boards', {
+      const invalidBoard = await app.handle(new Request('http://localhost/kanban/boards', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ workspaceId: 'workspace-kanban' }),
-      })
+      }))
       expect(invalidBoard.status).toBe(400)
-      expect((await invalidBoard.json()).code).toBe('invalid_kanban_input')
+      expect((await invalidBoard.json()).code).toBe('validation_error')
 
-      const missingWorkspaceBoard = await hono.request('/kanban/boards', {
+      const missingWorkspaceBoard = await app.handle(new Request('http://localhost/kanban/boards', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ workspaceId: 'missing', name: 'Nope' }),
-      })
+      }))
       expect(missingWorkspaceBoard.status).toBe(404)
       expect((await missingWorkspaceBoard.json()).code).toBe('kanban_workspace_not_found')
 
-      const missingIssue = await hono.request('/kanban/issues/missing-issue')
+      const missingIssue = await app.handle(new Request('http://localhost/kanban/issues/missing-issue'))
       expect(missingIssue.status).toBe(404)
       expect((await missingIssue.json()).code).toBe('kanban_issue_not_found')
 
-      const missingBoardDelete = await hono.request('/kanban/boards/missing-board', { method: 'DELETE' })
+      const missingBoardDelete = await app.handle(new Request('http://localhost/kanban/boards/missing-board', { method: 'DELETE' }))
       expect(missingBoardDelete.status).toBe(404)
       expect((await missingBoardDelete.json()).code).toBe('kanban_board_not_found')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {

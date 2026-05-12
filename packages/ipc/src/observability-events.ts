@@ -48,5 +48,4 @@ export interface ObservabilityIncident {
 
 export type ObservabilityDevtoolEvent
   = { kind: 'event', payload: ObservabilityEvent }
-  | { kind: 'incident', payload: ObservabilityIncident }
-
+    | { kind: 'incident', payload: ObservabilityIncident }

@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as schema from '../../db/schema'
 import { createInMemoryDomainEventBus } from '../../events/domain-event-bus'
-import { chatEngine } from '../chat-engine'
 import { createBroadcastSubscriber } from '../broadcast'
+import { chatEngine } from '../chat-engine'
 import { createChatSessionWatchRegistry } from '../session-watch-registry'
 
 type FakeDbState = {
@@ -737,7 +737,7 @@ describe('chatEngine', () => {
     mocks.scanSkills.mockReturnValue([{ id: 'skill-1', label: 'Skill 1' }])
     mocks.buildSkillCatalog.mockReturnValue('\n\nSKILL CATALOG')
 
-    const streamTurn = vi.fn(async function* streamTurn(..._args: any[]) {
+    const streamTurn = vi.fn(async function* streamTurn(..._args: unknown[]) {
       yield {
         type: 'assistant.message.started',
         itemId: 'assistant-1',

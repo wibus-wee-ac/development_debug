@@ -247,7 +247,7 @@ export function AgentDetailPage({
       if (savedClearTimer.current) {
         clearTimeout(savedClearTimer.current)
       }
-      savedClearTimer.current = setTimeout(() => setSaveState('idle'), 2000)
+      savedClearTimer.current = setTimeout(setSaveState, 2000, 'idle')
     }
     catch (err) {
       setSaveState('error')

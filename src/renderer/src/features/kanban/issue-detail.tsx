@@ -44,10 +44,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PriorityIcon } from './priority-icon'
 import { StatusIcon } from './status-icon'
 import {
+  kanbanKeys,
   useAddComment,
   useAddContextRef,
   useAddRelation,
-  kanbanKeys,
   useAgentActivities,
   useAgentSessions,
   useComments,
@@ -99,7 +99,7 @@ const RELATION_TYPES = [
   { value: 'duplicates', label: 'Duplicates' },
 ] as const
 
-const SESSION_PHASE: Record<string, { label: string; color: string; pulse: boolean }> = {
+const SESSION_PHASE: Record<string, { label: string, color: string, pulse: boolean }> = {
   created: { label: 'Queued', color: 'bg-muted-foreground/40', pulse: false },
   active: { label: 'Running', color: 'bg-emerald-500', pulse: true },
   completed: { label: 'Done', color: 'bg-emerald-500', pulse: false },
@@ -213,8 +213,14 @@ function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) =
         onBlur={commit}
         rows={1}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit() }
-          if (e.key === 'Escape') { setDraft(value); setEditing(false) }
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            commit()
+          }
+          if (e.key === 'Escape') {
+            setDraft(value)
+            setEditing(false)
+          }
         }}
         initial={{ opacity: 0.7 }}
         animate={{ opacity: 1 }}
@@ -266,7 +272,9 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
     }
   }
 
-  if (activities.length === 0) return null
+  if (activities.length === 0) {
+    return null
+  }
 
   return (
     <div className="space-y-2">
@@ -280,7 +288,8 @@ function AgentActivityFeed({ sessionId }: { sessionId: string }) {
           />
           {reasoning.length}
           {' '}
-          step{reasoning.length !== 1 ? 's' : ''}
+          step
+{reasoning.length !== 1 ? 's' : ''}
         </button>
       )}
 
@@ -363,10 +372,15 @@ function AgentDelegatePicker({
       <Select
         value={selectValue}
         onValueChange={(val) => {
-          if (!val) { onUndelegate(); return }
+          if (!val) {
+            onUndelegate()
+            return
+          }
           if (val.startsWith('agent:')) {
             const a = enabledAgents.find(x => x.id === val.slice(6))
-            if (a) onDelegate(a.agentProfileId, a.id)
+            if (a) {
+              onDelegate(a.agentProfileId, a.id)
+            }
           }
           else if (val.startsWith('profile:')) {
             onDelegate(val.slice(8))
@@ -500,15 +514,23 @@ function SubIssueList({
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (composing) inputRef.current?.focus()
+    if (composing) {
+      inputRef.current?.focus()
+    }
   }, [composing])
 
   function handleCreate() {
     const title = draft.trim()
-    if (!title) { setComposing(false); return }
+    if (!title) {
+      setComposing(false)
+      return
+    }
     createIssue.mutate(
       { workspaceId, title, parentIssueId },
-      { onSuccess: () => { setDraft(''); inputRef.current?.focus() } },
+      { onSuccess: () => {
+        setDraft('')
+        inputRef.current?.focus()
+      } },
     )
   }
 
@@ -574,10 +596,19 @@ function SubIssueList({
               placeholder="Title..."
               className="w-full text-[12px] bg-foreground/3 rounded-lg px-3 py-2 outline-none placeholder:text-muted-foreground/25 transition-colors duration-150 focus:bg-foreground/5"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreate()
-                if (e.key === 'Escape') { setDraft(''); setComposing(false) }
+                if (e.key === 'Enter') {
+                  handleCreate()
+                }
+                if (e.key === 'Escape') {
+                  setDraft('')
+                  setComposing(false)
+                }
               }}
-              onBlur={() => { if (!draft.trim()) setComposing(false) }}
+              onBlur={() => {
+                if (!draft.trim()) {
+                  setComposing(false)
+                }
+              }}
             />
           </motion.div>
         )}
@@ -872,7 +903,9 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
 
   function handleAdd() {
     const v = input.trim()
-    if (!v) return
+    if (!v) {
+      return
+    }
     const ref: ContextRef = v.startsWith('http')
       ? { type: 'url', value: v }
       : { type: 'file', value: v }
@@ -908,7 +941,11 @@ function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[]
           placeholder="Path or URL..."
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleAdd()
+            }
+          }}
           className="flex-1 text-[11px] bg-transparent outline-none placeholder:text-muted-foreground/20"
         />
         {input.trim() && (
@@ -1144,14 +1181,18 @@ export function IssueDetail({
   const latestAgentSession = agentSessions[0] ?? null
 
   function patch(p: Parameters<typeof updateIssue.mutate>[0]['patch']) {
-    if (!issue) return
+    if (!issue) {
+      return
+    }
     updateIssue.mutate({ id: issueId, patch: p })
   }
 
   // Keyboard shortcut: Escape to close
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        onClose()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1186,12 +1227,20 @@ export function IssueDetail({
   }
 
   const labels: string[] = (() => {
-    try { return JSON.parse(issue.labels ?? '[]') }
-    catch { return [] }
+    try {
+      return JSON.parse(issue.labels ?? '[]')
+    }
+    catch {
+      return []
+    }
   })()
   const contextRefs: ContextRef[] = (() => {
-    try { return JSON.parse(issue.contextRefs ?? '[]') }
-    catch { return [] }
+    try {
+      return JSON.parse(issue.contextRefs ?? '[]')
+    }
+    catch {
+      return []
+    }
   })()
 
   return (
@@ -1243,7 +1292,10 @@ export function IssueDetail({
             <MenuItem
               variant="destructive"
               data-testid="issue-detail-delete-issue"
-              onClick={() => { deleteIssue.mutate(issue.id); onClose() }}
+              onClick={() => {
+                deleteIssue.mutate(issue.id)
+                onClose()
+              }}
             >
               <Trash2Icon />
               Delete issue
@@ -1278,7 +1330,9 @@ export function IssueDetail({
                 content={issue.description ?? ''}
                 onSave={(md) => {
                   const trimmed = md.trim() || null
-                  if (trimmed !== issue.description) patch({ description: trimmed })
+                  if (trimmed !== issue.description) {
+                    patch({ description: trimmed })
+                  }
                 }}
                 placeholder="Add a description..."
                 className="min-h-24"

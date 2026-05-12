@@ -5,13 +5,13 @@
 import { Button } from '@renderer/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '@renderer/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@renderer/components/ui/tooltip'
-import { GlobalSearchDialog } from '@renderer/features/search/global-search-dialog'
 import { PackCodebaseDialog } from '@renderer/features/pack-codebase/pack-codebase-dialog'
+import { GlobalSearchDialog } from '@renderer/features/search/global-search-dialog'
 import { useShortcut } from '@renderer/hooks/use-shortcut'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
-import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useLayoutStore } from '@renderer/store/layout'
+import { useSessionActivityStore } from '@renderer/store/session-activity'
 import { useCradleNavigation, useIsActiveTab } from '@renderer/tabs/use-cradle-navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -187,9 +187,11 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
             className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
             onClick={e => e.stopPropagation()}
           >
-            {session.pinned ? (
+            {session.pinned
+? (
               <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
-            ) : null}
+            )
+: null}
             <input
               ref={renameInputRef}
               value={draftTitle}
@@ -221,9 +223,11 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
               data-testid={`session-open-${session.id}`}
               className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
             >
-              {session.pinned ? (
+              {session.pinned
+? (
                 <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
-              ) : null}
+              )
+: null}
               <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{session.title}</span>
               {isUnread && !isActive && (
                 <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />

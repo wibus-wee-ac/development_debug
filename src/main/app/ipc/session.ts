@@ -7,12 +7,12 @@ import { randomUUID } from 'node:crypto'
 import { IpcMethod, IpcService } from '@cradle/ipc'
 import { desc, eq } from 'drizzle-orm'
 
+import { threadSearchEngine } from '../../chat/thread-search'
 import { extractAssistantTextByMessageId } from '../../chat/timeline-query'
 import { getDb } from '../../db'
 import type { Message, Session } from '../../db/schema'
 import { backendSessionBindings, messages, sessions } from '../../db/schema'
 import { ptyManager } from '../../pty/pty-manager'
-import { threadSearchEngine } from '../../chat/thread-search'
 
 export class SessionService extends IpcService {
   static readonly groupName = 'session'

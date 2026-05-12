@@ -4,8 +4,8 @@
 
 import type { ObservabilityIncident, ObservabilitySeverity } from '@cradle/ipc'
 
-import { createIncidentFromEvent, OBSERVABILITY_CODES } from './contract'
 import type { ObservabilityEvent } from './contract'
+import { createIncidentFromEvent, OBSERVABILITY_CODES } from './contract'
 
 export interface IncidentRuleInput {
   nowMs: number
@@ -99,4 +99,3 @@ function isErrorSeverity(severity: ObservabilitySeverity): boolean {
 function defaultDedupeKey(code: string): string {
   return `${code}:-:-:-`
 }
-

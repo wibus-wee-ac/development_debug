@@ -49,7 +49,9 @@ export function TuiView({ sessionId }: TuiViewProps) {
     // Try WebGL renderer
     try {
       const webgl = new WebglAddon()
-      webgl.onContextLoss(() => { webgl.dispose() })
+      webgl.onContextLoss(() => {
+        webgl.dispose()
+      })
       terminal.loadAddon(webgl)
     }
     catch { /* WebGL unavailable — xterm falls back to canvas */ }
@@ -62,13 +64,19 @@ export function TuiView({ sessionId }: TuiViewProps) {
     let pendingRows = 0
 
     function applyResize(cols: number, rows: number) {
-      if (cols <= 0 || rows <= 0) { return }
+      if (cols <= 0 || rows <= 0) {
+        return
+      }
       pendingCols = cols
       pendingRows = rows
-      if (resizeTimer) { clearTimeout(resizeTimer) }
+      if (resizeTimer) {
+        clearTimeout(resizeTimer)
+      }
       resizeTimer = setTimeout(() => {
         resizeTimer = null
-        if (pendingCols === lastCols && pendingRows === lastRows) { return }
+        if (pendingCols === lastCols && pendingRows === lastRows) {
+          return
+        }
         terminal.resize(pendingCols, pendingRows)
         lastCols = pendingCols
         lastRows = pendingRows
@@ -136,13 +144,17 @@ export function TuiView({ sessionId }: TuiViewProps) {
     // terminal.resize() flicker during route transitions and layout animations.
     const resizeObserver = new ResizeObserver(() => {
       const dims = fitAddon.proposeDimensions()
-      if (!dims || dims.cols <= 0 || dims.rows <= 0) { return }
+      if (!dims || dims.cols <= 0 || dims.rows <= 0) {
+        return
+      }
       applyResize(dims.cols, dims.rows)
     })
     resizeObserver.observe(containerRef.current)
 
     return () => {
-      if (resizeTimer) { clearTimeout(resizeTimer) }
+      if (resizeTimer) {
+        clearTimeout(resizeTimer)
+      }
       dataDisposable.dispose()
       unsubData()
       unsubExit()

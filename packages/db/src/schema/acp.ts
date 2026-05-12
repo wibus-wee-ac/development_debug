@@ -2,7 +2,7 @@
 // Output: ACP registry/install tables plus inferred row types
 // Position: ACP-specific persistence schema module used by ACP installers and audits
 
-import { int, text, sqliteTable } from 'drizzle-orm/sqlite-core'
+import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { createdAt, timestamps } from './shared'
 

@@ -4,6 +4,7 @@
 
 import type { AgentProfile, ModelDescriptor, ProviderKind } from '@main/ipc-types'
 import { Button } from '@renderer/components/ui/button'
+import { Checkbox } from '@renderer/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +16,6 @@ import {
 import { Input } from '@renderer/components/ui/input'
 import { Label } from '@renderer/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@renderer/components/ui/select'
-import { Checkbox } from '@renderer/components/ui/checkbox'
 import { Spinner } from '@renderer/components/ui/spinner'
 import { Switch } from '@renderer/components/ui/switch'
 import { cn } from '@renderer/lib/cn'
@@ -60,10 +60,10 @@ interface ClaudeAgentFields { name: string, baseUrl: string, model: string, apiK
 
 type ProviderFields
   = { kind: 'openai-compatible', fields: OpenAIFields }
-  | { kind: 'acp-chat', fields: AcpFields }
-  | { kind: 'cli-tui', fields: CliTuiFields }
-  | { kind: 'codex', fields: CodexFields }
-  | { kind: 'claude-agent', fields: ClaudeAgentFields }
+    | { kind: 'acp-chat', fields: AcpFields }
+    | { kind: 'cli-tui', fields: CliTuiFields }
+    | { kind: 'codex', fields: CodexFields }
+    | { kind: 'claude-agent', fields: ClaudeAgentFields }
 
 function defaultFields(kind: ProviderKind): ProviderFields {
   switch (kind) {
@@ -363,7 +363,9 @@ function AvailableModelsField({
     : models
 
   function isChecked(id: string) {
-    if (allDisabled) return false
+    if (allDisabled) {
+      return false
+    }
     return enabledModels.length === 0 || enabledModels.includes(id)
   }
 
@@ -418,7 +420,8 @@ function AvailableModelsField({
                     <span className="text-[12px] truncate">{m.label || m.id}</span>
                     {m.contextWindow && (
                       <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/60">
-                        {(m.contextWindow / 1000).toFixed(0)}k
+                        {(m.contextWindow / 1000).toFixed(0)}
+k
                       </span>
                     )}
                   </label>
@@ -624,13 +627,13 @@ function EditProviderDialog({
                 enabledModels={enabledModels}
                 onToggle={(id, checked) => {
                   if (checked) {
-                    setEnabledModels(prev => {
+                    setEnabledModels((prev) => {
                       const base = prev[0] === ALL_DISABLED_SENTINEL || prev.length === 0 ? availableModels.map(x => x.id) : prev
                       return [...base.filter(x => x !== id), id]
                     })
                   }
                   else {
-                    setEnabledModels(prev => {
+                    setEnabledModels((prev) => {
                       const base = prev[0] === ALL_DISABLED_SENTINEL ? [] : prev.length === 0 ? availableModels.map(x => x.id) : prev
                       return base.filter(x => x !== id)
                     })
@@ -662,13 +665,13 @@ function EditProviderDialog({
                 enabledModels={enabledModels}
                 onToggle={(id, checked) => {
                   if (checked) {
-                    setEnabledModels(prev => {
+                    setEnabledModels((prev) => {
                       const base = prev[0] === ALL_DISABLED_SENTINEL || prev.length === 0 ? availableModels.map(x => x.id) : prev
                       return [...base.filter(x => x !== id), id]
                     })
                   }
                   else {
-                    setEnabledModels(prev => {
+                    setEnabledModels((prev) => {
                       const base = prev[0] === ALL_DISABLED_SENTINEL ? [] : prev.length === 0 ? availableModels.map(x => x.id) : prev
                       return base.filter(x => x !== id)
                     })
@@ -700,13 +703,13 @@ function EditProviderDialog({
                 enabledModels={enabledModels}
                 onToggle={(id, checked) => {
                   if (checked) {
-                    setEnabledModels(prev => {
+                    setEnabledModels((prev) => {
                       const base = prev[0] === ALL_DISABLED_SENTINEL || prev.length === 0 ? availableModels.map(x => x.id) : prev
                       return [...base.filter(x => x !== id), id]
                     })
                   }
                   else {
-                    setEnabledModels(prev => {
+                    setEnabledModels((prev) => {
                       const base = prev[0] === ALL_DISABLED_SENTINEL ? [] : prev.length === 0 ? availableModels.map(x => x.id) : prev
                       return base.filter(x => x !== id)
                     })

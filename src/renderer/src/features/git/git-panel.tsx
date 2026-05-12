@@ -4,8 +4,8 @@
 
 import { Button } from '@renderer/components/ui/button'
 import { TooltipProvider } from '@renderer/components/ui/tooltip'
-import { ipc } from '@renderer/lib/ipc'
 import { cn } from '@renderer/lib/cn'
+import { ipc } from '@renderer/lib/ipc'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'

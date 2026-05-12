@@ -15,8 +15,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useCreateStatus, useDeleteStatus, useReorderStatuses, useStatuses, useUpdateStatus } from './use-kanban'
 
 const PRESET_COLORS = [
-  '#64748b', '#60a5fa', '#34d399', '#fbbf24',
-  '#f97316', '#ef4444', '#a78bfa', '#f472b6',
+  '#64748b',
+'#60a5fa',
+'#34d399',
+'#fbbf24',
+  '#f97316',
+'#ef4444',
+'#a78bfa',
+'#f472b6',
 ]
 
 function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId: string }) {
@@ -28,8 +34,14 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
   const [showColors, setShowColors] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
-  useEffect(() => { setName(status.name) }, [status.name])
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus()
+    }
+  }, [editing])
+  useEffect(() => {
+    setName(status.name)
+  }, [status.name])
 
   function handleNameSave() {
     const trimmed = name.trim()
@@ -90,8 +102,13 @@ function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId:
             onBlur={handleNameSave}
             data-testid={`status-input-${status.id}`}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNameSave()
-              if (e.key === 'Escape') { setName(status.name); setEditing(false) }
+              if (e.key === 'Enter') {
+                handleNameSave()
+              }
+              if (e.key === 'Escape') {
+                setName(status.name)
+                setEditing(false)
+              }
             }}
             className="flex-1 text-[13px] bg-transparent outline-none"
           />
@@ -127,7 +144,9 @@ export function StatusManager({ workspaceId }: { workspaceId: string }) {
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    if (!over || active.id === over.id) {
+      return
+    }
     const oldIndex = statuses.findIndex(s => s.id === active.id)
     const newIndex = statuses.findIndex(s => s.id === over.id)
     const reordered = arrayMove(statuses, oldIndex, newIndex)
@@ -136,7 +155,9 @@ export function StatusManager({ workspaceId }: { workspaceId: string }) {
 
   async function handleAdd() {
     const name = newName.trim()
-    if (!name) return
+    if (!name) {
+      return
+    }
     await createStatus.mutateAsync({ workspaceId, name })
     setNewName('')
   }
@@ -160,7 +181,11 @@ export function StatusManager({ workspaceId }: { workspaceId: string }) {
           placeholder="Add status…"
           value={newName}
           onChange={e => setNewName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void handleAdd() }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              void handleAdd()
+            }
+          }}
           className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/30"
           data-testid="status-name-input"
         />

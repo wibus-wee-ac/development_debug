@@ -2,7 +2,7 @@
 // Output: Regression tests for workspace application service file filtering, safe text IO, and CRUD delegation
 // Position: Feature tests for src/main/features/workspace/workspace.ts
 
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { join } from 'node:path'
 

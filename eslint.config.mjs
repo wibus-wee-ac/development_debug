@@ -9,8 +9,10 @@ export default defineConfig(
     ignores: [
       '**/components/ui/**',
       '**/routeTree.gen.ts',
+      '**/api-gen/**',
       '.agents/**',
       '**/*.md',
+      'docs/design-system/tokens.json',
     ],
   },
   {

@@ -57,7 +57,7 @@ apps/server/src/
 - `@tsuki-hono/common` — decorators, metadata, `HttpContext`, exceptions, pipes (e.g. Zod), logger helpers, enhancer interfaces. Peer foundation: `reflect-metadata`, `tsyringe`, `zod` (as used by pipes/OpenAPI).
 - `@tsuki-hono/core` — `createApplication`, `HonoHttpApplication`, route registration, container wiring, global enhancers. Depends on `common` + `hono`.
 - `@tsuki-hono/event-emitter` — Redis pub/sub events (`@OnEvent`, `@EmitEvent`, `EventModule`). Depends on `common` + `core`; peer: `ioredis`.
-- `@tsuki-hono/openapi` — OpenAPI 3.1 generation from decorator metadata. Depends on `common` (+ `zod`).
+- `@cradle/openapi` — Cradle-owned OpenAPI 3.1 generation from Tsuki decorator metadata. Depends on `@tsuki-hono/common` + `zod`.
 
 Lower layers must not import higher layers (e.g. `common` must not import `core`).
 
@@ -110,7 +110,7 @@ Register tokens in module `providers` before injecting them. tsyringe is used in
 
 ## OpenAPI and events
 
-- OpenAPI: use `@tsuki-hono/openapi` alongside route/OpenAPI decorators from `common` as per `packages/openapi` README; keep Zod schemas aligned with handler inputs when documenting.
+- OpenAPI: use `@cradle/openapi` alongside route/OpenAPI decorators from `common` as per `packages/openapi` README; keep Zod schemas aligned with handler inputs when documenting.
 - Events: import `EventModule` and Redis configuration from `@tsuki-hono/event-emitter`; do not duplicate pub/sub logic in `core`.
 
 ## Summary for agents
@@ -119,12 +119,11 @@ Register tokens in module `providers` before injecting them. tsyringe is used in
 - Preserve **package boundaries** and **strict DI** semantics.
 - After code changes, **run the relevant package tests and repo typecheck** before concluding the task is complete.
 
-
 ## Packages
 
-| Package                                                 | Description                                                            |
-| ------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `@tsuki-hono/common`               | Decorators, interfaces, exceptions, pipes, logger, and request context |
-| `@tsuki-hono/core`                   | Application runtime, DI container utils, route registration            |
+| Package                     | Description                                                            |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `@tsuki-hono/common`        | Decorators, interfaces, exceptions, pipes, logger, and request context |
+| `@tsuki-hono/core`          | Application runtime, DI container utils, route registration            |
 | `@tsuki-hono/event-emitter` | Redis pub/sub event system with `@OnEvent` / `@EmitEvent`              |
-| `@tsuki-hono/openapi`             | OpenAPI 3.1 document generation from decorator metadata                |
+| `@cradle/openapi`           | Cradle-owned OpenAPI 3.1 document generation from Tsuki metadata       |

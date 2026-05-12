@@ -29,7 +29,6 @@ const TOOL_CALLS: MockToolCall[] = [{
 const CHAT_VIEW_TIMEOUT = 20_000
 const CHAT_STATUS_TIMEOUT = 30_000
 const SESSION_ALIASES_KEY = 'chat.session-aliases'
-const TAB_PILL = '[data-testid^="tab-pill-"]'
 
 type SessionAlias = {
   id: string
@@ -57,16 +56,10 @@ function recallSessionAlias(world: CradleWorld, alias: string): SessionAlias {
 }
 
 async function getChatView(world: CradleWorld) {
-  const activeTab = world.page.locator(`${TAB_PILL}[data-tab-active="true"]`).first()
-  await expect(activeTab).toBeVisible({ timeout: 15_000 })
-
-  const activeTabTestId = await activeTab.getAttribute('data-testid')
-  if (!activeTabTestId) {
-    throw new Error('Expected active tab pill to expose a data-testid')
-  }
-
-  const activeTabId = activeTabTestId.replace('tab-pill-', '')
-  const chatView = world.page.locator(`[data-testid="tab-content-${activeTabId}"] [data-testid="chat-view"]`).first()
+  // ALL tabs are rendered via React 19 Activity; only the active tab has data-tab-visible="true".
+  // We wait until the active tab's content contains a chat-view.
+  // This handles the timing lag between clicking send and openTab() switching the active tab.
+  const chatView = world.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
   await expect(chatView).toBeVisible({ timeout: CHAT_VIEW_TIMEOUT })
   return chatView
 }
@@ -209,8 +202,8 @@ async function getVisibleSessionOrder(world: CradleWorld): Promise<string[]> {
   })
 }
 
-async function readElectronClipboardText(world: CradleWorld): Promise<string> {
-  return world.mainProcess<string>(({ clipboard }) => clipboard.readText())
+async function readBrowserClipboardText(world: CradleWorld): Promise<string> {
+  return world.page.evaluate(() => navigator.clipboard.readText())
 }
 
 async function getLastAssistantReasoningToggle(world: CradleWorld) {
@@ -229,10 +222,8 @@ async function getLastAssistantToolCallBlock(world: CradleWorld, toolName: strin
   return block
 }
 
-async function clearElectronClipboard(world: CradleWorld): Promise<void> {
-  await world.mainProcess<void>(({ clipboard }) => {
-    clipboard.clear()
-  })
+async function clearBrowserClipboard(world: CradleWorld): Promise<void> {
+  await world.page.evaluate(() => navigator.clipboard.writeText(''))
 }
 
 Given('应用已启动', async function (this: CradleWorld) {
@@ -420,7 +411,7 @@ When('我点击会话{string}的复制 Markdown 菜单项', async function (this
 })
 
 When('我清空 Electron 剪贴板', async function (this: CradleWorld) {
-  await clearElectronClipboard(this)
+  await clearBrowserClipboard(this)
 })
 
 Then('我应该看到至少一条 AI 消息', async function (this: CradleWorld) {
@@ -503,8 +494,8 @@ Then('最后一条 AI 消息中名为{string}的 Tool Call 输出应包含{strin
 Then('Electron 剪贴板中应包含以下 Markdown 片段:', async function (this: CradleWorld, table: DataTable) {
   const fragments = table.raw().flat().map(fragment => fragment.trim()).filter(Boolean)
 
-  await expect.poll(async () => readElectronClipboardText(this), { timeout: 10_000 }).not.toBe('')
-  const clipboardText = await readElectronClipboardText(this)
+  await expect.poll(async () => readBrowserClipboardText(this), { timeout: 10_000 }).not.toBe('')
+  const clipboardText = await readBrowserClipboardText(this)
 
   for (const fragment of fragments) {
     expect(clipboardText).toContain(fragment)

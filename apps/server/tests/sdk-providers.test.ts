@@ -2,8 +2,6 @@
 // Output: integration tests for provider metadata and unified chat execution beyond openai-compatible
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,8 +9,8 @@ import { join } from 'node:path'
 import { workspaces } from '@cradle/db'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 const sdkMocks = vi.hoisted(() => ({
   claudeQuery: vi.fn(),
@@ -47,7 +45,7 @@ interface ChatTimelineGroup {
   events: Array<{ type: string, delta?: string, command?: string, paths?: string[] }>
 }
 
-type HonoApp = Awaited<ReturnType<typeof createConfiguredApp>> extends { getInstance: () => infer T } ? T : never
+type ElysiaApp = ReturnType<typeof createServerApp>
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -75,9 +73,9 @@ function makeAsyncSequence<T>(items: T[]) {
   }
 }
 
-async function waitForTimelineStatus(hono: HonoApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
+async function waitForTimelineStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatTimelineGroup['status']): Promise<ChatTimelineGroup[]> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await hono.request(`/chat/sessions/${encodeURIComponent(sessionId)}/timeline`)
+    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/timeline`))
     if (response.status === 200) {
       const groups = await response.json() as ChatTimelineGroup[]
       const assistant = groups.find(group => group.role === 'assistant')
@@ -91,7 +89,7 @@ async function waitForTimelineStatus(hono: HonoApp, sessionId: string, expectedS
   throw new Error(`Timed out waiting for assistant status ${expectedStatus}`)
 }
 
-async function createProfileAndSession(hono: HonoApp, input: {
+async function createProfileAndSession(app: ElysiaApp, input: {
   workspaceId: string
   providerKind: 'claude-agent' | 'codex'
   profileId: string
@@ -99,7 +97,7 @@ async function createProfileAndSession(hono: HonoApp, input: {
   config: Record<string, unknown>
   secret: string
 }) {
-  const credentialRes = await hono.request('/secrets', {
+  const credentialRes = await app.handle(new Request('http://localhost/secrets', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -107,11 +105,11 @@ async function createProfileAndSession(hono: HonoApp, input: {
       label: `${input.providerKind} key`,
       secret: input.secret,
     }),
-  })
+  }))
   expect(credentialRes.status).toBe(200)
   const credential = await credentialRes.json() as { id: string }
 
-  const profileRes = await hono.request(`/profiles/${input.profileId}`, {
+  const profileRes = await app.handle(new Request(`http://localhost/profiles/${input.profileId}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -121,10 +119,10 @@ async function createProfileAndSession(hono: HonoApp, input: {
       config: input.config,
       credentialRef: credential.id,
     }),
-  })
+  }))
   expect(profileRes.status).toBe(200)
 
-  const sessionRes = await hono.request('/sessions', {
+  const sessionRes = await app.handle(new Request('http://localhost/sessions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -133,7 +131,7 @@ async function createProfileAndSession(hono: HonoApp, input: {
       title: `${input.providerKind} session`,
       agentProfileId: input.profileId,
     }),
-  })
+  }))
   expect(sessionRes.status).toBe(200)
 
   return { credentialRef: credential.id }
@@ -205,15 +203,13 @@ describe('sdk-backed providers in unified chat runtime', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
+      app = createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
 
-      const { credentialRef } = await createProfileAndSession(hono, {
+      const { credentialRef } = await createProfileAndSession(app, {
         workspaceId: 'workspace-sdk',
         providerKind: 'claude-agent',
         profileId: 'profile-claude',
@@ -222,7 +218,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
         secret: 'sk-ant-123',
       })
 
-      const healthCheckRes = await hono.request('/providers/health-check', {
+      const healthCheckRes = await app.handle(new Request('http://localhost/providers/health-check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -232,11 +228,11 @@ describe('sdk-backed providers in unified chat runtime', () => {
           config: { model: 'claude-sonnet-4-20250514' },
           secretRef: credentialRef,
         }),
-      })
+      }))
       expect(healthCheckRes.status).toBe(200)
       expect(await healthCheckRes.json()).toEqual(expect.objectContaining({ ok: true }))
 
-      const modelsRes = await hono.request('/providers/models', {
+      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -246,20 +242,20 @@ describe('sdk-backed providers in unified chat runtime', () => {
           config: { model: 'claude-sonnet-4-20250514' },
           secretRef: credentialRef,
         }),
-      })
+      }))
       expect(modelsRes.status).toBe(200)
       expect(await modelsRes.json()).toEqual([
         expect.objectContaining({ id: 'claude-sonnet-4-20250514', providerKind: 'claude-agent' }),
       ])
 
-      const runRes = await hono.request('/chat/sessions/session-claude/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude/runs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Hello Claude' }),
-      })
+      }))
       expect(runRes.status).toBe(200)
 
-      const timeline = await waitForTimelineStatus(hono, 'session-claude', 'complete')
+      const timeline = await waitForTimelineStatus(app, 'session-claude', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
       expect(assistant?.events.map(event => event.type)).toEqual(expect.arrayContaining([
         'run.started',
@@ -271,7 +267,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
         'run.completed',
       ]))
 
-      const usageRes = await hono.request('/usage/sessions/session-claude')
+      const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-claude'))
       expect(usageRes.status).toBe(200)
       expect(await usageRes.json()).toEqual(expect.objectContaining({
         promptTokens: 9,
@@ -280,9 +276,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       }))
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
@@ -331,15 +325,13 @@ describe('sdk-backed providers in unified chat runtime', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
+      app = createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
 
-      const { credentialRef } = await createProfileAndSession(hono, {
+      const { credentialRef } = await createProfileAndSession(app, {
         workspaceId: 'workspace-sdk',
         providerKind: 'codex',
         profileId: 'profile-codex',
@@ -348,7 +340,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
         secret: 'sk-openai-123',
       })
 
-      const healthCheckRes = await hono.request('/providers/health-check', {
+      const healthCheckRes = await app.handle(new Request('http://localhost/providers/health-check', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -358,11 +350,11 @@ describe('sdk-backed providers in unified chat runtime', () => {
           config: { model: 'gpt-5-codex' },
           secretRef: credentialRef,
         }),
-      })
+      }))
       expect(healthCheckRes.status).toBe(200)
       expect(await healthCheckRes.json()).toEqual(expect.objectContaining({ ok: true }))
 
-      const modelsRes = await hono.request('/providers/models', {
+      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -372,20 +364,20 @@ describe('sdk-backed providers in unified chat runtime', () => {
           config: { model: 'gpt-5-codex' },
           secretRef: credentialRef,
         }),
-      })
+      }))
       expect(modelsRes.status).toBe(200)
       expect(await modelsRes.json()).toEqual([
         expect.objectContaining({ id: 'gpt-5-codex', providerKind: 'codex' }),
       ])
 
-      const runRes = await hono.request('/chat/sessions/session-codex/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-codex/runs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Hello Codex' }),
-      })
+      }))
       expect(runRes.status).toBe(200)
 
-      const timeline = await waitForTimelineStatus(hono, 'session-codex', 'complete')
+      const timeline = await waitForTimelineStatus(app, 'session-codex', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
       expect(assistant?.events.map(event => event.type)).toEqual(expect.arrayContaining([
         'run.started',
@@ -404,7 +396,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
         workingDirectory: workspaceRoot,
       }))
 
-      const usageRes = await hono.request('/usage/sessions/session-codex')
+      const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-codex'))
       expect(usageRes.status).toBe(200)
       expect(await usageRes.json()).toEqual(expect.objectContaining({
         promptTokens: 11,
@@ -413,9 +405,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       }))
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
@@ -431,5 +421,342 @@ describe('sdk-backed providers in unified chat runtime', () => {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
     }
+  })
+
+  it('emits tool_call.started and tool_call.completed for claude-agent tool use lifecycle', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+
+    // Mock a tool call flow: assistant emits tool_use → user sends tool_result → final text
+    sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
+      {
+        type: 'assistant',
+        session_id: 'claude-tool-session',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu_abc123', name: 'bash', input: { command: 'echo hello' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        session_id: 'claude-tool-session',
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_abc123', content: 'hello\n', is_error: false },
+          ],
+        },
+      },
+      {
+        type: 'assistant',
+        session_id: 'claude-tool-session',
+        message: {
+          content: [{ type: 'text', text: 'Done running bash' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-tool-session',
+        usage: { input_tokens: 20, output_tokens: 8 },
+      },
+    ]))
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === 'https://api.anthropic.com/v1/models') {
+        return new Response(JSON.stringify({
+          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url === 'https://models.dev/api.json') {
+        return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`)
+    })
+
+    let app: ReturnType<typeof createServerApp> | undefined
+
+    try {
+      app = createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-tool', name: 'Workspace Tool', path: workspaceRoot }).run()
+
+      await createProfileAndSession(app, {
+        workspaceId: 'workspace-tool',
+        providerKind: 'claude-agent',
+        profileId: 'profile-claude-tool',
+        sessionId: 'session-claude-tool',
+        config: { model: 'claude-sonnet-4-20250514' },
+        secret: 'sk-ant-tool-test',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-tool/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Run echo hello' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const timeline = await waitForTimelineStatus(app, 'session-claude-tool', 'complete')
+      const assistant = timeline.find(group => group.role === 'assistant')
+      const eventTypes = assistant?.events.map(event => event.type) ?? []
+
+      // Regression: tool_call.started and tool_call.completed must both be emitted
+      expect(eventTypes).toContain('tool_call.started')
+      expect(eventTypes).toContain('tool_call.completed')
+
+      // Verify ordering: started before completed
+      const startedIdx = eventTypes.indexOf('tool_call.started')
+      const completedIdx = eventTypes.indexOf('tool_call.completed')
+      expect(startedIdx).toBeLessThan(completedIdx)
+
+      // Verify the full lifecycle events are present
+      expect(eventTypes).toEqual(expect.arrayContaining([
+        'run.started',
+        'tool_call.started',
+        'tool_call.completed',
+        'assistant.message.started',
+        'assistant.text.delta',
+        'assistant.message.completed',
+        'run.completed',
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('emits tool_call.completed with error result for failed tool calls', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+
+    sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
+      {
+        type: 'assistant',
+        session_id: 'claude-err-session',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu_err456', name: 'bash', input: { command: 'false' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        session_id: 'claude-err-session',
+        message: {
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_err456', content: 'exit code 1', is_error: true },
+          ],
+        },
+      },
+      {
+        type: 'assistant',
+        session_id: 'claude-err-session',
+        message: {
+          content: [{ type: 'text', text: 'Command failed' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-err-session',
+        usage: { input_tokens: 15, output_tokens: 5 },
+      },
+    ]))
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === 'https://api.anthropic.com/v1/models') {
+        return new Response(JSON.stringify({
+          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url === 'https://models.dev/api.json') {
+        return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`)
+    })
+
+    let app: ReturnType<typeof createServerApp> | undefined
+
+    try {
+      app = createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-tool-err', name: 'Workspace Tool Err', path: workspaceRoot }).run()
+
+      await createProfileAndSession(app, {
+        workspaceId: 'workspace-tool-err',
+        providerKind: 'claude-agent',
+        profileId: 'profile-claude-err',
+        sessionId: 'session-claude-err',
+        config: { model: 'claude-sonnet-4-20250514' },
+        secret: 'sk-ant-err-test',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-err/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Run false command' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const timeline = await waitForTimelineStatus(app, 'session-claude-err', 'complete')
+      const assistant = timeline.find(group => group.role === 'assistant')
+      const eventTypes = assistant?.events.map(event => event.type) ?? []
+
+      // Regression: tool_call.completed must be emitted even for error results
+      expect(eventTypes).toContain('tool_call.started')
+      expect(eventTypes).toContain('tool_call.completed')
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+})
+
+describe('claude-agent mapper: input_json_delta streaming', () => {
+  it('maps content_block_delta with input_json_delta to tool_call.input.delta events', async () => {
+    const { mapClaudeAgentMessageToTimeline } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = Parameters<typeof mapClaudeAgentMessageToTimeline>[1]
+
+    const state: MapperState = {
+      textItemId: 'text-1',
+      assistantStarted: false,
+      hadToolCallSinceLastText: false,
+      activeToolBlockIds: new Map(),
+    }
+
+    // 1. content_block_start for tool_use — should record the tool block ID
+    const startResult = mapClaudeAgentMessageToTimeline({
+      type: 'stream_event',
+      session_id: 'sess-1',
+      event: {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'tool_use', id: 'toolu_input_delta', name: 'bash', input: '' },
+      },
+    } as any, state)
+
+    expect(startResult.events).toEqual([
+      expect.objectContaining({ type: 'tool_call.started', itemId: 'toolu_input_delta', toolName: 'bash' }),
+    ])
+    expect(state.activeToolBlockIds.get(0)).toBe('toolu_input_delta')
+
+    // 2. content_block_delta with input_json_delta — should emit tool_call.input.delta
+    const delta1 = mapClaudeAgentMessageToTimeline({
+      type: 'stream_event',
+      session_id: 'sess-1',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: '{"command"' },
+      },
+    } as any, state)
+
+    expect(delta1.events).toEqual([{
+      type: 'tool_call.input.delta',
+      itemId: 'toolu_input_delta',
+      delta: '{"command"',
+      source: expect.objectContaining({ backend: 'claude-agent', eventType: 'input_json_delta' }),
+    }])
+
+    // 3. Second delta
+    const delta2 = mapClaudeAgentMessageToTimeline({
+      type: 'stream_event',
+      session_id: 'sess-1',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: ':"echo hi"}' },
+      },
+    } as any, state)
+
+    expect(delta2.events).toEqual([{
+      type: 'tool_call.input.delta',
+      itemId: 'toolu_input_delta',
+      delta: ':"echo hi"}',
+      source: expect.objectContaining({ backend: 'claude-agent', eventType: 'input_json_delta' }),
+    }])
+  })
+
+  it('ignores input_json_delta with empty partial_json', async () => {
+    const { mapClaudeAgentMessageToTimeline } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = Parameters<typeof mapClaudeAgentMessageToTimeline>[1]
+
+    const state: MapperState = {
+      textItemId: 'text-1',
+      assistantStarted: false,
+      hadToolCallSinceLastText: false,
+      activeToolBlockIds: new Map([[0, 'toolu_empty']]),
+    }
+
+    const result = mapClaudeAgentMessageToTimeline({
+      type: 'stream_event',
+      session_id: 'sess-1',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'input_json_delta', partial_json: '' },
+      },
+    } as any, state)
+
+    expect(result.events).toEqual([])
+  })
+
+  it('ignores input_json_delta for unknown block index', async () => {
+    const { mapClaudeAgentMessageToTimeline } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = Parameters<typeof mapClaudeAgentMessageToTimeline>[1]
+
+    const state: MapperState = {
+      textItemId: 'text-1',
+      assistantStarted: false,
+      hadToolCallSinceLastText: false,
+      activeToolBlockIds: new Map(),
+    }
+
+    const result = mapClaudeAgentMessageToTimeline({
+      type: 'stream_event',
+      session_id: 'sess-1',
+      event: {
+        type: 'content_block_delta',
+        index: 5,
+        delta: { type: 'input_json_delta', partial_json: '{"data":"value"}' },
+      },
+    } as any, state)
+
+    expect(result.events).toEqual([])
   })
 })

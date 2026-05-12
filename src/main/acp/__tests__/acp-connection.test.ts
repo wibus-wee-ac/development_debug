@@ -83,7 +83,7 @@ async function raceOutcome<T>(promise: Promise<T>): Promise<{ kind: 'result', va
     promise
       .then(value => ({ kind: 'result' as const, value }))
       .catch(error => ({ kind: 'error' as const, error })),
-    new Promise<{ kind: 'timeout' }>(resolve => setTimeout(() => resolve({ kind: 'timeout' }), 20)),
+    new Promise<{ kind: 'timeout' }>(resolve => setTimeout(resolve, 20, { kind: 'timeout' })),
   ])
 }
 

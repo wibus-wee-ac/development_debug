@@ -4,11 +4,14 @@
 
 import Heading from '@tiptap/extension-heading'
 
+const SLUG_NON_WORD_RE = /[^\w\u4E00-\u9FFF]+/g
+const SLUG_TRIM_DASH_RE = /(^-|-$)/g
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\u4e00-\u9fff]+/g, '-')
-    .replace(/(^-|-$)/g, '')
+    .replace(SLUG_NON_WORD_RE, '-')
+    .replace(SLUG_TRIM_DASH_RE, '')
 }
 
 export const HeadingWithId = Heading.extend({

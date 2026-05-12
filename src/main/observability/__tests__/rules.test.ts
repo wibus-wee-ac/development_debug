@@ -104,4 +104,3 @@ describe('evaluateIncidentRules', () => {
     expect(results[0].incident.dedupeKey).toBe('DOMAIN_EVENT_HANDLER_FAILED:-:-:handler-1')
   })
 })
-

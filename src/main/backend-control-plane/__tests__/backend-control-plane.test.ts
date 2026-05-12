@@ -4,10 +4,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../db', () => ({
-  getDb: vi.fn(),
-}))
-
+import { createBackendControlPlaneService } from '../backend-control-plane'
 import type {
   AttachBackendBindingInput,
   BackendCapabilitySnapshot,
@@ -19,7 +16,10 @@ import type {
   RecordBackendCapabilitySnapshotInput,
   StartBackendRunInput,
 } from '../types'
-import { createBackendControlPlaneService } from '../backend-control-plane'
+
+vi.mock('../../db', () => ({
+  getDb: vi.fn(),
+}))
 
 class MemoryBackendControlPlaneStore implements BackendControlPlaneStore {
   readonly bindings = new Map<string, BackendSessionBinding>()

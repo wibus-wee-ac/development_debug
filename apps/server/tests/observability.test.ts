@@ -2,8 +2,6 @@
 // Output: integration tests for event persistence, incident rules, and bundle export
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,10 +9,10 @@ import { join } from 'node:path'
 import { workspaces } from '@cradle/db'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
-type HonoApp = Awaited<ReturnType<typeof createConfiguredApp>> extends { getInstance: () => infer T } ? T : never
+type ElysiaApp = ReturnType<typeof createServerApp>
 
 type ChatTimelineGroup = {
   messageId: string
@@ -28,14 +26,14 @@ function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-async function createProfileAndSession(hono: HonoApp, accessor: DbAccessor, workspaceRoot: string) {
-  accessor.get().insert(workspaces).values({
+async function createProfileAndSession(app: ElysiaApp, workspaceRoot: string) {
+  db().insert(workspaces).values({
     id: 'workspace-observability',
     name: 'Workspace Observability',
     path: workspaceRoot,
   }).run()
 
-  const credentialRes = await hono.request('/secrets', {
+  const credentialRes = await app.handle(new Request('http://localhost/secrets', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -43,10 +41,10 @@ async function createProfileAndSession(hono: HonoApp, accessor: DbAccessor, work
       label: 'Observability Key',
       secret: 'sk-observability-test',
     }),
-  })
+  }))
   const credential = await credentialRes.json() as { id: string }
 
-  const profileRes = await hono.request('/profiles/profile-observability', {
+  const profileRes = await app.handle(new Request('http://localhost/profiles/profile-observability', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -56,10 +54,10 @@ async function createProfileAndSession(hono: HonoApp, accessor: DbAccessor, work
       config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
       credentialRef: credential.id,
     }),
-  })
+  }))
   expect(profileRes.status).toBe(200)
 
-  const sessionRes = await hono.request('/sessions', {
+  const sessionRes = await app.handle(new Request('http://localhost/sessions', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -68,18 +66,18 @@ async function createProfileAndSession(hono: HonoApp, accessor: DbAccessor, work
       title: 'Observability Session',
       agentProfileId: 'profile-observability',
     }),
-  })
+  }))
   expect(sessionRes.status).toBe(200)
 }
 
 async function waitForLatestAssistantStatus(
-  hono: HonoApp,
+  app: ElysiaApp,
   sessionId: string,
   expectedStatus: ChatTimelineGroup['status'],
   expectedAssistantCount: number,
 ): Promise<ChatTimelineGroup[]> {
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const response = await hono.request(`/chat/sessions/${encodeURIComponent(sessionId)}/timeline`)
+    const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/timeline`))
     if (response.status === 200) {
       const groups = await response.json() as ChatTimelineGroup[]
       const assistants = groups.filter(group => group.role === 'assistant')
@@ -94,8 +92,8 @@ async function waitForLatestAssistantStatus(
   throw new Error(`Timed out waiting for latest assistant status ${expectedStatus}`)
 }
 
-async function flushObservability(hono: HonoApp): Promise<void> {
-  const response = await hono.request('/observability/flush', { method: 'POST' })
+async function flushObservability(app: ElysiaApp): Promise<void> {
+  const response = await app.handle(new Request('http://localhost/observability/flush', { method: 'POST' }))
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({ ok: true })
 }
@@ -127,41 +125,39 @@ describe('observability capability', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      await createProfileAndSession(hono, accessor, workspaceRoot)
+      app = createServerApp()
+      await createProfileAndSession(app, workspaceRoot)
 
       let finalRunId = ''
       for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const runRes = await hono.request('/chat/sessions/session-observability/runs', {
+        const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-observability/runs', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ text: `empty output attempt ${attempt}` }),
-        })
+        }))
         expect(runRes.status).toBe(200)
         const run = await runRes.json() as { runId: string }
         finalRunId = run.runId
 
-        const timeline = await waitForLatestAssistantStatus(hono, 'session-observability', 'failed', attempt)
+        const timeline = await waitForLatestAssistantStatus(app, 'session-observability', 'failed', attempt)
         const latestAssistant = timeline.filter(group => group.role === 'assistant').at(-1)
         expect(latestAssistant).toEqual(expect.objectContaining({ status: 'failed' }))
         expect(latestAssistant?.events.map(event => event.type)).toContain('run.failed')
       }
 
-      await flushObservability(hono)
+      await flushObservability(app)
 
-      const eventsRes = await hono.request('/observability/events?chatSessionId=session-observability&code=CHAT_EMPTY_OUTPUT_COMPLETION')
+      const eventsRes = await app.handle(new Request('http://localhost/observability/events?chatSessionId=session-observability&code=CHAT_EMPTY_OUTPUT_COMPLETION'))
       expect(eventsRes.status).toBe(200)
       const events = await eventsRes.json() as Array<{ code: string, runId?: string, severity: string }>
       expect(events).toHaveLength(3)
       expect(events.every(event => event.code === 'CHAT_EMPTY_OUTPUT_COMPLETION')).toBe(true)
       expect(events.every(event => event.severity === 'error')).toBe(true)
 
-      const incidentsRes = await hono.request('/observability/incidents?chatSessionId=session-observability&code=CHAT_EMPTY_OUTPUT_COMPLETION')
+      const incidentsRes = await app.handle(new Request('http://localhost/observability/incidents?chatSessionId=session-observability&code=CHAT_EMPTY_OUTPUT_COMPLETION'))
       expect(incidentsRes.status).toBe(200)
       const incidents = await incidentsRes.json() as Array<{ code: string, status: string, attrs?: { occurrences?: number } }>
       expect(incidents).toHaveLength(1)
@@ -171,7 +167,7 @@ describe('observability capability', () => {
       }))
       expect(incidents[0].attrs?.occurrences).toBe(3)
 
-      const exportRes = await hono.request(`/observability/export?runId=${encodeURIComponent(finalRunId)}`)
+      const exportRes = await app.handle(new Request(`http://localhost/observability/export?runId=${encodeURIComponent(finalRunId)}`))
       expect(exportRes.status).toBe(200)
       const bundle = await exportRes.json() as {
         events: Array<{ runId?: string, code: string }>
@@ -185,9 +181,7 @@ describe('observability capability', () => {
     }
     finally {
       fetchSpy.mockRestore()
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
@@ -221,34 +215,32 @@ describe('observability capability', () => {
       throw new Error(`Unexpected fetch URL: ${url}`)
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      await createProfileAndSession(hono, accessor, workspaceRoot)
+      app = createServerApp()
+      await createProfileAndSession(app, workspaceRoot)
 
-      const runRes = await hono.request('/chat/sessions/session-observability/runs', {
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-observability/runs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'explode stream' }),
-      })
+      }))
       expect(runRes.status).toBe(200)
       const run = await runRes.json() as { runId: string }
 
-      const timeline = await waitForLatestAssistantStatus(hono, 'session-observability', 'failed', 1)
+      const timeline = await waitForLatestAssistantStatus(app, 'session-observability', 'failed', 1)
       const latestAssistant = timeline.filter(group => group.role === 'assistant').at(-1)
       expect(latestAssistant?.errorText).toContain('provider stream exploded')
 
-      await flushObservability(hono)
+      await flushObservability(app)
 
-      const eventsRes = await hono.request(`/observability/events?runId=${encodeURIComponent(run.runId)}&code=TURN_STREAM_FAILED`)
+      const eventsRes = await app.handle(new Request(`http://localhost/observability/events?runId=${encodeURIComponent(run.runId)}&code=TURN_STREAM_FAILED`))
       expect(eventsRes.status).toBe(200)
       const events = await eventsRes.json() as Array<{ code: string, message: string }>
       expect(events).toEqual([expect.objectContaining({ code: 'TURN_STREAM_FAILED' })])
 
-      const incidentsRes = await hono.request(`/observability/incidents?runId=${encodeURIComponent(run.runId)}&code=TURN_STREAM_FAILED`)
+      const incidentsRes = await app.handle(new Request(`http://localhost/observability/incidents?runId=${encodeURIComponent(run.runId)}&code=TURN_STREAM_FAILED`))
       expect(incidentsRes.status).toBe(200)
       const incidents = await incidentsRes.json() as Array<{ code: string, status: string }>
       expect(incidents).toEqual([expect.objectContaining({ code: 'TURN_STREAM_FAILED', status: 'open' })])
@@ -256,9 +248,7 @@ describe('observability capability', () => {
     }
     finally {
       fetchSpy.mockRestore()
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {

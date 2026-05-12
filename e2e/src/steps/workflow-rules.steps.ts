@@ -64,12 +64,10 @@ function workflowWorkspaceButtonByName(world: CradleWorld, name: string) {
 }
 
 async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
-  await world.app.evaluate(async ({ dialog }, targetPath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [targetPath],
-    })
-  }, dirPath)
+  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
+  world.page.once('dialog', async (dialog) => {
+    await dialog.accept(dirPath)
+  })
 }
 
 async function addWorkspaceFromPicker(world: CradleWorld, fixture: WorkflowWorkspaceFixture): Promise<void> {

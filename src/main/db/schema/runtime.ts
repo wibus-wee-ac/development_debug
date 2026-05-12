@@ -2,8 +2,7 @@
 // Output: Runtime audit table plus inferred row types
 // Position: Agent runtime persistence schema module for provider health checks and model audit events
 
-import { int } from 'drizzle-orm/sqlite-core'
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { agentProfiles } from './identity'
 import { createdAt } from './shared'

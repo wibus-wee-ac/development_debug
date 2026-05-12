@@ -281,7 +281,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
                               <MenuItem key={profile.id} onClick={() => setLastAgentProfileId(profile.id)}>
                             <BotIcon className="size-3" aria-hidden="true" />
                             <span>{profile.name}</span>
-                          </MenuItem>
+                              </MenuItem>
                         ))}
                     </MenuGroup>
                   </MenuPopup>

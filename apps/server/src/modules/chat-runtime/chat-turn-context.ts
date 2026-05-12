@@ -4,9 +4,8 @@
 
 import { agents, backendRuns, backendTimelineEvents, messages, sessions } from '@cradle/db'
 import { and, desc, eq } from 'drizzle-orm'
-import { inject, injectable } from 'tsyringe'
 
-import { DbAccessor } from '../../database/db-accessor'
+import { db } from '../../infra'
 import { decodeTimelineInputEvent } from './timeline-events'
 
 export interface ChatTurnContext {
@@ -14,45 +13,38 @@ export interface ChatTurnContext {
   history?: Array<{ role: 'user' | 'assistant', content: string }>
 }
 
-@injectable()
-export class ChatTurnContextResolver {
-  constructor(@inject(DbAccessor) private readonly dbAccessor: DbAccessor) {}
+export function resolve(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
+  const session = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
 
-  resolve(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
-    const db = this.dbAccessor.get()
-    const session = db.select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
-
-    let systemPrompt: string | undefined
-    if (session?.agentId) {
-      const agent = db.select().from(agents).where(eq(agents.id, session.agentId)).get()
-      systemPrompt = readAgentSystemPrompt(agent?.configJson)
-    }
-
-    const historyRows = db.select().from(messages).where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'))).orderBy(messages.createdAt).all().filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
-
-    const history = historyRows.map(row => ({
-      role: row.role as 'user' | 'assistant',
-      content: row.role === 'assistant' ? this.readAssistantText(row.id) : row.content,
-    })).filter(item => item.content.length > 0)
-
-    return {
-      systemPrompt,
-      history: history.length > 0 ? history : undefined,
-    }
+  let systemPrompt: string | undefined
+  if (session?.agentId) {
+    const agent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
+    systemPrompt = readAgentSystemPrompt(agent?.configJson)
   }
 
-  private readAssistantText(messageId: string): string {
-    const db = this.dbAccessor.get()
-    const run = db.select({ id: backendRuns.id }).from(backendRuns).where(eq(backendRuns.messageId, messageId)).orderBy(desc(backendRuns.startedAt)).get()
-    if (!run) {
-      return ''
-    }
-    const rows = db.select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
-    return rows.map((row) => {
-      const event = decodeTimelineInputEvent({ eventType: row.eventType, payloadJson: row.payloadJson, sourceJson: row.sourceJson })
-      return event.type === 'assistant.text.delta' ? event.delta : ''
-    }).join('')
+  const historyRows = db().select().from(messages).where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'))).orderBy(messages.createdAt).all().filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
+
+  const history = historyRows.map(row => ({
+    role: row.role as 'user' | 'assistant',
+    content: row.role === 'assistant' ? readAssistantText(row.id) : row.content,
+  })).filter(item => item.content.length > 0)
+
+  return {
+    systemPrompt,
+    history: history.length > 0 ? history : undefined,
   }
+}
+
+function readAssistantText(messageId: string): string {
+  const run = db().select({ id: backendRuns.id }).from(backendRuns).where(eq(backendRuns.messageId, messageId)).orderBy(desc(backendRuns.startedAt)).get()
+  if (!run) {
+    return ''
+  }
+  const rows = db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
+  return rows.map((row) => {
+    const event = decodeTimelineInputEvent({ eventType: row.eventType, payloadJson: row.payloadJson, sourceJson: row.sourceJson })
+    return event.type === 'assistant.text.delta' ? event.delta : ''
+  }).join('')
 }
 
 function readAgentSystemPrompt(configJson: string | null | undefined): string | undefined {
@@ -65,5 +57,12 @@ function readAgentSystemPrompt(configJson: string | null | undefined): string | 
   }
   catch {
     return undefined
+  }
+}
+
+// Backwards-compatible class shim for old DI consumers (chat-runtime.service.ts, module.ts)
+export class ChatTurnContextResolver {
+  resolve(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
+    return resolve(input)
   }
 }

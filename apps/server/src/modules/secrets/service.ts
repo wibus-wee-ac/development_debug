@@ -1,0 +1,151 @@
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto'
+
+import { agentCredentials } from '@cradle/db'
+import { eq } from 'drizzle-orm'
+
+import { AppError } from '../../errors/app-error'
+import { db } from '../../infra'
+
+// ── types ──
+
+export interface SecretMetadata {
+  id: string
+  kind: string
+  label: string
+  maskedSecret: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SaveSecretInput {
+  kind: string
+  label: string
+  secret: string
+}
+
+// ── cipher ──
+
+const ALGORITHM = 'aes-256-gcm'
+const IV_BYTES = 12
+
+function getCredentialSecret(): string | null {
+  return process.env.CRADLE_CREDENTIAL_SECRET?.trim() || null
+}
+
+function isConfigured(): boolean {
+  return Boolean(getCredentialSecret())
+}
+
+function getKey(): Buffer {
+  const secret = getCredentialSecret()
+  if (!secret) {
+    throw new Error('CRADLE_CREDENTIAL_SECRET is not configured')
+  }
+  return createHash('sha256').update(secret).digest()
+}
+
+function encrypt(plainText: string): string {
+  const key = getKey()
+  const iv = randomBytes(IV_BYTES)
+  const cipher = createCipheriv(ALGORITHM, key, iv)
+  const encrypted = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return `${iv.toString('base64')}:${encrypted.toString('base64')}:${tag.toString('base64')}`
+}
+
+function decrypt(encryptedText: string): string {
+  const key = getKey()
+  const [ivPart, payloadPart, tagPart] = encryptedText.split(':')
+  if (!ivPart || !payloadPart || !tagPart) {
+    throw new Error('Invalid encrypted credential payload')
+  }
+  const decipher = createDecipheriv(ALGORITHM, key, Buffer.from(ivPart, 'base64'))
+  decipher.setAuthTag(Buffer.from(tagPart, 'base64'))
+  const decrypted = Buffer.concat([
+    decipher.update(Buffer.from(payloadPart, 'base64')),
+    decipher.final(),
+  ])
+  return decrypted.toString('utf8')
+}
+
+function maskSecret(secret: string): string {
+  if (secret.length <= 4) {
+    return '...'
+  }
+  if (secret.startsWith('sk-') && secret.length > 7) {
+    return `sk-...${secret.slice(-4)}`
+  }
+  return `...${secret.slice(-4)}`
+}
+
+// ── ensure configured guard ──
+
+function ensureConfigured(): void {
+  if (!isConfigured()) {
+    throw new AppError({
+      code: 'secret_not_configured',
+      status: 500,
+      message: 'CRADLE_CREDENTIAL_SECRET is required to manage secrets',
+    })
+  }
+}
+
+// ── public API ──
+
+export function saveSecret(input: SaveSecretInput): SecretMetadata {
+  ensureConfigured()
+  const now = Math.floor(Date.now() / 1000)
+  const id = randomUUID()
+  const encryptedSecret = encrypt(input.secret)
+
+  db().insert(agentCredentials).values({
+    id,
+    kind: input.kind,
+    label: input.label,
+    encryptedSecret,
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+
+  return {
+    id,
+    kind: input.kind,
+    label: input.label,
+    maskedSecret: maskSecret(input.secret),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+export function removeSecret(id: string): void {
+  db().delete(agentCredentials).where(eq(agentCredentials.id, id)).run()
+}
+
+export function listSecrets(): SecretMetadata[] {
+  ensureConfigured()
+  return db().select().from(agentCredentials).orderBy(agentCredentials.label).all().map((secret) => {
+    const plainText = decrypt(secret.encryptedSecret)
+    return {
+      id: secret.id,
+      kind: secret.kind,
+      label: secret.label,
+      maskedSecret: maskSecret(plainText),
+      createdAt: secret.createdAt,
+      updatedAt: secret.updatedAt,
+    }
+  })
+}
+
+export function readSecret(id: string): string {
+  ensureConfigured()
+  const secret = db().select().from(agentCredentials).where(eq(agentCredentials.id, id)).get()
+  if (!secret) {
+    throw new AppError({
+      code: 'secret_not_found',
+      status: 400,
+      message: 'Secret not found',
+      details: { id },
+    })
+  }
+  return decrypt(secret.encryptedSecret)
+}

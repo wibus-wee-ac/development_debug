@@ -4,10 +4,10 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { projectTimelineEventToChunks } from '../../../shared/timeline-projection'
 import {
   parseTimelineInputEvent,
 } from '../timeline-events'
-import { projectTimelineEventToChunks } from '../../../shared/timeline-projection'
 
 describe('timeline events', () => {
   it('parses typed assistant text events at runtime', () => {

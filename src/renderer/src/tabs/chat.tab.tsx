@@ -85,7 +85,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
         />
       )
       : undefined,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [hasWorkspace, workspacePath, sessionId, shellGen],
   )
 

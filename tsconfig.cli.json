@@ -3,10 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "esModuleInterop": true,
+    "types": ["node"],
     "strict": true,
     "noImplicitAny": true,
-    "types": ["node"]
+    "esModuleInterop": true
   },
   "include": ["src/cli/**/*"]
 }

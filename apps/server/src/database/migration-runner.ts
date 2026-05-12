@@ -2,21 +2,18 @@
 // Output: migrations executed at module init
 // Position: server migration runner
 
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { injectable } from 'tsyringe'
-
 import { getMigrationsPath } from '@cradle/db'
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 
-import { Logger } from '../logging/logger'
-import { DatabaseConfig } from './database.config'
-import { DbProvider } from './database.provider'
+import type { Logger } from '../logging/logger'
+import type { DatabaseConfig } from './database.config'
+import type { DbProvider } from './database.provider'
 
-@injectable()
 export class MigrationRunner {
   constructor(
     private readonly provider: DbProvider,
     private readonly config: DatabaseConfig,
-    private readonly logger: Logger
+    private readonly logger: Logger,
   ) {}
 
   onModuleInit(): void {

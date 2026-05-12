@@ -7,6 +7,7 @@ import { Input } from '@renderer/components/ui/input'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@renderer/components/ui/menu'
 import { ScrollArea } from '@renderer/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@renderer/components/ui/tooltip'
+import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import { cn } from '@renderer/lib/cn'
 import { useCradleTabStore } from '@renderer/tabs/registry'
 import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
@@ -20,7 +21,6 @@ import {
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 
-import { useWorkspaces } from '@renderer/features/workspace/use-workspace'
 import {
   useBoards,
   useCreateBoard,

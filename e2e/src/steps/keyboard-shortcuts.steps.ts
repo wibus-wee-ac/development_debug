@@ -18,18 +18,19 @@ const TAB_PILL = '[data-testid^="tab-pill-"]'
 const RIGHT_ASIDE = '[data-testid="app-layout-right-aside"]'
 const BOTTOM_PANEL = '[data-testid="app-layout-bottom-panel"]'
 const TAB_COUNT_KEY = 'keyboard-shortcuts.initial-tab-count'
+const NON_EMPTY_RE = /.+/
 
 type ModifierKey = 'Meta' | 'Control' | 'Alt'
-type ShortcutName =
-  | 'open-settings'
-  | 'exit-settings'
-  | 'toggle-sidebar'
-  | 'toggle-right-aside'
-  | 'toggle-bottom-panel'
-  | 'new-tab'
-  | 'close-tab'
-  | 'first-tab'
-  | 'next-tab'
+type ShortcutName
+  = | 'open-settings'
+    | 'exit-settings'
+    | 'toggle-sidebar'
+    | 'toggle-right-aside'
+    | 'toggle-bottom-panel'
+    | 'new-tab'
+    | 'close-tab'
+    | 'first-tab'
+    | 'next-tab'
 
 const SHORTCUTS: Record<ShortcutName, { key: string, modifiers: ModifierKey[] }> = {
   'open-settings': { key: 'Comma', modifiers: ['Meta'] },
@@ -101,19 +102,17 @@ async function ensureSingleInitialTab(world: CradleWorld): Promise<void> {
   await waitForTabCount(world, 1)
 }
 
-async function getActiveTab(world: CradleWorld) {
+async function _getActiveTab(world: CradleWorld) {
   const activeTab = world.page.locator(`${TAB_PILL}[data-tab-active="true"]`).first()
   await expect(activeTab).toBeVisible({ timeout: 10_000 })
   return activeTab
 }
 
 async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
-  await world.app.evaluate(async ({ dialog }, targetPath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [targetPath],
-    })
-  }, dirPath)
+  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
+  world.page.once('dialog', async (dialog) => {
+    await dialog.accept(dirPath)
+  })
 }
 
 async function addWorkspaceFromPicker(world: CradleWorld, dirPath: string): Promise<void> {
@@ -127,14 +126,9 @@ async function addWorkspaceFromPicker(world: CradleWorld, dirPath: string): Prom
 }
 
 async function getActiveChatView(world: CradleWorld) {
-  const activeTab = await getActiveTab(world)
-  const activeTabTestId = await activeTab.getAttribute('data-testid')
-  if (!activeTabTestId) {
-    throw new Error('Expected active tab to expose data-testid')
-  }
-
-  const activeTabId = activeTabTestId.replace('tab-pill-', '')
-  const chatView = world.page.locator(`[data-testid="tab-content-${activeTabId}"] [data-testid="chat-view"]`).first()
+  // Wait for the currently visible tab to contain a chat-view.
+  // This handles the timing lag when switching from new-chat to the opened chat tab.
+  const chatView = world.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
   await expect(chatView).toBeVisible({ timeout: 20_000 })
   return chatView
 }
@@ -142,7 +136,7 @@ async function getActiveChatView(world: CradleWorld) {
 async function waitForChatLayoutReady(world: CradleWorld): Promise<void> {
   const chatView = await getActiveChatView(world)
 
-  await expect(chatView).toHaveAttribute('data-chat-session-id', /.+/, { timeout: 20_000 })
+  await expect(chatView).toHaveAttribute('data-chat-session-id', NON_EMPTY_RE, { timeout: 20_000 })
   await expect(world.page.locator('[data-testid="app-header-aside-toggle"]')).toBeVisible({ timeout: 15_000 })
   await expect(world.page.locator('[data-testid="app-header-panel-toggle"]')).toBeVisible({ timeout: 15_000 })
   await expect(world.page.locator(RIGHT_ASIDE)).toHaveCount(1, { timeout: 15_000 })

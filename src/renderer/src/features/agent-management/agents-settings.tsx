@@ -399,10 +399,10 @@ interface ClaudeAgentFields { name: string, baseUrl: string, model: string, apiK
 
 type ProviderFields
   = | { kind: 'openai-compatible', fields: OpenAIFields }
-  | { kind: 'acp-chat', fields: AcpFields }
-  | { kind: 'cli-tui', fields: CliTuiFields }
-  | { kind: 'codex', fields: CodexFields }
-  | { kind: 'claude-agent', fields: ClaudeAgentFields }
+    | { kind: 'acp-chat', fields: AcpFields }
+    | { kind: 'cli-tui', fields: CliTuiFields }
+    | { kind: 'codex', fields: CodexFields }
+    | { kind: 'claude-agent', fields: ClaudeAgentFields }
 
 const DEFAULT_NAMES: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',

@@ -169,7 +169,7 @@ export class UsageService extends IpcService {
     // Simpler streak calculation
     if (dates.length > 0) {
       const todayDate = new Date(today)
-      const lastActive = new Date(dates[dates.length - 1])
+      const lastActive = new Date(dates.at(-1))
       const daysSinceLast = Math.floor((todayDate.getTime() - lastActive.getTime()) / 86400000)
 
       if (daysSinceLast <= 1) {

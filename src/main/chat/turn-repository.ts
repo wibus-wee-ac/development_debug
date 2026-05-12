@@ -6,18 +6,18 @@ import { randomUUID } from 'node:crypto'
 
 import { and, desc, eq, inArray } from 'drizzle-orm'
 
-import {
-  backendRuns,
-  backendTimelineEvents,
-  messages,
-  sessions,
-} from '../db/schema'
 import type { BackendTimelineEvent, TimelineInputEvent } from '../backend-control-plane/timeline-events'
 import {
   decodeTimelineInputEvent,
   encodeTimelineInputEvent,
   TIMELINE_SCHEMA_VERSION,
 } from '../backend-control-plane/timeline-events'
+import {
+  backendRuns,
+  backendTimelineEvents,
+  messages,
+  sessions,
+} from '../db/schema'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

@@ -27,21 +27,21 @@ const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' }
+  { value: 'urgent', label: 'Urgent' },
 ]
 
 const chipCls = cn(
   'flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[12px] font-normal transition-colors',
   'border border-border/50 bg-background text-muted-foreground',
   'hover:bg-accent/60 hover:text-foreground hover:border-border',
-  '[&>[data-slot=select-icon]]:hidden'
+  '[&>[data-slot=select-icon]]:hidden',
 )
 
 export function CreateIssueDialog({
   open,
   onOpenChange,
   workspaceId,
-  defaultStatusId
+  defaultStatusId,
 }: CreateIssueDialogProps) {
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -81,15 +81,15 @@ export function CreateIssueDialog({
         statusId: statusId ?? undefined,
         priority:
           priority !== 'none' ? (priority as 'low' | 'medium' | 'high' | 'urgent') : undefined,
-        milestoneId: milestoneId ?? undefined
+        milestoneId: milestoneId ?? undefined,
       },
-      { onSuccess: () => onOpenChange(false) }
+      { onSuccess: () => onOpenChange(false) },
     )
   }
 
-  const currentStatus = statuses.find((s) => s.id === statusId)
-  const currentPriority = PRIORITY_OPTIONS.find((o) => o.value === priority)
-  const currentMilestone = milestones.find((m) => m.id === milestoneId)
+  const currentStatus = statuses.find(s => s.id === statusId)
+  const currentPriority = PRIORITY_OPTIONS.find(o => o.value === priority)
+  const currentMilestone = milestones.find(m => m.id === milestoneId)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -98,7 +98,7 @@ export function CreateIssueDialog({
           <input
             ref={titleRef}
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={e => setTitle(e.target.value)}
             placeholder="Issue title…"
             data-testid="kanban-new-issue-input"
             className="w-full bg-transparent text-[15px] font-medium text-foreground placeholder:text-muted-foreground/25 outline-none"
@@ -110,7 +110,8 @@ export function CreateIssueDialog({
           />
 
           <AnimatePresence initial={false}>
-            {!descOpen ? (
+            {!descOpen
+? (
               <motion.button
                 key="desc-trigger"
                 initial={{ opacity: 0 }}
@@ -123,7 +124,8 @@ export function CreateIssueDialog({
                 <AlignLeftIcon className="size-3" />
                 Add description…
               </motion.button>
-            ) : (
+            )
+: (
               <motion.div
                 key="desc-textarea"
                 initial={{ opacity: 0, height: 0 }}
@@ -136,8 +138,7 @@ export function CreateIssueDialog({
                   autoFocus
                   value={description}
                   onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setDescription(e.target.value)
-                  }
+                    setDescription(e.target.value)}
                   placeholder="Add a description…"
                   rows={3}
                   className="mt-3 resize-none text-[12px] bg-transparent border-none shadow-none px-0 focus-visible:ring-0 placeholder:text-muted-foreground/20"
@@ -149,14 +150,16 @@ export function CreateIssueDialog({
 
         {/* Property chips */}
         <div className="flex flex-wrap items-center gap-1.5 px-5 py-3 border-t border-border/40">
-          <Select value={statusId ?? ''} onValueChange={(v) => setStatusId(v || null)}>
+          <Select value={statusId ?? ''} onValueChange={v => setStatusId(v || null)}>
             <SelectTrigger className={chipCls}>
-              {currentStatus ? (
+              {currentStatus
+? (
                 <>
                   <StatusIcon color={currentStatus.color} className="size-2.5" />
                   {currentStatus.name}
                 </>
-              ) : (
+              )
+: (
                 <span className="text-muted-foreground/25">Status</span>
               )}
             </SelectTrigger>
@@ -164,7 +167,7 @@ export function CreateIssueDialog({
               <SelectItem value="">
                 <span className="text-muted-foreground/30">No status</span>
               </SelectItem>
-              {statuses.map((s) => (
+              {statuses.map(s => (
                 <SelectItem key={s.id} value={s.id}>
                   <span className="flex items-center gap-2">
                     <StatusIcon color={s.color} className="size-2.5" />
@@ -175,13 +178,13 @@ export function CreateIssueDialog({
             </SelectContent>
           </Select>
 
-          <Select value={priority} onValueChange={(v) => setPriority(v ?? 'none')}>
+          <Select value={priority} onValueChange={v => setPriority(v ?? 'none')}>
             <SelectTrigger className={chipCls}>
               <PriorityIcon priority={priority} className="size-3" />
               {currentPriority?.label ?? 'No priority'}
             </SelectTrigger>
             <SelectContent>
-              {PRIORITY_OPTIONS.map((o) => (
+              {PRIORITY_OPTIONS.map(o => (
                 <SelectItem key={o.value} value={o.value}>
                   <span className="flex items-center gap-2">
                     <PriorityIcon priority={o.value} className="size-3" />
@@ -193,11 +196,13 @@ export function CreateIssueDialog({
           </Select>
 
           {milestones.length > 0 && (
-            <Select value={milestoneId ?? ''} onValueChange={(v) => setMilestoneId(v || null)}>
+            <Select value={milestoneId ?? ''} onValueChange={v => setMilestoneId(v || null)}>
               <SelectTrigger className={chipCls}>
-                {currentMilestone ? (
+                {currentMilestone
+? (
                   <span className="truncate max-w-24">{currentMilestone.title}</span>
-                ) : (
+                )
+: (
                   <span className="text-muted-foreground/25">Milestone</span>
                 )}
               </SelectTrigger>
@@ -205,7 +210,7 @@ export function CreateIssueDialog({
                 <SelectItem value="">
                   <span className="text-muted-foreground/30">None</span>
                 </SelectItem>
-                {milestones.map((m) => (
+                {milestones.map(m => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.title}
                   </SelectItem>
@@ -226,7 +231,7 @@ export function CreateIssueDialog({
               className={cn(
                 'h-7 px-4 text-[12px] font-medium rounded-md transition-colors',
                 'bg-foreground text-background hover:bg-foreground/85',
-                'disabled:opacity-20'
+                'disabled:opacity-20',
               )}
               disabled={!title.trim() || createIssue.isPending}
               onClick={handleCreate}

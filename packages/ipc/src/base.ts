@@ -17,6 +17,8 @@ import {
   serializePayload,
 } from './events'
 
+const HYPHEN_RE = /-/g
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 export interface IpcContext {
@@ -66,7 +68,7 @@ export function observePush(
   const now = Date.now()
   const traceId = (typeof globalThis.crypto?.randomUUID === 'function'
     ? globalThis.crypto.randomUUID()
-    : `${now}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '')
+    : `${now}-${Math.random().toString(36).slice(2)}`).replace(HYPHEN_RE, '')
   const spanId = traceId.slice(0, 16)
   ipcObserver({
     id: traceId.slice(16, 32) || traceId,
@@ -287,11 +289,11 @@ export function createServices(
 export function createServices(
   serviceDefinitions: readonly IpcServiceDefinition[],
 ): Record<string, IpcService> {
-  // eslint-disable-next-line ts/no-explicit-any
   const services: Record<string, IpcService> = {}
   for (const definition of serviceDefinitions) {
     const service = isServiceInstance(definition)
       ? definition
+      // eslint-disable-next-line new-cap
       : new definition()
     const ServiceConstructor = service.constructor as typeof IpcService
 

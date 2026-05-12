@@ -2,10 +2,11 @@
 // Output: createIpcChatTransport — AI SDK ChatTransport implementation backed by projected timeline chunks
 // Position: Feature helper for chat feature, bridges AI SDK's useChat to Electron IPC
 
-import type { ChatTimelineEventPayload } from '@shared/chat-events'
 import { ipc } from '@renderer/lib/ipc'
 import { subscribe } from '@renderer/lib/signal'
+import type { ChatTimelineEventPayload } from '@shared/chat-events'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
+
 import { projectTimelineEventToChunks } from '../../../../shared/timeline-projection'
 
 function extractText(parts: UIMessage['parts']): string {
@@ -36,6 +37,16 @@ function buildChunkStream(
   let ctrl: ReadableStreamDefaultController<UIMessageChunk> = null!
   let closed = false
   let unwatchRequested = false
+
+  const requestUnwatch = () => {
+    if (unwatchRequested) {
+      return
+    }
+    unwatchRequested = true
+    void ipc?.chat.unwatchSession(chatSessionId).catch(() => {})
+  }
+
+  let offEvent: () => void
 
   const readable = new ReadableStream<UIMessageChunk>({
     start(controller) {
@@ -91,16 +102,7 @@ function buildChunkStream(
     }
   }
 
-  const requestUnwatch = () => {
-    if (unwatchRequested) {
-      return
-    }
-    unwatchRequested = true
-    void ipc?.chat.unwatchSession(chatSessionId).catch(() => {})
-  }
-
-  const offEvent = subscribe('chat:timeline-event',
-    (data: ChatTimelineEventPayload) => {
+  offEvent = subscribe('chat:timeline-event', (data: ChatTimelineEventPayload) => {
       if (data.chatSessionId !== chatSessionId || closed) {
         return
       }
@@ -120,8 +122,7 @@ function buildChunkStream(
         const msg = event.error || 'chat failed'
         closeWithError(new Error(msg))
       }
-    },
-  )
+    })
 
   if (abortSignal) {
     const onAbort = () => {

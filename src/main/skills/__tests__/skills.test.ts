@@ -3,7 +3,7 @@
 // Position: Unit test file for src/main/features/skills/skills.ts
 
 import fs from 'node:fs'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import { join } from 'node:path'
 

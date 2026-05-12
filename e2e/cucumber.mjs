@@ -8,11 +8,11 @@ export default {
   parallel: 1,
   publishQuiet: true,
   retry: 0,
-  timeout: 30_000,
+  timeout: 60_000,
   worldParameters: {
-    /** Path to the Electron main bundle (built). */
-    appPath: './out/main/index.js',
-    /** Extra Electron launch args (e.g. for headless CI). */
-    appArgs: [],
+    /** Base URL for the web app */
+    webUrl: process.env.CRADLE_WEB_URL ?? 'http://localhost:5174',
+    /** Base URL for the API server */
+    serverUrl: process.env.CRADLE_SERVER_URL ?? 'http://localhost:21423',
   },
 }

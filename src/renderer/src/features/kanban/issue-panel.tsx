@@ -9,7 +9,7 @@ import {
   Combobox,
   ComboboxContent,
   ComboboxInput,
-  ComboboxItem
+  ComboboxItem,
 } from '@renderer/components/ui/combobox'
 import { Kbd } from '@renderer/components/ui/kbd'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@renderer/components/ui/select'
@@ -32,7 +32,7 @@ import {
   SettingsIcon,
   UserIcon,
   WrenchIcon,
-  XIcon
+  XIcon,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import type * as React from 'react'
@@ -60,7 +60,7 @@ import {
   useStatuses,
   useStopAgentSession,
   useUndelegateIssue,
-  useUpdateIssue
+  useUpdateIssue,
 } from './use-kanban'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -81,7 +81,7 @@ const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Low' },
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' }
+  { value: 'urgent', label: 'Urgent' },
 ]
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ function relativeTime(unixTs: number): string {
 
 // ── EditableTitle ─────────────────────────────────────────────────────────────
 
-function EditableTitle({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+function EditableTitle({ value, onSave }: { value: string, onSave: (v: string) => void }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const ref = useRef<HTMLInputElement>(null)
@@ -122,7 +122,8 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (v: string) =
     const t = draft.trim()
     if (t && t !== value) {
       onSave(t)
-    } else {
+    }
+ else {
       setDraft(value)
     }
   }
@@ -133,7 +134,7 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (v: string) =
         ref={ref}
         className="w-full text-[22px] font-semibold bg-transparent outline-none text-foreground leading-snug"
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
@@ -176,8 +177,8 @@ function ComposeComment({ issueId }: { issueId: string }) {
         onSuccess: () => {
           setDraft('')
           setFocused(false)
-        }
-      }
+        },
+      },
     )
   }
 
@@ -201,7 +202,7 @@ function ComposeComment({ issueId }: { issueId: string }) {
           }}
           className={cn(
             'resize-none text-[13px] transition-all duration-150 border-border/60',
-            focused ? 'min-h-20' : 'min-h-9'
+            focused ? 'min-h-20' : 'min-h-9',
           )}
           onKeyDown={(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -224,7 +225,7 @@ function ComposeComment({ issueId }: { issueId: string }) {
                 className={cn(
                   'h-7 px-3.5 text-[12px] font-medium rounded-md transition-colors',
                   'bg-foreground text-background hover:bg-foreground/90',
-                  'disabled:opacity-50 disabled:pointer-events-none'
+                  'disabled:opacity-50 disabled:pointer-events-none',
                 )}
                 disabled={!draft.trim() || addComment.isPending}
                 onClick={handleAdd}
@@ -244,7 +245,7 @@ function ComposeComment({ issueId }: { issueId: string }) {
 function ActivityEntry({
   comment,
   issueId,
-  isLast
+  isLast,
 }: {
   comment: KanbanIssueComment
   issueId: string
@@ -274,7 +275,7 @@ function ActivityEntry({
         <div
           className={cn(
             'flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-medium',
-            isAgent ? 'bg-accent/15 text-accent' : 'bg-muted text-muted-foreground'
+            isAgent ? 'bg-accent/15 text-accent' : 'bg-muted text-muted-foreground',
           )}
         >
           {isAgent ? <BotIcon className="size-3" /> : 'M'}
@@ -288,7 +289,9 @@ function ActivityEntry({
             {isAgent ? 'Agent' : 'Me'}
           </span>
           <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-            · {relativeTime(comment.createdAt)}
+            ·
+{' '}
+{relativeTime(comment.createdAt)}
           </span>
           <button
             className="text-[11px] text-muted-foreground/40 hover:text-destructive transition-colors opacity-0 group-hover/entry:opacity-100 ml-auto"
@@ -325,21 +328,21 @@ function Activity({ issueId }: { issueId: string }) {
 
 // ── Agent Activity Feed ───────────────────────────────────────────────────────
 
-const ACTIVITY_STYLE: Record<string, { icon: typeof BrainIcon; textClass: string }> = {
+const ACTIVITY_STYLE: Record<string, { icon: typeof BrainIcon, textClass: string }> = {
   thought: { icon: BrainIcon, textClass: 'text-muted-foreground' },
   action: { icon: WrenchIcon, textClass: 'text-foreground/70' },
   response: { icon: MessageSquareIcon, textClass: 'text-foreground' },
   elicitation: { icon: SettingsIcon, textClass: 'text-accent' },
   error: { icon: AlertCircleIcon, textClass: 'text-destructive' },
-  prompt: { icon: UserIcon, textClass: 'text-foreground' }
+  prompt: { icon: UserIcon, textClass: 'text-foreground' },
 }
 
 function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
   const { data: activities = [] } = useAgentActivities(agentSessionId)
   const [showReasoning, setShowReasoning] = useState(false)
 
-  const reasoning = activities.filter((a) => a.type === 'thought' || a.type === 'action')
-  const prominent = activities.filter((a) => a.type !== 'thought' && a.type !== 'action')
+  const reasoning = activities.filter(a => a.type === 'thought' || a.type === 'action')
+  const prominent = activities.filter(a => a.type !== 'thought' && a.type !== 'action')
 
   function parseBody(activity: (typeof activities)[number]) {
     try {
@@ -348,7 +351,8 @@ function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
         return `${parsed.action ?? 'action'}(${typeof parsed.parameter === 'string' ? parsed.parameter : '...'})`
       }
       return (parsed.body as string) ?? ''
-    } catch {
+    }
+ catch {
       return activity.content
     }
   }
@@ -368,11 +372,13 @@ function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
             <ChevronRightIcon
               className={cn(
                 'size-3 transition-transform duration-150',
-                showReasoning && 'rotate-90'
+                showReasoning && 'rotate-90',
               )}
             />
-            {reasoning.length} reasoning step
-            {reasoning.length !== 1 ? 's' : ''}
+            {reasoning.length}
+{' '}
+reasoning step
+{reasoning.length !== 1 ? 's' : ''}
           </button>
           <AnimatePresence>
             {showReasoning && (
@@ -420,7 +426,7 @@ function AgentActivityFeed({ agentSessionId }: { agentSessionId: string }) {
 
 function SubIssueList({
   workspaceId,
-  parentIssueId
+  parentIssueId,
 }: {
   workspaceId: string
   parentIssueId: string
@@ -450,8 +456,8 @@ function SubIssueList({
         onSuccess: () => {
           setDraft('')
           setComposing(false)
-        }
-      }
+        },
+      },
     )
   }
 
@@ -519,7 +525,7 @@ function SubIssueList({
             <input
               ref={inputRef}
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={e => setDraft(e.target.value)}
               placeholder="New sub-issue title…"
               className="w-full text-[13px] bg-foreground/2 border border-foreground/15 rounded-md px-3 py-1.5 outline-none placeholder:text-muted-foreground/50 focus-visible:ring-1 focus-visible:ring-foreground/30 transition-colors"
               onKeyDown={(e) => {
@@ -549,7 +555,7 @@ function SubIssueList({
 const RELATION_TYPES = [
   { value: 'relates_to', label: 'Relates to' },
   { value: 'blocks', label: 'Blocks' },
-  { value: 'duplicates', label: 'Duplicates' }
+  { value: 'duplicates', label: 'Duplicates' },
 ] as const
 
 function RelatedIssueTitle({ issueId }: { issueId: string }) {
@@ -561,7 +567,7 @@ function RelatedIssueTitle({ issueId }: { issueId: string }) {
   )
 }
 
-function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: string }) {
+function RelationList({ issueId, workspaceId }: { issueId: string, workspaceId: string }) {
   const { data: relations = [] } = useRelations(issueId)
   const { data: allIssues = [] } = useIssues({ workspaceId })
   const addRelation = useAddRelation()
@@ -570,9 +576,9 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
   const [showPicker, setShowPicker] = useState(false)
 
   const relatedIds = new Set(
-    relations.flatMap((r: KanbanIssueRelation) => [r.sourceIssueId, r.targetIssueId])
+    relations.flatMap((r: KanbanIssueRelation) => [r.sourceIssueId, r.targetIssueId]),
   )
-  const candidates = allIssues.filter((i) => i.id !== issueId && !relatedIds.has(i.id))
+  const candidates = allIssues.filter(i => i.id !== issueId && !relatedIds.has(i.id))
 
   function handleSelect(targetId: string | null) {
     if (!targetId) {
@@ -580,7 +586,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
     }
     addRelation.mutate(
       { sourceIssueId: issueId, targetIssueId: targetId, type: relType },
-      { onSuccess: () => setShowPicker(false) }
+      { onSuccess: () => setShowPicker(false) },
     )
   }
 
@@ -621,17 +627,18 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
         </div>
       ))}
 
-      {showPicker ? (
+      {showPicker
+? (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-2">
           <div className="flex gap-1 flex-wrap">
-            {RELATION_TYPES.map((t) => (
+            {RELATION_TYPES.map(t => (
               <button
                 key={t.value}
                 className={cn(
                   'text-[11px] px-2 py-0.5 rounded-lg transition-colors',
                   relType === t.value
                     ? 'bg-foreground/5 text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
                 )}
                 onClick={() => setRelType(t.value as typeof relType)}
               >
@@ -653,7 +660,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
               }}
             />
             <ComboboxContent>
-              {candidates.map((i) => (
+              {candidates.map(i => (
                 <ComboboxItem key={i.id} value={i.id}>
                   <span className="truncate">{i.title}</span>
                 </ComboboxItem>
@@ -672,7 +679,8 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
             Cancel
           </button>
         </motion.div>
-      ) : (
+      )
+: (
         <button
           className="flex items-center gap-1 text-[12px] text-muted-foreground/50 hover:text-foreground transition-colors"
           onClick={() => setShowPicker(true)}
@@ -687,7 +695,7 @@ function RelationList({ issueId, workspaceId }: { issueId: string; workspaceId: 
 
 // ── ContextRefList ────────────────────────────────────────────────────────────
 
-function ContextRefList({ issueId, refs }: { issueId: string; refs: ContextRef[] }) {
+function ContextRefList({ issueId, refs }: { issueId: string, refs: ContextRef[] }) {
   const addRef = useAddContextRef()
   const removeRef = useRemoveContextRef()
   const [input, setInput] = useState('')
@@ -706,11 +714,13 @@ function ContextRefList({ issueId, refs }: { issueId: string; refs: ContextRef[]
 
   return (
     <div className="space-y-1.5">
-      {refs.map((r) => (
+      {refs.map(r => (
         <div key={`${r.type}-${r.value}`} className="flex items-center gap-2 group/ref">
-          {r.type === 'url' ? (
+          {r.type === 'url'
+? (
             <GlobeIcon className="size-3 text-muted-foreground shrink-0" />
-          ) : (
+          )
+: (
             <FileIcon className="size-3 text-muted-foreground shrink-0" />
           )}
           <Tooltip>
@@ -733,7 +743,7 @@ function ContextRefList({ issueId, refs }: { issueId: string; refs: ContextRef[]
         <input
           placeholder="Add path or URL…"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={e => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               handleAdd()
@@ -759,7 +769,7 @@ function ContextRefList({ issueId, refs }: { issueId: string; refs: ContextRef[]
 function LabelEditor({
   labels,
   onAdd,
-  onRemove
+  onRemove,
 }: {
   labels: string[]
   onAdd: (l: string) => void
@@ -769,7 +779,7 @@ function LabelEditor({
 
   return (
     <div className="flex flex-wrap gap-1.5 items-center">
-      {labels.map((l) => (
+      {labels.map(l => (
         <Badge
           key={l}
           variant="secondary"
@@ -788,7 +798,7 @@ function LabelEditor({
         className="text-[12px] outline-none bg-transparent min-w-14 placeholder:text-muted-foreground/50"
         placeholder="Add…"
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={e => setInput(e.target.value)}
         onKeyDown={(e) => {
           if ((e.key === 'Enter' || e.key === ',') && input.trim()) {
             e.preventDefault()
@@ -803,7 +813,7 @@ function LabelEditor({
 
 // ── PropertyRow ───────────────────────────────────────────────────────────────
 
-function PropertyRow({ label, children }: { label: string; children: React.ReactNode }) {
+function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
     <div className="flex items-center h-8 gap-2">
       <span className="text-[11px] text-muted-foreground w-20 shrink-0 select-none">{label}</span>
@@ -812,12 +822,12 @@ function PropertyRow({ label, children }: { label: string; children: React.React
   )
 }
 
-const propertyTriggerCls =
-  'h-7 border-0 shadow-none text-[12px] px-2 rounded-md bg-transparent hover:bg-foreground/5 transition-colors'
+const propertyTriggerCls
+  = 'h-7 border-0 shadow-none text-[12px] px-2 rounded-md bg-transparent hover:bg-foreground/5 transition-colors'
 
 // ── SectionHeader ─────────────────────────────────────────────────────────────
 
-function SectionHeader({ label, count }: { label: string; count?: number }) {
+function SectionHeader({ label, count }: { label: string, count?: number }) {
   return (
     <div className="flex items-center gap-1.5 mb-3">
       <span className="text-[12px] font-medium text-foreground select-none">{label}</span>
@@ -832,31 +842,31 @@ function SectionHeader({ label, count }: { label: string; count?: number }) {
 
 // ── Agent Session Status ──────────────────────────────────────────────────────
 
-const SESSION_STATUS_MAP: Record<string, { label: string; dotClass: string; textClass: string }> = {
+const SESSION_STATUS_MAP: Record<string, { label: string, dotClass: string, textClass: string }> = {
   created: {
     label: 'Queued',
     dotClass: 'bg-muted-foreground/50',
-    textClass: 'text-muted-foreground'
+    textClass: 'text-muted-foreground',
   },
   active: { label: 'Running', dotClass: 'bg-accent animate-pulse', textClass: 'text-accent' },
   completed: { label: 'Done', dotClass: 'bg-success', textClass: 'text-success' },
   stopped: { label: 'Stopped', dotClass: 'bg-info', textClass: 'text-info' },
-  failed: { label: 'Failed', dotClass: 'bg-destructive', textClass: 'text-destructive' }
+  failed: { label: 'Failed', dotClass: 'bg-destructive', textClass: 'text-destructive' },
 }
 
 function AgentSessionStatus({
   session,
   activeSession,
   onStop,
-  onStart
+  onStart,
 }: {
-  session: { id: string; status: string; agentProfileId: string; createdAt: number }
+  session: { id: string, status: string, agentProfileId: string, createdAt: number }
   activeSession: { id: string } | null
   onStop: () => void
   onStart: () => void
 }) {
   const { profiles = [] } = useAgentProfiles()
-  const agent = profiles.find((p) => p.id === session.agentProfileId)
+  const agent = profiles.find(p => p.id === session.agentProfileId)
   const status = SESSION_STATUS_MAP[session.status] ?? SESSION_STATUS_MAP.created
 
   return (
@@ -930,7 +940,7 @@ export function IssuePanel({ issueId, workspaceId }: IssuePanelProps) {
           </span>
         </div>
 
-        <EditableTitle value={issue.title} onSave={(title) => patch({ title })} />
+        <EditableTitle value={issue.title} onSave={title => patch({ title })} />
 
         {/* Description */}
         <div className="mt-6">
@@ -979,7 +989,7 @@ export function IssuePanel({ issueId, workspaceId }: IssuePanelProps) {
 
 export function IssueProperties({
   issueId,
-  workspaceId
+  workspaceId,
 }: {
   issueId: string
   workspaceId: string
@@ -1007,7 +1017,8 @@ export function IssueProperties({
   function parseLabels(): string[] {
     try {
       return JSON.parse(issue?.labels ?? '[]') as string[]
-    } catch {
+    }
+ catch {
       return []
     }
   }
@@ -1015,7 +1026,8 @@ export function IssueProperties({
   function parseContextRefs(): ContextRef[] {
     try {
       return JSON.parse(issue?.contextRefs ?? '[]') as ContextRef[]
-    } catch {
+    }
+ catch {
       return []
     }
   }
@@ -1027,15 +1039,15 @@ export function IssueProperties({
   const labels = parseLabels()
   const contextRefs = parseContextRefs()
   const priority = (issue.priority as string) ?? 'none'
-  const currentStatus = statuses.find((s) => s.id === issue.statusId)
-  const currentMilestone = milestones.find((m) => m.id === issue.milestoneId)
-  const currentPriority = PRIORITY_OPTIONS.find((o) => o.value === priority)
-  const enabledAgents = agents.filter((a) => a.enabled)
-  const enabledProfiles = agentProfiles.filter((p) => p.enabled)
-  const currentDelegateAgent = enabledAgents.find((a) => a.agentProfileId === issue.delegateAgentId)
-  const currentDelegate =
-    currentDelegateAgent ?? enabledProfiles.find((p) => p.id === issue.delegateAgentId)
-  const activeSession = agentSessions.find((s) => s.status === 'active' || s.status === 'created')
+  const currentStatus = statuses.find(s => s.id === issue.statusId)
+  const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
+  const currentPriority = PRIORITY_OPTIONS.find(o => o.value === priority)
+  const enabledAgents = agents.filter(a => a.enabled)
+  const enabledProfiles = agentProfiles.filter(p => p.enabled)
+  const currentDelegateAgent = enabledAgents.find(a => a.agentProfileId === issue.delegateAgentId)
+  const currentDelegate
+    = currentDelegateAgent ?? enabledProfiles.find(p => p.id === issue.delegateAgentId)
+  const activeSession = agentSessions.find(s => s.status === 'active' || s.status === 'created')
   const latestSession = agentSessions[0]
 
   return (
@@ -1050,15 +1062,17 @@ export function IssueProperties({
         <PropertyRow label="Status">
           <Select
             value={issue.statusId ?? ''}
-            onValueChange={(statusId) => patch({ statusId: statusId || null })}
+            onValueChange={statusId => patch({ statusId: statusId || null })}
           >
             <SelectTrigger size="sm" className={propertyTriggerCls}>
-              {currentStatus ? (
+              {currentStatus
+? (
                 <span className="flex items-center gap-1.5">
                   <StatusIcon color={currentStatus.color} className="size-2.5" />
                   <span>{currentStatus.name}</span>
                 </span>
-              ) : (
+              )
+: (
                 <span className="text-muted-foreground/35">None</span>
               )}
             </SelectTrigger>
@@ -1066,7 +1080,7 @@ export function IssueProperties({
               <SelectItem value="">
                 <span className="text-muted-foreground/35">None</span>
               </SelectItem>
-              {statuses.map((s) => (
+              {statuses.map(s => (
                 <SelectItem key={s.id} value={s.id}>
                   <span className="flex items-center gap-2">
                     <StatusIcon color={s.color} className="size-2.5" />
@@ -1081,9 +1095,8 @@ export function IssueProperties({
         <PropertyRow label="Priority">
           <Select
             value={priority}
-            onValueChange={(p) =>
-              patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })
-            }
+            onValueChange={p =>
+              patch({ priority: p as 'none' | 'low' | 'medium' | 'high' | 'urgent' })}
           >
             <SelectTrigger size="sm" className={propertyTriggerCls}>
               <span className="flex items-center gap-1.5">
@@ -1092,7 +1105,7 @@ export function IssueProperties({
               </span>
             </SelectTrigger>
             <SelectContent>
-              {PRIORITY_OPTIONS.map((o) => (
+              {PRIORITY_OPTIONS.map(o => (
                 <SelectItem key={o.value} value={o.value}>
                   <span className="flex items-center gap-2">
                     <PriorityIcon priority={o.value} className="size-3" />
@@ -1107,12 +1120,14 @@ export function IssueProperties({
         <PropertyRow label="Milestone">
           <Select
             value={issue.milestoneId ?? ''}
-            onValueChange={(milestoneId) => patch({ milestoneId: milestoneId || null })}
+            onValueChange={milestoneId => patch({ milestoneId: milestoneId || null })}
           >
             <SelectTrigger size="sm" className={propertyTriggerCls}>
-              {currentMilestone ? (
+              {currentMilestone
+? (
                 <span className="truncate">{currentMilestone.title}</span>
-              ) : (
+              )
+: (
                 <span className="text-muted-foreground/35">None</span>
               )}
             </SelectTrigger>
@@ -1120,7 +1135,7 @@ export function IssueProperties({
               <SelectItem value="">
                 <span className="text-muted-foreground/35">None</span>
               </SelectItem>
-              {milestones.map((m) => (
+              {milestones.map(m => (
                 <SelectItem key={m.id} value={m.id}>
                   {m.title}
                 </SelectItem>
@@ -1142,15 +1157,17 @@ export function IssueProperties({
               if (!val) {
                 undelegateIssue.mutate({ issueId })
                 patch({ assigneeKind: null, assigneeId: null })
-              } else if (val === 'user:__self__') {
+              }
+ else if (val === 'user:__self__') {
                 if (issue.delegateAgentId) {
                   undelegateIssue.mutate({ issueId })
                 }
                 patch({ assigneeKind: 'user', assigneeId: '__self__' })
-              } else if (val.startsWith('agent:')) {
+              }
+ else if (val.startsWith('agent:')) {
                 const agentId = val.slice(6)
                 // Resolve Agent identity → Agent Profile ID
-                const agentEntity = enabledAgents.find((a) => a.id === agentId)
+                const agentEntity = enabledAgents.find(a => a.id === agentId)
                 const profileId = agentEntity ? agentEntity.agentProfileId : agentId
                 patch({ assigneeKind: null, assigneeId: null })
                 delegateIssue.mutate({ issueId, agentProfileId: profileId })
@@ -1158,26 +1175,32 @@ export function IssueProperties({
             }}
           >
             <SelectTrigger size="sm" className={propertyTriggerCls}>
-              {issue.delegateAgentId ? (
+              {issue.delegateAgentId
+? (
                 <span className="flex items-center gap-1.5">
-                  {currentDelegateAgent?.avatarUrl ? (
+                  {currentDelegateAgent?.avatarUrl
+? (
                     <img
                       src={currentDelegateAgent.avatarUrl}
                       alt=""
                       className="size-3.5 rounded"
                       crossOrigin="anonymous"
                     />
-                  ) : (
+                  )
+: (
                     <BotIcon className="size-3" />
                   )}
                   <span>{currentDelegate?.name ?? 'Agent'}</span>
                 </span>
-              ) : issue.assigneeKind === 'user' ? (
+              )
+: issue.assigneeKind === 'user'
+? (
                 <span className="flex items-center gap-1.5">
                   <UserIcon className="size-3" />
                   <span>Me</span>
                 </span>
-              ) : (
+              )
+: (
                 <span className="text-muted-foreground/35">Unassigned</span>
               )}
             </SelectTrigger>
@@ -1196,17 +1219,19 @@ export function IssueProperties({
                   Agents
                 </div>
               )}
-              {enabledAgents.map((a) => (
+              {enabledAgents.map(a => (
                 <SelectItem key={a.id} value={`agent:${a.id}`}>
                   <span className="flex items-center gap-2">
-                    {a.avatarUrl ? (
+                    {a.avatarUrl
+? (
                       <img
                         src={a.avatarUrl}
                         alt=""
                         className="size-3.5 rounded"
                         crossOrigin="anonymous"
                       />
-                    ) : (
+                    )
+: (
                       <BotIcon className="size-3" />
                     )}
                     {a.name}
@@ -1218,8 +1243,8 @@ export function IssueProperties({
                   Providers
                 </div>
               )}
-              {enabledAgents.length === 0 &&
-                enabledProfiles.map((p) => (
+              {enabledAgents.length === 0
+                && enabledProfiles.map(p => (
                   <SelectItem key={p.id} value={`agent:${p.id}`}>
                     <span className="flex items-center gap-2">
                       <BotIcon className="size-3" />
@@ -1249,7 +1274,7 @@ export function IssueProperties({
                   issueId,
                   workspaceId,
                   agentSessionId: latestSession.id,
-                  agentProfileId: latestSession.agentProfileId
+                  agentProfileId: latestSession.agentProfileId,
                 })
               }
             }}
@@ -1266,7 +1291,7 @@ export function IssueProperties({
               patch({ labels: [...labels, l] })
             }
           }}
-          onRemove={(l) => patch({ labels: labels.filter((x) => x !== l) })}
+          onRemove={l => patch({ labels: labels.filter(x => x !== l) })}
         />
       </div>
 

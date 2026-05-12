@@ -111,17 +111,15 @@ export function projectTimelineEventToChunks(event: ProjectableTimelineEvent): U
       return chunks
     }
 
+    case 'tool_call.input.delta':
     case 'tool_call.output.delta':
       return []
 
     case 'tool_call.completed': {
-      if (!event.result) {
-        return []
-      }
       return [{
         type: 'tool-output-available',
         toolCallId: event.itemId!,
-        output: event.result,
+        output: event.result ?? '',
       }]
     }
 
@@ -188,6 +186,15 @@ export function projectEventsToAssistantMessage(
   const toolParts = new Map<string, ToolPart>()
 
   for (const event of events) {
+    // Handle tool_call.input.delta directly — accumulate partial JSON into tool part input
+    if (event.type === 'tool_call.input.delta' && event.itemId && event.delta) {
+      const part = toolParts.get(event.itemId)
+      if (part) {
+        part.input = (typeof part.input === 'string' ? part.input : '') + event.delta
+      }
+      continue
+    }
+
     const chunks = projectTimelineEventToChunks(event)
 
     for (const chunk of chunks) {

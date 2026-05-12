@@ -281,8 +281,8 @@ function ScheduledRow({ task }: { task: ScheduledTask }) {
 
 type ActivityItem
   = { kind: 'workspace', ws: Workspace }
-  | { kind: 'session', session: Session, workspaceName: string }
-  | { kind: Artifact['type'], artifact: Artifact }
+    | { kind: 'session', session: Session, workspaceName: string }
+    | { kind: Artifact['type'], artifact: Artifact }
 
 export function HomeDashboard() {
   const { workspaces } = useWorkspaces()
@@ -423,7 +423,7 @@ export function HomeDashboard() {
                       key={session.id}
                       session={session}
                       workspaceName={workspaceName}
-                      onSelect={(sessionId) => openTab('chat', { sessionId })}
+                      onSelect={sessionId => openTab('chat', { sessionId })}
                     />
                   ))}
                 </div>

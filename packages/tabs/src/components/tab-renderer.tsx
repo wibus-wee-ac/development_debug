@@ -114,7 +114,10 @@ function TabLoaderBoundary({ tab, def, suspenseFallback }: TabLoaderBoundaryProp
 
   const currentParamsKey = serializeParams(tab.params)
   const loaderRef = useRef(def.loader)
-  loaderRef.current = def.loader
+
+  useEffect(() => {
+    loaderRef.current = def.loader
+  }, [def.loader])
 
   useEffect(() => {
     if (!loaderRef.current) {
@@ -148,7 +151,7 @@ function TabLoaderBoundary({ tab, def, suspenseFallback }: TabLoaderBoundaryProp
     return () => {
       cancelled = true
     }
-  }, [currentParamsKey, tab.params])
+  }, [currentParamsKey, tab.params, state.status, state.paramsKey])
 
   const Component = def.component
 

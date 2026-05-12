@@ -26,7 +26,9 @@ const PHASE_ORDER: Array<keyof IpcTracePhases> = [
 ]
 
 function formatPayload(payload: IpcObservedPayload | null): string {
-  if (!payload) { return '' }
+  if (!payload) {
+    return ''
+  }
   try {
     const value = superjson.parse(payload.json)
     return JSON.stringify(value, null, 2)
@@ -46,7 +48,9 @@ function formatTime(ts: number): string {
 }
 
 function formatDelta(ms: number): string {
-  if (ms < 1000) { return `+${ms}ms` }
+  if (ms < 1000) {
+    return `+${ms}ms`
+  }
   return `+${(ms / 1000).toFixed(2)}s`
 }
 

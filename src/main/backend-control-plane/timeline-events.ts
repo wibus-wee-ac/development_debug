@@ -73,6 +73,11 @@ export type TimelineInputEvent
     toolInput?: string | null
   })
   | (TimelineEventBase & {
+    type: 'tool_call.input.delta'
+    itemId: string
+    delta: string
+  })
+  | (TimelineEventBase & {
     type: 'tool_call.output.delta'
     itemId: string
     delta: string
@@ -196,6 +201,7 @@ export function parseTimelineInputEvent(value: unknown): TimelineInputEvent {
         source,
       }
 
+    case 'tool_call.input.delta':
     case 'tool_call.output.delta':
       return {
         type,

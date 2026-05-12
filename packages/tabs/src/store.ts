@@ -153,7 +153,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         },
 
         reorderTabs: (orderedIds) => {
-          set(s => {
+          set((s) => {
             const tabMap = new Map(s.tabs.map(t => [t.id, t]))
             const reordered = orderedIds
               .map(id => tabMap.get(id))

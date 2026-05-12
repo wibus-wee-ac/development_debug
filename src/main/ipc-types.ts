@@ -54,9 +54,22 @@ export type IpcServices = MergeIpcService<{
 
 // Convenience re-exports so the renderer imports from one place
 export type { ChatTimelineEventPayload } from '../shared/chat-events'
+export type { AcpSessionState } from './acp/acp-connection'
+export type { ProcessMetrics } from './acp/acp-process-manager'
+export type { RegistryAgent } from './acp/acp-registry'
+export type { CredentialMetadata } from './agent-runtime/credential-vault'
+export type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind } from './agent-runtime/runtime-provider-types'
 export type { CreateAgentInput, UpdateAgentInput } from './app/ipc/agent'
 export type { GitBranches, GitFileStatus, GitGraphCommit, GitLocalBranch, GitRemoteBranch, GitStatus } from './app/ipc/git'
 export type { DailyUsage, UsageSummary } from './app/ipc/usage'
+export type { EnsureLiveResult } from './chat/chat-engine'
+export type {
+  MatchRange,
+  ThreadSearchHit,
+  ThreadSearchParams,
+  ThreadSearchSnippet,
+} from './chat/thread-search'
+export type { ChatTimelineGroup } from './chat/timeline-query'
 export type { Message, Session, Workspace } from './db/schema'
 export type {
   AcpAgent,
@@ -68,16 +81,6 @@ export type {
 } from './db/schema'
 export type { KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from './db/schema'
 export type { AgentActivity, AgentSession } from './db/schema'
-export type { CredentialMetadata } from './agent-runtime/credential-vault'
-export type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind } from './agent-runtime/runtime-provider-types'
-export type { EnsureLiveResult } from './chat/chat-engine'
-export type { ChatTimelineGroup } from './chat/timeline-query'
-export type {
-  MatchRange,
-  ThreadSearchHit,
-  ThreadSearchParams,
-  ThreadSearchSnippet,
-} from './chat/thread-search'
 export type { DiscoveredSkill, ParsedSkillSource, SkillSourceType } from './skills/skill-source'
 export type {
   CreateSkillInput,
@@ -88,9 +91,6 @@ export type {
   SkillScope,
   UpdateSkillInput,
 } from './skills/skills'
-export type { AcpSessionState } from './acp/acp-connection'
-export type { ProcessMetrics } from './acp/acp-process-manager'
-export type { RegistryAgent } from './acp/acp-registry'
 export type { AcpDevtoolEvent } from '@cradle/ipc'
 
 // Pack-codebase types — inlined here so the renderer doesn't need to resolve the feature module

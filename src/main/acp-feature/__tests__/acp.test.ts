@@ -4,8 +4,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { AcpAgent } from '../../db/schema'
 import type { RegistryAgent } from '../../acp/acp-registry'
+import type { AcpAgent } from '../../db/schema'
 import type { AcpDistributionType, AcpRuntimeController, AcpStore } from '../acp'
 import { createAcpApplicationService } from '../acp'
 

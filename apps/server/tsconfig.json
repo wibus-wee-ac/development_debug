@@ -1,26 +1,26 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "verbatimModuleSyntax": true,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "strict": true,
-    "noImplicitAny": false,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "declaration": false,
-    "outDir": "./dist",
-    "sourceMap": true,
     "baseUrl": ".",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "paths": {
       "@server": ["./src"],
       "@server/*": ["./src/*"]
     },
-    "types": ["node"]
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "strict": true,
+    "noImplicitAny": false,
+    "declaration": false,
+    "outDir": "./dist",
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

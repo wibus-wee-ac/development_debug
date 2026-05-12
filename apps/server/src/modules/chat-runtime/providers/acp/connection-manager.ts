@@ -21,12 +21,10 @@ import {
   ndJsonStream,
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
-import { inject, injectable } from 'tsyringe'
 
-import type { TokenUsage } from '../../runtime-provider-types'
-import type { TimelineInputEvent } from '../../runtime-provider-types'
+import type { TimelineInputEvent, TokenUsage } from '../../runtime-provider-types'
 import type { AcpConnectionRecord } from './config'
-import { AcpProcessManager } from './process-manager'
+import type { AcpProcessManager } from './process-manager'
 import { AcpTimelineMapper } from './timeline-mapper'
 
 export interface AcpSessionState {
@@ -54,6 +52,7 @@ class ChunkQueue {
     resolve: (value: TimelineInputEvent | null) => void
     reject: (error: Error) => void
   }> = []
+
   private closed = false
   private failure: Error | null = null
 
@@ -121,7 +120,6 @@ interface ConnectionEntry {
   restoringSessionLoads: Set<string>
 }
 
-@injectable()
 export class AcpConnectionManager {
   private readonly connections = new Map<string, ConnectionEntry>()
   private readonly pendingConnects = new Map<string, Promise<InitializeResponse>>()
@@ -129,7 +127,7 @@ export class AcpConnectionManager {
   private readonly usageBySessionKey = new Map<string, TokenUsage | null>()
   private permissionHandler: AcpPermissionHandler | null = null
 
-  constructor(@inject(AcpProcessManager) private readonly processManager: AcpProcessManager) {}
+  constructor(private readonly processManager: AcpProcessManager) {}
 
   setPermissionHandler(handler: AcpPermissionHandler): void {
     this.permissionHandler = handler

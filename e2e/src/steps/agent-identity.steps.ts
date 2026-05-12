@@ -1,4 +1,4 @@
-import { Given, Then, When } from '@cucumber/cucumber'
+import { After, Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
 import { MockLlmServer } from '../support/mock-llm-server'
@@ -6,6 +6,7 @@ import type { CradleWorld } from '../support/world'
 
 const AGENT_CREATE_PAGE = '[data-testid="agent-create"]'
 const AGENT_NAME_INPUT = '[data-testid="agent-detail-name"]'
+const BG_FOREGROUND_RE = /bg-foreground/
 
 async function selectOption(world: CradleWorld, triggerSelector: string, value: string) {
   const trigger = world.page.locator(triggerSelector)
@@ -41,18 +42,34 @@ async function openSettingsSection(world: CradleWorld, navTestId: string, pageSe
   await expect(world.page.locator(pageSelector)).toBeVisible({ timeout: 10_000 })
 }
 
+/** Keep mock servers alive per test — keyed by modelId, storing server + baseUrl. */
+const mockServers = new Map<string, { server: MockLlmServer, baseUrl: string }>()
+
+After(async () => {
+  for (const { server } of mockServers.values()) {
+    await server.stop().catch(() => {})
+  }
+  mockServers.clear()
+})
+
 async function ensureAgentMockProviderBaseUrl(world: CradleWorld, modelId: string): Promise<string> {
-  if (world.mockLlmServer) {
-    await world.mockLlmServer.stop()
+  const existing = mockServers.get(modelId)
+  if (existing) {
+    return existing.baseUrl
   }
 
-  world.mockLlmServer = new MockLlmServer({
+  const server = new MockLlmServer({
     models: [
       { id: modelId, owned_by: 'agent-identity-e2e' },
     ],
   })
-  world.mockLlmBaseUrl = await world.mockLlmServer.start()
-  return world.mockLlmBaseUrl
+  const baseUrl = await server.start()
+  mockServers.set(modelId, { server, baseUrl })
+
+  // Also keep the world's last mock server reference for cleanup
+  world.mockLlmServer = server
+  world.mockLlmBaseUrl = baseUrl
+  return baseUrl
 }
 
 async function createProviderViaUi(world: CradleWorld, providerName: string, modelId: string): Promise<void> {
@@ -277,7 +294,7 @@ Then('当前 Agent Thinking Effort 应显示{string}', async function (this: Cra
   console.warn(`[step] assert current agent thinking effort visible: ${thinkingEffort}`)
   const button = this.page.locator(`[data-testid="agent-thinking-${thinkingEffort}"]`)
   await expect(button).toBeVisible({ timeout: 10_000 })
-  await expect(button).toHaveClass(/bg-foreground/, { timeout: 10_000 })
+  await expect(button).toHaveClass(BG_FOREGROUND_RE, { timeout: 10_000 })
 })
 
 Then('Agent 详情应显示已保存状态', async function (this: CradleWorld) {

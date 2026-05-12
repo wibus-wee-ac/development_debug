@@ -262,7 +262,10 @@ export function PackCodebaseDialog({
                   <span className="max-w-52 truncate">{p}</span>
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); removePath(p) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removePath(p)
+                    }}
                     className="shrink-0 text-muted-foreground hover:text-foreground"
                     aria-label={`移除 ${p}`}
                   >
@@ -335,4 +338,3 @@ export function PackCodebaseDialog({
     </Dialog>
   )
 }
-

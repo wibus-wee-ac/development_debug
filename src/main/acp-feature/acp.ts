@@ -5,13 +5,13 @@
 import { desc, eq } from 'drizzle-orm'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
-import type * as schema from '../db/schema'
-import type { AcpAgent, AcpAuditEntry } from '../db/schema'
-import { acpAgents, acpAuditLog, agentProfiles } from '../db/schema'
 import type { AcpSessionState } from '../acp/acp-connection'
 import type { InstallResult } from '../acp/acp-installer'
 import type { ProcessMetrics } from '../acp/acp-process-manager'
 import type { RegistryAgent } from '../acp/acp-registry'
+import type * as schema from '../db/schema'
+import type { AcpAgent, AcpAuditEntry } from '../db/schema'
+import { acpAgents, acpAuditLog, agentProfiles } from '../db/schema'
 
 export type AcpDistributionType = 'binary' | 'npx' | 'uvx'
 

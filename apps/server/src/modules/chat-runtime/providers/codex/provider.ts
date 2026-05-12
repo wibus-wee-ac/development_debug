@@ -7,8 +7,8 @@ import { randomUUID } from 'node:crypto'
 import type { Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
 
+import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
-import type { ObservabilityService } from '../../../observability/observability.service'
 import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { ProviderKind } from '../../../providers/types'
 import type {
@@ -27,7 +27,7 @@ import { closeOpenCodexReasoning, mapCodexThreadEventToTimeline } from './mapper
 interface CodexProviderDeps {
   readSecret: (credentialRef: string) => string
   resolveSkillPaths?: (workspacePath: string) => string[]
-  observability: ObservabilityService
+  recordObservability: (input: CreateEventInput) => void
 }
 
 const PROVIDER_KIND: ProviderKind = 'codex'
@@ -186,7 +186,7 @@ export class CodexProvider implements ChatRuntimeProvider {
       const validation = validateCodexStreamOutput(diagnostics)
       if (!validation.ok) {
         const errorText = validation.errorText ?? 'Codex stream produced no timeline output events'
-        this.deps.observability.record({
+        this.deps.recordObservability({
           source: 'provider',
           code: OBSERVABILITY_CODES.providerEmptyEventStream,
           severity: 'error',

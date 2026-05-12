@@ -2,16 +2,13 @@
 // Output: drizzle database singleton
 // Position: server database provider
 
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
-import { injectable } from 'tsyringe'
-
 import { dbSchema } from '@cradle/db'
+import Database from 'better-sqlite3'
+import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 
-import { DatabaseConfig } from './database.config'
+import type { DatabaseConfig } from './database.config'
 
-@injectable()
 export class DbProvider {
   private sqlite?: Database.Database
   private db?: BetterSQLite3Database<typeof dbSchema>

@@ -7,8 +7,6 @@ import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 
-import { injectable } from 'tsyringe'
-
 export interface ProcessMetrics {
   pid: number
   agentId: string
@@ -27,13 +25,13 @@ export interface ProcessEntry {
 }
 
 const STDERR_MAX = 200
+const RE_CARRIAGE_RETURN = /\r/g
 
 interface LineCollector {
   consume: (text: string) => void
   flush: () => void
 }
 
-@injectable()
 export class AcpProcessManager {
   private readonly processes = new Map<string, ProcessEntry>()
   private disposed = false
@@ -146,7 +144,7 @@ export class AcpProcessManager {
 
   getMetrics(): ProcessMetrics[] {
     const now = Date.now()
-    return [...this.processes.values()].map(entry => ({
+    return Array.from(this.processes.values(), entry => ({
       pid: entry.proc.pid ?? -1,
       agentId: entry.agentId,
       startedAt: entry.startedAt,
@@ -205,7 +203,7 @@ function createLineCollector(onLine: (line: string) => void): LineCollector {
   let carry = ''
 
   const pushLines = (input: string): void => {
-    carry += input.replace(/\r/g, '')
+    carry += input.replace(RE_CARRIAGE_RETURN, '')
     const lines = carry.split('\n')
     carry = lines.pop() ?? ''
     for (const line of lines) {

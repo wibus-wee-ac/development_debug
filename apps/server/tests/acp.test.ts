@@ -2,15 +2,14 @@
 // Output: integration tests for ACP registry, install lifecycle, and audit queries
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
+import { createServerApp } from '../src/app'
+import { shutdownInfra } from '../src/infra'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -52,27 +51,25 @@ describe('acp capability', () => {
       })
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const registryRes = await hono.request('/acp/registry')
+      app = createServerApp()
+      const registryRes = await app.handle(new Request('http://localhost/acp/registry'))
       expect(registryRes.status).toBe(200)
       expect(await registryRes.json()).toEqual([
         expect.objectContaining({ id: 'demo-agent', name: 'Demo Agent', version: '1.2.3' }),
       ])
 
-      const distributionRes = await hono.request('/acp/registry/demo-agent/distribution-types')
+      const distributionRes = await app.handle(new Request('http://localhost/acp/registry/demo-agent/distribution-types'))
       expect(distributionRes.status).toBe(200)
-      expect(await distributionRes.json()).toEqual(['npx'])
+      expect(await distributionRes.json()).toEqual({ agentId: 'demo-agent', types: ['npx'] })
 
-      const installRes = await hono.request('/acp/agents/demo-agent/installation', {
+      const installRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent/installation', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ distributionType: 'npx' }),
-      })
+      }))
       expect(installRes.status).toBe(200)
       expect(await installRes.json()).toEqual(expect.objectContaining({
         id: 'demo-agent',
@@ -81,34 +78,33 @@ describe('acp capability', () => {
         cmd: '@demo/agent',
       }))
 
-      const listInstalledRes = await hono.request('/acp/agents')
+      const listInstalledRes = await app.handle(new Request('http://localhost/acp/agents'))
       expect(listInstalledRes.status).toBe(200)
       expect(await listInstalledRes.json()).toEqual([
         expect.objectContaining({ id: 'demo-agent', status: 'installed' }),
       ])
 
-      const getInstalledRes = await hono.request('/acp/agents/demo-agent')
+      const getInstalledRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent'))
       expect(getInstalledRes.status).toBe(200)
       expect(await getInstalledRes.json()).toEqual(expect.objectContaining({ id: 'demo-agent', status: 'installed' }))
 
-      const installPathRes = await hono.request('/acp/agents/demo-agent/install-path')
+      const installPathRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent/install-path'))
       expect(installPathRes.status).toBe(200)
       expect(await installPathRes.json()).toEqual({ path: expect.stringContaining('/acp/agents/demo-agent') })
 
-      const auditRes = await hono.request('/acp/audit?agentId=demo-agent')
+      const auditRes = await app.handle(new Request('http://localhost/acp/audit?agentId=demo-agent'))
       expect(auditRes.status).toBe(200)
       const auditEntries = await auditRes.json() as Array<{ action: string }>
       expect(auditEntries.map(entry => entry.action)).toEqual(expect.arrayContaining(['install_start', 'install_complete']))
 
-      const uninstallRes = await hono.request('/acp/agents/demo-agent', { method: 'DELETE' })
+      const uninstallRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent', { method: 'DELETE' }))
       expect(uninstallRes.status).toBe(200)
       expect(await uninstallRes.json()).toEqual({ ok: true })
 
-      const afterDeleteRes = await hono.request('/acp/agents/demo-agent')
-      expect(afterDeleteRes.status).toBe(200)
-      expect(await afterDeleteRes.json()).toBeNull()
+      const afterDeleteRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent'))
+      expect(afterDeleteRes.status).toBe(404)
 
-      const auditAfterDeleteRes = await hono.request('/acp/audit?agentId=demo-agent')
+      const auditAfterDeleteRes = await app.handle(new Request('http://localhost/acp/audit?agentId=demo-agent'))
       expect(auditAfterDeleteRes.status).toBe(200)
       const auditAfterDelete = await auditAfterDeleteRes.json() as Array<{ action: string }>
       expect(auditAfterDelete.map(entry => entry.action)).toEqual(expect.arrayContaining([
@@ -121,9 +117,7 @@ describe('acp capability', () => {
       expect(fetchSpy).toHaveBeenCalled()
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
@@ -159,40 +153,36 @@ describe('acp capability', () => {
       })
     })
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const invalidInstallRes = await hono.request('/acp/agents/demo-agent/installation', {
+      app = createServerApp()
+      const invalidInstallRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent/installation', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({}),
-      })
+      }))
       expect(invalidInstallRes.status).toBe(400)
-      expect((await invalidInstallRes.json()).code).toBe('invalid_acp_input')
+      expect((await invalidInstallRes.json()).code).toBe('validation_error')
 
-      const missingAgentRes = await hono.request('/acp/agents/missing-agent/installation', {
+      const missingAgentRes = await app.handle(new Request('http://localhost/acp/agents/missing-agent/installation', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ distributionType: 'npx' }),
-      })
+      }))
       expect(missingAgentRes.status).toBe(404)
       expect((await missingAgentRes.json()).code).toBe('acp_agent_not_found')
 
-      const unsupportedDistributionRes = await hono.request('/acp/agents/demo-agent/installation', {
+      const unsupportedDistributionRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent/installation', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ distributionType: 'binary' }),
-      })
+      }))
       expect(unsupportedDistributionRes.status).toBe(409)
       expect((await unsupportedDistributionRes.json()).code).toBe('acp_distribution_not_supported')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR

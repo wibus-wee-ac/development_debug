@@ -7,6 +7,8 @@ import { eq } from 'drizzle-orm'
 
 import { getDb } from '../../db'
 import { workspaces } from '../../db/schema'
+import type { DiscoveredSkill, ParsedSkillSource } from '../../skills/skill-source'
+import { cleanupFetchSession, fetchSkillsFromSource } from '../../skills/skill-source'
 import type {
   CreateSkillInput,
   ExportSkillInput,
@@ -27,8 +29,6 @@ import {
   readSkillDocument,
   updateSkillDocument,
 } from '../../skills/skills'
-import type { DiscoveredSkill, ParsedSkillSource } from '../../skills/skill-source'
-import { cleanupFetchSession, fetchSkillsFromSource } from '../../skills/skill-source'
 
 interface SkillLookupParams extends Omit<SkillLookup, 'workspacePath' | 'agentId'> {
   workspaceId?: string | null

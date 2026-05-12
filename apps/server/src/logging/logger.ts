@@ -4,10 +4,7 @@
 
 /* eslint-disable no-console -- Logger is the console output boundary. */
 
-import { inject, injectable } from 'tsyringe'
-
-import type { LogLevel, ServerConfigValues } from '../config/server-config'
-import { ServerConfig } from '../config/server-config'
+import type { LogLevel, ServerConfig, ServerConfigValues } from '../config/server-config'
 
 export interface LoggerFields {
   [key: string]: unknown
@@ -20,11 +17,10 @@ const levelRank: Record<LogLevel, number> = {
   error: 40,
 }
 
-@injectable()
 export class Logger {
   private readonly config: ServerConfigValues
 
-  constructor(@inject(ServerConfig) serverConfig: ServerConfig) {
+  constructor(serverConfig: ServerConfig) {
     this.config = serverConfig.get()
   }
 

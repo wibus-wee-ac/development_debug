@@ -13,6 +13,8 @@ import superjson from 'superjson'
 
 export const IPC_DEVTOOL_METADATA_KEY = '__ipcDevtool'
 
+const HYPHEN_RE = /-/g
+
 export type IpcObservedSide = 'renderer' | 'main'
 export type IpcObservedPhase = 'start' | 'finish'
 export type IpcObservedStatus = 'pending' | 'success' | 'error'
@@ -70,8 +72,8 @@ export function createTraceEnvelope(
   parentSpanId: string | null = null,
   callerStack: string[] = [],
 ): IpcTraceEnvelope {
-  const traceId = createUuid().replace(/-/g, '')
-  const spanId = createUuid().replace(/-/g, '').slice(0, 16)
+  const traceId = createUuid().replace(HYPHEN_RE, '')
+  const spanId = createUuid().replace(HYPHEN_RE, '').slice(0, 16)
 
   const carrier: Record<string, string> = {}
   const spanContext = {
@@ -98,7 +100,7 @@ export function isTraceEnvelope(value: unknown): value is IpcTraceEnvelope {
 }
 
 export function captureCallerStack(): string[] {
-  const stack = new Error().stack ?? ''
+  const stack = new Error('captureCallerStack').stack ?? ''
   return stack
     .split('\n')
     .slice(2)

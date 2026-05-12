@@ -5,8 +5,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { spawn } from 'node:child_process'
 
-import { injectable } from 'tsyringe'
-
 const MAX_BUFFER_BYTES = 512 * 1024
 
 export type TerminalStreamEvent
@@ -25,7 +23,6 @@ interface TerminalRecord {
 
 type TerminalSubscriber = (event: TerminalStreamEvent, terminal: boolean) => void
 
-@injectable()
 export class PtySessionManager {
   private readonly sessions = new Map<string, TerminalRecord>()
   private readonly subscribers = new Map<string, Set<TerminalSubscriber>>()
@@ -190,6 +187,9 @@ export class PtySessionManager {
     }
   }
 }
+
+/** Module-level singleton for the PTY session manager. */
+export const ptyManager = new PtySessionManager()
 
 function trimBuffer(value: string): string {
   if (value.length <= MAX_BUFFER_BYTES) {

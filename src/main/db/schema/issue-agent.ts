@@ -2,7 +2,7 @@
 // Output: Issue-agent session/activity tables plus inferred row types
 // Position: Issue-agent persistence schema module used by delegation flows and agent runtime orchestration
 
-import { text, sqliteTable } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { sessions } from './chat'
 import { agentProfiles } from './identity'

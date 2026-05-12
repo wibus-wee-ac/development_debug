@@ -2,13 +2,17 @@
 
 HTTP server for Cradle built on Tsuki/Hono.
 
+The repository is actively introducing a parallel Elysia migration path under `src/app.ts` and `src/http/` while the Tsuki path still owns production traffic. That path now includes shared validation normalization plus a first real feature slice for `GET/PUT /preferences/chat`.
+
 ## Architecture
 
 The server follows the repository convention of **technical primitives + business modules**:
 
 - `src/config`: environment and runtime config
+- `src/http`: parallel Elysia request-id/error/OpenAPI/validation-normalization infrastructure for the migration path
 - `src/database`: DB lifecycle and typed access
 - `src/errors`, `src/filters`, `src/logging`, `src/middlewares`: cross-cutting infrastructure
+- `src/openapi`: HTTP OpenAPI endpoints backed by the local `@cradle/openapi` package
 - `src/modules/*`: capability-owned business modules
 - `tests`: integration and foundation tests
 - `specs/capabilities`: migration specs and status tracking
@@ -53,3 +57,9 @@ The server follows the repository convention of **technical primitives + busines
 - `pnpm test`: run Vitest suite
 - `pnpm typecheck`: run TypeScript type-check
 - `pnpm build`: build the server bundle
+
+## Elysia migration status
+
+- `src/app.ts` is the explicit composition root for the parallel Elysia path.
+- `src/http/validation.ts` normalizes Elysia validation failures into the repository's structured error envelope.
+- `src/modules/health/health.routes.ts` and `src/modules/preferences/preferences.routes.ts` are the currently migrated feature-owned route factories.

@@ -6,8 +6,8 @@ import { useChat } from '@ai-sdk/react'
 import { ipc } from '@renderer/lib/ipc'
 import type { ChatStatus, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { projectEventsToAssistantMessage } from '../../../../shared/timeline-projection'
 
+import { projectEventsToAssistantMessage } from '../../../../shared/timeline-projection'
 import { createIpcChatTransport } from './ipc-chat-transport'
 import { useChatTimelineEvent } from './use-chat-events'
 
@@ -100,7 +100,7 @@ function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
 
 export function useChatSession(chatSessionId: string | null, options?: {
   /**
-  * Pre-loaded timeline groups from a TanStack Router loader or similar source.
+   * Pre-loaded timeline groups from a TanStack Router loader or similar source.
    * When provided, `isReady` is true immediately (no empty-state flash) and
    * the hook still re-fetches in the background for streaming + freshness.
    */
@@ -256,7 +256,6 @@ export function useChatSession(chatSessionId: string | null, options?: {
       default: {
         setSnapshotState({ status: 'streaming' })
         scheduleSnapshotSync()
-        return
       }
     }
   })

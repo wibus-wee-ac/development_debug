@@ -1,11 +1,10 @@
 // Input: E2E world utility functions from support layer
-// Output: Contract tests for scenario artifact path generation and launch env defaults
+// Output: Contract tests for scenario artifact path generation
 // Position: Main test suite validating deterministic E2E infrastructure behavior
 
 import { describe, expect, it } from 'vitest'
 
 import {
-  buildE2ELaunchEnv,
   buildScenarioArtifactPaths,
   slugifyScenarioName,
 } from '../../../e2e/src/support/world-utils'
@@ -23,14 +22,5 @@ describe('e2eWorldUtils', () => {
     expect(paths.screenshotPath).toBe('/tmp/e2e-artifacts/scenarios/chat-sends-and-recovers-2/failure.png')
     expect(paths.tracePath).toBe('/tmp/e2e-artifacts/scenarios/chat-sends-and-recovers-2/trace.zip')
     expect(paths.consoleLogPath).toBe('/tmp/e2e-artifacts/scenarios/chat-sends-and-recovers-2/console.log')
-  })
-
-  it('injects hidden-window defaults into launch environment', () => {
-    const env = buildE2ELaunchEnv({ PATH: '/bin' }, '/tmp/cradle-e2e-home')
-    expect(env.NODE_ENV).toBe('test')
-    expect(env.CRADLE_E2E_HIDE_WINDOWS).toBe('1')
-    expect(env.CRADLE_E2E_NO_ACTIVATE).toBe('1')
-    expect(env.HOME).toBe('/tmp/cradle-e2e-home')
-    expect(env.USERPROFILE).toBe('/tmp/cradle-e2e-home')
   })
 })

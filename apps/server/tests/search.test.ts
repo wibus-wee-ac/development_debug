@@ -2,8 +2,6 @@
 // Output: integration tests for thread search over titles and assistant timeline text
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -20,8 +18,8 @@ import {
 } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 const TIMELINE_SCHEMA_VERSION = 'cradle.timeline.v1'
 
@@ -36,13 +34,11 @@ describe('search capability', () => {
     const workspaceRootTwo = makeTempDir('cradle-workspace-two-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      const db = accessor.get()
+      app = createServerApp()
+      const d = db()
 
       const workspaceOneId = randomUUID()
       const workspaceTwoId = randomUUID()
@@ -52,16 +48,16 @@ describe('search capability', () => {
       const assistantMessageId = randomUUID()
       const now = Math.floor(Date.now() / 1000)
 
-      db.insert(workspaces).values([
+      d.insert(workspaces).values([
         { id: workspaceOneId, name: 'Workspace One', path: workspaceRootOne },
         { id: workspaceTwoId, name: 'Workspace Two', path: workspaceRootTwo },
       ]).run()
-      db.insert(agentProfiles).values({ id: agentProfileId, name: 'Search Agent', providerKind: 'openai-compatible' }).run()
-      db.insert(sessions).values([
+      d.insert(agentProfiles).values({ id: agentProfileId, name: 'Search Agent', providerKind: 'openai-compatible' }).run()
+      d.insert(sessions).values([
         { id: sessionOneId, workspaceId: workspaceOneId, title: 'Alpha deployment', agentProfileId },
         { id: sessionTwoId, workspaceId: workspaceTwoId, title: 'Beta planning', agentProfileId },
       ]).run()
-      db.insert(messages).values([
+      d.insert(messages).values([
         {
           id: randomUUID(),
           sessionId: sessionOneId,
@@ -93,13 +89,13 @@ describe('search capability', () => {
 
       const runId = randomUUID()
       const bindingId = randomUUID()
-      db.insert(backendSessionBindings).values({
+      d.insert(backendSessionBindings).values({
         id: bindingId,
         chatSessionId: sessionOneId,
         agentProfileId,
         providerKind: 'openai-compatible',
       }).run()
-      db.insert(backendRuns).values({
+      d.insert(backendRuns).values({
         id: runId,
         bindingId,
         chatSessionId: sessionOneId,
@@ -109,7 +105,7 @@ describe('search capability', () => {
         startedAt: now,
         finishedAt: now + 1,
       }).run()
-      db.insert(backendTimelineEvents).values([
+      d.insert(backendTimelineEvents).values([
         {
           id: randomUUID(),
           runId,
@@ -134,7 +130,7 @@ describe('search capability', () => {
         },
       ]).run()
 
-      const assistantSearch = await hono.request('/search/threads?query=assistant%20solved')
+      const assistantSearch = await app.handle(new Request('http://localhost/search/threads?query=assistant%20solved'))
       expect(assistantSearch.status).toBe(200)
       const assistantHits = await assistantSearch.json()
       expect(assistantHits).toHaveLength(1)
@@ -149,24 +145,22 @@ describe('search capability', () => {
       ])
       expect(assistantHits[0].snippets[0].text).toContain('assistant solved')
 
-      const titleScoped = await hono.request(`/search/threads?query=deployment&workspaceId=${encodeURIComponent(workspaceOneId)}`)
+      const titleScoped = await app.handle(new Request(`http://localhost/search/threads?query=deployment&workspaceId=${encodeURIComponent(workspaceOneId)}`))
       expect(titleScoped.status).toBe(200)
       const scopedHits = await titleScoped.json()
       expect(scopedHits).toHaveLength(1)
       expect(scopedHits[0].sessionId).toBe(sessionOneId)
 
-      const noMatchScoped = await hono.request(`/search/threads?query=deployment&workspaceId=${encodeURIComponent(workspaceTwoId)}`)
+      const noMatchScoped = await app.handle(new Request(`http://localhost/search/threads?query=deployment&workspaceId=${encodeURIComponent(workspaceTwoId)}`))
       expect(noMatchScoped.status).toBe(200)
       expect(await noMatchScoped.json()).toEqual([])
 
-      const invalidQuery = await hono.request('/search/threads?query=')
+      const invalidQuery = await app.handle(new Request('http://localhost/search/threads?query='))
       expect(invalidQuery.status).toBe(400)
-      expect((await invalidQuery.json()).code).toBe('invalid_search_input')
+      expect((await invalidQuery.json()).code).toBe('validation_error')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRootOne, { recursive: true, force: true })
       rmSync(workspaceRootTwo, { recursive: true, force: true })

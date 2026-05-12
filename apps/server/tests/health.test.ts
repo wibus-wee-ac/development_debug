@@ -1,12 +1,11 @@
-import 'reflect-metadata'
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
+import { createServerApp } from '../src/app'
+import { shutdownInfra } from '../src/infra'
 
 function makeTempDataDir(): string {
   return mkdtempSync(join(tmpdir(), 'cradle-data-'))
@@ -17,13 +16,11 @@ describe('health module', () => {
     const dataDir = makeTempDataDir()
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const res = await hono.request('/health')
+      app = createServerApp()
+      const res = await app.handle(new Request('http://localhost/health'))
       expect(res.status).toBe(200)
 
       const body = await res.json()
@@ -31,9 +28,7 @@ describe('health module', () => {
       expect(body.timestamp).toBeTypeOf('number')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR

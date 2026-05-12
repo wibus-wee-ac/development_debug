@@ -38,3 +38,4 @@ Current canonical main-process backend paths after the 2026-05-05 ownership refa
 - **20260505-12-uimessage-dehydration.md**: Execution plan for migrating renderer chat state to pure UI messages dehydrated from timeline facts.
 - **20260507-01-observability-with-minimal-conversions.md**: Execution plan for sharpening observability without introducing broad conversion layers.
 - **20260507-02-session-await-resume-runtime.md**: Execution plan for introducing a product-owned session await/resume runtime, CLI registration contract, awaiting projection, and later GitHub adapters without making Kanban the owner.
+- **20260510-01-apps-server-elysia-replatform.md**: Execution plan for destructively replatforming `apps/server` from the Tsuki/Hono metadata runtime to Elysia with explicit composition, schema-first routes, stable OpenAPI generation, and web contract recovery.

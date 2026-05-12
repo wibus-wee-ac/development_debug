@@ -13,6 +13,7 @@ import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const DEFAULT_PROVIDER_MODEL = 'skills-mock-model'
+const IMPORTED_DEMO_RE = /^imported-demo\b/
 const NON_SLUG_CHAR_RE = /[^a-z0-9]+/g
 const EDGE_DASH_RE = /^-+|-+$/g
 const CRLF_RE = /\r\n/g
@@ -246,19 +247,17 @@ When('我导入这个全局 Skill', async function (this: CradleWorld) {
   await doneButton.click()
 
   await expect(dialog).toHaveCount(0, { timeout: 5000 })
-  await expect(this.page.getByRole('button', { name: /^imported-demo\b/ })).toBeVisible({ timeout: 10000 })
+  await expect(this.page.getByRole('button', { name: IMPORTED_DEMO_RE })).toBeVisible({ timeout: 10000 })
 })
 
 Given('我已打开一个工作区详情页', async function (this: CradleWorld) {
   const workspaceDir = createTempDir('cradle-skills-workspace')
   this.skillWorkspaceDir = workspaceDir
 
-  await this.app.evaluate(async ({ dialog }, dirPath) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: [dirPath],
-    })
-  }, workspaceDir)
+  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
+  this.page.once('dialog', async (dialog) => {
+    await dialog.accept(workspaceDir)
+  })
 
   const addBtn = this.page.locator('[data-testid="add-workspace-btn"]')
   await expect(addBtn).toBeVisible({ timeout: 15000 })

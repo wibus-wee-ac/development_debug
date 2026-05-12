@@ -198,7 +198,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
                       ? <TerminalIcon className="size-3" aria-hidden="true" />
                       : <BotIcon className="size-3" aria-hidden="true" />}
                     <span>{profile.name}</span>
-                  </MenuItem>
+                      </MenuItem>
                 ))}
             </MenuGroup>
           </MenuPopup>

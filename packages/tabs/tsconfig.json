@@ -2,15 +2,15 @@
   "compilerOptions": {
     "composite": true,
     "target": "esnext",
+    "jsx": "react-jsx",
+    "rootDir": "src",
     "module": "esnext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "strict": true,
+    "outDir": "dist",
     "esModuleInterop": true,
     "isolatedModules": true,
-    "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src"
+    "skipLibCheck": true
   },
   "include": ["src"]
 }

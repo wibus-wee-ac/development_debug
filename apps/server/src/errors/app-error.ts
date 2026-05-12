@@ -2,16 +2,14 @@
 // Output: typed application error
 // Position: server error utilities
 
-import type { ContentfulStatusCode } from 'hono/utils/http-status'
-
 export class AppError extends Error {
   readonly code: string
-  readonly status: ContentfulStatusCode
+  readonly status: number
   readonly details?: Record<string, unknown>
 
   constructor(options: {
     code: string
-    status: ContentfulStatusCode
+    status: number
     message: string
     details?: Record<string, unknown>
   }) {

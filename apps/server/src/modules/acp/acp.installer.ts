@@ -7,7 +7,6 @@ import { isAbsolute, join, normalize, sep } from 'node:path'
 
 import extractZip from 'extract-zip'
 import * as tar from 'tar'
-import { injectable } from 'tsyringe'
 
 import type { AcpDistributionType, PackageDistribution, RegistryAgent } from './acp.registry'
 import { getPlatformKey } from './acp.registry'
@@ -21,7 +20,6 @@ export interface InstallResult {
   env: Record<string, string>
 }
 
-@injectable()
 export class AcpInstaller {
   getAgentInstallDir(rootDir: string, agentId: string): string {
     assertSafeAgentId(agentId)

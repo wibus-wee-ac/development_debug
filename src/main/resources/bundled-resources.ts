@@ -2,9 +2,10 @@
 // Output: getBundledResourcePath, readBundledResource — resolve and read files bundled in resources/
 // Position: Main-process utility for accessing app-bundled static resources
 
-import { is } from '@electron-toolkit/utils'
 import fs from 'node:fs'
 import path from 'node:path'
+
+import { is } from '@electron-toolkit/utils'
 
 /**
  * Resolve the absolute filesystem path for a bundled resource.

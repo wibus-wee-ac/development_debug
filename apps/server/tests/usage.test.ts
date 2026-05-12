@@ -2,8 +2,6 @@
 // Output: integration tests for usage aggregations and stats
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,8 +10,8 @@ import { join } from 'node:path'
 import { agentProfiles, sessions, usageLogs, workspaces } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -39,13 +37,11 @@ describe('usage capability', () => {
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      const db = accessor.get()
+      app = createServerApp()
+      const d = db()
 
       const workspaceId = randomUUID()
       const profileOneId = randomUUID()
@@ -53,16 +49,16 @@ describe('usage capability', () => {
       const sessionOneId = randomUUID()
       const sessionTwoId = randomUUID()
 
-      db.insert(workspaces).values({ id: workspaceId, name: 'Workspace', path: workspaceRoot }).run()
-      db.insert(agentProfiles).values([
+      d.insert(workspaces).values({ id: workspaceId, name: 'Workspace', path: workspaceRoot }).run()
+      d.insert(agentProfiles).values([
         { id: profileOneId, name: 'Profile One', providerKind: 'openai-compatible' },
         { id: profileTwoId, name: 'Profile Two', providerKind: 'codex' },
       ]).run()
-      db.insert(sessions).values([
+      d.insert(sessions).values([
         { id: sessionOneId, workspaceId, title: 'Session One', agentProfileId: profileOneId },
         { id: sessionTwoId, workspaceId, title: 'Session Two', agentProfileId: profileTwoId },
       ]).run()
-      db.insert(usageLogs).values([
+      d.insert(usageLogs).values([
         {
           id: randomUUID(),
           sessionId: sessionOneId,
@@ -98,7 +94,7 @@ describe('usage capability', () => {
         },
       ]).run()
 
-      const dailyRes = await hono.request('/usage/daily?days=30')
+      const dailyRes = await app.handle(new Request('http://localhost/usage/daily?days=30'))
       expect(dailyRes.status).toBe(200)
       expect(await dailyRes.json()).toEqual([
         { date: isoDaysAgo(2), promptTokens: 10, completionTokens: 5, totalTokens: 15, count: 1 },
@@ -106,7 +102,7 @@ describe('usage capability', () => {
         { date: isoDaysAgo(0), promptTokens: 8, completionTokens: 7, totalTokens: 15, count: 1 },
       ])
 
-      const summaryRes = await hono.request('/usage/summary')
+      const summaryRes = await app.handle(new Request('http://localhost/usage/summary'))
       expect(summaryRes.status).toBe(200)
       expect(await summaryRes.json()).toEqual({
         totalPromptTokens: 38,
@@ -123,7 +119,7 @@ describe('usage capability', () => {
         ],
       })
 
-      const statsRes = await hono.request('/usage/stats')
+      const statsRes = await app.handle(new Request('http://localhost/usage/stats'))
       expect(statsRes.status).toBe(200)
       expect(await statsRes.json()).toEqual({
         currentStreak: 3,
@@ -134,7 +130,7 @@ describe('usage capability', () => {
         todayTokens: 15,
       })
 
-      const sessionUsageRes = await hono.request(`/usage/sessions/${sessionOneId}`)
+      const sessionUsageRes = await app.handle(new Request(`http://localhost/usage/sessions/${sessionOneId}`))
       expect(sessionUsageRes.status).toBe(200)
       expect(await sessionUsageRes.json()).toEqual({
         totalTokens: 45,
@@ -143,14 +139,12 @@ describe('usage capability', () => {
         count: 2,
       })
 
-      const invalidDaily = await hono.request('/usage/daily?days=0')
+      const invalidDaily = await app.handle(new Request('http://localhost/usage/daily?days=0'))
       expect(invalidDaily.status).toBe(400)
-      expect((await invalidDaily.json()).code).toBe('invalid_usage_input')
+      expect((await invalidDaily.json()).code).toBe('validation_error')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {

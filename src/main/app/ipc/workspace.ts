@@ -32,7 +32,9 @@ export class WorkspaceService extends IpcService {
       properties: ['openDirectory'],
       title: 'Select Workspace Directory',
     })
-    if (result.canceled || result.filePaths.length === 0) { return null }
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
     return result.filePaths[0]
   }
 

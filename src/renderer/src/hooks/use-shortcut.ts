@@ -26,7 +26,10 @@ export function useShortcut(
   }
 
   const handlerRef = useRef(handler)
-  handlerRef.current = handler
+
+  useEffect(() => {
+    handlerRef.current = handler
+  })
 
   const { register, unregister } = context
 

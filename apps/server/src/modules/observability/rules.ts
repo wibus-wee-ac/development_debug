@@ -4,8 +4,8 @@
 
 import type { ObservabilitySeverity } from '@cradle/ipc'
 
-import { createIncidentFromEvent, OBSERVABILITY_CODES } from './contract'
 import type { ObservabilityEvent, ObservabilityIncident } from './contract'
+import { createIncidentFromEvent, OBSERVABILITY_CODES } from './contract'
 
 export interface IncidentRuleInput {
   nowMs: number

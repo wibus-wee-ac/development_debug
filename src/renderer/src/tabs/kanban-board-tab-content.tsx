@@ -3,9 +3,9 @@
 // Position: Tab content adapter for kanban board
 
 import { useTabsContext } from '@cradle/tabs'
+import { Spinner } from '@renderer/components/ui/spinner'
 import { KanbanBoardView } from '@renderer/features/kanban/kanban-board-view'
 import { useBoard } from '@renderer/features/kanban/use-kanban'
-import { Spinner } from '@renderer/components/ui/spinner'
 import { LayoutDashboardIcon } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
 

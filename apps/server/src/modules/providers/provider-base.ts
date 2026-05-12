@@ -17,6 +17,8 @@ export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
   baseUrl: true,
   model: true,
   enabledModels: true,
+}).extend({
+  maxMessages: z.number().optional(),
 })
 
 export const CodexConfigSchema = BaseProviderConfig.extend({

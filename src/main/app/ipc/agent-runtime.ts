@@ -4,7 +4,6 @@
 
 import { IpcMethod, IpcService } from '@cradle/ipc'
 
-import { getDb } from '../../db'
 import type {
   AgentRuntimeApplicationService,
   EditableAgentProfile,
@@ -15,7 +14,6 @@ import {
   createDbCredentialStore,
   createDbRuntimeAuditStore,
 } from '../../agent-runtime/agent-runtime'
-import { getBackendControlPlaneService } from '../../backend-control-plane/backend-control-plane'
 import { getProviderCatalog } from '../../agent-runtime/catalog-instance'
 import type {
   CredentialMetadata,
@@ -26,6 +24,8 @@ import type {
   ModelDescriptor,
   ProviderHealthCheckResult,
 } from '../../agent-runtime/runtime-provider-types'
+import { getBackendControlPlaneService } from '../../backend-control-plane/backend-control-plane'
+import { getDb } from '../../db'
 import { decryptSecret, encryptSecret } from '../../storage/safe-storage'
 
 function createDefaultAgentRuntimeApplication(): AgentRuntimeApplicationService {

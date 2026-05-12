@@ -36,6 +36,7 @@ export interface ProcessEntry {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const STDERR_MAX = 200
+const CR_RE = /\r/g
 
 function pushStderr(buf: string[], line: string): void {
   buf.push(line)
@@ -58,7 +59,7 @@ function createLineCollector(onLine: (line: string) => void): LineCollector {
   let carry = ''
 
   const pushLines = (input: string): void => {
-    const normalized = input.replace(/\r/g, '')
+    const normalized = input.replace(CR_RE, '')
     carry += normalized
     const lines = carry.split('\n')
     carry = lines.pop() ?? ''
@@ -92,23 +93,14 @@ function createObservedReadable(
     start(controller) {
       let closed = false
 
-      const cleanup = (): void => {
+      function cleanup(): void {
         nodeReadable.removeListener('data', handleData)
         nodeReadable.removeListener('end', handleEnd)
         nodeReadable.removeListener('close', handleEnd)
         nodeReadable.removeListener('error', handleError)
       }
 
-      const close = (): void => {
-        if (closed) {
-          return
-        }
-        closed = true
-        cleanup()
-        controller.close()
-      }
-
-      const handleData = (chunk: string | Buffer): void => {
+      function handleData(chunk: string | Buffer): void {
         if (closed) {
           return
         }
@@ -117,17 +109,22 @@ function createObservedReadable(
         controller.enqueue(new Uint8Array(bytes))
       }
 
-      const handleEnd = (): void => {
-        close()
-      }
-
-      const handleError = (error: unknown): void => {
+      function handleError(error: unknown): void {
         if (closed) {
           return
         }
         closed = true
         cleanup()
         controller.error(error)
+      }
+
+      function handleEnd(): void {
+        if (closed) {
+          return
+        }
+        closed = true
+        cleanup()
+        controller.close()
       }
 
       nodeReadable.on('data', handleData)

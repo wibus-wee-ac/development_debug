@@ -2,15 +2,14 @@
 // Output: integration tests for server-owned chat preference defaults and persistence
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
+import { createServerApp } from '../src/app'
+import { shutdownInfra } from '../src/infra'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -21,13 +20,11 @@ describe('preferences capability', () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const initialRes = await hono.request('/preferences/chat')
+      app = createServerApp()
+      const initialRes = await app.handle(new Request('http://localhost/preferences/chat'))
       expect(initialRes.status).toBe(200)
       expect(await initialRes.json()).toEqual({
         modelId: null,
@@ -37,7 +34,7 @@ describe('preferences capability', () => {
       const filePath = join(dataDir, 'preferences', 'chat.json')
       expect(existsSync(filePath)).toBe(false)
 
-      const saveRes = await hono.request('/preferences/chat', {
+      const saveRes = await app.handle(new Request('http://localhost/preferences/chat', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -47,7 +44,7 @@ describe('preferences capability', () => {
             webSearch: true,
           },
         }),
-      })
+      }))
       expect(saveRes.status).toBe(200)
       expect(await saveRes.json()).toEqual({ ok: true })
 
@@ -59,7 +56,7 @@ describe('preferences capability', () => {
         },
       })
 
-      const finalRes = await hono.request('/preferences/chat')
+      const finalRes = await app.handle(new Request('http://localhost/preferences/chat'))
       expect(finalRes.status).toBe(200)
       expect(await finalRes.json()).toEqual({
         modelId: 'gpt-4o-mini',
@@ -70,9 +67,7 @@ describe('preferences capability', () => {
       })
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
@@ -87,24 +82,22 @@ describe('preferences capability', () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-
-      const invalidModel = await hono.request('/preferences/chat', {
+      app = createServerApp()
+      const invalidModel = await app.handle(new Request('http://localhost/preferences/chat', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           modelId: 123,
           configSelections: {},
         }),
-      })
+      }))
       expect(invalidModel.status).toBe(400)
-      expect((await invalidModel.json()).code).toBe('invalid_preferences_input')
+      expect((await invalidModel.json()).code).toBe('validation_error')
 
-      const invalidSelections = await hono.request('/preferences/chat', {
+      const invalidSelections = await app.handle(new Request('http://localhost/preferences/chat', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -113,14 +106,12 @@ describe('preferences capability', () => {
             bad: { nested: true },
           },
         }),
-      })
+      }))
       expect(invalidSelections.status).toBe(400)
-      expect((await invalidSelections.json()).code).toBe('invalid_preferences_input')
+      expect((await invalidSelections.json()).code).toBe('validation_error')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR

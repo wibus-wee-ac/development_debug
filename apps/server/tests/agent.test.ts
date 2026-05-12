@@ -2,8 +2,6 @@
 // Output: integration tests for agent CRUD, filters, and avatar policy
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,8 +10,8 @@ import { join } from 'node:path'
 import { agentProfiles } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -28,18 +26,15 @@ describe('agent identity capability', () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const container = app.getContainer()
-      const accessor = container.resolve(DbAccessor) as DbAccessor
-      const db = accessor.get()
+      app = createServerApp()
+      const d = db()
 
       const profileOneId = randomUUID()
       const profileTwoId = randomUUID()
-      db.insert(agentProfiles).values([
+      d.insert(agentProfiles).values([
         {
           id: profileOneId,
           name: 'Profile One',
@@ -52,7 +47,7 @@ describe('agent identity capability', () => {
         },
       ]).run()
 
-      const createOne = await hono.request('/agents', {
+      const createOne = await app.handle(new Request('http://localhost/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -65,7 +60,7 @@ describe('agent identity capability', () => {
           thinkingEffort: 'high',
           configJson: '{"systemPrompt":"hello"}',
         }),
-      })
+      }))
       expect(createOne.status).toBe(200)
       const agentOne = await createOne.json()
       expect(agentOne).toEqual(expect.objectContaining({
@@ -78,7 +73,7 @@ describe('agent identity capability', () => {
       }))
       expect(agentOne.avatarUrl).toBe(buildAvatarUrl('bottts-neutral', 'seed-one'))
 
-      const createTwo = await hono.request('/agents', {
+      const createTwo = await app.handle(new Request('http://localhost/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -87,13 +82,13 @@ describe('agent identity capability', () => {
           avatarSeed: 'seed-two',
           agentProfileId: profileTwoId,
         }),
-      })
+      }))
       expect(createTwo.status).toBe(200)
       const agentTwo = await createTwo.json()
       expect(agentTwo.avatarUrl).toBe(buildAvatarUrl('identicon', 'seed-two'))
       expect(agentTwo.enabled).toBe(true)
 
-      const listRes = await hono.request('/agents')
+      const listRes = await app.handle(new Request('http://localhost/agents'))
       expect(listRes.status).toBe(200)
       const list = await listRes.json()
       expect(list).toEqual(expect.arrayContaining([
@@ -101,15 +96,14 @@ describe('agent identity capability', () => {
         expect.objectContaining({ id: agentTwo.id }),
       ]))
 
-      const getRes = await hono.request(`/agents/${agentOne.id}`)
+      const getRes = await app.handle(new Request(`http://localhost/agents/${agentOne.id}`))
       expect(getRes.status).toBe(200)
       expect(await getRes.json()).toEqual(expect.objectContaining({ id: agentOne.id }))
 
-      const missingGet = await hono.request('/agents/missing-agent')
-      expect(missingGet.status).toBe(200)
-      expect(await missingGet.json()).toBeNull()
+      const missingGet = await app.handle(new Request('http://localhost/agents/missing-agent'))
+      expect(missingGet.status).toBe(404)
 
-      const updateRes = await hono.request(`/agents/${agentTwo.id}`, {
+      const updateRes = await app.handle(new Request(`http://localhost/agents/${agentTwo.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -119,7 +113,7 @@ describe('agent identity capability', () => {
           modelId: 'codex-next',
           thinkingEffort: 'medium',
         }),
-      })
+      }))
       expect(updateRes.status).toBe(200)
       const updated = await updateRes.json()
       expect(updated).toEqual(expect.objectContaining({
@@ -133,25 +127,25 @@ describe('agent identity capability', () => {
       expect(updated.avatarSeed).toBe('seed-two-next')
       expect(updated.avatarUrl).toBe(buildAvatarUrl('identicon', 'seed-two-next'))
 
-      const enabledRes = await hono.request('/agents?enabled=true')
+      const enabledRes = await app.handle(new Request('http://localhost/agents?enabled=true'))
       expect(enabledRes.status).toBe(200)
       expect(await enabledRes.json()).toEqual([
         expect.objectContaining({ id: agentOne.id, enabled: true }),
       ])
 
-      const disabledRes = await hono.request('/agents?enabled=false')
+      const disabledRes = await app.handle(new Request('http://localhost/agents?enabled=false'))
       expect(disabledRes.status).toBe(200)
       expect(await disabledRes.json()).toEqual([
         expect.objectContaining({ id: agentTwo.id, enabled: false }),
       ])
 
-      const profileFiltered = await hono.request(`/agents?agentProfileId=${encodeURIComponent(profileTwoId)}`)
+      const profileFiltered = await app.handle(new Request(`http://localhost/agents?agentProfileId=${encodeURIComponent(profileTwoId)}`))
       expect(profileFiltered.status).toBe(200)
       expect(await profileFiltered.json()).toEqual([
         expect.objectContaining({ id: agentTwo.id, agentProfileId: profileTwoId }),
       ])
 
-      const invalidCreate = await hono.request('/agents', {
+      const invalidCreate = await app.handle(new Request('http://localhost/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -160,12 +154,12 @@ describe('agent identity capability', () => {
           avatarSeed: '',
           agentProfileId: '',
         }),
-      })
+      }))
       expect(invalidCreate.status).toBe(400)
       const invalidCreateBody = await invalidCreate.json()
-      expect(invalidCreateBody.code).toBe('invalid_agent_input')
+      expect(invalidCreateBody.code).toBe('validation_error')
 
-      const invalidProvider = await hono.request('/agents', {
+      const invalidProvider = await app.handle(new Request('http://localhost/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -174,31 +168,27 @@ describe('agent identity capability', () => {
           avatarSeed: 'broken-seed',
           agentProfileId: randomUUID(),
         }),
-      })
+      }))
       expect(invalidProvider.status).toBe(400)
       const invalidProviderBody = await invalidProvider.json()
       expect(invalidProviderBody.code).toBe('agent_profile_not_found')
 
-      const missingUpdate = await hono.request('/agents/missing-agent', {
+      const missingUpdate = await app.handle(new Request('http://localhost/agents/missing-agent', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: 'Missing Agent' }),
-      })
-      expect(missingUpdate.status).toBe(200)
-      expect(await missingUpdate.json()).toBeNull()
+      }))
+      expect(missingUpdate.status).toBe(404)
 
-      const deleteRes = await hono.request(`/agents/${agentOne.id}`, { method: 'DELETE' })
+      const deleteRes = await app.handle(new Request(`http://localhost/agents/${agentOne.id}`, { method: 'DELETE' }))
       expect(deleteRes.status).toBe(200)
       expect(await deleteRes.json()).toEqual({ ok: true })
 
-      const afterDelete = await hono.request(`/agents/${agentOne.id}`)
-      expect(afterDelete.status).toBe(200)
-      expect(await afterDelete.json()).toBeNull()
+      const afterDelete = await app.handle(new Request(`http://localhost/agents/${agentOne.id}`))
+      expect(afterDelete.status).toBe(404)
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR

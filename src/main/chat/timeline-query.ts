@@ -192,4 +192,3 @@ export function extractAssistantTextByMessageId(
 ): string {
   return extractAssistantTextFromTimelineEvents(listAssistantTimelineEventsByMessageId(db, assistantMessageId))
 }
-

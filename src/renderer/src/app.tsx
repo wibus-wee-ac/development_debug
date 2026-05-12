@@ -16,8 +16,8 @@ import { ipc } from '@renderer/lib/ipc'
 import { ShortcutProvider } from '@renderer/lib/shortcut-provider'
 import { useLayoutStore } from '@renderer/store/layout'
 import { useThemeStore } from '@renderer/store/theme'
-import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { reconcilePersistedTabs } from '@renderer/tabs/reconcile-persisted-tabs'
+import { cradleRegistry, useCradleTabStore } from '@renderer/tabs/registry'
 import { useEffect } from 'react'
 
 /**
@@ -54,7 +54,8 @@ export function App() {
     const homeTabs = tabs.filter(t => t.type === 'home')
     if (homeTabs.length === 0) {
       openTab('home', {}, { pinned: true })
-    } else if (homeTabs.length > 1) {
+    }
+ else if (homeTabs.length > 1) {
       // Clean up duplicate pinned home tabs (persist migration)
       for (const dup of homeTabs.slice(1)) {
         useCradleTabStore.setState(s => ({

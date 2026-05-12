@@ -6,8 +6,10 @@ import { getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
 
 import type { ChatEngine, EnsureLiveResult } from '../../chat/chat-engine'
 import { chatEngine } from '../../chat/chat-engine'
-import { chatSessionWatchRegistry, type ChatSessionWatchRegistry } from '../../chat/session-watch-registry'
-import { createChatTimelineQuery, type ChatTimelineQuery } from '../../chat/timeline-query'
+import type { ChatSessionWatchRegistry } from '../../chat/session-watch-registry'
+import { chatSessionWatchRegistry } from '../../chat/session-watch-registry'
+import type { ChatTimelineQuery } from '../../chat/timeline-query'
+import { createChatTimelineQuery } from '../../chat/timeline-query'
 
 export class ChatService extends IpcService {
   static readonly groupName = 'chat'

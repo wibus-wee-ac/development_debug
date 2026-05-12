@@ -3,8 +3,6 @@
 // Position: apps/server/src/modules/providers/provider-catalog.ts
 
 import { AppError } from '../../errors/app-error'
-import { injectable } from 'tsyringe'
-
 import { enrichModelsFromRegistry } from './model-info-registry'
 import {
   ClaudeAgentConfigSchema,
@@ -14,7 +12,7 @@ import {
   parseConfigWith,
   resolveApiKey,
 } from './provider-base'
-import type { ModelDescriptor, ProviderKind, ProviderHealthCheckResult, ProviderRequest } from './types'
+import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, ProviderRequest } from './types'
 
 export interface ProviderMetadataProvider {
   readonly providerKind: ProviderKind
@@ -24,7 +22,6 @@ export interface ProviderMetadataProvider {
 
 const TRAILING_SLASH_RE = /\/$/
 
-@injectable()
 export class ProviderCatalog {
   private readonly providers = new Map<ProviderKind, ProviderMetadataProvider>()
 
@@ -283,4 +280,13 @@ function wrapProviderModelsError(providerKind: ProviderKind, error: unknown): Ap
   }
   const message = error instanceof Error ? error.message : String(error)
   return providerModelsUnavailable(providerKind, message)
+}
+
+// ── singleton accessor ──
+
+let _catalog: ProviderCatalog | null = null
+
+export function getProviderCatalog(): ProviderCatalog {
+  _catalog ??= new ProviderCatalog()
+  return _catalog
 }

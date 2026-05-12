@@ -15,16 +15,16 @@ import {
   backendSessionBindings,
   backendTimelineEvents,
 } from '../db/schema'
-import type {
-  BackendTimelineEvent,
-  BackendControlPlaneService,
-  BackendControlPlaneStore,
-} from './types'
 import {
   decodeTimelineInputEvent,
   encodeTimelineInputEvent,
   TIMELINE_SCHEMA_VERSION,
 } from './timeline-events'
+import type {
+  BackendControlPlaneService,
+  BackendControlPlaneStore,
+  BackendTimelineEvent,
+} from './types'
 
 export type {
   AttachBackendBindingInput,
@@ -274,5 +274,4 @@ function hydrateTimelineEvent(row: typeof backendTimelineEvents.$inferSelect): B
 }
 
 export type { AppendTimelineEventInput } from './types'
-
 export type { BackendCapabilityRecorder } from './types'

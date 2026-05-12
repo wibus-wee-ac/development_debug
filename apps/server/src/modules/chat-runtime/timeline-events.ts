@@ -73,6 +73,13 @@ function parseTimelineInputEvent(value: unknown): TimelineInputEvent {
         toolInput: readOptionalString(record.toolInput),
         source,
       }
+    case 'tool_call.input.delta':
+      return {
+        type,
+        itemId: readString(record.itemId),
+        delta: readString(record.delta),
+        source,
+      }
     case 'tool_call.completed':
       return {
         type,

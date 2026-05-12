@@ -19,6 +19,6 @@ Keep subdirectory inventories current when files are added or changed.
 - **developers-guide.md**: Practical contributor guide for extending the current architecture without reintroducing service-layer coupling.
 - **design-system/**: Visual design documentation, tokens, and reference materials.
 - **draft-solutions/**: Working notes and proposal documents that are not yet formal execution plans.
-- **exec-plans/**: Living execution plans that guide complex implementation work, including the session await/resume runtime plan.
+- **exec-plans/**: Living execution plans that guide complex implementation work, including the session await/resume runtime plan and the `apps/server` Elysia replatform plan.
 - **for-users/**: End-user and integration-developer documentation set (quick start, user guide, integrations, CLI/API references, data model, troubleshooting).
 - **superpowers/**: Design specs and implementation plans produced via superpowers workflows.

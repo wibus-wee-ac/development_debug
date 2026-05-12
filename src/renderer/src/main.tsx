@@ -23,9 +23,14 @@ const hash = window.location.hash.slice(1)
 const isDevtool = hash === '/devtool'
 const tearOffMatch = hash.match(/^\/chat\/([^?]+)\?tearoff=true$/)
 
+// eslint-disable-next-line react-refresh/only-export-components
 function RootApp() {
-  if (isDevtool) return <IpcDevtoolPage />
-  if (tearOffMatch) return <TearOffApp sessionId={tearOffMatch[1]} />
+  if (isDevtool) {
+    return <IpcDevtoolPage />
+  }
+  if (tearOffMatch) {
+    return <TearOffApp sessionId={tearOffMatch[1]} />
+  }
   return <App />
 }
 

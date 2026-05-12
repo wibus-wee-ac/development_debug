@@ -2,8 +2,6 @@
 // Output: integration tests for workspace-owned git status, branches, graph, branch creation, checkout, and errors
 // Position: apps/server/tests
 
-import 'reflect-metadata'
-
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,8 +10,8 @@ import { join } from 'node:path'
 import { workspaces } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
-import { createConfiguredApp } from '../src/app.factory'
-import { DbAccessor } from '../src/database/db-accessor'
+import { createServerApp } from '../src/app'
+import { db, shutdownInfra } from '../src/infra'
 
 interface GitStatus {
   branch: string
@@ -77,27 +75,25 @@ describe('git capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
       createGitWorkspaceFixture(workspaceRoot)
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({
+      app = createServerApp()
+      db().insert(workspaces).values({
         id: 'workspace-git',
         name: 'Workspace Git',
         path: workspaceRoot,
       }).run()
 
-      const statusRes = await hono.request('/workspaces/workspace-git/git/status')
+      const statusRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
       expect(statusRes.status).toBe(200)
       expect(await statusRes.json()).toEqual(expect.objectContaining<Partial<GitStatus>>({
         branch: 'main',
         isDetached: false,
       }))
 
-      const branchesRes = await hono.request('/workspaces/workspace-git/git/branches')
+      const branchesRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/branches'))
       expect(branchesRes.status).toBe(200)
       const branches = await branchesRes.json() as GitBranches
       expect(branches.local).toEqual(expect.arrayContaining([
@@ -105,7 +101,7 @@ describe('git capability', () => {
         expect.objectContaining({ name: 'seed-branch', isCurrent: false }),
       ]))
 
-      const graphRes = await hono.request('/workspaces/workspace-git/git/graph?limit=100')
+      const graphRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/graph?limit=100'))
       expect(graphRes.status).toBe(200)
       const graph = await graphRes.json() as GitGraphCommit[]
       expect(graph.map(commit => commit.subject)).toEqual(expect.arrayContaining([
@@ -115,9 +111,7 @@ describe('git capability', () => {
       expect(graph[0]?.shortSha.length).toBe(7)
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
@@ -135,49 +129,45 @@ describe('git capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
       createGitWorkspaceFixture(workspaceRoot)
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({
+      app = createServerApp()
+      db().insert(workspaces).values({
         id: 'workspace-git',
         name: 'Workspace Git',
         path: workspaceRoot,
       }).run()
 
-      const createBranchRes = await hono.request('/workspaces/workspace-git/git/branches', {
+      const createBranchRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/branches', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ name: 'feature/http-git' }),
-      })
+      }))
       expect(createBranchRes.status).toBe(200)
       expect(await createBranchRes.json()).toEqual({ ok: true })
 
-      const statusAfterCreateRes = await hono.request('/workspaces/workspace-git/git/status')
+      const statusAfterCreateRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
       const statusAfterCreate = await statusAfterCreateRes.json() as GitStatus
       expect(statusAfterCreate.branch).toBe('feature/http-git')
       expect(runGit(workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('feature/http-git')
 
-      const checkoutRes = await hono.request('/workspaces/workspace-git/git/checkout', {
+      const checkoutRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ branch: 'seed-branch' }),
-      })
+      }))
       expect(checkoutRes.status).toBe(200)
       expect(await checkoutRes.json()).toEqual({ ok: true })
 
-      const statusAfterCheckoutRes = await hono.request('/workspaces/workspace-git/git/status')
+      const statusAfterCheckoutRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
       const statusAfterCheckout = await statusAfterCheckoutRes.json() as GitStatus
       expect(statusAfterCheckout.branch).toBe('seed-branch')
       expect(runGit(workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('seed-branch')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
@@ -195,30 +185,26 @@ describe('git capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: Awaited<ReturnType<typeof createConfiguredApp>> | undefined
+    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = await createConfiguredApp()
-      const hono = app.getInstance()
-      const accessor = app.getContainer().resolve(DbAccessor) as DbAccessor
-      accessor.get().insert(workspaces).values({
+      app = createServerApp()
+      db().insert(workspaces).values({
         id: 'workspace-plain',
         name: 'Workspace Plain',
         path: plainWorkspaceRoot,
       }).run()
 
-      const missingWorkspace = await hono.request('/workspaces/missing/git/status')
+      const missingWorkspace = await app.handle(new Request('http://localhost/workspaces/missing/git/status'))
       expect(missingWorkspace.status).toBe(404)
       expect((await missingWorkspace.json()).code).toBe('workspace_not_found')
 
-      const nonGitWorkspace = await hono.request('/workspaces/workspace-plain/git/status')
+      const nonGitWorkspace = await app.handle(new Request('http://localhost/workspaces/workspace-plain/git/status'))
       expect(nonGitWorkspace.status).toBe(409)
       expect((await nonGitWorkspace.json()).code).toBe('git_repository_unavailable')
     }
     finally {
-      if (app) {
-        await app.close()
-      }
+      shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(plainWorkspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {

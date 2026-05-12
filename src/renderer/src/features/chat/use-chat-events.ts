@@ -2,13 +2,13 @@
 // Output: useChatTimelineEvent, useGlobalChatSessionActivityEvent, useChatSessionTitle hooks
 // Position: Unified chat event bridge — single subscription, multi-consumer dispatch
 
+import { ipc } from '@renderer/lib/ipc'
+import { subscribe } from '@renderer/lib/signal'
 import type {
   ChatSessionActivityPayload,
   ChatSessionTitlePayload,
   ChatTimelineEventPayload,
 } from '@shared/chat-events'
-import { subscribe } from '@renderer/lib/signal'
-import { ipc } from '@renderer/lib/ipc'
 import { useEffect, useRef } from 'react'
 
 /* ─── Module-level handler registries ────────────────────── */

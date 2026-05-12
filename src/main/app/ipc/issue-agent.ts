@@ -6,9 +6,9 @@ import { IpcMethod, IpcService } from '@cradle/ipc'
 
 import { getDb } from '../../db'
 import type { AgentActivity, AgentSession } from '../../db/schema'
-import type { IssueAgentRuntime } from '../../issue-agent/issue-agent-runner'
 import type { IssueAgentQueryApplicationService } from '../../issue-agent/issue-agent-query'
 import { createIssueAgentQueryApplicationService } from '../../issue-agent/issue-agent-query'
+import type { IssueAgentRuntime } from '../../issue-agent/issue-agent-runner'
 import type { IssueDelegationApplicationService } from '../../issue-agent/issue-delegation'
 import {
   createDrizzleIssueDelegationStore,
@@ -22,7 +22,7 @@ export function createIssueAgentService(deps: {
 }): IssueAgentService {
   return new IssueAgentService(
     deps.delegationApp
-      ?? createIssueDelegationApplicationService({
+    ?? createIssueDelegationApplicationService({
         store: createDrizzleIssueDelegationStore(getDb()),
         runner: deps.runner,
       }),

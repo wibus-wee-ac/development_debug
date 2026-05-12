@@ -23,7 +23,9 @@ const STATUS_ACCENT_MAP: Record<string, string> = {
 }
 
 function getAccentClass(color: string | null): string {
-  if (!color) return 'bg-foreground/15'
+  if (!color) {
+    return 'bg-foreground/15'
+  }
   return STATUS_ACCENT_MAP[color] ?? 'bg-foreground/25'
 }
 
@@ -74,7 +76,9 @@ function SortableIssueCard({
 function ColumnActiveCount({ issues }: { issues: KanbanIssue[] }) {
   // Count issues with actively running agent sessions
   const agentIssues = issues.filter(i => !!i.delegateAgentId)
-  if (agentIssues.length === 0) return null
+  if (agentIssues.length === 0) {
+    return null
+  }
 
   return <ActiveCountInner issueIds={agentIssues.map(i => i.id)} />
 }
@@ -90,7 +94,9 @@ function ActiveCountInner({ issueIds }: { issueIds: string[] }) {
     }
   }
 
-  if (activeCount === 0) return null
+  if (activeCount === 0) {
+    return null
+  }
 
   return (
     <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-px text-[10px] font-medium text-blue-600 dark:text-blue-400">

@@ -88,7 +88,10 @@ function AgentRow({
         <Button
           variant="ghost"
           size="icon-xs"
-          onClick={(e) => { e.stopPropagation(); onRemove() }}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
           aria-label="Remove"
         >
           <Trash2Icon className="size-3" />
@@ -106,10 +109,10 @@ function AgentRow({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-type NavigationState =
-  | { mode: 'list' }
-  | { mode: 'create' }
-  | { mode: 'detail', agentId: string }
+type NavigationState
+  = | { mode: 'list' }
+    | { mode: 'create' }
+    | { mode: 'detail', agentId: string }
 
 export function AgentList() {
   const { agents, isLoading, updateAgent, removeAgent } = useAgents()

@@ -11,8 +11,9 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 ## Files
 
 - **config.test.ts**: server config parsing and validation.
+- **elysia-skeleton.test.ts**: parallel Elysia migration coverage for `/health`, `/preferences/chat`, structured validation normalization, `/openapi.json`, and `/docs/openapi.json` compatibility.
 - **request-id.test.ts**: request-id middleware behavior.
-- **openapi.test.ts**: generated OpenAPI JSON exposure, Scalar docs UI route, and DTO-backed profile/provider schema coverage.
+- **openapi.test.ts**: generated OpenAPI JSON exposure, Scalar docs UI route, DTO-backed request schema coverage, and `ApiDoc.responses` response-schema coverage.
 - **exception-filter.test.ts**: AppError normalization.
 - **database.test.ts**: database lifecycle migrations.
 - **health.test.ts**: health endpoint response.

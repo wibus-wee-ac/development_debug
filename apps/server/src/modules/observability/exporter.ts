@@ -1,4 +1,4 @@
-// Input: observability store queries and backend timeline tables
+// Input: observability service queries and backend timeline tables
 // Output: portable observability bundle for local debugging and incident sharing
 // Position: apps/server observability exporter used by HTTP methods
 
@@ -6,7 +6,6 @@ import { backendTimelineEvents } from '@cradle/db'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
 import type { ObservabilityEvent, ObservabilityIncident } from './contract'
-import type { ObservabilityStore } from './store'
 
 export interface ExportObservabilityBundleInput {
   chatSessionId?: string
@@ -23,16 +22,20 @@ export interface ObservabilityBundle {
 
 export function exportObservabilityBundle(
   input: ExportObservabilityBundleInput,
-  deps: { db: BetterSQLite3Database<any>, store: ObservabilityStore },
+  deps: {
+    db: BetterSQLite3Database<Record<string, unknown>>
+    queryEvents: (filter: { chatSessionId?: string, runId?: string, since?: number, limit?: number }) => ObservabilityEvent[]
+    queryIncidents: (filter: { chatSessionId?: string, runId?: string, limit?: number }) => ObservabilityIncident[]
+  },
 ): ObservabilityBundle {
-  const events = deps.store.queryEvents({
+  const events = deps.queryEvents({
     chatSessionId: input.chatSessionId,
     runId: input.runId,
     since: input.sinceUnix,
     limit: 10000,
   })
 
-  const incidents = deps.store.queryIncidents({
+  const incidents = deps.queryIncidents({
     chatSessionId: input.chatSessionId,
     runId: input.runId,
     limit: 2000,

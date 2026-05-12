@@ -2,8 +2,6 @@
 // Output: registry fetch + supported distribution helpers
 // Position: apps/server/src/modules/acp/acp.registry.ts
 
-import { injectable } from 'tsyringe'
-
 export const ACP_REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json'
 
 export interface BinaryTarget {
@@ -55,7 +53,6 @@ const PLATFORM_MAP: Partial<Record<string, PlatformKey>> = {
   'win32-x64': 'windows-x86_64',
 }
 
-@injectable()
 export class AcpRegistry {
   async fetchRegistry(): Promise<RegistryAgent[]> {
     const response = await fetch(ACP_REGISTRY_URL)

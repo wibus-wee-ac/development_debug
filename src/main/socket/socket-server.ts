@@ -80,7 +80,6 @@ export function startSocketServer(services: Record<string, object>): net.Server 
         return
       }
 
-
       const dotIdx = method.indexOf('.')
       if (dotIdx < 0) {
         conn.write(`${JSON.stringify(makeError(id, -32601, `Invalid method format: ${method}`))}\n`)

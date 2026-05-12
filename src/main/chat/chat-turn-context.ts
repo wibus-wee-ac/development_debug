@@ -4,9 +4,9 @@
 
 import { and, eq } from 'drizzle-orm'
 
+import type { ProviderKind } from '../agent-runtime/runtime-provider-types'
 import { getDb } from '../db'
 import { agents as agentsTable, messages, sessions, workspaces } from '../db/schema'
-import type { ProviderKind } from '../agent-runtime/runtime-provider-types'
 import { extractAssistantTextByMessageId } from './timeline-query'
 
 const ACP_AGENT_ID_PREFIX_RE = /^acp:/

@@ -195,4 +195,3 @@ describe('createObservabilityStore', () => {
     await expect(store.flushEvents()).resolves.toBeUndefined()
   })
 })
-

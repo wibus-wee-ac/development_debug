@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'node:crypto'
 
+import { fetchWithRetry } from '../../../../lib/fetch-retry'
 import {
   OpenAICompatibleConfigSchema,
   parseConfigWith,
@@ -115,7 +116,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
     const toolCallsByIndex = new Map<number, ToolCallAccumulator>()
 
     try {
-      const response = await fetch(`${config.baseUrl.replace(TRAILING_SLASH_RE, '')}/chat/completions`, {
+      const response = await fetchWithRetry(`${config.baseUrl.replace(TRAILING_SLASH_RE, '')}/chat/completions`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -123,7 +124,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         },
         body: JSON.stringify({
           model: effectiveModel,
-          messages: buildChatMessages(input.systemPrompt, input.history, message),
+          messages: buildChatMessages(input.systemPrompt, input.history, message, config.maxMessages ?? 50),
           stream_options: { include_usage: true },
           ...(providerOptions?.thinkingEffort ? { reasoning_effort: providerOptions.thinkingEffort } : {}),
         }),
@@ -131,7 +132,15 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
       })
 
       if (!response.ok) {
-        throw new Error(`OpenAI-compatible provider returned ${response.status}`)
+        let errorText = `OpenAI-compatible provider returned ${response.status}`
+        try {
+          const body = await response.json() as { error?: { message?: string } }
+          if (body?.error?.message) {
+            errorText = body.error.message
+          }
+        }
+        catch { /* ignore parse failure */ }
+        throw new Error(errorText)
       }
       if (!response.body) {
         throw new Error('OpenAI-compatible provider returned an empty body')
@@ -273,12 +282,27 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
   }
 }
 
-function buildChatMessages(systemPrompt: string | undefined, history: Array<{ role: 'user' | 'assistant', content: string }> | undefined, message: string): Array<{ role: string, content: string }> {
+function truncateHistory(
+  history: Array<{ role: 'user' | 'assistant', content: string }>,
+  maxMessages: number,
+): Array<{ role: 'user' | 'assistant', content: string }> {
+  if (history.length <= maxMessages) {
+    return history
+  }
+  const truncated = history.slice(-maxMessages)
+  if (truncated[0]?.role === 'assistant') {
+    return truncated.slice(1)
+  }
+  return truncated
+}
+
+function buildChatMessages(systemPrompt: string | undefined, history: Array<{ role: 'user' | 'assistant', content: string }> | undefined, message: string, maxMessages = 50): Array<{ role: string, content: string }> {
   const messages: Array<{ role: string, content: string }> = []
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt })
   }
-  for (const item of history ?? []) {
+  const effectiveHistory = history ? truncateHistory(history, maxMessages) : []
+  for (const item of effectiveHistory) {
     messages.push(item)
   }
   messages.push({ role: 'user', content: message })

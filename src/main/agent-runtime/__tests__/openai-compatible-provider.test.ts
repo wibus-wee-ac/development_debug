@@ -2,7 +2,7 @@
 // Output: Unit tests for OpenAI-compatible provider configuration, secret handling, and abort semantics
 // Position: Provider test coverage for Base URL / API key based agents
 
-import OpenAI from 'openai'
+import type OpenAI from 'openai'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { TimelineInputEvent } from '../../backend-control-plane/timeline-events'
@@ -57,7 +57,7 @@ describe('openAICompatibleProvider', () => {
 
   it('treats a cancelled streaming turn as AbortError even when the stream ends quietly', async () => {
     const create = vi.fn(async (_params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming, options?: { signal?: AbortSignal }) => ({
-      async *[Symbol.asyncIterator](): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk, void, void> {
+      async* [Symbol.asyncIterator](): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk, void, void> {
         yield {
           id: 'chunk-1',
           object: 'chat.completion.chunk',
@@ -124,7 +124,7 @@ describe('openAICompatibleProvider', () => {
         chat: {
           completions: {
             create: vi.fn(async () => ({
-              async *[Symbol.asyncIterator](): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk, void, void> {
+              async* [Symbol.asyncIterator](): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk, void, void> {
                 yield {
                   id: 'chunk-reasoning',
                   object: 'chat.completion.chunk',
@@ -188,7 +188,7 @@ describe('openAICompatibleProvider', () => {
         chat: {
           completions: {
             create: vi.fn(async () => ({
-              async *[Symbol.asyncIterator](): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk, void, void> {
+              async* [Symbol.asyncIterator](): AsyncGenerator<OpenAI.Chat.Completions.ChatCompletionChunk, void, void> {
                 yield {
                   id: 'chunk-tool-call',
                   object: 'chat.completion.chunk',

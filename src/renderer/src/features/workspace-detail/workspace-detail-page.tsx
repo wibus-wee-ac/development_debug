@@ -4,9 +4,9 @@
 
 import { MarkdownEditor } from '@renderer/components/editor/markdown-editor'
 import { Button } from '@renderer/components/ui/button'
+import { SkillManager } from '@renderer/features/skills/skill-manager'
 import { sessionsQueryKey } from '@renderer/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '@renderer/features/workspace/use-workspace'
-import { SkillManager } from '@renderer/features/skills/skill-manager'
 import { cn } from '@renderer/lib/cn'
 import { ipc } from '@renderer/lib/ipc'
 import { useCradleNavigation } from '@renderer/tabs/use-cradle-navigation'
@@ -25,7 +25,6 @@ import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CapsuleComposer } from './capsule-composer'
-
 import { useWorkspaceFile } from './use-workspace-file'
 import { WorkspaceWorkflowRules } from './workspace-workflow-rules'
 
@@ -46,10 +45,18 @@ interface TocHeading {
 
 function timeAgo(ts: number): string {
   const diff = Math.floor(Date.now() / 1000) - ts
-  if (diff < 60) { return '刚刚' }
-  if (diff < 3600) { return `${Math.floor(diff / 60)}m` }
-  if (diff < 86400) { return `${Math.floor(diff / 3600)}h` }
-  if (diff < 2592000) { return `${Math.floor(diff / 86400)}d` }
+  if (diff < 60) {
+    return '刚刚'
+  }
+  if (diff < 3600) {
+    return `${Math.floor(diff / 60)}m`
+  }
+  if (diff < 86400) {
+    return `${Math.floor(diff / 3600)}h`
+  }
+  if (diff < 2592000) {
+    return `${Math.floor(diff / 86400)}d`
+  }
   return `${Math.floor(diff / 2592000)}mo`
 }
 
@@ -61,31 +68,39 @@ function formatDate(ts: number): string {
   })
 }
 
-const HEADING_RE = /^(#{1,6})\s+(.+)$/gm
+const HEADING_RE = /^(#{1,6})[ \t]+(\S.*)$/gm
+
+const SLUGIFY_NON_WORD_RE = /[^\w\u4E00-\u9FFF]+/g
+const SLUGIFY_TRIM_DASH_RE = /(^-|-$)/g
 
 function slugify(text: string): string {
   return text
     .toLowerCase()
-    .replace(/[^\w\u4E00-\u9FFF]+/g, '-')
-    .replace(/(^-|-$)/g, '')
+    .replace(SLUGIFY_NON_WORD_RE, '-')
+    .replace(SLUGIFY_TRIM_DASH_RE, '')
 }
 
+const FENCED_CODE_BLOCK_RE = /```[\s\S]*?```/g
+
 function parseHeadings(markdown: string | null, file: string): TocHeading[] {
-  if (!markdown) { return [] }
+  if (!markdown) {
+    return []
+  }
   const result: TocHeading[] = []
 
   // Strip fenced code blocks before parsing headings
-  const stripped = markdown.replace(/```[\s\S]*?```/g, '')
+  const stripped = markdown.replace(FENCED_CODE_BLOCK_RE, '')
 
   HEADING_RE.lastIndex = 0
-  let match: RegExpExecArray | null = null
-  while ((match = HEADING_RE.exec(stripped)) !== null) {
+  let match: RegExpExecArray | null = HEADING_RE.exec(stripped)
+  while (match !== null) {
     result.push({
       level: match[1]!.length,
       text: match[2]!.trim(),
       slug: slugify(match[2]!.trim()),
       file,
     })
+    match = HEADING_RE.exec(stripped)
   }
   return result
 }
@@ -131,7 +146,9 @@ function InlineEditTitle({
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { commit() }
+          if (e.key === 'Enter') {
+            commit()
+          }
           if (e.key === 'Escape') {
             setDraft(value)
             setEditing(false)
@@ -386,7 +403,9 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   }, [activeTab, agents.content, workflowContent])
 
   const handleRename = useCallback(async (newName: string) => {
-    if (!ipc) { return }
+    if (!ipc) {
+      return
+    }
     await ipc.workspace.update({ id: workspaceId, name: newName })
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] }),
@@ -395,12 +414,16 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   }, [workspaceId, queryClient])
 
   const handleOpenInFinder = useCallback(() => {
-    if (!ipc || !workspace?.path) { return }
+    if (!ipc || !workspace?.path) {
+      return
+    }
     ipc.workspace.openInFinder(workspace.path)
   }, [workspace])
 
   const handleOpenInApp = useCallback(async () => {
-    if (!ipc || !workspace?.path) { return }
+    if (!ipc || !workspace?.path) {
+      return
+    }
     await ipc.workspace.openInDefaultApp(workspace.path)
   }, [workspace])
 
@@ -438,11 +461,15 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   // Track scroll position for active heading
   useEffect(() => {
     const container = scrollRef.current
-    if (!container) { return }
+    if (!container) {
+      return
+    }
 
     const handleScroll = () => {
       const headingEls = container.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
-      if (headingEls.length === 0) { return }
+      if (headingEls.length === 0) {
+        return
+      }
 
       const containerRect = container.getBoundingClientRect()
       let active: string | null = null
@@ -654,7 +681,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             )
             : (
               <div className="flex flex-col gap-0.5 pb-3">
-                {recentSessions.map((session) => (
+                {recentSessions.map(session => (
                   <div
                     key={session.id}
                   >

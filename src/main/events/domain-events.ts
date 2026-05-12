@@ -54,10 +54,9 @@ export type ChatMessageCompletedDomainEvent = DomainEventBase<'chat.message-comp
 
 // ── Union ─────────────────────────────────────────────────────────────────────
 
-export type DomainEvent =
-  | ChatTimelineEventPersistedDomainEvent
-  | ChatTurnFinishedDomainEvent
-  | ChatMessageCompletedDomainEvent
+export type DomainEvent
+  = | ChatTimelineEventPersistedDomainEvent
+    | ChatTurnFinishedDomainEvent
+    | ChatMessageCompletedDomainEvent
 
 export type DomainEventType = DomainEvent['type']
-

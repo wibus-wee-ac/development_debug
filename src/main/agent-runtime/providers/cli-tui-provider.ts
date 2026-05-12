@@ -2,7 +2,8 @@
 // Output: CliTuiProvider implementing TerminalRuntimeProvider for local CLI tools
 // Position: Concrete Agent Runtime provider for `cli-tui` profiles; wraps PtyManager
 
-import { PtyManager, ptyManager } from '../../pty/pty-manager'
+import type { PtyManager } from '../../pty/pty-manager'
+import { ptyManager } from '../../pty/pty-manager'
 import type {
   AgentProfile,
   ModelDescriptor,
