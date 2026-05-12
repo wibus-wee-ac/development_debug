@@ -22,7 +22,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { postChatSessionsBySessionIdRuns, postSessions } from '~/api-gen/sdk.gen'
+import { postChatSessionsBySessionIdResponse, postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import {
   Combobox,
@@ -278,7 +278,7 @@ export function NewChatPage() {
       if (!session?.id) {
         return
       }
-      await postChatSessionsBySessionIdRuns({
+      await postChatSessionsBySessionIdResponse({
         path: { sessionId: session.id },
         body: {
           text: input.trim(),

@@ -4,8 +4,7 @@
 
 import { useEffect, useState } from 'react'
 
-import { getUsageDaily, getUsageStats, getUsageSummary } from '~/api-gen/sdk.gen'
-import { client } from '~/lib/client.config'
+import { getUsageCostDaily, getUsageCostSummary, getUsageDaily, getUsageStats, getUsageSummary } from '~/api-gen/sdk.gen'
 
 import { UsageHeatmap } from './usage-heatmap'
 
@@ -120,9 +119,9 @@ export function UsageDashboard() {
       getUsageDaily({ query: { days: '365' } }),
       getUsageSummary(),
       getUsageStats(),
-      client.get({ url: '/usage/cost/summary' }).then(r => r.data as CostSummary | undefined).catch(() => undefined),
-      client.get({ url: '/usage/cost/daily' }).then(r => r.data as DailyCost[] | undefined).catch(() => undefined),
-    ]).then(([{ data: d }, { data: s }, { data: st }, costData, dailyCostData]) => {
+      getUsageCostSummary().catch(() => ({ data: undefined })),
+      getUsageCostDaily().catch(() => ({ data: undefined })),
+    ]).then(([{ data: d }, { data: s }, { data: st }, { data: costData }, { data: dailyCostData }]) => {
       if (d) {
         setDaily(d as DailyUsage[])
       }
@@ -133,10 +132,10 @@ export function UsageDashboard() {
         setStats(st as UsageStats)
       }
       if (costData) {
-        setCostSummary(costData)
+        setCostSummary(costData as CostSummary)
       }
       if (dailyCostData) {
-        setDailyCost(dailyCostData)
+        setDailyCost(dailyCostData as DailyCost[])
       }
     }).catch((err) => {
       console.error('[UsageDashboard] fetch failed:', err)

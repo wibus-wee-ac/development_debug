@@ -16,7 +16,7 @@ import {
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { getSessions, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postChatSessionsBySessionIdRuns, postSessions } from '~/api-gen/sdk.gen'
+import { getSessions, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postChatSessionsBySessionIdResponse, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { SkillManager } from '~/features/skills/skill-manager'
@@ -445,7 +445,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     if (!session?.id) {
       return
     }
-    await postChatSessionsBySessionIdRuns({
+    await postChatSessionsBySessionIdResponse({
       path: { sessionId: session.id },
       body: { text, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
     })

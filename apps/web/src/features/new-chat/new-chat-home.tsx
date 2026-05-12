@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { postChatSessionsBySessionIdRuns, postSessions } from '~/api-gen/sdk.gen'
+import { postChatSessionsBySessionIdResponse, postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import {
   Combobox,
@@ -154,7 +154,7 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
         if (!session?.id) {
           return
         }
-        await postChatSessionsBySessionIdRuns({
+        await postChatSessionsBySessionIdResponse({
           path: { sessionId: session.id },
           body: {
             text,
