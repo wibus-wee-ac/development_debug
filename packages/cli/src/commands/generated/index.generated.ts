@@ -66,6 +66,12 @@ import { register as registerProviderModels } from './provider/models'
 import { register as registerSearchThreads } from './search/threads'
 import { register as registerSecretDelete } from './secret/delete'
 import { register as registerSecretList } from './secret/list'
+import { register as registerSessionAwaitCancel } from './session/await-cancel'
+import { register as registerSessionAwaitCreate } from './session/await-create'
+import { register as registerSessionAwaitGet } from './session/await-get'
+import { register as registerSessionAwaitList } from './session/await-list'
+import { register as registerSessionAwaitSummary } from './session/await-summary'
+import { register as registerSessionAwaitTrigger } from './session/await-trigger'
 import { register as registerSessionCreate } from './session/create'
 import { register as registerSessionDelete } from './session/delete'
 import { register as registerSessionExportMarkdown } from './session/export/markdown'
@@ -183,6 +189,12 @@ export function registerGeneratedCommands(program: Command): void {
   registerSearchThreads(program)
   registerSecretDelete(program)
   registerSecretList(program)
+  registerSessionAwaitCancel(program)
+  registerSessionAwaitCreate(program)
+  registerSessionAwaitGet(program)
+  registerSessionAwaitList(program)
+  registerSessionAwaitSummary(program)
+  registerSessionAwaitTrigger(program)
   registerSessionCreate(program)
   registerSessionDelete(program)
   registerSessionExportMarkdown(program)

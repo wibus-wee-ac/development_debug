@@ -29,6 +29,7 @@ import { pty } from './modules/pty'
 import { search } from './modules/search'
 import { secrets } from './modules/secrets'
 import { session } from './modules/session'
+import { sessionAwait } from './modules/session-await'
 import { skills } from './modules/skills'
 import { testReset } from './modules/test-reset'
 import { usage } from './modules/usage'
@@ -57,6 +58,7 @@ export function createServerApp() {
   app.use(providers)
   app.use(agentIdentity)
   app.use(session)
+  app.use(sessionAwait)
   app.use(kanban)
   app.use(search)
   app.use(skills)

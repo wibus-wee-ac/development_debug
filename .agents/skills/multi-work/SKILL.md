@@ -13,14 +13,6 @@ Main Agent
   ├─ Decompose task into independent units (DAG)
   │
   ├─ Parallel execution when dependencies allow
-  │    │
-  │    ├─ Worker A ── Review A ── pass ─────────┐
-  │    │                                        │
-  │    ├─ Worker B ── Review B ── fail ── Fix B ── Re-review B ──┐
-  │    │                                                        │
-  │    └─ Worker C ── Review C ── pass ─────────┐               │
-  │                                             │               │
-  ├─────────────────────────────────────────────┴───────────────┤
   │
   ├─ Merge results
   │
@@ -33,10 +25,10 @@ Per-node loop:
 
 ```
 Main Agent
-  ├─ spawn Implementation Agent
+  ├─ spawn Implementation Agents (Worker A, Worker B, Worker C,...)
   │    input: Plan File + related files + assigned task
   │
-  ├─ spawn Review Agent
+  ├─ spawn Review Agents
   │    input: Plan File + related files (let sub agent use git diff to discover changes)
   │
   ├─ if review fails:

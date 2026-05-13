@@ -18,6 +18,7 @@ import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
 import type { ChatTimelineGroupRow } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
+import { useSessionAwaitSummary } from './use-session-await'
 
 interface ChatViewProps {
   sessionId: string | null
@@ -42,6 +43,8 @@ export function ChatView({
   placeholder,
 }: ChatViewProps) {
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialTimelineGroups })
+  const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  const isAwaiting = awaitSummary?.awaiting ?? false
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -295,11 +298,19 @@ export function ChatView({
       {/* Composer — pinned to bottom */}
       <div className="shrink-0 bg-background/80 backdrop-blur-sm px-4 py-3">
         <div className="mx-auto max-w-2xl">
+          {isAwaiting && (
+            <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              <LoaderCircleIcon className="size-3.5 animate-spin" />
+              <span className="truncate">
+                {(awaitSummary?.reason as string) ?? `Waiting for ${(awaitSummary?.primarySource as string) ?? 'event'}...`}
+              </span>
+            </div>
+          )}
           <Composer
             onSend={handleSend}
             onStop={stop}
             isStreaming={isStreaming}
-            disabled={!isReady}
+            disabled={!isReady || isAwaiting}
             placeholder={placeholder}
             availableFiles={availableFiles}
             toolbar={composerToolbar}

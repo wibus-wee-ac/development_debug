@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import type { AgentProfile, BackendRun, BackendSessionBinding, Message } from '@cradle/db'
 import {
@@ -317,6 +319,26 @@ function listRunChunks(runId: string): StoredChunk[] {
 
 // ── turn context resolver (merged from chat-turn-context.ts) ──
 
+// Lazily read and cache system-workflow.md
+let _systemWorkflowCache: string | null | undefined
+function getSystemWorkflow(): string | null {
+  if (_systemWorkflowCache !== undefined) return _systemWorkflowCache
+  const candidates = [
+    resolve(process.cwd(), '../../../resources/system-workflow.md'),
+    resolve(process.cwd(), '../../resources/system-workflow.md'),
+    resolve(process.cwd(), '../resources/system-workflow.md'),
+    resolve(process.cwd(), 'resources/system-workflow.md'),
+  ]
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      _systemWorkflowCache = readFileSync(p, 'utf-8')
+      return _systemWorkflowCache
+    }
+  }
+  _systemWorkflowCache = null
+  return null
+}
+
 interface ChatTurnContext {
   systemPrompt?: string
   history?: Array<{ role: 'user' | 'assistant', content: string }>
@@ -330,6 +352,23 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
     const agent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
     systemPrompt = readAgentSystemPrompt(agent?.configJson)
   }
+
+  // Inject system workflow as base context for all agents
+  const workflow = getSystemWorkflow()
+  if (workflow) {
+    systemPrompt = systemPrompt
+      ? `${workflow}\n\n---\n\n${systemPrompt}`
+      : workflow
+  }
+
+  // Inject session identity so agents can reference their own session
+  const sessionContext = [
+    `CRADLE_CHAT_SESSION_ID: ${input.sessionId}`,
+    session?.workspaceId ? `CRADLE_WORKSPACE_ID: ${session.workspaceId}` : '',
+  ].filter(Boolean).join('\n')
+  systemPrompt = systemPrompt
+    ? `${systemPrompt}\n\n${sessionContext}`
+    : sessionContext
 
   const historyRows = db().select().from(messages).where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'))).orderBy(messages.createdAt).all().filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 

@@ -35,13 +35,13 @@ The user should not need to babysit external systems. After an agent reaches a n
 ## Progress
 
 - [x] (2026-05-13) Redesigned exec-plan for current `apps/server/` Elysia architecture
-- [ ] M1: Schema + module skeleton + basic service
-- [ ] M2: HTTP routes with `x-cradle-cli` metadata → auto CLI generation
-- [ ] M3: Agent context injection (session identity in system prompt)
-- [ ] M4: Frontend awaiting projection (badge in session list)
-- [ ] M5: Background dispatcher (poller + source adapter registry)
-- [ ] M6: GitHub CI/PR review source adapter
-- [ ] M7: Issue-agent consumption
+- [x] (2026-05-13) M1: Schema (`packages/db/src/schema/session-await.ts`) + migration (`drizzle/0004_panoramic_sister_grimm.sql`)
+- [x] (2026-05-13) M2: Module skeleton (`apps/server/src/modules/session-await/`) — types, service, model, routes, wired into app.ts
+- [x] (2026-05-13) M3: Agent context injection — `CRADLE_CHAT_SESSION_ID` + `CRADLE_WORKSPACE_ID` in system prompt
+- [x] (2026-05-13) M4: Frontend awaiting projection (banner in chat view, disabled input)
+- [x] (2026-05-13) M5: Background dispatcher (poller + source adapter registry + timer triggers)
+- [x] (2026-05-13) M6: GitHub CI/PR review source adapter (gh CLI token, ETag cache, rate limit tracking)
+- [x] (2026-05-13) M7: Issue-agent consumption (covered by M1-M6 — agents use `session await-create` tool natively)
 
 ## Decision Log
 

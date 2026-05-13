@@ -3,7 +3,7 @@
 // Position: Slot content for AppLayout aside prop; shown when asideOpen=true
 
 import { useQuery } from '@tanstack/react-query'
-import { CircleDotIcon, FolderTreeIcon, GitBranchIcon } from 'lucide-react'
+import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, TimerIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useState } from 'react'
 
@@ -11,6 +11,7 @@ import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
+import { AwaitPanel } from '~/features/session-await/await-panel'
 import { FileTree } from '~/features/workspace/file-tree'
 import { cn } from '~/lib/cn'
 
@@ -24,6 +25,7 @@ const TABS: Tab[] = [
   { id: 'files', label: '文件', icon: FolderTreeIcon },
   { id: 'git', label: 'Git', icon: GitBranchIcon },
   { id: 'issue', label: 'Issue', icon: CircleDotIcon },
+  { id: 'await', label: 'Feed', icon: TimerIcon },
 ]
 
 const TAB_SPRING = {
@@ -114,6 +116,11 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
         {activeTab === 'issue' && !sessionId && (
           <div className="flex flex-1 items-center justify-center" data-testid="right-aside-panel-issue-empty">
             <p className="text-[11px] text-muted-foreground">未选择会话</p>
+          </div>
+        )}
+        {activeTab === 'await' && (
+          <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-await">
+            <AwaitPanel sessionId={sessionId ?? null} />
           </div>
         )}
       </div>

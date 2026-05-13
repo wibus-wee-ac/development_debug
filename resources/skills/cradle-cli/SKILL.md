@@ -72,6 +72,38 @@ cradle issue list --workspace-id <workspaceId> --format ndjson
 
 Use default output for human inspection, `--json <fields>` for structured Agent reads, and `--format ndjson` when streaming rows into shell pipelines.
 
+## Session Await (Pause & Resume)
+
+Register an await to pause your session and let Cradle automatically resume it when an external condition is met:
+
+```bash
+# Register a CI wait — Cradle will resume this session when CI passes
+cradle session await-create \
+  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
+  --workspace-id "$CRADLE_WORKSPACE_ID" \
+  --source github-ci \
+  --filter-json '{"repo":"owner/repo","pr":42}' \
+  --reason "Waiting for CI on PR #42"
+
+# Check await status
+cradle session await-summary --session-id "$CRADLE_CHAT_SESSION_ID"
+
+# List all awaits for current session
+cradle session await-list --session-id "$CRADLE_CHAT_SESSION_ID"
+
+# Cancel an await
+cradle session await-cancel <awaitId>
+
+# Manually trigger (for testing)
+cradle session await-trigger <awaitId> --resume-text "CI passed"
+```
+
+**Key rules for await usage**:
+- Always use `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` from your system context.
+- After registering an await, end your turn. Cradle will resume the session with the trigger payload as a new user message.
+- Supported sources: `github-ci` (filter: `{"repo":"owner/repo","pr":N}`), `manual` (no filter needed).
+- Your session history is preserved — when resumed, you have full context of what you were doing.
+
 <!-- CRADLE_CLI_MODULES_START -->
 ## Command Modules
 
@@ -94,7 +126,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `provider` | 2 | Inspect provider health and model availability. | `cradle man provider` |
 | `search` | 1 | Search Cradle data. | `cradle man search` |
 | `secret` | 2 | Manage secret metadata. | `cradle man secret` |
-| `session` | 10 | Manage chat sessions and session links. | `cradle man session` |
+| `session` | 16 | Manage chat sessions and session links. | `cradle man session` |
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
 | `status` | 5 | Manage Kanban statuses. | `cradle man status` |
 | `usage` | 7 | Inspect usage and cost data. | `cradle man usage` |
