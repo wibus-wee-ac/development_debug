@@ -10,7 +10,12 @@ export const session = new Elysia({
   detail: { tags: ['session'] },
 })
   .get('/', ({ query }) => Session.list(query.workspaceId), {
-    detail: { summary: 'List sessions' },
+    detail: {
+      summary: 'List sessions',
+      'x-cradle-cli': {
+        command: ['session', 'list'],
+      },
+    },
     query: SessionModel.listQuery,
     response: { 200: t.Array(SessionModel.session) },
   })
@@ -21,12 +26,22 @@ export const session = new Elysia({
     }
     return s
   }, {
-    detail: { summary: 'Get session by ID' },
+    detail: {
+      summary: 'Get session by ID',
+      'x-cradle-cli': {
+        command: ['session', 'get'],
+      },
+    },
     params: SessionModel.idParams,
     response: { 200: SessionModel.session },
   })
   .post('/', ({ body }) => Session.create(body), {
-    detail: { summary: 'Create session' },
+    detail: {
+      summary: 'Create session',
+      'x-cradle-cli': {
+        command: ['session', 'create'],
+      },
+    },
     body: SessionModel.createBody,
     response: { 200: SessionModel.session },
   })
@@ -44,7 +59,12 @@ export const session = new Elysia({
     }
     return result
   }, {
-    detail: { summary: 'Update session' },
+    detail: {
+      summary: 'Update session',
+      'x-cradle-cli': {
+        command: ['session', 'update'],
+      },
+    },
     params: SessionModel.idParams,
     body: SessionModel.updateBody,
     response: { 200: SessionModel.session },
@@ -53,35 +73,65 @@ export const session = new Elysia({
     Session.remove(params.id)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Delete session' },
+    detail: {
+      summary: 'Delete session',
+      'x-cradle-cli': {
+        command: ['session', 'delete'],
+      },
+    },
     params: SessionModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
   .get('/:id/messages', ({ params }) => Session.getMessages(params.id), {
-    detail: { summary: 'Get session messages' },
+    detail: {
+      summary: 'Get session messages',
+      'x-cradle-cli': {
+        command: ['session', 'messages'],
+      },
+    },
     params: SessionModel.idParams,
     response: { 200: t.Array(SessionModel.message) },
   })
   .get('/:id/export/markdown', ({ params }) => ({ markdown: Session.exportMarkdown(params.id) }), {
-    detail: { summary: 'Export session as markdown' },
+    detail: {
+      summary: 'Export session as markdown',
+      'x-cradle-cli': {
+        command: ['session', 'export', 'markdown'],
+      },
+    },
     params: SessionModel.idParams,
     response: { 200: SessionModel.exportMarkdownResponse },
   })
 
   // ── linked issue ──
   .get('/:id/linked-issue', ({ params }) => Kanban.getLinkedIssue(params.id), {
-    detail: { summary: 'Get linked issue' },
+    detail: {
+      summary: 'Get linked issue',
+      'x-cradle-cli': {
+        command: ['session', 'linked-issue', 'get'],
+      },
+    },
     params: SessionModel.idParams,
     response: { 200: t.Object({ issueId: t.Nullable(t.String()) }) },
   })
   .post('/:id/linked-issue', ({ params, body }) => Kanban.linkIssue(params.id, body.issueId), {
-    detail: { summary: 'Link issue to session' },
+    detail: {
+      summary: 'Link issue to session',
+      'x-cradle-cli': {
+        command: ['session', 'linked-issue', 'link'],
+      },
+    },
     params: SessionModel.idParams,
     body: t.Object({ issueId: t.String({ minLength: 1 }) }),
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
   .delete('/:id/linked-issue', ({ params }) => Kanban.unlinkIssue(params.id), {
-    detail: { summary: 'Unlink issue from session' },
+    detail: {
+      summary: 'Unlink issue from session',
+      'x-cradle-cli': {
+        command: ['session', 'linked-issue', 'unlink'],
+      },
+    },
     params: SessionModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })

@@ -8,12 +8,22 @@ export const workflowRules = new Elysia({
   detail: { tags: ['workflow-rules'] },
 })
   .get('/:workspaceId/list', ({ params }) => WorkflowRules.list(params.workspaceId), {
-    detail: { summary: 'List workflow rules' },
+    detail: {
+      summary: 'List workflow rules',
+      'x-cradle-cli': {
+        command: ['workflow-rule', 'list'],
+      },
+    },
     params: WorkflowRulesModel.workspaceIdParams,
     response: { 200: t.Array(WorkflowRulesModel.workflowRuleEntry) },
   })
   .get('/:workspaceId', ({ params, query }) => WorkflowRules.get(params.workspaceId, query.agentProfileId), {
-    detail: { summary: 'Get workflow rules' },
+    detail: {
+      summary: 'Get workflow rules',
+      'x-cradle-cli': {
+        command: ['workflow-rule', 'get'],
+      },
+    },
     params: WorkflowRulesModel.workspaceIdParams,
     query: WorkflowRulesModel.getQuery,
     response: { 200: WorkflowRulesModel.workflowRules },
@@ -22,7 +32,12 @@ export const workflowRules = new Elysia({
     await WorkflowRules.save(params.workspaceId, body.agentProfileId ?? null, body.content)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Save workflow rule' },
+    detail: {
+      summary: 'Save workflow rule',
+      'x-cradle-cli': {
+        command: ['workflow-rule', 'save'],
+      },
+    },
     params: WorkflowRulesModel.workspaceIdParams,
     body: WorkflowRulesModel.saveBody,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
@@ -31,7 +46,12 @@ export const workflowRules = new Elysia({
     await WorkflowRules.remove(params.workspaceId, query.agentProfileId ?? null)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Delete workflow rule' },
+    detail: {
+      summary: 'Delete workflow rule',
+      'x-cradle-cli': {
+        command: ['workflow-rule', 'delete'],
+      },
+    },
     params: WorkflowRulesModel.workspaceIdParams,
     query: WorkflowRulesModel.deleteQuery,
     response: { 200: t.Object({ ok: t.Literal(true) }) },

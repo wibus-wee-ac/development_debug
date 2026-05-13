@@ -23,7 +23,12 @@ export const observability = new Elysia({
       limit: parseOptionalPositiveInteger(query.limit, 'limit'),
     })
   }, {
-    detail: { summary: 'List observability events' },
+    detail: {
+      summary: 'List observability events',
+      'x-cradle-cli': {
+        command: ['observability', 'events'],
+      },
+    },
     query: ObservabilityModel.eventsQuery,
     response: { 200: t.Array(ObservabilityModel.event) },
   })
@@ -37,7 +42,12 @@ export const observability = new Elysia({
       limit: parseOptionalPositiveInteger(query.limit, 'limit'),
     })
   }, {
-    detail: { summary: 'List observability incidents' },
+    detail: {
+      summary: 'List observability incidents',
+      'x-cradle-cli': {
+        command: ['observability', 'incidents'],
+      },
+    },
     query: ObservabilityModel.incidentsQuery,
     response: { 200: t.Array(ObservabilityModel.incident) },
   })
@@ -55,7 +65,12 @@ export const observability = new Elysia({
       sinceUnix: parseOptionalNonNegativeInteger(query.sinceUnix, 'sinceUnix'),
     })
   }, {
-    detail: { summary: 'Export observability bundle' },
+    detail: {
+      summary: 'Export observability bundle',
+      'x-cradle-cli': {
+        command: ['observability', 'export'],
+      },
+    },
     query: ObservabilityModel.exportQuery,
     response: { 200: ObservabilityModel.bundle },
   })

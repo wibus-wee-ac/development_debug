@@ -8,7 +8,12 @@ export const secrets = new Elysia({
   detail: { tags: ['secrets'] },
 })
   .get('/', () => Secrets.listSecrets(), {
-    detail: { summary: 'List secrets' },
+    detail: {
+      summary: 'List secrets',
+      'x-cradle-cli': {
+        command: ['secret', 'list'],
+      },
+    },
     response: { 200: t.Array(SecretsModel.secretMetadata) },
   })
   .post('/', ({ body }) => Secrets.saveSecret(body), {
@@ -20,7 +25,12 @@ export const secrets = new Elysia({
     Secrets.removeSecret(params.id)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Delete a secret' },
+    detail: {
+      summary: 'Delete a secret',
+      'x-cradle-cli': {
+        command: ['secret', 'delete'],
+      },
+    },
     params: SecretsModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })

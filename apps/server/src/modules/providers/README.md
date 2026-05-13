@@ -7,6 +7,7 @@ Position: apps/server/src/modules/providers module guide.
 # providers
 
 `providers.controller.ts` accepts schema-typed `config` objects at the HTTP boundary and only serializes to `configJson` when crossing into legacy internal request shapes.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 - `providers.module.ts` — wires provider-owned HTTP endpoints and services.
 - `providers.controller.ts` — exposes body-based `/providers/health-check` and `/providers/models` endpoints with Zod-inferred typed config payloads.

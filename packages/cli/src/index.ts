@@ -1,0 +1,30 @@
+#!/usr/bin/env tsx
+// Input: commander root command, generated command registry, CLI runtime context
+// Output: Cradle CLI executable entry point
+// Position: packages/cli public binary entry
+
+import { Command } from 'commander'
+
+import { registerGeneratedCommands } from './commands/generated/index.generated'
+import { createCommandContext } from './runtime/context'
+import { registerManualCommand } from './runtime/manual-command'
+
+const program = new Command()
+  .name('cradle')
+  .description('Cradle CLI')
+  .version('0.1.0')
+  .option('--server <url>', 'Cradle server URL', process.env.CRADLE_SERVER_URL ?? 'http://localhost:21423')
+
+registerGeneratedCommands(program)
+registerManualCommand(program)
+
+program.hook('preAction', (root) => {
+  const opts = root.opts<{ server: string }>()
+  root.setOptionValue('__context', createCommandContext({ serverUrl: opts.server }))
+})
+
+program.parseAsync().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(message)
+  process.exit(1)
+})

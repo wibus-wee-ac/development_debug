@@ -8,17 +8,32 @@ export const git = new Elysia({
   detail: { tags: ['git'] },
 })
   .get('/:id/git/status', ({ params }) => Git.getStatus(params.id), {
-    detail: { summary: 'Get git status' },
+    detail: {
+      summary: 'Get git status',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'status'],
+      },
+    },
     params: GitModel.idParams,
     response: { 200: GitModel.statusView },
   })
   .get('/:id/git/branches', ({ params }) => Git.getBranches(params.id), {
-    detail: { summary: 'Get git branches' },
+    detail: {
+      summary: 'Get git branches',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'branches'],
+      },
+    },
     params: GitModel.idParams,
     response: { 200: GitModel.branchesView },
   })
   .get('/:id/git/graph', ({ params, query }) => Git.getGraph(params.id, query.limit ?? 100), {
-    detail: { summary: 'Get git graph' },
+    detail: {
+      summary: 'Get git graph',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'graph'],
+      },
+    },
     params: GitModel.idParams,
     query: GitModel.graphQuery,
     response: { 200: t.Array(GitModel.graphCommitView) },
@@ -27,7 +42,12 @@ export const git = new Elysia({
     await Git.checkout(params.id, body.branch)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Checkout branch' },
+    detail: {
+      summary: 'Checkout branch',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'checkout'],
+      },
+    },
     params: GitModel.idParams,
     body: GitModel.checkoutBody,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
@@ -36,7 +56,12 @@ export const git = new Elysia({
     await Git.createBranch(params.id, body.name, body.from)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Create branch' },
+    detail: {
+      summary: 'Create branch',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'branch', 'create'],
+      },
+    },
     params: GitModel.idParams,
     body: GitModel.createBranchBody,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
@@ -45,7 +70,12 @@ export const git = new Elysia({
     await Git.fetch(params.id)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Fetch remote' },
+    detail: {
+      summary: 'Fetch remote',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'fetch'],
+      },
+    },
     params: GitModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })

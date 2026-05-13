@@ -1,6 +1,7 @@
 # Chat Runtime Module
 
 Provides server-owned chat turn execution for existing sessions, including timeline persistence, usage writes, SSE streaming, run state updates, and ACP live runtime orchestration.
+Route metadata includes `x-cradle-cli` descriptors for non-streaming generated CLI commands.
 
 ## Files
 

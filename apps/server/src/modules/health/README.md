@@ -7,6 +7,7 @@ Position: apps/server/src/modules/health
 # Health Module
 
 HTTP health check endpoints.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

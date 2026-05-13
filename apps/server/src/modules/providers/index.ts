@@ -8,12 +8,22 @@ export const providers = new Elysia({
   detail: { tags: ['providers'] },
 })
   .post('/models', ({ body }) => Providers.listModels(Providers.parseProviderBody(body)), {
-    detail: { summary: 'List models for a provider' },
+    detail: {
+      summary: 'List models for a provider',
+      'x-cradle-cli': {
+        command: ['provider', 'models'],
+      },
+    },
     body: ProvidersModel.providerBody,
     response: { 200: t.Array(ProvidersModel.modelDescriptor) },
   })
   .post('/health-check', ({ body }) => Providers.healthCheck(Providers.parseProviderBody(body)), {
-    detail: { summary: 'Health check a provider' },
+    detail: {
+      summary: 'Health check a provider',
+      'x-cradle-cli': {
+        command: ['provider', 'health-check'],
+      },
+    },
     body: ProvidersModel.providerBody,
     response: { 200: ProvidersModel.healthCheckResult },
   })

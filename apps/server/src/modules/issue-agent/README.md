@@ -1,11 +1,10 @@
 # Issue Agent Module
 
 Provides server-owned issue delegation, agent session tracking, activity timeline projection, rerun, and undelegation semantics.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 
-- `issue-agent.module.ts`: Tsuki module registration.
-- `kanban-issue-delegation.controller.ts`: kanban issue-owned delegation and agent-session listing endpoints.
-- `issue-agent-session.controller.ts`: issue-agent-session resource endpoints for activities and rerun.
-- `issue-agent.service.ts`: delegation semantics and background run watcher.
-- `issue-agent.store.ts`: DB-backed issue/session/activity/chat-session persistence.
+- `index.ts`: Elysia routes for issue delegation and issue-agent sessions.
+- `model.ts`: TypeBox schemas for delegation state, session views, activity views, params, and bodies.
+- `service.ts`: delegation semantics and background run watcher.

@@ -31,7 +31,12 @@ export const chatRuntime = new Elysia({
   .get('/sessions/:sessionId/messages', ({ params }) => {
     return ChatRuntime.getMessageGroups(params.sessionId)
   }, {
-    detail: { summary: 'Get chat message groups' },
+    detail: {
+      summary: 'Get chat message groups',
+      'x-cradle-cli': {
+        command: ['chat', 'messages'],
+      },
+    },
     params: ChatRuntimeModel.sessionIdParams,
   })
   // POST /chat/sessions/:sessionId/cancel → abort active run
@@ -39,7 +44,12 @@ export const chatRuntime = new Elysia({
     await ChatRuntime.cancelSession(params.sessionId)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Cancel active run for session' },
+    detail: {
+      summary: 'Cancel active run for session',
+      'x-cradle-cli': {
+        command: ['chat', 'cancel'],
+      },
+    },
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.cancelResponse },
   })

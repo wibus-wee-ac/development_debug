@@ -7,6 +7,7 @@ Position: apps/server/src/modules/pack-codebase
 # Pack Codebase Module
 
 Workspace-owned HTTP packing capability backed by `repomix`.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

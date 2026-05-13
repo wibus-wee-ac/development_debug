@@ -11,7 +11,12 @@ export const issueAgent = new Elysia({
 
   .get('/kanban/issues/:id/delegation', ({ params }) =>
     IssueAgent.getDelegation(params.id), {
-    detail: { summary: 'Get delegation state' },
+    detail: {
+      summary: 'Get delegation state',
+      'x-cradle-cli': {
+        command: ['issue', 'delegation'],
+      },
+    },
     params: IssueAgentModel.issueIdParams,
     response: { 200: IssueAgentModel.delegationState },
   })
@@ -22,7 +27,12 @@ export const issueAgent = new Elysia({
       agentProfileId: body.agentProfileId,
       agentId: body.agentId,
     }), {
-    detail: { summary: 'Delegate issue' },
+    detail: {
+      summary: 'Delegate issue',
+      'x-cradle-cli': {
+        command: ['issue', 'delegate'],
+      },
+    },
     params: IssueAgentModel.issueIdParams,
     body: IssueAgentModel.delegateBody,
     response: { 200: IssueAgentModel.sessionView },
@@ -32,14 +42,24 @@ export const issueAgent = new Elysia({
     await IssueAgent.undelegateIssue(params.id)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Undelegate issue' },
+    detail: {
+      summary: 'Undelegate issue',
+      'x-cradle-cli': {
+        command: ['issue', 'undelegate'],
+      },
+    },
     params: IssueAgentModel.issueIdParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
 
   .get('/kanban/issues/:id/agent-sessions', ({ params }) =>
     IssueAgent.listSessions(params.id), {
-    detail: { summary: 'List agent sessions' },
+    detail: {
+      summary: 'List agent sessions',
+      'x-cradle-cli': {
+        command: ['issue', 'sessions'],
+      },
+    },
     params: IssueAgentModel.issueIdParams,
     response: { 200: t.Array(IssueAgentModel.sessionView) },
   })
@@ -48,7 +68,12 @@ export const issueAgent = new Elysia({
 
   .get('/issue-agent-sessions/:agentSessionId/activities', ({ params }) =>
     IssueAgent.listActivities(params.agentSessionId), {
-    detail: { summary: 'List activities' },
+    detail: {
+      summary: 'List activities',
+      'x-cradle-cli': {
+        command: ['issue-agent-session', 'activities'],
+      },
+    },
     params: IssueAgentModel.agentSessionIdParams,
     response: { 200: t.Array(IssueAgentModel.agentActivity) },
   })
@@ -58,7 +83,12 @@ export const issueAgent = new Elysia({
       agentSessionId: params.agentSessionId,
       agentId: body?.agentId,
     }), {
-    detail: { summary: 'Rerun session' },
+    detail: {
+      summary: 'Rerun session',
+      'x-cradle-cli': {
+        command: ['issue-agent-session', 'rerun'],
+      },
+    },
     params: IssueAgentModel.agentSessionIdParams,
     body: t.Optional(IssueAgentModel.rerunBody),
     response: { 200: IssueAgentModel.sessionView },
@@ -68,7 +98,12 @@ export const issueAgent = new Elysia({
     await IssueAgent.stopSession(params.agentSessionId)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Stop agent session' },
+    detail: {
+      summary: 'Stop agent session',
+      'x-cradle-cli': {
+        command: ['issue-agent-session', 'stop'],
+      },
+    },
     params: IssueAgentModel.agentSessionIdParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })

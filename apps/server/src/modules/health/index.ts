@@ -11,6 +11,9 @@ export const health = new Elysia({
     detail: {
       summary: 'Health check',
       description: 'Server liveness snapshot',
+      'x-cradle-cli': {
+        command: ['health'],
+      },
     },
     response: {
       200: HealthModel.checkResponse,

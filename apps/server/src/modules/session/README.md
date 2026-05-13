@@ -7,6 +7,7 @@ Position: apps/server/src/modules/session
 # Session Module
 
 Session CRUD, pin toggle, message read, and markdown export.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

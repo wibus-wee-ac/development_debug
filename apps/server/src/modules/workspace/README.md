@@ -7,14 +7,11 @@ Position: apps/server/src/modules/workspace
 # Workspace Module
 
 Workspace CRUD and safe filesystem access (listing + text read/write).
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 
-- **workspace.module.ts**: Tsuki module registration.
-- **workspace.controller.ts**: HTTP endpoints for workspace module.
-- **workspace.routes.ts**: explicit Elysia route factory for the parallel `/workspaces` migration path.
-- **workspace.service.ts**: Module semantics (CRUD + file ops).
-- **workspace.store.ts**: Drizzle-backed workspace store.
-- **workspace.files.ts**: `.gitignore` filtering and safe text IO.
-- **workspace.types.ts**: canonical TypeBox schemas for the Elysia workspace HTTP surface.
-- **workspace.contract.ts**: legacy Zod contract kept for the Tsuki controller/OpenAPI path during migration.
+- **index.ts**: Elysia `/workspaces` routes, OpenAPI metadata, and generated CLI descriptors.
+- **model.ts**: TypeBox schemas for workspace requests and responses.
+- **service.ts**: Workspace CRUD semantics.
+- **files.ts**: `.gitignore` filtering and safe text IO.

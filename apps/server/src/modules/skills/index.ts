@@ -11,7 +11,12 @@ export const skills = new Elysia({
     workspaceId: query.workspaceId,
     agentId: query.agentId,
   }), {
-    detail: { summary: 'List skills' },
+    detail: {
+      summary: 'List skills',
+      'x-cradle-cli': {
+        command: ['skill', 'list'],
+      },
+    },
     query: SkillsModel.listQuery,
     response: { 200: t.Array(SkillsModel.skillInventoryEntry) },
   })
@@ -21,17 +26,32 @@ export const skills = new Elysia({
     workspaceId: query.workspaceId,
     agentId: query.agentId,
   }), {
-    detail: { summary: 'Get skill document' },
+    detail: {
+      summary: 'Get skill document',
+      'x-cradle-cli': {
+        command: ['skill', 'document', 'get'],
+      },
+    },
     query: SkillsModel.lookupQuery,
     response: { 200: SkillsModel.skillDocument },
   })
   .post('', ({ body }) => Skills.create(body), {
-    detail: { summary: 'Create skill' },
+    detail: {
+      summary: 'Create skill',
+      'x-cradle-cli': {
+        command: ['skill', 'create'],
+      },
+    },
     body: SkillsModel.createBody,
     response: { 200: SkillsModel.skillDocument },
   })
   .put('/document', ({ body }) => Skills.update(body), {
-    detail: { summary: 'Update skill document' },
+    detail: {
+      summary: 'Update skill document',
+      'x-cradle-cli': {
+        command: ['skill', 'document', 'update'],
+      },
+    },
     body: SkillsModel.updateBody,
     response: { 200: SkillsModel.skillDocument },
   })
@@ -44,12 +64,22 @@ export const skills = new Elysia({
     })
     return { ok: true as const }
   }, {
-    detail: { summary: 'Delete skill' },
+    detail: {
+      summary: 'Delete skill',
+      'x-cradle-cli': {
+        command: ['skill', 'document', 'delete'],
+      },
+    },
     query: SkillsModel.lookupQuery,
     response: { 200: SkillsModel.okResponse },
   })
   .post('/import', ({ body }) => Skills.importSkill(body), {
-    detail: { summary: 'Import skill' },
+    detail: {
+      summary: 'Import skill',
+      'x-cradle-cli': {
+        command: ['skill', 'import'],
+      },
+    },
     body: SkillsModel.importBody,
     response: { 200: SkillsModel.skillDocument },
   })
@@ -57,7 +87,12 @@ export const skills = new Elysia({
     const destinationDir = await Skills.exportSkill(body)
     return { destinationDir }
   }, {
-    detail: { summary: 'Export skill' },
+    detail: {
+      summary: 'Export skill',
+      'x-cradle-cli': {
+        command: ['skill', 'export'],
+      },
+    },
     body: SkillsModel.exportBody,
     response: { 200: SkillsModel.exportResponse },
   })
@@ -69,12 +104,22 @@ export const skills = new Elysia({
       skills: result.skills.map(s => ({ skillDir: s.skillDir, relativePath: s.relativePath, name: s.name, description: s.description })),
     }
   }, {
-    detail: { summary: 'Fetch skill source' },
+    detail: {
+      summary: 'Fetch skill source',
+      'x-cradle-cli': {
+        command: ['skill', 'source', 'fetch'],
+      },
+    },
     body: SkillsModel.fetchSourceBody,
     response: { 200: SkillsModel.fetchSourceResult },
   })
   .post('/import-from-fetch', ({ body }) => Skills.importFromFetch(body), {
-    detail: { summary: 'Import skills from fetch' },
+    detail: {
+      summary: 'Import skills from fetch',
+      'x-cradle-cli': {
+        command: ['skill', 'source', 'import'],
+      },
+    },
     body: SkillsModel.importFromFetchBody,
     response: { 200: SkillsModel.importFromFetchResult },
   })
@@ -82,7 +127,12 @@ export const skills = new Elysia({
     await Skills.cancelFetch(body.sessionId)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Cancel fetch' },
+    detail: {
+      summary: 'Cancel fetch',
+      'x-cradle-cli': {
+        command: ['skill', 'source', 'cancel-fetch'],
+      },
+    },
     body: SkillsModel.cancelFetchBody,
     response: { 200: SkillsModel.okResponse },
   })

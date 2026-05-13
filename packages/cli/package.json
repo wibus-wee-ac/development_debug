@@ -1,0 +1,23 @@
+{
+  "name": "@cradle/cli",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "cradle": "./src/index.ts"
+  },
+  "scripts": {
+    "gen:cli": "tsx scripts/generate-cli.ts",
+    "typecheck": "tsc --noEmit",
+    "cradle": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "table": "^6.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

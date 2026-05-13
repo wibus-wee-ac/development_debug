@@ -7,6 +7,8 @@ Position: apps/server/src/modules/approval index.
 # Approval Module
 
 Provides an in-memory pending approval registry with HTTP endpoints for create/list/respond flows.
+Route metadata includes `x-cradle-cli` descriptors for safe generated CLI commands.
+Approval creation and SSE streaming are intentionally not exposed through the generated CLI.
 
 ## Files
 

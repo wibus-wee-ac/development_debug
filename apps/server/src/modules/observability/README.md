@@ -7,6 +7,7 @@ Position: apps/server/src/modules/observability index.
 # Observability Module
 
 Provides canonical observability event capture, incident projection, queue-backed persistence, and HTTP query/export surfaces.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

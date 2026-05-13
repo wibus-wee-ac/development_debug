@@ -12,7 +12,12 @@ export const agentIdentity = new Elysia({
     const enabled = query.enabled === 'true' ? true : query.enabled === 'false' ? false : undefined
     return AgentIdentity.list({ enabled, agentProfileId: query.agentProfileId })
   }, {
-    detail: { summary: 'List agents' },
+    detail: {
+      summary: 'List agents',
+      'x-cradle-cli': {
+        command: ['agent', 'list'],
+      },
+    },
     query: AgentIdentityModel.listQuery,
     response: { 200: t.Array(AgentIdentityModel.agent) },
   })
@@ -23,12 +28,22 @@ export const agentIdentity = new Elysia({
     }
     return agent
   }, {
-    detail: { summary: 'Get agent by ID' },
+    detail: {
+      summary: 'Get agent by ID',
+      'x-cradle-cli': {
+        command: ['agent', 'get'],
+      },
+    },
     params: AgentIdentityModel.idParams,
     response: { 200: AgentIdentityModel.agent },
   })
   .post('/', ({ body }) => AgentIdentity.create(body), {
-    detail: { summary: 'Create agent' },
+    detail: {
+      summary: 'Create agent',
+      'x-cradle-cli': {
+        command: ['agent', 'create'],
+      },
+    },
     body: AgentIdentityModel.createBody,
     response: { 200: AgentIdentityModel.agent },
   })
@@ -39,7 +54,12 @@ export const agentIdentity = new Elysia({
     }
     return agent
   }, {
-    detail: { summary: 'Update agent' },
+    detail: {
+      summary: 'Update agent',
+      'x-cradle-cli': {
+        command: ['agent', 'update'],
+      },
+    },
     params: AgentIdentityModel.idParams,
     body: AgentIdentityModel.updateBody,
     response: { 200: AgentIdentityModel.agent },
@@ -48,7 +68,12 @@ export const agentIdentity = new Elysia({
     AgentIdentity.remove(params.id)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Delete agent' },
+    detail: {
+      summary: 'Delete agent',
+      'x-cradle-cli': {
+        command: ['agent', 'delete'],
+      },
+    },
     params: AgentIdentityModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })

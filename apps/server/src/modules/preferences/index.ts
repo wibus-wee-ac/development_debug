@@ -11,6 +11,9 @@ export const preferences = new Elysia({
     detail: {
       summary: 'Get chat preferences',
       description: 'Read the server-owned default chat preferences.',
+      'x-cradle-cli': {
+        command: ['preferences', 'chat', 'get'],
+      },
     },
     response: {
       200: PreferencesModel.chatPreferences,
@@ -23,6 +26,9 @@ export const preferences = new Elysia({
     detail: {
       summary: 'Set chat preferences',
       description: 'Persist the server-owned default chat preferences.',
+      'x-cradle-cli': {
+        command: ['preferences', 'chat', 'set'],
+      },
     },
     body: PreferencesModel.chatPreferences,
     response: {

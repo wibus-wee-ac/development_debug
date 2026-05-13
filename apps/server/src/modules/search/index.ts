@@ -13,7 +13,12 @@ export const search = new Elysia({
     limit: query.limit,
     snippetsPerHit: query.snippetsPerHit,
   }), {
-    detail: { summary: 'Search threads' },
+    detail: {
+      summary: 'Search threads',
+      'x-cradle-cli': {
+        command: ['search', 'threads'],
+      },
+    },
     query: SearchModel.searchQuery,
     response: { 200: SearchModel.threadSearchResponse },
   })

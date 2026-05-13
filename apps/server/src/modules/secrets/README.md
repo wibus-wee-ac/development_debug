@@ -6,6 +6,9 @@ Position: apps/server/src/modules/secrets module guide.
 
 # secrets
 
+Route metadata includes `x-cradle-cli` descriptors for safe generated CLI commands.
+Secret value writes are intentionally not exposed through the generated CLI.
+
 - `secrets.module.ts` — wires secret lifecycle providers and controller.
 - `secrets.controller.ts` — exposes `/secrets` CRUD endpoints.
 - `secrets.service.ts` — validates configuration and maps secret errors.

@@ -7,6 +7,7 @@ Position: apps/server/src/modules/agent-identity.
 # Agent Identity Module
 
 Agent CRUD, filtered list queries, agent-profile ownership, and avatar URL policy.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

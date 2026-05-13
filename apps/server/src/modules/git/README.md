@@ -1,6 +1,7 @@
 # Git Module
 
 Provides workspace-owned HTTP access to Git repository status, branches, commit graph, checkout, branch creation, and fetch.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

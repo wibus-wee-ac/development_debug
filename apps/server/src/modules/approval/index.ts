@@ -12,7 +12,12 @@ export const approval = new Elysia({
     console.warn(`[approval] GET /approvals/ → ${result.length} pending`)
     return result
   }, {
-    detail: { summary: 'List pending approvals' },
+    detail: {
+      summary: 'List pending approvals',
+      'x-cradle-cli': {
+        command: ['approval', 'list'],
+      },
+    },
     query: ApprovalModel.listQuery,
     response: { 200: t.Array(ApprovalModel.pendingApproval) },
   })
@@ -79,7 +84,12 @@ export const approval = new Elysia({
     Approval.respond(params.approvalId, body)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Respond to a pending approval' },
+    detail: {
+      summary: 'Respond to a pending approval',
+      'x-cradle-cli': {
+        command: ['approval', 'respond'],
+      },
+    },
     params: ApprovalModel.idParams,
     body: ApprovalModel.respondBody,
     response: { 200: t.Object({ ok: t.Literal(true) }) },

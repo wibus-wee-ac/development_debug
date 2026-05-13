@@ -9,7 +9,12 @@ export const profiles = new Elysia({
   detail: { tags: ['profiles'] },
 })
   .get('/', () => Profiles.listProfiles(), {
-    detail: { summary: 'List profiles' },
+    detail: {
+      summary: 'List profiles',
+      'x-cradle-cli': {
+        command: ['profile', 'list'],
+      },
+    },
     response: { 200: t.Array(ProfilesModel.agentProfile) },
   })
   .get('/:id', ({ params }) => {
@@ -19,7 +24,12 @@ export const profiles = new Elysia({
     }
     return p
   }, {
-    detail: { summary: 'Get profile by ID' },
+    detail: {
+      summary: 'Get profile by ID',
+      'x-cradle-cli': {
+        command: ['profile', 'get'],
+      },
+    },
     params: ProfilesModel.idParams,
     response: { 200: ProfilesModel.agentProfile },
   })
@@ -33,7 +43,12 @@ export const profiles = new Elysia({
       credentialRef: body.credentialRef ?? null,
     })
   }, {
-    detail: { summary: 'Create or update profile' },
+    detail: {
+      summary: 'Create or update profile',
+      'x-cradle-cli': {
+        command: ['profile', 'set'],
+      },
+    },
     params: ProfilesModel.idParams,
     body: ProfilesModel.upsertBody,
     response: { 200: ProfilesModel.agentProfile },
@@ -42,7 +57,12 @@ export const profiles = new Elysia({
     Profiles.removeProfile(params.id)
     return { ok: true as const }
   }, {
-    detail: { summary: 'Delete profile' },
+    detail: {
+      summary: 'Delete profile',
+      'x-cradle-cli': {
+        command: ['profile', 'delete'],
+      },
+    },
     params: ProfilesModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })

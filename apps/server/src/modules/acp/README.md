@@ -7,6 +7,7 @@ Position: apps/server/src/modules/acp
 # ACP Module
 
 HTTP-first ACP management capability for registry browsing, installation lifecycle resources, installed-agent inventory, and audit queries.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

@@ -1,6 +1,7 @@
 # Workflow Rules Module
 
 Stores workspace-scoped workflow rule markdown files under the server-owned data directory.
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 

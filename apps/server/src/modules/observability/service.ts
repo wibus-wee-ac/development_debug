@@ -7,6 +7,7 @@ import { observabilityEvents, observabilityIncidents } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
 
 import { db } from '../../infra'
+import { createChildLogger } from '../../logging/logger'
 import type { CreateEventInput, ObservabilityEvent, ObservabilityIncident } from './contract'
 import {
   createDedupeKey,
@@ -15,6 +16,8 @@ import {
 import type { ExportObservabilityBundleInput, ObservabilityBundle } from './exporter'
 import { exportObservabilityBundle } from './exporter'
 import { evaluateIncidentRules } from './rules'
+
+const logger = createChildLogger({ module: 'observability' })
 
 // ---------------------------------------------------------------------------
 // Filter types
@@ -74,7 +77,7 @@ export function record(input: CreateEventInput): void {
     appendRecentEvent(event)
   }
   catch (error) {
-    console.error('[observability] failed to record event', { input, error })
+    logger.error('failed to record event', { input, error })
   }
 }
 
@@ -94,7 +97,7 @@ export async function flushEvents(): Promise<void> {
       }
       catch (error) {
         droppedEvents += batch.length
-        console.error('[observability] failed to persist batch; dropping events', {
+        logger.error('failed to persist batch; dropping events', {
           droppedBatch: batch.length,
           droppedTotal: droppedEvents,
           error,
@@ -247,7 +250,7 @@ function enqueueEvent(event: ObservabilityEvent): void {
   if (queue.length >= DEFAULT_MAX_QUEUE_SIZE) {
     droppedEvents += 1
     if (droppedEvents % 100 === 1) {
-      console.error('[observability] queue is full; dropping new events', {
+      logger.error('queue is full; dropping new events', {
         maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,
         droppedTotal: droppedEvents,
       })

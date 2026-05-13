@@ -1,0 +1,37 @@
+// Input: generated OpenAPI CLI operation metadata
+// Output: issue context-ref remove command registration
+// Position: packages/cli generated command module
+
+import { registerOperationCommand } from '../../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
+
+const spec = {
+  "arguments": [
+    {
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    },
+    {
+      "name": "index",
+      "required": true,
+      "target": "path.index",
+      "type": "string"
+    }
+  ],
+  "command": [
+    "issue",
+    "context-ref",
+    "remove"
+  ],
+  "description": "Remove context ref",
+  "flags": [],
+  "method": "delete",
+  "path": "/kanban/issues/{id}/context-refs/{index}"
+} satisfies CliOperationSpec
+
+export function register(program: Command): void {
+  registerOperationCommand(program, spec)
+}

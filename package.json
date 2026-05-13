@@ -4,7 +4,7 @@
   "description": "Cradle - AI agent management platform",
   "author": "example.com",
   "bin": {
-    "cradle": "./src/cli/index.ts"
+    "cradle": "./packages/cli/src/index.ts"
   },
   "scripts": {
     "format": "prettier --write .",
@@ -21,7 +21,9 @@
     "build:web": "pnpm --filter @cradle/web build",
     "build:server": "pnpm --filter @cradle/server build",
     "test:server": "pnpm --filter @cradle/server test",
-    "generate:web": "pnpm --filter @cradle/web generate"
+    "generate:web": "pnpm --filter @cradle/web generate",
+    "cli": "pnpm --filter @cradle/cli cradle",
+    "gen:cli": "pnpm --filter @cradle/cli gen:cli"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",

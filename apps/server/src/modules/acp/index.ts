@@ -21,18 +21,33 @@ export const acp = new Elysia({
   detail: { tags: ['acp'] },
 })
   .get('/registry', () => Acp.fetchRegistry(), {
-    detail: { summary: 'List registry agents' },
+    detail: {
+      summary: 'List registry agents',
+      'x-cradle-cli': {
+        command: ['acp', 'registry', 'list'],
+      },
+    },
     response: { 200: t.Array(AcpModel.registryAgent) },
   })
   .get('/registry/:agentId/distribution-types', ({ params }) => {
     return Acp.getDistributionTypes(requireNonBlankString(params.agentId, 'agentId'))
   }, {
-    detail: { summary: 'Get distribution types for a registry agent' },
+    detail: {
+      summary: 'Get distribution types for a registry agent',
+      'x-cradle-cli': {
+        command: ['acp', 'registry', 'distribution-types'],
+      },
+    },
     params: AcpModel.agentIdParams,
     response: { 200: AcpModel.distributionTypesResult },
   })
   .get('/agents', () => Acp.listInstalled(), {
-    detail: { summary: 'List installed agents' },
+    detail: {
+      summary: 'List installed agents',
+      'x-cradle-cli': {
+        command: ['acp', 'agent', 'list'],
+      },
+    },
     response: { 200: t.Array(AcpModel.acpAgent) },
   })
   .get('/agents/:agentId', ({ params }) => {
@@ -42,7 +57,12 @@ export const acp = new Elysia({
     }
     return agent
   }, {
-    detail: { summary: 'Get installed agent' },
+    detail: {
+      summary: 'Get installed agent',
+      'x-cradle-cli': {
+        command: ['acp', 'agent', 'get'],
+      },
+    },
     params: AcpModel.agentIdParams,
     response: { 200: AcpModel.acpAgent },
   })
@@ -52,7 +72,12 @@ export const acp = new Elysia({
       body.distributionType,
     )
   }, {
-    detail: { summary: 'Install an agent' },
+    detail: {
+      summary: 'Install an agent',
+      'x-cradle-cli': {
+        command: ['acp', 'agent', 'install'],
+      },
+    },
     params: AcpModel.agentIdParams,
     body: AcpModel.installBody,
     response: { 200: AcpModel.acpAgent },
@@ -61,7 +86,12 @@ export const acp = new Elysia({
     Acp.cancelInstall(requireNonBlankString(params.agentId, 'agentId'))
     return { ok: true as const }
   }, {
-    detail: { summary: 'Cancel agent installation' },
+    detail: {
+      summary: 'Cancel agent installation',
+      'x-cradle-cli': {
+        command: ['acp', 'agent', 'cancel-install'],
+      },
+    },
     params: AcpModel.agentIdParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
@@ -69,7 +99,12 @@ export const acp = new Elysia({
     await Acp.uninstall(requireNonBlankString(params.agentId, 'agentId'))
     return { ok: true as const }
   }, {
-    detail: { summary: 'Uninstall an agent' },
+    detail: {
+      summary: 'Uninstall an agent',
+      'x-cradle-cli': {
+        command: ['acp', 'agent', 'uninstall'],
+      },
+    },
     params: AcpModel.agentIdParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
@@ -77,14 +112,24 @@ export const acp = new Elysia({
     const agentId = query.agentId?.trim() || undefined
     return Acp.getAuditLog(agentId)
   }, {
-    detail: { summary: 'Get ACP audit log' },
+    detail: {
+      summary: 'Get ACP audit log',
+      'x-cradle-cli': {
+        command: ['acp', 'audit'],
+      },
+    },
     query: AcpModel.auditQuery,
     response: { 200: t.Array(AcpModel.acpAuditEntry) },
   })
   .get('/agents/:agentId/install-path', ({ params }) => {
     return { path: Acp.getAgentInstallPath(requireNonBlankString(params.agentId, 'agentId')) }
   }, {
-    detail: { summary: 'Get agent install path' },
+    detail: {
+      summary: 'Get agent install path',
+      'x-cradle-cli': {
+        command: ['acp', 'agent', 'install-path'],
+      },
+    },
     params: AcpModel.agentIdParams,
     response: { 200: t.Object({ path: t.String() }) },
   })

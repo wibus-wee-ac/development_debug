@@ -17,6 +17,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import { createChildLogger } from '../../logging/logger'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
 import * as Profiles from '../profiles/service'
@@ -26,6 +27,8 @@ import { getProviderRegistry } from './chat-runtime-provider-registry'
 import type { ChatRuntimeProvider, RuntimeSession, TokenUsage } from './runtime-provider-types'
 import type { StoredChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
 import { decodeChunk, encodeChunk } from './timeline-events'
+
+const chatLogger = createChildLogger({ module: 'chat-runtime' })
 
 // ── types ──
 
@@ -650,9 +653,10 @@ async function executeRun(activeRun: ActiveRun, input: {
   }
   let failurePayload: SerializedChatError['payload'] | undefined
   let finalChunk: UIMessageChunk = { type: 'finish', finishReason: 'stop' }
+  let streamEmittedError = false
 
   try {
-    persist(activeRun, { type: 'start' })
+    publishChunk(persist(activeRun, { type: 'start' }))
 
     for await (const chunk of activeRun.provider!.streamTurn({
       runtimeSession: activeRun.runtimeSession,
@@ -664,10 +668,16 @@ async function executeRun(activeRun: ActiveRun, input: {
       history: input.history,
     })) {
       accumulateDiagnostics(diagnostics, chunk)
-      persist(activeRun, chunk)
+      publishChunk(persist(activeRun, chunk))
+      if (chunk.type === 'error') {
+        streamEmittedError = true
+      }
     }
 
-    finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
+    // Skip diagnostic validation if the stream already emitted an error chunk
+    if (!streamEmittedError) {
+      finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
+    }
   }
   catch (error) {
     if (isAbortError(error)) {
@@ -681,8 +691,12 @@ async function executeRun(activeRun: ActiveRun, input: {
   }
 
   try {
-    const terminal = persist(activeRun, finalChunk)
-    publishChunk(terminal)
+    // Skip final persist if the stream already emitted (and persisted) an error chunk.
+    // The in-band error chunk was already persisted as terminal during the streaming loop.
+    if (!streamEmittedError) {
+      const terminal = persist(activeRun, finalChunk)
+      publishChunk(terminal)
+    }
 
     if (finalChunk.type === 'error') {
       const observabilityCode = resolveTurnFailureObservabilityCode(finalChunk)
@@ -747,7 +761,7 @@ async function executeRun(activeRun: ActiveRun, input: {
     }
   }
   catch (error) {
-    console.error('[chat-runtime] failed to persist run finalization (session may have been deleted):', error)
+    chatLogger.error('failed to persist run finalization (session may have been deleted)', { error })
   }
   finally {
     // Persist updated providerSessionId/state obtained during the run
@@ -812,10 +826,20 @@ function publishChunk(input: { stored: StoredChunk, terminal: boolean }): void {
   if (!subscribers) {
     return
   }
+  const dead: RunSubscriber[] = []
   for (const subscriber of subscribers) {
-    subscriber(input.stored, input.terminal)
+    try {
+      subscriber(input.stored, input.terminal)
+    }
+    catch {
+      // Subscriber stream was cancelled/closed — remove it
+      dead.push(subscriber)
+    }
   }
-  if (input.terminal) {
+  for (const s of dead) {
+    subscribers.delete(s)
+  }
+  if (input.terminal || subscribers.size === 0) {
     runSubscribers.delete(input.stored.runId)
   }
 }
