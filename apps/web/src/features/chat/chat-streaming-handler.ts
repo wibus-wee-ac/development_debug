@@ -4,6 +4,7 @@
 
 import type { UIMessage, UIMessageChunk } from 'ai'
 
+import type { StoredChunkEnvelope } from './sse-chat-transport'
 import { useChatStore } from '~/store/chat'
 
 // ── Types ───────────────────────────────────────────────────
@@ -58,14 +59,27 @@ export class ChatStreamingHandler {
   }
 
   /**
-   * Process a single chunk from the SSE stream.
-   * Each call produces an immutable update to the message in the store.
+   * Process a single chunk envelope from the SSE stream.
+   * Subagent chunks (parentToolCallId != null) are routed to the subagent map.
+   * Main chunks produce an immutable update to the message in the store.
    */
-  handleChunk(chunk: UIMessageChunk): void {
+  handleChunk(envelope: StoredChunkEnvelope): void {
+    const { chunk, parentToolCallId } = envelope
+
+    // Route subagent chunks to a separate collection
+    if (parentToolCallId) {
+      useChatStore.getState().appendSubagentChunk(this.messageId, parentToolCallId, chunk)
+      return
+    }
+
     switch (chunk.type) {
-      case 'text-start':
-        this.updateParts(parts => [...parts, { type: 'text' as const, text: '' }])
+      case 'text-start': {
+        const meta = (chunk as unknown as { providerMetadata?: unknown }).providerMetadata
+        const textPart: Record<string, unknown> = { type: 'text', text: '' }
+        if (meta) textPart.providerMetadata = meta
+        this.updateParts(parts => [...parts, textPart as unknown as UIMessage['parts'][number]])
         break
+      }
 
       case 'text-delta':
         this.updateParts((parts) => {
@@ -182,14 +196,18 @@ export class ChatStreamingHandler {
   }
 
   private handleToolChunk(chunk: UIMessageChunk): void {
-    const toolChunk = chunk as unknown as { toolCallId: string, toolName: string }
-    this.updateParts(parts => [...parts, {
+    const toolChunk = chunk as unknown as { toolCallId: string, toolName: string, providerMetadata?: Record<string, unknown> }
+    const toolPart: Record<string, unknown> = {
       type: 'dynamic-tool',
       toolCallId: toolChunk.toolCallId,
       toolName: toolChunk.toolName,
       state: 'input-streaming',
       input: undefined,
-    } as unknown as UIMessage['parts'][number]])
+    }
+    if (toolChunk.providerMetadata) {
+      toolPart.callProviderMetadata = toolChunk.providerMetadata
+    }
+    this.updateParts(parts => [...parts, toolPart as unknown as UIMessage['parts'][number]])
   }
 
   private scheduleToolUpdate(chunk: UIMessageChunk): void {

@@ -75,6 +75,8 @@ export const backendTimelineEvents = sqliteTable('backend_timeline_events', {
   schemaVersion: text('schema_version').notNull(),
   payloadJson: text('payload_json').notNull(),
   sourceJson: text('source_json').notNull(),
+  parentToolCallId: text('parent_tool_call_id'),
+  taskId: text('task_id'),
   createdAt: int('created_at').notNull(),
 })
 

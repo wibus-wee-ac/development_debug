@@ -54,17 +54,28 @@ type StoredChunkShape = {
   runId: string
   chatSessionId: string
   chunk: UIMessageChunk
+  parentToolCallId?: string | null
+  taskId?: string | null
   [key: string]: unknown
+}
+
+/**
+ * Envelope passed from the SSE stream to the streaming handler.
+ * Carries the chunk plus routing metadata from StoredChunk.
+ */
+export interface StoredChunkEnvelope {
+  chunk: UIMessageChunk
+  parentToolCallId?: string | null
 }
 
 export function buildChunkStreamFromResponse(
   response: Response,
   chatSessionId: string,
-): ReadableStream<UIMessageChunk> {
-  let ctrl: ReadableStreamDefaultController<UIMessageChunk> = null!
+): ReadableStream<StoredChunkEnvelope> {
+  let ctrl: ReadableStreamDefaultController<StoredChunkEnvelope> = null!
   let closed = false
 
-  const readable = new ReadableStream<UIMessageChunk>({
+  const readable = new ReadableStream<StoredChunkEnvelope>({
     start(controller) {
       ctrl = controller
     },
@@ -92,12 +103,12 @@ export function buildChunkStreamFromResponse(
     catch { /* Already closed */ }
   }
 
-  const safeEnqueue = (chunk: UIMessageChunk) => {
+  const safeEnqueue = (envelope: StoredChunkEnvelope) => {
     if (closed) {
       return
     }
     try {
-      ctrl.enqueue(chunk)
+      ctrl.enqueue(envelope)
     }
     catch { /* Stream closed by consumer */ }
   }
@@ -144,7 +155,7 @@ export function buildChunkStreamFromResponse(
             event: stored as any,
           })
 
-          safeEnqueue(stored.chunk)
+          safeEnqueue({ chunk: stored.chunk, parentToolCallId: stored.parentToolCallId })
 
           const chunkType = stored.chunk.type
           if (chunkType === 'finish' || chunkType === 'abort') {
@@ -209,6 +220,13 @@ export function createSseChatTransport(chatSessionId: string): SseChatTransportH
       }
 
       return buildChunkStreamFromResponse(res, chatSessionId)
+        .pipeThrough(new TransformStream<StoredChunkEnvelope, UIMessageChunk>({
+          transform(envelope, controller) {
+            // ChatTransport consumers don't handle subagent routing;
+            // pass all chunks through as plain UIMessageChunk.
+            controller.enqueue(envelope.chunk)
+          },
+        }))
     },
     reconnectToStream: async () => null,
   }

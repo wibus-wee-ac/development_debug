@@ -96,10 +96,14 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
 
   for (const chunk of chunks) {
     switch (chunk.type) {
-      case 'text-start':
-        currentTextPart = { type: 'text', text: '' }
-        message.parts.push(currentTextPart)
+      case 'text-start': {
+        const meta = (chunk as unknown as { providerMetadata?: Record<string, unknown> }).providerMetadata
+        currentTextPart = meta
+          ? { type: 'text', text: '', providerMetadata: meta } as unknown as { type: 'text', text: string }
+          : { type: 'text', text: '' }
+        message.parts.push(currentTextPart as UIMessage['parts'][number])
         break
+      }
       case 'text-delta':
         if (currentTextPart) {
           currentTextPart.text += (chunk as { delta: string }).delta
@@ -125,15 +129,21 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
       case 'reasoning-end':
         currentReasoningPart = null
         break
-      case 'tool-input-start':
-        message.parts.push({
+      case 'tool-input-start': {
+        const toolChunk = chunk as unknown as { toolCallId: string, toolName: string, providerMetadata?: Record<string, unknown> }
+        const toolPart: Record<string, unknown> = {
           type: 'dynamic-tool',
-          toolCallId: (chunk as { toolCallId: string }).toolCallId,
-          toolName: (chunk as { toolName: string }).toolName,
+          toolCallId: toolChunk.toolCallId,
+          toolName: toolChunk.toolName,
           state: 'input-streaming',
           input: undefined,
-        } as unknown as UIMessage['parts'][number])
+        }
+        if (toolChunk.providerMetadata) {
+          toolPart.callProviderMetadata = toolChunk.providerMetadata
+        }
+        message.parts.push(toolPart as unknown as UIMessage['parts'][number])
         break
+      }
       case 'tool-input-available': {
         const toolChunk = chunk as { toolCallId: string, input: unknown }
         const existing = findToolPart(message.parts, toolChunk.toolCallId)
@@ -180,7 +190,40 @@ function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
       parts: [{ type: 'text', text: group.userText ?? '' }],
     }
   }
-  return replayChunksToAssistantMessage(group.messageId, group.chunks.map(c => c.chunk))
+  // Filter out subagent chunks (parentToolCallId != null) for main message replay
+  const mainChunks = group.chunks
+    .filter(c => !c.parentToolCallId)
+    .map(c => c.chunk)
+  return replayChunksToAssistantMessage(group.messageId, mainChunks)
+}
+
+/**
+ * Extract subagent chunks from timeline groups, keyed by parentToolCallId.
+ * Returns a map: messageId -> Map<parentToolCallId, UIMessageChunk[]>
+ */
+function extractSubagentChunks(
+  groups: ChatTimelineGroupRow[],
+): Map<string, Map<string, UIMessageChunk[]>> {
+  const result = new Map<string, Map<string, UIMessageChunk[]>>()
+  for (const group of groups) {
+    if (group.role !== 'assistant') continue
+    for (const row of group.chunks) {
+      const parentId = row.parentToolCallId as string | null | undefined
+      if (!parentId) continue
+      let messageMap = result.get(group.messageId)
+      if (!messageMap) {
+        messageMap = new Map()
+        result.set(group.messageId, messageMap)
+      }
+      let chunks = messageMap.get(parentId)
+      if (!chunks) {
+        chunks = []
+        messageMap.set(parentId, chunks)
+      }
+      chunks.push(row.chunk)
+    }
+  }
+  return result
 }
 
 function derivePassiveStatus(rows: ChatTimelineGroupRow[]): PublicStatus {
@@ -285,6 +328,12 @@ export function useChatSession(chatSessionId: string | null, options?: {
     const projected = timelineQuery.data.map(projectTimelineGroup)
     useChatStore.getState().setMessages(chatSessionId, projected)
     useChatStore.getState().setPassiveStatus(chatSessionId, derivePassiveStatus(timelineQuery.data))
+
+    // Hydrate subagent chunks
+    const subagentMap = extractSubagentChunks(timelineQuery.data)
+    for (const [messageId, parentMap] of subagentMap) {
+      useChatStore.getState().setSubagentChunks(messageId, parentMap)
+    }
   }, [chatSessionId, timelineQuery.data])
 
   useEffect(() => {

@@ -7,6 +7,8 @@ const storedChunkSchema = t.Object({
   sequenceNumber: t.Number(),
   schemaVersion: t.String(),
   createdAt: t.Number(),
+  parentToolCallId: t.Union([t.String(), t.Null()]),
+  taskId: t.Union([t.String(), t.Null()]),
   chunk: t.Object({
     type: t.String(),
   }, { additionalProperties: true }),

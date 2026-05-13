@@ -9,7 +9,6 @@ export const approval = new Elysia({
 })
   .get('/', ({ query }) => {
     const result = Approval.listPending({ chatSessionId: query.chatSessionId })
-    console.warn(`[approval] GET /approvals/ → ${result.length} pending`)
     return result
   }, {
     detail: {
@@ -80,7 +79,6 @@ export const approval = new Elysia({
     detail: { summary: 'Stream approval events via SSE' },
   })
   .post('/:approvalId/respond', ({ params, body }) => {
-    console.warn(`[approval] POST /approvals/${params.approvalId}/respond decision=${body.decision} option=${body.selectedOptionId}`)
     Approval.respond(params.approvalId, body)
     return { ok: true as const }
   }, {

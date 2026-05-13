@@ -569,7 +569,7 @@ export function useRemoveContextRef() {
 // ── Session ↔ Issue Link ──────────────────────────────────────────────────────
 
 type LinkedIssueView = {
-  issue: KanbanIssue
+  issue?: KanbanIssue | null
   status?: KanbanStatus | null
   agentSession?: AgentSession | null
 }

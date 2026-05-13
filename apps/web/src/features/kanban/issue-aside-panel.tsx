@@ -35,6 +35,8 @@ interface IssueAsidePanelProps {
   workspaceId: string | null
 }
 
+type LinkedIssueData = NonNullable<ReturnType<typeof useLinkedIssue>['data']>
+
 export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps) {
   const { data: linked, isLoading } = useLinkedIssue(sessionId)
 
@@ -47,7 +49,10 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   }
 
   if (linked) {
-    return <LinkedIssueView sessionId={sessionId} linked={linked} workspaceId={workspaceId} />
+    if (linked.issue) {
+      return <LinkedIssueView sessionId={sessionId} linked={linked} issue={linked.issue} workspaceId={workspaceId} />
+    }
+    return <MissingLinkedIssueView sessionId={sessionId} />
   }
 
   return <EmptyState sessionId={sessionId} workspaceId={workspaceId} />
@@ -58,10 +63,12 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
 function LinkedIssueView({
   sessionId,
   linked,
+  issue,
   workspaceId,
 }: {
   sessionId: string
-  linked: NonNullable<ReturnType<typeof useLinkedIssue>['data']>
+  linked: LinkedIssueData
+  issue: NonNullable<LinkedIssueData['issue']>
   workspaceId: string | null
 }) {
   const { openTab } = useCradleNavigation()
@@ -79,8 +86,9 @@ function LinkedIssueView({
 
   const statusLabel = linked.status?.name ?? 'No status'
   const statusColor = linked.status?.color ?? undefined
-  const priorityLabel = linked.issue.priority === 'none' ? '' : linked.issue.priority
-  const labels: string[] = JSON.parse(linked.issue.labels || '[]')
+  const priority = issue.priority ?? 'none'
+  const priorityLabel = priority === 'none' ? '' : priority
+  const labels = parseIssueLabels(issue.labels)
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
@@ -94,7 +102,7 @@ function LinkedIssueView({
         >
           <CircleDotIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />
           <span className="text-[13px] font-medium text-foreground leading-snug text-pretty">
-            {linked.issue.title}
+            {issue.title}
           </span>
           <ArrowUpRightIcon className="mt-0.5 size-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />
         </button>
@@ -109,7 +117,7 @@ function LinkedIssueView({
 
         {priorityLabel && (
           <div className="flex items-center gap-2">
-            <PriorityIcon priority={linked.issue.priority} />
+            <PriorityIcon priority={priority} />
             <span className="text-muted-foreground capitalize">{priorityLabel}</span>
           </div>
         )}
@@ -174,6 +182,40 @@ function LinkedIssueView({
       </div>
     </div>
   )
+}
+
+function MissingLinkedIssueView({ sessionId }: { sessionId: string }) {
+  const unlinkMutation = useUnlinkIssue()
+
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+      <CircleDotIcon className="size-5 text-muted-foreground/20" />
+      <p className="text-[11px] text-muted-foreground">关联的 Issue 不存在</p>
+      <Button
+        variant="outline"
+        size="xs"
+        onClick={() => unlinkMutation.mutate(sessionId)}
+        disabled={unlinkMutation.isPending}
+      >
+        <UnlinkIcon data-icon="inline-start" />
+        解除关联
+      </Button>
+    </div>
+  )
+}
+
+function parseIssueLabels(labels: string | null | undefined): string[] {
+  if (!labels) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(labels)
+    return Array.isArray(parsed) ? parsed.filter((label): label is string => typeof label === 'string') : []
+  }
+  catch {
+    return []
+  }
 }
 
 // ── Empty State + Link Issue ──────────────────────────────────────────────────

@@ -2,13 +2,14 @@
 // Output: MessageBubble — animated message with parts rendering and action bar
 // Position: Core display component in chat feature for rendering individual messages
 
-import type { UIMessage } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Streamdown } from '@cradle/streamdown'
 
 import { cn } from '~/lib/cn'
+import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
 import { ReasoningBlock } from './reasoning-block'
@@ -21,18 +22,89 @@ const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0
 type AnyPart = any
 
 /**
- * Extract parentToolUseId from a part's providerMetadata or callProviderMetadata.
+ * Replay UIMessageChunks into renderable parts for subagent fold display.
  */
-function getParentToolUseId(part: AnyPart): string | null {
-  const meta = part.providerMetadata?.cradle ?? part.callProviderMetadata?.cradle
-  return meta?.parentToolUseId ?? null
-}
+function replayChunksToParts(chunks: UIMessageChunk[]): AnyPart[] {
+  const parts: AnyPart[] = []
+  let currentTextPart: { type: 'text', text: string } | null = null
+  let currentReasoningPart: { type: 'reasoning', text: string, state: string } | null = null
 
-/**
- * Collect all parts that belong to a specific parent tool use ID (i.e. subagent parts).
- */
-function getSubagentPartsForTool(parts: AnyPart[], toolCallId: string): AnyPart[] {
-  return parts.filter(p => getParentToolUseId(p) === toolCallId)
+  for (const chunk of chunks) {
+    switch (chunk.type) {
+      case 'text-start':
+        currentTextPart = { type: 'text', text: '' }
+        parts.push(currentTextPart)
+        break
+      case 'text-delta':
+        if (currentTextPart) {
+          currentTextPart.text += (chunk as { delta: string }).delta
+        }
+        else {
+          currentTextPart = { type: 'text', text: (chunk as { delta: string }).delta }
+          parts.push(currentTextPart)
+        }
+        break
+      case 'text-end':
+        currentTextPart = null
+        break
+      case 'reasoning-start':
+        currentReasoningPart = { type: 'reasoning', text: '', state: 'streaming' }
+        parts.push(currentReasoningPart)
+        break
+      case 'reasoning-delta':
+        if (currentReasoningPart) {
+          currentReasoningPart.text += (chunk as { delta: string }).delta
+        }
+        break
+      case 'reasoning-end':
+        if (currentReasoningPart) {
+          currentReasoningPart.state = 'done'
+        }
+        currentReasoningPart = null
+        break
+      case 'tool-input-start': {
+        const tc = chunk as unknown as { toolCallId: string, toolName: string }
+        parts.push({
+          type: 'dynamic-tool',
+          toolCallId: tc.toolCallId,
+          toolName: tc.toolName,
+          state: 'input-streaming',
+          input: undefined,
+        })
+        break
+      }
+      case 'tool-input-available': {
+        const tc = chunk as { toolCallId: string, input: unknown }
+        const existing = parts.find((p: AnyPart) => p.toolCallId === tc.toolCallId)
+        if (existing) {
+          existing.state = 'input-available'
+          existing.input = tc.input
+        }
+        break
+      }
+      case 'tool-output-available': {
+        const tc = chunk as { toolCallId: string, output: unknown }
+        const existing = parts.find((p: AnyPart) => p.toolCallId === tc.toolCallId)
+        if (existing) {
+          existing.state = 'output-available'
+          existing.output = tc.output
+        }
+        break
+      }
+      case 'tool-input-error': {
+        const tc = chunk as { toolCallId: string, input: unknown, errorText: string }
+        const existing = parts.find((p: AnyPart) => p.toolCallId === tc.toolCallId)
+        if (existing) {
+          existing.state = 'output-error'
+          existing.input = tc.input
+          existing.errorText = tc.errorText
+        }
+        break
+      }
+    }
+  }
+
+  return parts
 }
 
 /**
@@ -89,6 +161,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
+  const subagentMap = useChatStore(s => s.subagentChunksMap.get(message.id))
 
   // Only animate on the true first appearance — skip if the virtualizer is
   // remounting an item that simply scrolled out of view.
@@ -161,13 +234,6 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
               ? (part as { toolCallId: string }).toolCallId
               : `${message.id}-${part.type}-${i}`
 
-            // Detect subagent context via providerMetadata
-            const parentId = getParentToolUseId(part)
-            if (parentId) {
-              // Subagent parts are rendered in grouped folds below
-              return null
-            }
-
             if (part.type === 'text') {
               if (isUser) {
                 return (
@@ -213,8 +279,9 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
                 errorText?: string
               }
 
-              // Render subagent fold after the parent tool call
-              const subagentParts = getSubagentPartsForTool(message.parts, toolPart.toolCallId)
+              // Render subagent fold from chunks map
+              const subagentChunks = subagentMap?.get(toolPart.toolCallId)
+              const subagentParts = subagentChunks ? replayChunksToParts(subagentChunks) : []
 
               return (
                 <div key={key}>
@@ -229,7 +296,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
                   {subagentParts.length > 0 && (
                     <SubagentFold
                       itemCount={subagentParts.length}
-                      isStreaming={isStreaming && subagentParts.some(p => 'state' in p && p.state === 'streaming')}
+                      isStreaming={isStreaming && subagentChunks!.some(c => c.type === 'text-delta' || c.type === 'reasoning-delta' || c.type === 'tool-input-start')}
                     >
                       {subagentParts.map((sp, si) => renderSubagentPart(sp, `${toolPart.toolCallId}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor }))}
                     </SubagentFold>

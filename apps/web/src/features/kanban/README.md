@@ -21,4 +21,4 @@ Kanban UI files should track the current coss primitive API names such as `*Cont
 - **priority-icon.tsx**: Colored priority icon atom (none/low/medium/high/urgent)
 - **status-icon.tsx**: Colored circle status indicator atom
 - **priority-constants.ts**: Priority label map and sort order constants
-- **issue-aside-panel.tsx**: Issue info panel for chat RightAside — shows linked issue details, status, priority, "Open in Kanban" action, and "Link issue" picker for manual association
+- **issue-aside-panel.tsx**: Issue info panel for chat RightAside — shows linked issue details, handles stale links with missing issues, status, priority, "Open in Kanban" action, and "Link issue" picker for manual association

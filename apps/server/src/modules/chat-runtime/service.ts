@@ -28,7 +28,7 @@ import { estimateCost } from '../usage/pricing'
 import { getProviderRegistry } from './chat-runtime-provider-registry'
 import type { ChatRuntimeProvider, RuntimeSession, TokenUsage } from './runtime-provider-types'
 import type { StoredChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
-import { decodeChunk, encodeChunk } from './timeline-events'
+import { decodeChunk, encodeChunk, extractChunkContext } from './timeline-events'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
 
@@ -226,7 +226,8 @@ function persistChunk(input: {
 }): StoredChunk {
   return db().transaction((tx) => {
     const now = nowUnix()
-    const encoded = encodeChunk(input.chunk)
+    const ctx = extractChunkContext(input.chunk)
+    const encoded = encodeChunk(input.chunk, ctx)
     const last = tx.select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, input.runId)).orderBy(desc(backendTimelineEvents.sequenceNumber)).get()
     const sequenceNumber = (last?.sequenceNumber ?? -1) + 1
 
@@ -240,6 +241,8 @@ function persistChunk(input: {
         schemaVersion: encoded.schemaVersion,
         payloadJson: encoded.payloadJson,
         sourceJson: encoded.sourceJson,
+        parentToolCallId: encoded.parentToolCallId,
+        taskId: encoded.taskId,
         createdAt: now,
       })
       .returning()
@@ -286,6 +289,8 @@ function persistChunk(input: {
       sequenceNumber: row.sequenceNumber,
       schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
       createdAt: row.createdAt,
+      parentToolCallId: row.parentToolCallId,
+      taskId: row.taskId,
       chunk: decodeChunk({ payloadJson: row.payloadJson }),
     }
   })
@@ -313,6 +318,8 @@ function listRunChunks(runId: string): StoredChunk[] {
     sequenceNumber: row.sequenceNumber,
     schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
     createdAt: row.createdAt,
+    parentToolCallId: row.parentToolCallId,
+    taskId: row.taskId,
     chunk: decodeChunk({ payloadJson: row.payloadJson }),
   }))
 }
@@ -444,6 +451,8 @@ export function getMessageGroups(sessionId: string): ChatChunkGroup[] {
         sequenceNumber: row.sequenceNumber,
         schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
         createdAt: row.createdAt,
+        parentToolCallId: row.parentToolCallId,
+        taskId: row.taskId,
         chunk: decodeChunk({ payloadJson: row.payloadJson }),
       })
       chunksByRunId.set(row.runId, bucket)

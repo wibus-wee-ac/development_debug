@@ -2,7 +2,7 @@
 // Output: useChatStore — Zustand store managing per-session messages and per-message streaming state
 // Position: Core data layer for chat feature, replaces @ai-sdk/react useChat state management
 
-import type { UIMessage } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
@@ -29,6 +29,9 @@ interface SessionMeta {
 interface ChatState {
   // --- Message Data ---
   messagesMap: Map<string, UIMessage[]>
+
+  // --- Subagent Chunks (keyed by messageId -> parentToolCallId -> chunks) ---
+  subagentChunksMap: Map<string, Map<string, UIMessageChunk[]>>
 
   // --- Streaming State ---
   generatingMessageIds: Set<string>
@@ -58,6 +61,10 @@ interface ChatState {
   // --- Actions: Cleanup ---
   clearSession: (sessionId: string) => void
   clearError: (messageId: string) => void
+
+  // --- Actions: Subagent Chunks ---
+  appendSubagentChunk: (messageId: string, parentToolCallId: string, chunk: UIMessageChunk) => void
+  setSubagentChunks: (messageId: string, chunks: Map<string, UIMessageChunk[]>) => void
 }
 
 // ── Server Base ─────────────────────────────────────────────
@@ -72,6 +79,7 @@ export const useChatStore = create<ChatState>()(
   subscribeWithSelector(
     (set, get) => ({
       messagesMap: new Map(),
+      subagentChunksMap: new Map(),
       generatingMessageIds: new Set(),
       activeAbortControllers: new Map(),
       errorMap: new Map(),
@@ -229,6 +237,27 @@ export const useChatStore = create<ChatState>()(
           return { errorMap: nextErr }
         })
       },
+
+      // --- Subagent Chunks ---
+
+      appendSubagentChunk: (messageId, parentToolCallId, chunk) => {
+        set((state) => {
+          const next = new Map(state.subagentChunksMap)
+          const messageMap = new Map(next.get(messageId) ?? new Map())
+          const chunks = [...(messageMap.get(parentToolCallId) ?? []), chunk]
+          messageMap.set(parentToolCallId, chunks)
+          next.set(messageId, messageMap)
+          return { subagentChunksMap: next }
+        })
+      },
+
+      setSubagentChunks: (messageId, chunks) => {
+        set((state) => {
+          const next = new Map(state.subagentChunksMap)
+          next.set(messageId, chunks)
+          return { subagentChunksMap: next }
+        })
+      },
     }),
   ),
 )
@@ -288,6 +317,10 @@ export const chatSelectors = {
     }
     return meta.passiveStatus
   },
+
+  /** Subagent chunks for a message, keyed by parentToolCallId */
+  subagentChunks: (messageId: string) => (s: ChatState) =>
+    s.subagentChunksMap.get(messageId),
 }
 
 function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMessage[]): UIMessage[] {
