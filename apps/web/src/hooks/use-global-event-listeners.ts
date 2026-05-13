@@ -1,27 +1,13 @@
-// Input: unified signal bridge, chat activity hooks, session-activity store, layout store, and tab store
-// Output: useGlobalEventListeners hook — registers PTY, chat event listeners, and panel keyboard shortcuts
+// Input: layout store and tab store
+// Output: useGlobalEventListeners hook — registers panel keyboard shortcuts
 // Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
 
 import { useEffect } from 'react'
 
-import { useGlobalChatSessionActivityEvent } from '~/features/chat/use-chat-events'
-import { subscribe } from '~/lib/signal'
 import { useLayoutStore } from '~/store/layout'
-import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 
-/**
- * Check if a given session is currently the active tab.
- * Uses the store snapshot directly — safe to call from event handlers.
- */
-function isSessionActive(sessionId: string): boolean {
-  const { tabs, activeTabId } = useCradleTabStore.getState()
-  const active = tabs.find(t => t.id === activeTabId)
-  return active?.type === 'chat' && active.params.sessionId === sessionId
-}
-
 export function useGlobalEventListeners() {
-  const markUnread = useSessionActivityStore(s => s.markUnread)
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
 
@@ -94,44 +80,4 @@ export function useGlobalEventListeners() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [toggleBottomPanel, toggleAside])
-
-  // PTY notifications: OSC 9, exit, OSC 133;D
-  useEffect(() => {
-    const unsubNotify = subscribe('pty:notification', ({ sessionId, message }) => {
-      if (!isSessionActive(sessionId)) {
-        markUnread(sessionId)
-      }
-      if ('Notification' in window && Notification.permission === 'granted') {
-        void new Notification('Cradle', { body: message || '通知' })
-      }
-    })
-
-    const unsubExit = subscribe('pty:exit', ({ sessionId }) => {
-      if (!isSessionActive(sessionId)) {
-        markUnread(sessionId)
-      }
-    })
-
-    const unsubCommandFinish = subscribe('pty:command-finish', ({ sessionId }) => {
-      if (!isSessionActive(sessionId)) {
-        markUnread(sessionId)
-        if ('Notification' in window && Notification.permission === 'granted') {
-          void new Notification('Cradle', { body: '命令执行完成' })
-        }
-      }
-    })
-
-    return () => {
-      unsubNotify()
-      unsubExit()
-      unsubCommandFinish()
-    }
-  }, [markUnread])
-
-  // Chat terminal activity events: mark unread when a turn finishes in an inactive session
-  useGlobalChatSessionActivityEvent((data) => {
-    if (!isSessionActive(data.chatSessionId)) {
-      markUnread(data.chatSessionId)
-    }
-  })
 }

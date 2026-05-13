@@ -13,7 +13,6 @@ import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import { AnchoredToastProvider, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
-import { connectApprovalStream } from '~/features/approval/sse-approval-connector'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useLayoutStore } from '~/store/layout'
@@ -82,11 +81,6 @@ export function App() {
     mq.addEventListener('change', listener)
     return () => mq.removeEventListener('change', listener)
   }, [mode])
-
-  // Connect to approval SSE stream globally so approval events arrive regardless of active tab
-  useEffect(() => {
-    return connectApprovalStream()
-  }, [])
 
   return (
     <ToastProvider>

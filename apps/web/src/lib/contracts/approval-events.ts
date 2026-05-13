@@ -1,6 +1,6 @@
 // Input: Approval service types
-// Output: Approval push event payload types for IPC channels
-// Position: Shared types used by main (ApprovalService), preload (approvalPush), and renderer (approval hooks)
+// Output: Approval push event payload types for SSE/push channels
+// Position: Web app contract types for approval domain events
 
 export interface ApprovalRequestedPayload {
   id: string

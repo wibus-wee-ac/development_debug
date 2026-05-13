@@ -1,7 +1,3 @@
-// Input: useObservabilityDevtoolStore and shared cn helper
-// Output: ObservabilityEventsTable for mixed event/incident stream rows
-// Position: Renderer list component for the observability devtool pane
-
 import { cn } from '~/lib/cn'
 
 import { useObservabilityDevtoolStore } from './use-observability-events'
@@ -11,11 +7,20 @@ function formatTime(value: number): string {
 }
 
 export function ObservabilityEventsTable() {
-  const events = useObservabilityDevtoolStore(s => s.events)
+  const entries = useObservabilityDevtoolStore(s => s.entries)
   const selectedIndex = useObservabilityDevtoolStore(s => s.selectedIndex)
   const selectIndex = useObservabilityDevtoolStore(s => s.selectIndex)
+  const loading = useObservabilityDevtoolStore(s => s.loading)
 
-  if (events.length === 0) {
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
+        Loading…
+      </div>
+    )
+  }
+
+  if (entries.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
         No observability events yet
@@ -38,7 +43,7 @@ export function ObservabilityEventsTable() {
           </tr>
         </thead>
         <tbody>
-          {events.map((entry, index) => {
+          {entries.map((entry, index) => {
             const timestamp = entry.kind === 'event'
               ? entry.payload.recordedAt
               : entry.payload.lastRecordedAt

@@ -364,6 +364,10 @@ Then('聊天中不应出现错误提示', async function (this: CradleWorld) {
 Then('聊天流应处于进行中', async function (this: CradleWorld) {
   await waitForChatStatus(this, 'streaming')
   await expect(this.page.locator('[data-testid="chat-stop-btn"]')).toBeVisible({ timeout: 10_000 })
+  // Wait for the assistant bubble to have some streamed content before proceeding.
+  // This prevents clicking stop before any text arrives from the LLM.
+  const assistantBubble = this.page.locator('[data-testid="message-bubble-assistant"]').last()
+  await expect(assistantBubble).toBeVisible({ timeout: CHAT_STATUS_TIMEOUT })
 })
 
 When('我点击停止生成按钮', async function (this: CradleWorld) {
@@ -470,6 +474,7 @@ Then('最后一条 AI 消息的 Reasoning 应包含{string}', async function (th
 })
 
 Then('最后一条 AI 消息应显示名为{string}的 Tool Call', async function (this: CradleWorld, toolName: string) {
+  await waitForChatStatus(this, 'idle')
   await getLastAssistantToolCallBlock(this, toolName)
 })
 

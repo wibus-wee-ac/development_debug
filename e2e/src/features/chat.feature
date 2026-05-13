@@ -171,4 +171,3 @@
     而且 最后一条 AI 消息应显示名为"read_file"的 Tool Call
     当 我展开最后一条 AI 消息中名为"read_file"的 Tool Call
     那么 最后一条 AI 消息中名为"read_file"的 Tool Call 输入应包含"demo.txt"
-    而且 最后一条 AI 消息中名为"read_file"的 Tool Call 输出应包含"Tool call emitted without runtime execution"

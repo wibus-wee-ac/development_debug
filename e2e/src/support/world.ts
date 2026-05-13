@@ -126,6 +126,7 @@ export class CradleWorld extends World {
         config: {
           baseUrl: this.mockLlmBaseUrl,
           model: 'mock-model',
+          apiMode: 'responses',
         },
         credentialRef: null,
       }),

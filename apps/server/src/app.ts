@@ -9,6 +9,7 @@ import { Elysia } from 'elysia'
 import { createErrorHandler } from './http/error-mapping'
 import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
+import { createRequestLoggerPlugin } from './http/request-logger'
 import { shutdownInfra } from './infra'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
@@ -42,6 +43,7 @@ export function createServerApp() {
 
   app.use(cors())
   app.use(createRequestIdPlugin())
+  app.use(createRequestLoggerPlugin())
   app.onError(createErrorHandler())
   app.use(createOpenApiPlugin())
   app.use(health)

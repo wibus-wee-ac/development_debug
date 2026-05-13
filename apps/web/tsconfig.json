@@ -11,8 +11,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "paths": {
-      "~/*": ["src/*"],
-      "@shared/*": ["../../src/shared/*"]
+      "~/*": ["src/*"]
     },
     "types": ["vite/client"],
     "allowImportingTsExtensions": true,

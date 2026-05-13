@@ -10,7 +10,7 @@ import { ServerConfig } from './config/server-config'
 import { DatabaseConfig } from './database/database.config'
 import { DbProvider } from './database/database.provider'
 import { MigrationRunner } from './database/migration-runner'
-import { Logger } from './logging/logger'
+import { getLogger as getLoggerFromModule, Logger } from './logging/logger'
 
 let _serverConfig: ServerConfig | undefined
 let _logger: Logger | undefined
@@ -22,7 +22,7 @@ export function getServerConfig(): ServerConfigValues {
 }
 
 export function getLogger(): Logger {
-  _logger ??= new Logger(_serverConfig ?? (_serverConfig = new ServerConfig()))
+  _logger ??= getLoggerFromModule()
   return _logger
 }
 

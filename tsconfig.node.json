@@ -6,13 +6,11 @@
     "baseUrl": ".",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "paths": {
-      "@shared/*": ["src/shared/*"]
-    },
+    "paths": {},
     "types": ["node"],
     "strict": true,
     "noImplicitAny": true,
     "esModuleInterop": true
   },
-  "include": ["src/shared/**/*", "src/cli/**/*"]
+  "include": ["src/cli/**/*"]
 }

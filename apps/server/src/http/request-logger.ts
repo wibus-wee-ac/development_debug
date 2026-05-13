@@ -1,0 +1,52 @@
+// Input: incoming HTTP requests
+// Output: structured JSON log line per request with timing
+// Position: apps/server/src/http request logger plugin
+
+import { Elysia } from 'elysia'
+
+import { createChildLogger } from '../logging/logger'
+import { record } from '../modules/observability/service'
+import { REQUEST_ID_HEADER } from './request-id'
+
+const SLOW_REQUEST_THRESHOLD_MS = 3000
+
+export function createRequestLoggerPlugin() {
+  return new Elysia({ name: 'cradle.http.request-logger' })
+    .derive(({ request, set }) => {
+      const requestId = set.headers[REQUEST_ID_HEADER] as string
+        ?? request.headers.get(REQUEST_ID_HEADER)
+        ?? 'unknown'
+      return {
+        requestLogger: createChildLogger({ requestId }),
+        requestStartTime: performance.now(),
+      }
+    })
+    .onAfterResponse(({ request, set, requestLogger, requestStartTime }) => {
+      const duration = Math.round(performance.now() - (requestStartTime ?? 0))
+      const url = new URL(request.url)
+      const status = typeof set.status === 'number' ? set.status : 200
+
+      requestLogger.info('request completed', {
+        method: request.method,
+        path: url.pathname,
+        status,
+        durationMs: duration,
+      })
+
+      if (duration > SLOW_REQUEST_THRESHOLD_MS) {
+        record({
+          source: 'http',
+          code: 'http.slow_request',
+          severity: 'warn',
+          category: 'performance',
+          message: `Slow request: ${request.method} ${url.pathname} took ${duration}ms`,
+          attrs: {
+            method: request.method,
+            path: url.pathname,
+            status,
+            durationMs: duration,
+          },
+        })
+      }
+    })
+}

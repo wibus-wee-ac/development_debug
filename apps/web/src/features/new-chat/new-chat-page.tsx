@@ -22,7 +22,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { postChatSessionsBySessionIdResponse, postSessions } from '~/api-gen/sdk.gen'
+import { postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import {
   Combobox,
@@ -278,15 +278,18 @@ export function NewChatPage() {
       if (!session?.id) {
         return
       }
-      await postChatSessionsBySessionIdResponse({
-        path: { sessionId: session.id },
-        body: {
+      // Trigger the response stream — wait for headers only so the server creates
+      // the run before we navigate, but don't block on the SSE body.
+      const serverBase = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+      const res = await fetch(`${serverBase}/chat/sessions/${session.id}/response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           text: input.trim(),
           modelId: effectiveModel?.id ?? undefined,
           thinkingEffort: thinkingEffort ?? undefined,
-        },
+        }),
       })
-
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(selectedWorkspaceId) })
       void openTab('chat', { sessionId: session.id })
     }

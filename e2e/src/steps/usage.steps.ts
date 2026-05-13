@@ -60,7 +60,8 @@ Then('Usage Dashboard 应显示以下关键值:', async function (this: CradleWo
 })
 
 Then('Usage Dashboard Heatmap 今天的提示应显示{string}', async function (this: CradleWorld, expectedMetrics: string) {
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const dashboard = usageDashboard(this)
   const todayCell = dashboard.locator(`[data-testid="usage-heatmap-cell"][data-date="${today}"][data-has-usage="true"]`).first()
 

@@ -33,6 +33,7 @@
     "hono": "4.11.9",
     "ignore": "^7.0.5",
     "js-yaml": "^4.1.0",
+    "pino": "^10.3.1",
     "reflect-metadata": "^0.2.2",
     "repomix": "^1.14.0",
     "simple-git": "^3.28.0",

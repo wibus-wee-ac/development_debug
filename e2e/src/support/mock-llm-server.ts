@@ -157,6 +157,11 @@ export class MockLlmServer {
       return
     }
 
+    if (req.method === 'POST' && url.endsWith('/responses')) {
+      this.handleResponses(req, res)
+      return
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' })
     res.end(JSON.stringify({ error: 'not found' }))
   }
@@ -402,5 +407,175 @@ export class MockLlmServer {
 
   private delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  // ── Responses API (POST /v1/responses) ────────────────────────────────────
+
+  private handleResponses(req: IncomingMessage, res: ServerResponse): void {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8')
+      this.recordRequest(req, body)
+      this.turnCount++
+      const responseText = this.getResponseTextForTurn(this.turnCount)
+
+      if (this.failureMode === 'http-error') {
+        res.writeHead(this.errorStatusCode, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: { message: this.errorMessage } }))
+        return
+      }
+
+      // Parse body to check for tool results in input
+      let parsedBody: { input?: Array<{ type?: string }> } | null = null
+      try {
+        parsedBody = JSON.parse(body)
+      }
+      catch { /* ignore */ }
+
+      const hasToolResults = parsedBody?.input?.some(i => i.type === 'function_call_output') ?? false
+
+      if (this.toolCalls.length > 0 && !hasToolResults) {
+        void this.streamResponsesToolCall(res)
+      }
+      else {
+        void this.streamResponsesText(res, responseText)
+      }
+    })
+  }
+
+  private async streamResponsesText(res: ServerResponse, responseText: string): Promise<void> {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    })
+
+    const responseId = `resp-mock-${Date.now()}`
+    const model = 'mock-model'
+    const created = Math.floor(Date.now() / 1000)
+
+    // response.created
+    this.writeSSE(res, { type: 'response.created', response: { id: responseId, created_at: created, model } })
+    await this.delay(this.chunkDelay)
+
+    // Reasoning (if configured)
+    if (this.reasoningText) {
+      const reasoningId = `rs-${Date.now()}`
+      // output_item.added (reasoning)
+      this.writeSSE(res, { type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: reasoningId } })
+      await this.delay(this.chunkDelay)
+
+      // reasoning_summary_part.added (index 0 is implied by output_item.added)
+      // reasoning_summary_text.delta
+      this.writeSSE(res, { type: 'response.reasoning_summary_text.delta', item_id: reasoningId, summary_index: 0, delta: this.reasoningText })
+      await this.delay(this.chunkDelay)
+
+      // reasoning_summary_part.done
+      this.writeSSE(res, { type: 'response.reasoning_summary_part.done', item_id: reasoningId, summary_index: 0 })
+      await this.delay(this.chunkDelay)
+
+      // output_item.done (reasoning)
+      this.writeSSE(res, { type: 'response.output_item.done', output_index: 0, item: { type: 'reasoning', id: reasoningId } })
+      await this.delay(this.chunkDelay)
+    }
+
+    // Message output item
+    const msgId = `msg-${Date.now()}`
+    const outputIndex = this.reasoningText ? 1 : 0
+    this.writeSSE(res, { type: 'response.output_item.added', output_index: outputIndex, item: { type: 'message', id: msgId } })
+    await this.delay(this.chunkDelay)
+
+    // Stream text deltas word by word
+    const words = responseText.split(' ')
+    for (let i = 0; i < words.length; i++) {
+      const delta = i === 0 ? words[i] : ` ${words[i]}`
+      this.writeSSE(res, { type: 'response.output_text.delta', item_id: msgId, delta })
+      await this.delay(this.chunkDelay)
+    }
+
+    // output_item.done (message)
+    this.writeSSE(res, { type: 'response.output_item.done', output_index: outputIndex, item: { type: 'message', id: msgId } })
+    await this.delay(this.chunkDelay)
+
+    // response.completed
+    this.writeSSE(res, {
+      type: 'response.completed',
+      response: {
+        usage: {
+          input_tokens: 10,
+          output_tokens: words.length,
+          output_tokens_details: { reasoning_tokens: this.reasoningText ? this.reasoningText.length : 0 },
+        },
+      },
+    })
+    res.end()
+  }
+
+  private async streamResponsesToolCall(res: ServerResponse): Promise<void> {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    })
+
+    const responseId = `resp-mock-${Date.now()}`
+    const model = 'mock-model'
+    const created = Math.floor(Date.now() / 1000)
+
+    // response.created
+    this.writeSSE(res, { type: 'response.created', response: { id: responseId, created_at: created, model } })
+    await this.delay(this.chunkDelay)
+
+    // Emit each tool call as a function_call item
+    for (let i = 0; i < this.toolCalls.length; i++) {
+      const tc = this.toolCalls[i]!
+      const itemId = `fc-${i}-${Date.now()}`
+      // output_item.added
+      this.writeSSE(res, {
+        type: 'response.output_item.added',
+        output_index: i,
+        item: {
+          type: 'function_call',
+          id: itemId,
+          call_id: tc.id,
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        },
+      })
+      await this.delay(this.chunkDelay)
+
+      // output_item.done
+      this.writeSSE(res, {
+        type: 'response.output_item.done',
+        output_index: i,
+        item: {
+          type: 'function_call',
+          id: itemId,
+          call_id: tc.id,
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+          status: 'completed',
+        },
+      })
+      await this.delay(this.chunkDelay)
+    }
+
+    // response.completed
+    this.writeSSE(res, {
+      type: 'response.completed',
+      response: {
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          output_tokens_details: { reasoning_tokens: 0 },
+        },
+      },
+    })
+    res.end()
+  }
+
+  private writeSSE(res: ServerResponse, data: Record<string, unknown>): void {
+    res.write(`data: ${JSON.stringify(data)}\n\n`)
   }
 }

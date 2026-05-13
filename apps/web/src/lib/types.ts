@@ -24,10 +24,6 @@ export type {
   Workspace,
 } from '@cradle/db'
 
-// ── Shared event types ──────────────────────────────────────────────────────
-
-export type { ChatTimelineEventPayload } from '@shared/chat-events'
-
 // ── Provider / agent-runtime types ─────────────────────────────────────────
 
 export type ProviderKind = 'acp-chat' | 'cli-tui' | 'openai-compatible' | 'codex' | 'claude-agent'

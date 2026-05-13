@@ -12,7 +12,7 @@ shared timeline projector.
 
 - **use-chat-session.ts**: Hook wrapping `useChat` — uses HTTP API for session timeline as the sole hydration read model, locally projects `UIMessage`, passively observes timeline signal for reload/recovery, syncs stop to HTTP abort, and exposes `{ messages, status, error, sendMessage, stop, isReady }`
 - **sse-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to SSE — sends messages via HTTP API + subscribes to SSE timeline events; renderer locally projects events into `UIMessageChunk[]` for AI SDK
-- **use-chat-events.ts**: Unified chat event bridge — renderer-side session watch for timeline consumers, plus global terminal activity dispatch via `useGlobalChatSessionActivityEvent`
+- **use-chat-events.ts**: Unified chat event bridge — renderer-side session watch for timeline consumers via `useChatTimelineEvent`
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls
 - **composer.tsx**: Rich input with @ path autocomplete, inline send/stop toggle, fzf fuzzy file search
 - **mention-panel.tsx**: Fuzzy file picker above composer using fzf with highlighted matches

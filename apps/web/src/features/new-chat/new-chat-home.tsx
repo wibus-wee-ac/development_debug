@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { postChatSessionsBySessionIdResponse, postSessions } from '~/api-gen/sdk.gen'
+import { postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import {
   Combobox,
@@ -154,13 +154,15 @@ export function NewChatHome({ preferredWorkspaceId = null, onWorkspaceChange }: 
         if (!session?.id) {
           return
         }
-        await postChatSessionsBySessionIdResponse({
-          path: { sessionId: session.id },
-          body: {
+        const serverBase = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+        const res = await fetch(`${serverBase}/chat/sessions/${session.id}/response`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             text,
             modelId: selectedModel?.id ?? undefined,
             thinkingEffort: thinkingEffort ?? undefined,
-          },
+          }),
         })
 
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })

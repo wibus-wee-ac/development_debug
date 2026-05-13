@@ -4,9 +4,9 @@
 
 export type ObservabilitySeverity = 'debug' | 'info' | 'warn' | 'error' | 'fatal'
 
-export type ObservabilityCategory = 'chat' | 'provider' | 'event-bus' | 'ipc' | 'system'
+export type ObservabilityCategory = 'chat' | 'provider' | 'event-bus' | 'ipc' | 'system' | 'performance'
 
-export type ObservabilitySource = 'chat-engine' | 'domain-event-bus' | 'ipc' | 'provider' | 'renderer'
+export type ObservabilitySource = 'chat-engine' | 'domain-event-bus' | 'ipc' | 'provider' | 'renderer' | 'http'
 
 export interface ObservabilityEvent {
   id: string

@@ -4,9 +4,45 @@
 
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 
-import { publish } from '~/lib/signal'
-
 const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+
+// ── Per-session run event emitter ───────────────────────────
+
+/** Payload shape for chat timeline / run lifecycle events. */
+export interface ChatTimelineEventPayload {
+  chatSessionId: string
+  messageId: string
+  event: Record<string, unknown>
+}
+
+type RunEventHandler = (data: ChatTimelineEventPayload) => void
+
+const sessionHandlers = new Map<string, Set<RunEventHandler>>()
+
+/**
+ * Subscribe to chat run events for a specific session.
+ * Returns an unsubscribe function.
+ */
+export function onChatRunEvent(sessionId: string, handler: RunEventHandler): () => void {
+  let handlers = sessionHandlers.get(sessionId)
+  if (!handlers) {
+    handlers = new Set()
+    sessionHandlers.set(sessionId, handlers)
+  }
+  handlers.add(handler)
+  return () => {
+    handlers!.delete(handler)
+    if (handlers!.size === 0) sessionHandlers.delete(sessionId)
+  }
+}
+
+function emitRunEvent(data: ChatTimelineEventPayload): void {
+  const handlers = sessionHandlers.get(data.chatSessionId)
+  if (!handlers) return
+  for (const fn of handlers) {
+    fn(data)
+  }
+}
 
 export interface SseChatTransportHandle {
   transport: ChatTransport<UIMessage>
@@ -101,7 +137,7 @@ function buildChunkStreamFromResponse(
           }
           catch { continue }
 
-          publish('chat:timeline-event', {
+          emitRunEvent({
             chatSessionId,
             messageId: stored.runId,
             // eslint-disable-next-line ts/no-explicit-any

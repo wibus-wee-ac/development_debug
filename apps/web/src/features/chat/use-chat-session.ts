@@ -7,8 +7,7 @@ import type { ChatStatus, UIMessage, UIMessageChunk } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { SseChatTransportHandle } from './sse-chat-transport'
-import { createSseChatTransport } from './sse-chat-transport'
-import { useChatTimelineEvent } from './use-chat-events'
+import { createSseChatTransport, onChatRunEvent } from './sse-chat-transport'
 
 const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
 
@@ -162,6 +161,17 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         if (existingTool) {
           existingTool.state = 'input-available'
           existingTool.input = chunk.input
+        }
+        break
+      }
+      case 'tool-input-error': {
+        const existingTool = message.parts.find(
+          p => (p.type === 'dynamic-tool') && (p as any).toolCallId === (chunk as any).toolCallId,
+        ) as any
+        if (existingTool) {
+          existingTool.state = 'output-error'
+          existingTool.input = (chunk as any).input
+          existingTool.errorText = (chunk as any).errorText
         }
         break
       }
@@ -343,46 +353,49 @@ export function useChatSession(chatSessionId: string | null, options?: {
   // Covers the passive observer case (reload, secondary window, or route remount).
   // When this renderer is not the one actively assembling the stream, we mirror
   // the persisted DB snapshot on response events so the UI stays accurate.
-  useChatTimelineEvent(chatSessionId, (data) => {
-    const currentStatus = chatRef.current.status
+  useEffect(() => {
+    if (!chatSessionId) return
+    return onChatRunEvent(chatSessionId, (data) => {
+      const currentStatus = chatRef.current.status
 
-    // Always capture run.failed error text regardless of stream state.
-    // AI SDK may not reliably surface the error message from controller.error(),
-    // so we preserve the backend error in snapshotState as a fallback.
-    if (data.event.type === 'run.failed') {
-      wasLocallyDrivingRef.current = false
-      const error = (typeof data.event.error === 'string' ? data.event.error : undefined)
-      setSnapshotState({ status: 'error', error })
-      if (currentStatus !== 'streaming' && currentStatus !== 'submitted') {
-        scheduleSnapshotSync(0)
-      }
-      return
-    }
-
-    if (currentStatus === 'streaming' || currentStatus === 'submitted') {
-      // Locally driving — useChat is already assembling this turn
-      return
-    }
-
-    switch (data.event.type) {
-      case 'run.completed':
-      case 'run.aborted': {
+      // Always capture run.failed error text regardless of stream state.
+      // AI SDK may not reliably surface the error message from controller.error(),
+      // so we preserve the backend error in snapshotState as a fallback.
+      if (data.event.type === 'run.failed') {
         wasLocallyDrivingRef.current = false
-        setSnapshotState({ status: 'idle' })
-        scheduleSnapshotSync(0)
+        const error = (typeof data.event.error === 'string' ? data.event.error : undefined)
+        setSnapshotState({ status: 'error', error })
+        if (currentStatus !== 'streaming' && currentStatus !== 'submitted') {
+          scheduleSnapshotSync(0)
+        }
         return
       }
-      default: {
-        // If we were locally driving and the AI SDK has already finished,
-        // ignore late-arriving SSE events that would flip us back to streaming.
-        if (wasLocallyDrivingRef.current) {
+
+      if (currentStatus === 'streaming' || currentStatus === 'submitted') {
+        // Locally driving — useChat is already assembling this turn
+        return
+      }
+
+      switch (data.event.type) {
+        case 'run.completed':
+        case 'run.aborted': {
+          wasLocallyDrivingRef.current = false
+          setSnapshotState({ status: 'idle' })
+          scheduleSnapshotSync(0)
           return
         }
-        setSnapshotState({ status: 'streaming' })
-        scheduleSnapshotSync()
+        default: {
+          // If we were locally driving and the AI SDK has already finished,
+          // ignore late-arriving SSE events that would flip us back to streaming.
+          if (wasLocallyDrivingRef.current) {
+            return
+          }
+          setSnapshotState({ status: 'streaming' })
+          scheduleSnapshotSync()
+        }
       }
-    }
-  })
+    })
+  }, [chatSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!chat.error) {

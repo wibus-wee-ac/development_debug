@@ -1,8 +1,10 @@
 import { createServerApp } from './app'
 import { loadServerConfig } from './config/server-config'
+import { getLogger } from './logging/logger'
 
 async function bootstrap() {
   const config = loadServerConfig()
+  const logger = getLogger()
 
   const app = createServerApp()
 
@@ -11,10 +13,10 @@ async function bootstrap() {
     hostname: config.host,
   })
 
-  console.warn(`[cradle-server] listening on http://${config.host}:${config.port}`)
+  logger.info(`listening on http://${config.host}:${config.port}`)
 }
 
 bootstrap().catch((err) => {
-  console.error('[cradle-server] fatal bootstrap error:', err)
+  getLogger().error('fatal bootstrap error', { error: err })
   process.exit(1)
 })

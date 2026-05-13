@@ -3,6 +3,7 @@ import * as React from 'react'
 import ReactDOM from 'react-dom/client'
 
 import { App } from './app'
+import { initPerfMonitor } from './lib/perf-monitor'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,3 +21,6 @@ ReactDOM.createRoot(document.getElementById('app')!).render(
     </QueryClientProvider>
   </React.StrictMode>,
 )
+
+// Non-blocking: initialize performance monitoring after render
+queueMicrotask(initPerfMonitor)

@@ -6,6 +6,7 @@ import type { ErrorHandler } from 'elysia'
 import { Elysia } from 'elysia'
 
 import { AppError } from '../errors/app-error'
+import { getLogger } from '../logging/logger'
 import { normalizeValidationError } from './validation'
 
 function createJsonErrorResponse(
@@ -53,7 +54,7 @@ export function createErrorHandler(): ErrorHandler {
       })
     }
 
-    console.error('[cradle-server] unhandled error:', error)
+    getLogger().error('unhandled error', { error })
     return createJsonErrorResponse(set.headers, 500, {
       code: 'internal_server_error',
       message: 'Internal Server Error',

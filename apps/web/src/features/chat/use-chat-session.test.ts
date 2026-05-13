@@ -17,7 +17,10 @@ vi.mock('@ai-sdk/react', () => ({
   }),
 }))
 
-vi.mock('./use-chat-events', () => ({ useChatTimelineEvent: vi.fn() }))
+vi.mock('./sse-chat-transport', () => ({
+  createSseChatTransport: vi.fn(),
+  onChatRunEvent: vi.fn(() => vi.fn()),
+}))
 
 describe('derivePassiveChatState', () => {
   it('keeps the chat in streaming state when a persisted draft is still streaming', () => {

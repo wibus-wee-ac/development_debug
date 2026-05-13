@@ -5,11 +5,12 @@
 import type {
   ApprovalRequestedPayload,
   ApprovalResolvedPayload,
-} from '@shared/approval-events'
+} from '~/lib/contracts/approval-events'
 import { useCallback, useSyncExternalStore } from 'react'
 
 import { getApprovals, postApprovalsByApprovalIdRespond } from '~/api-gen'
-import { subscribe as subscribeSignal } from '~/lib/signal'
+
+const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
 
 // ── Module-level state ──────────────────────────────────────
 
@@ -45,16 +46,27 @@ function ensureSubscription(): void {
   }
   _subscribed = true
 
-  // Signal bus subscriptions (fed by SSE connector)
-  subscribeSignal('approval:requested', (payload: ApprovalRequestedPayload) => {
-    if (!pendingApprovals.some(a => a.id === payload.id)) {
-      pendingApprovals = [...pendingApprovals, payload]
+  // Direct SSE connection to approval stream
+  const es = new EventSource(`${SERVER_BASE}/approvals/stream`)
+
+  es.addEventListener('approval.requested', (ev: MessageEvent) => {
+    try {
+      const payload = JSON.parse(ev.data) as ApprovalRequestedPayload
+      if (!pendingApprovals.some(a => a.id === payload.id)) {
+        pendingApprovals = [...pendingApprovals, payload]
+        notify()
+      }
+    }
+    catch { /* malformed JSON — skip */ }
+  })
+
+  es.addEventListener('approval.resolved', (ev: MessageEvent) => {
+    try {
+      const payload = JSON.parse(ev.data) as ApprovalResolvedPayload
+      pendingApprovals = pendingApprovals.filter(a => a.id !== payload.approvalId)
       notify()
     }
-  })
-  subscribeSignal('approval:resolved', (payload: ApprovalResolvedPayload) => {
-    pendingApprovals = pendingApprovals.filter(a => a.id !== payload.approvalId)
-    notify()
+    catch { /* malformed JSON — skip */ }
   })
 
   // Polling fallback — checks every 2s regardless of SSE status
