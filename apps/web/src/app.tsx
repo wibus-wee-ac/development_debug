@@ -13,6 +13,7 @@ import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import { AnchoredToastProvider, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
+import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useLayoutStore } from '~/store/layout'
@@ -87,7 +88,8 @@ export function App() {
       <AnchoredToastProvider>
         <TooltipProvider>
           <ShortcutProvider>
-            <LayoutSlotsProvider>
+            <DirectoryPickerProvider>
+              <LayoutSlotsProvider>
               <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
                 <ActiveSlotSync />
                 <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
@@ -105,6 +107,7 @@ export function App() {
                 </div>
               </TabsProvider>
             </LayoutSlotsProvider>
+            </DirectoryPickerProvider>
           </ShortcutProvider>
         </TooltipProvider>
       </AnchoredToastProvider>

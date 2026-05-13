@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import type { IWorldOptions } from '@cucumber/cucumber'
 import { setWorldConstructor, World } from '@cucumber/cucumber'
 import type { Browser, BrowserContext, Page } from '@playwright/test'
-import { chromium } from '@playwright/test'
+import { chromium, expect } from '@playwright/test'
 
 import type { MockLlmFailureMode, MockToolCall } from './mock-llm-server'
 import { MockLlmServer } from './mock-llm-server'
@@ -93,6 +93,32 @@ export class CradleWorld extends World {
 
   createTempWorkspaceDir(prefix = 'cradle-e2e-ws-'): string {
     return mkdtempSync(join(tmpdir(), prefix))
+  }
+
+  /**
+   * Selects a directory via the DirectoryBrowserDialog UI.
+   * Call this AFTER clicking the button that opens the dialog.
+   * Double-clicks the breadcrumb to enter edit mode, types the path, presses Enter, then clicks confirm.
+   */
+  async selectDirectoryInBrowser(dirPath: string): Promise<void> {
+    const dialog = this.page.locator('[data-testid="directory-browser-dialog"]')
+    await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+    // Double-click the breadcrumb bar to enter edit mode
+    const breadcrumbBar = dialog.locator('[data-testid="directory-browser-breadcrumb"]')
+    await breadcrumbBar.dblclick()
+
+    // Fill the path input that appears
+    const pathInput = dialog.locator('[data-testid="directory-browser-path-input"]')
+    await expect(pathInput).toBeVisible({ timeout: 5_000 })
+    await pathInput.fill(dirPath)
+    await pathInput.press('Enter')
+
+    // Wait for the confirm button to become enabled (loading done)
+    await expect(dialog.locator('[data-testid="directory-browser-confirm"]')).toBeEnabled({ timeout: 10_000 })
+
+    await dialog.locator('[data-testid="directory-browser-confirm"]').click()
+    await expect(dialog).toBeHidden({ timeout: 5_000 })
   }
 
   pushConsoleMessage(message: string): void {

@@ -23,7 +23,8 @@
     "test:server": "pnpm --filter @cradle/server test",
     "generate:web": "pnpm --filter @cradle/web generate",
     "cli": "pnpm --filter @cradle/cli cradle",
-    "gen:cli": "pnpm --filter @cradle/cli gen:cli"
+    "gen:cli": "pnpm --filter @cradle/cli gen:cli",
+    "knip": "knip"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.19.0",
@@ -131,6 +132,7 @@
     "eslint": "^9.39.1",
     "eslint-config-hyoban": "^7.0.3",
     "jsdom": "^29.0.2",
+    "knip": "^6.13.1",
     "prettier": "^3.7.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",

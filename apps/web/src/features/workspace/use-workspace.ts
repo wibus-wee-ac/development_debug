@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 
 import { deleteWorkspacesById, getWorkspaces, postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
-import { selectDirectory } from '~/lib/directory-picker'
+import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import type { Workspace } from '~/lib/types'
 
 export const WORKSPACES_QUERY_KEY = ['workspaces'] as const
@@ -26,11 +26,12 @@ export function useWorkspaces() {
 export function useAddWorkspace() {
   const queryClient = useQueryClient()
   const [adding, setAdding] = useState(false)
+  const { selectDirectory } = useDirectoryPicker()
 
   const addFromPicker = useCallback(async () => {
     setAdding(true)
     try {
-      const dirPath = await selectDirectory()
+      const dirPath = await selectDirectory({ title: '添加项目', description: '选择一个项目目录导入到 Cradle' })
       if (!dirPath) {
         return
       }
@@ -40,7 +41,7 @@ export function useAddWorkspace() {
     finally {
       setAdding(false)
     }
-  }, [queryClient])
+  }, [queryClient, selectDirectory])
 
   return { addFromPicker, adding }
 }

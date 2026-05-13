@@ -57,6 +57,12 @@
       "skillPath": "skills/make-interfaces-feel-better/SKILL.md",
       "computedHash": "54b6e221bbe4e2d1a8461c3f9ecabe69daf891f964e9ee5e699c323daa018f2e"
     },
+    "multi-work": {
+      "source": "wibus-wee/SKILL",
+      "sourceType": "github",
+      "skillPath": "skills/dev/multi-work/SKILL.md",
+      "computedHash": "b3b66f1659514dac7173b17cb68efb8b3e5b409dcbaf8cfeed7a2ffdbddefa3c"
+    },
     "receiving-code-review": {
       "source": "obra/superpowers",
       "sourceType": "github",

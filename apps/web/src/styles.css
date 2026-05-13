@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+
+@source "../../../packages/tabs/src/**/*.tsx";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/sn-pro";
 @import "@fontsource-variable/geist";

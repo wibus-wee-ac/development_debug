@@ -108,19 +108,12 @@ async function _getActiveTab(world: CradleWorld) {
   return activeTab
 }
 
-async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
-  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
-  world.page.once('dialog', async (dialog) => {
-    await dialog.accept(dirPath)
-  })
-}
-
 async function addWorkspaceFromPicker(world: CradleWorld, dirPath: string): Promise<void> {
-  await mockWorkspaceDialog(world, dirPath)
-
   const addButton = world.page.locator('[data-testid="add-workspace-btn"]')
   await expect(addButton).toBeVisible({ timeout: 10_000 })
   await addButton.click()
+
+  await world.selectDirectoryInBrowser(dirPath)
 
   await expect(world.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(1, { timeout: 10_000 })
 }

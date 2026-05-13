@@ -15,6 +15,7 @@ import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
+import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
 import { health } from './modules/health'
 import { issueAgent } from './modules/issue-agent'
@@ -49,6 +50,7 @@ export function createServerApp() {
   app.use(health)
   app.use(preferences)
   app.use(workspace)
+  app.use(filesystem)
   app.use(usage)
   app.use(profiles)
   app.use(secrets)

@@ -20,13 +20,6 @@ interface WorkspaceFixture {
 const WORKSPACE_FIXTURES_KEY = 'workspace.fixtures'
 const CURRENT_WORKSPACE_DIR_KEY = 'workspace.current-dir'
 
-async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
-  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
-  world.page.once('dialog', async (dialog) => {
-    await dialog.accept(dirPath)
-  })
-}
-
 function createWorkspaceFixture(world: CradleWorld, prefix: string, label: string): WorkspaceFixture {
   const dir = world.createTempWorkspaceDir(prefix)
   const name = basename(dir)
@@ -93,11 +86,11 @@ function workspaceButtonByName(world: CradleWorld, name: string) {
 }
 
 async function addWorkspaceFromPicker(world: CradleWorld, fixture: WorkspaceFixture): Promise<void> {
-  await mockWorkspaceDialog(world, fixture.dir)
-
   const button = world.page.locator('[data-testid="add-workspace-btn"]')
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
+
+  await world.selectDirectoryInBrowser(fixture.dir)
 
   await expect(workspaceButtonByName(world, fixture.name)).toContainText(fixture.name, { timeout: 10_000 })
 }

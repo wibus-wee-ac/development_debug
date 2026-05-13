@@ -254,14 +254,11 @@ Given('我已打开一个工作区详情页', async function (this: CradleWorld)
   const workspaceDir = createTempDir('cradle-skills-workspace')
   this.skillWorkspaceDir = workspaceDir
 
-  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
-  this.page.once('dialog', async (dialog) => {
-    await dialog.accept(workspaceDir)
-  })
-
   const addBtn = this.page.locator('[data-testid="add-workspace-btn"]')
   await expect(addBtn).toBeVisible({ timeout: 15000 })
   await addBtn.click()
+
+  await this.selectDirectoryInBrowser(workspaceDir)
 
   await this.page.getByText('cradle-skills-workspace', { exact: false }).click()
   await expect(this.page.locator('[data-testid="workspace-detail-page"]')).toBeVisible({ timeout: 5000 })

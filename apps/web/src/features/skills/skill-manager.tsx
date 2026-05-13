@@ -31,7 +31,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { Textarea } from '~/components/ui/textarea'
 import { TruncatedText } from '~/components/ui/truncated-text'
 import { cn } from '~/lib/cn'
-import { selectDirectory } from '~/lib/directory-picker'
+import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import type { SkillInventoryEntry, SkillScope } from '~/lib/types'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
@@ -360,6 +360,7 @@ export function SkillManager({
     exportSkill,
   } = useSkills({ workspaceId, agentId })
 
+  const { selectDirectory } = useDirectoryPicker()
   const [selectedSkill, setSelectedSkill] = useState<SelectedSkillRef | null>(null)
   const [editingSkill, setEditingSkill] = useState<SelectedSkillRef | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -427,7 +428,7 @@ export function SkillManager({
     if (!selectedEntry) {
       return
     }
-    const destinationDir = await selectDirectory()
+    const destinationDir = await selectDirectory({ title: '导出技能', description: '选择导出目录' })
     if (!destinationDir) {
       return
     }
@@ -442,7 +443,7 @@ export function SkillManager({
     catch (error) {
       setErrorText(error instanceof Error ? error.message : String(error))
     }
-  }, [exportSkill, selectedEntry])
+  }, [exportSkill, selectedEntry, selectDirectory])
 
   return (
     <div className="flex flex-col gap-1" data-testid={pageTestId}>

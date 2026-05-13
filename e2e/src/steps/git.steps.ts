@@ -93,19 +93,12 @@ function updateCurrentBranch(world: CradleWorld, branchName: string): void {
   world.remember(GIT_WORKSPACE_KEY, fixture)
 }
 
-async function mockWorkspaceDialog(world: CradleWorld, dirPath: string): Promise<void> {
-  // Intercept the window.prompt() dialog that the web app shows when selecting a directory
-  world.page.once('dialog', async (dialog) => {
-    await dialog.accept(dirPath)
-  })
-}
-
 async function addWorkspaceFromPicker(world: CradleWorld, fixture: GitWorkspaceFixture): Promise<void> {
-  await mockWorkspaceDialog(world, fixture.dir)
-
   const addWorkspaceButton = world.page.locator('[data-testid="add-workspace-btn"]')
   await expect(addWorkspaceButton).toBeVisible({ timeout: 10_000 })
   await addWorkspaceButton.click()
+
+  await world.selectDirectoryInBrowser(fixture.dir)
 
   await expect(
     world.page.locator('[data-testid^="workspace-open-"]').filter({ hasText: fixture.name }).first(),

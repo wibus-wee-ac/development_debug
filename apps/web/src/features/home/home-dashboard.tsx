@@ -20,9 +20,9 @@ import { useCallback, useState } from 'react'
 
 import { getSessionsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
+import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import { selectDirectory } from '~/lib/directory-picker'
 import type { Session, Workspace } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -289,6 +289,7 @@ export function HomeDashboard() {
   const [searchOpen, setSearchOpen] = useState(false)
   const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
+  const { selectDirectory } = useDirectoryPicker()
 
   const sessionQueries = useQueries({
     queries: workspaces.map(ws => getSessionsOptions({ query: { workspaceId: ws.id } })),
@@ -317,13 +318,13 @@ export function HomeDashboard() {
   ]
 
   const handleAddWorkspace = useCallback(async () => {
-    const dirPath = await selectDirectory()
+    const dirPath = await selectDirectory({ title: '添加项目', description: '选择一个项目目录导入到 Cradle' })
     if (!dirPath) {
       return
     }
     await postWorkspacesFromDirectory({ body: { path: dirPath } })
     await queryClient.invalidateQueries({ queryKey: ['workspaces'] })
-  }, [queryClient])
+  }, [queryClient, selectDirectory])
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
