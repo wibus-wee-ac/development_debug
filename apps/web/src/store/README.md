@@ -13,6 +13,9 @@ Store naming convention: `use<Domain>Store`.
 - **theme.ts**: Theme preference state — light/dark/system mode
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)
 - **session-activity.ts**: Session activity state — tracks which sessions received a new response while not being viewed, drives the sidebar dot indicator
+- **chat.ts**: Chat streaming state — stores per-session UI messages, generation flags, errors, and reconciles equivalent server snapshots without changing message references
+- **chat.test.ts**: Regression tests for chat snapshot structural sharing and unchanged message reference preservation
 - **new-chat.ts**: New chat preferences — persisted last selected agent profile / per-profile model choice, plus profile reconciliation when the available profile list changes
 - **new-chat.test.ts**: Regression tests for idempotent updates and stale-profile reconciliation
 - **persist-storage.ts**: Safe persisted storage wrapper with browser `localStorage` + in-memory fallback
+- **streamdown.ts**: Streamdown render preferences — persisted animation preset, granularity, cursor visibility

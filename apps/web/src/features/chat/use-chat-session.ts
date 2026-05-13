@@ -1,45 +1,26 @@
-// Input: @ai-sdk/react useChat, sse-chat-transport, HTTP timeline queries, and chat timeline push events
-// Output: useChatSession — renderer chat hook with local streaming plus passive snapshot recovery after reload
-// Position: Feature hook for chat feature; renderer-side view layer bridging useChat with persisted HTTP state
+// Input: useChatStore, ChatStreamingHandler, sse-chat-transport, server HTTP API
+// Output: useChatSession — hook bridging store + transport for a single chat session
+// Position: Feature hook for chat feature; manages lifecycle of streaming + passive observation
 
-import { useChat } from '@ai-sdk/react'
-import type { ChatStatus, UIMessage, UIMessageChunk } from 'ai'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { UIMessage, UIMessageChunk } from 'ai'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-import type { SseChatTransportHandle } from './sse-chat-transport'
-import { createSseChatTransport, onChatRunEvent } from './sse-chat-transport'
+import {
+  getChatSessionsBySessionIdMessagesOptions,
+  getChatSessionsBySessionIdMessagesQueryKey,
+} from '~/api-gen/@tanstack/react-query.gen'
+import type { PublicStatus } from '~/store/chat'
+import { chatSelectors, useChatStore } from '~/store/chat'
+
+import { ChatStreamingHandler } from './chat-streaming-handler'
+import { buildChunkStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
 
 const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
 
-/**
- * Chunk group row as returned by GET /chat/sessions/:sessionId/messages.
- * Matches the server ChatChunkGroup shape.
- */
-export type ChatTimelineGroupRow = {
-  messageId: string
-  role: 'user' | 'assistant'
-  userText?: string
-  status: string
-  errorText?: string
-  chunks: Array<{ chunk: UIMessageChunk, runId: string, [key: string]: unknown }>
-}
+// ── Compatibility Exports (used by tests) ───────────────────
 
-export type PublicStatus = 'idle' | 'streaming' | 'error'
-
-type ChatSnapshotState = {
-  status: PublicStatus
-  error?: string
-}
-
-function mapStatus(status: ChatStatus): PublicStatus {
-  if (status === 'streaming' || status === 'submitted') {
-    return 'streaming'
-  }
-  if (status === 'error') {
-    return 'error'
-  }
-  return 'idle'
-}
+type ChatSnapshotState = { status: PublicStatus, error?: string }
 
 export function derivePassiveChatState(
   rows: Array<{ role: string, status: string, errorText?: string | null }>,
@@ -47,20 +28,15 @@ export function derivePassiveChatState(
   if (rows.some(row => row.status === 'streaming')) {
     return { status: 'streaming' }
   }
-
   const failedAssistant = [...rows]
     .reverse()
     .find(row => row.role === 'assistant' && row.status === 'failed')
-
   if (failedAssistant) {
-    return {
-      status: 'error',
-      error: failedAssistant.errorText ?? undefined,
-    }
+    return { status: 'error', error: failedAssistant.errorText ?? undefined }
   }
-
   return { status: 'idle' }
 }
+
 export function resolveVisibleChatState(
   liveStatus: PublicStatus,
   passiveStatus: PublicStatus,
@@ -78,41 +54,45 @@ export async function stopChatTurn(args: {
   await Promise.resolve(args.chatStop())
 }
 
+// ── Timeline Types ──────────────────────────────────────────
+
 /**
- * Stable, recognisable placeholder id used when no chat session is selected.
- * useChat needs an id on every render; we just avoid feeding it null/undefined
- * that would cause internal regeneration each render.
+ * Chunk group row as returned by GET /chat/sessions/:sessionId/messages.
  */
-const EMPTY_CHAT_ID = '__cradle_empty_chat__'
-const STREAM_RENDER_THROTTLE_MS = 50
-const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
-
-function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
-  if (group.role === 'user') {
-    return {
-      id: group.messageId,
-      role: 'user',
-      parts: [{ type: 'text', text: group.userText ?? '' }],
-    }
-  }
-
-  return replayChunksToAssistantMessage(group.messageId, group.chunks.map(c => c.chunk))
+export type ChatTimelineGroupRow = {
+  messageId: string
+  role: 'user' | 'assistant'
+  userText?: string
+  status: string
+  errorText?: string
+  chunks: Array<{ chunk: UIMessageChunk, runId: string, [key: string]: unknown }>
 }
 
-/**
- * Replay an array of UIMessageChunk into a single assistant UIMessage.
- * Uses AI SDK's processUIMessageStream to faithfully reconstruct the message.
- */
-function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChunk[]): UIMessage {
-  const message: UIMessage = {
-    id: messageId,
-    role: 'assistant',
-    parts: [],
-  }
+type ReplayReasoningPart = {
+  type: 'reasoning'
+  text: string
+  reasoning: string
+  details: Array<{ type: 'text', text: string }>
+  state?: string
+}
 
-  // Build parts from chunks manually — simple and deterministic
+type ReplayToolPart = {
+  type: 'dynamic-tool'
+  toolCallId: string
+  toolName: string
+  state: string
+  input?: unknown
+  output?: unknown
+  errorText?: string
+}
+
+// ── Replay Utility ──────────────────────────────────────────
+
+function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChunk[]): UIMessage {
+  const message: UIMessage = { id: messageId, role: 'assistant', parts: [] }
+
   let currentTextPart: { type: 'text', text: string } | null = null
-  let currentReasoningPart: { type: 'reasoning', text: string, reasoning: string, details: Array<{ type: 'text', text: string }> } | null = null
+  let currentReasoningPart: ReplayReasoningPart | null = null
 
   for (const chunk of chunks) {
     switch (chunk.type) {
@@ -122,10 +102,10 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         break
       case 'text-delta':
         if (currentTextPart) {
-          currentTextPart.text += chunk.delta
+          currentTextPart.text += (chunk as { delta: string }).delta
         }
         else {
-          currentTextPart = { type: 'text', text: chunk.delta }
+          currentTextPart = { type: 'text', text: (chunk as { delta: string }).delta }
           message.parts.push(currentTextPart)
         }
         break
@@ -134,12 +114,12 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         break
       case 'reasoning-start':
         currentReasoningPart = { type: 'reasoning', text: '', reasoning: '', details: [] }
-        message.parts.push(currentReasoningPart)
+        message.parts.push(currentReasoningPart as UIMessage['parts'][number])
         break
       case 'reasoning-delta':
         if (currentReasoningPart) {
-          currentReasoningPart.reasoning += chunk.delta
-          currentReasoningPart.text += chunk.delta
+          currentReasoningPart.reasoning += (chunk as { delta: string }).delta
+          currentReasoningPart.text += (chunk as { delta: string }).delta
         }
         break
       case 'reasoning-end':
@@ -148,312 +128,307 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
       case 'tool-input-start':
         message.parts.push({
           type: 'dynamic-tool',
-          toolCallId: chunk.toolCallId,
-          toolName: chunk.toolName,
+          toolCallId: (chunk as { toolCallId: string }).toolCallId,
+          toolName: (chunk as { toolName: string }).toolName,
           state: 'input-streaming',
           input: undefined,
-        } as any)
+        } as unknown as UIMessage['parts'][number])
         break
       case 'tool-input-available': {
-        const existingTool = message.parts.find(
-          p => (p.type === 'dynamic-tool') && (p as any).toolCallId === chunk.toolCallId,
-        ) as any
-        if (existingTool) {
-          existingTool.state = 'input-available'
-          existingTool.input = chunk.input
+        const toolChunk = chunk as { toolCallId: string, input: unknown }
+        const existing = findToolPart(message.parts, toolChunk.toolCallId)
+        if (existing) {
+          existing.state = 'input-available'
+          existing.input = toolChunk.input
         }
         break
       }
       case 'tool-input-error': {
-        const existingTool = message.parts.find(
-          p => (p.type === 'dynamic-tool') && (p as any).toolCallId === (chunk as any).toolCallId,
-        ) as any
-        if (existingTool) {
-          existingTool.state = 'output-error'
-          existingTool.input = (chunk as any).input
-          existingTool.errorText = (chunk as any).errorText
+        const toolChunk = chunk as { toolCallId: string, input: unknown, errorText: string }
+        const existing = findToolPart(message.parts, toolChunk.toolCallId)
+        if (existing) {
+          existing.state = 'output-error'
+          existing.input = toolChunk.input
+          existing.errorText = toolChunk.errorText
         }
         break
       }
       case 'tool-output-available': {
-        const toolPart = message.parts.find(
-          p => (p.type === 'dynamic-tool') && (p as any).toolCallId === chunk.toolCallId,
-        ) as any
-        if (toolPart) {
-          toolPart.state = 'output-available'
-          toolPart.output = chunk.output
+        const toolChunk = chunk as { toolCallId: string, output: unknown }
+        const existing = findToolPart(message.parts, toolChunk.toolCallId)
+        if (existing) {
+          existing.state = 'output-available'
+          existing.output = toolChunk.output
         }
         break
       }
-      // Ignore other chunk types (start, finish, abort, error, etc.) for message construction
     }
   }
 
   return message
 }
 
+function findToolPart(parts: UIMessage['parts'], toolCallId: string): ReplayToolPart | undefined {
+  return parts.find((part): part is UIMessage['parts'][number] & ReplayToolPart => 'toolCallId' in part && part.toolCallId === toolCallId)
+}
+
+function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
+  if (group.role === 'user') {
+    return {
+      id: group.messageId,
+      role: 'user',
+      parts: [{ type: 'text', text: group.userText ?? '' }],
+    }
+  }
+  return replayChunksToAssistantMessage(group.messageId, group.chunks.map(c => c.chunk))
+}
+
+function derivePassiveStatus(rows: ChatTimelineGroupRow[]): PublicStatus {
+  if (rows.some(row => row.status === 'streaming')) {
+    return 'streaming'
+  }
+  const failedAssistant = [...rows].reverse().find(row => row.role === 'assistant' && row.status === 'failed')
+  if (failedAssistant) {
+    return 'error'
+  }
+  return 'idle'
+}
+
+// ── Hook ────────────────────────────────────────────────────
+
+const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
+const PASSIVE_STREAM_REFETCH_MS = 500
+const EMPTY_TIMELINE_GROUPS: ChatTimelineGroupRow[] = []
+
+function selectTimelineGroups(data: unknown): ChatTimelineGroupRow[] {
+  return Array.isArray(data) ? data as ChatTimelineGroupRow[] : EMPTY_TIMELINE_GROUPS
+}
+
 export function useChatSession(chatSessionId: string | null, options?: {
-  /**
-   * Pre-loaded timeline groups from a TanStack Router loader or similar source.
-   * When provided, `isReady` is true immediately (no empty-state flash) and
-   * the hook still re-fetches in the background for streaming + freshness.
-   */
   initialTimelineGroups?: ChatTimelineGroupRow[]
 }) {
   const { initialTimelineGroups } = options ?? {}
+  const queryClient = useQueryClient()
 
-  const transportHandle = useMemo(
-    () => (chatSessionId ? createSseChatTransport(chatSessionId) : undefined),
+  // Active handler ref (for the currently streaming response)
+  const handlerRef = useRef<ChatStreamingHandler | null>(null)
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // ── Selectors (fine-grained subscriptions) ──
+
+  const messages = useChatStore(
+    chatSelectors.messages(chatSessionId ?? ''),
+  )
+  const visibleStatus = useChatStore(
+    chatSelectors.visibleStatus(chatSessionId ?? ''),
+  )
+
+  // Derive error from the last assistant message
+  const lastAssistantId = useMemo(() => {
+    const last = [...messages].reverse().find(m => m.role === 'assistant')
+    return last?.id
+  }, [messages])
+
+  const lastError = useChatStore(
+    lastAssistantId ? chatSelectors.error(lastAssistantId) : () => undefined,
+  )
+
+  // ── Hydration from server ──
+
+  const timelineQueryKey = useMemo(
+    () => chatSessionId
+      ? getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: chatSessionId } })
+      : null,
     [chatSessionId],
   )
 
-  const transportHandleRef = useRef<SseChatTransportHandle | undefined>(undefined)
-  useEffect(() => {
-    transportHandleRef.current = transportHandle
-  }, [transportHandle])
-
-  const cachedInitialMessages = useMemo(
-    () => initialTimelineGroups?.map(projectTimelineGroup),
-    [initialTimelineGroups],
-  )
-
-  const chat = useChat<UIMessage>({
-    id: chatSessionId ?? EMPTY_CHAT_ID,
-    transport: transportHandle?.transport,
-    messages: cachedInitialMessages,
-    // AI SDK emits one React update per chunk by default. Our chat view renders
-    // markdown, motion, and tool blocks, so throttling prevents render storms.
-    experimental_throttle: STREAM_RENDER_THROTTLE_MS,
-    onError: (error) => {
-      console.error('[useChatSession] useChat stream failed', {
-        chatSessionId,
-        error,
-        message: error.message,
-        stack: error.stack,
-      })
+  const timelineQuery = useQuery({
+    ...getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
+    enabled: !!chatSessionId,
+    initialData: initialTimelineGroups as unknown,
+    refetchInterval: () => {
+      if (!chatSessionId) {
+        return false
+      }
+      const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
+      return meta?.passiveStatus === 'streaming' && !meta.locallyDriving
+        ? PASSIVE_STREAM_REFETCH_MS
+        : false
     },
+    select: selectTimelineGroups,
   })
 
-  // useChat's helpers close over the latest state; stash in a ref so background
-  // IPC callbacks always call the current versions without stale closures.
-  const chatRef = useRef(chat)
+  const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
+    if (!timelineQueryKey) {
+      return
+    }
+    if (snapshotTimerRef.current) {
+      clearTimeout(snapshotTimerRef.current)
+    }
+    snapshotTimerRef.current = setTimeout(() => {
+      snapshotTimerRef.current = null
+      void queryClient.invalidateQueries({ queryKey: timelineQueryKey })
+    }, delay)
+  }, [queryClient, timelineQueryKey])
+
+  // ── Initial load ──
+
   useEffect(() => {
-    chatRef.current = chat
-  }, [chat])
-
-  // Lazily initialise — if a loader already provided timeline groups for THIS session, we
-  // are ready before the first paint.  useState's initialiser runs exactly once
-  // so this never causes an extra re-render when chatSessionId later changes.
-  const [isReady, setIsReady] = useState(() => !!(chatSessionId && initialTimelineGroups))
-  const [snapshotState, setSnapshotState] = useState<ChatSnapshotState>(() => initialTimelineGroups
-    ? derivePassiveChatState(initialTimelineGroups)
-    : { status: 'idle' })
-  const snapshotSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Track whether this renderer was locally driving a stream so that late-arriving
-  // SSE timeline events don't flip snapshotState back to 'streaming' after the
-  // AI SDK already finished.  Set true when chat.status enters streaming, cleared
-  // when the run.completed / run.aborted SSE event arrives or after a grace period.
-  const wasLocallyDrivingRef = useRef(false)
-
-  const syncSnapshot = useCallback(async () => {
-    if (!chatSessionId) {
+    if (!chatSessionId || !timelineQuery.data) {
+      return
+    }
+    const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
+    if (meta?.locallyDriving) {
       return
     }
 
-    // Project UIMessages from raw timeline events (sole hydration path)
-    const res = await fetch(`${SERVER_BASE}/chat/sessions/${chatSessionId}/messages`)
-    if (!res.ok) {
-      return
+    const projected = timelineQuery.data.map(projectTimelineGroup)
+    useChatStore.getState().setMessages(chatSessionId, projected)
+    useChatStore.getState().setPassiveStatus(chatSessionId, derivePassiveStatus(timelineQuery.data))
+  }, [chatSessionId, timelineQuery.data])
+
+  useEffect(() => {
+    return () => {
+      if (snapshotTimerRef.current) {
+        clearTimeout(snapshotTimerRef.current)
+        snapshotTimerRef.current = null
+      }
     }
-    const timeline = (await res.json()) as ChatTimelineGroupRow[]
-    if (timeline.length > 0) {
-      const projected = timeline.map(projectTimelineGroup)
-      chatRef.current.setMessages(projected)
-      setSnapshotState(derivePassiveChatState(timeline))
-    }
-    else {
-      chatRef.current.setMessages([])
-      setSnapshotState({ status: 'idle' })
-    }
-    setIsReady(true)
   }, [chatSessionId])
 
-  const scheduleSnapshotSync = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
-    if (snapshotSyncTimerRef.current) {
-      clearTimeout(snapshotSyncTimerRef.current)
-    }
+  // ── Passive observer: SSE run events ──
 
-    snapshotSyncTimerRef.current = setTimeout(() => {
-      snapshotSyncTimerRef.current = null
-      void syncSnapshot().catch(() => {})
-    }, delay)
-  }, [syncSnapshot])
-
-  // Initial load + passive recovery if a draft is already streaming.
-  // We intentionally hydrate from the persisted DB snapshot instead of calling
-  // useChat.resumeStream() after reload. The AI SDK stream assembler requires
-  // the original text-start envelope, which a mid-flight reconnect cannot
-  // reliably replay. Passive observation keeps the UI truthful without corrupting
-  // the resumed message state.
   useEffect(() => {
     if (!chatSessionId) {
-      if (snapshotSyncTimerRef.current) {
-        clearTimeout(snapshotSyncTimerRef.current)
-        snapshotSyncTimerRef.current = null
-      }
-      chatRef.current.setMessages([])
-      setIsReady(false)
-      setSnapshotState({ status: 'idle' })
       return
     }
 
-    // If we have pre-loaded timeline groups for this exact session we are already ready —
-    // do NOT reset to false before the fetch completes (that is the flash).
-    if (!initialTimelineGroups) {
-      setIsReady(false)
-      setSnapshotState({ status: 'idle' })
-    }
-
-    let cancelled = false
-    void syncSnapshot()
-      .catch(() => {
-        if (!cancelled) {
-          setIsReady(false)
-          setSnapshotState({ status: 'idle' })
-        }
-      })
-
-    return () => {
-      cancelled = true
-      if (snapshotSyncTimerRef.current) {
-        clearTimeout(snapshotSyncTimerRef.current)
-        snapshotSyncTimerRef.current = null
-      }
-    }
-  }, [chatSessionId, initialTimelineGroups, syncSnapshot])
-
-  // When the snapshot shows "streaming" but the AI SDK is idle (no local stream),
-  // poll the timeline until the run completes. This covers the case where a run
-  // was created outside the SSE transport (e.g. from the new-chat page).
-  useEffect(() => {
-    if (snapshotState.status !== 'streaming') {
-      return
-    }
-    const liveStatus = mapStatus(chatRef.current.status)
-    if (liveStatus === 'streaming') {
-      // AI SDK is actively streaming — no need to poll
-      return
-    }
-    const interval = setInterval(() => {
-      void syncSnapshot().catch(() => {})
-    }, 500)
-    return () => clearInterval(interval)
-  }, [snapshotState.status, syncSnapshot])
-
-  // Covers the passive observer case (reload, secondary window, or route remount).
-  // When this renderer is not the one actively assembling the stream, we mirror
-  // the persisted DB snapshot on response events so the UI stays accurate.
-  useEffect(() => {
-    if (!chatSessionId) return
     return onChatRunEvent(chatSessionId, (data) => {
-      const currentStatus = chatRef.current.status
+      const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
+      const isLocallyDriving = meta?.locallyDriving ?? false
 
-      // Always capture run.failed error text regardless of stream state.
-      // AI SDK may not reliably surface the error message from controller.error(),
-      // so we preserve the backend error in snapshotState as a fallback.
       if (data.event.type === 'run.failed') {
-        wasLocallyDrivingRef.current = false
-        const error = (typeof data.event.error === 'string' ? data.event.error : undefined)
-        setSnapshotState({ status: 'error', error })
-        if (currentStatus !== 'streaming' && currentStatus !== 'submitted') {
-          scheduleSnapshotSync(0)
+        useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
+        useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
+        // If not locally driving, need to find the message to record error on
+        if (!isLocallyDriving) {
+          scheduleSnapshotRefresh(0)
         }
         return
       }
 
-      if (currentStatus === 'streaming' || currentStatus === 'submitted') {
-        // Locally driving — useChat is already assembling this turn
+      if (isLocallyDriving) {
+        // We're driving this stream locally — useChat handler manages state
         return
       }
 
       switch (data.event.type) {
         case 'run.completed':
-        case 'run.aborted': {
-          wasLocallyDrivingRef.current = false
-          setSnapshotState({ status: 'idle' })
-          scheduleSnapshotSync(0)
-          return
-        }
-        default: {
-          // If we were locally driving and the AI SDK has already finished,
-          // ignore late-arriving SSE events that would flip us back to streaming.
-          if (wasLocallyDrivingRef.current) {
-            return
-          }
-          setSnapshotState({ status: 'streaming' })
-          scheduleSnapshotSync()
-        }
+        case 'run.aborted':
+          useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
+          useChatStore.getState().setPassiveStatus(chatSessionId, 'idle')
+          scheduleSnapshotRefresh(0)
+          break
+        default:
+          useChatStore.getState().setPassiveStatus(chatSessionId, 'streaming')
+          scheduleSnapshotRefresh()
+          break
       }
     })
-  }, [chatSessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chatSessionId, scheduleSnapshotRefresh])
 
-  useEffect(() => {
-    if (!chat.error) {
+  // ── Send message ──
+
+  const sendMessage = useCallback(async (text: string) => {
+    if (!chatSessionId || !text.trim()) {
       return
     }
-    console.error('[useChatSession] chat.error updated', {
-      chatSessionId,
-      error: chat.error,
-      message: chat.error.message,
-      stack: chat.error.stack,
-    })
-  }, [chatSessionId, chat.error])
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (!chatSessionId) {
-        return
+    // 1. Optimistic user message
+    const userMessageId = `user-${Date.now()}`
+    const userMessage: UIMessage = {
+      id: userMessageId,
+      role: 'user',
+      parts: [{ type: 'text', text }],
+    }
+    useChatStore.getState().appendMessage(chatSessionId, userMessage)
+
+    // 2. Create handler for assistant response
+    const assistantMessageId = `assistant-${Date.now()}`
+    const controller = new AbortController()
+    const handler = new ChatStreamingHandler(chatSessionId, assistantMessageId)
+    handler.start(controller)
+    handlerRef.current = handler
+
+    try {
+      // 3. Initiate SSE stream
+      const res = await fetch(`${SERVER_BASE}/chat/sessions/${chatSessionId}/response`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        throw new Error(`Failed to start chat response: ${res.status} ${body}`)
       }
-      await chat.sendMessage({ text })
-    },
-    [chatSessionId, chat],
-  )
 
-  const stop = useCallback(() => {
-    void stopChatTurn({
-      chatSessionId,
-      chatStop: chat.stop,
-    })
-    void transportHandleRef.current?.abort()
-  }, [chat.stop, chatSessionId])
+      // 4. Pipe chunks to handler
+      const stream = buildChunkStreamFromResponse(res, chatSessionId)
+      const reader = stream.getReader()
 
-  const liveStatus = mapStatus(chat.status)
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          break
+        }
+        handler.handleChunk(value)
+      }
 
-  // Track local streaming state to prevent late SSE events from flipping status back
-  const prevLiveStatusRef = useRef(liveStatus)
-  useEffect(() => {
-    const prev = prevLiveStatusRef.current
-    prevLiveStatusRef.current = liveStatus
-
-    if (liveStatus === 'streaming') {
-      wasLocallyDrivingRef.current = true
+      handler.finish()
     }
-
-    if (prev === 'streaming' && liveStatus === 'idle') {
-      setSnapshotState(s => s.status === 'streaming' ? { status: 'idle' } : s)
-      scheduleSnapshotSync(0)
+    catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        handler.finish()
+      }
+      else {
+        handler.fail(err instanceof Error ? err.message : 'Stream failed')
+      }
     }
-  }, [liveStatus, scheduleSnapshotSync])
+    finally {
+      handlerRef.current = null
+      useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
+      // Sync from server to get canonical message IDs
+      scheduleSnapshotRefresh(0)
+    }
+  }, [chatSessionId, scheduleSnapshotRefresh])
 
-  const visibleStatus = resolveVisibleChatState(liveStatus, snapshotState.status)
-  const visibleError = liveStatus === 'error'
-    ? (snapshotState.error || chat.error?.message)
-    : snapshotState.error
+  // ── Stop ──
+
+  const stop = useCallback(async () => {
+    if (!chatSessionId) {
+      return
+    }
+    const handler = handlerRef.current
+    if (handler) {
+      // The abort will cause the fetch to throw AbortError → handler.finish()
+      const messages = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
+      const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
+      if (lastAssistant) {
+        await useChatStore.getState().stopGeneration(lastAssistant.id, chatSessionId)
+      }
+    }
+  }, [chatSessionId])
+
+  // ── isReady (always true once hydrated) ──
+
+  const isReady = messages.length > 0 || !!initialTimelineGroups || chatSessionId === null
 
   return {
-    messages: chat.messages,
+    messages,
     status: visibleStatus,
-    error: visibleError,
+    error: lastError?.message,
     sendMessage,
     stop,
     isReady,

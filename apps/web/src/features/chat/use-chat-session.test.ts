@@ -6,19 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { derivePassiveChatState, resolveVisibleChatState, stopChatTurn } from './use-chat-session'
 
-vi.mock('@ai-sdk/react', () => ({
-  useChat: () => ({
-    status: 'ready',
-    error: undefined,
-    messages: [],
-    setMessages: vi.fn(),
-    sendMessage: vi.fn(),
-    stop: vi.fn(),
-  }),
-}))
-
 vi.mock('./sse-chat-transport', () => ({
-  createSseChatTransport: vi.fn(),
+  buildChunkStreamFromResponse: vi.fn(),
   onChatRunEvent: vi.fn(() => vi.fn()),
 }))
 

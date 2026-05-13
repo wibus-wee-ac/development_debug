@@ -4,13 +4,13 @@
 
 Renderer-side view layer for chat.
 Streaming updates arrive via SSE from the server. Initial hydration and reload/recovery
-pull session timeline data from the HTTP API and project locally.
+read session timeline snapshots through React Query and project locally into Zustand.
 The transport receives raw timeline events and projects `UIMessageChunk`s locally via the
 shared timeline projector.
 
 ## Files
 
-- **use-chat-session.ts**: Hook wrapping `useChat` — uses HTTP API for session timeline as the sole hydration read model, locally projects `UIMessage`, passively observes timeline signal for reload/recovery, syncs stop to HTTP abort, and exposes `{ messages, status, error, sendMessage, stop, isReady }`
+- **use-chat-session.ts**: Chat session hook — uses React Query for canonical session timeline snapshots, locally projects `UIMessage`, passively observes timeline signal for reload/recovery, drives streaming responses, and exposes `{ messages, status, error, sendMessage, stop, isReady }`
 - **sse-chat-transport.ts**: `ChatTransport` implementation bridging AI SDK's useChat to SSE — sends messages via HTTP API + subscribes to SSE timeline events; renderer locally projects events into `UIMessageChunk[]` for AI SDK
 - **use-chat-events.ts**: Unified chat event bridge — renderer-side session watch for timeline consumers via `useChatTimelineEvent`
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls

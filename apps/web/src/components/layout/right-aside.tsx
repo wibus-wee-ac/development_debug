@@ -3,7 +3,7 @@
 // Position: Slot content for AppLayout aside prop; shown when asideOpen=true
 
 import { useQuery } from '@tanstack/react-query'
-import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, TimerIcon } from 'lucide-react'
+import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useState } from 'react'
 
@@ -25,7 +25,7 @@ const TABS: Tab[] = [
   { id: 'files', label: '文件', icon: FolderTreeIcon },
   { id: 'git', label: 'Git', icon: GitBranchIcon },
   { id: 'issue', label: 'Issue', icon: CircleDotIcon },
-  { id: 'await', label: 'Feed', icon: TimerIcon },
+  { id: 'await', label: 'Feed', icon: RssIcon },
 ]
 
 const TAB_SPRING = {

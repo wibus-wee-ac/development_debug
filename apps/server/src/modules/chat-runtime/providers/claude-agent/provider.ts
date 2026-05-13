@@ -95,6 +95,8 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
         : config.allowDangerouslySkipPermissions,
       maxTurns: config.maxTurns ?? 100,
       additionalDirectories: config.additionalDirectories,
+      forwardSubagentText: true,
+      agentProgressSummaries: true,
     }
 
     if (config.skills) {
@@ -128,7 +130,7 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
     this.activeQueries.set(input.runtimeSession.chatSessionId, { query: activeQuery, abortController })
     this._lastUsage = null
 
-    const mapperState: ClaudeAgentChunkMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map() }
+    const mapperState: ClaudeAgentChunkMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map(), currentParentToolUseId: null }
 
     try {
       for await (const message of activeQuery) {

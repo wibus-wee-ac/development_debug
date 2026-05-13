@@ -6,7 +6,7 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/sn-pro";
 @import "@fontsource-variable/geist";
-@import "streamdown/styles.css";
+@import "@cradle/streamdown/styles";
 
 @plugin "@tailwindcss/typography";
 
@@ -350,4 +350,434 @@ body {
   html {
     @apply font-sans font-mono;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   MARKDOWN TYPOGRAPHY — Cradle Web
+   Applied to .streamdown-root (streaming) and [data-pre-mounted] (static)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* --- Base container --- */
+.streamdown-root,
+[data-pre-mounted] {
+  font-size: 0.875rem;
+  line-height: 1.75;
+  color: var(--foreground);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  letter-spacing: -0.006em;
+}
+
+/* --- First/last child margin --- */
+.streamdown-root > :first-child,
+[data-pre-mounted] > :first-child {
+  margin-top: 0;
+}
+.streamdown-root > :last-child,
+[data-pre-mounted] > :last-child {
+  margin-bottom: 0;
+}
+
+/* ═══ HEADINGS ═══ */
+
+.streamdown-root :is(h1, h2, h3, h4, h5, h6),
+[data-pre-mounted] :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--foreground);
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
+}
+
+.streamdown-root h1, [data-pre-mounted] h1 {
+  font-size: 1.5em;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.streamdown-root h2, [data-pre-mounted] h2 {
+  font-size: 1.25em;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border);
+}
+
+.streamdown-root h3, [data-pre-mounted] h3 {
+  font-size: 1.125em;
+}
+
+.streamdown-root h4, [data-pre-mounted] h4 {
+  font-size: 1em;
+}
+
+.streamdown-root :is(h5, h6),
+[data-pre-mounted] :is(h5, h6) {
+  font-size: 0.875em;
+  color: var(--muted-foreground);
+  letter-spacing: 0.02em;
+}
+
+/* ═══ PARAGRAPHS ═══ */
+
+.streamdown-root p, [data-pre-mounted] p {
+  margin: 0 0 0.75em;
+}
+.streamdown-root p:last-child, [data-pre-mounted] p:last-child {
+  margin-bottom: 0;
+}
+
+/* ═══ LINKS ═══ */
+
+.streamdown-root a, [data-pre-mounted] a {
+  color: var(--primary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  transition: text-decoration-color 150ms ease;
+}
+.streamdown-root a:hover, [data-pre-mounted] a:hover {
+  text-decoration-color: color-mix(in srgb, var(--primary) 60%, transparent);
+}
+
+/* ═══ STRONG / EM ═══ */
+
+.streamdown-root strong, [data-pre-mounted] strong {
+  font-weight: 650;
+}
+.streamdown-root em, [data-pre-mounted] em {
+  font-style: italic;
+}
+
+/* ═══ LISTS ═══ */
+
+.streamdown-root :is(ul, ol),
+[data-pre-mounted] :is(ul, ol) {
+  margin: 0.5em 0 0.75em;
+  padding-left: 1.5em;
+}
+
+.streamdown-root ul, [data-pre-mounted] ul {
+  list-style: none;
+}
+
+.streamdown-root ul > li,
+[data-pre-mounted] ul > li {
+  position: relative;
+  padding-left: 0.125em;
+}
+
+.streamdown-root ul > li::before,
+[data-pre-mounted] ul > li::before {
+  content: "•";
+  position: absolute;
+  left: -1.125em;
+  color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
+  font-weight: 700;
+}
+
+.streamdown-root ul ul > li::before,
+[data-pre-mounted] ul ul > li::before {
+  content: "◦";
+}
+
+.streamdown-root ul ul ul > li::before,
+[data-pre-mounted] ul ul ul > li::before {
+  content: "▪";
+  font-size: 0.85em;
+  top: 0.15em;
+}
+
+.streamdown-root ol, [data-pre-mounted] ol {
+  list-style: decimal;
+}
+
+.streamdown-root ol > li::marker,
+[data-pre-mounted] ol > li::marker {
+  color: var(--muted-foreground);
+  font-weight: 500;
+}
+
+.streamdown-root li, [data-pre-mounted] li {
+  margin-bottom: 0.3em;
+  line-height: 1.65;
+}
+
+.streamdown-root li > p, [data-pre-mounted] li > p {
+  margin-bottom: 0.3em;
+}
+
+.streamdown-root :is(ul, ol) :is(ul, ol),
+[data-pre-mounted] :is(ul, ol) :is(ul, ol) {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+/* Task list checkboxes */
+.streamdown-root li input[type="checkbox"],
+[data-pre-mounted] li input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  margin-right: 0.5em;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+  cursor: default;
+  transition: background 150ms, border-color 150ms;
+}
+
+.streamdown-root li input[type="checkbox"]:checked,
+[data-pre-mounted] li input[type="checkbox"]:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.streamdown-root li input[type="checkbox"]:checked::after,
+[data-pre-mounted] li input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0.5px;
+  width: 4px;
+  height: 7px;
+  border: solid var(--primary-foreground);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ═══ BLOCKQUOTES ═══ */
+
+.streamdown-root blockquote,
+[data-pre-mounted] blockquote {
+  margin: 0.75em 0;
+  padding: 0.625em 1em;
+  border-left: 3px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  background: var(--muted);
+  border-radius: 0 6px 6px 0;
+  color: var(--muted-foreground);
+}
+
+.streamdown-root blockquote p:last-child,
+[data-pre-mounted] blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* ═══ INLINE CODE ═══ */
+
+.streamdown-root :not(pre) > code,
+.streamdown-root .sd-inline-code,
+[data-pre-mounted] :not(pre) > code,
+[data-pre-mounted] .sd-inline-code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  font-weight: 450;
+  padding: 0.2em 0.4em;
+  border-radius: 5px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+}
+
+/* ═══ CODE BLOCKS ═══ */
+
+.streamdown-root .sd-code-block,
+[data-pre-mounted] .sd-code-block {
+  position: relative;
+  margin: 0.875em 0;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--code, var(--muted));
+  overflow: hidden;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+.streamdown-root .sd-code-header,
+[data-pre-mounted] .sd-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  padding: 0.3em 0.75em;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.streamdown-root .sd-code-lang,
+[data-pre-mounted] .sd-code-lang {
+  font-size: 0.8em;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+.streamdown-root .sd-code-copy,
+[data-pre-mounted] .sd-code-copy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms, background 150ms, color 150ms;
+}
+
+.streamdown-root .sd-code-block:hover .sd-code-copy,
+[data-pre-mounted] .sd-code-block:hover .sd-code-copy {
+  opacity: 1;
+}
+
+.streamdown-root .sd-code-copy:hover,
+[data-pre-mounted] .sd-code-copy:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+/* Floating copy button for blocks without language */
+.streamdown-root .sd-code-copy--floating,
+[data-pre-mounted] .sd-code-copy--floating {
+  position: absolute;
+  top: 0.5em;
+  right: 0.5em;
+  z-index: 1;
+}
+
+.streamdown-root .sd-code-body,
+[data-pre-mounted] .sd-code-body {
+  overflow-x: auto;
+}
+
+.streamdown-root .sd-code-body pre,
+[data-pre-mounted] .sd-code-body pre {
+  margin: 0;
+  padding: 0.875em 1em;
+  background: transparent !important;
+}
+
+.streamdown-root .sd-code-body code,
+[data-pre-mounted] .sd-code-body code {
+  font-family: var(--font-mono);
+  font-size: inherit;
+  line-height: 1.6;
+  tab-size: 2;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Shiki dual-theme */
+.streamdown-root .sd-code-body .shiki,
+[data-pre-mounted] .sd-code-body .shiki {
+  background: transparent !important;
+}
+
+.streamdown-root .sd-code-body .shiki span,
+[data-pre-mounted] .sd-code-body .shiki span {
+  color: var(--shiki-light) !important;
+}
+
+.dark .streamdown-root .sd-code-body .shiki span,
+.dark [data-pre-mounted] .sd-code-body .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+/* ═══ TABLES ═══ */
+
+.streamdown-root table,
+[data-pre-mounted] table {
+  width: 100%;
+  margin: 0.875em 0;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.streamdown-root thead,
+[data-pre-mounted] thead {
+  background: var(--muted);
+}
+
+.streamdown-root thead th,
+[data-pre-mounted] thead th {
+  text-align: left;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--muted-foreground);
+  padding: 0.625em 0.875em;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.streamdown-root thead th:last-child,
+[data-pre-mounted] thead th:last-child {
+  border-right: none;
+}
+
+.streamdown-root tbody td,
+[data-pre-mounted] tbody td {
+  padding: 0.5em 0.875em;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  color: var(--foreground);
+}
+
+.streamdown-root tbody td:last-child,
+[data-pre-mounted] tbody td:last-child {
+  border-right: none;
+}
+
+.streamdown-root tbody tr:last-child td,
+[data-pre-mounted] tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.streamdown-root tbody tr,
+[data-pre-mounted] tbody tr {
+  transition: background 100ms ease;
+}
+
+.streamdown-root tbody tr:hover,
+[data-pre-mounted] tbody tr:hover {
+  background: var(--muted);
+}
+
+/* ═══ HORIZONTAL RULE ═══ */
+
+.streamdown-root hr, [data-pre-mounted] hr {
+  border: none;
+  height: 1px;
+  background: var(--border);
+  margin: 1.75em 0;
+}
+
+/* ═══ IMAGES ═══ */
+
+.streamdown-root img, [data-pre-mounted] img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.75em 0;
+}
+
+/* ═══ KBD ═══ */
+
+.streamdown-root kbd, [data-pre-mounted] kbd {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.2em 0.45em;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  box-shadow: 0 1px 0 var(--border);
 }

@@ -4,9 +4,10 @@
 
 import { BrainIcon, ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown } from '@cradle/streamdown'
 
 import { cn } from '~/lib/cn'
+import { useStreamdownStore } from '~/store/streamdown'
 
 interface ReasoningBlockProps {
   text: string
@@ -16,6 +17,7 @@ interface ReasoningBlockProps {
 export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
   const [expanded, setExpanded] = useState(false)
   const isStreaming = state === 'streaming'
+  const { animationPreset, animateMode } = useStreamdownStore()
 
   return (
     <div className="my-1" data-testid="chat-reasoning-block">
@@ -41,9 +43,13 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
           data-testid="chat-reasoning-content"
           className="mt-1 ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed"
         >
-          <Streamdown animated isAnimating={isStreaming}>
-            {text}
-          </Streamdown>
+          <Streamdown
+            content={text}
+            streaming={isStreaming}
+            animationPreset={animationPreset}
+            animateMode={animateMode}
+            showCursor={false}
+          />
         </div>
       )}
     </div>

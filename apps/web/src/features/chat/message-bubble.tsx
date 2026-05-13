@@ -6,14 +6,69 @@ import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown } from '@cradle/streamdown'
 
 import { cn } from '~/lib/cn'
+import { useStreamdownStore } from '~/store/streamdown'
 
 import { ReasoningBlock } from './reasoning-block'
+import { SubagentFold } from './subagent-fold'
 import { ToolCallBlock } from './tool-call-block'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPart = any
+
+/**
+ * Extract parentToolUseId from a part's providerMetadata or callProviderMetadata.
+ */
+function getParentToolUseId(part: AnyPart): string | null {
+  const meta = part.providerMetadata?.cradle ?? part.callProviderMetadata?.cradle
+  return meta?.parentToolUseId ?? null
+}
+
+/**
+ * Collect all parts that belong to a specific parent tool use ID (i.e. subagent parts).
+ */
+function getSubagentPartsForTool(parts: AnyPart[], toolCallId: string): AnyPart[] {
+  return parts.filter(p => getParentToolUseId(p) === toolCallId)
+}
+
+/**
+ * Render a single subagent part inside the fold.
+ */
+function renderSubagentPart(part: AnyPart, key: string, isStreaming: boolean, streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean }) {
+  if (part.type === 'text') {
+    return (
+      <Streamdown
+        key={key}
+        content={part.text}
+        streaming={isStreaming}
+        animationPreset={streamdownSettings.animationPreset as 'minimal' | 'balanced' | 'dramatic'}
+        animateMode={streamdownSettings.animateMode}
+        showCursor={streamdownSettings.showCursor}
+      />
+    )
+  }
+  if (part.type === 'reasoning') {
+    return <ReasoningBlock key={key} text={part.text} state={part.state} />
+  }
+  if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
+    return (
+      <ToolCallBlock
+        key={key}
+        toolName={part.toolName ?? part.type.replace('tool-', '')}
+        toolCallId={part.toolCallId}
+        state={part.state}
+        input={part.input}
+        output={part.output}
+        errorText={part.errorText}
+      />
+    )
+  }
+  return null
+}
 
 /**
  * Module-level set of message IDs that have already been rendered at least once.
@@ -33,6 +88,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const isAssistant = message.role === 'assistant'
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
+  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
 
   // Only animate on the true first appearance — skip if the virtualizer is
   // remounting an item that simply scrolled out of view.
@@ -105,6 +161,13 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
               ? (part as { toolCallId: string }).toolCallId
               : `${message.id}-${part.type}-${i}`
 
+            // Detect subagent context via providerMetadata
+            const parentId = getParentToolUseId(part)
+            if (parentId) {
+              // Subagent parts are rendered in grouped folds below
+              return null
+            }
+
             if (part.type === 'text') {
               if (isUser) {
                 return (
@@ -116,11 +179,12 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
               return (
                 <Streamdown
                   key={key}
-                  animated
-                  isAnimating={isStreaming}
-                >
-                  {part.text}
-                </Streamdown>
+                  content={part.text}
+                  streaming={isStreaming}
+                  animationPreset={animationPreset}
+                  animateMode={animateMode}
+                  showCursor={showCursor}
+                />
               )
             }
 
@@ -148,16 +212,29 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
                 output?: unknown
                 errorText?: string
               }
+
+              // Render subagent fold after the parent tool call
+              const subagentParts = getSubagentPartsForTool(message.parts, toolPart.toolCallId)
+
               return (
-                <ToolCallBlock
-                  key={key}
-                  toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
-                  toolCallId={toolPart.toolCallId}
-                  state={toolPart.state as 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'}
-                  input={toolPart.input}
-                  output={toolPart.output}
-                  errorText={toolPart.errorText}
-                />
+                <div key={key}>
+                  <ToolCallBlock
+                    toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
+                    toolCallId={toolPart.toolCallId}
+                    state={toolPart.state as 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'}
+                    input={toolPart.input}
+                    output={toolPart.output}
+                    errorText={toolPart.errorText}
+                  />
+                  {subagentParts.length > 0 && (
+                    <SubagentFold
+                      itemCount={subagentParts.length}
+                      isStreaming={isStreaming && subagentParts.some(p => 'state' in p && p.state === 'streaming')}
+                    >
+                      {subagentParts.map((sp, si) => renderSubagentPart(sp, `${toolPart.toolCallId}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor }))}
+                    </SubagentFold>
+                  )}
+                </div>
               )
             }
 

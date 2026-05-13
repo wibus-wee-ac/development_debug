@@ -4,12 +4,13 @@
 
 import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
 
 import { getUsageSessionsBySessionId } from '~/api-gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { SessionApprovalList } from '../approval/approval-card'
 import { ChatMinimap } from './chat-minimap'
@@ -73,6 +74,17 @@ export function ChatView({
       viewportRef.current = null
     }
   }, [])
+
+  // Keep the streaming message mounted to prevent re-animation on scroll recycle
+  const generatingIds = useChatStore(s => s.generatingMessageIds)
+  const keepMountedIndices = useMemo(() => {
+    if (generatingIds.size === 0) return undefined
+    const indices: number[] = []
+    for (let i = 0; i < messages.length; i++) {
+      if (generatingIds.has(messages[i].id)) indices.push(i)
+    }
+    return indices.length > 0 ? indices : undefined
+  }, [generatingIds, messages])
 
   const lastMsg = messages.at(-1)
   const assistantHasVisibleText = lastMsg?.role === 'assistant'
@@ -223,7 +235,7 @@ export function ChatView({
       {/* Virtualized message list */}
       <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
         <ScrollArea className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
-          <div className="mx-auto max-w-2xl px-4 pt-4">
+          <div className="mx-auto max-w-[52rem] px-4 pt-4">
             {messages.length === 0 && isReady && (
               <div className="flex h-full items-center justify-center py-32">
                 <p className="text-sm text-muted-foreground select-none">
@@ -236,13 +248,13 @@ export function ChatView({
               ref={virtualizerRef}
               scrollRef={viewportRef}
               startMargin={24}
+              keepMounted={keepMountedIndices}
               onScroll={handleVirtScroll}
             >
               {messages.map(message => (
-                <MessageBubble
+                <MessageBubbleWithStreamState
                   key={message.id}
                   message={message}
-                  isStreaming={status === 'streaming' && message === messages.at(-1)}
                 />
               ))}
             </Virtualizer>
@@ -297,7 +309,7 @@ export function ChatView({
 
       {/* Composer — pinned to bottom */}
       <div className="shrink-0 bg-background/80 backdrop-blur-sm px-4 py-3">
-        <div className="mx-auto max-w-2xl">
+        <div className="mx-auto max-w-[52rem]">
           {isAwaiting && (
             <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <LoaderCircleIcon className="size-3.5 animate-spin" />
@@ -339,4 +351,13 @@ export function ChatView({
       </div>
     </div>
   )
+}
+
+// Per-message wrapper that subscribes to generating state from the store.
+// This ensures only truly-generating messages get streaming=true — not passive/stale state.
+import type { UIMessage } from 'ai'
+
+function MessageBubbleWithStreamState({ message }: { message: UIMessage }) {
+  const isGenerating = useChatStore(chatSelectors.isGenerating(message.id))
+  return <MessageBubble message={message} isStreaming={isGenerating} />
 }

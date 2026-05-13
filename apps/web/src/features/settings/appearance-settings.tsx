@@ -1,10 +1,11 @@
-// Input: useThemeStore, ThemeMode from ~/store/theme, SettingsRow
-// Output: AppearanceSettings component — Linear-style appearance row with inline theme cards
-// Position: Settings feature section — appearance/theme preferences
+// Input: useThemeStore, ThemeMode from ~/store/theme, useStreamdownStore, SettingsRow
+// Output: AppearanceSettings component — Linear-style appearance row with inline theme cards + streaming animation settings
+// Position: Settings feature section — appearance/theme preferences + streaming animation
 
 import { CheckIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
+import { useStreamdownStore } from '~/store/streamdown'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
 
@@ -137,6 +138,105 @@ export function AppearanceSettings() {
           })}
         </div>
       </SettingsRow>
+
+      <SettingsDivider />
+      <SettingsSectionHeader title="流式动画" description="自定义 AI 回复的流式渲染效果" />
+      <SettingsDivider />
+
+      <StreamdownSettings />
     </div>
+  )
+}
+
+const ANIMATION_PRESETS = [
+  { value: 'minimal', label: '极简', description: '快速淡入，无特效' },
+  { value: 'balanced', label: '平衡', description: '柔和淡入 + 区块光晕' },
+  { value: 'dramatic', label: '戏剧', description: '慢淡入 + 光晕 + 光标拖尾 + 入场动画' },
+] as const
+
+const GRANULARITY_OPTIONS = [
+  { value: 'word', label: '逐词' },
+  { value: 'char', label: '逐字' },
+] as const
+
+function StreamdownSettings() {
+  const { animationPreset, animateMode, showCursor, setAnimationPreset, setAnimateMode, setShowCursor } = useStreamdownStore()
+
+  return (
+    <>
+      <SettingsRow
+        label="动画预设"
+        description="控制流式文字出现时的视觉效果强度"
+      >
+        <div className="flex gap-2">
+          {ANIMATION_PRESETS.map(({ value, label, description }) => {
+            const selected = animationPreset === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAnimationPreset(value)}
+                className={cn(
+                  'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-all',
+                  selected
+                    ? 'border-foreground/20 bg-foreground/5'
+                    : 'border-border hover:border-foreground/10',
+                )}
+              >
+                <span className={cn('text-xs font-medium', selected ? 'text-foreground' : 'text-muted-foreground')}>
+                  {label}
+                </span>
+                <span className="text-[10px] text-muted-foreground/70">{description}</span>
+              </button>
+            )
+          })}
+        </div>
+      </SettingsRow>
+
+      <SettingsRow
+        label="动画粒度"
+        description="文字逐词或逐字动画"
+      >
+        <div className="flex gap-1 rounded-lg border border-border p-0.5">
+          {GRANULARITY_OPTIONS.map(({ value, label }) => {
+            const selected = animateMode === value
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAnimateMode(value)}
+                className={cn(
+                  'rounded-md px-3 py-1 text-xs font-medium transition-colors',
+                  selected ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      </SettingsRow>
+
+      <SettingsRow
+        label="显示光标"
+        description="流式输入时在文本末尾显示闪烁光标"
+      >
+        <button
+          type="button"
+          onClick={() => setShowCursor(!showCursor)}
+          className={cn(
+            'relative h-5 w-9 rounded-full transition-colors',
+            showCursor ? 'bg-foreground' : 'bg-border',
+          )}
+        >
+          <span
+            className={cn(
+              'absolute top-0.5 left-0.5 size-4 rounded-full bg-background transition-transform',
+              showCursor && 'translate-x-4',
+            )}
+          />
+        </button>
+      </SettingsRow>
+    </>
   )
 }

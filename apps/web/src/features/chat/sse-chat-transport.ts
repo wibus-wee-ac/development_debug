@@ -57,7 +57,7 @@ type StoredChunkShape = {
   [key: string]: unknown
 }
 
-function buildChunkStreamFromResponse(
+export function buildChunkStreamFromResponse(
   response: Response,
   chatSessionId: string,
 ): ReadableStream<UIMessageChunk> {
