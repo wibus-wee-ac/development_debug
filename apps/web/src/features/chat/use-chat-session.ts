@@ -459,14 +459,10 @@ export function useChatSession(chatSessionId: string | null, options?: {
     if (!chatSessionId) {
       return
     }
-    const handler = handlerRef.current
-    if (handler) {
-      // The abort will cause the fetch to throw AbortError → handler.finish()
-      const messages = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
-      const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
-      if (lastAssistant) {
-        await useChatStore.getState().stopGeneration(lastAssistant.id, chatSessionId)
-      }
+    const messages = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
+    if (lastAssistant) {
+      await useChatStore.getState().stopGeneration(lastAssistant.id, chatSessionId)
     }
   }, [chatSessionId])
 

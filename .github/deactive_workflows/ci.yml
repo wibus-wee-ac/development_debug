@@ -32,6 +32,8 @@ jobs:
         run: pnpm typecheck:server
       - name: Typecheck Web App (apps/web)
         run: pnpm typecheck:apps-web
+      - name: Typecheck Desktop (apps/desktop)
+        run: pnpm typecheck:desktop
 
   # ─── Unit Tests (src + packages) ──────────────────────────────────────────
   unit-tests:
@@ -82,3 +84,5 @@ jobs:
         run: pnpm build:web
       - name: Build Server (apps/server)
         run: pnpm build:server
+      - name: Build Desktop (apps/desktop)
+        run: pnpm build:desktop

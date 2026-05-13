@@ -1,0 +1,40 @@
+appId: com.cradle.app
+productName: Cradle
+directories:
+  buildResources: ../../resources
+  output: release
+files:
+  - dist/**/*
+  - "!node_modules/**/*"
+extraResources:
+  - from: ../../packages/db/drizzle
+    to: drizzle
+    filter:
+      - "**/*"
+asar: true
+asarUnpack:
+  - "**/*.node"
+  - "**/*.wasm"
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+  entitlements: ../../build/entitlements.mac.plist
+  entitlementsInherit: ../../build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
+win:
+  target:
+    - nsis
+    - zip
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${productName}-${version}-setup.${ext}

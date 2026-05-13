@@ -53,8 +53,14 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
     </TooltipProvider>
   ), [])
 
-  const handleTabTearOff = useCallback((_tab: TabInstance, _screenX: number, _screenY: number) => {
-    // Tab tear-off is not supported in web mode
+  const handleTabTearOff = useCallback((tab: TabInstance, screenX: number, screenY: number) => {
+    // In Electron, tear off the tab into a new window
+    if (window.cradle?.env?.isElectron && tab.type === 'chat') {
+      const sessionId = (tab.params as { sessionId?: string })?.sessionId
+      if (sessionId) {
+        window.cradle.ipc.invoke('window.tearOffSession', sessionId, screenX, screenY)
+      }
+    }
   }, [])
 
   return (

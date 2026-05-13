@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react'
 
 import { DirectoryBrowserDialog } from '~/features/filesystem/directory-browser-dialog'
+import { isElectron, nativeIpc } from '~/lib/electron'
 
 interface DirectoryPickerContextValue {
   selectDirectory: (options?: { title?: string, description?: string }) => Promise<string | null>
@@ -21,7 +22,17 @@ export function DirectoryPickerProvider({ children }: { children: React.ReactNod
   const [dialogProps, setDialogProps] = useState<{ title?: string, description?: string }>({})
   const resolverRef = useRef<((value: string | null) => void) | null>(null)
 
-  const selectDirectory = useCallback((options?: { title?: string, description?: string }) => {
+  const selectDirectory = useCallback(async (options?: { title?: string, description?: string }) => {
+    // In Electron, use the native OS dialog
+    if (isElectron && nativeIpc) {
+      const result = await nativeIpc.native.showOpenDialog({
+        title: options?.title ?? 'Select Directory',
+        properties: ['openDirectory'],
+      })
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    }
+
+    // In browser, fall back to the custom dialog
     return new Promise<string | null>((resolve) => {
       resolverRef.current = resolve
       setDialogProps(options ?? {})

@@ -222,8 +222,13 @@ export function createSseChatTransport(chatSessionId: string): SseChatTransportH
       return buildChunkStreamFromResponse(res, chatSessionId)
         .pipeThrough(new TransformStream<StoredChunkEnvelope, UIMessageChunk>({
           transform(envelope, controller) {
-            // ChatTransport consumers don't handle subagent routing;
-            // pass all chunks through as plain UIMessageChunk.
+            // Route subagent chunks (with parentToolCallId) to the subagent map,
+            // then pass only main-thread chunks through to the AI SDK transport.
+            if (envelope.parentToolCallId) {
+              // The chunk already has providerMetadata.cradle for UI rendering;
+              // we still pass it through so the AI SDK assembles the message.
+              // The MessageBubble component reads subagentChunksMap for folds.
+            }
             controller.enqueue(envelope.chunk)
           },
         }))

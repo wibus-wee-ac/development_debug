@@ -15,8 +15,24 @@ interface Window {
   ipcDevtool: any
   // eslint-disable-next-line ts/no-explicit-any
   electron: any
-  cradle: {
-    subscribe: (topic: string, listener: (...args: unknown[]) => void) => () => void
+  cradle?: {
+    ipc: {
+      invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
+    }
+    env: {
+      serverUrl: string
+      sessionId: string | null
+      isTearoff: boolean
+      platform: 'darwin' | 'win32' | 'linux'
+      isElectron: true
+    }
+    window: {
+      minimize: () => Promise<unknown>
+      maximize: () => Promise<unknown>
+      close: () => Promise<unknown>
+    }
+    /** @deprecated Legacy subscribe API — prefer ipc */
+    subscribe?: (topic: string, listener: (...args: unknown[]) => void) => () => void
   }
   // eslint-disable-next-line ts/no-explicit-any
   ipc: any

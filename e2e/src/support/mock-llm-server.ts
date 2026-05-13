@@ -32,6 +32,15 @@ export interface MockToolDefinition {
   }
 }
 
+/**
+ * Predefined Claude Agent SDK message scenarios for subagent/team testing.
+ */
+export type MockClaudeAgentScenario =
+  | 'basic-chat'
+  | 'agent-subagent'          // Parent spawns Agent tool → subagent does work with parent_tool_use_id
+  | 'agent-subagent-deep'     // Subagent spawns its own Agent (nested depth 2)
+  | 'agent-parallel'          // Parent spawns 2 Agents at once
+
 export interface MockLlmServerOptions {
   /** Fixed response text the "assistant" will stream back. Default: 'Hello from mock LLM!' */
   responseText?: string
@@ -53,6 +62,12 @@ export interface MockLlmServerOptions {
   models?: Array<{ id: string, owned_by?: string }>
   /** Reasoning/thinking text to emit before the main response. */
   reasoningText?: string
+  /**
+   * Predefined Claude Agent SDK message scenario.
+   * When set, the /claude-agent/query endpoint streams a pre-crafted sequence
+   * of SDKMessage JSON objects (including parent_tool_use_id for subagent events).
+   */
+  claudeAgentScenario?: MockClaudeAgentScenario
 }
 
 export class MockLlmServer {
@@ -69,6 +84,7 @@ export class MockLlmServer {
   private readonly _tools: MockToolDefinition[]
   private readonly models: Array<{ id: string, owned_by?: string }>
   private readonly reasoningText: string | null
+  private readonly claudeAgentScenario: MockClaudeAgentScenario | null
   private requestLog: MockLlmRequestLogEntry[] = []
   private turnCount = 0
 
@@ -83,6 +99,7 @@ export class MockLlmServer {
     this._tools = opts.tools ?? []
     this.models = opts.models ?? [{ id: 'mock-model', owned_by: 'mock' }]
     this.reasoningText = opts.reasoningText ?? null
+    this.claudeAgentScenario = opts.claudeAgentScenario ?? null
   }
 
   /** Start the server and return the base URL (e.g. http://localhost:PORT/v1) */
@@ -159,6 +176,11 @@ export class MockLlmServer {
 
     if (req.method === 'POST' && url.endsWith('/responses')) {
       this.handleResponses(req, res)
+      return
+    }
+
+    if (req.method === 'POST' && url.endsWith('/claude-agent/query')) {
+      this.handleClaudeAgentQuery(req, res)
       return
     }
 
@@ -575,7 +597,337 @@ export class MockLlmServer {
     res.end()
   }
 
+  // ── Claude Agent SDK (/v1/claude-agent/query) ──────────────────────────────
+
+  private handleClaudeAgentQuery(req: IncomingMessage, res: ServerResponse): void {
+    const chunks: Buffer[] = []
+    req.on('data', (c: Buffer) => chunks.push(c))
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8')
+      this.recordRequest(req, body)
+      this.turnCount++
+
+      if (!this.claudeAgentScenario) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'No claudeAgentScenario configured' }))
+        return
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      })
+
+      void this.streamClaudeAgentScenario(res)
+    })
+  }
+
+  private async streamClaudeAgentScenario(res: ServerResponse): Promise<void> {
+    const sessionId = 'mock-session-001'
+    const msgs = buildClaudeAgentScenario(this.claudeAgentScenario!, sessionId)
+
+    for (const msg of msgs) {
+      this.writeSSE(res, msg as unknown as Record<string, unknown>)
+      await this.delay(this.chunkDelay)
+    }
+
+    res.end()
+  }
+
   private writeSSE(res: ServerResponse, data: Record<string, unknown>): void {
     res.write(`data: ${JSON.stringify(data)}\n\n`)
   }
+}
+
+// ── Claude Agent SDK scenario message builders ────────────────────────────────
+
+interface MockSdkMessage {
+  type: string
+  subtype?: string
+  [key: string]: unknown
+}
+
+function makeStreamEvent(opts: {
+  eventType: 'content_block_start' | 'content_block_delta' | 'content_block_stop'
+  index: number
+  contentBlock?: Record<string, unknown>
+  delta?: Record<string, unknown>
+  parentToolUseId: string | null
+  uuid: string
+  sessionId: string
+}): MockSdkMessage {
+  const msg: MockSdkMessage = {
+    type: 'stream_event',
+    event: {
+      type: opts.eventType,
+      index: opts.index,
+      ...(opts.contentBlock ? { content_block: opts.contentBlock } : {}),
+      ...(opts.delta ? { delta: opts.delta } : {}),
+    },
+    parent_tool_use_id: opts.parentToolUseId,
+    uuid: opts.uuid,
+    session_id: opts.sessionId,
+  }
+  return msg
+}
+
+function makeUserMsg(opts: {
+  toolResults: Array<{ tool_use_id: string, content: string, is_error?: boolean }>
+  parentToolUseId: string | null
+  uuid: string
+  sessionId: string
+}): MockSdkMessage {
+  return {
+    type: 'user',
+    message: {
+      role: 'user',
+      content: opts.toolResults.map(tr => ({
+        type: 'tool_result',
+        tool_use_id: tr.tool_use_id,
+        content: tr.content,
+        ...(tr.is_error ? { is_error: true } : {}),
+      })),
+    },
+    parent_tool_use_id: opts.parentToolUseId,
+    uuid: opts.uuid,
+    session_id: opts.sessionId,
+  }
+}
+
+function makeResultMsg(sessionId: string): MockSdkMessage {
+  return {
+    type: 'result',
+    subtype: 'success',
+    duration_ms: 1000,
+    duration_api_ms: 800,
+    is_error: false,
+    num_turns: 2,
+    usage: { input_tokens: 100, output_tokens: 50, cache_creation_tokens: 0, cache_read_tokens: 0 },
+    permission_denials: [],
+    session_id: sessionId,
+    uuid: `result-${sessionId}`,
+  }
+}
+
+/**
+ * Build pre-crafted SDKMessage sequences for Claude Agent mock scenarios.
+ */
+function buildClaudeAgentScenario(
+  scenario: MockClaudeAgentScenario,
+  sessionId: string,
+): MockSdkMessage[] {
+  switch (scenario) {
+    case 'basic-chat':
+      return buildBasicChat(sessionId)
+    case 'agent-subagent':
+      return buildAgentSubagent(sessionId)
+    case 'agent-subagent-deep':
+      return buildAgentSubagentDeep(sessionId)
+    case 'agent-parallel':
+      return buildAgentParallel(sessionId)
+    default:
+      return buildBasicChat(sessionId)
+  }
+}
+
+function buildBasicChat(sessionId: string): MockSdkMessage[] {
+  const msgs: MockSdkMessage[] = []
+
+  // Parent reasoning
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'thinking', thinking: '' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Let me think about this...' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u1', sessionId }))
+
+  // Parent text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Hello! This is a basic response from the mock LLM.' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u1', sessionId }))
+
+  msgs.push(makeResultMsg(sessionId))
+  return msgs
+}
+
+/**
+ * Parent spawns Agent → subagent does work → Agent returns → parent wraps up.
+ * KEY: subagent events have parent_tool_use_id set, parent events have null.
+ */
+function buildAgentSubagent(sessionId: string): MockSdkMessage[] {
+  const agentToolCallId = 'call_agent_main_001'
+  const subToolCallId = 'call_sub_grep_001'
+  const msgs: MockSdkMessage[] = []
+
+  // ── Parent: reasoning ──
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'thinking', thinking: '' }, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'User wants me to explore the codebase. Let me spawn an Explorer subagent.' }, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+
+  // ── Parent: text ──
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Let me spawn an Explorer agent to investigate.' }, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+
+  // ── Parent: Agent tool_use START ──
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 2, contentBlock: { type: 'tool_use', id: agentToolCallId, name: 'Agent', input: {} }, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"description":"Explore codebase","prompt":"Search for dead code and unused files"}' }, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 2, parentToolUseId: null, uuid: 'u-parent', sessionId }))
+
+  // ═══════════════════════════════════════════════════════════════
+  // SUBAGENT events (parent_tool_use_id = agentToolCallId)
+  // ═══════════════════════════════════════════════════════════════
+
+  // Subagent: reasoning
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'thinking', thinking: '' }, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'I need to search for dead code. Let me start with grep.' }, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+
+  // Subagent: text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'text', text: '' }, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'I will systematically search for dead code.' }, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+
+  // Subagent: tool_use (Grep)
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 2, contentBlock: { type: 'tool_use', id: subToolCallId, name: 'Grep', input: {} }, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"pattern":"unused","output_mode":"files_with_matches"}' }, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 2, parentToolUseId: agentToolCallId, uuid: 'u-sub', sessionId }))
+
+  // Subagent: tool_result (Grep output)
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: subToolCallId, content: 'Found 12 unused imports in 5 files' }], parentToolUseId: agentToolCallId, uuid: 'u-sub-tr', sessionId }))
+
+  // Subagent: more text after tool result
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: agentToolCallId, uuid: 'u-sub-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Found 12 unused imports across 5 files. These can be safely removed.' }, parentToolUseId: agentToolCallId, uuid: 'u-sub-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: agentToolCallId, uuid: 'u-sub-2', sessionId }))
+
+  // ═══════════════════════════════════════════════════════════════
+  // Back to PARENT
+  // ═══════════════════════════════════════════════════════════════
+
+  // Agent tool_result (subagent's final output returned to parent)
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: agentToolCallId, content: 'Subagent completed: found 12 unused imports in 5 files.' }], parentToolUseId: null, uuid: 'u-parent-tr', sessionId }))
+
+  // Parent: reasoning about subagent result
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'thinking', thinking: '' }, parentToolUseId: null, uuid: 'u-parent-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'The Explorer found 12 unused imports. Let me summarize.' }, parentToolUseId: null, uuid: 'u-parent-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-parent-2', sessionId }))
+
+  // Parent: final text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-parent-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'The Explorer subagent found 12 unused imports across 5 source files. Here they are...' }, parentToolUseId: null, uuid: 'u-parent-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u-parent-2', sessionId }))
+
+  msgs.push(makeResultMsg(sessionId))
+  return msgs
+}
+
+/** Subagent spawns its own Agent (depth=2). Tests nested parent_tool_use_id chaining. */
+function buildAgentSubagentDeep(sessionId: string): MockSdkMessage[] {
+  const parentAgentId = 'call_agent_l1'
+  const childAgentId = 'call_agent_l2'
+  const childToolId = 'call_child_grep'
+  const msgs: MockSdkMessage[] = []
+
+  // Parent text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me dispatch a deep exploration agent.' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-p', sessionId }))
+
+  // Parent → Agent L1
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: parentAgentId, name: 'Agent', input: {} }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"description":"Deep explorer","prompt":"Explore deeply"}' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u-p', sessionId }))
+
+  // L1 subagent text (parent_tool_use_id = parentAgentId)
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: parentAgentId, uuid: 'u-l1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'I will spawn a deeper agent to look at the packages directory.' }, parentToolUseId: parentAgentId, uuid: 'u-l1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: parentAgentId, uuid: 'u-l1', sessionId }))
+
+  // L1 → Agent L2 (parent_tool_use_id = parentAgentId, since this is still inside L1's turn)
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: childAgentId, name: 'Agent', input: {} }, parentToolUseId: parentAgentId, uuid: 'u-l1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"description":"Package inspector","prompt":"Inspect packages/"}' }, parentToolUseId: parentAgentId, uuid: 'u-l1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: parentAgentId, uuid: 'u-l1', sessionId }))
+
+  // L2 subagent work (parent_tool_use_id = childAgentId)
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: childAgentId, uuid: 'u-l2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Inspecting packages directory...' }, parentToolUseId: childAgentId, uuid: 'u-l2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: childAgentId, uuid: 'u-l2', sessionId }))
+
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: childToolId, name: 'Read', input: {} }, parentToolUseId: childAgentId, uuid: 'u-l2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"file_path":"packages/db/package.json"}' }, parentToolUseId: childAgentId, uuid: 'u-l2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: childAgentId, uuid: 'u-l2', sessionId }))
+
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: childToolId, content: '{\"name\":\"@cradle/db\"}' }], parentToolUseId: childAgentId, uuid: 'u-l2-tr', sessionId }))
+
+  // L2 result
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: childAgentId, content: 'Package inspection complete.' }], parentToolUseId: parentAgentId, uuid: 'u-l1-tr2', sessionId }))
+
+  // L1 wraps up
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: parentAgentId, uuid: 'u-l1-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Package inspection is complete.' }, parentToolUseId: parentAgentId, uuid: 'u-l1-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: parentAgentId, uuid: 'u-l1-2', sessionId }))
+
+  // L1 result
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: parentAgentId, content: 'Deep exploration complete.' }], parentToolUseId: null, uuid: 'u-p-tr', sessionId }))
+
+  // Parent final text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'The deep exploration agent completed successfully.' }, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+
+  msgs.push(makeResultMsg(sessionId))
+  return msgs
+}
+
+/** Parent spawns 2 Agents in parallel. Tests parallel subagent routing. */
+function buildAgentParallel(sessionId: string): MockSdkMessage[] {
+  const agentA = 'call_agent_a'
+  const agentB = 'call_agent_b'
+  const toolA = 'call_tool_a'
+  const toolB = 'call_tool_b'
+  const msgs: MockSdkMessage[] = []
+
+  // Parent text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Let me run two investigations in parallel.' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-p', sessionId }))
+
+  // Agent A
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: agentA, name: 'Agent', input: {} }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"description":"Search src","prompt":"Search src/"}' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u-p', sessionId }))
+
+  // Agent B
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 2, contentBlock: { type: 'tool_use', id: agentB, name: 'Agent', input: {} }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 2, delta: { type: 'input_json_delta', partial_json: '{"description":"Search packages","prompt":"Search packages/"}' }, parentToolUseId: null, uuid: 'u-p', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 2, parentToolUseId: null, uuid: 'u-p', sessionId }))
+
+  // Agent A's work
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: agentA, uuid: 'u-a', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Searching src directory...' }, parentToolUseId: agentA, uuid: 'u-a', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: agentA, uuid: 'u-a', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: toolA, name: 'Grep', input: {} }, parentToolUseId: agentA, uuid: 'u-a', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"pattern":"export"}' }, parentToolUseId: agentA, uuid: 'u-a', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: agentA, uuid: 'u-a', sessionId }))
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: toolA, content: 'Found 50 exports in src/' }], parentToolUseId: agentA, uuid: 'u-a-tr', sessionId }))
+
+  // Agent B's work
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: agentB, uuid: 'u-b', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Searching packages directory...' }, parentToolUseId: agentB, uuid: 'u-b', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: agentB, uuid: 'u-b', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: toolB, name: 'Glob', input: {} }, parentToolUseId: agentB, uuid: 'u-b', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"pattern":"**/*.ts"}' }, parentToolUseId: agentB, uuid: 'u-b', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: agentB, uuid: 'u-b', sessionId }))
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: toolB, content: 'Found 120 .ts files in packages/' }], parentToolUseId: agentB, uuid: 'u-b-tr', sessionId }))
+
+  // Agent A result
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: agentA, content: 'Src search complete: 50 exports found.' }], parentToolUseId: null, uuid: 'u-p-tra', sessionId }))
+  // Agent B result
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: agentB, content: 'Packages search complete: 120 .ts files found.' }], parentToolUseId: null, uuid: 'u-p-trb', sessionId }))
+
+  // Parent final text
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Both agents completed. Found 50 exports in src and 120 .ts files in packages.' }, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+
+  msgs.push(makeResultMsg(sessionId))
+  return msgs
 }

@@ -1,0 +1,33 @@
+{
+  "name": "@cradle/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "pack": "pnpm build && electron-builder --dir",
+    "dist": "pnpm build && electron-builder",
+    "dist:mac": "pnpm build && electron-builder --mac",
+    "dist:win": "pnpm build && electron-builder --win",
+    "dist:linux": "pnpm build && electron-builder --linux",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json"
+  },
+  "dependencies": {
+    "@cradle/ipc": "workspace:*",
+    "get-port": "^7.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@vitejs/plugin-react": "^5.1.1",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "vite": "^7.2.6",
+    "typescript": "^5.9.3",
+    "@types/node": "^22.19.1"
+  }
+}

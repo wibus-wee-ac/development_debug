@@ -4,6 +4,10 @@
   "version": "0.0.1",
   "private": true,
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./app": "./src/app.ts"
+  },
   "scripts": {
     "dev": "nodemon",
     "build": "vite build",
