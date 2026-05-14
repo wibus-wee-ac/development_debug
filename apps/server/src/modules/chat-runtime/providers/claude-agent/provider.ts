@@ -86,8 +86,6 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
     const abortController = new AbortController()
     const textItemId = randomUUID()
     const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
-    const skillPaths = config.skillPaths ?? this.deps.resolveSkillPaths?.(snapshot.workspacePath ?? '.') ?? []
-
     const queryOptions: Options = {
       abortController,
       model: effectiveModel,
@@ -104,13 +102,10 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
       systemPrompt: input.systemPrompt
         ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.systemPrompt }
         : undefined,
-    }
-
-    if (config.skills) {
-      queryOptions.skills = config.skills
-    }
-    else if (skillPaths.length > 0) {
-      queryOptions.skills = skillPaths
+      // TODO: skills option expects names (e.g. ['pdf', 'docx']), not directory paths.
+      // resolveSkillPaths() returns filesystem directories, which is incompatible.
+      // Revisit to convert paths -> skill names, then restore per-profile filtering.
+      skills: 'all',
     }
     if (config.tools) {
       queryOptions.tools = config.tools
