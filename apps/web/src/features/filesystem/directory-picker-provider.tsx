@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react'
+import { createContext, use, useCallback, useRef, useState } from 'react'
 
 import { DirectoryBrowserDialog } from '~/features/filesystem/directory-browser-dialog'
 import { isElectron, nativeIpc } from '~/lib/electron'
@@ -10,7 +10,7 @@ interface DirectoryPickerContextValue {
 const DirectoryPickerContext = createContext<DirectoryPickerContextValue | null>(null)
 
 export function useDirectoryPicker() {
-  const ctx = useContext(DirectoryPickerContext)
+  const ctx = use(DirectoryPickerContext)
   if (!ctx) {
     throw new Error('useDirectoryPicker must be used within DirectoryPickerProvider')
   }

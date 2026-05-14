@@ -3,7 +3,7 @@
 // Position: Primary chat feature view — does NOT own message sending lifecycle
 
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
@@ -36,10 +36,12 @@ interface ChatViewProps {
   placeholder?: string
 }
 
+const EMPTY_FILES: MentionItem[] = []
+
 export function ChatView({
   sessionId,
   initialTimelineGroups,
-  availableFiles = [],
+  availableFiles = EMPTY_FILES,
   composerToolbar,
   composerContextBar,
   placeholder,
@@ -224,6 +226,7 @@ export function ChatView({
       data-chat-ready={isReady ? 'true' : 'false'}
       data-chat-session-id={sessionId ?? ''}
       data-chat-status={status}
+      suppressHydrationWarning
       onDrop={(e) => {
         e.preventDefault()
         const path = e.dataTransfer.getData('text/plain')
@@ -261,7 +264,7 @@ export function ChatView({
             </Virtualizer>
 
             {status === 'error' && (
-              <motion.div
+              <m.div
                 data-testid="chat-error-banner"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -273,11 +276,11 @@ export function ChatView({
                 <span className="text-xs text-destructive/70">
                   {error ?? '发送失败，请重试'}
                 </span>
-              </motion.div>
+              </m.div>
             )}
 
             {showThinking && (
-              <motion.div
+              <m.div
                 data-testid="chat-thinking-indicator"
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -287,7 +290,7 @@ export function ChatView({
               >
                 <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" aria-hidden="true" />
                 <span className="text-xs text-muted-foreground">正在思考...</span>
-              </motion.div>
+              </m.div>
             )}
 
             <div className="h-6" aria-hidden="true" />

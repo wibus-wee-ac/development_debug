@@ -221,7 +221,7 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
     <PropertyRow label="Agent">
       <Popover>
         <PopoverTrigger
-          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-muted-foreground/60 hover:text-foreground hover:bg-fill transition-colors"
+          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-text-tertiary hover:text-foreground hover:bg-fill transition-colors"
           data-testid="issue-agent-delegate-trigger"
         >
           <BotIcon className="size-3" />

@@ -15,7 +15,6 @@ import {
   TextIcon,
 } from 'lucide-react'
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -49,8 +48,7 @@ interface SlashCommandListProps {
   command: (item: SlashCommandItem) => void
 }
 
-export const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandListProps>(
-  ({ items, command }, ref) => {
+export function SlashCommandList({ items, command, ref }: SlashCommandListProps & { ref?: React.Ref<SlashCommandListRef> }) {
     const [selectedIndex, setSelectedIndex] = useState(0)
     const selectedRef = useRef(0)
     const listRef = useRef<HTMLDivElement>(null)
@@ -102,41 +100,40 @@ export const SlashCommandList = forwardRef<SlashCommandListRef, SlashCommandList
       return null
     }
 
-    return (
-      <div className="w-56 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md">
-        <div ref={listRef} className="max-h-64 overflow-y-auto p-1">
-          {items.map((item, index) => {
-            const Icon = ICON_MAP[item.icon]
-            return (
-              <button
-                type="button"
-                key={item.title}
-                onClick={() => selectItem(index)}
-                className={cn(
-                  'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
-                  index === selectedIndex
-                    ? 'bg-accent text-accent-foreground'
-                    : 'hover:bg-accent/50',
+  return (
+    <div className="w-56 overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md">
+      <div ref={listRef} className="max-h-64 overflow-y-auto p-1">
+        {items.map((item, index) => {
+          const Icon = ICON_MAP[item.icon]
+          return (
+            <button
+              type="button"
+              key={item.title}
+              onClick={() => selectItem(index)}
+              className={cn(
+                'flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors',
+                index === selectedIndex
+                  ? 'bg-accent text-accent-foreground'
+                  : 'hover:bg-accent/50',
+              )}
+            >
+              {Icon
+                ? <Icon className="size-4 shrink-0 text-muted-foreground/60" />
+                : (
+                  <span className="size-4 shrink-0 flex items-center justify-center text-[11px] font-mono text-muted-foreground">
+                    {item.icon}
+                  </span>
                 )}
-              >
-                {Icon
-                  ? <Icon className="size-4 shrink-0 text-muted-foreground/60" />
-                  : (
-                    <span className="size-4 shrink-0 flex items-center justify-center text-[11px] font-mono text-muted-foreground">
-                      {item.icon}
-                    </span>
-                  )}
-                <div className="flex-1 min-w-0">
-                  <span className="block text-foreground text-[13px]">{item.title}</span>
-                  <span className="block text-[11px] text-muted-foreground">{item.description}</span>
-                </div>
-              </button>
-            )
-          })}
-        </div>
+              <div className="flex-1 min-w-0">
+                <span className="block text-foreground text-[13px]">{item.title}</span>
+                <span className="block text-[11px] text-muted-foreground">{item.description}</span>
+              </div>
+            </button>
+          )
+        })}
       </div>
-    )
-  },
-)
+    </div>
+  )
+}
 
 SlashCommandList.displayName = 'SlashCommandList'

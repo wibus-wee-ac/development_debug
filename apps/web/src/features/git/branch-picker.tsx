@@ -313,7 +313,7 @@ export function BranchPicker({
                 )}
 
                 {localFiltered.length === 0 && remoteFiltered.length === 0 && (
-                  <p className="px-3 py-3 text-center text-xs text-muted-foreground">
+                  <p className="p-3 text-center text-xs text-muted-foreground">
                     {search ? '无匹配分支' : '加载中…'}
                   </p>
                 )}

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 
 import { getSessionAwaitsOptions, getSessionAwaitsByIdLiveStatusOptions } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
@@ -110,7 +110,7 @@ function RunStatusIcon({ run }: { run: LiveCheckRun }) {
 
   return (
     <AnimatePresence mode="wait">
-      <motion.span
+      <m.span
         key={`${run.status}-${run.conclusion}`}
         initial={{ scale: 0.5, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -119,7 +119,7 @@ function RunStatusIcon({ run }: { run: LiveCheckRun }) {
         className="inline-flex"
       >
         {icon}
-      </motion.span>
+      </m.span>
     </AnimatePresence>
   )
 }
@@ -136,6 +136,7 @@ interface TreeNode {
 
 function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
   const root: TreeNode[] = []
+  const rootIndex = new Map<string, { node: TreeNode, childIndex: Map<string, { node: TreeNode, childIndex: any }> }>()
 
   for (const run of runs) {
     const segments = run.name.split(' / ').map(s => s.trim())
@@ -144,19 +145,23 @@ function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
       : segments
 
     let currentLevel = root
+    let currentIndex: Map<string, any> = rootIndex
     for (let i = 0; i < limited.length; i++) {
       const segment = limited[i]
       const isLeaf = i === limited.length - 1
-      let existing = currentLevel.find(n => n.label === segment)
+      let entry = currentIndex.get(segment)
 
-      if (!existing) {
-        existing = { label: segment, run: isLeaf ? run : null, children: [] }
-        currentLevel.push(existing)
+      if (!entry) {
+        const node: TreeNode = { label: segment, run: isLeaf ? run : null, children: [] }
+        entry = { node, childIndex: new Map() }
+        currentLevel.push(node)
+        currentIndex.set(segment, entry)
       }
       else if (isLeaf) {
-        existing.run = run
+        entry.node.run = run
       }
-      currentLevel = existing.children
+      currentLevel = entry.node.children
+      currentIndex = entry.childIndex
     }
   }
 
@@ -374,7 +379,7 @@ export function AwaitPanel({ sessionId }: AwaitPanelProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto px-3 py-3 space-y-3">
+    <div className="flex flex-1 flex-col overflow-y-auto p-3 gap-y-3">
       {activeAwaits.length > 0 && (
         <div className="space-y-2">
           <span className="text-[10px] text-muted-foreground/50">Active</span>

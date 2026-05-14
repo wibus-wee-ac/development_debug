@@ -83,7 +83,7 @@ export function getWebVitals(): VitalEntry[] {
   return [...vitals]
 }
 
-export function stopPerfMonitor() {
+function stopPerfMonitor() {
   if (intervalId !== null) {
     clearInterval(intervalId)
     intervalId = null

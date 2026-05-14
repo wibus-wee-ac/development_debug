@@ -15,7 +15,8 @@ import { MentionPanel } from './mention-panel'
 /** Shrinks the textarea to content height, capped at 240 px. */
 function autoResize(el: HTMLTextAreaElement) {
   el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+  const h = Math.min(el.scrollHeight, 240)
+  el.style.height = `${h}px`
 }
 
 interface ComposerProps {
@@ -34,13 +35,15 @@ interface ComposerProps {
   appendTextKey?: number
 }
 
+const EMPTY_FILES: MentionItem[] = []
+
 export function Composer({
   onSend,
   onStop,
   isStreaming,
   disabled,
   placeholder = '输入消息...',
-  availableFiles = [],
+  availableFiles = EMPTY_FILES,
   className,
   toolbar,
   contextBar,

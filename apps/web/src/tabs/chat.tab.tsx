@@ -15,9 +15,8 @@ import type { ChatTimelineGroupRow } from '~/features/chat/use-chat-session'
 import { GitBranchControl } from '~/features/git'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
+import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, Session, Workspace } from '~/lib/types'
-
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
 
 const ChatView = lazy(() => import('~/features/chat/chat-view').then(m => ({ default: m.ChatView })))
 
@@ -134,7 +133,7 @@ export const chatTab = defineTab({
   component: ChatTabContent,
   loader: async (params: { sessionId: string }) => {
     try {
-      const res = await fetch(`${SERVER_BASE}/chat/sessions/${params.sessionId}/messages`)
+      const res = await fetch(`${getServerUrl()}/chat/sessions/${params.sessionId}/messages`)
       if (!res.ok) {
         return []
       }

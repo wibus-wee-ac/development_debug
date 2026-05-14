@@ -144,7 +144,7 @@ function ChatMinimapInner({
     }
   }, [isDragging])
 
-  const handleClick = useCallback(() => {
+  const scrollToHoveredMessage = useCallback(() => {
     if (hoverIdx !== null) {
       onScrollToIndex(hoverIdx)
     }
@@ -167,12 +167,15 @@ function ChatMinimapInner({
       {/* Bar group — pointer events only on the actual bars */}
       <div
         ref={containerRef}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') scrollToHoveredMessage() }}
         className="relative flex w-full cursor-pointer flex-col items-center gap-1"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        onClick={handleClick}
+        onClick={scrollToHoveredMessage}
       >
         {bars.map((bar, i) => {
           const progress = barProgress[i] ?? 0

@@ -76,7 +76,6 @@ function TooltipContent({
 export {
   Tooltip,
   TooltipContent,
-  TooltipContent as TooltipPopup,
   TooltipProvider,
   TooltipTrigger,
 }

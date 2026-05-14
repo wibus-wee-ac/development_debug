@@ -14,12 +14,11 @@ import {
   PlusIcon,
   SearchIcon,
   ServerIcon,
-  SettingsIcon,
   SparklesIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -64,12 +63,12 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import type { AgentProfile, ModelDescriptor, ProviderKind } from '~/lib/types'
 
-import { PROVIDER_ACCENT, PROVIDER_ICONS } from './provider-icons'
+import { SettingsDivider, SettingsRow } from '../settings/settings-row'
+import { PROVIDER_ICONS } from './provider-icons'
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
 
@@ -116,16 +115,12 @@ function buildProfileId(name: string, fallback: string): string {
 function presetForProfile(profile: AgentProfile): ProviderPreset {
   return (
     PROVIDER_PRESETS.find(p => p.providerKind === profile.providerKind)
-    ?? PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1]!
+    ?? PROVIDER_PRESETS.at(-1)!
   )
 }
 
 function providerVisuals(presetId: string | null) {
-  const accentKey = presetId
-    ? PROVIDER_PRESETS.find(p => p.id === presetId)?.accent ?? 'violet'
-    : 'violet'
   return {
-    accent: PROVIDER_ACCENT[accentKey] ?? PROVIDER_ACCENT.violet!,
     Icon: PROVIDER_ICONS[presetId ?? ''] ?? PROVIDER_ICONS.custom!,
   }
 }
@@ -158,8 +153,7 @@ export function AgentRuntimeSettings() {
     const q = filter.trim().toLowerCase()
     return profiles.filter(p =>
       p.name.toLowerCase().includes(q)
-      || (PROVIDER_KIND_LABELS[p.providerKind] ?? '').toLowerCase().includes(q),
-    )
+      || (PROVIDER_KIND_LABELS[p.providerKind] ?? '').toLowerCase().includes(q))
   }, [profiles, filter])
 
   const selectedProfile = profiles.find(p => p.id === selectedId) ?? null
@@ -210,7 +204,7 @@ export function AgentRuntimeSettings() {
   return (
     <div
       data-testid="agent-runtime-settings"
-      className="flex flex-col"
+      className="flex h-full flex-col overflow-hidden"
     >
       {/* Header */}
       <header className="flex items-end justify-between gap-6 pb-5">
@@ -237,9 +231,9 @@ export function AgentRuntimeSettings() {
       <Separator className="bg-foreground/[0.06]" />
 
       {/* Body — master-detail */}
-      <div className="grid grid-cols-[260px_1fr] gap-0 min-h-[480px]">
+      <div className="grid flex-1 grid-cols-[260px_1fr] gap-0 overflow-hidden">
         {/* ── Left rail ────────────────────────────────────────────────── */}
-        <aside className="flex flex-col gap-2 py-4 pr-4 border-r border-foreground/[0.06]">
+        <aside className="flex flex-col gap-3 overflow-hidden py-4 pr-4 border-r border-foreground/[0.06]">
           {/* Search */}
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
@@ -256,7 +250,7 @@ export function AgentRuntimeSettings() {
             <div className="flex flex-col gap-0.5 px-1">
               <AnimatePresence initial={false}>
                 {draft && (
-                  <motion.div
+                  <m.div
                     key={draft.id}
                     initial={{ opacity: 0, y: -4, height: 0 }}
                     animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -275,13 +269,13 @@ export function AgentRuntimeSettings() {
                       subtitle="Pick a template"
                       isDraft
                     />
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
 
               {visibleProfiles.map((profile) => {
                 const preset = presetForProfile(profile)
-                const { accent, Icon } = providerVisuals(preset.id)
+                const { Icon } = providerVisuals(preset.id)
                 const active = selectedId === profile.id && !isDraftSelected
                 return (
                   <SidebarRow
@@ -293,14 +287,7 @@ export function AgentRuntimeSettings() {
                       setDraft(null)
                     }}
                     icon={(
-                      <span className={cn(
-                        'flex size-7 shrink-0 items-center justify-center rounded-lg',
-                        accent.bg,
-                        accent.text,
-                      )}
-                      >
-                        <Icon className="size-3.5" />
-                      </span>
+                      <Icon className="size-4 shrink-0 text-muted-foreground" />
                     )}
                     title={profile.name}
                     subtitle={(() => {
@@ -328,7 +315,7 @@ export function AgentRuntimeSettings() {
 
           {/* Footer hint */}
           {profiles.length > 0 && (
-            <div className="px-1 pt-1 text-[10.5px] text-muted-foreground/60">
+            <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
               {profiles.length}
               {' '}
               provider
@@ -344,74 +331,51 @@ export function AgentRuntimeSettings() {
         </aside>
 
         {/* ── Right panel ──────────────────────────────────────────────── */}
-        <section className="flex flex-col py-4 pl-6">
-          <AnimatePresence mode="wait" initial={false}>
-            {isDraftSelected && draft
+        <section className="flex flex-col overflow-y-auto py-4 pl-6 pr-2">
+          {isDraftSelected && draft
+            ? (
+              <div className="flex-1">
+                <DraftSetupPanel
+                  draft={draft}
+                  onSelectPreset={presetId => setDraft(prev => prev ? { ...prev, presetId } : prev)}
+                  onComplete={handleDraftComplete}
+                  onCancel={cancelDraft}
+                />
+              </div>
+            )
+            : selectedProfile
               ? (
-                <motion.div
-                  key="draft"
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                  className="flex-1"
-                >
-                  <DraftSetupPanel
-                    draft={draft}
-                    onSelectPreset={presetId => setDraft({ ...draft, presetId })}
-                    onComplete={handleDraftComplete}
-                    onCancel={cancelDraft}
+                <div key={selectedProfile.id} className="flex-1">
+                  <ProfileDetailPanel
+                    profile={selectedProfile}
+                    onRemove={() => void handleRemoveProfile(selectedProfile.id)}
+                    onToggle={enabled => void handleToggleProfile(selectedProfile, enabled)}
+                    onSaved={() => void refreshProfiles()}
                   />
-                </motion.div>
+                </div>
               )
-              : selectedProfile
-                ? (
-                  <motion.div
-                    key={`profile-${selectedProfile.id}`}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.2, ease: 'easeOut' }}
-                    className="flex-1"
-                  >
-                    <ProfileDetailPanel
-                      profile={selectedProfile}
-                      onRemove={() => void handleRemoveProfile(selectedProfile.id)}
-                      onToggle={enabled => void handleToggleProfile(selectedProfile, enabled)}
-                      onSaved={() => void refreshProfiles()}
-                    />
-                  </motion.div>
-                )
-                : (
-                  <motion.div
-                    key="empty"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="flex flex-1 items-center justify-center"
-                  >
-                    <Empty className="border-none">
-                      <EmptyHeader>
-                        <EmptyMedia variant="icon">
-                          <ServerIcon />
-                        </EmptyMedia>
-                        <EmptyTitle>No provider selected</EmptyTitle>
-                        <EmptyDescription>
-                          Pick a provider on the left to view its configuration, or
-                          add a new one to get started.
-                        </EmptyDescription>
-                      </EmptyHeader>
-                      <EmptyContent>
-                        <Button size="sm" variant="outline" onClick={startDraft}>
-                          <PlusIcon />
-                          Add provider
-                        </Button>
-                      </EmptyContent>
-                    </Empty>
-                  </motion.div>
-                )}
-          </AnimatePresence>
+              : (
+                <div className="flex flex-1 items-center justify-center">
+                  <Empty className="border-none">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <ServerIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>No provider selected</EmptyTitle>
+                      <EmptyDescription>
+                        Pick a provider on the left to view its configuration, or
+                        add a new one to get started.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button size="sm" variant="outline" onClick={startDraft}>
+                        <PlusIcon />
+                        Add provider
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
+                </div>
+              )}
         </section>
       </div>
     </div>
@@ -446,11 +410,12 @@ function SidebarRow({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none transition-all',
+        'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
+        'transition-[background-color,opacity,scale] duration-150',
         'focus-visible:ring-2 focus-visible:ring-ring/50',
         active
           ? 'bg-accent text-accent-foreground'
-          : 'hover:bg-foreground/[0.035] active:bg-foreground/[0.06]',
+          : 'hover:bg-foreground/[0.035] active:bg-foreground/[0.06] active:scale-[0.98]',
         isDraft && !active && 'opacity-90',
       )}
     >
@@ -474,7 +439,7 @@ function SidebarRow({
       </div>
       <ChevronRightIcon
         className={cn(
-          'size-3 shrink-0 text-muted-foreground/40 transition-all',
+          'size-3 shrink-0 text-muted-foreground/40 transition-[opacity,transform] duration-150',
           active ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-1 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0',
         )}
       />
@@ -531,10 +496,9 @@ function DraftSetupPanel({
 
         <div className="grid grid-cols-2 gap-2">
           {PROVIDER_PRESETS.map((p, idx) => {
-            const accent = PROVIDER_ACCENT[p.accent] ?? PROVIDER_ACCENT.violet!
             const Icon = PROVIDER_ICONS[p.id] ?? PROVIDER_ICONS.custom!
             return (
-              <motion.button
+              <m.button
                 key={p.id}
                 type="button"
                 onClick={() => onSelectPreset(p.id)}
@@ -545,20 +509,14 @@ function DraftSetupPanel({
                 whileHover={{ y: -1 }}
                 className={cn(
                   'group/preset relative flex flex-col gap-2 rounded-xl bg-card p-3.5 text-left',
-                  'ring-1 ring-foreground/[0.07] transition-all duration-150',
+                  'ring-1 ring-foreground/[0.07] transition-[box-shadow,ring-color] duration-150',
                   'hover:ring-foreground/15 hover:shadow-sm',
+                  'active:scale-[0.97]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                 )}
               >
                 <div className="flex items-center gap-2.5">
-                  <span className={cn(
-                    'flex size-8 items-center justify-center rounded-lg',
-                    accent.bg,
-                    accent.text,
-                  )}
-                  >
-                    <Icon className="size-4" />
-                  </span>
+                  <Icon className="size-5 shrink-0 text-foreground/70" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-medium text-foreground">
                       {p.name}
@@ -567,12 +525,12 @@ function DraftSetupPanel({
                       {PROVIDER_KIND_LABELS[p.providerKind]}
                     </div>
                   </div>
-                  <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/30 transition-all group-hover/preset:translate-x-0.5 group-hover/preset:text-muted-foreground" />
+                  <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/30 transition-[transform,color] duration-150 group-hover/preset:translate-x-0.5 group-hover/preset:text-muted-foreground" />
                 </div>
                 <p className="text-pretty text-[11.5px] leading-relaxed text-muted-foreground/80">
                   {p.tagline}
                 </p>
-              </motion.button>
+              </m.button>
             )
           })}
         </div>
@@ -594,7 +552,6 @@ function PresetSetupForm({
   onComplete: (newProfileId?: string) => void
   onBack: () => void
 }) {
-  const accent = PROVIDER_ACCENT[preset.accent] ?? PROVIDER_ACCENT.violet!
   const Icon = PROVIDER_ICONS[preset.id] ?? PROVIDER_ICONS.custom!
 
   const [name, setName] = useState(preset.name)
@@ -638,7 +595,7 @@ function PresetSetupForm({
         const hc = hcResult as { ok: boolean, errorText?: string } | null
         if (hc?.ok) {
           setStatus({ ok: true, text: 'Connected' })
-          setTimeout(() => onComplete(profileId), 600)
+          setTimeout(onComplete, 600, profileId)
         }
         else {
           setStatus({ ok: false, text: hc?.errorText ?? 'Verification failed' })
@@ -646,7 +603,7 @@ function PresetSetupForm({
       }
       catch {
         setStatus({ ok: true, text: 'Saved (verification skipped)' })
-        setTimeout(() => onComplete(profileId), 500)
+        setTimeout(onComplete, 500, profileId)
       }
     }
     catch (err) {
@@ -676,14 +633,7 @@ function PresetSetupForm({
 
       {/* Hero */}
       <div className="flex items-start gap-3">
-        <span className={cn(
-          'flex size-10 items-center justify-center rounded-xl ring-1 ring-foreground/5',
-          accent.bg,
-          accent.text,
-        )}
-        >
-          <Icon className="size-5" />
-        </span>
+        <Icon className="size-6 shrink-0 text-foreground/80 mt-0.5" />
         <div className="flex-1 pt-0.5">
           <h4 className="font-heading text-[15px] font-medium text-foreground">
             {preset.name}
@@ -759,7 +709,7 @@ function PresetSetupForm({
 
         {preset.fields.length === 0 && (
           <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground ring-1 ring-foreground/[0.04]">
-            No credentials needed — this provider runs on your machine.
+            No credentials needed: this provider runs on your machine.
           </div>
         )}
       </FieldGroup>
@@ -767,7 +717,7 @@ function PresetSetupForm({
       {/* Status */}
       <AnimatePresence>
         {status && (
-          <motion.div
+          <m.div
             data-testid="provider-status"
             data-status-ok={status.ok ? 'true' : 'false'}
             initial={{ opacity: 0, y: -4 }}
@@ -784,7 +734,7 @@ function PresetSetupForm({
               ? <CircleCheckIcon className="size-3.5" />
               : <CircleAlertIcon className="size-3.5" />}
             {status.text}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 
@@ -823,7 +773,7 @@ function ProfileDetailPanel({
   onSaved: () => void
 }) {
   const preset = presetForProfile(profile)
-  const { accent, Icon } = providerVisuals(preset.id)
+  const { Icon } = providerVisuals(preset.id)
 
   const parsed = useMemo(() => parseConfig(profile.configJson), [profile.configJson])
   const supportsModels = profile.providerKind === 'openai-compatible'
@@ -964,7 +914,7 @@ function ProfileDetailPanel({
       let credentialRef = profile.credentialRef ?? null
       if (apiKey && supportsModels) {
         const { data: meta } = await postSecrets({
-          body: { providerKind: profile.providerKind, label: name, secret: apiKey } as unknown as never,
+          body: { kind: profile.providerKind, label: name, secret: apiKey } as unknown as never,
         })
         credentialRef = (meta as Record<string, unknown>)?.id as string ?? credentialRef
       }
@@ -985,7 +935,7 @@ function ProfileDetailPanel({
       if (savedClearTimer.current) {
         clearTimeout(savedClearTimer.current)
       }
-      savedClearTimer.current = setTimeout(() => setSaveState('idle'), 1600)
+      savedClearTimer.current = setTimeout(setSaveState, 1600, 'idle')
       onSaved()
     }
     catch (err) {
@@ -1018,17 +968,10 @@ function ProfileDetailPanel({
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
 
   return (
-    <div data-testid="provider-detail-panel" className="flex flex-col gap-5">
+    <div data-testid="provider-detail-panel" className="flex flex-col gap-2">
       {/* Hero */}
       <header className="flex items-start gap-3">
-        <span className={cn(
-          'flex size-11 items-center justify-center rounded-xl ring-1 ring-foreground/5',
-          accent.bg,
-          accent.text,
-        )}
-        >
-          <Icon className="size-5" />
-        </span>
+        <Icon className="size-6 shrink-0 text-foreground/80 mt-1" />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -1076,145 +1019,90 @@ function ProfileDetailPanel({
         </div>
       </header>
 
-      <Separator className="bg-foreground/[0.06]" />
-
-      {/* Tabs */}
-      <Tabs defaultValue="general" className="gap-4">
-        <TabsList variant="line">
-          <TabsTrigger value="general">
-            <SettingsIcon />
-            General
-          </TabsTrigger>
-          {supportsModels && (
-            <TabsTrigger value="models">
-              <SparklesIcon />
-              Models
-              {enabledModels.length > 0 && enabledModels[0] !== ALL_DISABLED_SENTINEL && (
-                <Badge variant="outline" className="ml-1 h-4 px-1.5 text-[10px]">
-                  {enabledModels.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-          )}
-        </TabsList>
-
-        <TabsContent value="general">
-          <FieldGroup className="gap-5">
-            <Field orientation="vertical">
-              <FieldLabel htmlFor="profile-name" className="text-[12.5px] font-medium">
-                Display name
-              </FieldLabel>
-              <FieldContent>
-                <Input
-                  id="profile-name"
-                  data-testid="provider-edit-name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="h-9 max-w-sm text-[13px]"
-                />
-              </FieldContent>
-            </Field>
-
-            {supportsModels && (
-              <>
-                <Field orientation="vertical">
-                  <FieldLabel htmlFor="profile-baseurl" className="text-[12.5px] font-medium">
-                    <div className="flex items-center gap-1.5">
-                      <LinkIcon className="size-3 text-muted-foreground/70" />
-                      Endpoint
-                    </div>
-                  </FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="profile-baseurl"
-                      data-testid="provider-edit-baseurl"
-                      value={baseUrl}
-                      onChange={e => setBaseUrl(e.target.value)}
-                      className="h-9 max-w-sm text-[12.5px] font-mono"
-                      placeholder="https://api.openai.com/v1"
-                    />
-                  </FieldContent>
-                </Field>
-
-                <Field orientation="vertical">
-                  <FieldLabel htmlFor="profile-model" className="text-[12.5px] font-medium">
-                    Default model
-                  </FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="profile-model"
-                      data-testid="provider-edit-model"
-                      value={model}
-                      onChange={e => setModel(e.target.value)}
-                      className="h-9 max-w-sm text-[12.5px] font-mono"
-                      placeholder="e.g. gpt-4o"
-                    />
-                    <FieldDescription className="text-[11px]">
-                      Used when no model is specified. Falls back to the first available model.
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-
-                <Field orientation="vertical">
-                  <FieldLabel htmlFor="profile-apikey" className="text-[12.5px] font-medium">
-                    <div className="flex items-center gap-1.5">
-                      <KeyRoundIcon className="size-3 text-muted-foreground/70" />
-                      API key
-                    </div>
-                  </FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="profile-apikey"
-                      data-testid="provider-edit-apikey"
-                      type="password"
-                      value={apiKey}
-                      onChange={e => setApiKey(e.target.value)}
-                      placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
-                      className="h-9 max-w-sm text-[12.5px] font-mono"
-                    />
-                    <FieldDescription className="text-[11px]">
-                      {profile.credentialRef
-                        ? 'A credential is already stored. Leave empty to keep it.'
-                        : 'Stored locally and encrypted.'}
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-              </>
-            )}
-
-            {supportsCommand && (
-              <Field orientation="vertical">
-                <FieldLabel htmlFor="profile-command" className="text-[12.5px] font-medium">
-                  Command
-                </FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="profile-command"
-                    value={command}
-                    onChange={e => setCommand(e.target.value)}
-                    className="h-9 max-w-sm text-[12.5px] font-mono"
-                    placeholder="claude"
-                  />
-                  <FieldDescription className="text-[11px]">
-                    Executable that Cradle launches when this provider is used.
-                  </FieldDescription>
-                </FieldContent>
-              </Field>
-            )}
-          </FieldGroup>
-        </TabsContent>
+      {/* Configuration */}
+      <div className="flex flex-col">
+        {/* ── General section ── */}
+        <SettingsRow label="Display name" description="The name shown in the provider list">
+          <Input
+            data-testid="provider-edit-name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            className="h-9 w-56 text-[13px]"
+          />
+        </SettingsRow>
 
         {supportsModels && (
-          <TabsContent value="models">
-            <ModelsPanel
-              loading={modelsLoading}
-              models={availableModels}
-              enabledModels={enabledModels}
-              onChange={setEnabledModels}
-            />
-          </TabsContent>
+          <>
+            <SettingsDivider />
+            <SettingsRow label="Endpoint" description="Base URL for the API">
+              <Input
+                data-testid="provider-edit-baseurl"
+                value={baseUrl}
+                onChange={e => setBaseUrl(e.target.value)}
+                className="h-9 w-56 text-[12.5px] font-mono"
+                placeholder="https://api.openai.com/v1"
+              />
+            </SettingsRow>
+
+            <SettingsDivider />
+            <SettingsRow label="Default model" description="Used when no model is specified in the session">
+              <Input
+                data-testid="provider-edit-model"
+                value={model}
+                onChange={e => setModel(e.target.value)}
+                className="h-9 w-56 text-[12.5px] font-mono"
+                placeholder="e.g. gpt-4o"
+              />
+            </SettingsRow>
+
+            <SettingsDivider />
+            <SettingsRow
+              label="API key"
+              description={profile.credentialRef
+                ? 'A credential is already stored. Leave empty to keep it.'
+                : 'Stored locally and encrypted.'}
+            >
+              <Input
+                data-testid="provider-edit-apikey"
+                type="password"
+                value={apiKey}
+                onChange={e => setApiKey(e.target.value)}
+                placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
+                className="h-9 w-56 text-[12.5px] font-mono"
+              />
+            </SettingsRow>
+          </>
         )}
-      </Tabs>
+
+        {supportsCommand && (
+          <>
+            <SettingsDivider />
+            <SettingsRow label="Command" description="Executable that Cradle launches when this provider is used">
+              <Input
+                value={command}
+                onChange={e => setCommand(e.target.value)}
+                className="h-9 w-56 text-[12.5px] font-mono"
+                placeholder="claude"
+              />
+            </SettingsRow>
+          </>
+        )}
+
+        {/* ── Models section ── */}
+        {supportsModels && (
+          <>
+            <Separator className="bg-foreground/[0.06]" />
+            <section className="flex flex-col gap-4 mt-4">
+              <ModelsPanel
+                loading={modelsLoading}
+                models={availableModels}
+                enabledModels={enabledModels}
+                onChange={setEnabledModels}
+              />
+            </section>
+          </>
+        )}
+      </div>
 
       {/* Remove confirmation */}
       <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
@@ -1252,16 +1140,14 @@ function ProfileDetailPanel({
 
 // ─── Health badge ─────────────────────────────────────────────────────────────
 
-function HealthBadge({
-  status,
-  onRefresh,
-  disabled,
-}: {
-  status: HealthStatus
+function HealthPill({ tone, label, icon, onRefresh, disabled }: {
+  tone: 'active' | 'muted' | 'warning' | 'destructive'
+  label: string
+  icon: React.ReactNode
   onRefresh: () => void
   disabled: boolean
 }) {
-  const Pill = ({ tone, label, icon }: { tone: 'active' | 'muted' | 'warning' | 'destructive', label: string, icon: React.ReactNode }) => (
+  return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
@@ -1287,20 +1173,30 @@ function HealthBadge({
       </TooltipContent>
     </Tooltip>
   )
+}
 
+function HealthBadge({
+  status,
+  onRefresh,
+  disabled,
+}: {
+  status: HealthStatus
+  onRefresh: () => void
+  disabled: boolean
+}) {
   if (disabled) {
-    return <Pill tone="muted" label="Disabled" icon={<CircleDashedIcon className="size-3" />} />
+    return <HealthPill tone="muted" label="Disabled" icon={<CircleDashedIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
   }
   if (status === 'verifying') {
-    return <Pill tone="muted" label="Verifying" icon={<Spinner className="size-3" />} />
+    return <HealthPill tone="muted" label="Verifying" icon={<Spinner className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
   }
   if (status === 'connected') {
-    return <Pill tone="active" label="Connected" icon={<CircleCheckIcon className="size-3" />} />
+    return <HealthPill tone="active" label="Connected" icon={<CircleCheckIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
   }
   if (status === 'failed') {
-    return <Pill tone="destructive" label="Disconnected" icon={<CircleAlertIcon className="size-3" />} />
+    return <HealthPill tone="destructive" label="Disconnected" icon={<CircleAlertIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
   }
-  return <Pill tone="muted" label="Idle" icon={<CircleDashedIcon className="size-3" />} />
+  return <HealthPill tone="muted" label="Idle" icon={<CircleDashedIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
 }
 
 // ─── Save indicator ───────────────────────────────────────────────────────────
@@ -1309,7 +1205,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
   return (
     <AnimatePresence>
       {state !== 'idle' && (
-        <motion.span
+        <m.span
           initial={{ opacity: 0, x: 4 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -2 }}
@@ -1327,7 +1223,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
           {(state === 'saving' || state === 'pending') && 'Saving'}
           {state === 'saved' && 'Saved'}
           {state === 'error' && 'Save failed'}
-        </motion.span>
+        </m.span>
       )}
     </AnimatePresence>
   )
@@ -1391,7 +1287,7 @@ function ModelsPanel({
           </p>
         </div>
         <div className="flex items-center gap-1">
-          {isExplicitSelection && (
+          {(isExplicitSelection || allDisabled) && (
             <Button
               size="xs"
               variant="ghost"
@@ -1441,12 +1337,12 @@ function ModelsPanel({
                   No models returned by this provider.
                 </p>
                 <p className="mt-1 text-[11px] text-muted-foreground/70">
-                  Save your endpoint and API key first — they may be required to list models.
+                  Save your endpoint and API key first; they may be required to list models.
                 </p>
               </div>
             )
             : (
-              <ScrollArea className="max-h-72">
+              <div className="max-h-72 overflow-y-auto">
                 <ul className="divide-y divide-foreground/[0.04]">
                   {visible.map((m) => {
                     const checked = isChecked(m.id)
@@ -1473,7 +1369,7 @@ function ModelsPanel({
                             )}
                           </div>
                           {m.contextWindow != null && m.contextWindow > 0 && (
-                            <Badge variant="secondary" className="font-mono text-[10px] font-normal text-muted-foreground">
+                            <Badge variant="secondary" className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground">
                               {Math.round(m.contextWindow / 1000)}
                               k
                             </Badge>
@@ -1491,12 +1387,12 @@ function ModelsPanel({
                     </li>
                   )}
                 </ul>
-              </ScrollArea>
+              </div>
             )}
       </div>
 
       {/* Footer summary */}
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
         <span>
           {allDisabled
             ? 'All models hidden from chat'

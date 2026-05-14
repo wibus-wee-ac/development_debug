@@ -2,15 +2,16 @@
 // Output: useApprovalRequests hook for subscribing to pending approval lifecycle
 // Position: Renderer approval feature — real-time approval state management
 
+import { useCallback, useSyncExternalStore } from 'react'
+
+import { getApprovals, postApprovalsByApprovalIdRespond } from '~/api-gen'
 import type {
   ApprovalRequestedPayload,
   ApprovalResolvedPayload,
 } from '~/lib/contracts/approval-events'
-import { useCallback, useSyncExternalStore } from 'react'
+import { getServerUrl } from '~/lib/electron'
 
-import { getApprovals, postApprovalsByApprovalIdRespond } from '~/api-gen'
-
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+const SERVER_BASE = getServerUrl()
 
 // ── Module-level state ──────────────────────────────────────
 
@@ -106,7 +107,7 @@ function getSnapshot(): ApprovalRequestedPayload[] {
  * Returns the current list of pending approval requests.
  * Automatically subscribes to incoming approval events via signal bus + polling.
  */
-export function useApprovalRequests(): {
+function useApprovalRequests(): {
   pending: ApprovalRequestedPayload[]
   respond: (approvalId: string, decision: 'approved' | 'rejected', selectedOptionId: string) => void
 } {

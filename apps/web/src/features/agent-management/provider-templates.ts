@@ -14,7 +14,7 @@ export interface ProviderPreset {
   defaults: Record<string, unknown>
 }
 
-export interface PresetField {
+interface PresetField {
   key: string
   label: string
   type: 'text' | 'password' | 'url'

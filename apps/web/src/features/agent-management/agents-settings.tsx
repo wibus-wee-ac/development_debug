@@ -41,6 +41,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/cn'
+import { formatTimestamp } from '~/lib/format-time'
 import type { AcpAgent, AgentProfile, ProviderKind, RegistryAgent } from '~/lib/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ function AuditLogView({ agentId, onBack }: { agentId: string, onBack: () => void
                       <td className="whitespace-nowrap px-4 py-2.5 text-xs">{ACTION_LABELS[entry.action] ?? entry.action}</td>
                       <td className="max-w-64 truncate px-4 py-2.5 font-mono text-xs text-muted-foreground">{entry.path ?? '—'}</td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">
-                        {new Date(entry.createdAt * 1000).toLocaleString()}
+                        {formatTimestamp(entry.createdAt)}
                       </td>
                     </tr>
                   ))}

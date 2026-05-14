@@ -50,7 +50,7 @@ export function ObservabilityEventsTable() {
             const payload = entry.payload
             return (
               <tr
-                key={`${entry.kind}-${payload.id}-${index}`}
+                key={`${entry.kind}-${payload.id}`}
                 onClick={() => selectIndex(index)}
                 className={cn(
                   'cursor-pointer border-b border-border/50 transition-colors hover:bg-foreground/3',

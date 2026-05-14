@@ -2,7 +2,7 @@
 // Output: useShortcut hook for registering keyboard shortcuts
 // Position: Hook for components to register shortcuts with ShortcutProvider
 
-import { useContext, useEffect, useRef } from 'react'
+import { use, useEffect, useRef } from 'react'
 
 import { ShortcutContext } from '~/lib/shortcut-context'
 import type { ShortcutDefinition } from '~/lib/shortcut-utils'
@@ -21,7 +21,7 @@ export function useShortcut(
   handler: () => void,
   enabled = true,
 ): void {
-  const context = useContext(ShortcutContext)
+  const context = use(ShortcutContext)
   if (!context) {
     throw new Error('useShortcut must be used within <ShortcutProvider>')
   }

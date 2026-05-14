@@ -32,8 +32,13 @@ export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
   activate: () => { },
 })
 
-export function LayoutSlotsProvider({ children }: { children: ReactNode }) {
+export function LayoutSlotsProvider({ children, activeSlotId }: { children: ReactNode, activeSlotId?: string | null }) {
   const [state, setState] = useState<RegistrationState>({ map: {}, activeId: null })
+
+  // Sync active slot from prop during render (avoids useEffect chain)
+  if (activeSlotId && state.activeId !== activeSlotId && activeSlotId in state.map) {
+    setState(prev => prev.activeId === activeSlotId ? prev : { ...prev, activeId: activeSlotId })
+  }
 
   const register = useCallback((id: string, newSlots: LayoutSlots) => {
     setState((prev) => {

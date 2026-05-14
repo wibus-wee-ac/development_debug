@@ -2,7 +2,7 @@
 // Output: matchesShortcut, formatShortcut utility functions
 // Position: Pure utility functions for keyboard shortcut matching and formatting
 
-export type ShortcutModifiers = {
+type ShortcutModifiers = {
   meta?: boolean
   ctrl?: boolean
   shift?: boolean
@@ -44,7 +44,7 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutDefiniti
  * Serializes a shortcut definition to a human-readable string.
  * Useful for display in tooltips, menus, etc.
  */
-export function formatShortcut(shortcut: ShortcutDefinition): string {
+function formatShortcut(shortcut: ShortcutDefinition): string {
   const parts: string[] = []
   if (shortcut.ctrl) {
     parts.push('Ctrl')

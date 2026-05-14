@@ -174,8 +174,9 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
             </div>
           </div>
           <div>
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+            <label htmlFor="filter-is-delegated" className="flex items-center gap-2 text-[13px] cursor-pointer">
               <Checkbox
+                id="filter-is-delegated"
                 checked={filter.isDelegated === true}
                 onCheckedChange={(checked) => {
                   setFilter({ isDelegated: checked ? true : null })
@@ -318,8 +319,9 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
           ))}
         </div>
         <div className="border-t border-border mt-2 pt-2">
-          <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+          <label htmlFor="config-show-empty-groups" className="flex items-center gap-2 text-[13px] cursor-pointer">
             <Checkbox
+              id="config-show-empty-groups"
               checked={config.showEmptyGroups}
               onCheckedChange={(checked) => setConfig({ showEmptyGroups: !!checked })}
             />

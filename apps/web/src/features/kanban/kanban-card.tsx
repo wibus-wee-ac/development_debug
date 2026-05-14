@@ -40,7 +40,10 @@ export function KanbanCard({ issue, displayProperties, onClick }: CardProps) {
         style={style}
         {...attributes}
         {...listeners}
+        role="button"
+        tabIndex={0}
         onClick={(e) => { e.stopPropagation(); onClick() }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onClick() } }}
         data-testid={`issue-card-${issue.id}`}
         className={cn(
           'bg-card rounded-lg px-3 py-2 cursor-pointer transition-colors',
@@ -61,7 +64,7 @@ export function KanbanCard({ issue, displayProperties, onClick }: CardProps) {
         )}
 
         {displayProperties.id && (
-          <span className="text-[11px] font-mono text-muted-foreground/70">
+          <span className="text-[11px] font-mono text-text-dim">
             {issue.id.slice(0, 6).toUpperCase()}
           </span>
         )}

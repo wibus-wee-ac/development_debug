@@ -61,7 +61,7 @@ function ProviderRow({
       className="group"
       onClick={onEdit}
     >
-      <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-3" role="group" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
         <Switch
           size="sm"
           checked={profile.enabled}
@@ -107,7 +107,7 @@ function AgentRow({
       className={cn('group', !agent.enabled && 'opacity-50')}
       onClick={onEdit}
     >
-      <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center gap-3" role="group" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
         <Switch
           size="sm"
           checked={agent.enabled}
@@ -243,7 +243,7 @@ export function AiSettings() {
         />
         <SettingsDivider />
         {agentsLoading
-          ? <p className="py-6 text-center text-[12px] text-muted-foreground">Loading...</p>
+          ? <p className="py-6 text-center text-[12px] text-muted-foreground">Loading…</p>
           : agents.length === 0
             ? <p className="py-6 text-center text-[12px] text-muted-foreground">No agents configured.</p>
             : (

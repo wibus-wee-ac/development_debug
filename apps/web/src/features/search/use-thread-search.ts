@@ -12,7 +12,7 @@ import { normalizeThreadSearchHits } from './thread-search-normalize'
 
 const DEBOUNCE_MS = 150
 
-export const threadSearchQueryKey = (
+const threadSearchQueryKey = (
   query: string,
   workspaceId?: string | null,
 ) => ['thread-search', workspaceId ?? null, query] as const

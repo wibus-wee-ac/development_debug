@@ -2,7 +2,7 @@
 // Output: AppSidebar — persistent collapsible sidebar with drill-in navigation
 // Position: Rendered at app root; persists across tab changes
 
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
@@ -52,7 +52,7 @@ export function AppSidebar() {
 
   return (
     <>
-      <motion.aside
+      <m.aside
         className="flex flex-col shrink-0 bg-sidebar text-sidebar-foreground overflow-hidden"
         animate={{ width: currentWidth }}
         transition={SIDEBAR_SPRING}
@@ -70,7 +70,7 @@ export function AppSidebar() {
           <AnimatePresence mode="popLayout" initial={false}>
             {sidebarMode === 'settings'
               ? (
-                <motion.div
+                <m.div
                   key="settings-nav"
                   className="flex flex-1 flex-col overflow-hidden"
                   initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
@@ -83,11 +83,11 @@ export function AppSidebar() {
                     onSetSection={setSettingsSection}
                     onClose={closeSettings}
                   />
-                </motion.div>
+                </m.div>
               )
               : sidebarMode === 'kanban'
                 ? (
-                  <motion.div
+                  <m.div
                     key="kanban-nav"
                     className="flex flex-1 flex-col overflow-hidden"
                     initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
@@ -96,10 +96,10 @@ export function AppSidebar() {
                     transition={DRILL_TRANSITION}
                   >
                     <KanbanSidebar />
-                  </motion.div>
+                  </m.div>
                 )
                 : (
-                  <motion.div
+                  <m.div
                     key="main-nav"
                     className="flex flex-1 flex-col overflow-hidden"
                     initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
@@ -108,11 +108,11 @@ export function AppSidebar() {
                     transition={DRILL_TRANSITION}
                   >
                     <WorkspaceSidebar collapsed={collapsed} />
-                  </motion.div>
+                  </m.div>
                 )}
           </AnimatePresence>
         </div>
-      </motion.aside>
+      </m.aside>
       {!collapsed && (
         <ResizeHandle
           direction="horizontal"

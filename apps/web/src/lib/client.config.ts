@@ -16,4 +16,4 @@ export function createClientConfig(config: Parameters<typeof createConfig>[0]) {
 }
 
 // Also export a ready-made client instance for direct SDK calls.
-export const client = createClient(createClientConfig({}))
+const client = createClient(createClientConfig({}))

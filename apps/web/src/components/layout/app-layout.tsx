@@ -2,7 +2,7 @@
 // Output: AppLayout component — content area layout (header + main + aside + panel)
 // Position: Core layout component; sidebar is rendered separately in __root.tsx
 
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -69,7 +69,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
       {/* ── Content area ───────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Center column */}
-        <motion.div
+        <m.div
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
           transition={SPRING}
         >
@@ -93,7 +93,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
           )}
           {/* Bottom panel — always mounted to preserve xterm state */}
           {!isSettings && resolvedPanel !== undefined && (
-            <motion.div
+            <m.div
               initial={{
                 height: bottomPanelOpen ? bottomPanelHeight : 0,
                 opacity: bottomPanelOpen ? 1 : 0,
@@ -108,9 +108,9 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
               data-panel-open={bottomPanelOpen ? 'true' : 'false'}
             >
               <div style={{ height: bottomPanelHeight }}>{resolvedPanel}</div>
-            </motion.div>
+            </m.div>
           )}
-        </motion.div>
+        </m.div>
 
         {/* Right Aside */}
         {resolvedAside !== undefined && (
@@ -128,7 +128,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
                 className="bg-sidebar"
               />
             )}
-            <motion.aside
+            <m.aside
               initial={{
                 width: asideOpen ? asideWidth : 0,
                 opacity: asideOpen ? 1 : 0,
@@ -148,7 +148,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
               >
                 {resolvedAside}
               </div>
-            </motion.aside>
+            </m.aside>
           </>
         )}
       </div>

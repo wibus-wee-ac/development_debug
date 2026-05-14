@@ -34,7 +34,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
   if (!issue) {
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground text-[13px]">
-        Loading...
+        Loading…
       </div>
     )
   }

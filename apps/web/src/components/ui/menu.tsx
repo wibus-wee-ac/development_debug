@@ -5,12 +5,12 @@ import { ChevronRightIcon } from "lucide-react";
 import type * as React from "react";
 import { cn } from "~/lib/cn";
 
-export const MenuCreateHandle: typeof MenuPrimitive.createHandle =
+const MenuCreateHandle: typeof MenuPrimitive.createHandle =
   MenuPrimitive.createHandle;
 
 export const Menu: typeof MenuPrimitive.Root = MenuPrimitive.Root;
 
-export const MenuPortal: typeof MenuPrimitive.Portal = MenuPrimitive.Portal;
+const MenuPortal: typeof MenuPrimitive.Portal = MenuPrimitive.Portal;
 
 export function MenuTrigger({
   className,
@@ -106,7 +106,7 @@ export function MenuItem({
   );
 }
 
-export function MenuCheckboxItem({
+function MenuCheckboxItem({
   className,
   children,
   checked,
@@ -163,13 +163,13 @@ export function MenuCheckboxItem({
   );
 }
 
-export function MenuRadioGroup(
+function MenuRadioGroup(
   props: MenuPrimitive.RadioGroup.Props,
 ): React.ReactElement {
   return <MenuPrimitive.RadioGroup data-slot="menu-radio-group" {...props} />;
 }
 
-export function MenuRadioItem({
+function MenuRadioItem({
   className,
   children,
   ...props
@@ -237,7 +237,7 @@ export function MenuSeparator({
   );
 }
 
-export function MenuShortcut({
+function MenuShortcut({
   className,
   ...props
 }: React.ComponentProps<"kbd">): React.ReactElement {
@@ -253,13 +253,13 @@ export function MenuShortcut({
   );
 }
 
-export function MenuSub(
+function MenuSub(
   props: MenuPrimitive.SubmenuRoot.Props,
 ): React.ReactElement {
   return <MenuPrimitive.SubmenuRoot data-slot="menu-sub" {...props} />;
 }
 
-export function MenuSubTrigger({
+function MenuSubTrigger({
   className,
   inset,
   children,
@@ -283,7 +283,7 @@ export function MenuSubTrigger({
   );
 }
 
-export function MenuSubPopup({
+function MenuSubPopup({
   className,
   sideOffset = 0,
   alignOffset,
@@ -309,22 +309,4 @@ export function MenuSubPopup({
   );
 }
 
-export {
-  MenuPrimitive,
-  MenuCreateHandle as DropdownMenuCreateHandle,
-  Menu as DropdownMenu,
-  MenuPortal as DropdownMenuPortal,
-  MenuTrigger as DropdownMenuTrigger,
-  MenuPopup as DropdownMenuContent,
-  MenuGroup as DropdownMenuGroup,
-  MenuItem as DropdownMenuItem,
-  MenuCheckboxItem as DropdownMenuCheckboxItem,
-  MenuRadioGroup as DropdownMenuRadioGroup,
-  MenuRadioItem as DropdownMenuRadioItem,
-  MenuGroupLabel as DropdownMenuLabel,
-  MenuSeparator as DropdownMenuSeparator,
-  MenuShortcut as DropdownMenuShortcut,
-  MenuSub as DropdownMenuSub,
-  MenuSubTrigger as DropdownMenuSubTrigger,
-  MenuSubPopup as DropdownMenuSubContent,
-};
+

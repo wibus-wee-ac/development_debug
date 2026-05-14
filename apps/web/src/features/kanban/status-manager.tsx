@@ -185,10 +185,18 @@ function SortableStatusRow({
         />
       ) : (
         <span
+          role="button"
+          tabIndex={0}
           data-testid={`status-name-${id}`}
           onClick={() => {
             setEditValue(name)
             setEditing(true)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              setEditValue(name)
+              setEditing(true)
+            }
           }}
           className="flex-1 cursor-text text-[13px] text-foreground"
         >

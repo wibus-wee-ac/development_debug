@@ -1,17 +1,22 @@
-// Input: child_process fork, get-port, tsx runner
-// Output: Starts the Cradle server as a child process
+// Input: child_process fork, get-port, tsx runner, development Node executable, Electron safe storage
+// Output: Starts the Cradle server as a child process with desktop-owned runtime environment
 // Position: apps/desktop/src/main/server-process.ts
 
 import type { ChildProcess } from 'node:child_process'
 import { fork } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { app, dialog } from 'electron'
+import { app, dialog, safeStorage } from 'electron'
 import getPort from 'get-port'
 
 let serverProcess: ChildProcess | null = null
 let restartCount = 0
 const MAX_RESTARTS = 3
+const CREDENTIAL_SECRET_FILE = 'credential-secret'
+const SAFE_STORAGE_PREFIX = 'v1-safe:'
+const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 let currentServerUrl = ''
 
 /**
@@ -24,18 +29,19 @@ export async function startServer(): Promise<string> {
   currentServerUrl = `http://${host}:${port}`
 
   const dataDir = join(app.getPath('userData'), 'data')
+  const credentialSecret = resolveDesktopCredentialSecret(dataDir)
 
-  await spawnServer({ host, port, dataDir })
+  await spawnServer({ host, port, dataDir, credentialSecret })
 
   // Wait for server to be ready
   await waitForServer(currentServerUrl, 15_000)
 
-  console.log(`[desktop] Server started on ${currentServerUrl}`)
+  console.warn(`[desktop] Server started on ${currentServerUrl}`)
   return currentServerUrl
 }
 
-async function spawnServer(opts: { host: string, port: number, dataDir: string }): Promise<void> {
-  const { host, port, dataDir } = opts
+async function spawnServer(opts: { host: string, port: number, dataDir: string, credentialSecret: string }): Promise<void> {
+  const { host, port, dataDir, credentialSecret } = opts
 
   // In dev, use tsx to run the TS source directly
   // In production, run the compiled server entry
@@ -45,6 +51,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string }
     : join(process.resourcesPath, 'server/main.js')
 
   const execArgv = isDev ? ['--import', 'tsx'] : []
+  const execPath = isDev ? resolveDevNodeExecPath() : undefined
 
   serverProcess = fork(serverEntry, [], {
     env: {
@@ -52,14 +59,16 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string }
       CRADLE_HOST: host,
       CRADLE_PORT: String(port),
       CRADLE_DATA_DIR: dataDir,
+      CRADLE_CREDENTIAL_SECRET: credentialSecret,
       NODE_ENV: isDev ? 'development' : 'production',
     },
+    execPath,
     execArgv,
     stdio: 'pipe',
   })
 
   serverProcess.stdout?.on('data', (data: Buffer) => {
-    console.log(`[server] ${data.toString().trim()}`)
+    console.warn(`[server] ${data.toString().trim()}`)
   })
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
@@ -76,7 +85,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string }
 
     if (restartCount < MAX_RESTARTS) {
       restartCount++
-      console.log(`[desktop] Restarting server (attempt ${restartCount}/${MAX_RESTARTS})...`)
+      console.warn(`[desktop] Restarting server (attempt ${restartCount}/${MAX_RESTARTS})...`)
       spawnServer(opts).then(() => waitForServer(currentServerUrl, 10_000)).catch((err) => {
         console.error('[desktop] Server restart failed:', err)
         showServerCrashDialog(code)
@@ -86,6 +95,47 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string }
       showServerCrashDialog(code)
     }
   })
+}
+
+function resolveDevNodeExecPath(): string {
+  return process.env.npm_node_execpath
+    ?? process.env.NODE
+    ?? 'node'
+}
+
+function resolveDesktopCredentialSecret(dataDir: string): string {
+  const configuredSecret = process.env.CRADLE_CREDENTIAL_SECRET?.trim()
+  if (configuredSecret) {
+    return configuredSecret
+  }
+
+  mkdirSync(dataDir, { recursive: true })
+  const secretPath = join(dataDir, CREDENTIAL_SECRET_FILE)
+  if (existsSync(secretPath)) {
+    return readDesktopCredentialSecret(secretPath)
+  }
+
+  const secret = randomBytes(32).toString('base64url')
+  const serializedSecret = safeStorage.isEncryptionAvailable()
+    ? `${SAFE_STORAGE_PREFIX}${safeStorage.encryptString(secret).toString('base64')}`
+    : `${PLAIN_STORAGE_PREFIX}${secret}`
+  writeFileSync(secretPath, serializedSecret, { encoding: 'utf8', mode: 0o600 })
+  return secret
+}
+
+function readDesktopCredentialSecret(secretPath: string): string {
+  const serializedSecret = readFileSync(secretPath, 'utf8').trim()
+  if (serializedSecret.startsWith(SAFE_STORAGE_PREFIX)) {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Desktop credential secret is encrypted, but Electron safeStorage is unavailable')
+    }
+    const payload = serializedSecret.slice(SAFE_STORAGE_PREFIX.length)
+    return safeStorage.decryptString(Buffer.from(payload, 'base64'))
+  }
+  if (serializedSecret.startsWith(PLAIN_STORAGE_PREFIX)) {
+    return serializedSecret.slice(PLAIN_STORAGE_PREFIX.length)
+  }
+  return serializedSecret
 }
 
 function showServerCrashDialog(exitCode: number | null): void {

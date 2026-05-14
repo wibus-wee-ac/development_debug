@@ -181,7 +181,7 @@ function ActivityCard({ kind, title, meta, onClick }: ActivityCardProps) {
 
 function PendingRunRow({ run }: { run: PendingRun }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-md px-2 py-2 hover:bg-accent/50 transition-colors cursor-pointer">
+    <div className="flex items-start gap-2.5 rounded-md p-2 hover:bg-accent/50 transition-colors cursor-pointer">
       <TriangleAlertIcon className="size-3.5 mt-0.5 shrink-0 text-amber-500" />
       <div className="flex flex-col gap-0.5 min-w-0 flex-1">
         <span className="text-xs font-medium text-foreground truncate">{run.title}</span>

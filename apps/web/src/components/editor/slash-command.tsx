@@ -19,7 +19,7 @@ export interface SlashCommandItem {
 
 /* ─── Available commands ─────────────────────────────────── */
 
-export const SLASH_COMMANDS: SlashCommandItem[] = [
+const SLASH_COMMANDS: SlashCommandItem[] = [
   {
     title: 'Text',
     description: '普通段落',
@@ -129,8 +129,7 @@ const suggestionRender: SuggestionRender = () => {
 
         const rect = props.clientRect?.()
         if (rect && popup) {
-          popup.style.left = `${rect.left}px`
-          popup.style.top = `${rect.bottom + 4}px`
+          Object.assign(popup.style, { left: `${rect.left}px`, top: `${rect.bottom + 4}px` })
         }
       })
     },
@@ -140,8 +139,7 @@ const suggestionRender: SuggestionRender = () => {
 
       const rect = props.clientRect?.()
       if (rect && popup) {
-        popup.style.left = `${rect.left}px`
-        popup.style.top = `${rect.bottom + 4}px`
+        Object.assign(popup.style, { left: `${rect.left}px`, top: `${rect.bottom + 4}px` })
       }
     },
 

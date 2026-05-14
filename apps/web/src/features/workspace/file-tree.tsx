@@ -59,7 +59,7 @@ export function FileTree({ workspaceId, onPackRequested }: FileTreeProps) {
   })
 
   // Only pass file paths — @pierre/trees auto-creates directory nodes from path hierarchy
-  const paths = useMemo(() => files.filter(f => f.type === 'file').map(f => f.path), [files])
+  const paths = useMemo(() => files.flatMap(f => f.type === 'file' ? [f.path] : []), [files])
 
   const preparedInput = useMemo(
     () => paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null,

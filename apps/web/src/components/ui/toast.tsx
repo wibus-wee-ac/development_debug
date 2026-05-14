@@ -253,10 +253,10 @@ function AnchoredToasts(): React.ReactElement {
 export const toastManager: ReturnType<typeof Toast.createToastManager> =
   Toast.createToastManager();
 
-export const anchoredToastManager: ReturnType<typeof Toast.createToastManager> =
+const anchoredToastManager: ReturnType<typeof Toast.createToastManager> =
   Toast.createToastManager();
 
-export type ToastPosition =
+type ToastPosition =
   | "top-left"
   | "top-center"
   | "top-right"
@@ -293,4 +293,4 @@ export function AnchoredToastProvider({
   );
 }
 
-export { Toast as ToastPrimitive };
+

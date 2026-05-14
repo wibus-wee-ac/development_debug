@@ -39,7 +39,10 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
       className={cn(
         'h-8 flex items-center gap-2 px-3 text-[13px] cursor-pointer transition-colors',
         'hover:bg-muted/50',

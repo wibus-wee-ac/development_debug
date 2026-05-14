@@ -4,7 +4,7 @@
 
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Streamdown } from '@cradle/streamdown'
 
@@ -25,6 +25,7 @@ type AnyPart = any
  */
 function replayChunksToParts(chunks: UIMessageChunk[]): AnyPart[] {
   const parts: AnyPart[] = []
+  const toolCallIndex = new Map<string, AnyPart>()
   let currentTextPart: { type: 'text', text: string } | null = null
   let currentReasoningPart: { type: 'reasoning', text: string, state: string } | null = null
 
@@ -63,18 +64,20 @@ function replayChunksToParts(chunks: UIMessageChunk[]): AnyPart[] {
         break
       case 'tool-input-start': {
         const tc = chunk as unknown as { toolCallId: string, toolName: string }
-        parts.push({
+        const part: AnyPart = {
           type: 'dynamic-tool',
           toolCallId: tc.toolCallId,
           toolName: tc.toolName,
           state: 'input-streaming',
           input: undefined,
-        })
+        }
+        parts.push(part)
+        toolCallIndex.set(tc.toolCallId, part)
         break
       }
       case 'tool-input-available': {
         const tc = chunk as { toolCallId: string, input: unknown }
-        const existing = parts.find((p: AnyPart) => p.toolCallId === tc.toolCallId)
+        const existing = toolCallIndex.get(tc.toolCallId)
         if (existing) {
           existing.state = 'input-available'
           existing.input = tc.input
@@ -83,7 +86,7 @@ function replayChunksToParts(chunks: UIMessageChunk[]): AnyPart[] {
       }
       case 'tool-output-available': {
         const tc = chunk as { toolCallId: string, output: unknown }
-        const existing = parts.find((p: AnyPart) => p.toolCallId === tc.toolCallId)
+        const existing = toolCallIndex.get(tc.toolCallId)
         if (existing) {
           existing.state = 'output-available'
           existing.output = tc.output
@@ -92,7 +95,7 @@ function replayChunksToParts(chunks: UIMessageChunk[]): AnyPart[] {
       }
       case 'tool-input-error': {
         const tc = chunk as { toolCallId: string, input: unknown, errorText: string }
-        const existing = parts.find((p: AnyPart) => p.toolCallId === tc.toolCallId)
+        const existing = toolCallIndex.get(tc.toolCallId)
         if (existing) {
           existing.state = 'output-error'
           existing.input = tc.input
@@ -172,8 +175,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   // Extract plain text only (no reasoning/thinking) for copy
   const plainText = useMemo(() => {
     return message.parts
-      .filter(p => p.type === 'text')
-      .map(p => (p as { text: string }).text)
+      .flatMap(p => p.type === 'text' ? [(p as { text: string }).text] : [])
       .join('\n')
   }, [message.parts])
 
@@ -200,7 +202,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   }, [plainText])
 
   return (
-    <motion.div
+    <m.div
       initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={BUBBLE_TRANSITION}
@@ -330,7 +332,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
           </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   )
 }
 

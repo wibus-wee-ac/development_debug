@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteAgentsById, getAgents, patchAgentsById, postAgents } from '~/api-gen/sdk.gen'
 import type { Agent, CreateAgentInput, UpdateAgentInput } from '~/lib/types'
 
-export const AGENTS_QUERY_KEY = ['agents'] as const
+const AGENTS_QUERY_KEY = ['agents'] as const
 
 export function useAgents() {
   const queryClient = useQueryClient()

@@ -385,7 +385,7 @@ export function SkillManager({
         e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q))
     }
     const order = { agent: 0, workspace: 1, global: 2, legacy: 3, builtin: 4 } as const
-    return [...entries].sort((a, b) => {
+    return entries.toSorted((a, b) => {
       const aDist = a.scope === editableScope ? -1 : order[a.scope]
       const bDist = b.scope === editableScope ? -1 : order[b.scope]
       if (aDist !== bDist) {

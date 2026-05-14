@@ -30,29 +30,29 @@ function HighlightedText({ text, positions }: { text: string, positions: Set<num
   }
 
   const parts: React.ReactNode[] = []
-  let i = 0
-  while (i < text.length) {
-    if (positions.has(i)) {
+  let offset = 0
+  while (offset < text.length) {
+    if (positions.has(offset)) {
       // Collect consecutive highlighted chars
-      let j = i
-      while (j < text.length && positions.has(j)) {
-        j++
+      let end = offset
+      while (end < text.length && positions.has(end)) {
+        end++
       }
       parts.push(
-        <span key={i} className="font-bold text-primary">
-          {text.slice(i, j)}
+        <span key={`hl-${offset}`} className="font-bold text-primary">
+          {text.slice(offset, end)}
         </span>,
       )
-      i = j
+      offset = end
     }
     else {
       // Collect consecutive non-highlighted chars
-      let j = i
-      while (j < text.length && !positions.has(j)) {
-        j++
+      let end = offset
+      while (end < text.length && !positions.has(end)) {
+        end++
       }
-      parts.push(<span key={i}>{text.slice(i, j)}</span>)
-      i = j
+      parts.push(<span key={`t-${offset}`}>{text.slice(offset, end)}</span>)
+      offset = end
     }
   }
   return <>{parts}</>
@@ -78,10 +78,12 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     return fzfIndex.find(query)
   }, [fzfIndex, query, items])
 
-  // Reset active index when results change
-  useEffect(() => {
+  // Reset active index when query changes (render-time state adjustment)
+  const prevQueryRef = useRef(query)
+  if (query !== prevQueryRef.current) {
+    prevQueryRef.current = query
     setActiveIndex(0)
-  }, [query])
+  }
 
   // Scroll active item into view
   useEffect(() => {

@@ -33,13 +33,14 @@ export function SettingsRow({
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick
         ? (e) => {
-          if (e.key === 'Enter') {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
             onClick()
           }
         }
         : undefined}
       className={cn(
-        'py-4',
+        'py-3',
         vertical
           ? 'flex flex-col gap-3'
           : 'flex items-start justify-between gap-8',

@@ -22,17 +22,17 @@ export function getServerUrl(): string {
 /**
  * Whether this is a tearoff window (session-specific).
  */
-export const isTearoff = !!window.cradle?.env?.isTearoff
+const isTearoff = !!window.cradle?.env?.isTearoff
 
 /**
  * The session ID for tearoff windows.
  */
-export const tearoffSessionId = window.cradle?.env?.sessionId ?? null
+const tearoffSessionId = window.cradle?.env?.sessionId ?? null
 
 /**
  * The OS platform.
  */
-export const platform = window.cradle?.env?.platform ?? 'darwin'
+const platform = window.cradle?.env?.platform ?? 'darwin'
 
 // ── IPC Proxy (typed) ─────────────────────────────────────────────────────────
 

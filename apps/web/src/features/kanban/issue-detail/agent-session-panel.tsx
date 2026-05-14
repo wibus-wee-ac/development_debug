@@ -56,14 +56,14 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
           <span className="font-medium text-muted-foreground">Agent Session</span>
           <span className="flex items-center gap-1.5" data-testid="issue-agent-session-phase">
             <span className={cn('size-1.5 rounded-full', config.dotClass)} />
-            <span className="text-muted-foreground/70">{config.label}</span>
+            <span className="text-text-tertiary">{config.label}</span>
           </span>
         </div>
         <div className="flex items-center gap-1">
           {canStop && (
             <button
               type="button"
-              className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-muted-foreground/70 transition-colors hover:bg-fill hover:text-foreground"
+              className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               onClick={() => stopSession.mutate({ agentSessionId: activeSession.id, issueId })}
             >
               <SquareIcon className="size-3" />
@@ -73,7 +73,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
           {canRerun && (
             <button
               type="button"
-              className="rounded px-2 py-0.5 text-[12px] text-muted-foreground/70 transition-colors hover:bg-fill hover:text-foreground"
+              className="rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               data-testid="issue-agent-rerun-btn"
               onClick={() => startSession.mutate({
                 agentSessionId: activeSession.id,
@@ -88,7 +88,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
           {activeSession.chatSessionId && (
             <button
               type="button"
-              className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-muted-foreground/70 transition-colors hover:bg-fill hover:text-foreground"
+              className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               data-testid="issue-agent-session-open-chat"
               onClick={() => openTab('chat', { sessionId: activeSession.chatSessionId! })}
             >

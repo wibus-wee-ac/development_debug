@@ -43,7 +43,7 @@ export class WindowManager {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 16, y: 18 },
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: join(__dirname, '../preload/index.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,
@@ -125,7 +125,7 @@ export class WindowManager {
       height: 600,
       title: 'Cradle DevTools',
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: join(__dirname, '../preload/index.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: false,

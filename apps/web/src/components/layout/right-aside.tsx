@@ -4,7 +4,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { useCallback, useState } from 'react'
 
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
@@ -86,7 +86,7 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
           >
             {/* Sliding background pill */}
             {activeTab === id && (
-              <motion.span
+              <m.span
                 layoutId="tab-pill"
                 className="absolute inset-0 rounded-md bg-accent"
                 transition={TAB_SPRING}

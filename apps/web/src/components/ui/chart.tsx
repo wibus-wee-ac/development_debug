@@ -30,7 +30,7 @@ type ChartContextProps = {
 const ChartContext = React.createContext<ChartContextProps | null>(null)
 
 function useChart() {
-  const context = React.useContext(ChartContext)
+  const context = React.use(ChartContext)
 
   if (!context) {
     throw new Error("useChart must be used within a <ChartContainer />")
@@ -197,16 +197,15 @@ function ChartTooltipContent({
     >
       {!nestLabel ? tooltipLabel : null}
       <div className="grid gap-1.5">
-        {payload
-          .filter((item) => item.type !== "none")
-          .map((item, index) => {
+        {payload.flatMap((item, index) => {
+          if (item.type === "none") return []
             const key = `${nameKey ?? item.name ?? item.dataKey ?? "value"}`
             const itemConfig = getPayloadConfigFromPayload(config, item, key)
             const indicatorColor = color ?? item.payload?.fill ?? item.color
 
-            return (
+            return [
               <div
-                key={index}
+                key={`${item.dataKey ?? item.name ?? index}`}
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                   indicator === "dot" && "items-center"
@@ -262,8 +261,8 @@ function ChartTooltipContent({
                     </div>
                   </>
                 )}
-              </div>
-            )
+              </div>,
+            ]
           })}
       </div>
     </div>
@@ -296,15 +295,14 @@ function ChartLegendContent({
         className
       )}
     >
-      {payload
-        .filter((item) => item.type !== "none")
-        .map((item, index) => {
+      {payload.flatMap((item, index) => {
+          if (item.type === "none") return []
           const key = `${nameKey ?? item.dataKey ?? "value"}`
           const itemConfig = getPayloadConfigFromPayload(config, item, key)
 
-          return (
+          return [
             <div
-              key={index}
+              key={`${item.dataKey ?? item.value ?? index}`}
               className={cn(
                 "flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground"
               )}
@@ -313,15 +311,15 @@ function ChartLegendContent({
                 <itemConfig.icon />
               ) : (
                 <div
-                  className="h-2 w-2 shrink-0 rounded-[2px]"
+                  className="size-2 shrink-0 rounded-[2px]"
                   style={{
                     backgroundColor: item.color,
                   }}
                 />
               )}
               {itemConfig?.label}
-            </div>
-          )
+            </div>,
+          ]
         })}
     </div>
   )

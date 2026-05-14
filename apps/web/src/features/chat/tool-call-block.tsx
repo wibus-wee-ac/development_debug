@@ -20,27 +20,26 @@ import { cn } from '~/lib/cn'
 
 type ToolIconKind = 'file-search' | 'file-edit' | 'search' | 'terminal' | 'wrench'
 
-const TOOL_ICON_MATCHERS: Array<{ keyword: string, iconKind: ToolIconKind }> = [
-  { keyword: 'read_file', iconKind: 'file-search' },
-  { keyword: 'write_file', iconKind: 'file-edit' },
-  { keyword: 'edit_file', iconKind: 'file-edit' },
-  { keyword: 'search', iconKind: 'search' },
-  { keyword: 'grep', iconKind: 'search' },
-  { keyword: 'bash', iconKind: 'terminal' },
-  { keyword: 'shell', iconKind: 'terminal' },
-  { keyword: 'terminal', iconKind: 'terminal' },
-]
+const TOOL_ICON_MAP = new Map<string, ToolIconKind>([
+  ['read_file', 'file-search'],
+  ['write_file', 'file-edit'],
+  ['edit_file', 'file-edit'],
+  ['search', 'search'],
+  ['grep', 'search'],
+  ['bash', 'terminal'],
+  ['shell', 'terminal'],
+  ['terminal', 'terminal'],
+])
+
+const TOOL_ICON_RE = /read_file|write_file|edit_file|search|grep|bash|shell|terminal/
 
 function getToolIconKind(toolName: string): ToolIconKind {
-  for (const { keyword, iconKind } of TOOL_ICON_MATCHERS) {
-    if (toolName.toLowerCase().includes(keyword)) {
-      return iconKind
-    }
-  }
-  return 'wrench'
+  const match = toolName.toLowerCase().match(TOOL_ICON_RE)
+  if (!match) return 'wrench'
+  return TOOL_ICON_MAP.get(match[0]) ?? 'wrench'
 }
 
-function renderToolIcon(toolName: string, className?: string): ReactNode {
+function ToolIcon({ toolName, className }: { toolName: string, className?: string }) {
   switch (getToolIconKind(toolName)) {
     case 'file-search':
       return <FileSearchIcon className={className} aria-hidden="true" />
@@ -120,7 +119,7 @@ export function ToolCallBlock({
           'text-muted-foreground hover:text-foreground hover:bg-muted/50',
         )}
       >
-        {renderToolIcon(toolName, 'size-3.5')}
+        <ToolIcon toolName={toolName} className="size-3.5" />
         <span className="font-medium flex-1 w-full truncate">{toolName}</span>
         <StatusIcon
           className={cn(

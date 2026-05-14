@@ -13,7 +13,7 @@ import {
   PencilIcon,
   ScrollTextIcon,
 } from 'lucide-react'
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { getSessions, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
@@ -22,7 +22,9 @@ import { Button } from '~/components/ui/button'
 import { SkillManager } from '~/features/skills/skill-manager'
 import { sessionsQueryKey } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
+import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 import type { Session, Workspace } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -45,8 +47,8 @@ interface TocHeading {
 
 /* ─── Helpers ────────────────────────────────────────────── */
 
-function timeAgo(ts: number): string {
-  const diff = Math.floor(Date.now() / 1000) - ts
+function timeAgo(ts: number, nowMs: number): string {
+  const diff = Math.floor(nowMs / 1000) - ts
   if (diff < 60) {
     return '刚刚'
   }
@@ -122,12 +124,13 @@ function InlineEditTitle({
     setDraft(value)
   }, [value])
 
-  useEffect(() => {
-    if (editing) {
+  const startEditing = useCallback(() => {
+    setEditing(true)
+    requestAnimationFrame(() => {
       inputRef.current?.focus()
       inputRef.current?.select()
-    }
-  }, [editing])
+    })
+  }, [])
 
   const commit = useCallback(() => {
     const trimmed = draft.trim()
@@ -162,7 +165,7 @@ function InlineEditTitle({
   return (
     <button
       type="button"
-      onClick={() => setEditing(true)}
+      onClick={startEditing}
       data-testid="workspace-detail-title-trigger"
       className="group inline-flex items-center gap-2 text-left"
     >
@@ -351,6 +354,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
+  const now = useNow()
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules' | 'skills'>('overview')
   const [workflowContent, setWorkflowContent] = useState<string | null>(null)
@@ -445,8 +449,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     if (!session?.id) {
       return
     }
-    const serverBase = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
-    const res = await fetch(`${serverBase}/chat/sessions/${session.id}/response`, {
+    await fetch(`${getServerUrl()}/chat/sessions/${session.id}/response`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort }),
@@ -516,7 +519,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
       <div className="relative flex-1 min-w-0">
         {/* Scrollable content */}
         <div ref={scrollRef} className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden">
-          <motion.div
+          <m.div
             className="max-w-2xl mx-auto py-6 px-2"
           >
             {/* Header */}
@@ -547,7 +550,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                   )}
                 >
                   {activeTab === id && (
-                    <motion.span
+                    <m.span
                       layoutId="workspace-detail-tab-pill"
                       className="absolute inset-0 rounded-md bg-accent"
                       transition={{ type: 'spring', stiffness: 600, damping: 40 }}
@@ -598,7 +601,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
             {/* Bottom spacer for floating composer */}
             <div className="h-28" />
-          </motion.div>
+          </m.div>
         </div>
 
         {/* ── Floating Capsule Composer ── */}
@@ -650,7 +653,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
         <div className="h-px bg-border/30 mx-3" />
 
         {/* Properties */}
-        <div className="px-3 py-3 space-y-2.5">
+        <div className="p-3 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-muted-foreground">分支</span>
             <span className="text-[12px] text-muted-foreground font-mono truncate max-w-28">{(gitStatus as { branch?: string } | null)?.branch ?? '—'}</span>
@@ -697,8 +700,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
                     >
                       <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
                       <span className="truncate flex-1 text-foreground">{session.title || 'Untitled'}</span>
-                      <time dateTime={new Date(session.updatedAt * 1000).toISOString()} className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                        {timeAgo(session.updatedAt)}
+                      <time className="shrink-0 text-[10px] text-muted-foreground tabular-nums" suppressHydrationWarning>
+                        {timeAgo(session.updatedAt, now)}
                       </time>
                     </button>
                   </div>

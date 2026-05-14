@@ -3,7 +3,7 @@
 // Position: Rendered by AgentList in both create and edit modes
 
 import { ArrowLeftIcon, CheckIcon, DicesIcon } from 'lucide-react'
-import { motion } from 'motion/react'
+import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -91,7 +91,7 @@ function ModelSelect({
   }, [profileId, modelId, models, onModelChange])
 
   if (!profileId) {
-    return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">—</span>
+    return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">–</span>
   }
 
   if (isLoading) {
@@ -126,7 +126,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
   }
 
   return (
-    <motion.span
+    <m.span
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
@@ -143,7 +143,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
       {state === 'pending' && 'Saving...'}
       {state === 'saved' && 'Saved'}
       {state === 'error' && 'Save failed'}
-    </motion.span>
+    </m.span>
   )
 }
 
@@ -188,10 +188,10 @@ export function AgentDetailPage({
   const savedClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (!agentProfileId && enabledProfiles[0]) {
-      setAgentProfileId(enabledProfiles[0].id)
+    if (enabledProfiles[0]) {
+      setAgentProfileId(prev => prev ?? enabledProfiles[0].id)
     }
-  }, [enabledProfiles, agentProfileId])
+  }, [enabledProfiles])
 
   useEffect(() => {
     if (!agent) {
@@ -381,7 +381,7 @@ export function AgentDetailPage({
       <div className="flex items-start gap-5">
         {/* Avatar + style */}
         <div className="flex shrink-0 flex-col items-center gap-1.5">
-          <motion.button
+          <m.button
             type="button"
             onClick={shuffleAvatar}
             data-testid="agent-avatar-preview"
@@ -389,7 +389,7 @@ export function AgentDetailPage({
             title="Click to shuffle"
             whileTap={{ scale: 0.91 }}
           >
-            <motion.img
+            <m.img
               key={avatarSpinKey}
               src={avatarUrl}
               alt={name || 'Agent'}
@@ -402,7 +402,7 @@ export function AgentDetailPage({
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
               <DicesIcon className="size-4 text-white" />
             </div>
-          </motion.button>
+          </m.button>
 
           <Select value={avatarStyle} onValueChange={setAvatarStyle}>
             <SelectTrigger

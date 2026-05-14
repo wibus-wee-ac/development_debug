@@ -10,7 +10,7 @@ import {
   XIcon,
   ZapIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { postWorkspacesByIdPack } from '~/api-gen'
 import { Button } from '~/components/ui/button'
@@ -64,10 +64,12 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
+const EMPTY_PATHS: string[] = []
+
 export function PackCodebaseDialog({
   workspaceId,
   workspaceName,
-  initialPaths = [],
+  initialPaths = EMPTY_PATHS,
   open,
   onOpenChange,
 }: PackCodebaseDialogProps) {
@@ -83,16 +85,18 @@ export function PackCodebaseDialog({
   const [result, setResult] = useState<{ totalFiles: number, totalTokens: number } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
 
-  // Reset scope paths when the dialog opens with new initials
-  useEffect(() => {
-    if (open) {
-      setScopePaths(initialPaths)
-      setStatus('idle')
-      setResult(null)
-      setErrorMsg('')
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  // Reset scope paths when the dialog opens with new initials (render-time adjustment)
+  const prevOpenRef = useRef(open)
+  if (open && !prevOpenRef.current) {
+    prevOpenRef.current = open
+    setScopePaths(initialPaths)
+    setStatus('idle')
+    setResult(null)
+    setErrorMsg('')
+  }
+  if (!open && prevOpenRef.current) {
+    prevOpenRef.current = open
+  }
 
   const addPath = useCallback((raw: string) => {
     const trimmed = raw.trim()
@@ -252,11 +256,14 @@ export function PackCodebaseDialog({
               <span className="ml-1 opacity-50">（空 = 整个工作区）</span>
             </Label>
             <div
+              role="group"
               className={cn(
                 'flex min-h-9 flex-wrap gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-xs transition-colors focus-within:ring-1 focus-within:ring-ring',
                 scopePaths.length === 0 && 'items-center',
               )}
               onClick={() => pathInputRef.current?.focus()}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') pathInputRef.current?.focus() }}
+              tabIndex={0}
             >
               {scopePaths.map(p => (
                 <span

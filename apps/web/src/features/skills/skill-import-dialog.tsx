@@ -8,7 +8,7 @@ import {
   LinkIcon,
   XIcon,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -85,7 +85,7 @@ function RightPanelFetching({ source }: { source: string }) {
   return (
     <div className="flex h-full flex-col justify-end gap-3 px-7 pb-8">
       <div className="relative h-px overflow-hidden rounded-full bg-foreground/10">
-        <motion.div
+        <m.div
           className="absolute inset-y-0 w-1/3 rounded-full bg-foreground/40"
           animate={{ left: ['-33%', '100%'] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
@@ -162,15 +162,15 @@ function RightPanelSelect({
 function RightPanelDone({ count }: { count: number }) {
   return (
     <div className="flex h-full flex-col justify-center gap-2 px-8 py-10">
-      <motion.p
+      <m.p
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
         className="text-[56px] font-bold leading-none tracking-tight text-foreground"
       >
         {count}
-      </motion.p>
-      <motion.p
+      </m.p>
+      <m.p
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.15, duration: 0.35 }}
@@ -178,7 +178,7 @@ function RightPanelDone({ count }: { count: number }) {
       >
         {count === 1 ? 'skill' : 'skills'}
         {' installed'}
-      </motion.p>
+      </m.p>
     </div>
   )
 }
@@ -211,7 +211,7 @@ function InputForm({
   }, [value, isFetching, onFetch])
 
   return (
-    <div className="flex h-full flex-col gap-8 px-8 py-8">
+    <div className="flex h-full flex-col gap-8 p-8">
       <div className="flex flex-col gap-1.5">
         <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Import Skills</h2>
         <p className="text-[13px] leading-relaxed text-muted-foreground/60" style={{ textWrap: 'pretty' }}>
@@ -455,7 +455,7 @@ function DoneBody({
       )}
 
       <Button onClick={onClose} variant="outline" className="h-10 w-full" data-testid="skill-import-done-btn">
-        Done
+        Finish importing
       </Button>
     </div>
   )
@@ -485,16 +485,20 @@ export function SkillImportDialog({
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (open) {
-      setStep('input')
-      setSourceInput('')
-      setFetchResult(null)
-      setSelected(() => new Set())
-      setImportResult(null)
-      setFetchError(null)
-    }
-  }, [open])
+  // Reset state when dialog opens (render-time adjustment)
+  const prevOpenRef = useRef(open)
+  if (open && !prevOpenRef.current) {
+    prevOpenRef.current = open
+    setStep('input')
+    setSourceInput('')
+    setFetchResult(null)
+    setSelected(() => new Set())
+    setImportResult(null)
+    setFetchError(null)
+  }
+  if (!open && prevOpenRef.current) {
+    prevOpenRef.current = open
+  }
 
   const handleClose = useCallback(() => {
     if (fetchResult?.sessionId && step !== 'done') {
@@ -597,7 +601,7 @@ export function SkillImportDialog({
             <div className="min-h-0 flex-1 overflow-hidden">
               <AnimatePresence mode="wait">
                 {step === 'input' && (
-                  <motion.div
+                  <m.div
                     key="input"
                     className="h-full"
                     initial={{ opacity: 0, x: -12 }}
@@ -610,11 +614,11 @@ export function SkillImportDialog({
                       isFetching={fetchSource.isPending}
                       error={fetchError}
                     />
-                  </motion.div>
+                  </m.div>
                 )}
 
                 {step === 'fetching' && (
-                  <motion.div
+                  <m.div
                     key="fetching"
                     className="h-full"
                     initial={{ opacity: 0, x: -12 }}
@@ -623,11 +627,11 @@ export function SkillImportDialog({
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   >
                     <FetchingBody source={sourceInput} />
-                  </motion.div>
+                  </m.div>
                 )}
 
                 {(step === 'select' || step === 'installing') && fetchResult && (
-                  <motion.div
+                  <m.div
                     key="select"
                     className="h-full"
                     initial={{ opacity: 0, x: -12 }}
@@ -643,11 +647,11 @@ export function SkillImportDialog({
                       onInstall={() => void handleInstall()}
                       isInstalling={step === 'installing'}
                     />
-                  </motion.div>
+                  </m.div>
                 )}
 
                 {step === 'done' && importResult && (
-                  <motion.div
+                  <m.div
                     key="done"
                     className="h-full"
                     initial={{ opacity: 0, x: -12 }}
@@ -656,7 +660,7 @@ export function SkillImportDialog({
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   >
                     <DoneBody result={importResult} onClose={() => onOpenChange(false)} />
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
             </div>
@@ -678,7 +682,7 @@ export function SkillImportDialog({
             <div className="relative z-10 flex h-full flex-col">
               <AnimatePresence mode="wait">
                 {step === 'input' && (
-                  <motion.div
+                  <m.div
                     key="right-input"
                     className="h-full"
                     initial={{ opacity: 0 }}
@@ -687,11 +691,11 @@ export function SkillImportDialog({
                     transition={{ duration: 0.25 }}
                   >
                     <RightPanelInput />
-                  </motion.div>
+                  </m.div>
                 )}
 
                 {step === 'fetching' && (
-                  <motion.div
+                  <m.div
                     key="right-fetching"
                     className="h-full"
                     initial={{ opacity: 0 }}
@@ -700,11 +704,11 @@ export function SkillImportDialog({
                     transition={{ duration: 0.25 }}
                   >
                     <RightPanelFetching source={sourceInput} />
-                  </motion.div>
+                  </m.div>
                 )}
 
                 {(step === 'select' || step === 'installing') && fetchResult && (
-                  <motion.div
+                  <m.div
                     key="right-select"
                     className="h-full"
                     initial={{ opacity: 0 }}
@@ -717,11 +721,11 @@ export function SkillImportDialog({
                       selected={selected}
                       scope={editableScope}
                     />
-                  </motion.div>
+                  </m.div>
                 )}
 
                 {step === 'done' && importResult && (
-                  <motion.div
+                  <m.div
                     key="right-done"
                     className="h-full"
                     initial={{ opacity: 0 }}
@@ -730,7 +734,7 @@ export function SkillImportDialog({
                     transition={{ duration: 0.25 }}
                   >
                     <RightPanelDone count={importResult.imported} />
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
             </div>

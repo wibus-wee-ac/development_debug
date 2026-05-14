@@ -108,8 +108,9 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
       return
     }
     if (expanded) {
-      el.style.height = 'auto'
-      el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+      el.style.height = '0'
+      const height = Math.min(el.scrollHeight, 240)
+      el.style.height = `${height}px`
     }
     else {
       el.style.height = ''

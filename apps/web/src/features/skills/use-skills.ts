@@ -29,9 +29,9 @@ export interface SkillQueryContext {
   agentId?: string | null
 }
 
-export const skillsInventoryQueryKey = (context?: SkillQueryContext) =>
+const skillsInventoryQueryKey = (context?: SkillQueryContext) =>
   ['skills', 'inventory', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent'] as const
-export const skillDocumentQueryKey = (context: SkillQueryContext | undefined, scope: SkillScope, name: string | null) =>
+const skillDocumentQueryKey = (context: SkillQueryContext | undefined, scope: SkillScope, name: string | null) =>
   ['skills', 'document', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent', scope, name ?? ''] as const
 
 function toIpcContext(context?: SkillQueryContext): { workspaceId?: string | null, agentId?: string | null } {
@@ -56,8 +56,6 @@ export function useSkills(context?: SkillQueryContext) {
     },
   })
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['skills'] })
-
   const createSkill = useMutation({
     mutationFn: async (params: {
       scope: SkillScope
@@ -78,7 +76,7 @@ export function useSkills(context?: SkillQueryContext) {
       })
       return data as SkillDocument
     },
-    onSuccess: invalidate,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   const updateSkill = useMutation({
@@ -105,7 +103,7 @@ export function useSkills(context?: SkillQueryContext) {
       })
       return data as SkillDocument
     },
-    onSuccess: invalidate,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   const deleteSkill = useMutation({
@@ -119,7 +117,7 @@ export function useSkills(context?: SkillQueryContext) {
         },
       })
     },
-    onSuccess: invalidate,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   const importSkill = useMutation({
@@ -134,7 +132,7 @@ export function useSkills(context?: SkillQueryContext) {
       })
       return data as SkillDocument
     },
-    onSuccess: invalidate,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   const exportSkill = useMutation({
@@ -155,6 +153,7 @@ export function useSkills(context?: SkillQueryContext) {
       }
       return (data as { destinationDir: string }).destinationDir
     },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   return {
@@ -199,7 +198,6 @@ export function useSkillDocument(
  */
 export function useSkillSourceImport(context?: SkillQueryContext) {
   const queryClient = useQueryClient()
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['skills'] })
 
   const fetchSource = useMutation({
     mutationFn: async (source: string): Promise<{
@@ -210,6 +208,7 @@ export function useSkillSourceImport(context?: SkillQueryContext) {
       const { data } = await postSkillsFetchSource({ body: { source } })
       return data as unknown as { sessionId: string, source: ParsedSkillSource, skills: DiscoveredSkill[] }
     },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   const importFromFetch = useMutation({
@@ -230,13 +229,14 @@ export function useSkillSourceImport(context?: SkillQueryContext) {
       })
       return data as { imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }
     },
-    onSuccess: invalidate,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   const cancelFetch = useMutation({
     mutationFn: async (sessionId: string): Promise<void> => {
       await postSkillsCancelFetch({ body: { sessionId } })
     },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
 
   return { fetchSource, importFromFetch, cancelFetch }

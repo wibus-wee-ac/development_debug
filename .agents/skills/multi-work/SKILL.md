@@ -25,11 +25,19 @@ Per-node loop:
 
 ```
 Main Agent
+  ├─ spawn Exploration Agents to research and plan the assigned task node
+  │    input: What user wants
+  ├─ collect and synthesize findings into Plan File
+  │    output: Plan Files
+  │
   ├─ spawn Implementation Agents (Worker A, Worker B, Worker C,...)
-  │    input: Plan File + related files + assigned task
+  │    input: Plan Files + related files + assigned task
   │
   ├─ spawn Review Agents
-  │    input: Plan File + related files (let sub agent use git diff to discover changes)
+  │    input: Plan Files + related files (let sub agent use git diff to discover changes)
+  │
+  ├─ Note: You can spawn any type of agent anytime, the above are just examples of typical node types. In practice, you can flexibly adjust and combine different types of sub-agents as needed to accomplish the task. By leveraging the independent context and parallel execution capabilities of sub-agents, you can greatly improve the efficiency and quality of handling complex tasks.
+  │    
   │
   ├─ if review fails:
   │    spawn Fix Agent

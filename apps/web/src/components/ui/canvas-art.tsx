@@ -96,7 +96,7 @@ export function HalftoneArt({ className }: { className?: string }) {
 
 const FLOW_PARTICLE_COUNT = 180
 
-export function FlowField({ className }: { className?: string }) {
+function FlowField({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -181,7 +181,7 @@ export function FlowField({ className }: { className?: string }) {
 const GRIDWAVE_SPACING = 22
 const GRIDWAVE_MAX_R = 3.8
 
-export function GridWave({ className }: { className?: string }) {
+function GridWave({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -241,7 +241,7 @@ export function GridWave({ className }: { className?: string }) {
 const RIPPLE_RING_COUNT = 7
 const RIPPLE_SPACING = 40
 
-export function SineRipple({ className }: { className?: string }) {
+function SineRipple({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -301,7 +301,7 @@ export function SineRipple({ className }: { className?: string }) {
 
 const RAIN_COL_SPACING = 14
 
-export function RainDots({ className }: { className?: string }) {
+function RainDots({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {

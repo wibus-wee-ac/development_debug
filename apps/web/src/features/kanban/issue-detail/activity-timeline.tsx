@@ -46,7 +46,7 @@ export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
           placeholder="Leave a comment..."
           rows={2}
           data-testid="issue-comment-input"
-          className="w-full resize-none rounded-md border border-border/50 bg-transparent px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border transition-colors"
+          className="w-full resize-none rounded-md border border-border bg-transparent px-3 py-2 text-[13px] text-foreground outline-none placeholder:text-text-dim focus:border-ring transition-colors"
         />
         <div className="mt-1.5 flex justify-end">
           <Button
@@ -71,10 +71,10 @@ function CommentItem({ comment }: { comment: KanbanIssueComment }) {
   if (isSystem) {
     return (
       <div className="flex items-center gap-2 py-1" data-testid={`comment-${comment.id}`}>
-        <span className="text-[12px] text-muted-foreground/60">
+        <span className="text-[12px] text-text-tertiary">
           {comment.content}
         </span>
-        <span className="text-[11px] text-muted-foreground/40">
+        <span className="text-[11px] text-text-dim">
           {formatRelativeTime(comment.createdAt)}
         </span>
       </div>
@@ -89,7 +89,7 @@ function CommentItem({ comment }: { comment: KanbanIssueComment }) {
           <span className="text-[12px] font-medium text-foreground">
             {comment.authorKind === 'agent' ? 'Agent' : 'You'}
           </span>
-          <span className="text-[11px] text-muted-foreground/50">
+          <span className="text-[11px] text-text-dim">
             {formatRelativeTime(comment.createdAt)}
           </span>
         </div>

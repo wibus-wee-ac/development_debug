@@ -170,15 +170,9 @@ function DialogDescription({
 
 export {
   Dialog,
-  DialogClose,
   DialogContent,
-  DialogContent as DialogPopup,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogOverlay,
-  DialogPanel,
-  DialogPortal,
   DialogTitle,
-  DialogTrigger,
 }

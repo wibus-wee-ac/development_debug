@@ -28,7 +28,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,

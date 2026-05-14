@@ -10,13 +10,14 @@ import {
   getChatSessionsBySessionIdMessagesOptions,
   getChatSessionsBySessionIdMessagesQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { getServerUrl } from '~/lib/electron'
 import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { buildChunkStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
 
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+const SERVER_BASE = getServerUrl()
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -90,6 +91,7 @@ type ReplayToolPart = {
 
 function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChunk[]): UIMessage {
   const message: UIMessage = { id: messageId, role: 'assistant', parts: [] }
+  const parts = message.parts
 
   let currentTextPart: { type: 'text', text: string } | null = null
   let currentReasoningPart: ReplayReasoningPart | null = null
@@ -101,7 +103,7 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         currentTextPart = meta
           ? { type: 'text', text: '', providerMetadata: meta } as unknown as { type: 'text', text: string }
           : { type: 'text', text: '' }
-        message.parts.push(currentTextPart as UIMessage['parts'][number])
+        parts.push(currentTextPart as UIMessage['parts'][number])
         break
       }
       case 'text-delta':
@@ -110,7 +112,7 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         }
         else {
           currentTextPart = { type: 'text', text: (chunk as { delta: string }).delta }
-          message.parts.push(currentTextPart)
+          parts.push(currentTextPart)
         }
         break
       case 'text-end':
@@ -118,7 +120,7 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         break
       case 'reasoning-start':
         currentReasoningPart = { type: 'reasoning', text: '', reasoning: '', details: [] }
-        message.parts.push(currentReasoningPart as UIMessage['parts'][number])
+        parts.push(currentReasoningPart as UIMessage['parts'][number])
         break
       case 'reasoning-delta':
         if (currentReasoningPart) {
@@ -141,12 +143,12 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
         if (toolChunk.providerMetadata) {
           toolPart.callProviderMetadata = toolChunk.providerMetadata
         }
-        message.parts.push(toolPart as unknown as UIMessage['parts'][number])
+        parts.push(toolPart as unknown as UIMessage['parts'][number])
         break
       }
       case 'tool-input-available': {
         const toolChunk = chunk as { toolCallId: string, input: unknown }
-        const existing = findToolPart(message.parts, toolChunk.toolCallId)
+        const existing = findToolPart(parts, toolChunk.toolCallId)
         if (existing) {
           existing.state = 'input-available'
           existing.input = toolChunk.input
@@ -155,7 +157,7 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
       }
       case 'tool-input-error': {
         const toolChunk = chunk as { toolCallId: string, input: unknown, errorText: string }
-        const existing = findToolPart(message.parts, toolChunk.toolCallId)
+        const existing = findToolPart(parts, toolChunk.toolCallId)
         if (existing) {
           existing.state = 'output-error'
           existing.input = toolChunk.input
@@ -165,7 +167,7 @@ function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChun
       }
       case 'tool-output-available': {
         const toolChunk = chunk as { toolCallId: string, output: unknown }
-        const existing = findToolPart(message.parts, toolChunk.toolCallId)
+        const existing = findToolPart(parts, toolChunk.toolCallId)
         if (existing) {
           existing.state = 'output-available'
           existing.output = toolChunk.output
@@ -192,8 +194,7 @@ function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
   }
   // Filter out subagent chunks (parentToolCallId != null) for main message replay
   const mainChunks = group.chunks
-    .filter(c => !c.parentToolCallId)
-    .map(c => c.chunk)
+    .flatMap(c => !c.parentToolCallId ? [c.chunk] : [])
   return replayChunksToAssistantMessage(group.messageId, mainChunks)
 }
 
@@ -206,10 +207,14 @@ function extractSubagentChunks(
 ): Map<string, Map<string, UIMessageChunk[]>> {
   const result = new Map<string, Map<string, UIMessageChunk[]>>()
   for (const group of groups) {
-    if (group.role !== 'assistant') continue
+    if (group.role !== 'assistant') {
+      continue
+    }
     for (const row of group.chunks) {
       const parentId = row.parentToolCallId as string | null | undefined
-      if (!parentId) continue
+      if (!parentId) {
+        continue
+      }
       let messageMap = result.get(group.messageId)
       if (!messageMap) {
         messageMap = new Map()

@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getProfiles } from '~/api-gen/sdk.gen'
 import type { AgentProfile } from '~/lib/types'
 
-export const AGENT_PROFILES_QUERY_KEY = ['agent-profiles'] as const
+const AGENT_PROFILES_QUERY_KEY = ['agent-profiles'] as const
 
 export function useAgentProfiles() {
   const { data: profiles = [], refetch } = useQuery({

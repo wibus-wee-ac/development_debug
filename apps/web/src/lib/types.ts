@@ -5,11 +5,8 @@
 // ── DB entity types (from @cradle/db — import type only, erased by bundler) ──
 
 export type {
-  AcpAgent,
-  AcpAuditEntry,
   Agent,
   AgentActivity,
-  AgentCredential,
   AgentProfile,
   AgentSession,
   KanbanBoard,
@@ -18,8 +15,6 @@ export type {
   KanbanIssueRelation,
   KanbanMilestone,
   KanbanStatus,
-  Message,
-  RuntimeAuditEntry,
   Session,
   Workspace,
 } from '@cradle/db'
@@ -35,13 +30,13 @@ export interface ModelDescriptor {
   contextWindow: number | null
 }
 
-export interface ProviderHealthCheckResult {
+interface ProviderHealthCheckResult {
   ok: boolean
   latencyMs: number
   error?: string
 }
 
-export interface CredentialMetadata {
+interface CredentialMetadata {
   id: string
   providerKind: ProviderKind
   label: string
@@ -86,13 +81,13 @@ export interface GitStatus {
   isDetached: boolean
 }
 
-export interface GitLocalBranch {
+interface GitLocalBranch {
   name: string
   isCurrent: boolean
   tracking?: string
 }
 
-export interface GitRemoteBranch {
+interface GitRemoteBranch {
   name: string
 }
 
@@ -114,7 +109,7 @@ export interface GitGraphCommit {
   timestamp: number
 }
 
-export type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
 
 export interface GitFileStatus {
   path: string
@@ -148,7 +143,7 @@ export interface ThreadSearchHit {
   updatedAt: number
 }
 
-export interface ThreadSearchParams {
+interface ThreadSearchParams {
   query: string
   workspaceId?: string
   limit?: number
@@ -159,12 +154,12 @@ export interface ThreadSearchParams {
 
 export type SkillScope = 'builtin' | 'legacy' | 'global' | 'workspace' | 'agent'
 
-export interface SkillContext {
+interface SkillContext {
   workspacePath?: string
   agentId?: string
 }
 
-export interface SkillCatalogEntry {
+interface SkillCatalogEntry {
   name: string
   description: string
   location: string
@@ -189,7 +184,7 @@ export interface SkillDocument {
   skillDir: string
 }
 
-export interface CreateSkillInput {
+interface CreateSkillInput {
   name: string
   description: string
   content: string
@@ -197,7 +192,7 @@ export interface CreateSkillInput {
   context?: SkillContext
 }
 
-export interface UpdateSkillInput {
+interface UpdateSkillInput {
   name?: string
   description?: string
   content?: string
@@ -207,7 +202,7 @@ export interface UpdateSkillInput {
 
 // ── ACP / registry types ────────────────────────────────────────────────────
 
-export interface RegistryAgent {
+interface RegistryAgent {
   id: string
   name: string
   version: string
@@ -224,7 +219,7 @@ export interface RegistryAgent {
   }
 }
 
-export type SkillSourceType = 'github' | 'gitlab' | 'git' | 'local'
+type SkillSourceType = 'github' | 'gitlab' | 'git' | 'local'
 
 export interface ParsedSkillSource {
   type: SkillSourceType
@@ -243,7 +238,7 @@ export interface DiscoveredSkill {
 
 // ── ACP session / process types ─────────────────────────────────────────────
 
-export interface AcpSessionState {
+interface AcpSessionState {
   agentId: string
   status: 'connecting' | 'connected' | 'disconnected' | 'error'
   error?: string
@@ -251,9 +246,9 @@ export interface AcpSessionState {
 
 // ── Pack codebase types ─────────────────────────────────────────────────────
 
-export type PackStyle = 'xml' | 'markdown' | 'plain'
+type PackStyle = 'xml' | 'markdown' | 'plain'
 
-export interface PackCodebaseOptions {
+interface PackCodebaseOptions {
   style: PackStyle
   compress: boolean
   include?: string
@@ -262,7 +257,7 @@ export interface PackCodebaseOptions {
   removeEmptyLines?: boolean
 }
 
-export interface PackCodebaseResult {
+interface PackCodebaseResult {
   content: string
   totalFiles: number
   totalTokens: number
@@ -270,14 +265,14 @@ export interface PackCodebaseResult {
 
 // ── Usage types ─────────────────────────────────────────────────────────────
 
-export interface DailyUsage {
+interface DailyUsage {
   date: string
   inputTokens: number
   outputTokens: number
   cost: number
 }
 
-export interface UsageSummary {
+interface UsageSummary {
   totalInputTokens: number
   totalOutputTokens: number
   totalCost: number

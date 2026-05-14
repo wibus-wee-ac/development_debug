@@ -23,7 +23,7 @@ import {
   SlidersHorizontalIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { deleteSessionsById, getSessionsByIdExportMarkdown, patchSessionsById } from '~/api-gen'
@@ -101,7 +101,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     ])
   }, [queryClient, session.id, workspaceId])
 
-  const handleClick = useCallback(() => {
+  const openSessionTab = useCallback(() => {
     openTab('chat', { sessionId: session.id })
   }, [openTab, session.id])
 
@@ -184,8 +184,10 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       {isRenaming
         ? (
           <div
+            role="group"
             className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
             onClick={e => e.stopPropagation()}
+            onKeyDown={e => e.stopPropagation()}
           >
             {session.pinned
 ? (
@@ -219,7 +221,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
           <>
             <button
               type="button"
-              onClick={handleClick}
+              onClick={openSessionTab}
               data-testid={`session-open-${session.id}`}
               className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
             >
@@ -367,7 +369,7 @@ function WorkspaceGroup({
       {/* Session list with expand/collapse animation */}
       <AnimatePresence initial={false}>
         {expanded && (
-          <motion.div
+          <m.div
             key="sessions"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -379,7 +381,7 @@ function WorkspaceGroup({
               {sessions.length === 0 && (
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground">暂无会话</p>
               )}
-              {[...sessions].sort((a, b) => {
+              {sessions.toSorted((a, b) => {
                 const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
                 if (pinDiff !== 0) {
                   return pinDiff
@@ -389,7 +391,7 @@ function WorkspaceGroup({
                 <SessionItem key={session.id} session={session} workspaceId={workspace.id} />
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -433,7 +435,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: N
         )}
       <AnimatePresence initial={false}>
         {!collapsed && (
-          <motion.span
+          <m.span
             key="label"
             className="flex-1 text-left whitespace-nowrap"
             initial={{ opacity: 0, width: 0 }}
@@ -443,13 +445,13 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: N
             style={{ overflow: 'hidden', display: 'block' }}
           >
             {label}
-          </motion.span>
+          </m.span>
         )}
       </AnimatePresence>
       {shortcut && (
         <AnimatePresence initial={false}>
           {!collapsed && (
-            <motion.span
+            <m.span
               key="shortcut"
               className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 whitespace-nowrap"
               initial={{ opacity: 0, width: 0 }}
@@ -459,7 +461,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: N
               style={{ overflow: 'hidden', display: 'block' }}
             >
               {shortcut}
-            </motion.span>
+            </m.span>
           )}
         </AnimatePresence>
       )}

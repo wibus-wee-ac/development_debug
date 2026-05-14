@@ -16,7 +16,7 @@ export const LANE_COLORS = [
   '#06b6d4', // cyan
 ] as const
 
-export interface GraphLine {
+interface GraphLine {
   /** Source lane column index */
   fromLane: number
   /** Destination lane column index */
@@ -57,6 +57,7 @@ export interface LayoutCommit extends GitGraphCommit {
  */
 export function computeGraphLayout(commits: GitGraphCommit[]): LayoutCommit[] {
   const lanes: Array<string | null> = []
+  const laneMap = new Map<string, number>()
 
   function firstFreeLane(): number {
     const idx = lanes.indexOf(null)
@@ -73,24 +74,28 @@ export function computeGraphLayout(commits: GitGraphCommit[]): LayoutCommit[] {
     const snapshotBefore = [...lanes]
 
     // Find or claim lane for this commit
-    let myLane = lanes.indexOf(commit.sha)
+    let myLane = laneMap.get(commit.sha) ?? -1
     if (myLane === -1) {
       myLane = firstFreeLane()
     }
 
     // Free the slot
     lanes[myLane] = null
+    laneMap.delete(commit.sha)
 
     // Assign parents to lane slots
     if (commit.parents.length > 0) {
       // First parent inherits this lane if it doesn't already have one
-      if (!lanes.includes(commit.parents[0])) {
+      if (!laneMap.has(commit.parents[0])) {
         lanes[myLane] = commit.parents[0]
+        laneMap.set(commit.parents[0], myLane)
       }
       // Additional parents claim new (or existing) slots
       for (let i = 1; i < commit.parents.length; i++) {
-        if (!lanes.includes(commit.parents[i])) {
-          lanes[firstFreeLane()] = commit.parents[i]
+        if (!laneMap.has(commit.parents[i])) {
+          const slot = firstFreeLane()
+          lanes[slot] = commit.parents[i]
+          laneMap.set(commit.parents[i], slot)
         }
       }
     }
@@ -117,8 +122,13 @@ export function computeGraphLayout(commits: GitGraphCommit[]): LayoutCommit[] {
     const linesBelow: GraphLine[] = []
     const targetLanes = new Set<number>()
 
+    const afterIndex = new Map<string, number>()
+    for (let k = 0; k < snapshotAfter.length; k++) {
+      if (snapshotAfter[k] !== null) afterIndex.set(snapshotAfter[k]!, k)
+    }
+
     for (const parent of commit.parents) {
-      const pLane = snapshotAfter.indexOf(parent)
+      const pLane = afterIndex.get(parent) ?? -1
       if (pLane !== -1) {
         targetLanes.add(pLane)
         linesBelow.push({ fromLane: myLane, toLane: pLane })

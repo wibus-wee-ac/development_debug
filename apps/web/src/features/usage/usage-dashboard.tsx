@@ -107,12 +107,24 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
   )
 }
 
+interface UsageData {
+  daily: DailyUsage[]
+  summary: UsageSummary | null
+  stats: UsageStats | null
+  costSummary: CostSummary | null
+  dailyCost: DailyCost[]
+}
+
+const INITIAL_USAGE_DATA: UsageData = {
+  daily: [],
+  summary: null,
+  stats: null,
+  costSummary: null,
+  dailyCost: [],
+}
+
 export function UsageDashboard() {
-  const [daily, setDaily] = useState<DailyUsage[]>([])
-  const [summary, setSummary] = useState<UsageSummary | null>(null)
-  const [stats, setStats] = useState<UsageStats | null>(null)
-  const [costSummary, setCostSummary] = useState<CostSummary | null>(null)
-  const [dailyCost, setDailyCost] = useState<DailyCost[]>([])
+  const [data, setData] = useState<UsageData>(INITIAL_USAGE_DATA)
 
   useEffect(() => {
     Promise.all([
@@ -122,25 +134,19 @@ export function UsageDashboard() {
       getUsageCostSummary().catch(() => ({ data: undefined })),
       getUsageCostDaily().catch(() => ({ data: undefined })),
     ]).then(([{ data: d }, { data: s }, { data: st }, { data: costData }, { data: dailyCostData }]) => {
-      if (d) {
-        setDaily(d as DailyUsage[])
-      }
-      if (s) {
-        setSummary(s as UsageSummary)
-      }
-      if (st) {
-        setStats(st as UsageStats)
-      }
-      if (costData) {
-        setCostSummary(costData as CostSummary)
-      }
-      if (dailyCostData) {
-        setDailyCost(dailyCostData as DailyCost[])
-      }
+      setData({
+        daily: (d as DailyUsage[] | undefined) ?? [],
+        summary: (s as UsageSummary | undefined) ?? null,
+        stats: (st as UsageStats | undefined) ?? null,
+        costSummary: (costData as CostSummary | undefined) ?? null,
+        dailyCost: (dailyCostData as DailyCost[] | undefined) ?? [],
+      })
     }).catch((err) => {
       console.error('[UsageDashboard] fetch failed:', err)
     })
   }, [])
+
+  const { daily, summary, stats, costSummary, dailyCost } = data
 
   const hasData = summary && summary.totalTokens > 0
 
@@ -256,7 +262,7 @@ export function UsageDashboard() {
         {summary && summary.totalTokens === 0 && (
           <div className="mt-20 text-center" data-testid="usage-empty-state">
             <p className="text-sm text-muted-foreground">
-              No usage data yet — send a message to start tracking
+              No usage data yet: send a message to start tracking
             </p>
           </div>
         )}

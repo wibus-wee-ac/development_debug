@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { formatTimeOnly } from '~/lib/format-time'
 import { getPerfSnapshots, getWebVitals } from '~/lib/perf-monitor'
 
 function toMB(bytes: number): string {
@@ -57,10 +58,10 @@ export function MemoryPanel() {
               </tr>
             </thead>
             <tbody>
-              {recentSnapshots.map((snap, i) => (
-                <tr key={i} className="border-b border-border/30">
+              {recentSnapshots.map((snap) => (
+                <tr key={snap.timestamp} className="border-b border-border/30">
                   <td className="py-1 pr-3 text-muted-foreground">
-                    {new Date(snap.timestamp).toLocaleTimeString('en-US', { hour12: false })}
+                    {formatTimeOnly(snap.timestamp)}
                   </td>
                   <td className="py-1 pr-3">{toMB(snap.heapUsed)} MB</td>
                   <td className="py-1">{toMB(snap.heapTotal)} MB</td>
@@ -83,8 +84,8 @@ export function MemoryPanel() {
               </tr>
             </thead>
             <tbody>
-              {vitals.map((v, i) => (
-                <tr key={i} className="border-b border-border/30">
+              {vitals.map((v) => (
+                <tr key={v.name} className="border-b border-border/30">
                   <td className="py-1 pr-3 text-muted-foreground">{v.name}</td>
                   <td className="py-1 pr-3">{v.value.toFixed(2)}</td>
                   <td className="py-1">{v.rating}</td>

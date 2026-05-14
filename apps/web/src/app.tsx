@@ -5,12 +5,12 @@
 import './styles.css'
 
 import { TabRenderer, TabsProvider } from '@cradle/tabs'
+import { LazyMotion, domAnimation } from 'motion/react'
 import { useEffect } from 'react'
 
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
 import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
-import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import { AnchoredToastProvider, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
@@ -20,33 +20,16 @@ import { useLayoutStore } from '~/store/layout'
 import { useThemeStore } from '~/store/theme'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
-/**
- * Syncs the active tab's slot id with the LayoutSlotsProvider.
- * Must be rendered inside LayoutSlotsProvider.
- * Uses 'use no memo' to prevent React Compiler from breaking zustand hooks.
- */
-function ActiveSlotSync() {
-  'use no memo'
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const tabs = useCradleTabStore(s => s.tabs)
-  const { activate } = useLayoutSlotsCtx()
-  const activeTab = tabs.find(t => t.id === activeTabId)
-  // For chat tabs, the slot id is params.sessionId
-  const slotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
-
-  useEffect(() => {
-    if (slotId) {
-      activate(slotId)
-    }
-  }, [slotId, activate])
-
-  return null
-}
-
 export function App() {
   'use no memo'
   const mode = useThemeStore(s => s.mode)
   const { isSettings, settingsSection } = useLayoutStore()
+
+  // Derive active slot id from tab store (replaces ActiveSlotSync effect)
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const tabs = useCradleTabStore(s => s.tabs)
+  const activeTab = tabs.find(t => t.id === activeTabId)
+  const activeSlotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
 
   // Ensure at least one home tab exists on startup (fresh or cleared state)
   useEffect(() => {
@@ -84,14 +67,14 @@ export function App() {
   }, [mode])
 
   return (
+    <LazyMotion features={domAnimation}>
     <ToastProvider>
       <AnchoredToastProvider>
         <TooltipProvider>
           <ShortcutProvider>
             <DirectoryPickerProvider>
-              <LayoutSlotsProvider>
+              <LayoutSlotsProvider activeSlotId={activeSlotId}>
               <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-                <ActiveSlotSync />
                 <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
                   <AppSidebar />
                   <AppLayout>
@@ -112,5 +95,6 @@ export function App() {
         </TooltipProvider>
       </AnchoredToastProvider>
     </ToastProvider>
+    </LazyMotion>
   )
 }

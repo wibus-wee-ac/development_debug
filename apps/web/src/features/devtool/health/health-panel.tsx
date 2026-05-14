@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+import { getServerUrl } from '~/lib/electron'
+
+const SERVER_BASE = getServerUrl()
 
 interface HealthData {
   status: string
@@ -50,7 +52,9 @@ export function HealthPanel() {
   if (error) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground/50">
-        Failed to fetch server health: {error}
+        Failed to fetch server health:
+{' '}
+{error}
       </div>
     )
   }

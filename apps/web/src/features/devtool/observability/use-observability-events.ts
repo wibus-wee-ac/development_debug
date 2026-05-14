@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+import { getServerUrl } from '~/lib/electron'
+
+const SERVER_BASE = getServerUrl()
 
 interface ObservabilityEvent {
   id: string
@@ -32,9 +34,9 @@ interface ObservabilityIncident {
   count: number
 }
 
-export type ObservabilityEntry =
-  | { kind: 'event', payload: ObservabilityEvent }
-  | { kind: 'incident', payload: ObservabilityIncident }
+export type ObservabilityEntry
+  = | { kind: 'event', payload: ObservabilityEvent }
+    | { kind: 'incident', payload: ObservabilityIncident }
 
 interface ObservabilityDevtoolState {
   entries: ObservabilityEntry[]
@@ -46,7 +48,7 @@ interface ObservabilityDevtoolState {
   clear: () => void
 }
 
-export const useObservabilityDevtoolStore = create<ObservabilityDevtoolState>((set) => ({
+export const useObservabilityDevtoolStore = create<ObservabilityDevtoolState>(set => ({
   entries: [],
   selectedIndex: null,
   loading: false,

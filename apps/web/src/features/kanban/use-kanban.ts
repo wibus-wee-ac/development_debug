@@ -154,7 +154,7 @@ export function useCreateBoard() {
   })
 }
 
-export function useUpdateBoard() {
+function useUpdateBoard() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: UpdateBoardInput) => {
@@ -244,7 +244,7 @@ export function useMilestones(workspaceId: string) {
   })
 }
 
-export function useCreateMilestone() {
+function useCreateMilestone() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateMilestoneInput) => {
@@ -255,7 +255,7 @@ export function useCreateMilestone() {
   })
 }
 
-export function useUpdateMilestone() {
+function useUpdateMilestone() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: UpdateMilestoneInput) => {
@@ -266,7 +266,7 @@ export function useUpdateMilestone() {
   })
 }
 
-export function useDeleteMilestone() {
+function useDeleteMilestone() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: DeleteMilestoneInput) => {
@@ -298,7 +298,7 @@ export function useIssues(params: IssueFilterParams) {
   })
 }
 
-export function useSearchIssues(query: string, limit = 20, enabled = true) {
+function useSearchIssues(query: string, limit = 20, enabled = true) {
   const trimmed = query.trim()
 
   return useQuery({
@@ -397,7 +397,7 @@ export function useAddComment() {
   })
 }
 
-export function useDeleteComment() {
+function useDeleteComment() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (vars: DeleteCommentInput) => deleteKanbanCommentsById({ path: { id: vars.id } }),
@@ -418,7 +418,7 @@ export function useRelations(issueId: string) {
   })
 }
 
-export function useAddRelation() {
+function useAddRelation() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: AddRelationInput) => {
@@ -550,7 +550,7 @@ export function useAgentActivities(agentSessionId: string | null, opts?: { refet
 
 // ── Context Refs ──────────────────────────────────────────────────────────────
 
-export function useAddContextRef() {
+function useAddContextRef() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, ref: string }) => {
@@ -562,7 +562,7 @@ export function useAddContextRef() {
   })
 }
 
-export function useRemoveContextRef() {
+function useRemoveContextRef() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, index: number }) => {
@@ -582,7 +582,7 @@ type LinkedIssueView = {
   agentSession?: AgentSession | null
 }
 
-export function useLinkedIssue(chatSessionId: string | null) {
+function useLinkedIssue(chatSessionId: string | null) {
   return useQuery({
     queryKey: ['kanban', 'linkedIssue', chatSessionId] as const,
     queryFn: async () => {
@@ -596,7 +596,7 @@ export function useLinkedIssue(chatSessionId: string | null) {
   })
 }
 
-export function useLinkIssue() {
+function useLinkIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { chatSessionId: string, issueId: string }) => {
@@ -608,7 +608,7 @@ export function useLinkIssue() {
   })
 }
 
-export function useUnlinkIssue() {
+function useUnlinkIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (chatSessionId: string) => {

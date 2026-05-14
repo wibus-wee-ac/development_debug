@@ -19,8 +19,7 @@ import { useLayoutStore } from '~/store/layout'
 
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
-
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+import { getShellStreamUrl, resizeShell, sendShellInput, startShell } from './shell-api'
 
 interface ShellViewProps {
   /** Stable ID for this shell PTY — typically `shell:<sessionId>:<generation>` */
@@ -111,11 +110,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
         terminal.resize(pendingCols, pendingRows)
         lastCols = pendingCols
         lastRows = pendingRows
-        void fetch(`${SERVER_BASE}/terminal-sessions/shell/${ptyId}/resize`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cols: lastCols, rows: lastRows }),
-        })
+        void resizeShell(ptyId, lastCols, lastRows)
       }, 100)
     }
 
@@ -124,14 +119,10 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
       lastCols = cols
       lastRows = rows
 
-      await fetch(`${SERVER_BASE}/terminal-sessions/shell/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ptyId, cwd, cols, rows }),
-      })
+      await startShell({ ptyId, cwd, cols, rows })
 
       // Connect SSE stream for output
-      eventSource = new EventSource(`${SERVER_BASE}/terminal-sessions/shell/${ptyId}/stream`)
+      eventSource = new EventSource(getShellStreamUrl(ptyId))
       eventSource.onmessage = (ev) => {
         try {
           const event = JSON.parse(ev.data) as { type: string, data?: string, exitCode?: number }
@@ -204,11 +195,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
     darkMq.addEventListener('change', onColorSchemeChange)
 
     const dataDisposable = terminal.onData((data) => {
-      void fetch(`${SERVER_BASE}/terminal-sessions/shell/${ptyId}/input`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data }),
-      })
+      void sendShellInput(ptyId, data)
     })
 
     const resizeObserver = new ResizeObserver(() => {

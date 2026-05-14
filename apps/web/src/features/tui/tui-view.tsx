@@ -16,11 +16,12 @@ import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 
 import { postTerminalSessionsBySessionIdInput, postTerminalSessionsBySessionIdResize, postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
+import { getServerUrl } from '~/lib/electron'
 
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 
-const SERVER_BASE: string = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
+const SERVER_BASE = getServerUrl()
 
 interface TuiViewProps {
   sessionId: string

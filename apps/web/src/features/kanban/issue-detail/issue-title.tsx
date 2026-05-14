@@ -11,18 +11,20 @@ export function IssueTitle({ issue, onUpdate }: IssueTitleProps) {
   const [value, setValue] = useState(issue.title)
   const ref = useRef<HTMLTextAreaElement>(null)
 
+  const adjustHeight = useCallback(() => {
+    if (ref.current) {
+      ref.current.style.height = '0'
+      const h = ref.current.scrollHeight
+      ref.current.style.height = `${h}px`
+    }
+  }, [])
+
   useEffect(() => {
     setValue(issue.title)
-  }, [issue.title])
+    requestAnimationFrame(adjustHeight)
+  }, [issue.title, adjustHeight])
 
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.style.height = 'auto'
-      ref.current.style.height = `${ref.current.scrollHeight}px`
-    }
-  }, [value])
-
-  const handleBlur = useCallback(() => {
+  const commitTitleEdit = useCallback(() => {
     const trimmed = value.trim()
     if (trimmed && trimmed !== issue.title) {
       onUpdate({ title: trimmed })
@@ -34,8 +36,14 @@ export function IssueTitle({ issue, onUpdate }: IssueTitleProps) {
       <textarea
         ref={ref}
         value={value}
-        onChange={e => setValue(e.target.value)}
-        onBlur={handleBlur}
+        onChange={(e) => {
+          setValue(e.target.value)
+          const el = e.currentTarget
+          el.style.height = '0'
+          const h = el.scrollHeight
+          el.style.height = `${h}px`
+        }}
+        onBlur={commitTitleEdit}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()

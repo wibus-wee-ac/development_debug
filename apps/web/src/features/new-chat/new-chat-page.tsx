@@ -19,7 +19,7 @@ import {
   SparklesIcon,
   TerminalIcon,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { postSessions } from '~/api-gen/sdk.gen'
@@ -49,7 +49,9 @@ import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
+import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 import type { Agent, ModelDescriptor } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
@@ -92,8 +94,8 @@ function profileInitials(name: string): string {
   return name.slice(0, 2).toUpperCase()
 }
 
-function timeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+function timeAgo(timestamp: number, now: number): string {
+  const seconds = Math.floor((now - timestamp) / 1000)
   if (seconds < 60) {
     return '刚刚'
   }
@@ -113,8 +115,9 @@ function timeAgo(timestamp: number): string {
 }
 
 function autoResize(el: HTMLTextAreaElement, minHeight = 120) {
-  el.style.height = 'auto'
-  el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`
+  el.style.height = '0'
+  const height = Math.max(el.scrollHeight, minHeight)
+  el.style.height = `${height}px`
 }
 
 /* ─── Animated Placeholder ────────────────────────────────────────────── */
@@ -165,6 +168,7 @@ export function NewChatPage() {
 
   const { models, isLoading: isLoadingModels } = useAgentModels(effectiveProfileId)
   const { sessions } = useSessions(selectedWorkspaceId)
+  const now = useNow()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
   const lastSelectedModelId = useNewChatStore(
@@ -280,8 +284,7 @@ export function NewChatPage() {
       }
       // Trigger the response stream — wait for headers only so the server creates
       // the run before we navigate, but don't block on the SSE body.
-      const serverBase = (import.meta.env as Record<string, string>).VITE_SERVER_URL ?? 'http://localhost:21423'
-      const res = await fetch(`${serverBase}/chat/sessions/${session.id}/response`, {
+      await fetch(`${getServerUrl()}/chat/sessions/${session.id}/response`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -334,7 +337,7 @@ export function NewChatPage() {
 
       {/* Vertically centered main content */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-4">
-        <motion.div
+        <m.div
           className="w-full max-w-160"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
@@ -375,7 +378,7 @@ export function NewChatPage() {
               {!isCliTui && input.length === 0 && !sending && (
                 <div className="pointer-events-none absolute inset-0 px-5 pt-5">
                   <AnimatePresence mode="wait">
-                    <motion.span
+                    <m.span
                       key={placeholder}
                       className="text-[15px] leading-[1.75] tracking-[-0.01em] text-muted-foreground/40 font-light"
                       initial={{ opacity: 0, y: 4 }}
@@ -384,7 +387,7 @@ export function NewChatPage() {
                       transition={{ duration: 0.3 }}
                     >
                       {placeholder}
-                    </motion.span>
+                    </m.span>
                   </AnimatePresence>
                 </div>
               )}
@@ -423,7 +426,8 @@ export function NewChatPage() {
                     <MenuGroup>
                       <MenuGroupLabel>Agents</MenuGroupLabel>
                       <MenuSeparator />
-                      {agents.filter(a => a.enabled).map(agent => (
+                      {agents.flatMap(agent => agent.enabled
+? [
                         <MenuItem
                           key={agent.id}
                           onClick={() => {
@@ -441,8 +445,9 @@ export function NewChatPage() {
                           {agent.id === selectedAgentId && (
                             <CheckIcon className="size-3 text-foreground/50" />
                           )}
-                        </MenuItem>
-                      ))}
+                        </MenuItem>,
+                      ]
+: [])}
                     </MenuGroup>
                   )}
                   {/* Profiles fallback */}
@@ -622,14 +627,14 @@ export function NewChatPage() {
 
           {/* ── Quick Actions ────────────────────────────────────── */}
           {!isCliTui && input.length === 0 && (
-            <motion.div
+            <m.div
               className="mt-3 flex flex-wrap gap-1.5 px-1"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.2, duration: 0.3 }}
             >
               {QUICK_ACTIONS.map((action, i) => (
-                <motion.button
+                <m.button
                   key={action.label}
                   type="button"
                   onClick={() => handleQuickAction(action.prompt)}
@@ -645,16 +650,16 @@ export function NewChatPage() {
                   transition={{ delay: 0.25 + i * 0.04, duration: 0.25 }}
                 >
                   {action.label}
-                </motion.button>
+                </m.button>
               ))}
-            </motion.div>
+            </m.div>
           )}
-        </motion.div>
+        </m.div>
       </div>
 
       {/* ── Recent Sessions ──────────────────────────────────────── */}
       {recentSessions.length > 0 && (
-        <motion.div
+        <m.div
           className="relative"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -667,7 +672,7 @@ export function NewChatPage() {
             </div>
             <div className="grid grid-cols-3 gap-2">
               {recentSessions.map((session, i) => (
-                <motion.button
+                <m.button
                   key={session.id}
                   type="button"
                   onClick={() => handleResumeSession(session.id)}
@@ -687,14 +692,14 @@ export function NewChatPage() {
                       {session.title || 'Untitled'}
                     </span>
                   </div>
-                  <time dateTime={new Date(session.updatedAt).toISOString()} className="text-[11px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors">
-                    {timeAgo(session.updatedAt)}
+                  <time className="text-[11px] text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors" suppressHydrationWarning>
+                    {timeAgo(session.updatedAt, now)}
                   </time>
-                </motion.button>
+                </m.button>
               ))}
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </div>
   )

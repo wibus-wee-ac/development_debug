@@ -11,7 +11,7 @@ export interface ApprovalRequestedPayload {
   createdAt: number
 }
 
-export interface ApprovalOptionPayload {
+interface ApprovalOptionPayload {
   optionId: string
   label: string
   description?: string

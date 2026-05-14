@@ -27,7 +27,7 @@ interface ModelPickerProps {
   onOpenChange?: (open: boolean) => void
 }
 
-export function ModelPicker({
+function ModelPicker({
   models,
   onSelect,
   disabled,

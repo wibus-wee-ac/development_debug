@@ -1,8 +1,8 @@
 // Input: LayoutSlotsContext from layout-slots-context
-// Output: useLayoutSlotsCtx + useRegisterLayoutSlots + useActivateLayoutSlot hooks
+// Output: useLayoutSlotsCtx + useRegisterLayoutSlots hooks
 // Position: Shared hook layer; consumed by tab content components and AppLayout
 
-import { useContext, useEffect } from 'react'
+import { use, useEffect } from 'react'
 
 import type { LayoutSlots } from './layout-slots-context'
 import { LayoutSlotsContext } from './layout-slots-context'
@@ -10,7 +10,7 @@ import { LayoutSlotsContext } from './layout-slots-context'
 export { type LayoutSlots } from './layout-slots-context'
 
 export function useLayoutSlotsCtx() {
-  return useContext(LayoutSlotsContext)
+  return use(LayoutSlotsContext)
 }
 
 /**
@@ -28,18 +28,4 @@ export function useRegisterLayoutSlots(id: string, slots: LayoutSlots) {
     register(id, slots)
     return () => unregister(id)
   }, [id, slots, register, unregister])
-}
-
-/**
- * Activate a specific slot id as the currently displayed layout.
- * Call this when the tab associated with `id` becomes the active tab.
- */
-export function useActivateLayoutSlot(id: string | null) {
-  const { activate } = useLayoutSlotsCtx()
-
-  useEffect(() => {
-    if (id) {
-      activate(id)
-    }
-  }, [id, activate])
 }

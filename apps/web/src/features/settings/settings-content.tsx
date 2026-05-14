@@ -23,8 +23,8 @@ export function SettingsContent({ section }: SettingsContentProps) {
   const ActiveSection = SECTION_MAP[section] ?? AppearanceSettings
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto">
-      <div className="px-8 pt-10 pb-12">
+    <div className="flex-1 min-h-0 overflow-y-auto h-full">
+      <div className="px-8 pt-10 h-full">
         <ActiveSection />
       </div>
     </div>

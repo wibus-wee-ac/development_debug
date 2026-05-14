@@ -72,10 +72,10 @@ export function KanbanColumn({
   return (
     <div className="flex flex-col w-72 shrink-0" data-kanban-column-id={groupId}>
       {/* Column header */}
-      <div className="flex items-center gap-2 px-2 py-2 mb-1">
+      <div className="flex items-center gap-2 p-2 mb-1">
         {category && <StatusIcon category={category} size={14} />}
         <span className="text-[12px] font-medium text-muted-foreground" data-testid={`kanban-column-title-${groupId}`}>{groupName}</span>
-        <span className="text-[11px] text-muted-foreground/60">{issues.length}</span>
+        <span className="text-[11px] text-text-dim">{issues.length}</span>
       </div>
 
       {/* Droppable zone */}
@@ -113,7 +113,7 @@ export function KanbanColumn({
               onBlur={handleConfirmInlineCreate}
               placeholder="事项标题"
               data-testid="kanban-new-issue-input"
-              className="w-full rounded-md border border-border/50 bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
+              className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-text-dim focus:border-ring"
             />
           </div>
         )}
@@ -122,7 +122,7 @@ export function KanbanColumn({
         <button
           onClick={handleStartInlineCreate}
           data-testid={`kanban-column-add-${groupId}`}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-muted-foreground/60 hover:text-muted-foreground rounded-md transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-text-tertiary hover:text-muted-foreground rounded-md transition-colors"
         >
           <PlusIcon className="size-3" />
           新建

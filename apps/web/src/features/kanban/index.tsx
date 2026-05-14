@@ -69,7 +69,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
     }
 
     // Sort
-    result = [...result].sort((a, b) => {
+    result = result.toSorted((a, b) => {
       const dir = config.orderDirection === 'asc' ? 1 : -1
       if (config.orderBy === 'priority') {
         const pOrder = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
