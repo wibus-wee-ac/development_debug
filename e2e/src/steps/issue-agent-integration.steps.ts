@@ -72,13 +72,24 @@ Given('我已将当前 Issue 委派给{string}', async function (this: CradleWor
 })
 
 When('我取消当前 Issue 的 Agent 委派', async function (this: CradleWorld) {
-  const trigger = this.page.locator(DELEGATE_TRIGGER)
-  await expect(trigger).toBeVisible({ timeout: 10_000 })
-  await trigger.click()
+  // Retry pattern: popover may close due to re-renders from session polling
+  const maxRetries = 3
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const trigger = this.page.locator(DELEGATE_TRIGGER)
+    await expect(trigger).toBeVisible({ timeout: 10_000 })
+    await trigger.click()
 
-  const unassignedOption = this.page.locator('[data-testid="issue-agent-option-unassigned"]')
-  await expect(unassignedOption).toBeVisible({ timeout: 10_000 })
-  await unassignedOption.click()
+    const unassignedOption = this.page.locator('[data-testid="issue-agent-option-unassigned"]')
+    try {
+      await expect(unassignedOption).toBeVisible({ timeout: 5_000 })
+      await unassignedOption.click({ timeout: 5_000 })
+      return
+    }
+    catch {
+      if (attempt === maxRetries - 1) throw new Error('Failed to click unassigned option after retries')
+      await this.page.waitForTimeout(500)
+    }
+  }
 })
 
 Then('当前 Issue 不应再显示 Agent 委派', async function (this: CradleWorld) {

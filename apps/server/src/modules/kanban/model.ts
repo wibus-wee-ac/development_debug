@@ -8,6 +8,15 @@ const priorityEnum = t.Union([
   t.Literal('urgent'),
 ])
 
+const categoryEnum = t.Union([
+  t.Literal('triage'),
+  t.Literal('backlog'),
+  t.Literal('unstarted'),
+  t.Literal('started'),
+  t.Literal('completed'),
+  t.Literal('canceled'),
+])
+
 export const KanbanModel = {
   board: t.Object({
     id: t.String(),
@@ -23,6 +32,7 @@ export const KanbanModel = {
     workspaceId: t.String(),
     name: t.String(),
     color: t.Nullable(t.String()),
+    category: t.String(),
     order: t.Number(),
     createdAt: t.Number(),
   }),
@@ -52,6 +62,7 @@ export const KanbanModel = {
     assigneeId: t.Nullable(t.String()),
     delegateAgentId: t.Nullable(t.String()),
     contextRefs: t.String(),
+    order: t.Number(),
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -95,6 +106,7 @@ export const KanbanModel = {
     workspaceId: t.String({ minLength: 1 }),
     name: t.String({ minLength: 1 }),
     color: t.Optional(t.Nullable(t.String())),
+    category: t.Optional(categoryEnum),
   }),
 
   updateStatusBody: t.Object({
@@ -128,6 +140,19 @@ export const KanbanModel = {
     statusId: t.Optional(t.Nullable(t.String())),
     assigneeKind: t.Optional(t.Nullable(t.String())),
     assigneeId: t.Optional(t.Nullable(t.String())),
+    order: t.Optional(t.Number()),
+  }),
+
+  bulkUpdateBody: t.Object({
+    issueIds: t.Array(t.String()),
+    update: t.Object({
+      statusId: t.Optional(t.Nullable(t.String())),
+      priority: t.Optional(priorityEnum),
+      labels: t.Optional(t.String()),
+      milestoneId: t.Optional(t.Nullable(t.String())),
+      assigneeKind: t.Optional(t.Nullable(t.String())),
+      assigneeId: t.Optional(t.Nullable(t.String())),
+    }),
   }),
 
   addCommentBody: t.Object({

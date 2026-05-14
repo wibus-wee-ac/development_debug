@@ -131,10 +131,13 @@ async function createWorkflowProviderViaUi(world: CradleWorld, providerName: str
   await expect(addProviderButton).toBeVisible({ timeout: 10_000 })
   await addProviderButton.click()
 
-  await selectOption(world, '[data-testid="agent-provider-kind"]', 'OpenAI-compatible')
+  const presetCard = world.page.locator('[data-testid="provider-preset-custom"]')
+  await expect(presetCard).toBeVisible({ timeout: 10_000 })
+  await presetCard.click()
 
   const nameInput = world.page.locator('[data-testid="provider-name"]')
   await expect(nameInput).toBeVisible({ timeout: 10_000 })
+  await nameInput.clear()
   await nameInput.fill(providerName)
 
   const baseUrlInput = world.page.locator('[data-testid="provider-baseurl"]')

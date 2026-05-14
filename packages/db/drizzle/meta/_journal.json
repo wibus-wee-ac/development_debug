@@ -43,6 +43,13 @@
       "when": 1778687310151,
       "tag": "0005_tiny_typhoid_mary",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1778700000000,
+      "tag": "0006_kanban_category_order",
+      "breakpoints": true
     }
   ]
 }

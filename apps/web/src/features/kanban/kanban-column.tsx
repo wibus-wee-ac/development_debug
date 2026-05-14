@@ -1,179 +1,132 @@
-// Input: KanbanStatus, KanbanIssue[], dnd-kit, IssueCard
-// Output: KanbanColumn — single status column with droppable zone and sortable cards (BoxCrew style)
-// Position: Column component used inside the board view grid
+// Input: Group metadata, issues array, display properties
+// Output: Single droppable column for the board view
+// Position: Column component used inside kanban board layout
 
 import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import { LoaderCircleIcon, PlusIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue } from '~/lib/types'
 
-import { IssueCard } from './issue-card'
-import { useAgentSessions } from './use-kanban'
+import type { StatusCategory, ViewConfig } from './use-view-config'
+import { KanbanCard } from './kanban-card'
+import { StatusIcon } from './shared/status-icon'
+import { useCreateIssue } from './use-kanban'
 
-// Column accent color based on status color or fallback
-const STATUS_ACCENT_MAP: Record<string, string> = {
-  '#6b7280': 'bg-foreground/15', // gray
-  '#3b82f6': 'bg-blue-500', // blue
-  '#8b5cf6': 'bg-violet-500', // violet
-  '#10b981': 'bg-emerald-500', // green
-  '#f59e0b': 'bg-amber-500', // amber
-  '#ef4444': 'bg-red-500', // red
-}
-
-function getAccentClass(color: string | null): string {
-  if (!color) {
-    return 'bg-foreground/15'
-  }
-  return STATUS_ACCENT_MAP[color] ?? 'bg-foreground/25'
-}
-
-export interface KanbanColumnProps {
-  status: KanbanStatus
+interface ColumnProps {
+  workspaceId: string
+  groupId: string
+  groupName: string
+  category?: StatusCategory
   issues: KanbanIssue[]
-  onIssueClick: (issue: KanbanIssue) => void
-  onOpenCreate: (statusId: string) => void
-  selectedIssueId?: string | null
-  isLoading?: boolean
+  displayProperties: ViewConfig['displayProperties']
+  onIssueClick: (id: string) => void
+  onCreateIssue: (groupId: string) => void
 }
 
-function SortableIssueCard({
-  issue,
-  onClick,
-  isSelected,
-  done,
-}: {
-  issue: KanbanIssue
-  onClick: (issue: KanbanIssue) => void
-  isSelected?: boolean
-  done?: boolean
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: issue.id,
-    data: { type: 'issue', issue },
-  })
+export function KanbanColumn({
+  workspaceId,
+  groupId,
+  groupName,
+  category,
+  issues,
+  displayProperties,
+  onIssueClick,
+  onCreateIssue,
+}: ColumnProps) {
+  const { setNodeRef, isOver } = useDroppable({ id: groupId })
+  const [showInlineInput, setShowInlineInput] = useState(false)
+  const [inlineTitle, setInlineTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const createIssue = useCreateIssue()
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0 : 1,
-  }
+  const handleStartInlineCreate = useCallback(() => {
+    setShowInlineInput(true)
+    setInlineTitle('')
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }, [])
 
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      data-testid={`issue-sortable-${issue.id}`}
-      {...attributes}
-      {...listeners}
-    >
-      <IssueCard issue={issue} onClick={onClick} isDragging={isDragging} isSelected={isSelected} done={done} />
-    </div>
-  )
-}
-
-function ColumnActiveCount({ issues }: { issues: KanbanIssue[] }) {
-  // Count issues with actively running agent sessions
-  const agentIssues = issues.filter(i => !!i.delegateAgentId)
-  if (agentIssues.length === 0) {
-    return null
-  }
-
-  return <ActiveCountInner issueIds={agentIssues.map(i => i.id)} />
-}
-
-function ActiveCountInner({ issueIds }: { issueIds: string[] }) {
-  // We check sessions for each issue — but only render if any are active
-  let activeCount = 0
-  for (const id of issueIds) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const { data: sessions = [] } = useAgentSessions(id)
-    if (sessions[0]?.status === 'active' || sessions[0]?.status === 'created') {
-      activeCount++
+  const handleConfirmInlineCreate = useCallback(() => {
+    const title = inlineTitle.trim()
+    if (!title) {
+      setShowInlineInput(false)
+      return
     }
-  }
-
-  if (activeCount === 0) {
-    return null
-  }
-
-  return (
-    <span className="flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-px text-[10px] font-medium text-blue-600 dark:text-blue-400">
-      <span className="relative flex size-1.5">
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-blue-400 opacity-60" />
-        <span className="relative size-1.5 rounded-full bg-blue-500" />
-      </span>
-      {activeCount}
-      {' '}
-      active
-    </span>
-  )
-}
-
-export function KanbanColumn({ status, issues, onIssueClick, onOpenCreate, selectedIssueId, isLoading }: KanbanColumnProps) {
-  const isDone = status.name.toLowerCase() === 'done'
-  const { setNodeRef, isOver } = useDroppable({
-    id: `column-${status.id}`,
-    data: { type: 'column', statusId: status.id },
-  })
+    createIssue.mutate({
+      workspaceId,
+      title,
+      priority: 'none',
+      statusId: groupId,
+    }, {
+      onSuccess: () => {
+        setInlineTitle('')
+        setShowInlineInput(false)
+      },
+      onError: () => {
+        setShowInlineInput(false)
+      },
+    })
+  }, [inlineTitle, groupId, createIssue, workspaceId])
 
   return (
-    <div
-      className="flex w-68 shrink-0 flex-col gap-2"
-      data-testid={`kanban-column-${status.id}`}
-      data-kanban-column-id={status.id}
-    >
+    <div className="flex flex-col w-72 shrink-0" data-kanban-column-id={groupId}>
       {/* Column header */}
-      <div className="flex items-center gap-1.5 px-0.5 pb-1">
-        <span className={cn('size-1.5 shrink-0 rounded-full', getAccentClass(status.color))} />
-        <span className="text-[13px] font-medium text-foreground" data-testid={`kanban-column-title-${status.id}`}>{status.name}</span>
-        <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums text-text-tertiary">
-          {issues.length}
-        </span>
-        {isLoading && <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground/30" />}
-        <ColumnActiveCount issues={issues} />
-        <button
-          type="button"
-          className="ml-auto flex size-5 items-center justify-center rounded text-text-dim opacity-0 transition-opacity duration-75 hover:text-foreground group-hover/col:opacity-100"
-          onClick={() => onOpenCreate(status.id)}
-          data-testid={`kanban-column-add-${status.id}`}
-        >
-          <PlusIcon className="size-3.5" />
-        </button>
+      <div className="flex items-center gap-2 px-2 py-2 mb-1">
+        {category && <StatusIcon category={category} size={14} />}
+        <span className="text-[12px] font-medium text-muted-foreground" data-testid={`kanban-column-title-${groupId}`}>{groupName}</span>
+        <span className="text-[11px] text-muted-foreground/60">{issues.length}</span>
       </div>
 
-      {/* Issue list */}
+      {/* Droppable zone */}
       <div
         ref={setNodeRef}
-        data-testid={`kanban-column-dropzone-${status.id}`}
+        data-testid={`kanban-column-dropzone-${groupId}`}
         className={cn(
-          'flex flex-col gap-1.5 min-h-10 rounded-lg transition-colors',
-          isOver && 'bg-foreground/3',
+          'flex-1 flex flex-col gap-1 px-1 py-1 rounded-lg min-h-25 transition-colors',
+          isOver && 'bg-muted/30',
         )}
       >
-        <SortableContext items={issues.map(i => i.id)} strategy={verticalListSortingStrategy}>
-          {issues.map(issue => (
-            <SortableIssueCard
-              key={issue.id}
-              issue={issue}
-              onClick={onIssueClick}
-              isSelected={issue.id === selectedIssueId}
-              done={isDone}
-            />
-          ))}
-        </SortableContext>
+        {issues.map(issue => (
+          <KanbanCard
+            key={issue.id}
+            issue={issue}
+            displayProperties={displayProperties}
+            onClick={() => onIssueClick(issue.id)}
+          />
+        ))}
 
-        {!isLoading && issues.length === 0 && (
-          <button
-            type="button"
-            className="rounded-lg border border-dashed border-border py-8 text-center text-[11px] text-text-dim transition-colors hover:border-border hover:text-muted-foreground"
-            onClick={() => onOpenCreate(status.id)}
-          >
-            No issues
-          </button>
+        {showInlineInput && (
+          <div className="px-2 py-1">
+            <input
+              ref={inputRef}
+              value={inlineTitle}
+              onChange={e => setInlineTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleConfirmInlineCreate()
+                } else if (e.key === 'Escape') {
+                  setShowInlineInput(false)
+                }
+              }}
+              onBlur={handleConfirmInlineCreate}
+              placeholder="事项标题"
+              data-testid="kanban-new-issue-input"
+              className="w-full rounded-md border border-border/50 bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
+            />
+          </div>
         )}
+
+        {/* Quick create button */}
+        <button
+          onClick={handleStartInlineCreate}
+          data-testid={`kanban-column-add-${groupId}`}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-muted-foreground/60 hover:text-muted-foreground rounded-md transition-colors"
+        >
+          <PlusIcon className="size-3" />
+          新建
+        </button>
       </div>
     </div>
   )

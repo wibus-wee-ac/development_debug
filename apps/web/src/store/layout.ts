@@ -13,6 +13,7 @@ interface LayoutState {
   asideWidth: number
   bottomPanelHeight: number
   asideOpen: boolean
+  asideActiveTab: string
   bottomPanelOpen: boolean
   isSettings: boolean
   settingsSection: string
@@ -22,6 +23,8 @@ interface LayoutState {
   setAsideWidth: (w: number) => void
   setBottomPanelHeight: (h: number) => void
   toggleAside: () => void
+  setAsideActiveTab: (tab: string) => void
+  openAsideTab: (tab: string) => void
   toggleBottomPanel: () => void
   setBottomPanelOpen: (open: boolean) => void
   openSettings: () => void
@@ -37,6 +40,7 @@ export const useLayoutStore = create<LayoutState>()(
       asideWidth: 280,
       bottomPanelHeight: 200,
       asideOpen: false,
+      asideActiveTab: 'files',
       bottomPanelOpen: false,
       isSettings: false,
       settingsSection: 'appearance',
@@ -46,6 +50,8 @@ export const useLayoutStore = create<LayoutState>()(
       setAsideWidth: asideWidth => set({ asideWidth }),
       setBottomPanelHeight: bottomPanelHeight => set({ bottomPanelHeight }),
       toggleAside: () => set(s => ({ asideOpen: !s.asideOpen })),
+      setAsideActiveTab: (asideActiveTab: string) => set({ asideActiveTab }),
+      openAsideTab: (tab: string) => set({ asideOpen: true, asideActiveTab: tab }),
       toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
       setBottomPanelOpen: (open: boolean) => set({ bottomPanelOpen: open }),
       openSettings: () => set({ isSettings: true }),

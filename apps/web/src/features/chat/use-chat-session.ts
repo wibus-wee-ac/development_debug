@@ -455,7 +455,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
     }
     finally {
       handlerRef.current = null
-      useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
+      useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, passiveStatus: 'idle' })
       // Sync from server to get canonical message IDs
       scheduleSnapshotRefresh(0)
     }

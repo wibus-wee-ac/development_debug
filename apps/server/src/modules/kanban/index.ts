@@ -206,6 +206,14 @@ export const kanban = new Elysia({
     body: KanbanModel.createIssueBody,
     response: { 200: KanbanModel.issue },
   })
+  .patch('/issues/bulk', ({ body }) => {
+    const updated = Kanban.bulkUpdateIssues(body.issueIds, body.update)
+    return { updated }
+  }, {
+    detail: { summary: 'Bulk update issues' },
+    body: KanbanModel.bulkUpdateBody,
+    response: { 200: t.Object({ updated: t.Number() }) },
+  })
   .patch('/issues/:id', ({ params, body }) => Kanban.updateIssue(params.id, body), {
     detail: {
       summary: 'Update issue',

@@ -2,7 +2,7 @@
 // Output: ChatView — virtualized chat view: only renders visible messages, instant-to-bottom scroll
 // Position: Primary chat feature view — does NOT own message sending lifecycle
 
-import { AlertCircleIcon, LoaderCircleIcon } from 'lucide-react'
+import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
@@ -11,6 +11,7 @@ import { Virtualizer } from 'virtua'
 import { getUsageSessionsBySessionId } from '~/api-gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { chatSelectors, useChatStore } from '~/store/chat'
+import { useLayoutStore } from '~/store/layout'
 
 import { SessionApprovalList } from '../approval/approval-card'
 import { ChatMinimap } from './chat-minimap'
@@ -312,10 +313,18 @@ export function ChatView({
         <div className="mx-auto max-w-[52rem]">
           {isAwaiting && (
             <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              <LoaderCircleIcon className="size-3.5 animate-spin" />
-              <span className="truncate">
+              <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
+              <span className="min-w-0 truncate">
                 {(awaitSummary?.reason as string) ?? `Waiting for ${(awaitSummary?.primarySource as string) ?? 'event'}...`}
               </span>
+              <button
+                type="button"
+                onClick={() => useLayoutStore.getState().openAsideTab('await')}
+                className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <ExternalLinkIcon className="size-3" />
+                <span>查看</span>
+              </button>
             </div>
           )}
           <Composer

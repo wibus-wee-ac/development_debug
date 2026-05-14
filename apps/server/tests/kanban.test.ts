@@ -69,10 +69,10 @@ describe('kanban capability', () => {
       const listStatuses = await app.handle(new Request('http://localhost/kanban/statuses?workspaceId=workspace-kanban'))
       expect(listStatuses.status).toBe(200)
       const statuses = await listStatuses.json() as KanbanStatus[]
-      expect(statuses.map(status => status.name)).toEqual(['To Do', 'In Progress'])
+      expect(statuses.map(status => status.name)).toEqual(['Triage', 'Backlog', 'Todo', 'In Progress', 'Done', 'Canceled'])
 
-      const todoStatusId = statuses[0].id
-      const inProgressStatusId = statuses[1].id
+      const todoStatusId = statuses[2].id // 'Todo'
+      const inProgressStatusId = statuses[3].id // 'In Progress'
 
       const createIssue = await app.handle(new Request('http://localhost/kanban/issues', {
         method: 'POST',

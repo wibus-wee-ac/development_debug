@@ -43,8 +43,12 @@ function requireWorkspace(workspaceId: string): void {
 }
 
 const DEFAULT_STATUSES = [
-  { name: 'To Do', color: null },
-  { name: 'In Progress', color: null },
+  { name: 'Triage', color: '#a855f7', category: 'triage' as const },
+  { name: 'Backlog', color: '#6b7280', category: 'backlog' as const },
+  { name: 'To Do', color: '#9ca3af', category: 'unstarted' as const },
+  { name: 'In Progress', color: '#f59e0b', category: 'started' as const },
+  { name: 'Done', color: '#22c55e', category: 'completed' as const },
+  { name: 'Canceled', color: '#6b7280', category: 'canceled' as const },
 ] as const
 
 function ensureDefaultStatuses(workspaceId: string): void {
@@ -52,7 +56,7 @@ function ensureDefaultStatuses(workspaceId: string): void {
     return
   }
   DEFAULT_STATUSES.forEach((s, i) => {
-    createStatusRow({ workspaceId, name: s.name, color: s.color, order: i })
+    createStatusRow({ workspaceId, name: s.name, color: s.color, category: s.category, order: i })
   })
 }
 
@@ -63,12 +67,13 @@ function countStatuses(workspaceId: string): number {
   return row?.count ?? 0
 }
 
-function createStatusRow(input: { workspaceId: string, name: string, color: string | null, order: number }): KanbanStatus {
+function createStatusRow(input: { workspaceId: string, name: string, color: string | null, category: 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled', order: number }): KanbanStatus {
   return db().insert(kanbanStatuses).values({
     id: randomUUID(),
     workspaceId: input.workspaceId,
     name: input.name,
     color: input.color,
+    category: input.category,
     order: input.order,
     createdAt: nowUnix(),
   }).returning().get()
@@ -132,10 +137,12 @@ export function listStatuses(workspaceId: string): KanbanStatus[] {
   return db().select().from(kanbanStatuses).where(eq(kanbanStatuses.workspaceId, workspaceId)).orderBy(kanbanStatuses.order).all()
 }
 
-export function createStatus(input: { workspaceId: string, name: string, color?: string | null }): KanbanStatus {
+type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
+
+export function createStatus(input: { workspaceId: string, name: string, color?: string | null, category?: StatusCategory }): KanbanStatus {
   requireWorkspace(input.workspaceId)
   const count = countStatuses(input.workspaceId)
-  return createStatusRow({ ...input, color: input.color ?? null, order: count })
+  return createStatusRow({ ...input, color: input.color ?? null, category: input.category ?? 'unstarted', order: count })
 }
 
 export function updateStatus(id: string, patch: { name?: string, color?: string | null }): KanbanStatus {
@@ -284,6 +291,8 @@ export function createIssue(input: {
 }): KanbanIssue {
   requireWorkspace(input.workspaceId)
   const now = nowUnix()
+  const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${kanbanIssues.order}), 0)` }).from(kanbanIssues).where(eq(kanbanIssues.workspaceId, input.workspaceId)).get()
+  const order = (maxOrderRow?.maxOrder ?? 0) + 1024
   return db().insert(kanbanIssues).values({
     id: randomUUID(),
     workspaceId: input.workspaceId,
@@ -298,6 +307,7 @@ export function createIssue(input: {
     assigneeId: null,
     delegateAgentId: null,
     contextRefs: '[]',
+    order,
     createdAt: now,
     updatedAt: now,
   }).returning().get()
@@ -313,6 +323,7 @@ export function updateIssue(id: string, patch: Partial<{
   statusId: string | null
   assigneeKind: string | null
   assigneeId: string | null
+  order: number
 }>): KanbanIssue {
   const updates: Record<string, unknown> = { updatedAt: nowUnix() }
   if (patch.title !== undefined) {
@@ -342,6 +353,9 @@ export function updateIssue(id: string, patch: Partial<{
   if ('assigneeId' in patch) {
     updates.assigneeId = patch.assigneeId ?? null
   }
+  if (patch.order !== undefined) {
+    updates.order = patch.order
+  }
 
   db().update(kanbanIssues).set(updates).where(eq(kanbanIssues.id, id)).run()
   const issue = db().select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()
@@ -357,6 +371,23 @@ export function deleteIssue(id: string): void {
   }
   db().update(kanbanIssues).set({ parentIssueId: null, updatedAt: nowUnix() }).where(eq(kanbanIssues.parentIssueId, id)).run()
   db().delete(kanbanIssues).where(eq(kanbanIssues.id, id)).run()
+}
+
+export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string | null, priority?: string, labels?: string, milestoneId?: string | null, assigneeKind?: string | null, assigneeId?: string | null }): number {
+  if (issueIds.length === 0) return 0
+  const updates: Record<string, unknown> = { updatedAt: nowUnix() }
+  if ('statusId' in update) updates.statusId = update.statusId ?? null
+  if (update.priority !== undefined) updates.priority = update.priority
+  if (update.labels !== undefined) updates.labels = update.labels
+  if ('milestoneId' in update) updates.milestoneId = update.milestoneId ?? null
+  if ('assigneeKind' in update) updates.assigneeKind = update.assigneeKind ?? null
+  if ('assigneeId' in update) updates.assigneeId = update.assigneeId ?? null
+
+  const result = db().update(kanbanIssues)
+    .set(updates)
+    .where(sql`${kanbanIssues.id} IN (${sql.join(issueIds.map(id => sql`${id}`), sql`, `)})`)
+    .run()
+  return result.changes
 }
 
 // ── comments ──

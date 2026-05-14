@@ -1,206 +1,208 @@
-// Input: useStatuses, useCreateStatus, useUpdateStatus, useDeleteStatus, useReorderStatuses hooks, DnD sortable
-// Output: StatusManager component — workspace-level status management UI
-// Position: Manages status columns for a workspace; opened from the board view toolbar
+// Input: Board ID, statuses list
+// Output: Status configuration panel with add/edit/delete/reorder
+// Position: Toggled panel inside kanban board view
 
 import type { DragEndEvent } from '@dnd-kit/core'
-import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVerticalIcon, PlusIcon, TrashIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { GripVerticalIcon, TrashIcon } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
 
-import { cn } from '~/lib/cn'
-import type { KanbanStatus } from '~/lib/types'
+import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
 
+import { StatusIcon } from './shared/status-icon'
 import { useCreateStatus, useDeleteStatus, useReorderStatuses, useStatuses, useUpdateStatus } from './use-kanban'
+import type { StatusCategory } from './use-view-config'
 
-const PRESET_COLORS = [
-  '#64748b',
-'#60a5fa',
-'#34d399',
-'#fbbf24',
-  '#f97316',
-'#ef4444',
-'#a78bfa',
-'#f472b6',
-]
+interface StatusManagerProps {
+  boardId: string
+}
 
-function StatusRow({ status, workspaceId }: { status: KanbanStatus, workspaceId: string }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: status.id })
+export function StatusManager({ boardId }: StatusManagerProps) {
+  const statuses = useStatuses(boardId)
+  const createStatus = useCreateStatus()
   const updateStatus = useUpdateStatus()
   const deleteStatus = useDeleteStatus()
-  const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(status.name)
-  const [showColors, setShowColors] = useState(false)
+  const reorderStatuses = useReorderStatuses()
+  const [newName, setNewName] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus()
-    }
-  }, [editing])
-  useEffect(() => {
-    setName(status.name)
-  }, [status.name])
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
+  )
 
-  function handleNameSave() {
-    const trimmed = name.trim()
-    if (trimmed && trimmed !== status.name) {
-      updateStatus.mutate({ id: status.id, workspaceId, patch: { name: trimmed } })
-    }
-    else {
-      setName(status.name)
-    }
-    setEditing(false)
-  }
+  const handleAdd = useCallback(() => {
+    const name = newName.trim()
+    if (!name) return
+    createStatus.mutate(
+      { workspaceId: boardId, name },
+      { onSuccess: () => setNewName('') },
+    )
+  }, [newName, boardId, createStatus])
+
+  const handleDelete = useCallback((statusId: string) => {
+    deleteStatus.mutate({ id: statusId, workspaceId: boardId })
+  }, [boardId, deleteStatus])
+
+  const handleRename = useCallback((statusId: string, name: string) => {
+    updateStatus.mutate({ id: statusId, workspaceId: boardId, patch: { name } })
+  }, [boardId, updateStatus])
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const items = statuses.data ?? []
+    const oldIdx = items.findIndex(s => s.id === active.id)
+    const newIdx = items.findIndex(s => s.id === over.id)
+    if (oldIdx === -1 || newIdx === -1) return
+    const reordered = arrayMove(items, oldIdx, newIdx)
+    reorderStatuses.mutate({ workspaceId: boardId, orderedIds: reordered.map(s => s.id) })
+  }, [statuses.data, boardId, reorderStatuses])
+
+  const statusIds = (statuses.data ?? []).map(s => s.id)
+
+  return (
+    <div data-testid="status-manager" className="w-72 rounded-lg border border-border bg-popover p-3 shadow-lg">
+      <h4 className="mb-2 text-[12px] font-medium text-muted-foreground">状态管理</h4>
+
+      {/* Add new status */}
+      <div className="mb-3 flex items-center gap-1">
+        <Input
+          ref={inputRef}
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              handleAdd()
+            }
+          }}
+          placeholder="添加状态..."
+          data-testid="status-name-input"
+          className="h-7 flex-1 text-[13px]"
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-[12px]"
+          onClick={handleAdd}
+          disabled={!newName.trim()}
+        >
+          添加
+        </Button>
+      </div>
+
+      {/* Status list */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis]}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={statusIds} strategy={verticalListSortingStrategy}>
+          <div className="flex flex-col gap-0.5">
+            {statuses.data?.map(status => (
+              <SortableStatusRow
+                key={status.id}
+                id={status.id}
+                name={status.name}
+                category={(status.category ?? 'unstarted') as StatusCategory}
+                onRename={(name) => handleRename(status.id, name)}
+                onDelete={() => handleDelete(status.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  )
+}
+
+function SortableStatusRow({
+  id,
+  name,
+  category,
+  onRename,
+  onDelete,
+}: {
+  id: string
+  name: string
+  category: StatusCategory
+  onRename: (name: string) => void
+  onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(name)
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  const handleConfirm = () => {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== name) {
+      onRename(trimmed)
+    }
+    setEditing(false)
   }
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      data-testid={`status-row-${status.id}`}
-      className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-muted/30 group"
+      data-testid={`status-row-${id}`}
+      className="flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted/50"
     >
-      <button className="cursor-grab text-muted-foreground/30" data-testid={`status-drag-${status.id}`} {...attributes} {...listeners}>
+      <div
+        data-testid={`status-drag-${id}`}
+        className="cursor-grab text-muted-foreground/40 touch-none"
+        {...attributes}
+        {...listeners}
+      >
         <GripVerticalIcon className="size-3" />
-      </button>
-
-      <div className="relative">
-        <button
-          className="size-3 rounded-full shrink-0"
-          style={{ backgroundColor: status.color ?? '#64748b' }}
-          onClick={() => setShowColors(v => !v)}
-          data-testid={`status-color-${status.id}`}
-        />
-        {showColors && (
-          <div className="absolute left-0 top-5 z-10 flex flex-wrap w-20 gap-1 rounded-md border border-border/50 bg-popover p-1.5">
-            {PRESET_COLORS.map(c => (
-              <button
-                key={c}
-                className={cn('size-3.5 rounded-full hover:ring-1 hover:ring-ring', status.color === c && 'ring-1 ring-ring')}
-                style={{ backgroundColor: c }}
-                onClick={() => {
-                  updateStatus.mutate({ id: status.id, workspaceId, patch: { color: c } })
-                  setShowColors(false)
-                }}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
-      {editing
-        ? (
-          <input
-            ref={inputRef}
-            value={name}
-            onChange={e => setName(e.target.value)}
-            onBlur={handleNameSave}
-            data-testid={`status-input-${status.id}`}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleNameSave()
-              }
-              if (e.key === 'Escape') {
-                setName(status.name)
-                setEditing(false)
-              }
-            }}
-            className="flex-1 text-[13px] bg-transparent outline-none"
-          />
-        )
-        : (
-          <span
-            data-testid={`status-name-${status.id}`}
-            className="flex-1 text-[13px] truncate cursor-text"
-            onClick={() => setEditing(true)}
-          >
-            {status.name}
-          </span>
-        )}
+      <StatusIcon category={category} size={12} />
+
+      {editing ? (
+        <input
+          data-testid={`status-input-${id}`}
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleConfirm()
+            else if (e.key === 'Escape') setEditing(false)
+          }}
+          onBlur={handleConfirm}
+          autoFocus
+          className="flex-1 bg-transparent text-[13px] outline-none"
+        />
+      ) : (
+        <span
+          data-testid={`status-name-${id}`}
+          onClick={() => {
+            setEditValue(name)
+            setEditing(true)
+          }}
+          className="flex-1 cursor-text text-[13px] text-foreground"
+        >
+          {name}
+        </span>
+      )}
 
       <button
-        className="text-muted-foreground/20 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-        onClick={() => deleteStatus.mutate({ id: status.id, workspaceId })}
-        data-testid={`status-delete-${status.id}`}
+        data-testid={`status-delete-${id}`}
+        onClick={onDelete}
+        className="text-muted-foreground/40 hover:text-destructive transition-colors"
       >
         <TrashIcon className="size-3" />
       </button>
-    </div>
-  )
-}
-
-export function StatusManager({ workspaceId }: { workspaceId: string }) {
-  const { data: statuses = [] } = useStatuses(workspaceId)
-  const createStatus = useCreateStatus()
-  const reorderStatuses = useReorderStatuses()
-  const [newName, setNewName] = useState('')
-
-  const sensors = useSensors(useSensor(PointerSensor))
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
-    if (!over || active.id === over.id) {
-      return
-    }
-    const oldIndex = statuses.findIndex(s => s.id === active.id)
-    const newIndex = statuses.findIndex(s => s.id === over.id)
-    const reordered = arrayMove(statuses, oldIndex, newIndex)
-    reorderStatuses.mutate({ workspaceId, orderedIds: reordered.map((s: any) => s.id) })
-  }
-
-  async function handleAdd() {
-    const name = newName.trim()
-    if (!name) {
-      return
-    }
-    await createStatus.mutateAsync({ workspaceId, name })
-    setNewName('')
-  }
-
-  return (
-    <div data-testid="status-manager">
-      <p className="text-[12px] text-muted-foreground mb-2">Statuses</p>
-
-      <DndContext sensors={sensors} modifiers={[restrictToVerticalAxis]} onDragEnd={handleDragEnd}>
-        <SortableContext items={statuses.map(s => s.id)} strategy={verticalListSortingStrategy}>
-          <div className="flex flex-col gap-px" data-testid="status-manager-list">
-            {statuses.map(s => (
-              <StatusRow key={s.id} status={s} workspaceId={workspaceId} />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
-
-      <div className="mt-2 flex gap-1.5 items-center">
-        <input
-          placeholder="Add status…"
-          value={newName}
-          onChange={e => setNewName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              void handleAdd()
-            }
-          }}
-          className="flex-1 text-[13px] bg-transparent outline-none placeholder:text-muted-foreground/30"
-          data-testid="status-name-input"
-        />
-        <button
-          className="text-muted-foreground/30 hover:text-foreground transition-colors disabled:opacity-30"
-          onClick={() => void handleAdd()}
-          disabled={!newName.trim() || createStatus.isPending}
-          data-testid="status-add-btn"
-        >
-          <PlusIcon className="size-3.5" />
-        </button>
-      </div>
     </div>
   )
 }

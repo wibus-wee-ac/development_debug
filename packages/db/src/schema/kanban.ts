@@ -13,6 +13,7 @@ export const kanbanStatuses = sqliteTable('kanban_statuses', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   color: text('color'),
+  category: text('category', { enum: ['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled'] }).notNull().default('unstarted'),
   order: int('order').notNull().default(0),
   ...createdAt(),
 })
@@ -57,6 +58,7 @@ export const kanbanIssues = sqliteTable('kanban_issues', {
   assigneeId: text('assignee_id'),
   delegateAgentId: text('delegate_agent_id'),
   contextRefs: text('context_refs').notNull().default('[]'),
+  order: int('order').notNull().default(0),
   ...timestamps(),
 })
 

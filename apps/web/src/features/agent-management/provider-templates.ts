@@ -30,7 +30,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     providerKind: 'claude-agent',
     accent: 'orange',
     fields: [
+      { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.anthropic.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-ant-...', mono: true },
+      { key: 'model', label: 'Model', type: 'text', placeholder: 'claude-sonnet-4-20250514', mono: true },
     ],
     defaults: { model: 'claude-sonnet-4-20250514', baseUrl: 'https://api.anthropic.com/v1', permissionMode: 'acceptEdits' },
   },
@@ -50,7 +52,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     providerKind: 'codex',
     accent: 'emerald',
     fields: [
+      { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.openai.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...', mono: true },
+      { key: 'model', label: 'Model', type: 'text', placeholder: 'codex-mini-latest', mono: true },
     ],
     defaults: { model: 'codex-mini-latest', baseUrl: 'https://api.openai.com/v1' },
   },
@@ -61,7 +65,9 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     providerKind: 'openai-compatible',
     accent: 'sky',
     fields: [
+      { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.openai.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...', mono: true },
+      { key: 'model', label: 'Model', type: 'text', placeholder: 'gpt-4o', mono: true },
     ],
     defaults: { model: 'gpt-4o', baseUrl: 'https://api.openai.com/v1' },
   },
@@ -74,6 +80,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     fields: [
       { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.example.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...', mono: true },
+      { key: 'model', label: 'Model', type: 'text', placeholder: 'model-name', mono: true },
     ],
     defaults: { model: '', baseUrl: '' },
   },

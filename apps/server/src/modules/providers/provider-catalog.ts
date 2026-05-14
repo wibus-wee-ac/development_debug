@@ -29,6 +29,7 @@ export class ProviderCatalog {
     this.register(new OpenAICompatibleMetadataProvider())
     this.register(new ClaudeAgentMetadataProvider())
     this.register(new CodexMetadataProvider())
+    this.register(new CliTuiMetadataProvider())
   }
 
   register(provider: ProviderMetadataProvider): void {
@@ -170,6 +171,24 @@ class CodexMetadataProvider implements ProviderMetadataProvider {
     catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
+  }
+}
+
+class CliTuiMetadataProvider implements ProviderMetadataProvider {
+  readonly providerKind = 'cli-tui' as const
+
+  async checkHealth(input: ProviderRequest): Promise<ProviderHealthCheckResult> {
+    return {
+      ok: true,
+      label: input.label,
+      version: null,
+      details: {},
+      errorText: null,
+    }
+  }
+
+  async listModels(): Promise<ModelDescriptor[]> {
+    return []
   }
 }
 

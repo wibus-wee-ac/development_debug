@@ -146,7 +146,8 @@ export function useCreateBoard() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateBoardInput) => {
-      const { data } = await postKanbanBoards({ body: input })
+      const { data, error } = await postKanbanBoards({ body: input })
+      if (error || !data) throw new Error('Failed to create board')
       return data as KanbanBoard
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'boards'] }),
@@ -328,7 +329,8 @@ export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateIssueInput) => {
-      const { data } = await postKanbanIssues({ body: input })
+      const { data, error } = await postKanbanIssues({ body: input })
+      if (error || !data) throw new Error('Failed to create issue')
       return data as KanbanIssue
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
@@ -523,10 +525,15 @@ export function useAgentSessions(issueId: string) {
       return (data ?? []) as AgentSession[]
     },
     enabled: !!issueId,
+    refetchInterval: (query) => {
+      const sessions = query.state.data ?? []
+      const hasActive = sessions.some(s => s.status === 'active' || s.status === 'created')
+      return hasActive ? 500 : false
+    },
   })
 }
 
-export function useAgentActivities(agentSessionId: string | null) {
+export function useAgentActivities(agentSessionId: string | null, opts?: { refetchInterval?: number | false }) {
   return useQuery({
     queryKey: kanbanKeys.agentActivities(agentSessionId ?? ''),
     queryFn: async () => {
@@ -537,6 +544,7 @@ export function useAgentActivities(agentSessionId: string | null) {
       return (data ?? []) as AgentActivity[]
     },
     enabled: !!agentSessionId,
+    refetchInterval: opts?.refetchInterval,
   })
 }
 

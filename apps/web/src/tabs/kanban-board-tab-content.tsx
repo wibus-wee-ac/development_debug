@@ -1,4 +1,4 @@
-// Input: KanbanBoardView, useBoard, useTabsContext
+// Input: KanbanView, useBoard, useTabsContext
 // Output: KanbanBoardTabContent — wrapper handling board→workspace resolution and issue panel state
 // Position: Tab content adapter for kanban board
 
@@ -7,7 +7,7 @@ import { LayoutDashboardIcon } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
 
 import { Spinner } from '~/components/ui/spinner'
-import { KanbanBoardView } from '~/features/kanban/kanban-board-view'
+import { KanbanView } from '~/features/kanban/index'
 import { useBoard } from '~/features/kanban/use-kanban'
 
 export function KanbanBoardTabContent({ params }: { params: { boardId?: string, issue?: string } }) {
@@ -49,7 +49,7 @@ export function KanbanBoardTabContent({ params }: { params: { boardId?: string, 
   }
 
   return (
-    <KanbanBoardView
+    <KanbanView
       boardId={params.boardId}
       workspaceId={board.workspaceId}
       selectedIssueId={params.issue}

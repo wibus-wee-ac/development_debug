@@ -1,245 +1,110 @@
-// Input: workspaceId, defaultStatusId, useStatuses, useMilestones, useCreateIssue, Dialog, Select, Kbd
-// Output: CreateIssueDialog — minimal, focused issue creation dialog
-// Position: Feature dialog opened from board column header
+// Input: workspaceId, defaultStatusId, open state, onClose callback
+// Output: Quick create issue dialog
+// Position: Modal dialog for creating new kanban issues
 
-import { AlignLeftIcon } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 
-import { Dialog, DialogClose, DialogContent } from '~/components/ui/dialog'
-import { Kbd } from '~/components/ui/kbd'
-import { Select, SelectContent, SelectItem, SelectTrigger } from '~/components/ui/select'
-import { Textarea } from '~/components/ui/textarea'
-import { cn } from '~/lib/cn'
+import { Button } from '~/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { Input } from '~/components/ui/input'
+import type { KanbanStatus } from '~/lib/types'
 
-import { PriorityIcon } from './priority-icon'
-import { StatusIcon } from './status-icon'
-import { useCreateIssue, useMilestones, useStatuses } from './use-kanban'
+import { useCreateIssue, useStatuses } from './use-kanban'
 
 interface CreateIssueDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   workspaceId: string
-  defaultStatusId?: string | null
+  defaultStatusId?: string
+  open: boolean
+  onClose: () => void
 }
 
-const PRIORITY_OPTIONS = [
-  { value: 'none', label: 'No priority' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
-]
-
-const chipCls = cn(
-  'flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[12px] font-normal transition-colors',
-  'border border-border/50 bg-background text-muted-foreground',
-  'hover:bg-accent/60 hover:text-foreground hover:border-border',
-  '[&>[data-slot=select-icon]]:hidden',
-)
-
-export function CreateIssueDialog({
-  open,
-  onOpenChange,
-  workspaceId,
-  defaultStatusId,
-}: CreateIssueDialogProps) {
+export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose }: CreateIssueDialogProps) {
+  const [title, setTitle] = useState('')
+  const [priority, setPriority] = useState<'none' | 'low' | 'medium' | 'high' | 'urgent'>('none')
+  const [statusId, setStatusId] = useState(defaultStatusId ?? '')
   const { data: statuses = [] } = useStatuses(workspaceId)
-  const { data: milestones = [] } = useMilestones(workspaceId)
   const createIssue = useCreateIssue()
 
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [descOpen, setDescOpen] = useState(false)
-  const [statusId, setStatusId] = useState<string | null>(defaultStatusId ?? null)
-  const [priority, setPriority] = useState('none')
-  const [milestoneId, setMilestoneId] = useState<string | null>(null)
-
-  const titleRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (open) {
-      setStatusId(defaultStatusId ?? null)
-      setTitle('')
-      setDescription('')
-      setDescOpen(false)
-      setPriority('none')
-      setMilestoneId(null)
-      requestAnimationFrame(() => titleRef.current?.focus())
-    }
-  }, [open, defaultStatusId])
-
-  function handleCreate() {
-    const t = title.trim()
-    if (!t) {
-      return
-    }
-    createIssue.mutate(
-      {
-        workspaceId,
-        title: t,
-        description: description.trim() || undefined,
-        statusId: statusId ?? undefined,
-        priority:
-          priority !== 'none' ? (priority as 'low' | 'medium' | 'high' | 'urgent') : undefined,
-        milestoneId: milestoneId ?? undefined,
+  const handleSubmit = () => {
+    if (!title.trim()) return
+    createIssue.mutate({
+      workspaceId,
+      title: title.trim(),
+      priority,
+      statusId: statusId || undefined,
+    }, {
+      onSuccess: () => {
+        setTitle('')
+        setPriority('none')
+        onClose()
       },
-      { onSuccess: () => onOpenChange(false) },
-    )
+    })
   }
 
-  const currentStatus = statuses.find(s => s.id === statusId)
-  const currentPriority = PRIORITY_OPTIONS.find(o => o.value === priority)
-  const currentMilestone = milestones.find(m => m.id === milestoneId)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault()
+      handleSubmit()
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton={false} className="max-w-130 overflow-visible p-0">
-        <div className="px-5 pt-5 pb-1">
-          <input
-            ref={titleRef}
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-[14px]">新建事项</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3 pt-2">
+          <Input
             value={title}
             onChange={e => setTitle(e.target.value)}
-            placeholder="Issue title…"
-            data-testid="kanban-new-issue-input"
-            className="w-full bg-transparent text-[15px] font-medium text-foreground placeholder:text-muted-foreground/25 outline-none"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                handleCreate()
-              }
-            }}
+            onKeyDown={handleKeyDown}
+            placeholder="事项标题"
+            className="text-[13px]"
+            autoFocus
           />
 
-          <AnimatePresence initial={false}>
-            {!descOpen
-? (
-              <motion.button
-                key="desc-trigger"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.1 }}
-                onClick={() => setDescOpen(true)}
-                className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <AlignLeftIcon className="size-3" />
-                Add description…
-              </motion.button>
-            )
-: (
-              <motion.div
-                key="desc-textarea"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.15 }}
-                className="overflow-hidden"
-              >
-                <Textarea
-                  autoFocus
-                  value={description}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    setDescription(e.target.value)}
-                  placeholder="Add a description…"
-                  rows={3}
-                  className="mt-3 resize-none text-[12px] bg-transparent border-none shadow-none px-0 focus-visible:ring-0 placeholder:text-muted-foreground/20"
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Property chips */}
-        <div className="flex flex-wrap items-center gap-1.5 px-5 py-3 border-t border-border/40">
-          <Select value={statusId ?? ''} onValueChange={v => setStatusId(v || null)}>
-            <SelectTrigger className={chipCls}>
-              {currentStatus
-? (
-                <>
-                  <StatusIcon color={currentStatus.color} className="size-2.5" />
-                  {currentStatus.name}
-                </>
-              )
-: (
-                <span className="text-muted-foreground/25">Status</span>
-              )}
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="">
-                <span className="text-muted-foreground/30">No status</span>
-              </SelectItem>
-              {statuses.map(s => (
-                <SelectItem key={s.id} value={s.id}>
-                  <span className="flex items-center gap-2">
-                    <StatusIcon color={s.color} className="size-2.5" />
-                    {s.name}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={priority} onValueChange={v => setPriority(v ?? 'none')}>
-            <SelectTrigger className={chipCls}>
-              <PriorityIcon priority={priority} className="size-3" />
-              {currentPriority?.label ?? 'No priority'}
-            </SelectTrigger>
-            <SelectContent>
-              {PRIORITY_OPTIONS.map(o => (
-                <SelectItem key={o.value} value={o.value}>
-                  <span className="flex items-center gap-2">
-                    <PriorityIcon priority={o.value} className="size-3" />
-                    {o.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {milestones.length > 0 && (
-            <Select value={milestoneId ?? ''} onValueChange={v => setMilestoneId(v || null)}>
-              <SelectTrigger className={chipCls}>
-                {currentMilestone
-? (
-                  <span className="truncate max-w-24">{currentMilestone.title}</span>
-                )
-: (
-                  <span className="text-muted-foreground/25">Milestone</span>
-                )}
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">
-                  <span className="text-muted-foreground/30">None</span>
-                </SelectItem>
-                {milestones.map(m => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 pb-4 pt-1">
-          <Kbd className="text-[11px]">⌘↵</Kbd>
           <div className="flex items-center gap-2">
-            <DialogClose className="h-7 px-3.5 text-[12px] rounded-md text-muted-foreground/60 hover:text-foreground transition-colors">
-              Cancel
-            </DialogClose>
-            <button
-              className={cn(
-                'h-7 px-4 text-[12px] font-medium rounded-md transition-colors',
-                'bg-foreground text-background hover:bg-foreground/85',
-                'disabled:opacity-20',
-              )}
-              disabled={!title.trim() || createIssue.isPending}
-              onClick={handleCreate}
-              data-testid="kanban-create-issue-btn"
+            <select
+              value={statusId}
+              onChange={e => setStatusId(e.target.value)}
+              className="h-7 rounded-md bg-muted px-2 text-[12px] text-foreground border-none outline-none"
             >
-              Create issue
-            </button>
+              <option value="">选择状态</option>
+              {statuses.map((s: KanbanStatus) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+
+            <select
+              value={priority}
+              onChange={e => setPriority(e.target.value as typeof priority)}
+              className="h-7 rounded-md bg-muted px-2 text-[12px] text-foreground border-none outline-none"
+            >
+              <option value="none">无优先级</option>
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+              <option value="urgent">紧急</option>
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-7 text-[12px]">
+              取消
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSubmit}
+              disabled={!title.trim() || createIssue.isPending}
+              className="h-7 text-[12px]"
+            >
+              创建
+            </Button>
           </div>
         </div>
       </DialogContent>
