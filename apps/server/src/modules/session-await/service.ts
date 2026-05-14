@@ -119,11 +119,12 @@ export async function trigger(input: TriggerAwaitInput): Promise<SessionAwait | 
   catch (err) {
     // Rollback to pending so poller can retry, or mark failed for persistent errors
     const errorText = err instanceof Error ? err.message : String(err)
-    const is409 = errorText.includes('409') || errorText.includes('busy')
+    const isSessionBusy = (err instanceof AppError && err.status === 409)
+      || errorText.includes('active run')
     db()
       .update(sessionAwaits)
       .set({
-        status: is409 ? 'pending' : 'failed',
+        status: isSessionBusy ? 'pending' : 'failed',
         triggeredAt: null,
         lastErrorText: errorText,
         lastCheckedAt: now,

@@ -120,6 +120,8 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
     queryOptions.env = {
       ...process.env,
       ANTHROPIC_API_KEY: apiKey,
+      CRADLE_CHAT_SESSION_ID: input.runtimeSession.chatSessionId,
+      CRADLE_WORKSPACE_ID: input.workspaceId,
       ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
     }
 

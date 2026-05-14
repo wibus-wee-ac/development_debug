@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { cliTuiConfigSchema } from '../../helpers/provider-config-schemas'
+import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
 import * as SessionService from '../session/service'
 import { ptyManager } from './pty.manager'
@@ -71,6 +72,11 @@ function readCliConfig(configJson: string): { executable: string, args: string[]
   }
 }
 
+function isClaudeCli(executable: string): boolean {
+  const base = executable.split('/').pop() ?? ''
+  return base === 'claude' || base.startsWith('claude-')
+}
+
 // ── public API ──
 
 export function startOrAttach(input: { sessionId: string, cols: number, rows: number }) {
@@ -85,14 +91,26 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
   }
 
   const config = readCliConfig(context.profile.configJson)
+  const args = [...config.args]
+
+  // Auto-inject system-workflow via --append-system-prompt for compatible CLIs
+  const workflow = getSystemWorkflow()
+  if (workflow && isClaudeCli(config.executable)) {
+    args.push('--append-system-prompt', workflow)
+  }
+
   ptyManager.startOrAttach({
     sessionId: input.sessionId,
     executable: config.executable,
-    args: config.args,
+    args,
     cwd: context.workspace.path,
     cols: input.cols,
     rows: input.rows,
-    env: config.env,
+    env: {
+      ...config.env,
+      CRADLE_CHAT_SESSION_ID: input.sessionId,
+      CRADLE_WORKSPACE_ID: context.session.workspaceId,
+    },
   })
 
   return { sessionId: input.sessionId, running: ptyManager.isRunning(input.sessionId) }

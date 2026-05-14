@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 import type { AgentProfile, BackendRun, BackendSessionBinding, Message } from '@cradle/db'
 import {
@@ -18,6 +16,7 @@ import type { UIMessageChunk } from 'ai'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
@@ -326,26 +325,6 @@ function listRunChunks(runId: string): StoredChunk[] {
 
 // ── turn context resolver (merged from chat-turn-context.ts) ──
 
-// Lazily read and cache system-workflow.md
-let _systemWorkflowCache: string | null | undefined
-function getSystemWorkflow(): string | null {
-  if (_systemWorkflowCache !== undefined) return _systemWorkflowCache
-  const candidates = [
-    resolve(process.cwd(), '../../../resources/system-workflow.md'),
-    resolve(process.cwd(), '../../resources/system-workflow.md'),
-    resolve(process.cwd(), '../resources/system-workflow.md'),
-    resolve(process.cwd(), 'resources/system-workflow.md'),
-  ]
-  for (const p of candidates) {
-    if (existsSync(p)) {
-      _systemWorkflowCache = readFileSync(p, 'utf-8')
-      return _systemWorkflowCache
-    }
-  }
-  _systemWorkflowCache = null
-  return null
-}
-
 interface ChatTurnContext {
   systemPrompt?: string
   history?: Array<{ role: 'user' | 'assistant', content: string }>
@@ -367,15 +346,6 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
       ? `${workflow}\n\n---\n\n${systemPrompt}`
       : workflow
   }
-
-  // Inject session identity so agents can reference their own session
-  const sessionContext = [
-    `CRADLE_CHAT_SESSION_ID: ${input.sessionId}`,
-    session?.workspaceId ? `CRADLE_WORKSPACE_ID: ${session.workspaceId}` : '',
-  ].filter(Boolean).join('\n')
-  systemPrompt = systemPrompt
-    ? `${systemPrompt}\n\n${sessionContext}`
-    : sessionContext
 
   const historyRows = db().select().from(messages).where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'))).orderBy(messages.createdAt).all().filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 
@@ -557,6 +527,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     thinkingEffort: input.thinkingEffort,
     systemPrompt: turnContext.systemPrompt,
     history: turnContext.history,
+    workspaceId: context.session.workspaceId,
   })
 
   return {
@@ -688,6 +659,7 @@ async function executeRun(activeRun: ActiveRun, input: {
   thinkingEffort?: 'low' | 'medium' | 'high'
   systemPrompt?: string
   history?: Array<{ role: 'user' | 'assistant', content: string }>
+  workspaceId: string
 }): Promise<void> {
   const diagnostics: TurnOutputDiagnostics = {
     emittedEventCount: 0,
@@ -711,6 +683,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       profile: input.profile,
       message: input.text,
       modelId: input.modelId,
+      workspaceId: input.workspaceId,
       providerOptions: input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : undefined,
       systemPrompt: input.systemPrompt,
       history: input.history,

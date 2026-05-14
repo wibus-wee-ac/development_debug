@@ -40,6 +40,7 @@
     "hono": "4.11.9",
     "ignore": "^7.0.5",
     "js-yaml": "^4.1.0",
+    "node-pty": "1.2.0-beta.13",
     "pino": "^10.3.1",
     "reflect-metadata": "^0.2.2",
     "repomix": "^1.14.0",

@@ -1,9 +1,8 @@
-// Input: child_process terminal processes
+// Input: node-pty pseudo-terminal processes
 // Output: session-owned terminal runtime manager with buffer replay and SSE subscribers
 // Position: apps/server/src/modules/pty/pty.manager.ts
 
-import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { spawn } from 'node:child_process'
+import * as pty from 'node-pty'
 
 const MAX_BUFFER_BYTES = 512 * 1024
 
@@ -13,7 +12,7 @@ export type TerminalStreamEvent
     | { type: 'terminal.exit', exitCode: number | null, signal: string | null }
 
 interface TerminalRecord {
-  process: ChildProcessWithoutNullStreams | null
+  process: pty.IPty | null
   buffer: string
   exit: { exitCode: number | null, signal: string | null } | null
   cols: number
@@ -40,6 +39,7 @@ export class PtySessionManager {
     if (existing?.process) {
       existing.cols = input.cols
       existing.rows = input.rows
+      existing.process.resize(input.cols, input.rows)
       return
     }
 
@@ -53,25 +53,24 @@ export class PtySessionManager {
     }
     this.sessions.set(input.sessionId, record)
 
-    const child = spawn(input.executable, input.args, {
+    const child = pty.spawn(input.executable, input.args, {
+      name: 'xterm-256color',
+      cols: input.cols,
+      rows: input.rows,
       cwd: input.cwd,
-      env: input.env ? { ...process.env, ...input.env } : process.env,
-      stdio: 'pipe',
+      env: input.env ? { ...process.env, ...input.env } as Record<string, string> : process.env as Record<string, string>,
     })
     record.process = child
 
-    const handleData = (chunk: Buffer) => {
-      const data = chunk.toString('utf8')
+    child.onData((data: string) => {
       record.buffer = trimBuffer(record.buffer + data)
       this.publish(input.sessionId, { type: 'terminal.data', data }, false)
-    }
+    })
 
-    child.stdout.on('data', handleData)
-    child.stderr.on('data', handleData)
-    child.on('exit', (exitCode, signal) => {
+    child.onExit(({ exitCode, signal }) => {
       record.process = null
-      record.exit = { exitCode, signal }
-      this.publish(input.sessionId, { type: 'terminal.exit', exitCode, signal }, true)
+      record.exit = { exitCode, signal: signal !== undefined ? String(signal) : null }
+      this.publish(input.sessionId, { type: 'terminal.exit', exitCode, signal: signal !== undefined ? String(signal) : null }, true)
       if (record.destroyed) {
         this.sessions.delete(input.sessionId)
       }
@@ -98,7 +97,7 @@ export class PtySessionManager {
     if (!record?.process) {
       return false
     }
-    record.process.stdin.write(data)
+    record.process.write(data)
     return true
   }
 
@@ -109,6 +108,7 @@ export class PtySessionManager {
     }
     record.cols = cols
     record.rows = rows
+    record.process.resize(cols, rows)
     return true
   }
 

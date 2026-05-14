@@ -35,6 +35,7 @@ export interface StreamTurnInput {
   profile: AgentProfile
   message: string
   modelId?: string
+  workspaceId: string
   providerOptions?: {
     thinkingEffort?: 'low' | 'medium' | 'high'
   }
