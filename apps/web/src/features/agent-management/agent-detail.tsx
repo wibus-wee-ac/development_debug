@@ -4,7 +4,8 @@
 
 import { ArrowLeftIcon, CheckIcon, DicesIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
 
 import {
   AlertDialog,
@@ -42,6 +43,17 @@ const AVATAR_STYLES = [
 type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
+interface AgentDetailFormValues {
+  name: string
+  description: string
+  avatarStyle: string
+  avatarSeed: string
+  agentProfileId: string | null
+  modelId: string | null
+  thinkingEffort: ThinkingEffort
+  systemPrompt: string
+}
+
 function buildAvatarUrl(style: string, seed: string): string {
   return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
 }
@@ -70,7 +82,25 @@ function stringifyConfigJson(systemPrompt: string, baseConfig: Record<string, un
   return JSON.stringify(config)
 }
 
+function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: AgentProfile[]): AgentDetailFormValues {
+  const initialConfig = parseConfigJson(agent?.configJson)
+  return {
+    name: agent?.name ?? '',
+    description: agent?.description ?? '',
+    avatarStyle: agent?.avatarStyle ?? AVATAR_STYLES[0].id,
+    avatarSeed: agent?.avatarSeed ?? generateSeed(),
+    agentProfileId: agent?.agentProfileId ?? enabledProfiles[0]?.id ?? null,
+    modelId: agent?.modelId ?? null,
+    thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
+    systemPrompt: initialConfig.systemPrompt,
+  }
+}
+
 // ── Model Select ──────────────────────────────────────────────────────────────
+
+interface ModelSelectChangeOptions {
+  shouldDirty?: boolean
+}
 
 function ModelSelect({
   profileId,
@@ -79,16 +109,19 @@ function ModelSelect({
 }: {
   profileId: string | null
   modelId: string | null
-  onModelChange: (id: string | null) => void
+  onModelChange: (id: string | null, options?: ModelSelectChangeOptions) => void
 }) {
   const { models, isLoading } = useAgentModels(profileId)
+  const applyDefaultModel = useEffectEvent((nextModelId: string) => {
+    onModelChange(nextModelId, { shouldDirty: false })
+  })
 
   useEffect(() => {
     if (!profileId || modelId !== null || models.length === 0) {
       return
     }
-    onModelChange(models[0]!.id)
-  }, [profileId, modelId, models, onModelChange])
+    applyDefaultModel(models[0]!.id)
+  }, [profileId, modelId, models])
 
   if (!profileId) {
     return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">–</span>
@@ -103,7 +136,7 @@ function ModelSelect({
   }
 
   return (
-    <Select value={modelId ?? models[0]?.id ?? undefined} onValueChange={onModelChange}>
+    <Select value={modelId ?? models[0]?.id ?? undefined} onValueChange={value => onModelChange(value, { shouldDirty: true })}>
       <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-model-select">
         <SelectValue placeholder="Model" />
       </SelectTrigger>
@@ -164,21 +197,21 @@ export function AgentDetailPage({
 }) {
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
-  const initialConfig = useMemo(() => parseConfigJson(agent?.configJson), [agent?.configJson])
+  const persistedConfig = useMemo(() => parseConfigJson(agent?.configJson), [agent?.configJson])
   const enabledProfiles = useMemo(() => profiles.filter(p => p.enabled), [profiles])
+  const form = useForm<AgentDetailFormValues>({
+    defaultValues: getAgentDetailFormValues(agent, enabledProfiles),
+  })
+  const watchedValues = useWatch({ control: form.control }) as AgentDetailFormValues
+  const name = watchedValues.name ?? ''
+  const description = watchedValues.description ?? ''
+  const avatarStyle = watchedValues.avatarStyle ?? AVATAR_STYLES[0].id
+  const avatarSeed = watchedValues.avatarSeed ?? ''
+  const agentProfileId = watchedValues.agentProfileId ?? null
+  const modelId = watchedValues.modelId ?? null
+  const thinkingEffort = watchedValues.thinkingEffort ?? 'auto'
+  const systemPrompt = watchedValues.systemPrompt ?? ''
 
-  const [name, setName] = useState(agent?.name ?? '')
-  const [description, setDescription] = useState(agent?.description ?? '')
-  const [avatarStyle, setAvatarStyle] = useState<string>(agent?.avatarStyle ?? AVATAR_STYLES[0].id)
-  const [avatarSeed, setAvatarSeed] = useState(() => agent?.avatarSeed ?? generateSeed())
-  const [agentProfileId, setAgentProfileId] = useState<string | null>(
-    agent?.agentProfileId ?? enabledProfiles[0]?.id ?? null,
-  )
-  const [modelId, setModelId] = useState<string | null>(agent?.modelId ?? null)
-  const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>(
-    (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
-  )
-  const [systemPrompt, setSystemPrompt] = useState(initialConfig.systemPrompt)
   const [avatarSpinKey, setAvatarSpinKey] = useState(0)
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [createSaving, setCreateSaving] = useState(false)
@@ -188,63 +221,75 @@ export function AgentDetailPage({
   const savedClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (enabledProfiles[0]) {
-      setAgentProfileId(prev => prev ?? enabledProfiles[0].id)
+    if (autoSaveTimer.current) {
+      clearTimeout(autoSaveTimer.current)
     }
-  }, [enabledProfiles])
+    if (savedClearTimer.current) {
+      clearTimeout(savedClearTimer.current)
+    }
+
+    form.reset(getAgentDetailFormValues(agent, enabledProfiles))
+    setSaveState('idle')
+    setCreateSaving(false)
+    setSaveError(null)
+  }, [form, agent])
 
   useEffect(() => {
+    if (agent || !enabledProfiles[0]) {
+      return
+    }
+    if (form.getValues('agentProfileId') !== null) {
+      return
+    }
+    form.setValue('agentProfileId', enabledProfiles[0].id, { shouldDirty: false })
+  }, [agent, enabledProfiles, form])
+
+  const isDirty = form.formState.isDirty
+  const draftSignature = useMemo(() => JSON.stringify({
+    name,
+    description,
+    avatarStyle,
+    avatarSeed,
+    agentProfileId,
+    modelId,
+    thinkingEffort,
+    systemPrompt,
+  }), [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt])
+  const saveDraft = useEffectEvent(async () => {
     if (!agent) {
       return
     }
-    setName(agent.name)
-    setDescription(agent.description ?? '')
-    setAvatarStyle(agent.avatarStyle)
-    setAvatarSeed(agent.avatarSeed)
-    setAgentProfileId(agent.agentProfileId)
-    setModelId(agent.modelId ?? null)
-    setThinkingEffort((agent.thinkingEffort as ThinkingEffort) ?? 'auto')
-    setSystemPrompt(parseConfigJson(agent.configJson).systemPrompt)
-  }, [agent])
 
-  const isDirty = useMemo(() => {
-    if (isCreate) {
-      return name.trim().length > 0
-    }
-    return (
-      name !== agent!.name
-      || description !== (agent!.description ?? '')
-      || avatarStyle !== agent!.avatarStyle
-      || avatarSeed !== agent!.avatarSeed
-      || agentProfileId !== agent!.agentProfileId
-      || modelId !== (agent!.modelId ?? null)
-      || thinkingEffort !== ((agent!.thinkingEffort as ThinkingEffort) ?? 'auto')
-      || systemPrompt !== initialConfig.systemPrompt
-    )
-  }, [isCreate, name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt, agent, initialConfig])
-
-  const doSave = useCallback(async () => {
-    if (!name.trim() || !agentProfileId) {
+    const currentValues = form.getValues()
+    if (!currentValues.name.trim() || !currentValues.agentProfileId) {
       return
     }
+
+    const normalizedValues = {
+      ...currentValues,
+      name: currentValues.name.trim(),
+      description: currentValues.description.trim(),
+    }
+
     setSaveState('saving')
     setSaveError(null)
     try {
-      const configJson = stringifyConfigJson(systemPrompt, initialConfig.baseConfig)
+      const configJson = stringifyConfigJson(currentValues.systemPrompt, persistedConfig.baseConfig)
       await updateAgent.mutateAsync({
-        id: agent!.id,
+        id: agent.id,
         patch: {
-          name: name.trim(),
-          description: description.trim() || null,
-          avatarStyle,
-          avatarSeed,
-          agentProfileId,
-          modelId,
-          thinkingEffort,
+          name: normalizedValues.name,
+          description: normalizedValues.description || null,
+          avatarStyle: currentValues.avatarStyle,
+          avatarSeed: currentValues.avatarSeed,
+          agentProfileId: currentValues.agentProfileId,
+          modelId: currentValues.modelId,
+          thinkingEffort: currentValues.thinkingEffort,
           configJson,
         },
       })
       setSaveState('saved')
+      form.reset(normalizedValues)
       if (savedClearTimer.current) {
         clearTimeout(savedClearTimer.current)
       }
@@ -254,7 +299,7 @@ export function AgentDetailPage({
       setSaveState('error')
       setSaveError(err instanceof Error ? err.message : String(err))
     }
-  }, [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt, initialConfig.baseConfig, agent, updateAgent])
+  })
 
   // Auto-save debounce for edit mode
   useEffect(() => {
@@ -266,32 +311,39 @@ export function AgentDetailPage({
       clearTimeout(autoSaveTimer.current)
     }
     autoSaveTimer.current = setTimeout(() => {
-      void doSave()
+      void saveDraft()
     }, 1400)
     return () => {
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current)
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt])
+  }, [isCreate, isDirty, saveState, draftSignature])
 
   const handleCreate = useCallback(async () => {
-    if (!name.trim() || !agentProfileId) {
+    const currentValues = form.getValues()
+    if (!currentValues.name.trim() || !currentValues.agentProfileId) {
       return
     }
+
+    const normalizedValues = {
+      ...currentValues,
+      name: currentValues.name.trim(),
+      description: currentValues.description.trim(),
+    }
+
     setCreateSaving(true)
     setSaveError(null)
     try {
       const created = await createAgent.mutateAsync({
-        name: name.trim(),
-        description: description.trim() || null,
-        avatarStyle,
-        avatarSeed,
-        agentProfileId,
-        modelId,
-        thinkingEffort,
-        configJson: stringifyConfigJson(systemPrompt, {}),
+        name: normalizedValues.name,
+        description: normalizedValues.description || null,
+        avatarStyle: currentValues.avatarStyle,
+        avatarSeed: currentValues.avatarSeed,
+        agentProfileId: currentValues.agentProfileId,
+        modelId: currentValues.modelId,
+        thinkingEffort: currentValues.thinkingEffort,
+        configJson: stringifyConfigJson(currentValues.systemPrompt, {}),
       } satisfies CreateAgentInput)
       onCreated?.(created.id)
     }
@@ -301,7 +353,7 @@ export function AgentDetailPage({
     finally {
       setCreateSaving(false)
     }
-  }, [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt, createAgent, onCreated])
+  }, [form, createAgent, onCreated])
 
   const handleDelete = useCallback(async () => {
     if (!agent) {
@@ -312,9 +364,9 @@ export function AgentDetailPage({
   }, [agent, removeAgent, onDeleted])
 
   const shuffleAvatar = useCallback(() => {
-    setAvatarSeed(generateSeed())
+    form.setValue('avatarSeed', generateSeed(), { shouldDirty: true })
     setAvatarSpinKey(k => k + 1)
-  }, [])
+  }, [form])
 
   const avatarUrl = buildAvatarUrl(avatarStyle, avatarSeed)
   const isAuto = thinkingEffort === 'auto'
@@ -404,7 +456,7 @@ export function AgentDetailPage({
             </div>
           </m.button>
 
-          <Select value={avatarStyle} onValueChange={setAvatarStyle}>
+          <Select value={avatarStyle} onValueChange={value => form.setValue('avatarStyle', value, { shouldDirty: true })}>
             <SelectTrigger
               size="sm"
               data-testid="agent-avatar-style"
@@ -428,8 +480,7 @@ export function AgentDetailPage({
           <div className="flex flex-col gap-0.5">
             <input
               type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
+              {...form.register('name')}
               placeholder="Name your agent"
               autoFocus={isCreate}
               data-testid="agent-detail-name"
@@ -437,8 +488,7 @@ export function AgentDetailPage({
             />
             <input
               type="text"
-              value={description}
-              onChange={e => setDescription(e.target.value)}
+              {...form.register('description')}
               placeholder="Add a tagline..."
               data-testid="agent-detail-description"
               className="bg-transparent text-[12px] text-muted-foreground outline-none placeholder:text-muted-foreground/25"
@@ -450,8 +500,8 @@ export function AgentDetailPage({
             <Select
               value={agentProfileId ?? undefined}
               onValueChange={(v) => {
-                setAgentProfileId(v)
-                setModelId(null)
+                form.setValue('agentProfileId', v, { shouldDirty: true })
+                form.setValue('modelId', null, { shouldDirty: true })
               }}
             >
               <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-provider-select">
@@ -466,7 +516,13 @@ export function AgentDetailPage({
               </SelectContent>
             </Select>
 
-            <ModelSelect profileId={agentProfileId} modelId={modelId} onModelChange={setModelId} />
+            <ModelSelect
+              profileId={agentProfileId}
+              modelId={modelId}
+              onModelChange={(id, options) => {
+                form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
+              }}
+            />
 
             <div className="flex items-center gap-1">
               <div
@@ -479,7 +535,7 @@ export function AgentDetailPage({
                   <button
                     key={level}
                     type="button"
-                    onClick={() => setThinkingEffort(level)}
+                    onClick={() => form.setValue('thinkingEffort', level, { shouldDirty: true })}
                     data-testid={`agent-thinking-${level}`}
                     className={cn(
                       'h-6.5 rounded-[5px] px-2.5 text-[11px] font-medium capitalize transition-colors',
@@ -494,7 +550,7 @@ export function AgentDetailPage({
               </div>
               <button
                 type="button"
-                onClick={() => setThinkingEffort(isAuto ? 'medium' : 'auto')}
+                onClick={() => form.setValue('thinkingEffort', isAuto ? 'medium' : 'auto', { shouldDirty: true })}
                 data-testid="agent-thinking-auto"
                 className={cn(
                   'h-6.5 rounded-md px-2.5 text-[11px] transition-colors',
@@ -516,8 +572,7 @@ export function AgentDetailPage({
       <div className="flex flex-col gap-2 py-4">
         <span className="text-[13px] font-medium text-foreground">System Prompt</span>
         <textarea
-          value={systemPrompt}
-          onChange={e => setSystemPrompt(e.target.value)}
+          {...form.register('systemPrompt')}
           placeholder="Optional instructions for this agent..."
           rows={5}
           data-testid="agent-detail-system-prompt"

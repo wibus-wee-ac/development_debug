@@ -96,7 +96,7 @@ Register tokens in module `providers` before injecting them. tsyringe is used in
 
 1. **DI tokens need runtime imports** — use `import { MyService } from './my.service'`, never `import type { MyService }` for anything passed to `@inject`, constructor parameter types resolved by tsyringe, or `providers` arrays. If emitDecoratorMetadata is on, TypeScript erases type-only imports and injection breaks silently or at runtime.
 2. **`reflect-metadata` first** — entry file and tests must load it before decorators. Package `common` re-exports after importing it; app entry should still `import 'reflect-metadata'` explicitly at the top.
-3. **TypeScript** — `experimentalDecorators` and `emitDecoratorMetadata` must be enabled in the consumer tsconfig.
+3. **TypeScript** — The project uses TC39 standard decorators (not legacy `experimentalDecorators`). TypeScript 5.x handles these natively.
 4. **`@Controller()`** on HTTP classes (it applies tsyringe `@injectable()` internally). Other injectable services need **`@injectable()`** from `tsyringe` on the class.
 5. **`HttpContext`** is AsyncLocalStorage-scoped to the request: do not read it during module static init or before request middleware establishes context.
 

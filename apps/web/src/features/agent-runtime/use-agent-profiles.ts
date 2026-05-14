@@ -1,16 +1,19 @@
 // Input: generated API SDK, TanStack Query
-// Output: useAgentProfiles hook — lists unified Agent Runtime profiles
+// Output: useAgentProfiles hook — lists and mutates unified Agent Runtime profiles
 // Position: Data hook for Agent Runtime profile selection in the New Chat flow
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getProfiles } from '~/api-gen/sdk.gen'
+import { deleteProfilesById, getProfiles, putProfilesById } from '~/api-gen/sdk.gen'
+import type { PutProfilesByIdData } from '~/api-gen/types.gen'
 import type { AgentProfile } from '~/lib/types'
 
 const AGENT_PROFILES_QUERY_KEY = ['agent-profiles'] as const
 
 export function useAgentProfiles() {
-  const { data: profiles = [], refetch } = useQuery({
+  const queryClient = useQueryClient()
+
+  const { data: profiles = [], isLoading, refetch } = useQuery({
     queryKey: AGENT_PROFILES_QUERY_KEY,
     queryFn: async (): Promise<AgentProfile[]> => {
       const { data } = await getProfiles()
@@ -18,5 +21,47 @@ export function useAgentProfiles() {
     },
   })
 
-  return { profiles, refetch }
+  const updateProfile = useMutation({
+    mutationFn: async ({ id, body }: { id: string, body: PutProfilesByIdData['body'] }) => {
+      const { data } = await putProfilesById({
+        path: { id },
+        body,
+      })
+      return data as AgentProfile
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY })
+    },
+  })
+
+  const createProfile = useMutation({
+    mutationFn: async ({ id, body }: { id: string, body: PutProfilesByIdData['body'] }) => {
+      const { data } = await putProfilesById({
+        path: { id },
+        body,
+      })
+      return data as AgentProfile
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY })
+    },
+  })
+
+  const removeProfile = useMutation({
+    mutationFn: async (id: string) => {
+      await deleteProfilesById({ path: { id } })
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY })
+    },
+  })
+
+  return {
+    profiles,
+    isLoading,
+    refetch,
+    createProfile,
+    updateProfile,
+    removeProfile,
+  }
 }

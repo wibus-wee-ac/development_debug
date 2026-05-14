@@ -67,6 +67,7 @@
     "ofetch": "^1.4.1",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "react-hook-form": "^7.75.0",
     "shiki": "^3.4.2",
     "tailwind-merge": "^3.3.0",
     "vaul": "^1.1.2",

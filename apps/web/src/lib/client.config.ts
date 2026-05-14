@@ -15,5 +15,7 @@ export function createClientConfig(config: Parameters<typeof createConfig>[0]) {
   }
 }
 
-// Also export a ready-made client instance for direct SDK calls.
-const client = createClient(createClientConfig({}))
+/**
+ * Unless you need to bypass api-gen's react-query integration, do not use this client directly.
+ */
+export const client = createClient(createClientConfig({}))

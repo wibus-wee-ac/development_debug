@@ -92,18 +92,20 @@ export function observePush(
 
 // ── Decorator metadata ────────────────────────────────────────────────────────
 
-// eslint-disable-next-line ts/no-explicit-any
-const methodMetadata = new WeakMap<any, Map<string, string>>()
+const IPC_METHODS_KEY = Symbol('ipcMethods')
 
-export function IpcMethod() {
+// Polyfill: esbuild uses Symbol.for("Symbol.metadata") when Symbol.metadata is unavailable
+const SymbolMetadata: typeof Symbol.metadata = Symbol.metadata ?? Symbol.for('Symbol.metadata')
+
+// eslint-disable-next-line ts/no-explicit-any
+export function IpcMethod(): (target: any, context: ClassMethodDecoratorContext) => void {
   // eslint-disable-next-line ts/no-explicit-any
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-    const { constructor } = target
-    if (!methodMetadata.has(constructor)) {
-      methodMetadata.set(constructor, new Map())
+  return function (_target: any, context: ClassMethodDecoratorContext) {
+    const metadata = context.metadata
+    if (!metadata[IPC_METHODS_KEY]) {
+      metadata[IPC_METHODS_KEY] = []
     }
-    methodMetadata.get(constructor)!.set(propertyKey, propertyKey)
-    return descriptor
+    ;(metadata[IPC_METHODS_KEY] as string[]).push(String(context.name))
   }
 }
 
@@ -238,17 +240,19 @@ export abstract class IpcService {
   }
 
   protected registerMethods(): void {
-    const methods = methodMetadata.get(this.constructor)
+    // eslint-disable-next-line ts/no-explicit-any
+    const metadata = (this.constructor as any)[SymbolMetadata]
+    const methods = metadata?.[IPC_METHODS_KEY] as string[] | undefined
     if (!methods) {
       return
     }
-    methods.forEach((methodName, propertyKey) => {
+    for (const methodName of methods) {
       // eslint-disable-next-line ts/no-explicit-any
-      const method = (this as any)[propertyKey]
+      const method = (this as any)[methodName]
       if (typeof method === 'function') {
         this.registerMethod(methodName, method.bind(this))
       }
-    })
+    }
   }
 
   protected registerMethod<TOutput>(

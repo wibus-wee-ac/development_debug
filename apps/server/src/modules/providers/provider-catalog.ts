@@ -101,7 +101,7 @@ class ClaudeAgentMetadataProvider implements ProviderMetadataProvider {
         contextWindow: null,
       })))
 
-      return filterEnabledModels(models, config.enabledModels)
+      return models
     }
     catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
@@ -166,7 +166,7 @@ class CodexMetadataProvider implements ProviderMetadataProvider {
         contextWindow: null,
       })))
 
-      return filterEnabledModels(models, config.enabledModels)
+      return models
     }
     catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
@@ -249,7 +249,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
       }
 
       const models = payload.data.map(item => toModelDescriptor(item.id))
-      return filterEnabledModels(models, config.enabledModels)
+      return models
     }
     catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
@@ -264,16 +264,6 @@ function toModelDescriptor(id: string): ModelDescriptor {
     providerKind: 'openai-compatible',
     contextWindow: null,
   }
-}
-
-function filterEnabledModels(models: ModelDescriptor[], enabledModels: string[] | undefined): ModelDescriptor[] {
-  if (enabledModels === undefined) {
-    return models
-  }
-  if (enabledModels.length === 0) {
-    return []
-  }
-  return models.filter(model => enabledModels.includes(model.id))
 }
 
 function invalidProviderRequest(message: string): AppError {
