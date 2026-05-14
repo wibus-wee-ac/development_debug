@@ -43,6 +43,7 @@ function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
         'flex items-center gap-2 rounded-md px-3 py-2 text-xs',
         'bg-warning/5 border border-warning/20',
       )}
+      data-testid="approval-card"
     >
       <div className="flex-1 min-w-0">
         <span className="text-muted-foreground">Permission required: </span>
@@ -59,6 +60,7 @@ function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
               'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20',
               'transition-colors',
             )}
+            data-testid="approval-allow-btn"
           >
             <CheckIcon className="size-3" aria-hidden="true" />
             Allow
@@ -89,6 +91,7 @@ function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
               'bg-destructive/10 text-destructive hover:bg-destructive/20',
               'transition-colors',
             )}
+            data-testid="approval-deny-btn"
           >
             <XIcon className="size-3" aria-hidden="true" />
             Deny

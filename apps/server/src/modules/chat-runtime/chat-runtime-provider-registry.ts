@@ -15,6 +15,7 @@ import { AcpChatProvider } from './providers/acp/provider'
 import { wireAcpIntegration } from './providers/acp/runtime-integration'
 import { ClaudeAgentProvider } from './providers/claude-agent/provider'
 import { CodexProvider } from './providers/codex/provider'
+import { MockClaudeAgentProvider } from './providers/mock-claude-agent/provider'
 import { OpenAICompatibleProvider } from './providers/openai-compatible/provider'
 import type { ChatRuntimeProvider } from './runtime-provider-types'
 
@@ -61,10 +62,15 @@ export function getProviderRegistry(): ChatRuntimeProviderRegistry {
     registry.register(new OpenAICompatibleProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
     }))
-    registry.register(new ClaudeAgentProvider({
-      readSecret: secretRef => Secrets.readSecret(secretRef),
-      resolveSkillPaths,
-    }))
+    if (process.env.CRADLE_MOCK_LLM_URL) {
+      registry.register(new MockClaudeAgentProvider())
+    }
+    else {
+      registry.register(new ClaudeAgentProvider({
+        readSecret: secretRef => Secrets.readSecret(secretRef),
+        resolveSkillPaths,
+      }))
+    }
     registry.register(new CodexProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
       recordObservability,

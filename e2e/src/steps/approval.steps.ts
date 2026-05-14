@@ -1,0 +1,122 @@
+// Input: Cucumber step bindings, Playwright assertions, CradleWorld helpers
+// Output: Approval flow E2E step definitions covering approval card visibility and user actions
+// Position: E2E step layer for approval.feature
+
+import { Given, Then, When } from '@cucumber/cucumber'
+import { expect } from '@playwright/test'
+
+import type { CradleWorld } from '../support/world'
+
+const APPROVAL_TIMEOUT = 20_000
+
+Given('已创建一个需要审批的会话', async function (this: CradleWorld) {
+  // Configure a claude-agent provider that points to our mock server's /v1/messages
+  if (this.mockLlmServer) {
+    await this.mockLlmServer.stop()
+  }
+
+  const { MockLlmServer } = await import('../support/mock-llm-server')
+  this.mockLlmServer = new MockLlmServer({ chunkDelay: 5, claudeAgentScenario: 'approval-tool' })
+  this.mockLlmBaseUrl = await this.mockLlmServer.start()
+
+  const response = await fetch(`${this.params.serverUrl}/profiles/mock-claude-agent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Mock Claude Agent',
+      providerKind: 'claude-agent',
+      enabled: true,
+      config: {
+        baseUrl: this.mockLlmBaseUrl,
+        model: 'claude-sonnet-4-20250514',
+        permissionMode: 'default',
+      },
+      credentialRef: null,
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`Failed to configure claude-agent provider: ${response.status} ${await response.text()}`)
+  }
+
+  // Also provide a fake API key via secrets or env (the provider reads ANTHROPIC_API_KEY)
+  // The mock server doesn't validate auth, so any key works
+  // The provider resolves apiKey from profile config or env; we set it in config
+  await fetch(`${this.params.serverUrl}/profiles/mock-claude-agent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Mock Claude Agent',
+      providerKind: 'claude-agent',
+      enabled: true,
+      config: {
+        baseUrl: this.mockLlmBaseUrl,
+        model: 'claude-sonnet-4-20250514',
+        permissionMode: 'default',
+        apiKey: 'sk-mock-test-key',
+      },
+      credentialRef: null,
+    }),
+  })
+
+  // Ensure workspace exists
+  await this.ensureWorkspaceExists()
+
+  // Reload to pick up fresh data
+  await this.page.reload({ waitUntil: 'domcontentloaded' })
+
+  // Navigate to new chat
+  const navItem = this.page.locator('[data-testid="nav-new-chat"]')
+  await expect(navItem).toBeVisible({ timeout: 15_000 })
+  await navItem.click()
+  await expect(this.page.locator('[data-testid="new-chat-page"]')).toBeVisible({ timeout: 10_000 })
+
+  // Select the claude-agent mock provider
+  const agentSelector = this.page.locator('[data-testid="new-chat-agent-selector"]')
+  await expect(agentSelector).toBeVisible({ timeout: 10_000 })
+  await agentSelector.click()
+  const menuPopup = this.page.locator('[role="menu"]')
+  await expect(menuPopup).toBeVisible({ timeout: 10_000 })
+  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: /Mock Claude Agent/i })
+  await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
+  await mockItem.first().click()
+
+  // Fill and send
+  const textarea = this.page.locator('[data-testid="new-chat-textarea"]')
+  await textarea.click()
+  await textarea.fill('请执行 echo hello')
+  const sendBtn = this.page.locator('[data-testid="new-chat-send-btn"]')
+  await expect(sendBtn).toBeEnabled({ timeout: 15_000 })
+  await sendBtn.click()
+
+  // Wait for chat view to appear (the agent is now running and should hit canUseTool)
+  const chatView = this.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  await expect(chatView).toBeVisible({ timeout: 20_000 })
+})
+
+When('审批卡片出现', async function (this: CradleWorld) {
+  const card = this.page.locator('[data-testid="approval-card"]')
+  await expect(card).toBeVisible({ timeout: APPROVAL_TIMEOUT })
+})
+
+When('我点击"允许"按钮', async function (this: CradleWorld) {
+  const btn = this.page.locator('[data-testid="approval-allow-btn"]')
+  await expect(btn).toBeVisible({ timeout: 10_000 })
+  await btn.click()
+})
+
+When('我点击"拒绝"按钮', async function (this: CradleWorld) {
+  const btn = this.page.locator('[data-testid="approval-deny-btn"]')
+  await expect(btn).toBeVisible({ timeout: 10_000 })
+  await btn.click()
+})
+
+Then('审批卡片应该消失', async function (this: CradleWorld) {
+  const card = this.page.locator('[data-testid="approval-card"]')
+  await expect(card).toBeHidden({ timeout: APPROVAL_TIMEOUT })
+})
+
+Then('Agent 应该继续执行', async function (this: CradleWorld) {
+  // After approval, the chat should return to idle status (agent completed execution)
+  const chatView = this.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  await expect(chatView).toHaveAttribute('data-chat-status', 'idle', { timeout: 30_000 })
+})

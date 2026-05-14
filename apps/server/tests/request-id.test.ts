@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
+import { REQUEST_ID_HEADER } from '../src/http/request-id'
 import { shutdownInfra } from '../src/infra'
 
 function makeTempDataDir(): string {
@@ -20,13 +21,12 @@ describe('request id middleware', () => {
     const dataDir = makeTempDataDir()
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: ReturnType<typeof createServerApp> | undefined
 
     try {
-      app = createServerApp()
+      const app = createServerApp()
       const res = await app.handle(new Request('http://localhost/health'))
       expect(res.status).toBe(200)
-      expect(res.headers.get('x-request-id')).toBeTruthy()
+      expect(res.headers.get(REQUEST_ID_HEADER)).toBeTruthy()
     }
     finally {
       shutdownInfra()

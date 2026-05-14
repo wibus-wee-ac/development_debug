@@ -70,6 +70,8 @@ interface ToolCallBlockProps {
   input?: unknown
   output?: unknown
   errorText?: string
+  /** Nested content rendered inline when expanded (e.g. subagent parts). */
+  children?: ReactNode
 }
 
 function formatToolPanelValue(value: unknown, fallback: string): string {
@@ -91,6 +93,7 @@ export function ToolCallBlock({
   input,
   output,
   errorText,
+  children,
 }: ToolCallBlockProps) {
   const [expanded, setExpanded] = useState(false)
 
@@ -170,6 +173,11 @@ export function ToolCallBlock({
               >
                 {errorText}
               </pre>
+            </div>
+          )}
+          {children && (
+            <div className="mt-1.5 space-y-1">
+              {children}
             </div>
           )}
         </div>

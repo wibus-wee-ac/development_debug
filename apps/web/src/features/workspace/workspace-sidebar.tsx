@@ -496,6 +496,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="首页"
             collapsed={collapsed}
             onClick={() => openTab('home')}
+            dataTestId="nav-home"
           />
           <TopNavItem
             icon={<MessageSquarePlusIcon className="size-4" />}

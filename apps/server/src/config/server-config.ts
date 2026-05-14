@@ -24,6 +24,7 @@ const serverConfigSchema = z.object({
   CRADLE_LOG_LEVEL: z.enum(logLevels).default('info'),
   CRADLE_DATA_DIR: z.preprocess(trimOptionalString, z.string().optional()),
   CRADLE_DB_PATH: z.preprocess(trimOptionalString, z.string().optional()),
+  CRADLE_LOG_FILE: z.preprocess(trimOptionalString, z.string().optional()),
 })
 
 export type LogLevel = (typeof logLevels)[number]
@@ -34,6 +35,7 @@ export interface ServerConfigValues {
   logLevel: LogLevel
   dataDir?: string
   dbPath: string
+  logFile?: string
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfigValues {
@@ -54,6 +56,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     logLevel: parsed.CRADLE_LOG_LEVEL,
     dataDir: parsed.CRADLE_DATA_DIR,
     dbPath,
+    logFile: parsed.CRADLE_LOG_FILE
+      ?? (parsed.CRADLE_DATA_DIR ? join(parsed.CRADLE_DATA_DIR, 'server.log') : undefined),
   }
 }
 

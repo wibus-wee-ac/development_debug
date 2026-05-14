@@ -719,6 +719,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       publishChunk(persist(activeRun, chunk))
       if (chunk.type === 'error') {
         streamEmittedError = true
+        finalChunk = chunk
       }
     }
 

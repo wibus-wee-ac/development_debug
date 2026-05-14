@@ -40,6 +40,7 @@ export type MockClaudeAgentScenario =
   | 'agent-subagent'          // Parent spawns Agent tool → subagent does work with parent_tool_use_id
   | 'agent-subagent-deep'     // Subagent spawns its own Agent (nested depth 2)
   | 'agent-parallel'          // Parent spawns 2 Agents at once
+  | 'approval-tool'           // Streams a Bash tool_use to trigger canUseTool/approval
 
 export interface MockLlmServerOptions {
   /** Fixed response text the "assistant" will stream back. Default: 'Hello from mock LLM!' */
@@ -176,6 +177,11 @@ export class MockLlmServer {
 
     if (req.method === 'POST' && url.endsWith('/responses')) {
       this.handleResponses(req, res)
+      return
+    }
+
+    if (req.method === 'POST' && url.endsWith('/v1/messages')) {
+      this.handleAnthropicMessages(req, res)
       return
     }
 
@@ -597,6 +603,139 @@ export class MockLlmServer {
     res.end()
   }
 
+  // ── Anthropic Messages API (/v1/messages) ─────────────────────────────────
+
+  private handleAnthropicMessages(req: IncomingMessage, res: ServerResponse): void {
+    const chunks: Buffer[] = []
+    req.on('data', (c: Buffer) => chunks.push(c))
+    req.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8')
+      this.recordRequest(req, body)
+      this.turnCount++
+
+      let parsedBody: { messages?: Array<{ role: string, content?: unknown[] }>, stream?: boolean } | null = null
+      try { parsedBody = JSON.parse(body) } catch { /* ignore */ }
+
+      // Check if this is a turn after tool_result (continuation)
+      const hasToolResult = parsedBody?.messages?.some(m =>
+        m.role === 'user' && Array.isArray(m.content) && (m.content as Array<{ type?: string }>).some(c => c.type === 'tool_result'),
+      ) ?? false
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      })
+
+      if (hasToolResult) {
+        // After tool execution, respond with final text
+        void this.streamAnthropicTextResponse(res, 'Tool execution complete. The command ran successfully.')
+      }
+      else {
+        // First turn: respond with a tool_use block to trigger canUseTool
+        void this.streamAnthropicToolUseResponse(res)
+      }
+    })
+  }
+
+  private async streamAnthropicToolUseResponse(res: ServerResponse): Promise<void> {
+    const msgId = `msg_mock_${Date.now()}`
+    const toolUseId = `toolu_mock_${Date.now()}`
+
+    // message_start
+    this.writeSSE(res, {
+      type: 'message_start',
+      message: {
+        id: msgId,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: 'claude-sonnet-4-20250514',
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 50, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+    })
+    await this.delay(this.chunkDelay)
+
+    // content_block_start (tool_use)
+    this.writeSSE(res, {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'tool_use', id: toolUseId, name: 'Bash', input: {} },
+    })
+    await this.delay(this.chunkDelay)
+
+    // content_block_delta (input_json_delta)
+    this.writeSSE(res, {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'input_json_delta', partial_json: '{"command":"echo hello","description":"Run echo command"}' },
+    })
+    await this.delay(this.chunkDelay)
+
+    // content_block_stop
+    this.writeSSE(res, { type: 'content_block_stop', index: 0 })
+    await this.delay(this.chunkDelay)
+
+    // message_delta (stop_reason: tool_use)
+    this.writeSSE(res, {
+      type: 'message_delta',
+      delta: { stop_reason: 'tool_use', stop_sequence: null },
+      usage: { output_tokens: 30 },
+    })
+    await this.delay(this.chunkDelay)
+
+    // message_stop
+    this.writeSSE(res, { type: 'message_stop' })
+    res.end()
+  }
+
+  private async streamAnthropicTextResponse(res: ServerResponse, text: string): Promise<void> {
+    const msgId = `msg_mock_${Date.now()}`
+
+    this.writeSSE(res, {
+      type: 'message_start',
+      message: {
+        id: msgId,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: 'claude-sonnet-4-20250514',
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 50, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+    })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'text', text: '' },
+    })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'text_delta', text },
+    })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, { type: 'content_block_stop', index: 0 })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, {
+      type: 'message_delta',
+      delta: { stop_reason: 'end_turn', stop_sequence: null },
+      usage: { output_tokens: 20 },
+    })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, { type: 'message_stop' })
+    res.end()
+  }
+
   // ── Claude Agent SDK (/v1/claude-agent/query) ──────────────────────────────
 
   private handleClaudeAgentQuery(req: IncomingMessage, res: ServerResponse): void {
@@ -725,6 +864,8 @@ function buildClaudeAgentScenario(
       return buildAgentSubagentDeep(sessionId)
     case 'agent-parallel':
       return buildAgentParallel(sessionId)
+    case 'approval-tool':
+      return buildApprovalTool(sessionId)
     default:
       return buildBasicChat(sessionId)
   }
@@ -927,6 +1068,31 @@ function buildAgentParallel(sessionId: string): MockSdkMessage[] {
   msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
   msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Both agents completed. Found 50 exports in src and 120 .ts files in packages.' }, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
   msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-p-2', sessionId }))
+
+  msgs.push(makeResultMsg(sessionId))
+  return msgs
+}
+
+/**
+ * Streams a Bash tool_use to trigger canUseTool/approval in the mock provider.
+ */
+function buildApprovalTool(sessionId: string): MockSdkMessage[] {
+  const toolCallId = 'call_bash_approval_001'
+  const msgs: MockSdkMessage[] = []
+
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'I will run a command for you.' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u1', sessionId }))
+
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: toolCallId, name: 'Bash', input: {} }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"command":"echo hello","description":"Run echo"}' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u1', sessionId }))
+
+  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: toolCallId, content: 'hello\n' }], parentToolUseId: null, uuid: 'u-tr', sessionId }))
+
+  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done! The command executed successfully.' }, parentToolUseId: null, uuid: 'u2', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u2', sessionId }))
 
   msgs.push(makeResultMsg(sessionId))
   return msgs

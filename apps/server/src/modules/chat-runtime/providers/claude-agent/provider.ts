@@ -118,6 +118,7 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
     queryOptions.env = {
       ...process.env,
       ANTHROPIC_API_KEY: apiKey,
+      ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
     }
 
     // Wire permission prompts through the approval system so the web UI can respond
@@ -246,9 +247,6 @@ function buildCanUseTool(chatSessionId: string, abortSignal: AbortSignal): CanUs
     return {
       behavior: 'allow' as const,
       updatedInput: {},
-      updatedPermissions: response.selectedOptionId === 'allow_always' && options.suggestions
-        ? options.suggestions
-        : undefined,
       toolUseID: options.toolUseID,
     }
   }

@@ -239,15 +239,15 @@ describe('observability capability', () => {
 
       await flushObservability(app)
 
-      const eventsRes = await app.handle(new Request(`http://localhost/observability/events?runId=${encodeURIComponent(runId)}&code=CHAT_EMPTY_OUTPUT_COMPLETION`))
+      const eventsRes = await app.handle(new Request(`http://localhost/observability/events?runId=${encodeURIComponent(runId)}&code=TURN_STREAM_FAILED`))
       expect(eventsRes.status).toBe(200)
       const events = await eventsRes.json() as Array<{ code: string, message: string }>
-      expect(events).toEqual([expect.objectContaining({ code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
+      expect(events).toEqual([expect.objectContaining({ code: 'TURN_STREAM_FAILED' })])
 
-      const incidentsRes = await app.handle(new Request(`http://localhost/observability/incidents?runId=${encodeURIComponent(runId)}&code=CHAT_EMPTY_OUTPUT_COMPLETION`))
+      const incidentsRes = await app.handle(new Request(`http://localhost/observability/incidents?runId=${encodeURIComponent(runId)}&code=TURN_STREAM_FAILED`))
       expect(incidentsRes.status).toBe(200)
       const incidents = await incidentsRes.json() as Array<{ code: string, status: string }>
-      expect(incidents).toEqual([expect.objectContaining({ code: 'CHAT_EMPTY_OUTPUT_COMPLETION', status: 'open' })])
+      expect(incidents).toEqual([expect.objectContaining({ code: 'TURN_STREAM_FAILED', status: 'open' })])
       expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(1)
     }
     finally {

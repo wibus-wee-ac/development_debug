@@ -496,7 +496,7 @@ export function NewChatPage() {
                     >
                       <ComboboxTrigger
                         render={(
-                          <Button variant="ghost" size="xs" className="text-muted-foreground/50 hover:text-foreground/70" />
+                          <Button variant="ghost" size="xs" className="text-muted-foreground/50 hover:text-foreground/70" data-testid="new-chat-model-selector" />
                         )}
                       >
                         <CpuIcon className="size-3 shrink-0" />

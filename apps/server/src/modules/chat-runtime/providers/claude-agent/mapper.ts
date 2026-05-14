@@ -33,11 +33,7 @@ export interface ClaudeAgentChunkMapperResult {
  */
 function withParentMeta(chunk: UIMessageChunk, parentToolUseId: string | null): UIMessageChunk {
   if (!parentToolUseId) return chunk
-  // Only attach to chunk types that support providerMetadata
-  if ('providerMetadata' in chunk) {
-    return { ...chunk, providerMetadata: { ...chunk.providerMetadata, cradle: { parentToolUseId } } } as UIMessageChunk
-  }
-  return chunk
+  return { ...(chunk as object), providerMetadata: { ...((chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata ?? {}), cradle: { parentToolUseId } } } as unknown as UIMessageChunk
 }
 
 export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {

@@ -160,6 +160,26 @@ export class CradleWorld extends World {
     if (!response.ok) {
       throw new Error(`Failed to configure mock LLM provider: ${response.status} ${await response.text()}`)
     }
+
+    // Ensure at least one workspace exists so the send button becomes enabled
+    await this.ensureWorkspaceExists()
+  }
+
+  async ensureWorkspaceExists(): Promise<void> {
+    const listRes = await fetch(`${this.params.serverUrl}/workspaces`)
+    if (listRes.ok) {
+      const workspaces = await listRes.json() as unknown[]
+      if (workspaces.length > 0) return
+    }
+    const dir = this.createTempWorkspaceDir('cradle-e2e-ws-')
+    const res = await fetch(`${this.params.serverUrl}/workspaces/from-directory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: dir }),
+    })
+    if (!res.ok) {
+      throw new Error(`Failed to create workspace: ${res.status} ${await res.text()}`)
+    }
   }
 
   async launch(): Promise<void> {

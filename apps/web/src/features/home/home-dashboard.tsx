@@ -207,6 +207,7 @@ function RecentSessionRow({ session, workspaceName, onSelect }: { session: Sessi
       type="button"
       onClick={() => onSelect(session.id)}
       className="group flex items-center gap-3 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 w-full text-left"
+      data-testid="home-recent-session"
     >
       <ClockIcon className="size-3 shrink-0 text-muted-foreground/40" />
       <span className="truncate flex-1 text-foreground">
@@ -327,7 +328,7 @@ export function HomeDashboard() {
   }, [queryClient, selectDirectory])
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
+    <div className="flex flex-col h-full overflow-hidden bg-background" data-testid="home-dashboard">
       {/* Search bar */}
       <div className="px-4 pt-4 pb-3 shrink-0">
         <button
@@ -393,6 +394,7 @@ export function HomeDashboard() {
             type="button"
             onClick={handleAddWorkspace}
             className="flex flex-col w-32 shrink-0 rounded-lg border border-dashed border-border/40 items-center justify-center gap-1.5 text-xs text-muted-foreground transition-colors hover:border-border/70 h-24"
+            data-testid="home-add-project-btn"
           >
             <PlusIcon className="size-3.5" />
             添加项目

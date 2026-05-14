@@ -1,13 +1,41 @@
-// Input: CRADLE_LOG_LEVEL env var
-// Output: pino-based structured logger
+// Input: CRADLE_LOG_LEVEL env var, CRADLE_LOG_FILE env var
+// Output: pino-based structured logger with optional file persistence
 // Position: server logging module
 
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 import pino from 'pino'
 
 import type { LogLevel } from '../config/server-config'
 
 export interface LoggerFields {
   [key: string]: unknown
+}
+
+function resolveLogFile(): string | null {
+  const file = process.env.CRADLE_LOG_FILE?.trim()
+  if (file) return file
+  const dataDir = process.env.CRADLE_DATA_DIR?.trim()
+  if (dataDir) return `${dataDir}/server.log`
+  return null
+}
+
+function createStreams() {
+  const level = ((process.env.CRADLE_LOG_LEVEL as string) || 'info') as pino.Level
+  const streams: pino.StreamEntry[] = [
+    { level, stream: process.stdout },
+  ]
+  const logFile = resolveLogFile()
+  if (logFile) {
+    try {
+      mkdirSync(dirname(logFile), { recursive: true })
+    }
+    catch { /* ignore */ }
+    const dest = pino.destination({ dest: logFile, sync: false })
+    streams.push({ level, stream: dest })
+    process.stderr.write(`[logger] file logging enabled: ${logFile}\n`)
+  }
+  return streams
 }
 
 const rootLogger = pino({
@@ -18,7 +46,7 @@ const rootLogger = pino({
     },
   },
   timestamp: pino.stdTimeFunctions.isoTime,
-})
+}, pino.multistream(createStreams()))
 
 /**
  * Logger wraps pino with a stable interface compatible with the existing codebase.

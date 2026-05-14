@@ -20,6 +20,12 @@ def default_db_path() -> Path:
     if env:
         return Path(env).expanduser()
 
+    data_dir = os.environ.get("CRADLE_DATA_DIR")
+    if data_dir:
+        candidate = Path(data_dir).expanduser() / "cradle.db"
+        if candidate.exists():
+            return candidate
+
     candidates = [
         Path("~/Library/Application Support/Cradle/cradle.db").expanduser(),
         Path("~/.config/Cradle/cradle.db").expanduser(),
@@ -28,6 +34,25 @@ def default_db_path() -> Path:
         if candidate.exists():
             return candidate
     return candidates[0]
+
+
+def default_log_path(db_path: Path) -> Path | None:
+    """Derive server log path from CRADLE_LOG_FILE, CRADLE_DATA_DIR, or db path."""
+    env = os.environ.get("CRADLE_LOG_FILE")
+    if env:
+        return Path(env).expanduser()
+
+    data_dir = os.environ.get("CRADLE_DATA_DIR")
+    if data_dir:
+        candidate = Path(data_dir).expanduser() / "server.log"
+        if candidate.exists():
+            return candidate
+
+    # Fall back: db parent directory
+    sibling = db_path.parent / "server.log"
+    if sibling.exists():
+        return sibling
+    return None
 
 
 def open_db(path: Path) -> sqlite3.Connection:
@@ -205,6 +230,37 @@ def command_timeline(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def command_logs(args: argparse.Namespace, db_path: Path) -> int:
+    log_path = Path(args.log).expanduser() if args.log else default_log_path(db_path)
+    if not log_path or not log_path.exists():
+        print(f"Server log not found at {log_path}", file=sys.stderr)
+        return 1
+
+    lines_count = args.lines
+    if args.tail:
+        # Read last N lines efficiently
+        import subprocess
+        result = subprocess.run(
+            ["tail", "-n", str(lines_count), str(log_path)],
+            capture_output=True, text=True,
+        )
+        print(result.stdout, end="")
+        return 0
+
+    with open(log_path) as f:
+        for line in f:
+            if lines_count <= 0:
+                break
+            if args.filter:
+                if args.filter.lower() in line.lower():
+                    print(line, end="")
+                    lines_count -= 1
+            else:
+                print(line, end="")
+                lines_count -= 1
+    return 0
+
+
 def command_bundle(conn: sqlite3.Connection, args: argparse.Namespace, db_path: Path) -> int:
     where, vals = build_event_where(args)
     events = conn.execute(
@@ -342,6 +398,12 @@ def build_parser() -> argparse.ArgumentParser:
     bundle.add_argument("--limit", type=int, default=2000)
     bundle.add_argument("--out", required=True, help="Output JSON path")
 
+    logs = sub.add_parser("logs", help="Read server log file")
+    logs.add_argument("--log", default=None, help="Path to server log (auto-detected from env vars or db path)")
+    logs.add_argument("--lines", type=int, default=100, help="Number of lines to read (default: 100)")
+    logs.add_argument("--filter", default=None, help="Case-insensitive substring filter")
+    logs.add_argument("--tail", action="store_true", help="Read last N lines (uses tail -n)")
+
     return parser
 
 
@@ -350,6 +412,11 @@ def main() -> int:
     args = parser.parse_args()
 
     db_path = Path(args.db).expanduser() if args.db else default_db_path()
+
+    # logs command doesn't need a DB connection
+    if args.command == "logs":
+        return command_logs(args, db_path)
+
     try:
         conn = open_db(db_path)
     except Exception as exc:

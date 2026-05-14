@@ -13,7 +13,6 @@ import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
 import { ReasoningBlock } from './reasoning-block'
-import { SubagentFold } from './subagent-fold'
 import { ToolCallBlock } from './tool-call-block'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
@@ -279,29 +278,22 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
                 errorText?: string
               }
 
-              // Render subagent fold from chunks map
+              // Render subagent parts inline inside the ToolCallBlock
               const subagentChunks = subagentMap?.get(toolPart.toolCallId)
               const subagentParts = subagentChunks ? replayChunksToParts(subagentChunks) : []
 
               return (
-                <div key={key}>
-                  <ToolCallBlock
-                    toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
-                    toolCallId={toolPart.toolCallId}
-                    state={toolPart.state as 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'}
-                    input={toolPart.input}
-                    output={toolPart.output}
-                    errorText={toolPart.errorText}
-                  />
-                  {subagentParts.length > 0 && (
-                    <SubagentFold
-                      itemCount={subagentParts.length}
-                      isStreaming={isStreaming && subagentChunks!.some(c => c.type === 'text-delta' || c.type === 'reasoning-delta' || c.type === 'tool-input-start')}
-                    >
-                      {subagentParts.map((sp, si) => renderSubagentPart(sp, `${toolPart.toolCallId}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor }))}
-                    </SubagentFold>
-                  )}
-                </div>
+                <ToolCallBlock
+                  key={key}
+                  toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
+                  toolCallId={toolPart.toolCallId}
+                  state={toolPart.state as 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'}
+                  input={toolPart.input}
+                  output={toolPart.output}
+                  errorText={toolPart.errorText}
+                >
+                  {subagentParts.map((sp, si) => renderSubagentPart(sp, `${toolPart.toolCallId}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor }))}
+                </ToolCallBlock>
               )
             }
 
