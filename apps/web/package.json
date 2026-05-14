@@ -25,7 +25,6 @@
     "@hey-api/client-fetch": "^0.13.1",
     "@mingcute/react": "^1.4.1",
     "@pierre/trees": "1.0.0-beta.3",
-    "@sentry/react": "^10.53.1",
     "@tanstack/react-query": "^5.99.0",
     "@tanstack/react-table": "^8.21.3",
     "@tiptap/extension-code-block-lowlight": "^3.22.4",

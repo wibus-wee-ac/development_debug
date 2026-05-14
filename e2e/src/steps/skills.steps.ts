@@ -251,7 +251,8 @@ When('我导入这个全局 Skill', async function (this: CradleWorld) {
 })
 
 Given('我已打开一个工作区详情页', async function (this: CradleWorld) {
-  const workspaceDir = createTempDir('cradle-skills-workspace')
+  const suffix = Math.random().toString(36).slice(2, 8)
+  const workspaceDir = createTempDir(`cradle-skills-ws-${suffix}`)
   this.skillWorkspaceDir = workspaceDir
 
   const addBtn = this.page.locator('[data-testid="add-workspace-btn"]')
@@ -260,7 +261,7 @@ Given('我已打开一个工作区详情页', async function (this: CradleWorld)
 
   await this.selectDirectoryInBrowser(workspaceDir)
 
-  await this.page.getByText('cradle-skills-workspace', { exact: false }).click()
+  await this.page.getByText(`cradle-skills-ws-${suffix}`, { exact: false }).first().click()
   await expect(this.page.locator('[data-testid="workspace-detail-page"]')).toBeVisible({ timeout: 5000 })
 })
 

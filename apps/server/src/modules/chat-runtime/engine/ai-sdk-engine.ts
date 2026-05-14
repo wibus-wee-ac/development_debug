@@ -5,6 +5,7 @@
 import type { LanguageModel, ModelMessage, ToolSet, UIMessageChunk } from 'ai'
 import { stepCountIs, streamText } from 'ai'
 
+import { langfuseEnabled } from '../../../langfuse'
 import type { BudgetConfig } from '../../usage/budget'
 import { checkDailyBudget, checkTurnBudget } from '../../usage/budget'
 import { estimateCost } from '../../usage/pricing'
@@ -50,6 +51,8 @@ export interface AiSdkEngineInput {
   onBudgetExceeded?: (reason: string) => void
   /** Returns the current day's total cost (for daily budget checks) */
   getDailyCost?: () => number
+  /** Chat session ID for Langfuse session correlation */
+  chatSessionId?: string
 }
 
 /**
@@ -75,6 +78,7 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
     budgetConfig,
     onBudgetExceeded,
     getDailyCost,
+    chatSessionId,
   } = input
 
   const effectiveAbortSignal = abortController?.signal ?? abortSignal
@@ -96,6 +100,15 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
     tools: effectiveTools,
     stopWhen: maxSteps > 1 ? stepCountIs(maxSteps) : undefined,
     abortSignal: effectiveAbortSignal,
+    experimental_telemetry: langfuseEnabled
+      ? {
+          isEnabled: true,
+          metadata: {
+            'langfuse.session.id': chatSessionId ?? '',
+            'langfuse.trace.name': 'ai-sdk-chat',
+          },
+        }
+      : undefined,
     onStepFinish: (step) => {
       if (onStepFinish && step.usage) {
         const hasToolCalls = step.toolCalls && step.toolCalls.length > 0

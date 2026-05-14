@@ -40,6 +40,9 @@ function createStreams() {
 
 const rootLogger = pino({
   level: (process.env.CRADLE_LOG_LEVEL as LogLevel) || 'info',
+  serializers: {
+    err: pino.stdSerializers.err,
+  },
   formatters: {
     level(label) {
       return { level: label }

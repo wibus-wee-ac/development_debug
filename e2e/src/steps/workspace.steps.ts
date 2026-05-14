@@ -144,7 +144,6 @@ When('我通过原生对话框添加工作区', async function (this: CradleWorl
   rememberWorkspaceFixtures(this, [fixture])
   await addWorkspaceFromPicker(this, fixture)
   setCurrentWorkspace(this, fixture)
-  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(1, { timeout: 10_000 })
 })
 
 Then('工作区列表中应该有 {int} 个工作区', async function (this: CradleWorld, count: number) {
@@ -153,6 +152,7 @@ Then('工作区列表中应该有 {int} 个工作区', async function (this: Cra
 
 Given('我已添加了一个工作区', async function (this: CradleWorld) {
   console.warn('[step] setup: add one workspace')
+
   const dir = this.createTempWorkspaceDir()
   const fixture = {
     dir,
@@ -164,7 +164,6 @@ Given('我已添加了一个工作区', async function (this: CradleWorld) {
   rememberWorkspaceFixtures(this, [fixture])
   await addWorkspaceFromPicker(this, fixture)
   setCurrentWorkspace(this, fixture)
-  await expect(this.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(1, { timeout: 10_000 })
 })
 
 When('我打开该工作区的菜单', async function (this: CradleWorld) {

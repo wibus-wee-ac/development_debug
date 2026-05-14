@@ -8,3 +8,6 @@ e2e/artifacts
 .github/copilot-instructions.md
 *.tsbuildinfo
 data
+.env
+.env.local
+!.env.example

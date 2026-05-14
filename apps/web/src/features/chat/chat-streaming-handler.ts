@@ -36,6 +36,7 @@ export class ChatStreamingHandler {
   private messageId: string
   private toolUpdateTimer: ReturnType<typeof setTimeout> | null = null
   private pendingToolChunks: UIMessageChunk[] = []
+  private terminated = false
 
   constructor(sessionId: string, messageId: string) {
     this.sessionId = sessionId
@@ -150,9 +151,14 @@ export class ChatStreamingHandler {
 
       case 'finish':
       case 'abort':
-      case 'error':
         // Terminal events handled externally (finish/fail)
         break
+
+      case 'error': {
+        const errorChunk = chunk as { errorText?: string }
+        this.fail(errorChunk.errorText ?? 'Unknown error')
+        break
+      }
 
       default:
         // Unknown chunk type — ignore
@@ -164,6 +170,8 @@ export class ChatStreamingHandler {
    * Mark generation as complete. Call after the stream ends normally.
    */
   finish(): void {
+    if (this.terminated) return
+    this.terminated = true
     this.flushToolUpdates()
     useChatStore.getState().finishGeneration(this.messageId)
   }
@@ -172,6 +180,8 @@ export class ChatStreamingHandler {
    * Mark generation as failed with an error message.
    */
   fail(error: string): void {
+    if (this.terminated) return
+    this.terminated = true
     this.flushToolUpdates()
     useChatStore.getState().failGeneration(this.messageId, error)
   }

@@ -1,3 +1,4 @@
+import './langfuse'
 import { createServerApp } from './app'
 import { loadServerConfig } from './config/server-config'
 import { getLogger } from './logging/logger'
@@ -17,6 +18,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  getLogger().error('fatal bootstrap error', { error: err })
+  getLogger().error('fatal bootstrap error', { err })
   process.exit(1)
 })

@@ -3,11 +3,17 @@
 // Position: apps/server/src/modules/chat-runtime/providers/codex/provider.ts
 
 import { randomUUID } from 'node:crypto'
+import { unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import type { Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
+import { startObservation } from '@langfuse/tracing'
+import type { LangfuseGeneration } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
+import { langfuseEnabled } from '../../../../langfuse'
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
 import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
@@ -95,6 +101,16 @@ export class CodexProvider implements ChatRuntimeProvider {
       codexConfig.instructions_paths = skillPaths
     }
 
+    // Inject system prompt via a temp instructions file
+    let systemPromptFile: string | null = null
+    if (input.systemPrompt) {
+      systemPromptFile = join(tmpdir(), `cradle-codex-prompt-${randomUUID()}.md`)
+      writeFileSync(systemPromptFile, input.systemPrompt, 'utf-8')
+      const paths = (codexConfig.instructions_paths as string[] | undefined) ?? []
+      paths.push(systemPromptFile)
+      codexConfig.instructions_paths = paths
+    }
+
     const codex = new Codex({
       apiKey,
       baseUrl: config.baseUrl,
@@ -128,6 +144,21 @@ export class CodexProvider implements ChatRuntimeProvider {
     }
     let threadId: string | null = null
 
+    // Langfuse tracing via @langfuse/tracing SDK
+    let generation: LangfuseGeneration | null = null
+    if (langfuseEnabled) {
+      generation = startObservation('codex-generation', {
+        model: effectiveModel ?? 'codex',
+        input: input.systemPrompt
+          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: input.message }]
+          : [{ role: 'user', content: input.message }],
+      }, { asType: 'generation' }) as LangfuseGeneration
+      const span = (generation as unknown as { otelSpan: { setAttribute: (k: string, v: string) => void } }).otelSpan
+      span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
+      span.setAttribute('langfuse.trace.name', 'codex-chat')
+    }
+    let outputTextCollector = ''
+
     try {
       const { events } = await thread.runStreamed(input.message, { signal: abortController.signal })
       for await (const event of events) {
@@ -159,6 +190,9 @@ export class CodexProvider implements ChatRuntimeProvider {
         mapperState.assistantStarted = result.assistantStarted
         diagnostics.mappedEvents += result.chunks.length
         for (const chunk of result.chunks) {
+          if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
+            outputTextCollector += (chunk as { delta: string }).delta
+          }
           yield chunk
         }
 
@@ -206,9 +240,39 @@ export class CodexProvider implements ChatRuntimeProvider {
       if (mapperState.assistantStarted) {
         yield { type: 'text-end', id: textItemId }
       }
+
+      // Record usage and output in the generation
+      if (generation) {
+        generation.update({
+          output: outputTextCollector || undefined,
+          ...(this._lastUsage && {
+            usageDetails: {
+              input: this._lastUsage.promptTokens,
+              output: this._lastUsage.completionTokens,
+              total: this._lastUsage.totalTokens,
+            },
+          }),
+        })
+      }
+      generation?.end()
+    }
+    catch (error) {
+      if (generation) {
+        generation.update({
+          level: 'ERROR',
+          statusMessage: error instanceof Error ? error.message : String(error),
+        })
+        generation.end()
+      }
+      throw error
     }
     finally {
       this.activeThreads.delete(input.runtimeSession.chatSessionId)
+      // Clean up temp system prompt file
+      if (systemPromptFile) {
+        try { unlinkSync(systemPromptFile) }
+        catch { /* ignore */ }
+      }
     }
   }
 

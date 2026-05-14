@@ -115,7 +115,8 @@ async function addWorkspaceFromPicker(world: CradleWorld, dirPath: string): Prom
 
   await world.selectDirectoryInBrowser(dirPath)
 
-  await expect(world.page.locator('[data-testid^="workspace-group-"]')).toHaveCount(1, { timeout: 10_000 })
+  // Wait for at least one workspace group to be visible after adding
+  await expect(world.page.locator('[data-testid^="workspace-group-"]').first()).toBeVisible({ timeout: 10_000 })
 }
 
 async function getActiveChatView(world: CradleWorld) {

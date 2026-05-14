@@ -131,6 +131,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
           providerKind: this.providerKind,
         },
         contextWindow,
+        chatSessionId: runtimeSession.chatSessionId,
       })
     }
     catch (error) {

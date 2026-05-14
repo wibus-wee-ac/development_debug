@@ -54,7 +54,7 @@ export function createErrorHandler(): ErrorHandler {
       })
     }
 
-    getLogger().error('unhandled error', { error })
+    getLogger().error('unhandled error', { err: error })
     return createJsonErrorResponse(set.headers, 500, {
       code: 'internal_server_error',
       message: 'Internal Server Error',

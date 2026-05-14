@@ -329,6 +329,13 @@ export function useChatSession(chatSessionId: string | null, options?: {
     useChatStore.getState().setMessages(chatSessionId, projected)
     useChatStore.getState().setPassiveStatus(chatSessionId, derivePassiveStatus(timelineQuery.data))
 
+    // Hydrate errorMap from server-side failed messages
+    for (const row of timelineQuery.data) {
+      if (row.role === 'assistant' && row.status === 'failed' && row.errorText) {
+        useChatStore.getState().failGeneration(row.messageId, row.errorText)
+      }
+    }
+
     // Hydrate subagent chunks
     const subagentMap = extractSubagentChunks(timelineQuery.data)
     for (const [messageId, parentMap] of subagentMap) {
@@ -357,12 +364,13 @@ export function useChatSession(chatSessionId: string | null, options?: {
       const isLocallyDriving = meta?.locallyDriving ?? false
 
       if (data.event.type === 'run.failed') {
+        if (isLocallyDriving) {
+          // Let the in-band stream handler capture the error with its message
+          return
+        }
         useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
         useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
-        // If not locally driving, need to find the message to record error on
-        if (!isLocallyDriving) {
-          scheduleSnapshotRefresh(0)
-        }
+        scheduleSnapshotRefresh(0)
         return
       }
 

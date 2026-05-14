@@ -5,9 +5,12 @@
 import { randomUUID } from 'node:crypto'
 
 import type { CanUseTool, Options, Query } from '@anthropic-ai/claude-agent-sdk'
+import { startObservation } from '@langfuse/tracing'
+import type { LangfuseGeneration } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
 import * as Approval from '../../../approval/service'
+import { langfuseEnabled } from '../../../../langfuse'
 import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { ProviderKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
@@ -97,6 +100,10 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
       additionalDirectories: config.additionalDirectories,
       forwardSubagentText: true,
       agentProgressSummaries: true,
+      // Inject system prompt: use Claude Code default + append our workflow/agent instructions
+      systemPrompt: input.systemPrompt
+        ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.systemPrompt }
+        : undefined,
     }
 
     if (config.skills) {
@@ -133,6 +140,22 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
 
     const mapperState: ClaudeAgentChunkMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map(), currentParentToolUseId: null }
 
+    // Langfuse tracing via @langfuse/tracing SDK
+    let generation: LangfuseGeneration | null = null
+    if (langfuseEnabled) {
+      generation = startObservation('claude-agent-generation', {
+        model: effectiveModel,
+        input: input.systemPrompt
+          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: input.message }]
+          : [{ role: 'user', content: input.message }],
+      }, { asType: 'generation' }) as LangfuseGeneration
+      // Set trace-level attributes for session grouping
+      const span = (generation as unknown as { otelSpan: { setAttribute: (k: string, v: string) => void } }).otelSpan
+      span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
+      span.setAttribute('langfuse.trace.name', 'claude-agent-chat')
+    }
+    let outputTextCollector = ''
+
     try {
       for await (const message of activeQuery) {
         if (abortController.signal.aborted) {
@@ -143,6 +166,10 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
         mapperState.assistantStarted = result.assistantStarted
 
         for (const chunk of result.chunks) {
+          // Collect text output for Langfuse
+          if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
+            outputTextCollector += (chunk as { delta: string }).delta
+          }
           yield chunk
         }
 
@@ -158,6 +185,31 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
       if (mapperState.assistantStarted) {
         yield { type: 'text-end', id: mapperState.textItemId }
       }
+
+      // Record usage and output in the generation
+      if (generation) {
+        generation.update({
+          output: outputTextCollector || undefined,
+          ...(this._lastUsage && {
+            usageDetails: {
+              input: this._lastUsage.promptTokens,
+              output: this._lastUsage.completionTokens,
+              total: this._lastUsage.totalTokens,
+            },
+          }),
+        })
+      }
+      generation?.end()
+    }
+    catch (error) {
+      if (generation) {
+        generation.update({
+          level: 'ERROR',
+          statusMessage: error instanceof Error ? error.message : String(error),
+        })
+        generation.end()
+      }
+      throw error
     }
     finally {
       this.activeQueries.delete(input.runtimeSession.chatSessionId)
