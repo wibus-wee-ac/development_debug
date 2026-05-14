@@ -93,10 +93,20 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
   const config = readCliConfig(context.profile.configJson)
   const args = [...config.args]
 
-  // Auto-inject system-workflow via --append-system-prompt for compatible CLIs
-  const workflow = getSystemWorkflow()
-  if (workflow && isClaudeCli(config.executable)) {
-    args.push('--append-system-prompt', workflow)
+  if (isClaudeCli(config.executable)) {
+    // Resume previous Claude session or start new one with deterministic ID
+    if (context.session.ptyStartedAt) {
+      args.push('--resume', input.sessionId)
+    }
+    else {
+      args.push('--session-id', input.sessionId)
+    }
+
+    // Auto-inject system-workflow via --append-system-prompt
+    const workflow = getSystemWorkflow()
+    if (workflow) {
+      args.push('--append-system-prompt', workflow)
+    }
   }
 
   ptyManager.startOrAttach({
@@ -112,6 +122,14 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
       CRADLE_WORKSPACE_ID: context.session.workspaceId,
     },
   })
+
+  // Mark session as started for future resume
+  if (!context.session.ptyStartedAt) {
+    db().update(sessions)
+      .set({ ptyStartedAt: Math.floor(Date.now() / 1000) })
+      .where(eq(sessions.id, input.sessionId))
+      .run()
+  }
 
   return { sessionId: input.sessionId, running: ptyManager.isRunning(input.sessionId) }
 }

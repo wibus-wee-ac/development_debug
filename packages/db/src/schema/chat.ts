@@ -22,6 +22,7 @@ export const sessions = sqliteTable('sessions', {
   linkedIssueId: text('linked_issue_id')
     .references(() => kanbanIssues.id, { onDelete: 'set null' }),
   pinned: int('pinned').notNull().default(0),
+  ptyStartedAt: int('pty_started_at'),
   ...timestamps(),
 })
 
