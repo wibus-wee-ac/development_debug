@@ -12,8 +12,10 @@ import { GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { AwaitPanel } from '~/features/session-await/await-panel'
+import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
 import { FileTree } from '~/features/workspace/file-tree'
 import { cn } from '~/lib/cn'
+import { useLayoutStore } from '~/store/layout'
 
 interface Tab {
   id: string
@@ -41,9 +43,14 @@ interface RightAsideProps {
 }
 
 export function RightAside({ workspaceId, workspacePath, sessionId }: RightAsideProps) {
-  const [activeTab, setActiveTab] = useState('files')
+  const activeTab = useLayoutStore(s => s.asideActiveTab)
+  const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [packOpen, setPackOpen] = useState(false)
   const [packInitialPaths, setPackInitialPaths] = useState<string[]>([])
+
+  // Badge: pending awaits for Feed tab
+  const { data: awaitSummary } = useSessionAwaitSummary(sessionId ?? null)
+  const hasPendingAwaits = awaitSummary?.awaiting ?? false
 
   const { data: workspace } = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -88,6 +95,13 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
             )}
             <Icon className="relative size-3.5 shrink-0" />
             <span className="relative">{label}</span>
+            {/* Badge dot for Feed tab when awaits are pending */}
+            {id === 'await' && hasPendingAwaits && activeTab !== 'await' && (
+              <span className="relative flex size-1.5">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/60" />
+                <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
+              </span>
+            )}
           </button>
         ))}
       </div>

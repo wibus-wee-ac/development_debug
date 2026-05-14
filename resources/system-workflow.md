@@ -25,18 +25,29 @@ Always look up IDs first (`cradle status list`, `cradle agent list`) rather than
 When you need to wait for an external condition (CI passing, PR review, deployment), **do not poll yourself**. Instead, register a session await and end your turn:
 
 ```bash
+# Wait for CI on a PR:
 cradle session await-create \
   --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
   --workspace-id "$CRADLE_WORKSPACE_ID" \
   --source github-ci \
   --filter-json '{"repo":"owner/repo","pr":42}' \
   --reason "Waiting for CI on PR #42"
+
+# Wait for CI on a specific commit (no PR needed):
+cradle session await-create \
+  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
+  --workspace-id "$CRADLE_WORKSPACE_ID" \
+  --source github-ci \
+  --filter-json '{"repo":"owner/repo","sha":"abc123def"}' \
+  --reason "Waiting for CI on commit abc123def"
 ```
 
 After registering, tell the user what you're waiting for and end your turn. Cradle's background poller will monitor the condition and resume your session with the result as a new message. You will have full conversation history when resumed.
 
+> **Note**: `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` are automatically available as environment variables — no need to look them up manually.
+
 Supported sources:
-- `github-ci` — waits for all CI checks to complete on a PR. Filter: `{"repo":"owner/repo","pr":<number>}`
+- `github-ci` — waits for all CI checks to complete. Filter: `{"repo":"owner/repo","pr":<number>}` or `{"repo":"owner/repo","sha":"<commit-sha>"}`
 - `manual` — waits for a human to manually trigger via UI or CLI
 
 ## Behavioral Rules

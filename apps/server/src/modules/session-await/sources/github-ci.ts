@@ -189,7 +189,20 @@ export const githubCISource: SessionAwaitSource = {
       }
 
       if (checkRuns.total_count === 0) {
-        results.push({ awaitId: row.id, matched: false })
+        // Grace period: if no checks appear within 2 minutes of creation,
+        // the repo likely has no CI configured — auto-resolve
+        const ageSeconds = Math.floor(Date.now() / 1000) - (row.createdAt ?? 0)
+        if (ageSeconds > 120) {
+          results.push({
+            awaitId: row.id,
+            matched: true,
+            resumeText: 'No CI checks configured for this repository. Proceeding without CI.',
+            resumePayloadJson: JSON.stringify({ allSuccess: true, totalCount: 0, runs: [], noCIConfigured: true }),
+          })
+        }
+        else {
+          results.push({ awaitId: row.id, matched: false })
+        }
         continue
       }
 

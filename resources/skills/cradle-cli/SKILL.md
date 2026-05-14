@@ -15,6 +15,17 @@ Use `cradle` to manage Cradle or query its state from the terminal. You can use 
 - Most relationships use IDs, not names. Query the relevant list command first, then pass the ID to create/update/delegate commands.
 - Use `--server <url>` only when the default `CRADLE_SERVER_URL` / `http://localhost:21423` is not the intended server.
 
+## Environment Variables
+
+Cradle automatically injects these environment variables into your shell — no manual setup needed:
+
+| Variable | Description |
+| --- | --- |
+| `CRADLE_CHAT_SESSION_ID` | Your current chat session ID |
+| `CRADLE_WORKSPACE_ID` | The workspace ID for this session |
+
+Use them directly in commands (e.g. `$CRADLE_CHAT_SESSION_ID`). They are available in both GUI (Claude Agent) and TUI (terminal) modes.
+
 ## Discovery
 
 ```bash
@@ -77,13 +88,21 @@ Use default output for human inspection, `--json <fields>` for structured Agent 
 Register an await to pause your session and let Cradle automatically resume it when an external condition is met:
 
 ```bash
-# Register a CI wait — Cradle will resume this session when CI passes
+# Register a CI wait on a PR — Cradle will resume this session when CI passes
 cradle session await-create \
   --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
   --workspace-id "$CRADLE_WORKSPACE_ID" \
   --source github-ci \
   --filter-json '{"repo":"owner/repo","pr":42}' \
   --reason "Waiting for CI on PR #42"
+
+# Register a CI wait on a specific commit (no PR needed)
+cradle session await-create \
+  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
+  --workspace-id "$CRADLE_WORKSPACE_ID" \
+  --source github-ci \
+  --filter-json '{"repo":"owner/repo","sha":"abc123def"}' \
+  --reason "Waiting for CI on commit abc123def"
 
 # Check await status
 cradle session await-summary --session-id "$CRADLE_CHAT_SESSION_ID"
@@ -99,9 +118,9 @@ cradle session await-trigger <awaitId> --resume-text "CI passed"
 ```
 
 **Key rules for await usage**:
-- Always use `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` from your system context.
+- `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` are automatically injected as environment variables by Cradle — they are always available in your shell without any setup.
 - After registering an await, end your turn. Cradle will resume the session with the trigger payload as a new user message.
-- Supported sources: `github-ci` (filter: `{"repo":"owner/repo","pr":N}`), `manual` (no filter needed).
+- Supported sources: `github-ci` (filter: `{"repo":"owner/repo","pr":N}` or `{"repo":"owner/repo","sha":"<commit-sha>"}`), `manual` (no filter needed).
 - Your session history is preserved — when resumed, you have full context of what you were doing.
 
 <!-- CRADLE_CLI_MODULES_START -->
