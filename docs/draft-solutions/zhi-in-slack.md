@@ -107,7 +107,7 @@ zhi 调用流程：
 
 You should active Skills: multi-work, exec-plan
 
-只有完全完成了 Electron Wrapper 的开发，才需要向用户报告，其他时间，靠 multi-work 和 exec-plan 来管理开发进度和细节就好
+只有完全完成 zhi in slack 的开发，才需要向用户报告，其他时间，靠 multi-work 和 exec-plan 来管理开发进度和细节就好
 
 可以直接把 cunzhi 给 clone 下来到我们这里来你一个一个对着来开发
 
