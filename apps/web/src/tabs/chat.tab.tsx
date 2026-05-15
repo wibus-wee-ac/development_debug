@@ -1,9 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs, ChatView/TuiView components, HTTP timeline, layout slots context
+// Input: defineTab from @cradle/tabs-next, ChatView/TuiView components, HTTP timeline, layout slots context
 // Output: chat tab definition with session message loader and per-tab layout (aside + shell panel)
 // Position: Tab type for chat sessions; forks to TuiView for cli-tui provider sessions
 
-import { defineTab, useTabsContext } from '@cradle/tabs'
+import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useReducer } from 'react'

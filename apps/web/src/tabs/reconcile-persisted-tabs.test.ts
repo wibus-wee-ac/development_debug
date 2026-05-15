@@ -1,4 +1,4 @@
-import type { TabInstance } from '@cradle/tabs'
+import type { TabInstance } from '@cradle/tabs-next'
 import { describe, expect, it } from 'vitest'
 
 import { reconcilePersistedTabs } from './reconcile-persisted-tabs'

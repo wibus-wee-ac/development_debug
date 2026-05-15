@@ -1,10 +1,10 @@
-// Input: global styles, app shell providers, theme store, @cradle/tabs library
+// Input: global styles, app shell providers, theme store, @cradle/tabs-next library
 // Output: App component — root shell with tab system, sidebar, and providers
 // Position: Top-level web app component (mounted from main.tsx)
 
 import './styles.css'
 
-import { TabRenderer, TabsProvider } from '@cradle/tabs'
+import { TabRenderer, TabsProvider } from '@cradle/tabs-next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import { useEffect } from 'react'
 

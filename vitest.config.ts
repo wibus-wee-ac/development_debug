@@ -7,6 +7,7 @@ export default defineConfig({
     alias: {
       '@cradle/ipc': resolve('packages/ipc/src/index.ts'),
       '@cradle/tabs': resolve('packages/tabs/src/index.ts'),
+      '@cradle/tabs-next': resolve('packages/tabs-next/src/index.ts'),
       '@shared': resolve('src/shared'),
     },
   },

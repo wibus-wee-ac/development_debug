@@ -1,9 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs, NewChatPage component, AppLayout
+// Input: defineTab from @cradle/tabs-next, NewChatPage component, AppLayout
 // Output: new-chat tab definition
 // Position: Tab type for creating a new chat session
 
-import { defineTab } from '@cradle/tabs'
+import { defineTab } from '@cradle/tabs-next'
 import { MessageSquarePlusIcon } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 

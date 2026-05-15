@@ -1,8 +1,8 @@
-// Input: all tab definitions, createTabStore from @cradle/tabs
+// Input: all tab definitions, createTabStore from @cradle/tabs-next
 // Output: cradleRegistry (tab type map), useCradleTabStore (bound store)
 // Position: Central registry connecting tab types to the store
 
-import { createTabStore } from '@cradle/tabs'
+import { createTabStore } from '@cradle/tabs-next'
 
 import { chatTab } from './chat.tab'
 import { homeTab } from './home.tab'

@@ -1,0 +1,22 @@
+{
+  "name": "@cradle/tabs-next",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-route tab runtime prototype for React desktop apps",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "peerDependencies": {
+    "@dnd-kit/core": ">=6.0.0",
+    "@dnd-kit/sortable": ">=10.0.0",
+    "@dnd-kit/utilities": ">=3.0.0",
+    "clsx": ">=2.0.0",
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0",
+    "tailwind-merge": ">=2.0.0",
+    "zustand": ">=5.0.0"
+  }
+}

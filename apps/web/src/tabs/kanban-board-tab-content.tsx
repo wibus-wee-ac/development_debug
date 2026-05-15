@@ -2,7 +2,7 @@
 // Output: KanbanBoardTabContent — wrapper handling board→workspace resolution and issue panel state
 // Position: Tab content adapter for kanban board
 
-import { useTabsContext } from '@cradle/tabs'
+import { useTabsContext } from '@cradle/tabs-next'
 import { LayoutDashboardIcon } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
 

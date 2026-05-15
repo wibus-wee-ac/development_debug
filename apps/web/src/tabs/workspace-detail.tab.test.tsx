@@ -30,7 +30,7 @@ const mockedDeps = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@cradle/tabs', () => ({
+vi.mock('@cradle/tabs-next', () => ({
   defineTab: <T,>(definition: T) => definition,
   useTabsContext: () => ({
     store: {

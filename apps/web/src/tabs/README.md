@@ -3,7 +3,7 @@
 # Tabs
 
 Cradle tab type definitions and central registry.
-Each `.tab.tsx` file defines a tab type using `defineTab()` from `@cradle/tabs`.
+Each `.tab.tsx` file defines a tab route using the migration `defineTab()` helper from `@cradle/tabs-next`.
 The registry exports the store instance consumed by the rest of the app.
 
 ## Files
