@@ -1,11 +1,11 @@
-// Input: HTTP terminal APIs, SSE stream, xterm Terminal + FitAddon + WebglAddon, app CSS theme vars
+// Input: HTTP terminal APIs, PTY WebSocket live channel, xterm Terminal + FitAddon + WebglAddon, app CSS theme vars
 // Output: TuiView — live terminal rendering for cli-tui sessions
 // Position: Session view rendered when session.agent resolves to a CliAgent
 //
 // Lifecycle: PTY runs in the server independently of this component.
-// On mount: call startOrAttach (starts new or reuses existing), then connect SSE stream.
-//           Buffer replay comes via the SSE 'terminal.buffer' event.
-// On unmount: dispose xterm instance and close SSE — PTY keeps running.
+// On mount: call startOrAttach (starts new or reuses existing), then connect PTY socket.
+//           Buffer replay comes via the socket snapshot event.
+// On unmount: dispose xterm instance and close the socket — PTY keeps running.
 // PTY is only stopped when the session is explicitly deleted.
 
 import '@xterm/xterm/css/xterm.css'
@@ -15,13 +15,13 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 
-import { postTerminalSessionsBySessionIdInput, postTerminalSessionsBySessionIdResize, postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
-import { getServerUrl } from '~/lib/electron'
+import { postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
 
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
+import { createPtyChannel } from './pty-channel'
 
-const SERVER_BASE = getServerUrl()
+const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
 
 interface TuiViewProps {
   sessionId: string
@@ -29,6 +29,7 @@ interface TuiViewProps {
 
 export function TuiView({ sessionId }: TuiViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const channelRef = useRef<ReturnType<typeof createPtyChannel> | null>(null)
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -82,14 +83,45 @@ export function TuiView({ sessionId }: TuiViewProps) {
         terminal.resize(pendingCols, pendingRows)
         lastCols = pendingCols
         lastRows = pendingRows
-        void postTerminalSessionsBySessionIdResize({ path: { sessionId }, body: { cols: lastCols, rows: lastRows } })
+        channel.sendResize(lastCols, lastRows)
       }, 100)
     }
 
-    let eventSource: EventSource | null = null
+    let exitShown = false
+
+    function writeSnapshot(buffer: string, running: boolean) {
+      terminal.reset()
+      if (buffer) {
+        terminal.write(buffer)
+      }
+      if (!running && !exitShown) {
+        exitShown = true
+        terminal.write(EXIT_BANNER)
+      }
+    }
+
+    const channel = createPtyChannel({
+      socketPath: `/terminal-sessions/${encodeURIComponent(sessionId)}/socket`,
+      onSnapshot(event) {
+        writeSnapshot(event.buffer, event.running)
+      },
+      onOutput(event) {
+        if (event.data) {
+          terminal.write(event.data)
+        }
+      },
+      onExit() {
+        if (exitShown) {
+          return
+        }
+        exitShown = true
+        terminal.write(EXIT_BANNER)
+      },
+    })
+    channelRef.current = channel
 
     void (async () => {
-      // Start or attach to terminal, then connect SSE stream
+      // Start or attach to terminal, then connect the live channel.
       const dims = fitAddon.proposeDimensions()
       const cols = dims && dims.cols > 0 ? dims.cols : 80
       const rows = dims && dims.rows > 0 ? dims.rows : 24
@@ -102,22 +134,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
         body: { cols, rows },
       })
 
-      // Connect to SSE stream for output
-      eventSource = new EventSource(`${SERVER_BASE}/terminal-sessions/${sessionId}/stream`)
-      eventSource.onmessage = (ev) => {
-        try {
-          const event = JSON.parse(ev.data) as { type: string, data?: string, exitCode?: number }
-          if (event.type === 'terminal.buffer' || event.type === 'terminal.data') {
-            if (event.data) {
-              terminal.write(event.data)
-            }
-          }
-          else if (event.type === 'terminal.exit') {
-            terminal.write('\r\n\x1B[2m[Process exited]\x1B[0m\r\n')
-          }
-        }
-        catch { /* ignore parse errors */ }
-      }
+      channel.connect()
     })()
 
     attachMacKeyboardHandler(terminal)
@@ -130,7 +147,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
 
     // Forward keystrokes to the server
     const dataDisposable = terminal.onData((data) => {
-      void postTerminalSessionsBySessionIdInput({ path: { sessionId }, body: { data } })
+      channel.sendInput(data)
     })
 
     // Resize observer: refit on container size change
@@ -147,7 +164,8 @@ export function TuiView({ sessionId }: TuiViewProps) {
       if (resizeTimer) {
         clearTimeout(resizeTimer)
       }
-      eventSource?.close()
+      channelRef.current = null
+      channel.close()
       dataDisposable.dispose()
       resizeObserver.disconnect()
       darkMq.removeEventListener('change', onColorSchemeChange)
@@ -159,12 +177,13 @@ export function TuiView({ sessionId }: TuiViewProps) {
     <div
       ref={containerRef}
       className="h-full w-full overflow-hidden"
+      data-testid="tui-view"
       style={{ padding: '4px 8px' }}
       onDrop={(e) => {
         e.preventDefault()
         const path = e.dataTransfer.getData('text/plain')
         if (path) {
-          void postTerminalSessionsBySessionIdInput({ path: { sessionId }, body: { data: `${path} ` } })
+          channelRef.current?.sendInput(`${path} `)
         }
       }}
       onDragOver={e => e.preventDefault()}

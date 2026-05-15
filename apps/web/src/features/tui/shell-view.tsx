@@ -1,6 +1,6 @@
-// Input: HTTP shell APIs, SSE stream, xterm Terminal + full addon suite, app CSS theme vars
+// Input: HTTP shell APIs, PTY WebSocket live channel, xterm Terminal + full addon suite, app CSS theme vars
 // Output: ShellView — interactive shell terminal for the bottom panel
-// Position: Rendered as the bottom panel for chat sessions; ptyId is session-scoped
+// Position: Rendered as the bottom panel for chat sessions; ptyId is panel-scoped
 
 import '@xterm/xterm/css/xterm.css'
 
@@ -17,21 +17,40 @@ import { useEffect, useRef } from 'react'
 
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
-import { getShellStreamUrl, resizeShell, sendShellInput, startShell } from './shell-api'
+import { createPtyChannel } from './pty-channel'
+import { startShell, stopShell } from './shell-api'
+
+const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
+const MAX_TRANSCRIPT_CHARS = 8_000
+
+function toPlainTerminalText(value: string): string {
+  return value
+    .replace(/\u001B\][^\u0007]*(\u0007|\u001B\\)/g, '')
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\r/g, '')
+    .replace(/\u0008/g, '')
+}
 
 interface ShellViewProps {
   /** Stable ID for this shell PTY — typically `shell:<sessionId>:<generation>` */
   ptyId: string
   /** Working directory for the shell. Must be an absolute path. */
   cwd: string
+  /** Whether the owning bottom panel is currently open. */
+  active?: boolean
   /** Called when the shell process exits, so the parent can reset the key. */
   onExited?: () => void
 }
 
-export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
+export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const transcriptRef = useRef<HTMLPreElement>(null)
 
   useEffect(() => {
+    if (!active) {
+      return
+    }
+
     if (!containerRef.current) {
       return
     }
@@ -88,7 +107,58 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
     let pendingRows = 0
     let shellStarted = false
     let initDebounceTimer: ReturnType<typeof setTimeout> | null = null
-    let eventSource: EventSource | null = null
+    let exitShown = false
+
+    function setTranscript(next: string) {
+      const transcript = transcriptRef.current
+      if (!transcript) {
+        return
+      }
+      transcript.textContent = next.slice(-MAX_TRANSCRIPT_CHARS)
+    }
+
+    function appendTranscript(next: string) {
+      const transcript = transcriptRef.current
+      if (!transcript) {
+        return
+      }
+      const current = transcript.textContent ?? ''
+      transcript.textContent = `${current}${next}`.slice(-MAX_TRANSCRIPT_CHARS)
+    }
+
+    function writeSnapshot(buffer: string, running: boolean) {
+      terminal.reset()
+      setTranscript(toPlainTerminalText(buffer))
+      if (buffer) {
+        terminal.write(buffer)
+      }
+      if (!running && !exitShown) {
+        exitShown = true
+        appendTranscript(toPlainTerminalText(EXIT_BANNER))
+        terminal.write(EXIT_BANNER)
+      }
+    }
+
+    const channel = createPtyChannel({
+      socketPath: `/terminal-sessions/shell/${encodeURIComponent(ptyId)}/socket`,
+      onSnapshot(event) {
+        writeSnapshot(event.buffer, event.running)
+      },
+      onOutput(event) {
+        if (event.data) {
+          appendTranscript(toPlainTerminalText(event.data))
+          terminal.write(event.data)
+        }
+      },
+      onExit() {
+        if (!exitShown) {
+          exitShown = true
+          appendTranscript(toPlainTerminalText(EXIT_BANNER))
+          terminal.write(EXIT_BANNER)
+        }
+        onExited?.()
+      },
+    })
 
     function applyResize(cols: number, rows: number) {
       if (cols <= 0 || rows <= 0) {
@@ -107,7 +177,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
         terminal.resize(pendingCols, pendingRows)
         lastCols = pendingCols
         lastRows = pendingRows
-        void resizeShell(ptyId, lastCols, lastRows)
+        channel.sendResize(lastCols, lastRows)
       }, 100)
     }
 
@@ -117,24 +187,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
       lastRows = rows
 
       await startShell({ ptyId, cwd, cols, rows })
-
-      // Connect SSE stream for output
-      eventSource = new EventSource(getShellStreamUrl(ptyId))
-      eventSource.onmessage = (ev) => {
-        try {
-          const event = JSON.parse(ev.data) as { type: string, data?: string, exitCode?: number }
-          if (event.type === 'terminal.buffer' || event.type === 'terminal.data') {
-            if (event.data) {
-              terminal.write(event.data)
-            }
-          }
-          else if (event.type === 'terminal.exit') {
-            terminal.write('\r\n\x1B[2m[Process exited]\x1B[0m\r\n')
-            onExited?.()
-          }
-        }
-        catch { /* ignore parse errors */ }
-      }
+      channel.connect()
     }
 
     function fitAndNotify() {
@@ -191,7 +244,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
     darkMq.addEventListener('change', onColorSchemeChange)
 
     const dataDisposable = terminal.onData((data) => {
-      void sendShellInput(ptyId, data)
+      channel.sendInput(data)
     })
 
     const resizeObserver = new ResizeObserver(() => {
@@ -206,20 +259,27 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
       if (initDebounceTimer) {
         clearTimeout(initDebounceTimer)
       }
-      eventSource?.close()
+      void stopShell(ptyId).catch(() => {})
+      channel.close()
       dataDisposable.dispose()
       resizeObserver.disconnect()
       darkMq.removeEventListener('change', onColorSchemeChange)
       terminal.dispose()
     }
-  }, [ptyId, cwd, onExited])
+  }, [ptyId, cwd, active, onExited])
 
   return (
     <div
-      ref={containerRef}
       className="h-full w-full overflow-hidden bg-background"
+      data-testid="shell-view"
       data-shell-view="true"
-      style={{ padding: '4px 8px' }}
-    />
+    >
+      <div
+        ref={containerRef}
+        className="h-full w-full overflow-hidden"
+        style={{ padding: '4px 8px' }}
+      />
+      <pre className="sr-only" data-testid="shell-view-transcript" ref={transcriptRef} />
+    </div>
   )
 }

@@ -1,0 +1,200 @@
+// Input: socket path + PTY live channel callbacks
+// Output: Shared PTY WebSocket adapter with reconnect, ping, and input/resize send helpers
+// Position: Transport layer shared by TuiView and ShellView
+
+import { getServerWebSocketUrl } from '~/lib/electron'
+
+import type { PtyClientEvent, PtyErrorEvent, PtyExitEvent, PtyOutputEvent, PtySnapshotEvent } from './pty-protocol'
+import { parsePtyServerEvent } from './pty-protocol'
+
+interface PtyChannelOptions {
+  socketPath: string
+  fromSeq?: number
+  reconnect?: boolean
+  reconnectDelayMs?: number
+  pingIntervalMs?: number
+  onSnapshot: (event: PtySnapshotEvent) => void
+  onOutput: (event: PtyOutputEvent) => void
+  onExit: (event: PtyExitEvent) => void
+  onError?: (event: PtyErrorEvent) => void
+  onOpen?: () => void
+  onClose?: () => void
+}
+
+export interface PtyChannel {
+  connect: () => void
+  sendInput: (data: string) => void
+  sendResize: (cols: number, rows: number) => void
+  ping: () => void
+  close: () => void
+  getLastSeq: () => number | null
+}
+
+const DEFAULT_RECONNECT_DELAY_MS = 750
+const DEFAULT_PING_INTERVAL_MS = 15_000
+
+export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
+  let socket: WebSocket | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let pingTimer: ReturnType<typeof setInterval> | null = null
+  let closedManually = false
+  let exitSeen = false
+  let lastSeq = options.fromSeq ?? null
+  const pendingMessages: PtyClientEvent[] = []
+
+  const reconnectEnabled = options.reconnect ?? true
+  const reconnectDelayMs = options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS
+  const pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS
+
+  function clearReconnectTimer() {
+    if (!reconnectTimer) {
+      return
+    }
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+
+  function stopPingLoop() {
+    if (!pingTimer) {
+      return
+    }
+    clearInterval(pingTimer)
+    pingTimer = null
+  }
+
+  function startPingLoop() {
+    stopPingLoop()
+    pingTimer = setInterval(() => {
+      send({ type: 'ping' }, false)
+    }, pingIntervalMs)
+  }
+
+  function flushPendingMessages() {
+    if (!socket || socket.readyState !== WebSocket.OPEN || pendingMessages.length === 0) {
+      return
+    }
+
+    const queued = pendingMessages.splice(0, pendingMessages.length)
+    for (const message of queued) {
+      socket.send(JSON.stringify(message))
+    }
+  }
+
+  function send(message: PtyClientEvent, allowQueue = true) {
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(message))
+      return
+    }
+
+    if (allowQueue && !closedManually) {
+      pendingMessages.push(message)
+    }
+  }
+
+  function emitError(code: string, message: string) {
+    options.onError?.({ type: 'error', code, message })
+  }
+
+  function scheduleReconnect() {
+    if (!reconnectEnabled || closedManually || exitSeen || reconnectTimer) {
+      return
+    }
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      connect()
+    }, reconnectDelayMs)
+  }
+
+  function handleMessage(raw: string) {
+    const event = parsePtyServerEvent(raw)
+    if (!event) {
+      emitError('INVALID_MESSAGE', '收到无法解析的 PTY socket 消息')
+      return
+    }
+
+    switch (event.type) {
+      case 'snapshot':
+        lastSeq = event.seq
+        options.onSnapshot(event)
+        return
+      case 'output':
+        lastSeq = event.seq
+        options.onOutput(event)
+        return
+      case 'exit':
+        exitSeen = true
+        lastSeq = event.seq
+        options.onExit(event)
+        return
+      case 'pong':
+        return
+      case 'error':
+        options.onError?.(event)
+        return
+    }
+  }
+
+  function connect() {
+    if (closedManually) {
+      return
+    }
+
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      return
+    }
+
+    const url = getServerWebSocketUrl(options.socketPath, lastSeq === null ? undefined : { fromSeq: lastSeq })
+    socket = new WebSocket(url)
+
+    socket.addEventListener('open', () => {
+      clearReconnectTimer()
+      startPingLoop()
+      flushPendingMessages()
+      options.onOpen?.()
+    })
+
+    socket.addEventListener('message', (event) => {
+      if (typeof event.data !== 'string') {
+        emitError('UNSUPPORTED_MESSAGE', '收到非文本 PTY socket 消息')
+        return
+      }
+      handleMessage(event.data)
+    })
+
+    socket.addEventListener('error', () => {
+      emitError('SOCKET_ERROR', 'PTY socket 连接发生错误')
+    })
+
+    socket.addEventListener('close', () => {
+      stopPingLoop()
+      socket = null
+      options.onClose?.()
+      scheduleReconnect()
+    })
+  }
+
+  return {
+    connect,
+    sendInput(data) {
+      send({ type: 'input', data })
+    },
+    sendResize(cols, rows) {
+      send({ type: 'resize', cols, rows })
+    },
+    ping() {
+      send({ type: 'ping' }, false)
+    },
+    close() {
+      closedManually = true
+      clearReconnectTimer()
+      stopPingLoop()
+      pendingMessages.length = 0
+      socket?.close()
+      socket = null
+    },
+    getLastSeq() {
+      return lastSeq
+    },
+  }
+}
