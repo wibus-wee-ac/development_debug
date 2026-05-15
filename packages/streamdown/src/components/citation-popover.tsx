@@ -39,6 +39,9 @@ export function CitationPopover({ containerRef, citations, renderPopover }: Cita
     // TreeWalker to find text nodes with citation patterns
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) => {
+        if (!(node instanceof Text)) {
+          return NodeFilter.FILTER_REJECT
+        }
         if (processedRef.current.has(node)) {
           return NodeFilter.FILTER_REJECT
         }

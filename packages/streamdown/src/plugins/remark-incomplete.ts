@@ -72,8 +72,10 @@ export function patchIncomplete(md: string): string {
   const fenceMatches = result.match(FENCE_OPEN_RE)
   if (fenceMatches && fenceMatches.length % 2 !== 0) {
     const lastFence = fenceMatches.at(-1)
-    const marker = lastFence.replace(FENCE_CHAR_STRIP_RE, '').slice(0, 3)
-    result = `${result}\n${marker}`
+    if (lastFence) {
+      const marker = lastFence.replace(FENCE_CHAR_STRIP_RE, '').slice(0, 3)
+      result = `${result}\n${marker}`
+    }
   }
 
   // 3. Unclosed inline code (odd backticks outside fenced blocks)
