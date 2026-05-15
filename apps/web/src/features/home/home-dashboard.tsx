@@ -455,7 +455,7 @@ export function HomeDashboard() {
               ))}
               <button
                 type="button"
-                className="mt-0.5 flex items-center gap-2 rounded-md border border-dashed border-border/30 px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border/60"
+                className="mt-0.5 flex items-center gap-2 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border/60"
               >
                 + 新建自动化
               </button>

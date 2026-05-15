@@ -645,7 +645,7 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
   }
 
   return (
-    <div className="w-62 shrink-0 overflow-y-auto border-l border-border/30">
+    <div className="w-62 shrink-0 overflow-y-auto border-l border-border">
       <div className="space-y-1 px-3 pt-3 pb-2">
         <button
           type="button"

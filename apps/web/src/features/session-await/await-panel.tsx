@@ -272,7 +272,7 @@ function TreeItem({ node, isLast: _isLast }: { node: TreeNode, isLast: boolean }
           {node.label}
         </span>
         {node.run?.required && (
-          <span className="shrink-0 text-[9px] text-muted-foreground/40 border border-border/30 rounded px-0.5">req</span>
+          <span className="shrink-0 text-[9px] text-muted-foreground/40 border border-border rounded px-0.5">req</span>
         )}
       </div>
 
@@ -293,7 +293,7 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
 
   if (!data || !data.supported) {
     return (
-      <div className="rounded-md border border-border/30 p-3">
+      <div className="rounded-md border border-border p-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="capitalize">{awaitRow.source}</span>
           <span>·</span>
@@ -307,7 +307,7 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
 
   if (!ci.hasToken) {
     return (
-      <div className="rounded-md border border-border/30 p-3">
+      <div className="rounded-md border border-border p-3">
         <div className="flex items-center gap-2 text-xs text-amber-500">
           <GitHubIcon />
           <span>GitHub token not available</span>
@@ -319,7 +319,7 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
   const tree = buildRunTree(ci.runs)
 
   return (
-    <div className="rounded-md border border-border/30 overflow-hidden">
+    <div className="rounded-md border border-border overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         <GitHubIcon className="shrink-0 text-foreground/70" />

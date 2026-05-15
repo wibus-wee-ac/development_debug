@@ -69,7 +69,7 @@ export function RightAside({ workspaceId, workspacePath, sessionId }: RightAside
   return (
     <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside" data-active-tab={activeTab}>
       {/* ── Tab bar ─────────────────────────────────────── */}
-      <div className="flex shrink-0 items-center gap-0.5 border-b border-border/30 px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-2 py-1.5">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}

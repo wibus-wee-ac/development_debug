@@ -28,15 +28,15 @@ export function MemoryPanel() {
           ? (
               <table className="w-full text-left">
                 <tbody>
-                  <tr className="border-b border-border/30">
+                  <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">Heap Used</td>
                     <td className="py-1.5 text-foreground">{toMB(latest.heapUsed)} MB</td>
                   </tr>
-                  <tr className="border-b border-border/30">
+                  <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">Heap Total</td>
                     <td className="py-1.5 text-foreground">{toMB(latest.heapTotal)} MB</td>
                   </tr>
-                  <tr className="border-b border-border/30">
+                  <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">Heap Limit</td>
                     <td className="py-1.5 text-foreground">{toMB(latest.heapLimit)} MB</td>
                   </tr>
@@ -59,7 +59,7 @@ export function MemoryPanel() {
             </thead>
             <tbody>
               {recentSnapshots.map((snap) => (
-                <tr key={snap.timestamp} className="border-b border-border/30">
+                <tr key={snap.timestamp} className="border-b border-border">
                   <td className="py-1 pr-3 text-muted-foreground">
                     {formatTimeOnly(snap.timestamp)}
                   </td>
@@ -85,7 +85,7 @@ export function MemoryPanel() {
             </thead>
             <tbody>
               {vitals.map((v) => (
-                <tr key={v.name} className="border-b border-border/30">
+                <tr key={v.name} className="border-b border-border">
                   <td className="py-1 pr-3 text-muted-foreground">{v.name}</td>
                   <td className="py-1 pr-3">{v.value.toFixed(2)}</td>
                   <td className="py-1">{v.rating}</td>

@@ -52,18 +52,15 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
     >
       {linkInput
         ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              applyLink()
-            }}
-            className="flex items-center gap-1"
-          >
+          <div className="flex items-center gap-1">
             <input
               ref={inputRef}
               value={linkUrl}
               onChange={e => setLinkUrl(e.target.value)}
               onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  applyLink()
+                }
                 if (e.key === 'Escape') {
                   setLinkInput(false)
                 }
@@ -71,10 +68,10 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
               placeholder="https://"
               className="h-6 w-40 rounded bg-transparent px-1.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/40"
             />
-            <ToolbarButton active={false} type="submit" aria-label="Apply link">
+            <ToolbarButton active={false} onClick={applyLink} aria-label="Apply link">
               <LinkIcon className="size-3.5" />
             </ToolbarButton>
-          </form>
+          </div>
         )
         : (
           <>

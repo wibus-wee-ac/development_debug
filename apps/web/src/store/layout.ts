@@ -17,6 +17,7 @@ interface LayoutState {
   bottomPanelOpen: boolean
   isSettings: boolean
   settingsSection: string
+  jarvisExpanded: boolean
   setSidebarWidth: (w: number) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
@@ -30,6 +31,7 @@ interface LayoutState {
   openSettings: () => void
   closeSettings: () => void
   setSettingsSection: (section: string) => void
+  setJarvisExpanded: (expanded: boolean) => void
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -44,6 +46,7 @@ export const useLayoutStore = create<LayoutState>()(
       bottomPanelOpen: false,
       isSettings: false,
       settingsSection: 'appearance',
+      jarvisExpanded: false,
       setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
       setSidebarCollapsed: sidebarCollapsed => set({ sidebarCollapsed }),
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -57,6 +60,7 @@ export const useLayoutStore = create<LayoutState>()(
       openSettings: () => set({ isSettings: true }),
       closeSettings: () => set({ isSettings: false }),
       setSettingsSection: (settingsSection: string) => set({ settingsSection }),
+      setJarvisExpanded: (jarvisExpanded: boolean) => set({ jarvisExpanded }),
     }),
     {
       name: 'cradle:layout:v1',

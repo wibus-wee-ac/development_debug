@@ -82,7 +82,7 @@ export function HealthPanel() {
       <table className="w-full text-left font-mono text-[11px]">
         <tbody>
           {rows.map(([label, value]) => (
-            <tr key={label} className="border-b border-border/30">
+            <tr key={label} className="border-b border-border">
               <td className="py-2 pr-6 text-muted-foreground">{label}</td>
               <td className="py-2 text-foreground">{value}</td>
             </tr>

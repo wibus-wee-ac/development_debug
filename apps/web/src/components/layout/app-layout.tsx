@@ -18,7 +18,7 @@ import { useLayoutStore } from '~/store/layout'
 const ASIDE = { min: 200, max: 560 }
 const PANEL = { min: 80, max: 480 }
 
-const SPRING = { type: 'spring', stiffness: 600, damping: 40 } as const
+const SPRING = { type: 'spring', stiffness: 600, damping: 50 } as const
 const INSTANT = { duration: 0 } as const
 
 interface AppLayoutProps {
@@ -56,6 +56,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
     bottomPanelHeight,
     setBottomPanelHeight,
     bottomPanelOpen,
+    jarvisExpanded,
   } = useLayoutStore()
 
   return (
@@ -70,7 +71,9 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Center column */}
         <m.div
+          data-slot="app-center-column"
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
+          animate={jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }}
           transition={SPRING}
         >
           <main className="flex flex-col flex-1 bg-background overflow-hidden rounded-xl">
