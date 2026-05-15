@@ -4,7 +4,6 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'
-import { startTransition, useEffect, useState } from 'react'
 
 import { getWorkflowRulesByWorkspaceId, putWorkflowRulesByWorkspaceId } from '~/api-gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
@@ -23,6 +22,13 @@ function useWorkflowRule(workspaceId: string, agentId: string | null) {
     },
     enabled: !!workspaceId,
   })
+}
+
+export function useWorkspaceWorkflowRuleContent(workspaceId: string, agentId: string | null) {
+  const { data } = useWorkflowRule(workspaceId, agentId)
+  return agentId
+    ? (data?.profileSpecific ?? null)
+    : (data?.global ?? null)
 }
 
 function useSaveWorkflowRule() {
@@ -78,26 +84,15 @@ function RuleEditor({
 
 export function WorkspaceWorkflowRules({
   workspaceId,
-  onContentChange,
+  selectedAgentId,
+  onSelectedAgentId,
 }: {
   workspaceId: string
-  onContentChange?: (content: string | null) => void
+  selectedAgentId: string | null
+  onSelectedAgentId: (agentId: string | null) => void
 }) {
   const { agents } = useAgents()
   const enabledAgents = agents.filter(a => a.enabled)
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-
-  // Report active content to parent for TOC — deferred to avoid blocking tab switch
-  const { data: activeRuleData } = useWorkflowRule(workspaceId, selectedAgentId)
-  const activeContent = selectedAgentId
-    ? (activeRuleData?.profileSpecific ?? null)
-    : (activeRuleData?.global ?? null)
-
-  useEffect(() => {
-    startTransition(() => {
-      onContentChange?.(activeContent)
-    })
-  }, [activeContent, onContentChange])
 
   const activeScope = selectedAgentId
     ? enabledAgents.find(a => a.id === selectedAgentId)
@@ -109,7 +104,7 @@ export function WorkspaceWorkflowRules({
       <div className="flex gap-1.5" data-testid="workspace-workflow-rules-scope-selector">
         <button
           type="button"
-          onClick={() => setSelectedAgentId(null)}
+          onClick={() => onSelectedAgentId(null)}
           data-testid="workspace-workflow-rules-scope-global"
           data-scope-active={!selectedAgentId ? 'true' : 'false'}
           className={cn(
@@ -126,7 +121,7 @@ export function WorkspaceWorkflowRules({
           <button
             key={agent.id}
             type="button"
-            onClick={() => setSelectedAgentId(agent.id)}
+            onClick={() => onSelectedAgentId(agent.id)}
             data-testid={`workspace-workflow-rules-scope-agent-${agent.id}`}
             data-scope-active={selectedAgentId === agent.id ? 'true' : 'false'}
             className={cn(

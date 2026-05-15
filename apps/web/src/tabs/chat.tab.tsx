@@ -6,7 +6,7 @@
 import { defineTab, useTabsContext } from '@cradle/tabs'
 import { useQuery } from '@tanstack/react-query'
 import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useReducer } from 'react'
 
 import { getProfilesById, getSessionsById, getWorkspacesById } from '~/api-gen/sdk.gen'
 import { RightAside } from '~/components/layout/right-aside'
@@ -17,13 +17,64 @@ import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
 import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, Session, Workspace } from '~/lib/types'
+import { useLayoutStore } from '~/store/layout'
 
 const ChatView = lazy(() => import('~/features/chat/chat-view').then(m => ({ default: m.ChatView })))
+
+function ChatTabLayoutSlots({
+  sessionId,
+  workspaceId,
+  workspacePath,
+}: {
+  sessionId: string
+  workspaceId: string | null
+  workspacePath: string | null
+}) {
+  const [shellGen, bumpShellGen] = useReducer((value: number) => value + 1, 0)
+  const hasWorkspace = !!(workspaceId && workspacePath)
+  const closeBottomPanel = useLayoutStore(s => s.setBottomPanelOpen)
+
+  const aside = useMemo(
+    () => (
+      <RightAside
+        workspaceId={workspaceId}
+        workspacePath={workspacePath}
+        sessionId={sessionId}
+      />
+    ),
+    [workspaceId, workspacePath, sessionId],
+  )
+
+  const panel = useMemo(
+    () => hasWorkspace
+      ? (
+        <ShellView
+          key={`${sessionId}:${shellGen}`}
+          ptyId={`shell:${sessionId}:${shellGen}`}
+          cwd={workspacePath!}
+          onExited={() => {
+            closeBottomPanel(false)
+            bumpShellGen()
+          }}
+        />
+      )
+      : undefined,
+    [closeBottomPanel, hasWorkspace, workspacePath, sessionId, shellGen],
+  )
+
+  useRegisterLayoutSlots(sessionId, useMemo(() => ({
+    hasAside: true,
+    hasPanel: hasWorkspace,
+    aside,
+    panel,
+  }), [hasWorkspace, aside, panel]))
+
+  return null
+}
 
 function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatTimelineGroupRow[] }) {
   const { sessionId } = params
   const { store } = useTabsContext()
-  const [shellGen, setShellGen] = useState(0)
 
   // Fetch session metadata to get workspaceId → workspacePath for aside/panel
   const { data: session } = useQuery({
@@ -75,54 +126,27 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
 
   const hasWorkspace = !!(workspaceId && workspacePath)
 
-  // Memoize each slot so register() can bail out on reference equality
-  const aside = useMemo(
-    () => (
-      <RightAside
-        workspaceId={workspaceId}
-        workspacePath={workspacePath}
-        sessionId={sessionId}
-      />
-    ),
-    [workspaceId, workspacePath, sessionId],
-  )
-
-  const panel = useMemo(
-    () => hasWorkspace
-      ? (
-        <ShellView
-          key={`${sessionId}:${shellGen}`}
-          ptyId={`shell:${sessionId}:${shellGen}`}
-          cwd={workspacePath!}
-          onExited={() => setShellGen(g => g + 1)}
-        />
-      )
-      : undefined,
-
-    [hasWorkspace, workspacePath, sessionId, shellGen],
-  )
-
-  // cli-tui sessions: full-screen terminal but still expose aside/panel
-  useRegisterLayoutSlots(sessionId, useMemo(() => ({
-    hasAside: true,
-    hasPanel: hasWorkspace,
-    aside,
-    panel,
-  }), [hasWorkspace, aside, panel]))
-
   if (isCliTui) {
-    return <TuiView sessionId={sessionId} />
+    return (
+      <>
+        <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
+        <TuiView sessionId={sessionId} />
+      </>
+    )
   }
 
   return (
-    <Suspense fallback={null}>
-      {hasWorkspace && (
-        <div className="flex items-center gap-2 border-b border-border/50 px-4 py-1">
-          <GitBranchControl workspaceId={workspaceId} />
-        </div>
-      )}
-      <ChatView key={sessionId} sessionId={sessionId} initialTimelineGroups={loaderData} />
-    </Suspense>
+    <>
+      <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
+      <Suspense fallback={null}>
+        {hasWorkspace && (
+          <div className="flex items-center gap-2 border-b border-border/50 px-4 py-1">
+            <GitBranchControl workspaceId={workspaceId} />
+          </div>
+        )}
+        <ChatView key={sessionId} sessionId={sessionId} initialTimelineGroups={loaderData} />
+      </Suspense>
+    </>
   )
 }
 

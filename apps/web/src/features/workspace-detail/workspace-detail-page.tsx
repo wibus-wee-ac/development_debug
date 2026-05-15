@@ -30,7 +30,7 @@ import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { CapsuleComposer } from './capsule-composer'
 import { useWorkspaceFile } from './use-workspace-file'
-import { WorkspaceWorkflowRules } from './workspace-workflow-rules'
+import { useWorkspaceWorkflowRuleContent, WorkspaceWorkflowRules } from './workspace-workflow-rules'
 
 /* ─── Types ──────────────────────────────────────────────── */
 
@@ -109,6 +109,51 @@ function parseHeadings(markdown: string | null, file: string): TocHeading[] {
 
 /* ─── Inline editable title ──────────────────────────────── */
 
+function InlineEditTitleEditor({
+  initialValue,
+  onCommit,
+  onCancel,
+}: {
+  initialValue: string
+  onCommit: (name: string) => void
+  onCancel: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    })
+  }, [])
+
+  const commit = useCallback(() => {
+    const trimmed = inputRef.current?.value.trim() ?? ''
+    if (trimmed && trimmed !== initialValue) {
+      onCommit(trimmed)
+    }
+    onCancel()
+  }, [initialValue, onCancel, onCommit])
+
+  return (
+    <input
+      ref={inputRef}
+      data-testid="workspace-detail-title-input"
+      defaultValue={initialValue}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          commit()
+        }
+        if (e.key === 'Escape') {
+          onCancel()
+        }
+      }}
+      className="w-full max-w-80 border-b border-foreground/20 bg-transparent py-px text-lg font-semibold text-foreground outline-none focus:border-foreground/50"
+    />
+  )
+}
+
 function InlineEditTitle({
   value,
   onSave,
@@ -117,61 +162,28 @@ function InlineEditTitle({
   onSave: (name: string) => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(value)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    setDraft(value)
-  }, [value])
-
-  const startEditing = useCallback(() => {
-    setEditing(true)
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    })
-  }, [])
-
-  const commit = useCallback(() => {
-    const trimmed = draft.trim()
-    if (trimmed && trimmed !== value) {
-      onSave(trimmed)
-    }
-    setEditing(false)
-  }, [draft, value, onSave])
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        data-testid="workspace-detail-title-input"
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            commit()
-          }
-          if (e.key === 'Escape') {
-            setDraft(value)
-            setEditing(false)
-          }
-        }}
-        className="bg-transparent text-lg font-semibold text-foreground outline-none border-b border-foreground/20 focus:border-foreground/50 w-full max-w-80 py-px"
-      />
-    )
-  }
 
   return (
-    <button
-      type="button"
-      onClick={startEditing}
-      data-testid="workspace-detail-title-trigger"
-      className="group inline-flex items-center gap-2 text-left"
-    >
-      <span className="text-lg font-semibold text-foreground">{value}</span>
-      <PencilIcon className="size-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
-    </button>
+    editing
+      ? (
+          <InlineEditTitleEditor
+            key={value}
+            initialValue={value}
+            onCommit={onSave}
+            onCancel={() => setEditing(false)}
+          />
+        )
+      : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            data-testid="workspace-detail-title-trigger"
+            className="group inline-flex items-center gap-2 text-left"
+          >
+            <span className="text-lg font-semibold text-foreground">{value}</span>
+            <PencilIcon className="size-3 text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100" />
+          </button>
+        )
   )
 }
 
@@ -348,16 +360,14 @@ function FloatingToc({
   )
 }
 
-/* ─── Main ───────────────────────────────────────────────── */
-
-export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
+function useWorkspaceDetailOwner(workspaceId: string) {
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const now = useNow()
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules' | 'skills'>('overview')
-  const [workflowContent, setWorkflowContent] = useState<string | null>(null)
+  const [selectedWorkflowAgentId, setSelectedWorkflowAgentId] = useState<string | null>(null)
 
   const { data: workspace } = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -388,6 +398,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   })
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
+  const workflowContent = useWorkspaceWorkflowRuleContent(workspaceId, selectedWorkflowAgentId)
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
@@ -404,7 +415,6 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     return top
   }, [sessions])
 
-  // Parse headings for TOC (differs per active tab)
   const headings = useMemo(() => {
     if (activeTab === 'overview') {
       return parseHeadings(agents.content, 'AGENTS.md')
@@ -466,7 +476,6 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     }
   }, [])
 
-  // Track scroll position for active heading
   useEffect(() => {
     const container = scrollRef.current
     if (!container) {
@@ -505,7 +514,221 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
     }
   }, [activeTab])
 
+  return {
+    activeSlug,
+    activeTab,
+    agents,
+    gitStatus,
+    handleCapsuleSend,
+    handleNewChat,
+    handleOpenInApp,
+    handleOpenInFinder,
+    handleRename,
+    handleTocNavigate,
+    headings,
+    now,
+    openTab,
+    queryClient,
+    recentSessions,
+    scrollRef,
+    selectedWorkflowAgentId,
+    sessions,
+    setActiveTab,
+    setSelectedWorkflowAgentId,
+    workspace,
+    workspaceId,
+  }
+}
+
+function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
+  const { activeTab, agents, handleCapsuleSend, handleRename, scrollRef, selectedWorkflowAgentId, setActiveTab, setSelectedWorkflowAgentId, workspace, workspaceId } = owner
+
   if (!workspace) {
+    return null
+  }
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <div ref={scrollRef} className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <m.div className="mx-auto max-w-2xl px-2 py-6">
+          <div className="mb-6">
+            <InlineEditTitle value={workspace.name} onSave={handleRename} />
+            <p data-testid="workspace-detail-path" className="mt-1 truncate font-mono text-[12px] text-muted-foreground">
+              {workspace.path}
+            </p>
+          </div>
+
+          <div className="mb-6 flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+            {([
+              { id: 'overview', label: 'Overview', icon: FileTextIcon },
+              { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
+              { id: 'skills', label: 'Skills', icon: PencilIcon },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                data-testid={`workspace-detail-tab-${id}`}
+                className={cn(
+                  'relative z-10 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors select-none',
+                  activeTab === id
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {activeTab === id && (
+                  <m.span
+                    layoutId="workspace-detail-tab-pill"
+                    className="absolute inset-0 rounded-md bg-accent"
+                    transition={{ type: 'spring', stiffness: 600, damping: 40 }}
+                    style={{ zIndex: -1 }}
+                  />
+                )}
+                <Icon className="relative size-3.5 shrink-0" />
+                <span className="relative">{label}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className={activeTab === 'overview' ? undefined : 'hidden'}>
+            <DocumentSection
+              id="section-agents"
+              filename="AGENTS.md"
+              testId="workspace-detail-agents-section"
+              file={agents}
+              placeholder="配置 Agent 指令..."
+            />
+
+            {agents.content === null && !agents.loading && (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                该项目中没有 AGENTS.md 文件
+              </div>
+            )}
+          </div>
+
+          <div className={activeTab === 'workflow-rules' ? undefined : 'hidden'}>
+            <WorkspaceWorkflowRules
+              workspaceId={workspaceId}
+              selectedAgentId={selectedWorkflowAgentId}
+              onSelectedAgentId={setSelectedWorkflowAgentId}
+            />
+          </div>
+
+          <div className={activeTab === 'skills' ? undefined : 'hidden'}>
+            <SkillManager
+              workspaceId={workspaceId}
+              editableScope="workspace"
+              pageTestId="workspace-skills-page"
+              title="Workspace Skills"
+              description="Manage repository-specific skills under .agents/skills while reviewing inherited global and built-in skills."
+            />
+          </div>
+
+          <div className="h-28" />
+        </m.div>
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
+        <div className="pointer-events-auto mx-auto max-w-2xl">
+          <CapsuleComposer workspaceId={workspaceId} onSend={handleCapsuleSend} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
+  const { gitStatus, handleNewChat, handleOpenInApp, handleOpenInFinder, now, openTab, recentSessions, sessions, workspace } = owner
+
+  if (!workspace) {
+    return null
+  }
+
+  return (
+    <div className="w-62 shrink-0 overflow-y-auto border-l border-border/30">
+      <div className="space-y-1 px-3 pt-3 pb-2">
+        <button
+          type="button"
+          onClick={handleOpenInFinder}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <FolderOpenIcon className="size-3.5" />
+          在 Finder 中打开
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleOpenInApp()}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <ExternalLinkIcon className="size-3.5" />
+          在编辑器中打开
+        </button>
+      </div>
+
+      <div className="mx-3 h-px bg-border/30" />
+
+      <div className="space-y-2.5 p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">分支</span>
+          <span className="max-w-28 truncate font-mono text-[12px] text-muted-foreground">{(gitStatus as { branch?: string } | null)?.branch ?? '—'}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">会话</span>
+          <span className="text-[12px] text-muted-foreground">{sessions.length}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">创建</span>
+          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.createdAt)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-muted-foreground">更新</span>
+          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.updatedAt)}</span>
+        </div>
+      </div>
+
+      <div className="mx-3 h-px bg-border/30" />
+
+      <div className="px-3 pt-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="select-none text-[11px] text-muted-foreground">最近会话</span>
+          <Button variant="ghost" size="icon-xs" onClick={handleNewChat} aria-label="新建聊天">
+            <MessageSquarePlusIcon className="size-3" />
+          </Button>
+        </div>
+
+        {recentSessions.length === 0
+          ? (
+            <p className="py-4 text-center text-[11px] text-muted-foreground">暂无会话</p>
+          )
+          : (
+            <div className="flex flex-col gap-0.5 pb-3">
+              {recentSessions.map(session => (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => openTab('chat', { sessionId: session.id })}
+                  className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-colors hover:bg-accent/50"
+                >
+                  <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
+                  <span className="flex-1 truncate text-foreground">{session.title || 'Untitled'}</span>
+                  <time className="shrink-0 tabular-nums text-[10px] text-muted-foreground" suppressHydrationWarning>
+                    {timeAgo(session.updatedAt, now)}
+                  </time>
+                </button>
+              ))}
+            </div>
+          )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Main ───────────────────────────────────────────────── */
+
+export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
+  const owner = useWorkspaceDetailOwner(workspaceId)
+
+  if (!owner.workspace) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
@@ -515,201 +738,19 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   return (
     <div className="flex h-full overflow-hidden bg-background" data-testid="workspace-detail-page">
-      {/* ── Main area with floating composer ────────────────── */}
-      <div className="relative flex-1 min-w-0">
-        {/* Scrollable content */}
-        <div ref={scrollRef} className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden">
-          <m.div
-            className="max-w-2xl mx-auto py-6 px-2"
-          >
-            {/* Header */}
-            <div className="mb-6">
-              <InlineEditTitle value={workspace.name} onSave={handleRename} />
-              <p data-testid="workspace-detail-path" className="text-[12px] text-muted-foreground font-mono mt-1 truncate">
-                {workspace.path}
-              </p>
-            </div>
+      <WorkspaceDetailMainColumn owner={owner} />
 
-            {/* Tab navigation — Framer Motion spring pill per DESIGN.md */}
-            <div className="flex items-center gap-0.5 overflow-x-auto mb-6 scrollbar-none">
-              {([
-                { id: 'overview', label: 'Overview', icon: FileTextIcon },
-                { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
-                { id: 'skills', label: 'Skills', icon: PencilIcon },
-              ] as const).map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setActiveTab(id)}
-                  data-testid={`workspace-detail-tab-${id}`}
-                  className={cn(
-                    'relative flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors select-none z-10',
-                    activeTab === id
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  {activeTab === id && (
-                    <m.span
-                      layoutId="workspace-detail-tab-pill"
-                      className="absolute inset-0 rounded-md bg-accent"
-                      transition={{ type: 'spring', stiffness: 600, damping: 40 }}
-                      style={{ zIndex: -1 }}
-                    />
-                  )}
-                  <Icon className="relative size-3.5 shrink-0" />
-                  <span className="relative">{label}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Tab content — pure CSS toggle: no React effect re-runs, no layout thrash */}
-            <div className={activeTab === 'overview' ? undefined : 'hidden'}>
-              {/* AGENTS section */}
-              <DocumentSection
-                id="section-agents"
-                filename="AGENTS.md"
-                testId="workspace-detail-agents-section"
-                file={agents}
-                placeholder="配置 Agent 指令..."
-              />
-
-              {/* Empty state */}
-              {agents.content === null && !agents.loading && (
-                <div className="py-16 text-center text-sm text-muted-foreground">
-                  该项目中没有 AGENTS.md 文件
-                </div>
-              )}
-            </div>
-
-            <div className={activeTab === 'workflow-rules' ? undefined : 'hidden'}>
-              <WorkspaceWorkflowRules
-                workspaceId={workspaceId}
-                onContentChange={setWorkflowContent}
-              />
-            </div>
-
-            <div className={activeTab === 'skills' ? undefined : 'hidden'}>
-              <SkillManager
-                workspaceId={workspaceId}
-                editableScope="workspace"
-                pageTestId="workspace-skills-page"
-                title="Workspace Skills"
-                description="Manage repository-specific skills under .agents/skills while reviewing inherited global and built-in skills."
-              />
-            </div>
-
-            {/* Bottom spacer for floating composer */}
-            <div className="h-28" />
-          </m.div>
-        </div>
-
-        {/* ── Floating Capsule Composer ── */}
-        <div className="absolute bottom-0 inset-x-0 px-4 pb-4 pointer-events-none">
-          <div className="max-w-2xl mx-auto pointer-events-auto">
-            <CapsuleComposer
-              workspaceId={workspaceId}
-              onSend={handleCapsuleSend}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Float TOC (right of content, before sidebar) ──── */}
       <div className="w-58 shrink-0">
-        {headings.length > 0 && (
+        {owner.headings.length > 0 && (
           <FloatingToc
-            headings={headings}
-            activeSlug={activeSlug}
-            onNavigate={handleTocNavigate}
+            headings={owner.headings}
+            activeSlug={owner.activeSlug}
+            onNavigate={owner.handleTocNavigate}
           />
         )}
       </div>
 
-      {/* ── Right sidebar ──────────────────────────────────── */}
-      <div
-        className="w-62 shrink-0 border-l border-border/30 overflow-y-auto"
-      >
-        {/* Actions */}
-        <div className="px-3 pt-3 pb-2 space-y-1">
-          <button
-            type="button"
-            onClick={handleOpenInFinder}
-            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-          >
-            <FolderOpenIcon className="size-3.5" />
-            在 Finder 中打开
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleOpenInApp()}
-            className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-          >
-            <ExternalLinkIcon className="size-3.5" />
-            在编辑器中打开
-          </button>
-        </div>
-
-        <div className="h-px bg-border/30 mx-3" />
-
-        {/* Properties */}
-        <div className="p-3 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">分支</span>
-            <span className="text-[12px] text-muted-foreground font-mono truncate max-w-28">{(gitStatus as { branch?: string } | null)?.branch ?? '—'}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">会话</span>
-            <span className="text-[12px] text-muted-foreground">{sessions.length}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">创建</span>
-            <span className="text-[12px] text-muted-foreground">{formatDate(workspace.createdAt)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">更新</span>
-            <span className="text-[12px] text-muted-foreground">{formatDate(workspace.updatedAt)}</span>
-          </div>
-        </div>
-
-        <div className="h-px bg-border/30 mx-3" />
-
-        {/* Recent sessions */}
-        <div className="px-3 pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-muted-foreground select-none">最近会话</span>
-            <Button variant="ghost" size="icon-xs" onClick={handleNewChat} aria-label="新建聊天">
-              <MessageSquarePlusIcon className="size-3" />
-            </Button>
-          </div>
-
-          {recentSessions.length === 0
-            ? (
-              <p className="py-4 text-[11px] text-muted-foreground text-center">暂无会话</p>
-            )
-            : (
-              <div className="flex flex-col gap-0.5 pb-3">
-                {recentSessions.map(session => (
-                  <div
-                    key={session.id}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => openTab('chat', { sessionId: session.id })}
-                      className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-accent/50 w-full text-left"
-                    >
-                      <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
-                      <span className="truncate flex-1 text-foreground">{session.title || 'Untitled'}</span>
-                      <time className="shrink-0 text-[10px] text-muted-foreground tabular-nums" suppressHydrationWarning>
-                        {timeAgo(session.updatedAt, now)}
-                      </time>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-        </div>
-      </div>
+      <WorkspaceDetailSidebar owner={owner} />
     </div>
   )
 }

@@ -15,8 +15,6 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 
-import { useLayoutStore } from '~/store/layout'
-
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { getShellStreamUrl, resizeShell, sendShellInput, startShell } from './shell-api'
@@ -32,7 +30,6 @@ interface ShellViewProps {
 
 export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const setBottomPanelOpen = useLayoutStore(s => s.setBottomPanelOpen)
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -133,7 +130,6 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
           }
           else if (event.type === 'terminal.exit') {
             terminal.write('\r\n\x1B[2m[Process exited]\x1B[0m\r\n')
-            setBottomPanelOpen(false)
             onExited?.()
           }
         }
@@ -216,7 +212,7 @@ export function ShellView({ ptyId, cwd, onExited }: ShellViewProps) {
       darkMq.removeEventListener('change', onColorSchemeChange)
       terminal.dispose()
     }
-  }, [ptyId, cwd])
+  }, [ptyId, cwd, onExited])
 
   return (
     <div

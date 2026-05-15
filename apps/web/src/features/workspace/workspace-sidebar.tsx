@@ -42,6 +42,66 @@ import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigatio
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
 
+function SessionRenameInput({
+  initialTitle,
+  sessionId,
+  pinned,
+  updatedAt,
+  onCommit,
+  onCancel,
+}: {
+  initialTitle: string
+  sessionId: string
+  pinned: boolean
+  updatedAt: number
+  onCommit: (nextTitle: string) => Promise<void>
+  onCancel: () => void
+}) {
+  const renameInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus()
+      renameInputRef.current?.select()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
+
+  return (
+    <div
+      role="group"
+      className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-sidebar-foreground/80"
+      onClick={e => e.stopPropagation()}
+      onKeyDown={e => e.stopPropagation()}
+    >
+      {pinned
+        ? <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${sessionId}`} />
+        : null}
+      <input
+        ref={renameInputRef}
+        defaultValue={initialTitle}
+        onBlur={(e) => { void onCommit(e.currentTarget.value) }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            void onCommit(e.currentTarget.value)
+          }
+          else if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+        }}
+        data-testid={`session-rename-input-${sessionId}`}
+        className="min-w-0 flex-1 bg-transparent text-left text-xs text-sidebar-foreground/90 outline-none placeholder:text-muted-foreground/40"
+      />
+      <span className="shrink-0 text-[11px] text-muted-foreground">
+        {formatRelativeTime(updatedAt)}
+      </span>
+    </div>
+  )
+}
+
 function formatRelativeTime(unixTimestamp: number): string {
   const now = Math.floor(Date.now() / 1000)
   const diff = now - unixTimestamp
@@ -70,8 +130,6 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const clearUnread = useSessionActivityStore(s => s.clearUnread)
   const [isRenaming, setIsRenaming] = useState(false)
-  const [draftTitle, setDraftTitle] = useState(session.title)
-  const renameInputRef = useRef<HTMLInputElement>(null)
 
   // Clear unread badge when user navigates to this session
   useEffect(() => {
@@ -79,20 +137,6 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       clearUnread(session.id)
     }
   }, [isActive, isUnread, clearUnread, session.id])
-
-  useEffect(() => {
-    if (!isRenaming) {
-      return
-    }
-
-    setDraftTitle(session.title)
-    const frame = window.requestAnimationFrame(() => {
-      renameInputRef.current?.focus()
-      renameInputRef.current?.select()
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [isRenaming, session.title])
 
   const invalidateSessionQueries = useCallback(async () => {
     await Promise.all([
@@ -121,7 +165,6 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   const handleRename = useCallback(async (nextTitleRaw: string) => {
     const nextTitle = nextTitleRaw.trim()
     setIsRenaming(false)
-    setDraftTitle(session.title)
 
     if (!nextTitle || nextTitle === session.title) {
       return
@@ -132,14 +175,12 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
   }, [invalidateSessionQueries, session.id, session.title])
 
   const handleRenameCancel = useCallback(() => {
-    setDraftTitle(session.title)
     setIsRenaming(false)
-  }, [session.title])
+  }, [])
 
   const handleStartRename = useCallback(() => {
-    setDraftTitle(session.title)
     setIsRenaming(true)
-  }, [session.title])
+  }, [])
 
   const handleExport = useCallback(async () => {
     const { data } = await getSessionsByIdExportMarkdown({ path: { id: session.id } })
@@ -183,39 +224,15 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     >
       {isRenaming
         ? (
-          <div
-            role="group"
-            className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
-            onClick={e => e.stopPropagation()}
-            onKeyDown={e => e.stopPropagation()}
-          >
-            {session.pinned
-? (
-              <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
-            )
-: null}
-            <input
-              ref={renameInputRef}
-              value={draftTitle}
-              onChange={e => setDraftTitle(e.target.value)}
-              onBlur={() => { void handleRename(draftTitle) }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  void handleRename(draftTitle)
-                }
-                else if (e.key === 'Escape') {
-                  e.preventDefault()
-                  handleRenameCancel()
-                }
-              }}
-              data-testid={`session-rename-input-${session.id}`}
-              className="min-w-0 flex-1 bg-transparent text-left text-xs text-sidebar-foreground/90 outline-none placeholder:text-muted-foreground/40"
-            />
-            <span className="shrink-0 text-[11px] text-muted-foreground">
-              {formatRelativeTime(session.updatedAt)}
-            </span>
-          </div>
+          <SessionRenameInput
+            key={`${session.id}:${session.title}`}
+            initialTitle={session.title}
+            sessionId={session.id}
+            pinned={Boolean(session.pinned)}
+            updatedAt={session.updatedAt}
+            onCommit={handleRename}
+            onCancel={handleRenameCancel}
+          />
         )
         : (
           <>
