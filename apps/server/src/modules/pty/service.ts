@@ -1,4 +1,8 @@
-import type { AgentProfile, Session, Workspace } from '@cradle/db'
+// Input: session/profile/workspace ownership plus PTY runtime commands
+// Output: PTY control semantics for chat sessions, shell leases, and WebSocket live-channel entrypoints
+// Position: apps/server/src/modules/pty business owner that coordinates runtime, timeline, and socket adapters
+
+import type { Workspace } from '@cradle/db'
 import { agentProfiles, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 
@@ -7,23 +11,61 @@ import { cliTuiConfigSchema } from '../../helpers/provider-config-schemas'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
 import * as SessionService from '../session/service'
-import { ptyManager } from './pty.manager'
+import type { PtyClientEvent } from './protocol'
+import { PtySocketHub, type PtyLiveSocket } from './pty.socket'
+import { PtyRuntimeRegistry } from './pty.runtime'
+import { ptyTimeline } from './pty.timeline'
 
-// Register cleanup hook so deleting a session stops its terminal
-SessionService.onSessionCleanup((sessionId) => {
-  ptyManager.destroy(sessionId)
+const shellLeaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+const ptyRuntime = new PtyRuntimeRegistry({
+  onOutput: (sessionId, data) => {
+    ptyTimeline.appendOutput(sessionId, data)
+  },
+  onExit: (sessionId, exit) => {
+    ptyTimeline.appendExit(sessionId, exit)
+  },
+  onRelease: (sessionId) => {
+    cancelShellLeaseExpiry(sessionId)
+    ptyTimeline.delete(sessionId)
+  },
 })
 
-// ── DB queries ──
+const ptySocketHub = new PtySocketHub(ptyRuntime, ptyTimeline)
+
+SessionService.onSessionCleanup((sessionId) => {
+  cancelShellLeaseExpiry(sessionId)
+  ptyRuntime.destroy(sessionId)
+})
 
 export interface TerminalSessionContext {
-  session: Session
+  session: TerminalSessionRecord
   workspace: Workspace
-  profile: AgentProfile
+  profile: TerminalProfileRecord
 }
 
-function getSession(sessionId: string): Session | undefined {
-  return db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
+interface TerminalSessionRecord {
+  id: string
+  workspaceId: string
+  agentProfileId: string
+  runtimeKind: string
+  ptyStartedAt: number | null
+}
+
+interface TerminalProfileRecord {
+  id: string
+  providerKind: string
+  configJson: string
+}
+
+function getSession(sessionId: string): TerminalSessionRecord | undefined {
+  return db().select({
+    id: sessions.id,
+    workspaceId: sessions.workspaceId,
+    agentProfileId: sessions.agentProfileId,
+    runtimeKind: sessions.runtimeKind,
+    ptyStartedAt: sessions.ptyStartedAt,
+  }).from(sessions).where(eq(sessions.id, sessionId)).get()
 }
 
 function getTerminalContext(sessionId: string): TerminalSessionContext | null {
@@ -31,17 +73,21 @@ function getTerminalContext(sessionId: string): TerminalSessionContext | null {
   if (!session) {
     return null
   }
+
   const workspace = db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
-  const profile = db().select().from(agentProfiles).where(eq(agentProfiles.id, session.agentProfileId)).get()
+  const profile = db().select({
+    id: agentProfiles.id,
+    providerKind: agentProfiles.providerKind,
+    configJson: agentProfiles.configJson,
+  }).from(agentProfiles).where(eq(agentProfiles.id, session.agentProfileId)).get() as TerminalProfileRecord | undefined
   if (!workspace || !profile) {
     return null
   }
+
   return { session, workspace, profile }
 }
 
-// ── helpers ──
-
-function requireSession(sessionId: string): Session {
+function requireSession(sessionId: string): TerminalSessionRecord {
   const session = getSession(sessionId)
   if (!session) {
     throw new AppError({ code: 'terminal_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId } })
@@ -55,6 +101,12 @@ function requireTerminalContext(sessionId: string): TerminalSessionContext {
     throw new AppError({ code: 'terminal_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId } })
   }
   return context
+}
+
+function requireTimelineSession(sessionId: string, message: string): void {
+  if (!ptyTimeline.hasSession(sessionId)) {
+    throw new AppError({ code: 'terminal_not_found', status: 404, message, details: { sessionId } })
+  }
 }
 
 function readCliConfig(configJson: string): { executable: string, args: string[], env?: Record<string, string> } {
@@ -77,16 +129,14 @@ function isClaudeCli(executable: string): boolean {
   return base === 'claude' || base.startsWith('claude-')
 }
 
-// ── public API ──
-
 export function startOrAttach(input: { sessionId: string, cols: number, rows: number }) {
   const context = requireTerminalContext(input.sessionId)
-  if (context.profile.providerKind !== 'cli-tui') {
+  if (context.session.runtimeKind !== 'cli-tui') {
     throw new AppError({
       code: 'terminal_profile_not_supported',
       status: 409,
-      message: 'Terminal runtime only supports cli-tui profiles',
-      details: { sessionId: input.sessionId, providerKind: context.profile.providerKind },
+      message: 'Terminal runtime only supports cli-tui sessions',
+      details: { sessionId: input.sessionId, runtimeKind: context.session.runtimeKind },
     })
   }
 
@@ -94,7 +144,6 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
   const args = [...config.args]
 
   if (isClaudeCli(config.executable)) {
-    // Resume previous Claude session or start new one with deterministic ID
     if (context.session.ptyStartedAt) {
       args.push('--resume', input.sessionId)
     }
@@ -102,14 +151,17 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
       args.push('--session-id', input.sessionId)
     }
 
-    // Auto-inject system-workflow via --append-system-prompt
     const workflow = getSystemWorkflow()
     if (workflow) {
       args.push('--append-system-prompt', workflow)
     }
   }
 
-  ptyManager.startOrAttach({
+  if (!ptyRuntime.isRunning(input.sessionId)) {
+    ptyTimeline.reset(input.sessionId)
+  }
+
+  ptyRuntime.ensureSession({
     sessionId: input.sessionId,
     executable: config.executable,
     args,
@@ -123,7 +175,6 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
     },
   })
 
-  // Mark session as started for future resume
   if (!context.session.ptyStartedAt) {
     db().update(sessions)
       .set({ ptyStartedAt: Math.floor(Date.now() / 1000) })
@@ -131,38 +182,41 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
       .run()
   }
 
-  return { sessionId: input.sessionId, running: ptyManager.isRunning(input.sessionId) }
+  return { sessionId: input.sessionId, running: ptyRuntime.isRunning(input.sessionId) }
 }
 
-export function openStream(sessionId: string): ReadableStream<Uint8Array> {
-  requireSession(sessionId)
-  if (!ptyManager.hasSession(sessionId)) {
-    throw new AppError({ code: 'terminal_not_found', status: 404, message: 'Terminal session not found', details: { sessionId } })
-  }
-  return ptyManager.openStream(sessionId)
-}
-
-export function writeInput(input: { sessionId: string, data: string }): void {
+export function openChatSocket(input: { sessionId: string, fromSeq?: number, ws: PtyLiveSocket }): void {
   requireSession(input.sessionId)
-  if (!ptyManager.write(input.sessionId, input.data)) {
-    throw new AppError({ code: 'terminal_not_running', status: 409, message: 'Terminal session is not running', details: { sessionId: input.sessionId } })
-  }
+  requireTimelineSession(input.sessionId, 'Terminal session not found')
+  ptySocketHub.open(input.ws, {
+    channelId: input.sessionId,
+    fromSeq: input.fromSeq,
+  })
 }
 
-export function resize(input: { sessionId: string, cols: number, rows: number }): void {
-  requireSession(input.sessionId)
-  if (!ptyManager.resize(input.sessionId, input.cols, input.rows)) {
-    throw new AppError({ code: 'terminal_not_running', status: 409, message: 'Terminal session is not running', details: { sessionId: input.sessionId } })
-  }
+export function rejectSocket(ws: PtyLiveSocket, error: unknown): void {
+  ptySocketHub.reject(ws, error)
+}
+
+export function handleSocketMessage(ws: PtyLiveSocket, event: PtyClientEvent): void {
+  ptySocketHub.handleMessage(ws, event)
+}
+
+export function closeSocket(ws: PtyLiveSocket): void {
+  ptySocketHub.close(ws)
 }
 
 export function stop(sessionId: string): void {
   requireSession(sessionId)
-  ptyManager.destroy(sessionId)
+  ptyRuntime.destroy(sessionId)
 }
 
 export function startShell(input: { ptyId: string, cwd: string, cols: number, rows: number }) {
-  ptyManager.startOrAttach({
+  if (!ptyRuntime.isRunning(input.ptyId)) {
+    ptyTimeline.reset(input.ptyId)
+  }
+
+  ptyRuntime.ensureSession({
     sessionId: input.ptyId,
     executable: process.env.SHELL ?? '/bin/sh',
     args: [],
@@ -170,33 +224,70 @@ export function startShell(input: { ptyId: string, cwd: string, cols: number, ro
     cols: input.cols,
     rows: input.rows,
   })
-  return { sessionId: input.ptyId, running: ptyManager.isRunning(input.ptyId) }
+
+  scheduleShellLeaseExpiry(input.ptyId)
+  return { ptyId: input.ptyId, running: ptyRuntime.isRunning(input.ptyId) }
 }
 
-export function shellStream(ptyId: string): ReadableStream<Uint8Array> {
-  if (!ptyManager.hasSession(ptyId)) {
-    throw new AppError({ code: 'terminal_not_found', status: 404, message: 'Shell session not found', details: { sessionId: ptyId } })
-  }
-  return ptyManager.openStream(ptyId)
-}
-
-export function shellInput(ptyId: string, data: string): void {
-  if (!ptyManager.write(ptyId, data)) {
-    throw new AppError({ code: 'terminal_not_running', status: 409, message: 'Shell session is not running', details: { sessionId: ptyId } })
-  }
-}
-
-export function shellResize(ptyId: string, cols: number, rows: number): void {
-  if (!ptyManager.resize(ptyId, cols, rows)) {
-    throw new AppError({ code: 'terminal_not_running', status: 409, message: 'Shell session is not running', details: { sessionId: ptyId } })
-  }
+export function openShellSocket(input: { ptyId: string, fromSeq?: number, ws: PtyLiveSocket }): void {
+  requireTimelineSession(input.ptyId, 'Shell session not found')
+  cancelShellLeaseExpiry(input.ptyId)
+  ptySocketHub.open(input.ws, {
+    channelId: input.ptyId,
+    fromSeq: input.fromSeq,
+    onClose: () => {
+      scheduleShellLeaseExpiry(input.ptyId)
+    },
+  })
 }
 
 export function shellStop(ptyId: string): void {
-  ptyManager.destroy(ptyId)
+  cancelShellLeaseExpiry(ptyId)
+  ptyRuntime.destroy(ptyId)
 }
 
-/** Called by session cleanup — does not require session to exist in DB. */
 export function destroyPtySession(sessionId: string): void {
-  ptyManager.destroy(sessionId)
+  cancelShellLeaseExpiry(sessionId)
+  ptyRuntime.destroy(sessionId)
+}
+
+export function shutdownPtyModule(): void {
+  for (const timer of shellLeaseTimers.values()) {
+    clearTimeout(timer)
+  }
+  shellLeaseTimers.clear()
+  ptySocketHub.clear()
+  ptyRuntime.destroyAll()
+  ptyTimeline.clear()
+}
+
+function scheduleShellLeaseExpiry(ptyId: string): void {
+  cancelShellLeaseExpiry(ptyId)
+  if (!ptyTimeline.hasSession(ptyId)) {
+    return
+  }
+
+  const timer = setTimeout(() => {
+    shellLeaseTimers.delete(ptyId)
+    ptyRuntime.destroy(ptyId)
+  }, getShellLeaseMs())
+  shellLeaseTimers.set(ptyId, timer)
+}
+
+function cancelShellLeaseExpiry(ptyId: string): void {
+  const timer = shellLeaseTimers.get(ptyId)
+  if (!timer) {
+    return
+  }
+
+  clearTimeout(timer)
+  shellLeaseTimers.delete(ptyId)
+}
+
+function getShellLeaseMs(): number {
+  const value = Number.parseInt(process.env.CRADLE_PTY_SHELL_LEASE_MS ?? '', 10)
+  if (Number.isFinite(value) && value > 0) {
+    return value
+  }
+  return 15_000
 }

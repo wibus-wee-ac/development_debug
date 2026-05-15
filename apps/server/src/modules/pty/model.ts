@@ -5,6 +5,10 @@ export const PtyModel = {
     sessionId: t.String({ minLength: 1 }),
   }),
 
+  ptyIdParams: t.Object({
+    ptyId: t.String({ minLength: 1 }),
+  }),
+
   startOrAttachBody: t.Object({
     cols: t.Integer({ minimum: 1 }),
     rows: t.Integer({ minimum: 1 }),
@@ -12,6 +16,11 @@ export const PtyModel = {
 
   startOrAttachResponse: t.Object({
     sessionId: t.String(),
+    running: t.Boolean(),
+  }),
+
+  startShellResponse: t.Object({
+    ptyId: t.String(),
     running: t.Boolean(),
   }),
 
@@ -34,4 +43,12 @@ export const PtyModel = {
     cols: t.Integer({ minimum: 1 }),
     rows: t.Integer({ minimum: 1 }),
   }),
+
+  liveChannelQuery: t.Object({
+    fromSeq: t.Optional(t.Numeric({ minimum: 0 })),
+  }),
+
+  clientEvent: t.Any(),
+
+  serverEvent: t.Any(),
 }

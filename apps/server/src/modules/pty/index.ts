@@ -1,100 +1,114 @@
+// Input: PTY control requests and WebSocket live-channel connections
+// Output: Elysia PTY capability routes for chat and shell terminals
+// Position: apps/server/src/modules/pty route surface for PTY ownership semantics
+
 import { Elysia } from 'elysia'
 
 import { PtyModel } from './model'
 import * as Pty from './service'
 
-export const pty = new Elysia({
-  prefix: '/terminal-sessions',
-  detail: { tags: ['pty'] },
-})
-  .post('/:sessionId/start-or-attach', ({ params, body }) => {
-    return Pty.startOrAttach({ sessionId: params.sessionId, cols: body.cols, rows: body.rows })
-  }, {
-    detail: { summary: 'Start or attach terminal session' },
-    params: PtyModel.sessionIdParams,
-    body: PtyModel.startOrAttachBody,
-    response: { 200: PtyModel.startOrAttachResponse },
-  })
-  .get('/:sessionId/stream', ({ params }) => {
-    return new Response(Pty.openStream(params.sessionId), {
-      headers: {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-        'Connection': 'keep-alive',
+function parseSocketMessage(_ws: unknown, message: unknown) {
+  if (typeof message !== 'string') {
+    return message
+  }
+
+  try {
+    return JSON.parse(message)
+  }
+  catch {
+    return undefined
+  }
+}
+
+export function registerPtyRoutes(app: Elysia): Elysia {
+  app
+    .post('/terminal-sessions/:sessionId/start-or-attach', ({ params, body }) => {
+      return Pty.startOrAttach({ sessionId: params.sessionId, cols: body.cols, rows: body.rows })
+    }, {
+      detail: { summary: 'Start or attach terminal session', tags: ['pty'] },
+      params: PtyModel.sessionIdParams,
+      body: PtyModel.startOrAttachBody,
+      response: { 200: PtyModel.startOrAttachResponse },
+    })
+    .ws('/terminal-sessions/:sessionId/socket', {
+      detail: { summary: 'Open chat terminal live channel via WebSocket', tags: ['pty'] },
+      params: PtyModel.sessionIdParams,
+      query: PtyModel.liveChannelQuery,
+      body: PtyModel.clientEvent,
+      response: PtyModel.serverEvent,
+      parse: parseSocketMessage,
+      open(ws) {
+        try {
+          Pty.openChatSocket({
+            sessionId: ws.data.params.sessionId,
+            fromSeq: ws.data.query.fromSeq,
+            ws,
+          })
+        }
+        catch (error) {
+          Pty.rejectSocket(ws, error)
+        }
+      },
+      message(ws, message) {
+        Pty.handleSocketMessage(ws, message)
+      },
+      close(ws) {
+        Pty.closeSocket(ws)
       },
     })
-  }, {
-    detail: { summary: 'Stream terminal output via SSE' },
-    params: PtyModel.sessionIdParams,
-  })
-  .post('/:sessionId/input', ({ params, body }) => {
-    Pty.writeInput({ sessionId: params.sessionId, data: body.data })
-    return { ok: true as const }
-  }, {
-    detail: { summary: 'Send input to terminal' },
-    params: PtyModel.sessionIdParams,
-    body: PtyModel.inputBody,
-    response: { 200: PtyModel.okResponse },
-  })
-  .post('/:sessionId/resize', ({ params, body }) => {
-    Pty.resize({ sessionId: params.sessionId, cols: body.cols, rows: body.rows })
-    return { ok: true as const }
-  }, {
-    detail: { summary: 'Resize terminal' },
-    params: PtyModel.sessionIdParams,
-    body: PtyModel.resizeBody,
-    response: { 200: PtyModel.okResponse },
-  })
-  .delete('/:sessionId', ({ params }) => {
-    Pty.stop(params.sessionId)
-    return { ok: true as const }
-  }, {
-    detail: { summary: 'Stop terminal session' },
-    params: PtyModel.sessionIdParams,
-    response: { 200: PtyModel.okResponse },
-  })
-  .post('/shell/start', ({ body }) => {
-    return Pty.startShell({ ptyId: body.ptyId, cwd: body.cwd, cols: body.cols, rows: body.rows })
-  }, {
-    detail: { summary: 'Start or attach a generic shell' },
-    body: PtyModel.startShellBody,
-    response: { 200: PtyModel.startOrAttachResponse },
-  })
-  .get('/shell/:sessionId/stream', ({ params }) => {
-    return new Response(Pty.shellStream(params.sessionId), {
-      headers: {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-        'Connection': 'keep-alive',
+    .delete('/terminal-sessions/:sessionId', ({ params }) => {
+      Pty.stop(params.sessionId)
+      return { ok: true as const }
+    }, {
+      detail: { summary: 'Stop terminal session', tags: ['pty'] },
+      params: PtyModel.sessionIdParams,
+      response: { 200: PtyModel.okResponse },
+    })
+    .post('/terminal-sessions/shell/start', ({ body }) => {
+      return Pty.startShell({ ptyId: body.ptyId, cwd: body.cwd, cols: body.cols, rows: body.rows })
+    }, {
+      detail: { summary: 'Start or attach a generic shell', tags: ['pty'] },
+      body: PtyModel.startShellBody,
+      response: { 200: PtyModel.startShellResponse },
+    })
+    .ws('/terminal-sessions/shell/:ptyId/socket', {
+      detail: { summary: 'Open shell PTY live channel via WebSocket', tags: ['pty'] },
+      params: PtyModel.ptyIdParams,
+      query: PtyModel.liveChannelQuery,
+      body: PtyModel.clientEvent,
+      response: PtyModel.serverEvent,
+      parse: parseSocketMessage,
+      open(ws) {
+        try {
+          Pty.openShellSocket({
+            ptyId: ws.data.params.ptyId,
+            fromSeq: ws.data.query.fromSeq,
+            ws,
+          })
+        }
+        catch (error) {
+          Pty.rejectSocket(ws, error)
+        }
+      },
+      message(ws, message) {
+        Pty.handleSocketMessage(ws, message)
+      },
+      close(ws) {
+        Pty.closeSocket(ws)
       },
     })
-  }, {
-    detail: { summary: 'Stream shell output via SSE' },
-    params: PtyModel.sessionIdParams,
+    .delete('/terminal-sessions/shell/:ptyId', ({ params }) => {
+      Pty.shellStop(params.ptyId)
+      return { ok: true as const }
+    }, {
+      detail: { summary: 'Stop shell session', tags: ['pty'] },
+      params: PtyModel.ptyIdParams,
+      response: { 200: PtyModel.okResponse },
+    })
+
+  app.onStop(() => {
+    Pty.shutdownPtyModule()
   })
-  .post('/shell/:sessionId/input', ({ params, body }) => {
-    Pty.shellInput(params.sessionId, body.data)
-    return { ok: true as const }
-  }, {
-    detail: { summary: 'Send input to shell' },
-    params: PtyModel.sessionIdParams,
-    body: PtyModel.inputBody,
-    response: { 200: PtyModel.okResponse },
-  })
-  .post('/shell/:sessionId/resize', ({ params, body }) => {
-    Pty.shellResize(params.sessionId, body.cols, body.rows)
-    return { ok: true as const }
-  }, {
-    detail: { summary: 'Resize shell' },
-    params: PtyModel.sessionIdParams,
-    body: PtyModel.resizeBody,
-    response: { 200: PtyModel.okResponse },
-  })
-  .delete('/shell/:sessionId', ({ params }) => {
-    Pty.shellStop(params.sessionId)
-    return { ok: true as const }
-  }, {
-    detail: { summary: 'Stop shell session' },
-    params: PtyModel.sessionIdParams,
-    response: { 200: PtyModel.okResponse },
-  })
+
+  return app
+}

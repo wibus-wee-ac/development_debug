@@ -1,11 +1,13 @@
 # Pty Module
 
-Provides session-owned terminal runtime for `cli-tui` chat sessions, including start-or-attach, SSE output streaming, input, resize, buffer replay, and cleanup on session deletion.
+Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource lifecycle (`start-or-attach`, `delete`); WebSocket owns the live channel protocol (`snapshot` / `output` / `exit` and `input` / `resize` / `ping`).
 
 ## Files
 
-- `pty.module.ts`: Tsuki module registration.
-- `pty.controller.ts`: HTTP endpoints under `/terminal-sessions/*`.
-- `pty.service.ts`: session/profile/workspace resolution, terminal lifecycle semantics, and Zod-backed cli-tui config parsing.
-- `pty.store.ts`: DB-backed session/workspace/profile lookups.
-- `pty.manager.ts`: child-process runtime manager with buffer replay and SSE subscribers.
+- `index.ts`: Elysia HTTP + WebSocket route surface under `/terminal-sessions/*`.
+- `model.ts`: TypeBox schemas for control routes and live-channel payloads.
+- `protocol.ts`: Shared PTY WebSocket protocol types.
+- `pty.runtime.ts`: `node-pty` runtime registry and process lifecycle hooks.
+- `pty.timeline.ts`: Sequence-aware snapshots, replay windows, and exit history.
+- `pty.socket.ts`: WebSocket adapter that bridges runtime/timeline to clients.
+- `service.ts`: Session/profile/workspace ownership rules, shell lease cleanup, and module shutdown.
