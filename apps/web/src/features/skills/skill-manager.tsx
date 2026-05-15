@@ -13,7 +13,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
-import { startTransition, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer } from 'react'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -84,6 +84,126 @@ const SCOPE_ACCENT: Record<SkillScope, string> = {
 
 const EMPTY_BODY = '# Overview\n\nDescribe when the agent should use this skill.\n'
 
+interface SkillEditState {
+  nameVal: string
+  descVal: string
+  bodyVal: string
+  extraFm: Record<string, unknown>
+  error: string | null
+}
+
+type SkillEditAction
+  = { type: 'reset-draft' }
+  | { type: 'hydrate', payload: { name: string, description: string, body: string, frontmatter: Record<string, unknown> } }
+  | { type: 'set-name', value: string }
+  | { type: 'set-description', value: string }
+  | { type: 'set-body', value: string }
+  | { type: 'set-error', value: string | null }
+
+const initialSkillEditState: SkillEditState = {
+  nameVal: '',
+  descVal: '',
+  bodyVal: EMPTY_BODY,
+  extraFm: {},
+  error: null,
+}
+
+function skillEditReducer(state: SkillEditState, action: SkillEditAction): SkillEditState {
+  switch (action.type) {
+    case 'reset-draft':
+      return initialSkillEditState
+    case 'hydrate': {
+      const { name: _n, description: _d, ...rest } = action.payload.frontmatter
+      return {
+        nameVal: action.payload.name,
+        descVal: action.payload.description,
+        bodyVal: action.payload.body,
+        extraFm: rest,
+        error: null,
+      }
+    }
+    case 'set-name':
+      return { ...state, nameVal: action.value }
+    case 'set-description':
+      return { ...state, descVal: action.value }
+    case 'set-body':
+      return { ...state, bodyVal: action.value }
+    case 'set-error':
+      return { ...state, error: action.value }
+    default:
+      return state
+  }
+}
+
+interface SkillManagerUiState {
+  selectedSkill: SelectedSkillRef | null
+  editingSkill: SelectedSkillRef | null
+  dialogOpen: boolean
+  importDialogOpen: boolean
+  detailOpen: boolean
+  searchQuery: string
+  scopeFilter: SkillScope | 'all'
+  errorText: string | null
+}
+
+type SkillManagerUiAction
+  = { type: 'open-draft', scope: SkillScope }
+  | { type: 'set-selected-skill', value: SelectedSkillRef | null }
+  | { type: 'open-detail', value: boolean }
+  | { type: 'open-dialog', value: boolean }
+  | { type: 'open-import', value: boolean }
+  | { type: 'set-editing-skill', value: SelectedSkillRef | null }
+  | { type: 'set-search-query', value: string }
+  | { type: 'set-scope-filter', value: SkillScope | 'all' }
+  | { type: 'set-error', value: string | null }
+  | { type: 'skill-saved', value: SelectedSkillRef }
+
+const initialSkillManagerUiState: SkillManagerUiState = {
+  selectedSkill: null,
+  editingSkill: null,
+  dialogOpen: false,
+  importDialogOpen: false,
+  detailOpen: false,
+  searchQuery: '',
+  scopeFilter: 'all',
+  errorText: null,
+}
+
+function skillManagerUiReducer(state: SkillManagerUiState, action: SkillManagerUiAction): SkillManagerUiState {
+  switch (action.type) {
+    case 'open-draft':
+      return {
+        ...state,
+        editingSkill: { scope: action.scope, name: '__draft__' },
+        dialogOpen: true,
+      }
+    case 'set-selected-skill':
+      return { ...state, selectedSkill: action.value }
+    case 'open-detail':
+      return { ...state, detailOpen: action.value }
+    case 'open-dialog':
+      return { ...state, dialogOpen: action.value }
+    case 'open-import':
+      return { ...state, importDialogOpen: action.value }
+    case 'set-editing-skill':
+      return { ...state, editingSkill: action.value }
+    case 'set-search-query':
+      return { ...state, searchQuery: action.value }
+    case 'set-scope-filter':
+      return { ...state, scopeFilter: action.value }
+    case 'set-error':
+      return { ...state, errorText: action.value }
+    case 'skill-saved':
+      return {
+        ...state,
+        selectedSkill: action.value,
+        editingSkill: null,
+      }
+    default:
+      return state
+  }
+}
+
 /* ── Edit Dialog (create / update) ─────────────────────────────────────────── */
 
 function SkillEditDialog({
@@ -114,56 +234,47 @@ function SkillEditDialog({
     isDraft ? null : entry?.name ?? null,
   )
 
-  const [nameVal, setNameVal] = useState('')
-  const [descVal, setDescVal] = useState('')
-  const [bodyVal, setBodyVal] = useState(EMPTY_BODY)
-  const [extraFm, setExtraFm] = useState<Record<string, unknown>>({})
-  const [error, setError] = useState<string | null>(null)
-
   const readOnly = !isDraft && entry != null && entry.scope !== editableScope
   const saving = createSkill.isPending || updateSkill.isPending
+  const [state, dispatch] = useReducer(skillEditReducer, initialSkillEditState)
 
   useEffect(() => {
     if (isDraft) {
-      setNameVal('')
-      setDescVal('')
-      setBodyVal(EMPTY_BODY)
-      setExtraFm({})
-      setError(null)
+      dispatch({ type: 'reset-draft' })
       return
     }
     if (!doc.data) {
       return
     }
-    startTransition(() => {
-      const d = doc.data!
-      setNameVal(d.name)
-      setDescVal(d.description)
-      setBodyVal(d.body)
-      const { name: _n, description: _d, ...rest } = d.frontmatter
-      setExtraFm(rest)
-      setError(null)
+    dispatch({
+      type: 'hydrate',
+      payload: {
+        name: doc.data.name,
+        description: doc.data.description,
+        body: doc.data.body,
+        frontmatter: doc.data.frontmatter,
+      },
     })
   }, [doc.data, isDraft])
 
   const handleSave = async () => {
     try {
-      setError(null)
-      if (!nameVal.trim()) {
+      dispatch({ type: 'set-error', value: null })
+      if (!state.nameVal.trim()) {
         throw new Error('Name is required')
       }
-      if (!descVal.trim()) {
+      if (!state.descVal.trim()) {
         throw new Error('Description is required')
       }
 
-      const frontmatter = { name: nameVal.trim(), description: descVal.trim(), ...extraFm }
+      const frontmatter = { name: state.nameVal.trim(), description: state.descVal.trim(), ...state.extraFm }
 
       if (isDraft) {
         const created = await createSkill.mutateAsync({
           scope: editableScope,
-          name: nameVal.trim(),
-          description: descVal.trim(),
-          body: bodyVal,
+          name: state.nameVal.trim(),
+          description: state.descVal.trim(),
+          body: state.bodyVal,
           frontmatter,
         })
         onSaved(created.scope, created.name)
@@ -178,16 +289,16 @@ function SkillEditDialog({
       const updated = await updateSkill.mutateAsync({
         scope: entry.scope,
         currentName: entry.name,
-        name: nameVal.trim(),
-        description: descVal.trim(),
-        body: bodyVal,
+        name: state.nameVal.trim(),
+        description: state.descVal.trim(),
+        body: state.bodyVal,
         frontmatter,
       })
       onSaved(updated.scope, updated.name)
       onOpenChange(false)
     }
     catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      dispatch({ type: 'set-error', value: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -210,8 +321,8 @@ function SkillEditDialog({
             <Label htmlFor="skill-edit-name">Name</Label>
             <Input
               id="skill-edit-name"
-              value={nameVal}
-              onChange={e => setNameVal(e.target.value)}
+              value={state.nameVal}
+              onChange={e => dispatch({ type: 'set-name', value: e.target.value })}
               readOnly={readOnly}
               placeholder="my-skill"
               className="text-xs"
@@ -222,8 +333,8 @@ function SkillEditDialog({
             <Label htmlFor="skill-edit-desc">Description</Label>
             <Input
               id="skill-edit-desc"
-              value={descVal}
-              onChange={e => setDescVal(e.target.value)}
+              value={state.descVal}
+              onChange={e => dispatch({ type: 'set-description', value: e.target.value })}
               readOnly={readOnly}
               placeholder="What does this skill teach the agent?"
               className="text-xs"
@@ -234,8 +345,8 @@ function SkillEditDialog({
             <Label htmlFor="skill-edit-body">Body</Label>
             <Textarea
               id="skill-edit-body"
-              value={bodyVal}
-              onChange={e => setBodyVal(e.target.value)}
+              value={state.bodyVal}
+              onChange={e => dispatch({ type: 'set-body', value: e.target.value })}
               readOnly={readOnly}
               spellCheck={false}
               rows={8}
@@ -243,8 +354,8 @@ function SkillEditDialog({
               data-testid="skill-body-editor"
             />
           </div>
-          {error && (
-            <p className="text-[11px] text-destructive">{error}</p>
+          {state.error && (
+            <p className="text-[11px] text-destructive">{state.error}</p>
           )}
         </div>
 
@@ -361,14 +472,7 @@ export function SkillManager({
   } = useSkills({ workspaceId, agentId })
 
   const { selectDirectory } = useDirectoryPicker()
-  const [selectedSkill, setSelectedSkill] = useState<SelectedSkillRef | null>(null)
-  const [editingSkill, setEditingSkill] = useState<SelectedSkillRef | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [detailOpen, setDetailOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [scopeFilter, setScopeFilter] = useState<SkillScope | 'all'>('all')
-  const [errorText, setErrorText] = useState<string | null>(null)
+  const [uiState, dispatch] = useReducer(skillManagerUiReducer, initialSkillManagerUiState)
 
   const activeInventory = useMemo(() => inventory.filter(entry => entry.active), [inventory])
 
@@ -376,11 +480,11 @@ export function SkillManager({
 
   const filteredInventory = useMemo(() => {
     let entries = activeInventory
-    if (scopeFilter !== 'all') {
-      entries = entries.filter(e => e.scope === scopeFilter)
+    if (uiState.scopeFilter !== 'all') {
+      entries = entries.filter(e => e.scope === uiState.scopeFilter)
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
+    if (uiState.searchQuery.trim()) {
+      const q = uiState.searchQuery.toLowerCase()
       entries = entries.filter(e =>
         e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q))
     }
@@ -393,23 +497,22 @@ export function SkillManager({
       }
       return a.name.localeCompare(b.name)
     })
-  }, [activeInventory, scopeFilter, searchQuery, editableScope])
+  }, [activeInventory, uiState.scopeFilter, uiState.searchQuery, editableScope])
 
   const selectedEntry = useMemo(() => {
+    const selectedSkill = uiState.selectedSkill
     if (!selectedSkill) {
       return null
     }
     return activeInventory.find(e => e.scope === selectedSkill.scope && e.name === selectedSkill.name) ?? null
-  }, [activeInventory, selectedSkill])
+  }, [activeInventory, uiState.selectedSkill])
 
   const beginDraft = useCallback(() => {
-    setEditingSkill({ scope: editableScope, name: '__draft__' })
-    setDialogOpen(true)
+    dispatch({ type: 'open-draft', scope: editableScope })
   }, [editableScope])
 
   const handleSaved = useCallback((scope: SkillScope, name: string) => {
-    setSelectedSkill({ scope, name })
-    setEditingSkill(null)
+    dispatch({ type: 'skill-saved', value: { scope, name } })
   }, [])
 
   const handleDelete = useCallback(async () => {
@@ -417,11 +520,11 @@ export function SkillManager({
       return
     }
     await deleteSkill.mutateAsync({ scope: selectedEntry.scope, name: selectedEntry.name })
-    setSelectedSkill(null)
+    dispatch({ type: 'set-selected-skill', value: null })
   }, [deleteSkill, editableScope, selectedEntry])
 
   const handleImport = useCallback(async () => {
-    setImportDialogOpen(true)
+    dispatch({ type: 'open-import', value: true })
   }, [])
 
   const handleExport = useCallback(async () => {
@@ -433,7 +536,7 @@ export function SkillManager({
       return
     }
     try {
-      setErrorText(null)
+      dispatch({ type: 'set-error', value: null })
       await exportSkill.mutateAsync({
         scope: selectedEntry.scope,
         name: selectedEntry.name,
@@ -441,7 +544,7 @@ export function SkillManager({
       })
     }
     catch (error) {
-      setErrorText(error instanceof Error ? error.message : String(error))
+      dispatch({ type: 'set-error', value: error instanceof Error ? error.message : String(error) })
     }
   }, [exportSkill, selectedEntry, selectDirectory])
 
@@ -468,8 +571,8 @@ export function SkillManager({
       <SettingsDivider />
 
       {/* Error */}
-      {errorText && (
-        <p className="text-[11px] text-destructive">{errorText}</p>
+      {uiState.errorText && (
+        <p className="text-[11px] text-destructive">{uiState.errorText}</p>
       )}
 
       {/* Search + filter row */}
@@ -478,8 +581,8 @@ export function SkillManager({
           <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/50" />
           <input
             type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
+            value={uiState.searchQuery}
+            onChange={e => dispatch({ type: 'set-search-query', value: e.target.value })}
             placeholder="Search skills..."
             className="w-full rounded-md bg-foreground/4 py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/40 outline-none"
           />
@@ -489,10 +592,10 @@ export function SkillManager({
             <button
               key={s}
               type="button"
-              onClick={() => setScopeFilter(s)}
+              onClick={() => dispatch({ type: 'set-scope-filter', value: s })}
               className={cn(
                 'px-2 py-1 text-[11px] font-medium rounded-md transition-colors',
-                scopeFilter === s
+                uiState.scopeFilter === s
                   ? 'bg-foreground/8 text-foreground'
                   : 'text-muted-foreground/50 hover:text-muted-foreground',
               )}
@@ -513,7 +616,7 @@ export function SkillManager({
         : filteredInventory.length === 0
           ? (
             <div className="py-12 text-center text-xs text-muted-foreground">
-              {searchQuery.trim() ? 'No matching skills' : 'No skills yet'}
+              {uiState.searchQuery.trim() ? 'No matching skills' : 'No skills yet'}
             </div>
           )
           : (
@@ -526,8 +629,8 @@ export function SkillManager({
                     key={`${entry.scope}:${entry.name}`}
                     type="button"
                     onClick={() => {
-                      setSelectedSkill({ scope: entry.scope, name: entry.name })
-                      setDetailOpen(true)
+                      dispatch({ type: 'set-selected-skill', value: { scope: entry.scope, name: entry.name } })
+                      dispatch({ type: 'open-detail', value: true })
                     }}
                     className="group flex items-center gap-3 py-3 text-left transition-colors hover:bg-foreground/3 -mx-2 px-2 rounded-md"
                   >
@@ -566,7 +669,7 @@ export function SkillManager({
           )}
 
       {/* Detail Dialog */}
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+      <Dialog open={uiState.detailOpen} onOpenChange={open => dispatch({ type: 'open-detail', value: open })}>
         <DialogContent className="sm:max-w-xl max-h-[80vh] overflow-y-auto" showCloseButton>
           <DialogHeader>
             <DialogTitle>Skill Detail</DialogTitle>
@@ -578,16 +681,16 @@ export function SkillManager({
               editableScope={editableScope}
               agentId={agentId}
               onEdit={() => {
-                setDetailOpen(false)
-                setEditingSkill(selectedSkill)
-                setDialogOpen(true)
+                dispatch({ type: 'open-detail', value: false })
+                dispatch({ type: 'set-editing-skill', value: uiState.selectedSkill })
+                dispatch({ type: 'open-dialog', value: true })
               }}
               onExport={() => {
-                setDetailOpen(false)
+                dispatch({ type: 'open-detail', value: false })
                 void handleExport()
               }}
               onDelete={() => {
-                setDetailOpen(false)
+                dispatch({ type: 'open-detail', value: false })
                 void handleDelete()
               }}
             />
@@ -596,8 +699,8 @@ export function SkillManager({
       </Dialog>
 
       <SkillImportDialog
-        open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
+        open={uiState.importDialogOpen}
+        onOpenChange={open => dispatch({ type: 'open-import', value: open })}
         editableScope={editableScope}
         workspaceId={workspaceId}
         agentId={agentId}
@@ -605,9 +708,9 @@ export function SkillManager({
 
       {/* Edit Dialog */}
       <SkillEditDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        entry={editingSkill}
+        open={uiState.dialogOpen}
+        onOpenChange={open => dispatch({ type: 'open-dialog', value: open })}
+        entry={uiState.editingSkill}
         workspaceId={workspaceId}
         editableScope={editableScope}
         agentId={agentId}

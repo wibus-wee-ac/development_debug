@@ -120,10 +120,10 @@ export function buildChunkStreamFromResponse(
       const decoder = new TextDecoder()
       let buffer = ''
 
-      while (true) {
+      const pump = async (): Promise<void> => {
         const { done, value } = await reader.read()
         if (done) {
-          break
+          return
         }
 
         buffer += decoder.decode(value, { stream: true })
@@ -165,7 +165,10 @@ export function buildChunkStreamFromResponse(
             return
           }
         }
+        await pump()
       }
+
+      await pump()
 
       closeCleanly()
     }

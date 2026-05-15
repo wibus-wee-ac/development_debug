@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BotIcon, CheckIcon, PlusIcon } from 'lucide-react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -163,6 +163,16 @@ function PropertyRow({ label, children }: { label: string, children: React.React
 function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (labels: string[]) => void }) {
   const [inputValue, setInputValue] = useState('')
   const [open, setOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+  }, [open])
 
   const handleAdd = useCallback(() => {
     const trimmed = inputValue.trim()
@@ -189,6 +199,7 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
         </PopoverTrigger>
         <PopoverContent align="start" className="w-44 p-2">
           <input
+            ref={inputRef}
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={(e) => {
@@ -199,7 +210,6 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
             }}
             placeholder="Add label..."
             className="w-full border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
-            autoFocus
           />
         </PopoverContent>
       </Popover>

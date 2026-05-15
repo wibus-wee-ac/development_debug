@@ -440,13 +440,16 @@ export function useChatSession(chatSessionId: string | null, options?: {
       const stream = buildChunkStreamFromResponse(res, chatSessionId)
       const reader = stream.getReader()
 
-      while (true) {
+      const pump = async (): Promise<void> => {
         const { done, value } = await reader.read()
         if (done) {
-          break
+          return
         }
         handler.handleChunk(value)
+        await pump()
       }
+
+      await pump()
 
       handler.finish()
     }

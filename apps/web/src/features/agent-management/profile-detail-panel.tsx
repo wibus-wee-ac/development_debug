@@ -6,7 +6,9 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MutableRefObject, ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import type { UseFormReturn } from 'react-hook-form'
 import { useForm, useWatch } from 'react-hook-form'
 
 import {
@@ -52,6 +54,51 @@ interface ProfileDetailFormValues {
   enabledModels: string[]
 }
 
+interface ProfileDetailUiState {
+  availableModels: ModelDescriptor[]
+  modelsLoading: boolean
+  health: HealthStatus
+  saveState: SaveState
+  confirmRemove: boolean
+}
+
+type ProfileDetailUiAction = { type: 'reset' }
+  | { type: 'models/loading' }
+  | { type: 'models/loaded', models: ModelDescriptor[] }
+  | { type: 'models/failed' }
+  | { type: 'health/set', status: HealthStatus }
+  | { type: 'save/set', state: SaveState }
+  | { type: 'remove/set', open: boolean }
+
+const INITIAL_UI_STATE: ProfileDetailUiState = {
+  availableModels: [],
+  modelsLoading: false,
+  health: 'unknown',
+  saveState: 'idle',
+  confirmRemove: false,
+}
+
+function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDetailUiAction): ProfileDetailUiState {
+  switch (action.type) {
+    case 'reset':
+      return INITIAL_UI_STATE
+    case 'models/loading':
+      return { ...state, modelsLoading: true }
+    case 'models/loaded':
+      return { ...state, availableModels: action.models, modelsLoading: false }
+    case 'models/failed':
+      return { ...state, availableModels: [], modelsLoading: false }
+    case 'health/set':
+      return { ...state, health: action.status }
+    case 'save/set':
+      return { ...state, saveState: action.state }
+    case 'remove/set':
+      return { ...state, confirmRemove: action.open }
+    default:
+      return state
+  }
+}
+
 function getInitialEnabledModels(parsed: Record<string, unknown>): string[] {
   const arr = parsed.enabledModels
   if (!Array.isArray(arr)) {
@@ -75,6 +122,25 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
       : typeof parsed.cmd === 'string' ? parsed.cmd : '',
     enabledModels: getInitialEnabledModels(parsed),
   }
+}
+
+function buildProviderRequestBody(profile: AgentProfile) {
+  return {
+    providerKind: profile.providerKind,
+    label: profile.name,
+    config: parseConfig(profile.configJson),
+    secretRef: profile.credentialRef ?? null,
+    profileId: profile.id,
+  }
+}
+
+function clearTimer(timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>) {
+  if (!timerRef.current) {
+    return
+  }
+
+  clearTimeout(timerRef.current)
+  timerRef.current = null
 }
 
 export function ProfileDetailPanel({
@@ -106,23 +172,50 @@ export function ProfileDetailPanel({
   const baseUrl = watchedValues.baseUrl ?? ''
   const model = watchedValues.model ?? ''
   const command = watchedValues.command ?? ''
-  const enabledModels = watchedValues.enabledModels ?? []
+  const enabledModels = useMemo(() => watchedValues.enabledModels ?? [], [watchedValues.enabledModels])
 
-  const [availableModels, setAvailableModels] = useState<ModelDescriptor[]>([])
-  const [modelsLoading, setModelsLoading] = useState(false)
-  const [health, setHealth] = useState<HealthStatus>('unknown')
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
+  const {
+    availableModels,
+    modelsLoading,
+    health,
+    saveState,
+    confirmRemove,
+  } = uiState
 
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const modelsRequestRef = useRef(0)
+  const healthRequestRef = useRef(0)
+  const saveRequestRef = useRef(0)
+
+  const createProviderRequestBody = useCallback(() => buildProviderRequestBody(profile), [profile])
+
+  const clearAutoSaveTimer = useCallback(() => {
+    clearTimer(autoSaveTimerRef)
+  }, [])
+
+  const clearSavedClearTimer = useCallback(() => {
+    clearTimer(savedClearTimerRef)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      clearAutoSaveTimer()
+      clearSavedClearTimer()
+    }
+  }, [clearAutoSaveTimer, clearSavedClearTimer])
 
   // Reset state when switching profile
   useEffect(() => {
+    clearAutoSaveTimer()
+    clearSavedClearTimer()
+    modelsRequestRef.current += 1
+    healthRequestRef.current += 1
+    saveRequestRef.current += 1
     form.reset(getProfileFormValues(profile))
-    setHealth('unknown')
-    setSaveState('idle')
-  }, [form, profile])
+    dispatch({ type: 'reset' })
+  }, [clearAutoSaveTimer, clearSavedClearTimer, form, profile])
 
   // Fetch available models (only when provider connection details change, not enabledModels)
   const modelFetchKey = useMemo(() => {
@@ -136,48 +229,62 @@ export function ProfileDetailPanel({
 
   useEffect(() => {
     if (!supportsModels) {
+      dispatch({ type: 'models/loaded', models: [] })
       return
     }
-    setModelsLoading(true)
+
+    const requestId = ++modelsRequestRef.current
+    dispatch({ type: 'models/loading' })
+
     postProvidersModels({
-      body: {
-        providerKind: profile.providerKind,
-        label: profile.name,
-        config: parseConfig(profile.configJson),
-        secretRef: profile.credentialRef ?? null,
-        profileId: profile.id,
-      },
+      body: createProviderRequestBody(),
     })
-      .then(({ data }) => setAvailableModels((data ?? []) as ModelDescriptor[]))
-      .catch(() => setAvailableModels([]))
-      .finally(() => setModelsLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supportsModels, profile.id, modelFetchKey])
+      .then(({ data }) => {
+        if (requestId !== modelsRequestRef.current) {
+          return
+        }
+
+        dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[] })
+      })
+      .catch(() => {
+        if (requestId !== modelsRequestRef.current) {
+          return
+        }
+
+        dispatch({ type: 'models/failed' })
+      })
+  }, [supportsModels, profile.id, modelFetchKey, createProviderRequestBody])
 
   // Health check on load + when key fields change
   const runHealthCheck = useCallback(async () => {
-    setHealth('verifying')
+    const requestId = ++healthRequestRef.current
+    dispatch({ type: 'health/set', status: 'verifying' })
+
     try {
       const { data } = await postProvidersHealthCheck({
-        body: {
-          providerKind: profile.providerKind,
-          label: profile.name,
-          config: parseConfig(profile.configJson),
-          secretRef: profile.credentialRef ?? null,
-          profileId: profile.id,
-        },
+        body: createProviderRequestBody(),
       })
+
+      if (requestId !== healthRequestRef.current) {
+        return
+      }
+
       const hc = data as { ok: boolean } | null
-      setHealth(hc?.ok ? 'connected' : 'failed')
+      dispatch({ type: 'health/set', status: hc?.ok ? 'connected' : 'failed' })
     }
     catch {
-      setHealth('failed')
+      if (requestId !== healthRequestRef.current) {
+        return
+      }
+
+      dispatch({ type: 'health/set', status: 'failed' })
     }
-  }, [profile.id, profile.name, profile.providerKind, profile.configJson, profile.credentialRef])
+  }, [createProviderRequestBody])
 
   useEffect(() => {
     if (!profile.enabled) {
-      setHealth('unknown')
+      healthRequestRef.current += 1
+      dispatch({ type: 'health/set', status: 'unknown' })
       return
     }
     void runHealthCheck()
@@ -209,7 +316,9 @@ export function ProfileDetailPanel({
 
   const doSave = useCallback(async () => {
     const currentValues = form.getValues()
-    setSaveState('saving')
+    const requestId = ++saveRequestRef.current
+    dispatch({ type: 'save/set', state: 'saving' })
+
     try {
       let credentialRef = profile.credentialRef ?? null
       if (currentValues.apiKey && supportsModels) {
@@ -230,22 +339,32 @@ export function ProfileDetailPanel({
         },
       })
 
-      setSaveState('saved')
+      if (requestId !== saveRequestRef.current) {
+        return
+      }
+
+      dispatch({ type: 'save/set', state: 'saved' })
       form.reset({
         ...currentValues,
         apiKey: '',
       })
-      if (savedClearTimer.current) {
-        clearTimeout(savedClearTimer.current)
-      }
-      savedClearTimer.current = setTimeout(setSaveState, 1600, 'idle')
+      clearSavedClearTimer()
+      savedClearTimerRef.current = setTimeout(() => {
+        if (requestId === saveRequestRef.current) {
+          dispatch({ type: 'save/set', state: 'idle' })
+        }
+      }, 1600)
       onSaved()
     }
     catch (err) {
-      setSaveState('error')
+      if (requestId !== saveRequestRef.current) {
+        return
+      }
+
+      dispatch({ type: 'save/set', state: 'error' })
       console.error('[ProfileDetailPanel] save failed', err)
     }
-  }, [form, profile, supportsModels, buildConfigJson, onSaved])
+  }, [clearSavedClearTimer, form, profile, supportsModels, buildConfigJson, onSaved])
 
   const watchedSignature = useMemo(() => JSON.stringify({
     name,
@@ -258,188 +377,285 @@ export function ProfileDetailPanel({
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
-    if (!form.formState.isDirty) {
+    if (!form.formState.isDirty || saveState === 'saving') {
       return
     }
-    setSaveState('pending')
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current)
-    }
-    autoSaveTimer.current = setTimeout(() => {
+
+    dispatch({ type: 'save/set', state: 'pending' })
+    clearAutoSaveTimer()
+    const timeoutId = setTimeout(() => {
       void doSave()
     }, 1200)
+
+    autoSaveTimerRef.current = timeoutId
+
     return () => {
-      if (autoSaveTimer.current) {
-        clearTimeout(autoSaveTimer.current)
+      clearTimeout(timeoutId)
+      if (autoSaveTimerRef.current === timeoutId) {
+        autoSaveTimerRef.current = null
       }
     }
-  }, [watchedSignature, doSave, form.formState.isDirty])
+  }, [watchedSignature, doSave, form.formState.isDirty, saveState, clearAutoSaveTimer])
 
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
 
   return (
     <div data-testid="provider-detail-panel" className="flex flex-col gap-2">
-      {/* Hero */}
-      <header className="flex items-start gap-3">
-        <Icon className="size-6 shrink-0 text-foreground/80 mt-1" />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="font-heading text-[15px] font-medium text-foreground truncate">
-              {profile.name}
-            </h4>
-            <Badge variant="secondary" className="font-normal text-muted-foreground">
-              {kindLabel}
-            </Badge>
-            <HealthBadge status={health} onRefresh={() => void runHealthCheck()} disabled={!profile.enabled} />
-          </div>
-          <p className="mt-1 text-[11.5px] text-muted-foreground/80 truncate">
-            {profile.id}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 pt-0.5">
-          <SaveIndicator state={saveState} />
-
-          <div className="flex items-center gap-2 rounded-full bg-muted/40 px-2.5 py-1 ring-1 ring-foreground/4">
-            <Switch
-              size="sm"
-              checked={profile.enabled}
-              onCheckedChange={onToggle}
-            />
-            <span className="text-[11px] font-medium text-muted-foreground">
-              {profile.enabled ? 'Active' : 'Off'}
-            </span>
-          </div>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                data-testid={`agent-profile-remove-${profile.id}`}
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setConfirmRemove(true)}
-                className="text-muted-foreground/60 hover:bg-destructive/6 hover:text-destructive"
-              >
-                <Trash2Icon className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Remove provider</TooltipContent>
-          </Tooltip>
-        </div>
-      </header>
+      <ProfileDetailHeader
+        profile={profile}
+        kindLabel={kindLabel}
+        icon={<Icon className="mt-1 size-6 shrink-0 text-foreground/80" />}
+        health={health}
+        saveState={saveState}
+        onRefreshHealth={() => void runHealthCheck()}
+        onToggle={onToggle}
+        onOpenRemove={() => dispatch({ type: 'remove/set', open: true })}
+      />
 
       {/* Configuration */}
       <div className="flex flex-col">
-        {/* ── General section ── */}
-        <SettingsRow label="Display name" description="The name shown in the provider list">
-          <Input
-            data-testid="provider-edit-name"
-            {...form.register('name')}
-            className="h-9 w-56 text-[13px]"
+        <ProfileGeneralSettings
+          profile={profile}
+          form={form}
+          supportsModels={supportsModels}
+          supportsCommand={supportsCommand}
+        />
+
+        {supportsModels && (
+          <ProfileModelsSection
+            loading={modelsLoading}
+            models={availableModels}
+            enabledModels={enabledModels}
+            onChange={next => form.setValue('enabledModels', next, { shouldDirty: true })}
           />
-        </SettingsRow>
-
-        {supportsModels && (
-          <>
-            <SettingsDivider />
-            <SettingsRow label="Endpoint" description="Base URL for the API">
-              <Input
-                data-testid="provider-edit-baseurl"
-                {...form.register('baseUrl')}
-                className="h-9 w-56 text-[12.5px] font-mono"
-                placeholder="https://api.openai.com/v1"
-              />
-            </SettingsRow>
-
-            <SettingsDivider />
-            <SettingsRow label="Default model" description="Used when no model is specified in the session">
-              <Input
-                data-testid="provider-edit-model"
-                {...form.register('model')}
-                className="h-9 w-56 text-[12.5px] font-mono"
-                placeholder="e.g. gpt-4o"
-              />
-            </SettingsRow>
-
-            <SettingsDivider />
-            <SettingsRow
-              label="API key"
-              description={profile.credentialRef
-                ? 'A credential is already stored. Leave empty to keep it.'
-                : 'Stored locally and encrypted.'}
-            >
-              <Input
-                data-testid="provider-edit-apikey"
-                type="password"
-                {...form.register('apiKey')}
-                placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
-                className="h-9 w-56 text-[12.5px] font-mono"
-              />
-            </SettingsRow>
-          </>
-        )}
-
-        {supportsCommand && (
-          <>
-            <SettingsDivider />
-            <SettingsRow label="Command" description="Executable that Cradle launches when this provider is used">
-              <Input
-                {...form.register('command')}
-                className="h-9 w-56 text-[12.5px] font-mono"
-                placeholder="claude"
-              />
-            </SettingsRow>
-          </>
-        )}
-
-        {/* ── Models section ── */}
-        {supportsModels && (
-          <>
-            <Separator className="bg-foreground/6" />
-            <section className="flex flex-col gap-4 mt-4">
-              <ModelsPanel
-                loading={modelsLoading}
-                models={availableModels}
-                enabledModels={enabledModels}
-                onChange={next => form.setValue('enabledModels', next, { shouldDirty: true })}
-              />
-            </section>
-          </>
         )}
       </div>
 
-      {/* Remove confirmation */}
-      <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogMedia>
-              <Trash2Icon />
-            </AlertDialogMedia>
-            <AlertDialogTitle>Remove provider?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong className="text-foreground">{profile.name}</strong>
-              {' '}
-              will be disconnected from every agent that uses it. Stored credentials
-              will be deleted from this machine. You can always add it back later.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              size="sm"
-              variant="destructive"
-              onClick={() => {
-                setConfirmRemove(false)
-                onRemove()
-              }}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RemoveProfileDialog
+        open={confirmRemove}
+        profileName={profile.name}
+        onOpenChange={open => dispatch({ type: 'remove/set', open })}
+        onConfirm={() => {
+          dispatch({ type: 'remove/set', open: false })
+          onRemove()
+        }}
+      />
     </div>
+  )
+}
+
+function ProfileDetailHeader({
+  profile,
+  kindLabel,
+  icon,
+  health,
+  saveState,
+  onRefreshHealth,
+  onToggle,
+  onOpenRemove,
+}: {
+  profile: AgentProfile
+  kindLabel: string
+  icon: ReactNode
+  health: HealthStatus
+  saveState: SaveState
+  onRefreshHealth: () => void
+  onToggle: (enabled: boolean) => void
+  onOpenRemove: () => void
+}) {
+  return (
+    <header className="flex items-start gap-3">
+      {icon}
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="font-heading truncate text-[15px] font-medium text-foreground">
+            {profile.name}
+          </h4>
+          <Badge variant="secondary" className="font-normal text-muted-foreground">
+            {kindLabel}
+          </Badge>
+          <HealthBadge status={health} onRefresh={onRefreshHealth} disabled={!profile.enabled} />
+        </div>
+        <p className="mt-1 truncate text-[11.5px] text-muted-foreground/80">
+          {profile.id}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3 pt-0.5">
+        <SaveIndicator state={saveState} />
+
+        <div className="flex items-center gap-2 rounded-full bg-muted/40 px-2.5 py-1 ring-1 ring-foreground/4">
+          <Switch
+            size="sm"
+            checked={profile.enabled}
+            onCheckedChange={onToggle}
+          />
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {profile.enabled ? 'Active' : 'Off'}
+          </span>
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              data-testid={`agent-profile-remove-${profile.id}`}
+              variant="ghost"
+              size="icon-sm"
+              onClick={onOpenRemove}
+              className="text-muted-foreground/60 hover:bg-destructive/6 hover:text-destructive"
+            >
+              <Trash2Icon className="size-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Remove provider</TooltipContent>
+        </Tooltip>
+      </div>
+    </header>
+  )
+}
+
+function ProfileGeneralSettings({
+  profile,
+  form,
+  supportsModels,
+  supportsCommand,
+}: {
+  profile: AgentProfile
+  form: UseFormReturn<ProfileDetailFormValues>
+  supportsModels: boolean
+  supportsCommand: boolean
+}) {
+  return (
+    <>
+      <SettingsRow label="Display name" description="The name shown in the provider list">
+        <Input
+          data-testid="provider-edit-name"
+          {...form.register('name')}
+          className="h-9 w-56 text-[13px]"
+        />
+      </SettingsRow>
+
+      {supportsModels && (
+        <>
+          <SettingsDivider />
+          <SettingsRow label="Endpoint" description="Base URL for the API">
+            <Input
+              data-testid="provider-edit-baseurl"
+              {...form.register('baseUrl')}
+              className="h-9 w-56 text-[12.5px] font-mono"
+              placeholder="https://api.openai.com/v1"
+            />
+          </SettingsRow>
+
+          <SettingsDivider />
+          <SettingsRow label="Default model" description="Used when no model is specified in the session">
+            <Input
+              data-testid="provider-edit-model"
+              {...form.register('model')}
+              className="h-9 w-56 text-[12.5px] font-mono"
+              placeholder="e.g. gpt-4o"
+            />
+          </SettingsRow>
+
+          <SettingsDivider />
+          <SettingsRow
+            label="API key"
+            description={profile.credentialRef
+              ? 'A credential is already stored. Leave empty to keep it.'
+              : 'Stored locally and encrypted.'}
+          >
+            <Input
+              data-testid="provider-edit-apikey"
+              type="password"
+              {...form.register('apiKey')}
+              placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
+              className="h-9 w-56 text-[12.5px] font-mono"
+            />
+          </SettingsRow>
+        </>
+      )}
+
+      {supportsCommand && (
+        <>
+          <SettingsDivider />
+          <SettingsRow label="Command" description="Executable that Cradle launches when this provider is used">
+            <Input
+              {...form.register('command')}
+              className="h-9 w-56 text-[12.5px] font-mono"
+              placeholder="claude"
+            />
+          </SettingsRow>
+        </>
+      )}
+    </>
+  )
+}
+
+function ProfileModelsSection({
+  loading,
+  models,
+  enabledModels,
+  onChange,
+}: {
+  loading: boolean
+  models: ModelDescriptor[]
+  enabledModels: string[]
+  onChange: (next: string[]) => void
+}) {
+  return (
+    <>
+      <Separator className="bg-foreground/6" />
+      <section className="mt-4 flex flex-col gap-4">
+        <ModelsPanel
+          loading={loading}
+          models={models}
+          enabledModels={enabledModels}
+          onChange={onChange}
+        />
+      </section>
+    </>
+  )
+}
+
+function RemoveProfileDialog({
+  open,
+  profileName,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean
+  profileName: string
+  onOpenChange: (open: boolean) => void
+  onConfirm: () => void
+}) {
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogMedia>
+            <Trash2Icon />
+          </AlertDialogMedia>
+          <AlertDialogTitle>Remove provider?</AlertDialogTitle>
+          <AlertDialogDescription>
+            <strong className="text-foreground">{profileName}</strong>
+            {' '}
+            will be disconnected from every agent that uses it. Stored credentials
+            will be deleted from this machine. You can always add it back later.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            size="sm"
+            variant="destructive"
+            onClick={onConfirm}
+          >
+            Remove
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -448,7 +664,7 @@ export function ProfileDetailPanel({
 function HealthPill({ tone, label, icon, onRefresh, disabled }: {
   tone: 'active' | 'muted' | 'warning' | 'destructive'
   label: string
-  icon: React.ReactNode
+  icon: ReactNode
   onRefresh: () => void
   disabled: boolean
 }) {

@@ -9,7 +9,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { HalftoneArt } from '~/components/ui/canvas-art'
@@ -23,8 +23,6 @@ import { cn } from '~/lib/cn'
 import type { DiscoveredSkill, SkillScope } from '~/lib/types'
 
 import { useSkillSourceImport } from './use-skills'
-
-// ── Types ──────────────────────────────────────────────────────────────────────
 
 type DialogStep = 'input' | 'fetching' | 'select' | 'installing' | 'done'
 
@@ -40,12 +38,107 @@ interface ImportResult {
   errors: Array<{ dir: string, error: string }>
 }
 
-// ── Step dots ──────────────────────────────────────────────────────────────────
+interface SkillImportDialogState {
+  step: DialogStep
+  sourceInput: string
+  fetchResult: FetchResult | null
+  selected: Set<string>
+  importResult: ImportResult | null
+  fetchError: string | null
+}
+
+type SkillImportDialogAction
+  = { type: 'reset' }
+  | { type: 'fetch-start', source: string }
+  | { type: 'fetch-success', source: string, result: FetchResult }
+  | { type: 'fetch-error', error: string }
+  | { type: 'toggle-skill', skillDir: string }
+  | { type: 'toggle-all', skillDirs: string[] }
+  | { type: 'install-start' }
+  | { type: 'install-success', result: ImportResult }
+  | { type: 'install-error', error: string }
+
+const initialSkillImportDialogState: SkillImportDialogState = {
+  step: 'input',
+  sourceInput: '',
+  fetchResult: null,
+  selected: new Set<string>(),
+  importResult: null,
+  fetchError: null,
+}
+
+function skillImportDialogReducer(state: SkillImportDialogState, action: SkillImportDialogAction): SkillImportDialogState {
+  switch (action.type) {
+    case 'reset':
+      return initialSkillImportDialogState
+    case 'fetch-start':
+      return {
+        ...state,
+        sourceInput: action.source,
+        fetchError: null,
+        step: 'fetching',
+      }
+    case 'fetch-success':
+      return {
+        ...state,
+        sourceInput: action.source,
+        fetchResult: action.result,
+        selected: new Set(action.result.skills.map(skill => skill.skillDir)),
+        step: 'select',
+      }
+    case 'fetch-error':
+      return {
+        ...state,
+        fetchError: action.error,
+        step: 'input',
+      }
+    case 'toggle-skill': {
+      const next = new Set(state.selected)
+      if (next.has(action.skillDir)) {
+        next.delete(action.skillDir)
+      }
+      else {
+        next.add(action.skillDir)
+      }
+      return {
+        ...state,
+        selected: next,
+      }
+    }
+    case 'toggle-all': {
+      const shouldClear = state.selected.size === action.skillDirs.length
+      return {
+        ...state,
+        selected: shouldClear ? new Set() : new Set(action.skillDirs),
+      }
+    }
+    case 'install-start':
+      return {
+        ...state,
+        step: 'installing',
+      }
+    case 'install-success':
+      return {
+        ...state,
+        importResult: action.result,
+        step: 'done',
+      }
+    case 'install-error':
+      return {
+        ...state,
+        fetchError: action.error,
+        step: 'select',
+      }
+    default:
+      return state
+  }
+}
 
 const DOT_STEPS: DialogStep[] = ['input', 'fetching', 'select', 'done']
 
 function StepDots({ current }: { current: DialogStep }) {
   const idx = DOT_STEPS.indexOf(current === 'installing' ? 'select' : current)
+
   return (
     <div className="flex items-center gap-1.5">
       {DOT_STEPS.map((step, i) => (
@@ -64,12 +157,6 @@ function StepDots({ current }: { current: DialogStep }) {
     </div>
   )
 }
-
-// ── Right panel: generative halftone art ──────────────────────────────────────
-
-// ── Right panel: generative art background ────────────────────────────────────
-// HalftoneArt imported from ~/components/ui/canvas-art
-// Additional art options: FlowField, GridWave, SineRipple, RainDots from same module
 
 function RightPanelInput() {
   return (
@@ -107,7 +194,6 @@ function RightPanelSelect({
 }) {
   return (
     <div className="flex h-full flex-col gap-5 px-7 py-8">
-      {/* Count */}
       <div>
         <div className="flex items-baseline gap-2">
           <span className="text-[44px] font-bold leading-none tracking-tight text-foreground">
@@ -124,7 +210,6 @@ function RightPanelSelect({
 
       <div className="h-px bg-foreground/6" />
 
-      {/* Clean list */}
       <div className="flex flex-col gap-0.5 overflow-hidden">
         {skills.slice(0, 9).map((skill) => {
           const isSelected = selected.has(skill.skillDir)
@@ -182,8 +267,6 @@ function RightPanelDone({ count }: { count: number }) {
     </div>
   )
 }
-
-// ── Left panel steps ───────────────────────────────────────────────────────────
 
 function InputForm({
   onFetch,
@@ -319,7 +402,6 @@ function SelectBody({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Heading */}
       <div className="flex items-baseline justify-between px-8 pb-3 pt-7">
         <h2 className="text-[16px] font-semibold text-foreground">
           {result.skills.length}
@@ -338,7 +420,6 @@ function SelectBody({
         </button>
       </div>
 
-      {/* Skill list */}
       <div className="flex-1 overflow-y-auto px-8 pb-4">
         <div className="flex flex-col gap-1.5">
           {result.skills.map((skill) => {
@@ -384,7 +465,6 @@ function SelectBody({
         </div>
       </div>
 
-      {/* Footer */}
       <div className="border-t border-foreground/6 px-8 py-5">
         <Button
           onClick={onInstall}
@@ -461,8 +541,6 @@ function DoneBody({
   )
 }
 
-// ── Main dialog ────────────────────────────────────────────────────────────────
-
 export function SkillImportDialog({
   open,
   onOpenChange,
@@ -477,115 +555,98 @@ export function SkillImportDialog({
   agentId?: string | null
 }) {
   const { fetchSource, importFromFetch, cancelFetch } = useSkillSourceImport({ workspaceId, agentId })
+  const [state, dispatch] = useReducer(skillImportDialogReducer, initialSkillImportDialogState)
 
-  const [step, setStep] = useState<DialogStep>('input')
-  const [sourceInput, setSourceInput] = useState('')
-  const [fetchResult, setFetchResult] = useState<FetchResult | null>(null)
-  const [selected, setSelected] = useState<Set<string>>(() => new Set())
-  const [importResult, setImportResult] = useState<ImportResult | null>(null)
-  const [fetchError, setFetchError] = useState<string | null>(null)
-
-  // Reset state when dialog opens (render-time adjustment)
   const prevOpenRef = useRef(open)
-  if (open && !prevOpenRef.current) {
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      dispatch({ type: 'reset' })
+    }
     prevOpenRef.current = open
-    setStep('input')
-    setSourceInput('')
-    setFetchResult(null)
-    setSelected(() => new Set())
-    setImportResult(null)
-    setFetchError(null)
-  }
-  if (!open && prevOpenRef.current) {
-    prevOpenRef.current = open
-  }
+  }, [open])
 
   const handleClose = useCallback(() => {
-    if (fetchResult?.sessionId && step !== 'done') {
-      cancelFetch.mutate(fetchResult.sessionId)
+    if (state.fetchResult?.sessionId && state.step !== 'done') {
+      cancelFetch.mutate(state.fetchResult.sessionId)
     }
     onOpenChange(false)
-  }, [fetchResult, step, cancelFetch, onOpenChange])
+  }, [state.fetchResult, state.step, cancelFetch, onOpenChange])
 
   const handleFetch = useCallback(async (source: string) => {
-    setSourceInput(source)
-    setFetchError(null)
-    setStep('fetching')
+    dispatch({ type: 'fetch-start', source })
     try {
       const result = await fetchSource.mutateAsync(source)
-      setFetchResult({
-        sessionId: result.sessionId,
-        sourceLabel: result.source.label,
-        sourceType: result.source.type,
-        skills: result.skills,
+      dispatch({
+        type: 'fetch-success',
+        source,
+        result: {
+          sessionId: result.sessionId,
+          sourceLabel: result.source.label,
+          sourceType: result.source.type,
+          skills: result.skills,
+        },
       })
-      setSelected(() => new Set(result.skills.map(s => s.skillDir)))
-      setStep('select')
     }
     catch (err) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-      setStep('input')
+      dispatch({ type: 'fetch-error', error: err instanceof Error ? err.message : String(err) })
     }
   }, [fetchSource])
 
   const handleToggle = useCallback((skillDir: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(skillDir)) {
-        next.delete(skillDir)
-      }
-      else {
-        next.add(skillDir)
-      }
-      return next
-    })
+    dispatch({ type: 'toggle-skill', skillDir })
   }, [])
 
   const handleToggleAll = useCallback(() => {
-    if (!fetchResult) {
+    if (!state.fetchResult) {
       return
     }
-    setSelected(() => selected.size === fetchResult.skills.length
-      ? new Set()
-      : new Set(fetchResult.skills.map(s => s.skillDir)))
-  }, [fetchResult, selected])
+    dispatch({
+      type: 'toggle-all',
+      skillDirs: state.fetchResult.skills.map(skill => skill.skillDir),
+    })
+  }, [state.fetchResult])
 
   const handleInstall = useCallback(async () => {
-    if (!fetchResult || selected.size === 0) {
+    if (!state.fetchResult || state.selected.size === 0) {
       return
     }
-    setStep('installing')
+    dispatch({ type: 'install-start' })
     try {
       const result = await importFromFetch.mutateAsync({
-        sessionId: fetchResult.sessionId,
-        selectedDirs: Array.from(selected),
+        sessionId: state.fetchResult.sessionId,
+        selectedDirs: Array.from(state.selected),
         scope: editableScope,
         overwrite: false,
       })
-      setImportResult({ imported: result.imported.length, errors: result.errors })
-      setStep('done')
+      dispatch({ type: 'install-success', result: { imported: result.imported.length, errors: result.errors } })
     }
     catch (err) {
-      setFetchError(err instanceof Error ? err.message : String(err))
-      setStep('select')
+      dispatch({ type: 'install-error', error: err instanceof Error ? err.message : String(err) })
     }
-  }, [fetchResult, selected, importFromFetch, editableScope])
+  }, [state.fetchResult, state.selected, importFromFetch, editableScope])
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          handleClose()
+          return
+        }
+        onOpenChange(true)
+      }}
+    >
       <DialogContent
         className="sm:max-w-240 overflow-hidden p-0"
         showCloseButton={false}
         data-testid="skill-import-dialog"
       >
         <div className="flex h-130">
-          {/* ── Left panel: interactive content ──────────────────────── */}
           <div className="relative flex w-[58%] flex-col overflow-hidden border-r border-foreground/6">
-            {/* Title bar */}
             <div className="flex shrink-0 items-center justify-between border-b border-foreground/6 px-8 py-4">
               <div className="flex items-center gap-3">
                 <span className="text-[13px] font-semibold text-foreground">Import Skills</span>
-                <StepDots current={step} />
+                <StepDots current={state.step} />
               </div>
               <button
                 type="button"
@@ -597,10 +658,9 @@ export function SkillImportDialog({
               </button>
             </div>
 
-            {/* Step content */}
             <div className="min-h-0 flex-1 overflow-hidden">
               <AnimatePresence mode="wait">
-                {step === 'input' && (
+                {state.step === 'input' && (
                   <m.div
                     key="input"
                     className="h-full"
@@ -612,12 +672,12 @@ export function SkillImportDialog({
                     <InputForm
                       onFetch={source => void handleFetch(source)}
                       isFetching={fetchSource.isPending}
-                      error={fetchError}
+                      error={state.fetchError}
                     />
                   </m.div>
                 )}
 
-                {step === 'fetching' && (
+                {state.step === 'fetching' && (
                   <m.div
                     key="fetching"
                     className="h-full"
@@ -626,11 +686,11 @@ export function SkillImportDialog({
                     exit={{ opacity: 0, x: 12 }}
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <FetchingBody source={sourceInput} />
+                    <FetchingBody source={state.sourceInput} />
                   </m.div>
                 )}
 
-                {(step === 'select' || step === 'installing') && fetchResult && (
+                {(state.step === 'select' || state.step === 'installing') && state.fetchResult && (
                   <m.div
                     key="select"
                     className="h-full"
@@ -640,17 +700,17 @@ export function SkillImportDialog({
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   >
                     <SelectBody
-                      result={fetchResult}
-                      selected={selected}
+                      result={state.fetchResult}
+                      selected={state.selected}
                       onToggle={handleToggle}
                       onToggleAll={handleToggleAll}
                       onInstall={() => void handleInstall()}
-                      isInstalling={step === 'installing'}
+                      isInstalling={state.step === 'installing'}
                     />
                   </m.div>
                 )}
 
-                {step === 'done' && importResult && (
+                {state.step === 'done' && state.importResult && (
                   <m.div
                     key="done"
                     className="h-full"
@@ -659,29 +719,26 @@ export function SkillImportDialog({
                     exit={{ opacity: 0, x: 12 }}
                     transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
                   >
-                    <DoneBody result={importResult} onClose={() => onOpenChange(false)} />
+                    <DoneBody result={state.importResult} onClose={handleClose} />
                   </m.div>
                 )}
               </AnimatePresence>
             </div>
           </div>
 
-          {/* ── Right panel: contextual art ───────────────────────────── */}
           <div className="relative flex w-[42%] flex-col overflow-hidden bg-foreground/2" style={{ boxShadow: 'inset 1px 0 0 oklch(from var(--foreground) l c h / 0.05)' }}>
-            {/* Particle constellation — full-panel background */}
             <div
               className={cn(
                 'pointer-events-none absolute inset-0 transition-opacity duration-700',
-                step === 'input' ? 'opacity-50' : step === 'fetching' ? 'opacity-25' : 'opacity-0',
+                state.step === 'input' ? 'opacity-50' : state.step === 'fetching' ? 'opacity-25' : 'opacity-0',
               )}
             >
               <HalftoneArt />
             </div>
 
-            {/* Content */}
             <div className="relative z-10 flex h-full flex-col">
               <AnimatePresence mode="wait">
-                {step === 'input' && (
+                {state.step === 'input' && (
                   <m.div
                     key="right-input"
                     className="h-full"
@@ -694,7 +751,7 @@ export function SkillImportDialog({
                   </m.div>
                 )}
 
-                {step === 'fetching' && (
+                {state.step === 'fetching' && (
                   <m.div
                     key="right-fetching"
                     className="h-full"
@@ -703,11 +760,11 @@ export function SkillImportDialog({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.25 }}
                   >
-                    <RightPanelFetching source={sourceInput} />
+                    <RightPanelFetching source={state.sourceInput} />
                   </m.div>
                 )}
 
-                {(step === 'select' || step === 'installing') && fetchResult && (
+                {(state.step === 'select' || state.step === 'installing') && state.fetchResult && (
                   <m.div
                     key="right-select"
                     className="h-full"
@@ -717,14 +774,14 @@ export function SkillImportDialog({
                     transition={{ duration: 0.25 }}
                   >
                     <RightPanelSelect
-                      skills={fetchResult.skills}
-                      selected={selected}
+                      skills={state.fetchResult.skills}
+                      selected={state.selected}
                       scope={editableScope}
                     />
                   </m.div>
                 )}
 
-                {step === 'done' && importResult && (
+                {state.step === 'done' && state.importResult && (
                   <m.div
                     key="right-done"
                     className="h-full"
@@ -733,7 +790,7 @@ export function SkillImportDialog({
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.25 }}
                   >
-                    <RightPanelDone count={importResult.imported} />
+                    <RightPanelDone count={state.importResult.imported} />
                   </m.div>
                 )}
               </AnimatePresence>

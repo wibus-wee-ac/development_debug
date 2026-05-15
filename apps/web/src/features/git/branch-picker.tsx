@@ -10,7 +10,7 @@ import {
   RefreshCwIcon,
   XIcon,
 } from 'lucide-react'
-import { useCallback, useDeferredValue, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useReducer, useRef } from 'react'
 
 import { postWorkspacesByIdGitBranches, postWorkspacesByIdGitCheckout, postWorkspacesByIdGitFetch } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
@@ -29,25 +29,285 @@ import {
 interface BranchPickerProps {
   workspaceId: string
   currentBranch: string
-  createDialogRef?: React.RefObject<unknown>
   children: React.ReactNode
+}
+
+interface BranchPickerState {
+  open: boolean
+  search: string
+  fetching: boolean
+  creating: boolean
+  newName: string
+  createError: string | null
+  createLoading: boolean
+}
+
+type BranchPickerAction =
+  | { type: 'set-open', open: boolean }
+  | { type: 'set-search', search: string }
+  | { type: 'set-fetching', fetching: boolean }
+  | { type: 'start-creating' }
+  | { type: 'cancel-creating' }
+  | { type: 'set-new-name', newName: string }
+  | { type: 'set-create-error', error: string | null }
+  | { type: 'set-create-loading', loading: boolean }
+  | { type: 'complete-create' }
+
+const INITIAL_BRANCH_PICKER_STATE: BranchPickerState = {
+  open: false,
+  search: '',
+  fetching: false,
+  creating: false,
+  newName: '',
+  createError: null,
+  createLoading: false,
+}
+
+function branchPickerReducer(state: BranchPickerState, action: BranchPickerAction): BranchPickerState {
+  switch (action.type) {
+    case 'set-open':
+      return action.open
+        ? { ...state, open: true }
+        : { ...state, open: false, creating: false, newName: '', createError: null, createLoading: false }
+    case 'set-search':
+      return { ...state, search: action.search }
+    case 'set-fetching':
+      return { ...state, fetching: action.fetching }
+    case 'start-creating':
+      return { ...state, creating: true, newName: '', createError: null }
+    case 'cancel-creating':
+      return { ...state, creating: false, newName: '', createError: null, createLoading: false }
+    case 'set-new-name':
+      return { ...state, newName: action.newName }
+    case 'set-create-error':
+      return { ...state, createError: action.error }
+    case 'set-create-loading':
+      return { ...state, createLoading: action.loading }
+    case 'complete-create':
+      return { ...state, open: false, creating: false, newName: '', createError: null, createLoading: false }
+    default:
+      return state
+  }
+}
+
+function cleanGitError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  return raw.split('\n').filter(line => line.trim() && !line.trim().startsWith('at ')).join('\n').trim()
+}
+
+function BranchPickerCreatePanel({
+  createError,
+  createLoading,
+  currentBranch,
+  newName,
+  onCancel,
+  onCreate,
+  onNameChange,
+  inputRef,
+}: {
+  createError: string | null
+  createLoading: boolean
+  currentBranch: string
+  newName: string
+  onCancel: () => void
+  onCreate: () => void
+  onNameChange: (value: string) => void
+  inputRef: React.RefObject<HTMLInputElement | null>
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
+        <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+        <Input
+          ref={inputRef}
+          className="h-7 flex-1 text-xs font-mono"
+          placeholder="feature/my-branch"
+          value={newName}
+          data-testid="git-branch-create-input"
+          onChange={e => onNameChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              void onCreate()
+            }
+            if (e.key === 'Escape') {
+              onCancel()
+            }
+          }}
+          disabled={createLoading}
+        />
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={onCancel}
+          className="shrink-0 text-muted-foreground"
+          aria-label="取消"
+          data-testid="git-branch-create-cancel"
+        >
+          <XIcon className="size-3.5" />
+        </Button>
+      </div>
+
+      <div className="px-3 py-2">
+        <p className="text-[10px] leading-relaxed text-muted-foreground">
+          将基于
+          {' '}
+          <span className="font-mono text-foreground/70">{currentBranch}</span>
+          {' '}
+          创建并切换分支。按 Enter 确认。
+        </p>
+        {createError && <p className="mt-1.5 text-[10px] text-destructive">{createError}</p>}
+      </div>
+
+      <div className="border-t border-border px-2 py-1.5">
+        <button
+          type="button"
+          disabled={!newName.trim() || createLoading}
+          onClick={() => { void onCreate() }}
+          data-testid="git-branch-create-submit"
+          className={cn(
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
+            newName.trim() && !createLoading
+              ? 'cursor-pointer text-foreground hover:bg-accent/60'
+              : 'cursor-not-allowed text-muted-foreground/40',
+          )}
+        >
+          <PlusIcon className="size-3 shrink-0" aria-hidden />
+          {createLoading
+            ? '创建中…'
+            : newName.trim()
+              ? `创建 "${newName.trim()}"`
+              : '输入分支名称'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BranchPickerListPanel({
+  currentBranch,
+  fetching,
+  localFiltered,
+  remoteFiltered,
+  search,
+  searchInputRef,
+  onCheckout,
+  onFetch,
+  onSearchChange,
+  onStartCreating,
+}: {
+  currentBranch: string
+  fetching: boolean
+  localFiltered: Array<{ name: string }>
+  remoteFiltered: Array<{ name: string }>
+  search: string
+  searchInputRef: React.RefObject<HTMLInputElement | null>
+  onCheckout: (branch: string) => void
+  onFetch: () => void
+  onSearchChange: (value: string) => void
+  onStartCreating: () => void
+}) {
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
+        <Input
+          ref={searchInputRef}
+          className="h-7 text-xs"
+          placeholder="搜索或切换分支…"
+          value={search}
+          data-testid="git-branch-search"
+          onChange={e => onSearchChange(e.target.value)}
+        />
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          title="fetch --all --prune"
+          onClick={() => { void onFetch() }}
+          disabled={fetching}
+          className="shrink-0"
+          data-testid="git-branch-fetch"
+        >
+          <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} />
+        </Button>
+      </div>
+
+      <div className="max-h-64 overflow-y-auto py-1">
+        {localFiltered.length > 0 && (
+          <div>
+            <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              本地分支
+            </p>
+            {localFiltered.map(branch => (
+              <button
+                key={branch.name}
+                type="button"
+                onClick={() => { void onCheckout(branch.name) }}
+                data-testid="git-branch-option"
+                data-branch-scope="local"
+                data-branch-name={branch.name}
+                data-branch-current={branch.name === currentBranch ? 'true' : 'false'}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent/60"
+              >
+                <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/50" aria-hidden />
+                <span className="flex-1 break-all font-mono">{branch.name}</span>
+                {branch.name === currentBranch && <CheckIcon className="size-3 shrink-0 text-primary" aria-hidden />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {remoteFiltered.length > 0 && (
+          <div>
+            <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              远端分支
+            </p>
+            {remoteFiltered.map(branch => (
+              <button
+                key={branch.name}
+                type="button"
+                onClick={() => { void onCheckout(branch.name) }}
+                data-testid="git-branch-option"
+                data-branch-scope="remote"
+                data-branch-name={branch.name}
+                data-branch-current="false"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent/60"
+              >
+                <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/30" aria-hidden />
+                <span className="flex-1 break-all font-mono text-muted-foreground">{branch.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {localFiltered.length === 0 && remoteFiltered.length === 0 && (
+          <p className="p-3 text-center text-xs text-muted-foreground">
+            {search ? '无匹配分支' : '加载中…'}
+          </p>
+        )}
+      </div>
+
+      <div className="border-t border-border px-2 py-1.5">
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          onClick={onStartCreating}
+          data-testid="git-branch-start-create"
+        >
+          <PlusIcon className="size-3 shrink-0" aria-hidden />
+          新建分支…
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function BranchPicker({
   workspaceId,
   currentBranch,
-  createDialogRef: _createDialogRef,
   children,
 }: BranchPickerProps) {
-  const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const [fetching, setFetching] = useState(false)
-  // inline create-branch state
-  const [creating, setCreating] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [createLoading, setCreateLoading] = useState(false)
+  const [state, dispatch] = useReducer(branchPickerReducer, INITIAL_BRANCH_PICKER_STATE)
   const createInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const queryClient = useQueryClient()
   const { data: branches } = useGitBranches(workspaceId)
@@ -60,7 +320,7 @@ export function BranchPicker({
   }, [queryClient, workspaceId])
 
   const handleCheckout = useCallback(async (branch: string) => {
-    setOpen(false)
+    dispatch({ type: 'set-open', open: false })
     try {
       await postWorkspacesByIdGitCheckout({
         path: { id: workspaceId },
@@ -69,65 +329,67 @@ export function BranchPicker({
       invalidateAll()
     }
     catch (err) {
-      const raw = err instanceof Error ? err.message : String(err)
-      // Strip stack trace lines; keep only the git error text
-      const clean = raw.split('\n').filter(l => l.trim() && !l.trim().startsWith('at ')).join('\n').trim()
-      toastManager.add({ type: 'error', title: '切换分支失败', description: clean })
+      toastManager.add({ type: 'error', title: '切换分支失败', description: cleanGitError(err) })
     }
   }, [workspaceId, invalidateAll])
 
   const handleFetch = useCallback(async () => {
-    setFetching(true)
+    dispatch({ type: 'set-fetching', fetching: true })
     try {
       await postWorkspacesByIdGitFetch({ path: { id: workspaceId } })
       invalidateAll()
     }
     finally {
-      setFetching(false)
+      dispatch({ type: 'set-fetching', fetching: false })
     }
   }, [workspaceId, invalidateAll])
 
   const startCreating = useCallback(() => {
-    setCreating(true)
-    setNewName('')
-    setCreateError(null)
-    // defer focus so input is mounted
-    requestAnimationFrame(() => createInputRef.current?.focus())
+    dispatch({ type: 'start-creating' })
   }, [])
 
   const cancelCreating = useCallback(() => {
-    setCreating(false)
-    setNewName('')
-    setCreateError(null)
+    dispatch({ type: 'cancel-creating' })
   }, [])
 
   const handleCreate = useCallback(async () => {
-    const name = newName.trim()
+    const name = state.newName.trim()
     if (!name) {
       return
     }
-    setCreateLoading(true)
-    setCreateError(null)
+    dispatch({ type: 'set-create-loading', loading: true })
+    dispatch({ type: 'set-create-error', error: null })
     try {
       await postWorkspacesByIdGitBranches({
         path: { id: workspaceId },
         body: { name } as unknown as never,
       })
       invalidateAll()
-      setOpen(false)
-      setCreating(false)
+      dispatch({ type: 'complete-create' })
     }
     catch (err) {
-      const raw = err instanceof Error ? err.message : String(err)
-      const clean = raw.split('\n').filter(l => l.trim() && !l.trim().startsWith('at ')).join('\n').trim()
-      setCreateError(clean || '创建失败')
+      dispatch({ type: 'set-create-error', error: cleanGitError(err) || '创建失败' })
     }
     finally {
-      setCreateLoading(false)
+      dispatch({ type: 'set-create-loading', loading: false })
     }
-  }, [newName, workspaceId, invalidateAll])
+  }, [invalidateAll, state.newName, workspaceId])
 
-  const q = search.toLowerCase()
+  useEffect(() => {
+    if (!state.open) {
+      return
+    }
+    requestAnimationFrame(() => {
+      if (state.creating) {
+        createInputRef.current?.focus()
+      }
+      else {
+        searchInputRef.current?.focus()
+      }
+    })
+  }, [state.creating, state.open])
+
+  const q = state.search.toLowerCase()
   const deferredQ = useDeferredValue(q)
   const localFiltered = useMemo(
     () => (branches?.local ?? []).filter(b => b.name.toLowerCase().includes(deferredQ)),
@@ -140,12 +402,9 @@ export function BranchPicker({
 
   return (
     <Popover
-      open={open}
+      open={state.open}
       onOpenChange={(nextOpen) => {
-        setOpen(nextOpen)
-        if (!nextOpen) {
-          cancelCreating()
-        }
+        dispatch({ type: 'set-open', open: nextOpen })
       }}
     >
       <PopoverTrigger asChild>
@@ -158,180 +417,37 @@ export function BranchPicker({
         sideOffset={6}
         data-testid="git-branch-picker"
       >
-        {creating
+        {state.creating
           ? (
-            /* ── Inline create-branch panel ── */
-            <div className="flex flex-col">
-              <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
-                <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
-                <Input
-                  ref={createInputRef}
-                  className="h-7 flex-1 text-xs font-mono"
-                  placeholder="feature/my-branch"
-                  value={newName}
-                  data-testid="git-branch-create-input"
-                  onChange={(e) => {
-                    setNewName(e.target.value)
-                    setCreateError(null)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      void handleCreate()
-                    }
-                    if (e.key === 'Escape') {
-                      cancelCreating()
-                    }
-                  }}
-                  disabled={createLoading}
-                  autoFocus
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={cancelCreating}
-                  className="shrink-0 text-muted-foreground"
-                  aria-label="取消"
-                  data-testid="git-branch-create-cancel"
-                >
-                  <XIcon className="size-3.5" />
-                </Button>
-              </div>
-
-              <div className="px-3 py-2">
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  将基于
-                  {' '}
-                  <span className="font-mono text-foreground/70">{currentBranch}</span>
-                  {' '}
-                  创建并切换分支。按 Enter 确认。
-                </p>
-                {createError && (
-                  <p className="mt-1.5 text-[10px] text-destructive">{createError}</p>
-                )}
-              </div>
-
-              <div className="border-t border-border px-2 py-1.5">
-                <button
-                  type="button"
-                  disabled={!newName.trim() || createLoading}
-                  onClick={() => { void handleCreate() }}
-                  data-testid="git-branch-create-submit"
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors',
-                    newName.trim() && !createLoading
-                      ? 'text-foreground hover:bg-accent/60 cursor-pointer'
-                      : 'text-muted-foreground/40 cursor-not-allowed',
-                  )}
-                >
-                  <PlusIcon className="size-3 shrink-0" aria-hidden />
-                  {createLoading
-                    ? '创建中…'
-                    : newName.trim()
-                      ? `创建 "${newName.trim()}"`
-                      : '输入分支名称'}
-                </button>
-              </div>
-            </div>
+            <BranchPickerCreatePanel
+              createError={state.createError}
+              createLoading={state.createLoading}
+              currentBranch={currentBranch}
+              newName={state.newName}
+              onCancel={cancelCreating}
+              onCreate={handleCreate}
+              onNameChange={(value) => {
+                dispatch({ type: 'set-new-name', newName: value })
+                if (state.createError) {
+                  dispatch({ type: 'set-create-error', error: null })
+                }
+              }}
+              inputRef={createInputRef}
+            />
           )
           : (
-            /* ── Normal branch list panel ── */
-            <div className="flex flex-col">
-              {/* Header */}
-              <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
-                <Input
-                  className="h-7 text-xs"
-                  placeholder="搜索或切换分支…"
-                  value={search}
-                  data-testid="git-branch-search"
-                  onChange={(e) => {
-                    setSearch(e.target.value)
-                  }}
-                  autoFocus
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title="fetch --all --prune"
-                  onClick={() => { void handleFetch() }}
-                  disabled={fetching}
-                  className="shrink-0"
-                  data-testid="git-branch-fetch"
-                >
-                  <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} />
-                </Button>
-              </div>
-
-              {/* Branch list */}
-              <div className="max-h-64 overflow-y-auto py-1">
-                {localFiltered.length > 0 && (
-                  <div>
-                    <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                      本地分支
-                    </p>
-                    {localFiltered.map(b => (
-                      <button
-                        key={b.name}
-                        type="button"
-                        onClick={() => { void handleCheckout(b.name) }}
-                        data-testid="git-branch-option"
-                        data-branch-scope="local"
-                        data-branch-name={b.name}
-                        data-branch-current={b.name === currentBranch ? 'true' : 'false'}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/60 transition-colors"
-                      >
-                        <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/50" aria-hidden />
-                        <span className="flex-1 break-all font-mono">{b.name}</span>
-                        {b.name === currentBranch && (
-                          <CheckIcon className="size-3 shrink-0 text-primary" aria-hidden />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {remoteFiltered.length > 0 && (
-                  <div>
-                    <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                      远端分支
-                    </p>
-                    {remoteFiltered.map(b => (
-                      <button
-                        key={b.name}
-                        type="button"
-                        onClick={() => { void handleCheckout(b.name) }}
-                        data-testid="git-branch-option"
-                        data-branch-scope="remote"
-                        data-branch-name={b.name}
-                        data-branch-current="false"
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-accent/60 transition-colors"
-                      >
-                        <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/30" aria-hidden />
-                        <span className="flex-1 break-all font-mono text-muted-foreground">{b.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {localFiltered.length === 0 && remoteFiltered.length === 0 && (
-                  <p className="p-3 text-center text-xs text-muted-foreground">
-                    {search ? '无匹配分支' : '加载中…'}
-                  </p>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="border-t border-border px-2 py-1.5">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-colors"
-                  onClick={startCreating}
-                  data-testid="git-branch-start-create"
-                >
-                  <PlusIcon className="size-3 shrink-0" aria-hidden />
-                  新建分支…
-                </button>
-              </div>
-            </div>
+            <BranchPickerListPanel
+              currentBranch={currentBranch}
+              fetching={state.fetching}
+              localFiltered={localFiltered}
+              remoteFiltered={remoteFiltered}
+              search={state.search}
+              searchInputRef={searchInputRef}
+              onCheckout={handleCheckout}
+              onFetch={handleFetch}
+              onSearchChange={(value) => dispatch({ type: 'set-search', search: value })}
+              onStartCreating={startCreating}
+            />
           )}
       </PopoverContent>
     </Popover>

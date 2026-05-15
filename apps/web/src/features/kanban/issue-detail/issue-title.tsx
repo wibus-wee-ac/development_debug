@@ -8,7 +8,32 @@ interface IssueTitleProps {
 }
 
 export function IssueTitle({ issue, onUpdate }: IssueTitleProps) {
-  const [value, setValue] = useState(issue.title)
+  const [editorKey, setEditorKey] = useState(0)
+
+  useEffect(() => {
+    setEditorKey(key => key + 1)
+  }, [issue.id, issue.title])
+
+  return (
+    <IssueTitleEditor
+      key={`${issue.id}:${editorKey}`}
+      initialTitle={issue.title}
+      onCommit={(title) => {
+        if (title !== issue.title) {
+          onUpdate({ title })
+        }
+      }}
+    />
+  )
+}
+
+function IssueTitleEditor({
+  initialTitle,
+  onCommit,
+}: {
+  initialTitle: string
+  onCommit: (title: string) => void
+}) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
   const adjustHeight = useCallback(() => {
@@ -20,24 +45,22 @@ export function IssueTitle({ issue, onUpdate }: IssueTitleProps) {
   }, [])
 
   useEffect(() => {
-    setValue(issue.title)
     requestAnimationFrame(adjustHeight)
-  }, [issue.title, adjustHeight])
+  }, [adjustHeight])
 
   const commitTitleEdit = useCallback(() => {
-    const trimmed = value.trim()
-    if (trimmed && trimmed !== issue.title) {
-      onUpdate({ title: trimmed })
+    const trimmed = ref.current?.value.trim() ?? ''
+    if (trimmed) {
+      onCommit(trimmed)
     }
-  }, [value, issue.title, onUpdate])
+  }, [onCommit])
 
   return (
     <div data-testid="issue-title-display">
       <textarea
         ref={ref}
-        value={value}
+        defaultValue={initialTitle}
         onChange={(e) => {
-          setValue(e.target.value)
           const el = e.currentTarget
           el.style.height = '0'
           const h = el.scrollHeight

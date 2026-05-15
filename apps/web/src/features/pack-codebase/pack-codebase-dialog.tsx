@@ -10,7 +10,7 @@ import {
   XIcon,
   ZapIcon,
 } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useReducer, useRef } from 'react'
 
 import { postWorkspacesByIdPack } from '~/api-gen'
 import { Button } from '~/components/ui/button'
@@ -66,76 +66,122 @@ function formatTokens(n: number): string {
 
 const EMPTY_PATHS: string[] = []
 
-export function PackCodebaseDialog({
+interface PackCodebaseDialogState {
+  style: PackStyle
+  compress: boolean
+  removeComments: boolean
+  scopePaths: string[]
+  pathInput: string
+  ignore: string
+  status: 'idle' | 'packing' | 'done' | 'error'
+  result: { totalFiles: number, totalTokens: number } | null
+  errorMsg: string
+}
+
+type PackCodebaseDialogAction =
+  | { type: 'set-style', style: PackStyle }
+  | { type: 'set-compress', compress: boolean }
+  | { type: 'set-remove-comments', removeComments: boolean }
+  | { type: 'set-path-input', pathInput: string }
+  | { type: 'add-path', path: string }
+  | { type: 'remove-path', path: string }
+  | { type: 'set-ignore', ignore: string }
+  | { type: 'pack/start' }
+  | { type: 'pack/success', result: { totalFiles: number, totalTokens: number } }
+  | { type: 'pack/error', errorMsg: string }
+  | { type: 'reset-status' }
+  | { type: 'pop-last-path' }
+
+function createInitialPackCodebaseDialogState(initialPaths: string[]): PackCodebaseDialogState {
+  return {
+    style: 'xml',
+    compress: true,
+    removeComments: false,
+    scopePaths: initialPaths,
+    pathInput: '',
+    ignore: '',
+    status: 'idle',
+    result: null,
+    errorMsg: '',
+  }
+}
+
+function packCodebaseDialogReducer(state: PackCodebaseDialogState, action: PackCodebaseDialogAction): PackCodebaseDialogState {
+  switch (action.type) {
+    case 'set-style':
+      return { ...state, style: action.style }
+    case 'set-compress':
+      return { ...state, compress: action.compress }
+    case 'set-remove-comments':
+      return { ...state, removeComments: action.removeComments }
+    case 'set-path-input':
+      return { ...state, pathInput: action.pathInput }
+    case 'add-path':
+      return state.scopePaths.includes(action.path)
+        ? { ...state, pathInput: '' }
+        : { ...state, scopePaths: [...state.scopePaths, action.path], pathInput: '' }
+    case 'remove-path':
+      return { ...state, scopePaths: state.scopePaths.filter(path => path !== action.path) }
+    case 'set-ignore':
+      return { ...state, ignore: action.ignore }
+    case 'pack/start':
+      return { ...state, status: 'packing', result: null, errorMsg: '' }
+    case 'pack/success':
+      return { ...state, status: 'done', result: action.result }
+    case 'pack/error':
+      return { ...state, status: 'error', errorMsg: action.errorMsg }
+    case 'reset-status':
+      return { ...state, status: 'idle', result: null, errorMsg: '' }
+    case 'pop-last-path':
+      return { ...state, scopePaths: state.scopePaths.slice(0, -1) }
+    default:
+      return state
+  }
+}
+
+function PackCodebaseDialogContent({
   workspaceId,
   workspaceName,
-  initialPaths = EMPTY_PATHS,
-  open,
-  onOpenChange,
-}: PackCodebaseDialogProps) {
-  const [style, setStyle] = useState<PackStyle>('xml')
-  const [compress, setCompress] = useState(true)
-  const [removeComments, setRemoveComments] = useState(false)
-  const [scopePaths, setScopePaths] = useState<string[]>(initialPaths)
-  const [pathInput, setPathInput] = useState('')
-  const [ignore, setIgnore] = useState('')
+  initialPaths,
+}: {
+  workspaceId: string
+  workspaceName: string
+  initialPaths: string[]
+}) {
+  const [state, dispatch] = useReducer(packCodebaseDialogReducer, initialPaths, createInitialPackCodebaseDialogState)
   const pathInputRef = useRef<HTMLInputElement>(null)
-
-  const [status, setStatus] = useState<'idle' | 'packing' | 'done' | 'error'>('idle')
-  const [result, setResult] = useState<{ totalFiles: number, totalTokens: number } | null>(null)
-  const [errorMsg, setErrorMsg] = useState('')
-
-  // Reset scope paths when the dialog opens with new initials (render-time adjustment)
-  const prevOpenRef = useRef(open)
-  if (open && !prevOpenRef.current) {
-    prevOpenRef.current = open
-    setScopePaths(initialPaths)
-    setStatus('idle')
-    setResult(null)
-    setErrorMsg('')
-  }
-  if (!open && prevOpenRef.current) {
-    prevOpenRef.current = open
-  }
 
   const addPath = useCallback((raw: string) => {
     const trimmed = raw.trim()
     if (!trimmed) {
       return
     }
-    setScopePaths(prev => prev.includes(trimmed) ? prev : [...prev, trimmed])
-    setPathInput('')
-  }, [])
-
-  const removePath = useCallback((p: string) => {
-    setScopePaths(prev => prev.filter(x => x !== p))
+    dispatch({ type: 'add-path', path: trimmed })
   }, [])
 
   const handlePathKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
-      addPath(pathInput)
+      addPath(state.pathInput)
     }
-    if (e.key === 'Backspace' && !pathInput && scopePaths.length > 0) {
-      setScopePaths(prev => prev.slice(0, -1))
+    if (e.key === 'Backspace' && !state.pathInput && state.scopePaths.length > 0) {
+      dispatch({ type: 'pop-last-path' })
     }
-  }, [addPath, pathInput, scopePaths.length])
+  }, [addPath, state.pathInput, state.scopePaths.length])
 
   const handlePack = useCallback(async () => {
-    setStatus('packing')
-    setResult(null)
-    setErrorMsg('')
+    dispatch({ type: 'pack/start' })
 
     try {
-      const include = scopePaths.length > 0 ? pathsToInclude(scopePaths) : undefined
+      const include = state.scopePaths.length > 0 ? pathsToInclude(state.scopePaths) : undefined
       const res = await postWorkspacesByIdPack({
         path: { id: workspaceId },
         body: {
-          style,
-          compress,
-          removeComments,
+          style: state.style,
+          compress: state.compress,
+          removeComments: state.removeComments,
           include,
-          ignore: ignore.trim() || undefined,
+          ignore: state.ignore.trim() || undefined,
         },
       })
 
@@ -144,20 +190,197 @@ export function PackCodebaseDialog({
       }
 
       await navigator.clipboard.writeText(res.data.content)
-      setResult({ totalFiles: res.data.totalFiles, totalTokens: res.data.totalTokens })
-      setStatus('done')
+      dispatch({
+        type: 'pack/success',
+        result: { totalFiles: res.data.totalFiles, totalTokens: res.data.totalTokens },
+      })
     }
     catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : '未知错误')
-      setStatus('error')
+      dispatch({ type: 'pack/error', errorMsg: err instanceof Error ? err.message : '未知错误' })
     }
-  }, [workspaceId, style, compress, removeComments, scopePaths, ignore])
+  }, [state.compress, state.ignore, state.removeComments, state.scopePaths, state.style, workspaceId])
 
-  const handleReset = useCallback(() => {
-    setStatus('idle')
-    setResult(null)
-    setErrorMsg('')
-  }, [])
+  return (
+    <div className="space-y-5 py-1">
+      {state.status === 'done' && state.result && (
+        <div className="flex items-start gap-3 rounded-lg bg-muted/60 px-4 py-3">
+          <CheckIcon className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-400" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">已复制到剪贴板</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {state.result.totalFiles}
+              {' 个文件 · '}
+              {formatTokens(state.result.totalTokens)}
+              {' tokens'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {state.status === 'error' && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-destructive">{state.errorMsg || '打包失败'}</p>
+        </div>
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        工作区：
+        <span className="font-medium text-foreground">{workspaceName}</span>
+      </p>
+
+      <div className="space-y-2">
+        <Label className="text-xs text-muted-foreground">输出格式</Label>
+        <div className="flex gap-1.5">
+          {FORMAT_OPTIONS.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => dispatch({ type: 'set-style', style: opt.value })}
+              className={cn(
+                'flex-1 rounded-md border px-3 py-2 text-left text-xs transition-colors',
+                state.style === opt.value
+                  ? 'border-foreground/40 bg-foreground/5 text-foreground'
+                  : 'border-border bg-transparent text-muted-foreground hover:border-border/80 hover:text-foreground/70',
+              )}
+            >
+              <div className="font-medium">{opt.label}</div>
+              <div className="mt-0.5 text-[11px] leading-tight opacity-70">{opt.description}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label className="flex cursor-pointer items-center gap-1.5 text-sm" htmlFor="compress-toggle">
+              <ZapIcon className="size-3 text-muted-foreground" />
+              智能压缩
+            </Label>
+            <p className="text-xs text-muted-foreground">Tree-sitter 提取结构，减少约 70% tokens</p>
+          </div>
+          <Switch
+            id="compress-toggle"
+            size="sm"
+            checked={state.compress}
+            onCheckedChange={value => dispatch({ type: 'set-compress', compress: value })}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <Label className="cursor-pointer text-sm" htmlFor="comments-toggle">移除注释</Label>
+          <Switch
+            id="comments-toggle"
+            size="sm"
+            checked={state.removeComments}
+            onCheckedChange={value => dispatch({ type: 'set-remove-comments', removeComments: value })}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">
+          打包范围
+          <span className="ml-1 opacity-50">（空 = 整个工作区）</span>
+        </Label>
+        <div
+          role="group"
+          className={cn(
+            'flex min-h-9 flex-wrap gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-xs transition-colors focus-within:ring-1 focus-within:ring-ring',
+            state.scopePaths.length === 0 && 'items-center',
+          )}
+          onClick={() => pathInputRef.current?.focus()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') pathInputRef.current?.focus() }}
+          tabIndex={0}
+        >
+          {state.scopePaths.map(path => (
+            <span
+              key={path}
+              className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+            >
+              <span className="max-w-52 truncate">{path}</span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  dispatch({ type: 'remove-path', path })
+                }}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={`移除 ${path}`}
+              >
+                <XIcon className="size-2.5" />
+              </button>
+            </span>
+          ))}
+          <input
+            ref={pathInputRef}
+            value={state.pathInput}
+            onChange={e => dispatch({ type: 'set-path-input', pathInput: e.target.value })}
+            onKeyDown={handlePathKeyDown}
+            onBlur={() => addPath(state.pathInput)}
+            placeholder={state.scopePaths.length === 0 ? 'src/renderer, packages/ipc …' : ''}
+            className="min-w-24 flex-1 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground/40"
+          />
+        </div>
+        <p className="text-[11px] text-muted-foreground/50">
+          每行或逗号分隔；从文件树右键"Pack & Copy"可自动填入
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">排除 (glob)</Label>
+        <Input
+          placeholder="**/*.test.ts,docs/**"
+          value={state.ignore}
+          onChange={e => dispatch({ type: 'set-ignore', ignore: e.target.value })}
+          className="h-8 font-mono text-xs"
+        />
+      </div>
+
+      <div className="flex gap-2">
+        {state.status === 'done'
+          ? (
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => dispatch({ type: 'reset-status' })}
+              >
+                重新配置
+              </Button>
+            )
+          : (
+              <Button
+                className="flex-1"
+                onClick={handlePack}
+                disabled={state.status === 'packing'}
+              >
+                {state.status === 'packing'
+                  ? (
+                      <>
+                        <Loader2Icon className="size-3.5 animate-spin" />
+                        正在打包...
+                      </>
+                    )
+                  : (
+                      <>
+                        <ClipboardCopyIcon className="size-3.5" />
+                        打包并复制
+                      </>
+                    )}
+              </Button>
+            )}
+      </div>
+    </div>
+  )
+}
+
+export function PackCodebaseDialog({
+  workspaceId,
+  workspaceName,
+  initialPaths = EMPTY_PATHS,
+  open,
+  onOpenChange,
+}: PackCodebaseDialogProps) {
+  const dialogSessionKey = open ? `${workspaceId}:${initialPaths.join(',')}` : `closed:${workspaceId}`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -168,183 +391,12 @@ export function PackCodebaseDialog({
             复制代码库
           </DialogTitle>
         </DialogHeader>
-
-        <div className="space-y-5 py-1">
-          {/* Result state */}
-          {status === 'done' && result && (
-            <div className="flex items-start gap-3 rounded-lg bg-muted/60 px-4 py-3">
-              <CheckIcon className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-400" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">已复制到剪贴板</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {result.totalFiles}
-                  {' 个文件 · '}
-                  {formatTokens(result.totalTokens)}
-                  {' tokens'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {status === 'error' && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
-              <p className="text-sm text-destructive">{errorMsg || '打包失败'}</p>
-            </div>
-          )}
-
-          {/* Workspace label */}
-          <p className="text-xs text-muted-foreground">
-            工作区：
-            <span className="font-medium text-foreground">{workspaceName}</span>
-          </p>
-
-          {/* Format selector */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">输出格式</Label>
-            <div className="flex gap-1.5">
-              {FORMAT_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setStyle(opt.value)}
-                  className={cn(
-                    'flex-1 rounded-md border px-3 py-2 text-left text-xs transition-colors',
-                    style === opt.value
-                      ? 'border-foreground/40 bg-foreground/5 text-foreground'
-                      : 'border-border bg-transparent text-muted-foreground hover:border-border/80 hover:text-foreground/70',
-                  )}
-                >
-                  <div className="font-medium">{opt.label}</div>
-                  <div className="mt-0.5 text-[11px] leading-tight opacity-70">{opt.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Options */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label className="flex cursor-pointer items-center gap-1.5 text-sm" htmlFor="compress-toggle">
-                  <ZapIcon className="size-3 text-muted-foreground" />
-                  智能压缩
-                </Label>
-                <p className="text-xs text-muted-foreground">Tree-sitter 提取结构，减少约 70% tokens</p>
-              </div>
-              <Switch
-                id="compress-toggle"
-                size="sm"
-                checked={compress}
-                onCheckedChange={setCompress}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label className="cursor-pointer text-sm" htmlFor="comments-toggle">移除注释</Label>
-              <Switch
-                id="comments-toggle"
-                size="sm"
-                checked={removeComments}
-                onCheckedChange={setRemoveComments}
-              />
-            </div>
-          </div>
-
-          {/* Scope (include paths) — chip input */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">
-              打包范围
-              <span className="ml-1 opacity-50">（空 = 整个工作区）</span>
-            </Label>
-            <div
-              role="group"
-              className={cn(
-                'flex min-h-9 flex-wrap gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-xs transition-colors focus-within:ring-1 focus-within:ring-ring',
-                scopePaths.length === 0 && 'items-center',
-              )}
-              onClick={() => pathInputRef.current?.focus()}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') pathInputRef.current?.focus() }}
-              tabIndex={0}
-            >
-              {scopePaths.map(p => (
-                <span
-                  key={p}
-                  className="inline-flex max-w-full items-center gap-1 rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-foreground"
-                >
-                  <span className="max-w-52 truncate">{p}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removePath(p)
-                    }}
-                    className="shrink-0 text-muted-foreground hover:text-foreground"
-                    aria-label={`移除 ${p}`}
-                  >
-                    <XIcon className="size-2.5" />
-                  </button>
-                </span>
-              ))}
-              <input
-                ref={pathInputRef}
-                value={pathInput}
-                onChange={e => setPathInput(e.target.value)}
-                onKeyDown={handlePathKeyDown}
-                onBlur={() => addPath(pathInput)}
-                placeholder={scopePaths.length === 0 ? 'src/renderer, packages/ipc …' : ''}
-                className="min-w-24 flex-1 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground/40"
-              />
-            </div>
-            <p className="text-[11px] text-muted-foreground/50">
-              每行或逗号分隔；从文件树右键"Pack & Copy"可自动填入
-            </p>
-          </div>
-
-          {/* Ignore pattern */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">排除 (glob)</Label>
-            <Input
-              placeholder="**/*.test.ts,docs/**"
-              value={ignore}
-              onChange={e => setIgnore(e.target.value)}
-              className="h-8 font-mono text-xs"
-            />
-          </div>
-
-          {/* Action */}
-          <div className="flex gap-2">
-            {status === 'done'
-              ? (
-                  <Button
-                    variant="outline"
-                    className="flex-1"
-                    onClick={handleReset}
-                  >
-                    重新配置
-                  </Button>
-                )
-              : (
-                  <Button
-                    className="flex-1"
-                    onClick={handlePack}
-                    disabled={status === 'packing'}
-                  >
-                    {status === 'packing'
-                      ? (
-                          <>
-                            <Loader2Icon className="size-3.5 animate-spin" />
-                            正在打包...
-                          </>
-                        )
-                      : (
-                          <>
-                            <ClipboardCopyIcon className="size-3.5" />
-                            打包并复制
-                          </>
-                        )}
-                  </Button>
-                )}
-          </div>
-        </div>
+        <PackCodebaseDialogContent
+          key={dialogSessionKey}
+          workspaceId={workspaceId}
+          workspaceName={workspaceName}
+          initialPaths={initialPaths}
+        />
       </DialogContent>
     </Dialog>
   )

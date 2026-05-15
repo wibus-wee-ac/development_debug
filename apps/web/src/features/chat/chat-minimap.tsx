@@ -3,7 +3,7 @@
 // Position: Overlay component pinned to the right edge of the chat scroll area
 
 import type { UIMessage } from 'ai'
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useReducer, useRef } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -18,6 +18,63 @@ interface ChatMinimapProps {
   barProgress: number[]
   onScrollToIndex: (index: number) => void
   onScrollTo: (offset: number) => void
+}
+
+interface ChatMinimapUiState {
+  hoverIdx: number | null
+  hoverClientY: number
+  isDragging: boolean
+  containerHeight: number
+  containerTop: number
+}
+
+type ChatMinimapUiAction
+  = { type: 'pointer-start', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
+  | { type: 'pointer-move', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
+  | { type: 'pointer-end' }
+  | { type: 'pointer-leave' }
+
+const initialChatMinimapUiState: ChatMinimapUiState = {
+  hoverIdx: null,
+  hoverClientY: 0,
+  isDragging: false,
+  containerHeight: 0,
+  containerTop: 0,
+}
+
+function chatMinimapUiReducer(state: ChatMinimapUiState, action: ChatMinimapUiAction): ChatMinimapUiState {
+  switch (action.type) {
+    case 'pointer-start':
+      return {
+        hoverIdx: action.hoverIdx,
+        hoverClientY: action.hoverClientY,
+        isDragging: true,
+        containerHeight: action.containerHeight,
+        containerTop: action.containerTop,
+      }
+    case 'pointer-move':
+      return {
+        ...state,
+        hoverIdx: action.hoverIdx,
+        hoverClientY: action.hoverClientY,
+        containerHeight: action.containerHeight,
+        containerTop: action.containerTop,
+      }
+    case 'pointer-end':
+      return {
+        ...state,
+        isDragging: false,
+      }
+    case 'pointer-leave':
+      return state.isDragging
+        ? state
+        : {
+            ...state,
+            hoverIdx: null,
+          }
+    default:
+      return state
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -50,11 +107,7 @@ function ChatMinimapInner({
   onScrollTo,
 }: ChatMinimapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
-  const [hoverClientY, setHoverClientY] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const [containerHeight, setContainerHeight] = useState(0)
-  const [containerTop, setContainerTop] = useState(0)
+  const [uiState, dispatch] = useReducer(chatMinimapUiReducer, initialChatMinimapUiState)
 
   // Precompute bar data
   const bars = useMemo(
@@ -69,7 +122,7 @@ function ChatMinimapInner({
     [messages],
   )
 
-  const hoveredBar = hoverIdx !== null ? bars[hoverIdx] : null
+  const hoveredBar = uiState.hoverIdx !== null ? bars[uiState.hoverIdx] : null
 
   // Viewport position (for future use)
   const scrollable = (scrollHeight - viewportHeight) || 1
@@ -98,15 +151,17 @@ function ChatMinimapInner({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault()
-      setIsDragging(true)
-        ; (e.target as HTMLElement).setPointerCapture(e.pointerId)
+      ; (e.target as HTMLElement).setPointerCapture(e.pointerId)
       const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
-        setContainerHeight(rect.height)
-        setContainerTop(rect.top)
         const y = e.clientY - rect.top
-        setHoverIdx(yToIndex(y, rect.height))
-        setHoverClientY(e.clientY)
+        dispatch({
+          type: 'pointer-start',
+          hoverIdx: yToIndex(y, rect.height),
+          hoverClientY: e.clientY,
+          containerHeight: rect.height,
+          containerTop: rect.top,
+        })
       }
     },
     [yToIndex],
@@ -118,45 +173,46 @@ function ChatMinimapInner({
       if (!rect) {
         return
       }
-      setContainerHeight(rect.height)
-      setContainerTop(rect.top)
       const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height))
-      setHoverIdx(yToIndex(y, rect.height))
-      setHoverClientY(e.clientY)
-      if (isDragging) {
+      dispatch({
+        type: 'pointer-move',
+        hoverIdx: yToIndex(y, rect.height),
+        hoverClientY: e.clientY,
+        containerHeight: rect.height,
+        containerTop: rect.top,
+      })
+      if (uiState.isDragging) {
         onScrollTo(yToScroll(y, rect.height))
       }
     },
-    [isDragging, onScrollTo, yToIndex, yToScroll],
+    [onScrollTo, uiState.isDragging, yToIndex, yToScroll],
   )
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
-      setIsDragging(false)
-        ; (e.target as HTMLElement).releasePointerCapture(e.pointerId)
+      dispatch({ type: 'pointer-end' })
+      ; (e.target as HTMLElement).releasePointerCapture(e.pointerId)
     },
     [],
   )
 
   const handlePointerLeave = useCallback(() => {
-    if (!isDragging) {
-      setHoverIdx(null)
-    }
-  }, [isDragging])
+    dispatch({ type: 'pointer-leave' })
+  }, [])
 
   const scrollToHoveredMessage = useCallback(() => {
-    if (hoverIdx !== null) {
-      onScrollToIndex(hoverIdx)
+    if (uiState.hoverIdx !== null) {
+      onScrollToIndex(uiState.hoverIdx)
     }
-  }, [hoverIdx, onScrollToIndex])
+  }, [onScrollToIndex, uiState.hoverIdx])
 
   if (messages.length === 0) {
     return null
   }
 
   // Compute hover peek position (clamped to container)
-  const peekTop = hoverIdx !== null
-    ? Math.max(0, Math.min(hoverClientY - containerTop - 40, containerHeight - 120))
+  const peekTop = uiState.hoverIdx !== null
+    ? Math.max(0, Math.min(uiState.hoverClientY - uiState.containerTop - 40, uiState.containerHeight - 120))
     : 0
 
   return (
@@ -187,7 +243,7 @@ function ChatMinimapInner({
                 bar.role === 'user'
                   ? 'bg-foreground/10'
                   : 'bg-foreground/5',
-                hoverIdx === i && 'bg-accent/30',
+                uiState.hoverIdx === i && 'bg-accent/30',
               )}
               style={{ width: `${bar.width}%` }}
             >
@@ -195,7 +251,7 @@ function ChatMinimapInner({
               <div
                 className={cn(
                   'absolute inset-y-0 left-0 rounded-full',
-                  hoverIdx === i
+                  uiState.hoverIdx === i
                     ? 'bg-accent'
                     : bar.role === 'user'
                       ? 'bg-foreground/30'
@@ -208,7 +264,7 @@ function ChatMinimapInner({
         })}
 
         {/* Hover peek popover */}
-        {hoveredBar && hoverIdx !== null && (
+        {hoveredBar && uiState.hoverIdx !== null && (
           <div
             className="absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md pointer-events-none"
             style={{
@@ -224,7 +280,7 @@ function ChatMinimapInner({
                 )}
               />
               <span className="text-[10px] font-medium text-muted-foreground">
-                {`${hoveredBar.role === 'user' ? '用户' : '助手'} · #${hoverIdx + 1}`}
+                {`${hoveredBar.role === 'user' ? '用户' : '助手'} · #${uiState.hoverIdx + 1}`}
               </span>
             </div>
             <p className="text-xs/relaxed text-foreground line-clamp-4">

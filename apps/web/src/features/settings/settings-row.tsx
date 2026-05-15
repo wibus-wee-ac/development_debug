@@ -26,35 +26,15 @@ export function SettingsRow({
   vertical = false,
   onClick,
 }: SettingsRowProps) {
-  return (
-    <div
-      onClick={onClick}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick
-        ? (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onClick()
-          }
-        }
-        : undefined}
-      className={cn(
-        'py-3',
-        vertical
-          ? 'flex flex-col gap-3'
-          : 'flex items-start justify-between gap-8',
-        className,
-      )}
-    >
-      {/* Left — label + description */}
+  const content = (
+    <>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="text-[13px] font-medium text-foreground">{label}</span>
           {info && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <InfoIcon className="size-3.5 text-muted-foreground cursor-help" />
+                <InfoIcon className="size-3.5 cursor-help text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs text-xs">
                 {info}
@@ -67,10 +47,41 @@ export function SettingsRow({
         )}
       </div>
 
-      {/* Right — control */}
       <div className={cn('shrink-0', vertical ? 'w-full' : undefined)}>
         {children}
       </div>
+    </>
+  )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          'w-full py-3 text-left',
+          vertical
+            ? 'flex flex-col gap-3'
+            : 'flex items-start justify-between gap-8',
+          className,
+        )}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        'py-3',
+        vertical
+          ? 'flex flex-col gap-3'
+          : 'flex items-start justify-between gap-8',
+        className,
+      )}
+    >
+      {content}
     </div>
   )
 }

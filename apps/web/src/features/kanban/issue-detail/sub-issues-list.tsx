@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PlusIcon } from 'lucide-react'
 
 import type { KanbanStatus } from '~/lib/types'
@@ -18,6 +18,16 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
   const createIssue = useCreateIssue()
   const [creating, setCreating] = useState(false)
   const [newTitle, setNewTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!creating) {
+      return
+    }
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+  }, [creating])
 
   const handleCreate = useCallback(() => {
     const trimmed = newTitle.trim()
@@ -75,6 +85,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
         {creating && (
           <div className="flex h-8 items-center gap-2">
             <input
+              ref={inputRef}
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={(e) => {
@@ -84,7 +95,6 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
               onBlur={() => { if (!newTitle.trim()) setCreating(false) }}
               placeholder="Sub-issue title..."
               className="flex-1 border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
-              autoFocus
             />
           </div>
         )}

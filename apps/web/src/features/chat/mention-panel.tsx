@@ -63,6 +63,8 @@ const MAX_RESULTS = 30
 export function MentionPanel({ items, query, onSelect, onClose, visible }: MentionPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
+  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
+  const previousQueryRef = useRef(query)
 
   // Build the fzf index once per items change; reuse for each query.
   const fzfIndex = useMemo(
@@ -78,12 +80,8 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     return fzfIndex.find(query)
   }, [fzfIndex, query, items])
 
-  // Reset active index when query changes (render-time state adjustment)
-  const prevQueryRef = useRef(query)
-  if (query !== prevQueryRef.current) {
-    prevQueryRef.current = query
-    setActiveIndex(0)
-  }
+  const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
+  previousQueryRef.current = query
 
   // Scroll active item into view
   useEffect(() => {
@@ -91,50 +89,55 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     if (!list) {
       return
     }
-    const active = list.children[activeIndex] as HTMLElement | undefined
+    const active = list.children[effectiveActiveIndex] as HTMLElement | undefined
     active?.scrollIntoView({ block: 'nearest' })
-  }, [activeIndex])
+  }, [effectiveActiveIndex])
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!visible) {
-        return
-      }
+  keyHandlerRef.current = (e: KeyboardEvent) => {
+    if (!visible) {
+      return
+    }
 
-      if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        setActiveIndex(prev => (prev + 1) % Math.max(results.length, 1))
-      }
-      else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
-      }
-      else if (e.key === 'Enter' && results[activeIndex]) {
-        e.preventDefault()
-        onSelect(results[activeIndex].item)
-      }
-      else if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-      }
-    },
-    [visible, results, activeIndex, onSelect, onClose],
-  )
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(prev => (prev + 1) % Math.max(results.length, 1))
+    }
+    else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
+    }
+    else if (e.key === 'Enter' && results[effectiveActiveIndex]) {
+      e.preventDefault()
+      onSelect(results[effectiveActiveIndex].item)
+    }
+    else if (e.key === 'Escape') {
+      e.preventDefault()
+      onClose()
+    }
+  }
 
   useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keyHandlerRef.current(e)
+    }
+
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [handleKeyDown])
+  }, [])
+
+  const handleOptionClick = useCallback((item: MentionItem) => {
+    onSelect(item)
+  }, [onSelect])
 
   if (!visible || results.length === 0) {
     return null
   }
 
   return (
-    <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-56 overflow-hidden rounded-xl border border-border/40 bg-popover/95 backdrop-blur-md shadow-xl">
+    <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-56 overflow-hidden rounded-xl border border-border/40 bg-popover/95 shadow-xl backdrop-blur-md">
       <div
         ref={listRef}
-        className="overflow-y-auto p-1 max-h-56"
+        className="max-h-56 overflow-y-auto p-1"
         role="listbox"
       >
         {results.map(({ item, positions }, idx) => (
@@ -142,15 +145,15 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
             key={item.path}
             type="button"
             role="option"
-            aria-selected={idx === activeIndex}
+            aria-selected={idx === effectiveActiveIndex}
             className={cn(
-              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-left transition-colors',
-              idx === activeIndex
+              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors',
+              idx === effectiveActiveIndex
                 ? 'bg-accent text-accent-foreground'
                 : 'text-foreground/80 hover:bg-accent/40',
             )}
             onMouseEnter={() => setActiveIndex(idx)}
-            onClick={() => onSelect(item)}
+            onClick={() => handleOptionClick(item)}
           >
             {item.type === 'directory'
               ? <FolderIcon className="size-3.5 shrink-0 text-amber-500/70" aria-hidden="true" />

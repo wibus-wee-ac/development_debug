@@ -3,13 +3,10 @@
 // Position: Rendered by chat route as the third breadcrumb segment; shows branch + opens BranchPicker on click
 
 import { CloudIcon, GitBranchIcon } from 'lucide-react'
-import { useRef } from 'react'
 
 import { cn } from '~/lib/cn'
 
 import { BranchPicker } from './branch-picker'
-import type { CreateBranchDialogHandle } from './create-branch-dialog'
-import { CreateBranchDialog } from './create-branch-dialog'
 import { useGitStatus } from './use-git'
 
 interface GitBranchControlProps {
@@ -18,7 +15,6 @@ interface GitBranchControlProps {
 
 export function GitBranchControl({ workspaceId }: GitBranchControlProps) {
   const { data: status, isError } = useGitStatus(workspaceId)
-  const createDialogRef = useRef<CreateBranchDialogHandle>(null)
 
   if (!workspaceId || isError || !status) {
     return null
@@ -29,7 +25,6 @@ export function GitBranchControl({ workspaceId }: GitBranchControlProps) {
       <BranchPicker
         workspaceId={workspaceId}
         currentBranch={status.branch}
-        createDialogRef={createDialogRef}
       >
         <button
           type="button"
@@ -56,12 +51,6 @@ export function GitBranchControl({ workspaceId }: GitBranchControlProps) {
           )}
         </button>
       </BranchPicker>
-
-      <CreateBranchDialog
-        ref={createDialogRef}
-        workspaceId={workspaceId}
-        currentBranch={status.branch}
-      />
     </>
   )
 }

@@ -34,7 +34,7 @@ export function ModelsPanel({
       filtered = models.filter(m => (m.label || m.id).toLowerCase().includes(q))
     }
     // Sort: enabled first, then alphabetical within each group
-    return [...filtered].sort((a, b) => {
+    return filtered.toSorted((a, b) => {
       const aEnabled = allDisabled ? false : enabledModels.length === 0 || enabledModels.includes(a.id)
       const bEnabled = allDisabled ? false : enabledModels.length === 0 || enabledModels.includes(b.id)
       if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
@@ -122,7 +122,7 @@ export function ModelsPanel({
       </div>
 
       {/* Body */}
-      <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/[0.06]">
+      <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/6">
         {loading
           ? (
             <div className="flex items-center justify-center gap-2 py-8 text-[12px] text-muted-foreground">
@@ -143,7 +143,7 @@ export function ModelsPanel({
             )
             : (
               <div className="max-h-72 overflow-y-auto">
-                <ul className="divide-y divide-foreground/[0.04]">
+                <ul className="divide-y divide-foreground/4">
                   {visible.map((m) => {
                     const checked = isChecked(m.id)
                     return (
@@ -151,7 +151,7 @@ export function ModelsPanel({
                         <label
                           className={cn(
                             'flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors',
-                            'hover:bg-foreground/[0.025]',
+                            'hover:bg-foreground/2.5',
                           )}
                         >
                           <Checkbox

@@ -2,7 +2,7 @@
 // Output: Quick create issue dialog
 // Position: Modal dialog for creating new kanban issues
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
@@ -22,8 +22,18 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState<'none' | 'low' | 'medium' | 'high' | 'urgent'>('none')
   const [statusId, setStatusId] = useState(defaultStatusId ?? '')
+  const titleInputRef = useRef<HTMLInputElement>(null)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const createIssue = useCreateIssue()
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    requestAnimationFrame(() => {
+      titleInputRef.current?.focus()
+    })
+  }, [open])
 
   const handleSubmit = () => {
     if (!title.trim()) return
@@ -60,12 +70,12 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
 
         <div className="space-y-3 pt-2">
           <Input
+            ref={titleInputRef}
             value={title}
             onChange={e => setTitle(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="事项标题"
             className="text-[13px]"
-            autoFocus
           />
 
           <div className="flex items-center gap-2">

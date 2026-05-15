@@ -4,8 +4,8 @@
 
 import { ArrowLeftIcon, CheckIcon, DicesIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
-import { useForm, useWatch } from 'react-hook-form'
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef } from 'react'
+import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 
 import {
   AlertDialog,
@@ -52,6 +52,44 @@ interface AgentDetailFormValues {
   modelId: string | null
   thinkingEffort: ThinkingEffort
   systemPrompt: string
+}
+
+interface AgentDetailUiState {
+  avatarSpinKey: number
+  saveState: SaveState
+  createSaving: boolean
+  saveError: string | null
+}
+
+type AgentDetailUiAction =
+  | { type: 'reset' }
+  | { type: 'avatar/spin' }
+  | { type: 'save/state', state: SaveState }
+  | { type: 'create/saving', value: boolean }
+  | { type: 'save/error', error: string | null }
+
+const INITIAL_AGENT_DETAIL_UI_STATE: AgentDetailUiState = {
+  avatarSpinKey: 0,
+  saveState: 'idle',
+  createSaving: false,
+  saveError: null,
+}
+
+function agentDetailUiReducer(state: AgentDetailUiState, action: AgentDetailUiAction): AgentDetailUiState {
+  switch (action.type) {
+    case 'reset':
+      return { ...INITIAL_AGENT_DETAIL_UI_STATE }
+    case 'avatar/spin':
+      return { ...state, avatarSpinKey: state.avatarSpinKey + 1 }
+    case 'save/state':
+      return { ...state, saveState: action.state }
+    case 'create/saving':
+      return { ...state, createSaving: action.value }
+    case 'save/error':
+      return { ...state, saveError: action.error }
+    default:
+      return state
+  }
 }
 
 function buildAvatarUrl(style: string, seed: string): string {
@@ -180,59 +218,365 @@ function SaveIndicator({ state }: { state: SaveState }) {
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+interface AgentDetailDraft {
+  name: string
+  description: string
+  avatarStyle: string
+  avatarSeed: string
+  agentProfileId: string | null
+  modelId: string | null
+  thinkingEffort: ThinkingEffort
+  systemPrompt: string
+}
 
-export function AgentDetailPage({
+function AgentDetailHeader({
+  isCreate,
+  saveState,
+  agentName,
+  onBack,
+  onDelete,
+}: {
+  isCreate: boolean
+  saveState: SaveState
+  agentName?: string
+  onBack: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="mb-6 flex items-center justify-between">
+      <button
+        type="button"
+        onClick={onBack}
+        data-testid="agent-detail-back"
+        className="flex items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeftIcon className="size-3.5" />
+        Agents
+      </button>
+
+      <div className="flex items-center gap-3">
+        {!isCreate && <SaveIndicator state={saveState} />}
+
+        {!isCreate && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                type="button"
+                data-testid="agent-detail-delete-trigger"
+                className="text-[11px] text-muted-foreground/40 transition-colors hover:text-destructive"
+              >
+                Delete
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Delete
+                  {' '}
+                  {agentName}
+                  ?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently remove the agent and all its private skills.
+                  This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => void onDelete()}
+                  className="bg-destructive text-white hover:bg-destructive/90"
+                  data-testid="agent-detail-delete-confirm"
+                >
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ThinkingEffortControl({ thinkingEffort }: { thinkingEffort: ThinkingEffort }) {
+  const form = useFormContext<AgentDetailFormValues>()
+  const isAuto = thinkingEffort === 'auto'
+
+  return (
+    <div className="flex items-center gap-1">
+      <div
+        className={cn(
+          'flex gap-px rounded-md bg-foreground/6 p-px',
+          isAuto && 'opacity-30',
+        )}
+      >
+        {(['low', 'medium', 'high'] as const).map(level => (
+          <button
+            key={level}
+            type="button"
+            onClick={() => form.setValue('thinkingEffort', level, { shouldDirty: true })}
+            data-testid={`agent-thinking-${level}`}
+            className={cn(
+              'h-6.5 rounded-[5px] px-2.5 text-[11px] font-medium capitalize transition-colors',
+              thinkingEffort === level
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {level}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => form.setValue('thinkingEffort', isAuto ? 'medium' : 'auto', { shouldDirty: true })}
+        data-testid="agent-thinking-auto"
+        className={cn(
+          'h-6.5 rounded-md px-2.5 text-[11px] transition-colors',
+          isAuto
+            ? 'bg-foreground font-medium text-background'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        Auto
+      </button>
+    </div>
+  )
+}
+
+function AgentIdentitySection({
+  draft,
+  enabledProfiles,
+  avatarUrl,
+  avatarSpinKey,
+  onShuffleAvatar,
+}: {
+  draft: AgentDetailDraft
+  enabledProfiles: AgentProfile[]
+  avatarUrl: string
+  avatarSpinKey: number
+  onShuffleAvatar: () => void
+}) {
+  const form = useFormContext<AgentDetailFormValues>()
+
+  return (
+    <div className="flex items-start gap-5">
+      <div className="flex shrink-0 flex-col items-center gap-1.5">
+        <m.button
+          type="button"
+          onClick={onShuffleAvatar}
+          data-testid="agent-avatar-preview"
+          className="group relative size-18 cursor-pointer overflow-hidden rounded-2xl bg-foreground/5"
+          title="Click to shuffle"
+          whileTap={{ scale: 0.91 }}
+        >
+          <m.img
+            key={avatarSpinKey}
+            src={avatarUrl}
+            alt={draft.name || 'Agent'}
+            className="size-full object-cover"
+            crossOrigin="anonymous"
+            initial={{ scale: 0.82, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
+            <DicesIcon className="size-4 text-white" />
+          </div>
+        </m.button>
+
+        <Select value={draft.avatarStyle} onValueChange={value => form.setValue('avatarStyle', value, { shouldDirty: true })}>
+          <SelectTrigger
+            size="sm"
+            data-testid="agent-avatar-style"
+            className="h-5 w-18 border-0 bg-transparent px-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {AVATAR_STYLES.map(style => (
+              <SelectItem key={style.id} value={style.id} className="text-xs">
+                {style.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-4 pt-1">
+        <div className="flex flex-col gap-0.5">
+          <input
+            type="text"
+            {...form.register('name')}
+            placeholder="Name your agent"
+            data-testid="agent-detail-name"
+            className="bg-transparent text-[17px] font-semibold leading-tight text-foreground outline-none placeholder:text-muted-foreground/25"
+          />
+          <input
+            type="text"
+            {...form.register('description')}
+            placeholder="Add a tagline..."
+            data-testid="agent-detail-description"
+            className="bg-transparent text-[12px] text-muted-foreground outline-none placeholder:text-muted-foreground/25"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={draft.agentProfileId ?? undefined}
+            onValueChange={(value) => {
+              form.setValue('agentProfileId', value, { shouldDirty: true })
+              form.setValue('modelId', null, { shouldDirty: true })
+            }}
+          >
+            <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-provider-select">
+              <SelectValue placeholder="Profile" />
+            </SelectTrigger>
+            <SelectContent>
+              {enabledProfiles.map(profile => (
+                <SelectItem key={profile.id} value={profile.id} className="text-xs">
+                  {profile.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <ModelSelect
+            profileId={draft.agentProfileId}
+            modelId={draft.modelId}
+            onModelChange={(id, options) => {
+              form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
+            }}
+          />
+
+          <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AgentSystemPromptSection() {
+  const form = useFormContext<AgentDetailFormValues>()
+
+  return (
+    <div className="flex flex-col gap-2 py-4">
+      <span className="text-[13px] font-medium text-foreground">System Prompt</span>
+      <textarea
+        {...form.register('systemPrompt')}
+        placeholder="Optional instructions for this agent..."
+        rows={5}
+        data-testid="agent-detail-system-prompt"
+        className={cn(
+          'w-full resize-none rounded-md bg-foreground/4 px-3 py-2.5 text-[12px] outline-none',
+          'text-foreground placeholder:text-muted-foreground/30',
+          'transition-colors focus:bg-foreground/5',
+        )}
+      />
+    </div>
+  )
+}
+
+function AgentCreateActions({
+  createSaving,
+  createDisabled,
+  saveError,
+  onCancel,
+  onCreate,
+}: {
+  createSaving: boolean
+  createDisabled: boolean
+  saveError: string | null
+  onCancel: () => void
+  onCreate: () => void
+}) {
+  return (
+    <div className="flex items-center justify-end gap-2 py-4">
+      {saveError && <p className="mr-auto text-[11px] text-destructive">{saveError}</p>}
+      <Button variant="outline" size="sm" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button
+        size="sm"
+        onClick={() => void onCreate()}
+        disabled={createDisabled}
+        data-testid="agent-detail-save"
+      >
+        {createSaving && <Spinner className="size-3.5" />}
+        Create Agent
+      </Button>
+    </div>
+  )
+}
+
+function AgentSkillsSection({ agentId }: { agentId: string }) {
+  return (
+    <SkillManager
+      agentId={agentId}
+      editableScope="agent"
+      title="Skills"
+      description={`Agent-exclusive skills stored in ~/.cradle/agents/${agentId}/skills`}
+      pageTestId={`agent-skills-${agentId}`}
+    />
+  )
+}
+
+function useAgentDetailOwner({
   agent,
   profiles,
-  onBack,
   onCreated,
   onDeleted,
 }: {
   agent?: Agent
   profiles: AgentProfile[]
-  onBack: () => void
   onCreated?: (agentId: string) => void
   onDeleted?: () => void
 }) {
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
   const persistedConfig = useMemo(() => parseConfigJson(agent?.configJson), [agent?.configJson])
-  const enabledProfiles = useMemo(() => profiles.filter(p => p.enabled), [profiles])
+  const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
   const form = useForm<AgentDetailFormValues>({
     defaultValues: getAgentDetailFormValues(agent, enabledProfiles),
   })
-  const watchedValues = useWatch({ control: form.control }) as AgentDetailFormValues
-  const name = watchedValues.name ?? ''
-  const description = watchedValues.description ?? ''
-  const avatarStyle = watchedValues.avatarStyle ?? AVATAR_STYLES[0].id
-  const avatarSeed = watchedValues.avatarSeed ?? ''
-  const agentProfileId = watchedValues.agentProfileId ?? null
-  const modelId = watchedValues.modelId ?? null
-  const thinkingEffort = watchedValues.thinkingEffort ?? 'auto'
-  const systemPrompt = watchedValues.systemPrompt ?? ''
-
-  const [avatarSpinKey, setAvatarSpinKey] = useState(0)
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [createSaving, setCreateSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const watchedValues = useWatch({ control: form.control }) as Partial<AgentDetailFormValues>
+  const draft: AgentDetailDraft = {
+    name: watchedValues.name ?? '',
+    description: watchedValues.description ?? '',
+    avatarStyle: watchedValues.avatarStyle ?? AVATAR_STYLES[0].id,
+    avatarSeed: watchedValues.avatarSeed ?? '',
+    agentProfileId: watchedValues.agentProfileId ?? null,
+    modelId: watchedValues.modelId ?? null,
+    thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
+    systemPrompt: watchedValues.systemPrompt ?? '',
+  }
+  const [uiState, dispatch] = useReducer(agentDetailUiReducer, INITIAL_AGENT_DETAIL_UI_STATE)
+  const { avatarSpinKey, saveState, createSaving, saveError } = uiState
 
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
+  const clearTimers = useCallback(() => {
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current)
     }
     if (savedClearTimer.current) {
       clearTimeout(savedClearTimer.current)
     }
+  }, [])
 
+  useEffect(() => {
+    return () => {
+      clearTimers()
+    }
+  }, [clearTimers])
+
+  useEffect(() => {
+    clearTimers()
     form.reset(getAgentDetailFormValues(agent, enabledProfiles))
-    setSaveState('idle')
-    setCreateSaving(false)
-    setSaveError(null)
-  }, [form, agent])
+    dispatch({ type: 'reset' })
+  }, [form, agent, clearTimers])
 
   useEffect(() => {
     if (agent || !enabledProfiles[0]) {
@@ -245,16 +589,7 @@ export function AgentDetailPage({
   }, [agent, enabledProfiles, form])
 
   const isDirty = form.formState.isDirty
-  const draftSignature = useMemo(() => JSON.stringify({
-    name,
-    description,
-    avatarStyle,
-    avatarSeed,
-    agentProfileId,
-    modelId,
-    thinkingEffort,
-    systemPrompt,
-  }), [name, description, avatarStyle, avatarSeed, agentProfileId, modelId, thinkingEffort, systemPrompt])
+  const draftSignature = useMemo(() => JSON.stringify(draft), [draft])
   const saveDraft = useEffectEvent(async () => {
     if (!agent) {
       return
@@ -271,8 +606,8 @@ export function AgentDetailPage({
       description: currentValues.description.trim(),
     }
 
-    setSaveState('saving')
-    setSaveError(null)
+    dispatch({ type: 'save/state', state: 'saving' })
+    dispatch({ type: 'save/error', error: null })
     try {
       const configJson = stringifyConfigJson(currentValues.systemPrompt, persistedConfig.baseConfig)
       await updateAgent.mutateAsync({
@@ -288,31 +623,34 @@ export function AgentDetailPage({
           configJson,
         },
       })
-      setSaveState('saved')
+      dispatch({ type: 'save/state', state: 'saved' })
       form.reset(normalizedValues)
       if (savedClearTimer.current) {
         clearTimeout(savedClearTimer.current)
       }
-      savedClearTimer.current = setTimeout(setSaveState, 2000, 'idle')
+      savedClearTimer.current = setTimeout(() => {
+        dispatch({ type: 'save/state', state: 'idle' })
+      }, 2000)
     }
     catch (err) {
-      setSaveState('error')
-      setSaveError(err instanceof Error ? err.message : String(err))
+      dispatch({ type: 'save/state', state: 'error' })
+      dispatch({ type: 'save/error', error: err instanceof Error ? err.message : String(err) })
     }
   })
 
-  // Auto-save debounce for edit mode
   useEffect(() => {
     if (isCreate || !isDirty || saveState === 'saving') {
       return
     }
-    setSaveState('pending')
+
+    dispatch({ type: 'save/state', state: 'pending' })
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current)
     }
     autoSaveTimer.current = setTimeout(() => {
       void saveDraft()
     }, 1400)
+
     return () => {
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current)
@@ -332,8 +670,8 @@ export function AgentDetailPage({
       description: currentValues.description.trim(),
     }
 
-    setCreateSaving(true)
-    setSaveError(null)
+    dispatch({ type: 'create/saving', value: true })
+    dispatch({ type: 'save/error', error: null })
     try {
       const created = await createAgent.mutateAsync({
         name: normalizedValues.name,
@@ -348,10 +686,10 @@ export function AgentDetailPage({
       onCreated?.(created.id)
     }
     catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err))
+      dispatch({ type: 'save/error', error: err instanceof Error ? err.message : String(err) })
     }
     finally {
-      setCreateSaving(false)
+      dispatch({ type: 'create/saving', value: false })
     }
   }, [form, createAgent, onCreated])
 
@@ -365,264 +703,89 @@ export function AgentDetailPage({
 
   const shuffleAvatar = useCallback(() => {
     form.setValue('avatarSeed', generateSeed(), { shouldDirty: true })
-    setAvatarSpinKey(k => k + 1)
+    dispatch({ type: 'avatar/spin' })
   }, [form])
 
-  const avatarUrl = buildAvatarUrl(avatarStyle, avatarSeed)
-  const isAuto = thinkingEffort === 'auto'
+  return {
+    isCreate,
+    form,
+    draft,
+    enabledProfiles,
+    avatarSpinKey,
+    avatarUrl: buildAvatarUrl(draft.avatarStyle, draft.avatarSeed),
+    saveState,
+    createSaving,
+    saveError,
+    createDisabled: !isDirty || createSaving || !draft.name.trim() || !draft.agentProfileId,
+    handleCreate,
+    handleDelete,
+    shuffleAvatar,
+  }
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+export function AgentDetailPage({
+  agent,
+  profiles,
+  onBack,
+  onCreated,
+  onDeleted,
+}: {
+  agent?: Agent
+  profiles: AgentProfile[]
+  onBack: () => void
+  onCreated?: (agentId: string) => void
+  onDeleted?: () => void
+}) {
+  const owner = useAgentDetailOwner({ agent, profiles, onCreated, onDeleted })
 
   return (
-    <div className="flex flex-col gap-0" data-testid={agent ? `agent-detail-${agent.id}` : 'agent-create'}>
-
-      {/* ── Nav bar ──────────────────────────────────────────── */}
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={onBack}
-          data-testid="agent-detail-back"
-          className="flex items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeftIcon className="size-3.5" />
-          Agents
-        </button>
-
-        <div className="flex items-center gap-3">
-          {!isCreate && <SaveIndicator state={saveState} />}
-
-          {!isCreate && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <button
-                  type="button"
-                  data-testid="agent-detail-delete-trigger"
-                  className="text-[11px] text-muted-foreground/40 transition-colors hover:text-destructive"
-                >
-                  Delete
-                </button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    Delete
-                    {' '}
-                    {agent?.name}
-                    ?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will permanently remove the agent and all its private skills.
-                    This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={() => void handleDelete()}
-                    className="bg-destructive text-white hover:bg-destructive/90"
-                    data-testid="agent-detail-delete-confirm"
-                  >
-                    Delete
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          )}
-        </div>
-      </div>
-
-      {/* ── Identity card ────────────────────────────────────── */}
-      <div className="flex items-start gap-5">
-        {/* Avatar + style */}
-        <div className="flex shrink-0 flex-col items-center gap-1.5">
-          <m.button
-            type="button"
-            onClick={shuffleAvatar}
-            data-testid="agent-avatar-preview"
-            className="group relative size-18 cursor-pointer overflow-hidden rounded-2xl bg-foreground/5"
-            title="Click to shuffle"
-            whileTap={{ scale: 0.91 }}
-          >
-            <m.img
-              key={avatarSpinKey}
-              src={avatarUrl}
-              alt={name || 'Agent'}
-              className="size-full object-cover"
-              crossOrigin="anonymous"
-              initial={{ scale: 0.82, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 22 }}
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
-              <DicesIcon className="size-4 text-white" />
-            </div>
-          </m.button>
-
-          <Select value={avatarStyle} onValueChange={value => form.setValue('avatarStyle', value, { shouldDirty: true })}>
-            <SelectTrigger
-              size="sm"
-              data-testid="agent-avatar-style"
-              className="h-5 w-18 border-0 bg-transparent px-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {AVATAR_STYLES.map(s => (
-                <SelectItem key={s.id} value={s.id} className="text-xs">
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Name, tagline, model config */}
-        <div className="flex min-w-0 flex-1 flex-col gap-4 pt-1">
-          {/* Name + tagline */}
-          <div className="flex flex-col gap-0.5">
-            <input
-              type="text"
-              {...form.register('name')}
-              placeholder="Name your agent"
-              autoFocus={isCreate}
-              data-testid="agent-detail-name"
-              className="bg-transparent text-[17px] font-semibold leading-tight text-foreground outline-none placeholder:text-muted-foreground/25"
-            />
-            <input
-              type="text"
-              {...form.register('description')}
-              placeholder="Add a tagline..."
-              data-testid="agent-detail-description"
-              className="bg-transparent text-[12px] text-muted-foreground outline-none placeholder:text-muted-foreground/25"
-            />
-          </div>
-
-          {/* Model config — compact inline row */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={agentProfileId ?? undefined}
-              onValueChange={(v) => {
-                form.setValue('agentProfileId', v, { shouldDirty: true })
-                form.setValue('modelId', null, { shouldDirty: true })
-              }}
-            >
-              <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-provider-select">
-                <SelectValue placeholder="Profile" />
-              </SelectTrigger>
-              <SelectContent>
-                {enabledProfiles.map(p => (
-                  <SelectItem key={p.id} value={p.id} className="text-xs">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <ModelSelect
-              profileId={agentProfileId}
-              modelId={modelId}
-              onModelChange={(id, options) => {
-                form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
-              }}
-            />
-
-            <div className="flex items-center gap-1">
-              <div
-                className={cn(
-                  'flex gap-px rounded-md bg-foreground/6 p-px',
-                  isAuto && 'opacity-30',
-                )}
-              >
-                {(['low', 'medium', 'high'] as const).map(level => (
-                  <button
-                    key={level}
-                    type="button"
-                    onClick={() => form.setValue('thinkingEffort', level, { shouldDirty: true })}
-                    data-testid={`agent-thinking-${level}`}
-                    className={cn(
-                      'h-6.5 rounded-[5px] px-2.5 text-[11px] font-medium capitalize transition-colors',
-                      thinkingEffort === level
-                        ? 'bg-foreground text-background'
-                        : 'text-muted-foreground hover:text-foreground',
-                    )}
-                  >
-                    {level}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => form.setValue('thinkingEffort', isAuto ? 'medium' : 'auto', { shouldDirty: true })}
-                data-testid="agent-thinking-auto"
-                className={cn(
-                  'h-6.5 rounded-md px-2.5 text-[11px] transition-colors',
-                  isAuto
-                    ? 'bg-foreground font-medium text-background'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                Auto
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── System Prompt ────────────────────────────────────── */}
-      <SettingsDivider />
-
-      <div className="flex flex-col gap-2 py-4">
-        <span className="text-[13px] font-medium text-foreground">System Prompt</span>
-        <textarea
-          {...form.register('systemPrompt')}
-          placeholder="Optional instructions for this agent..."
-          rows={5}
-          data-testid="agent-detail-system-prompt"
-          className={cn(
-            'w-full resize-none rounded-md bg-foreground/4 px-3 py-2.5 text-[12px] outline-none',
-            'text-foreground placeholder:text-muted-foreground/30',
-            'transition-colors focus:bg-foreground/5',
-          )}
+    <FormProvider {...owner.form}>
+      <div className="flex flex-col gap-0" data-testid={agent ? `agent-detail-${agent.id}` : 'agent-create'}>
+        <AgentDetailHeader
+          isCreate={owner.isCreate}
+          saveState={owner.saveState}
+          agentName={agent?.name}
+          onBack={onBack}
+          onDelete={owner.handleDelete}
         />
+
+        <AgentIdentitySection
+          draft={owner.draft}
+          enabledProfiles={owner.enabledProfiles}
+          avatarUrl={owner.avatarUrl}
+          avatarSpinKey={owner.avatarSpinKey}
+          onShuffleAvatar={owner.shuffleAvatar}
+        />
+
+        <SettingsDivider />
+        <AgentSystemPromptSection />
+
+        {owner.isCreate
+          ? (
+              <>
+                <SettingsDivider />
+                <AgentCreateActions
+                  createSaving={owner.createSaving}
+                  createDisabled={owner.createDisabled}
+                  saveError={owner.saveError}
+                  onCancel={onBack}
+                  onCreate={owner.handleCreate}
+                />
+              </>
+            )
+          : agent && (
+              <>
+                <SettingsDivider />
+                <AgentSkillsSection agentId={agent.id} />
+              </>
+            )}
+
+        {owner.saveError && !owner.isCreate && (
+          <p className="mt-2 text-[11px] text-destructive">{owner.saveError}</p>
+        )}
       </div>
-
-      {/* ── Create action (create mode only) ─────────────────── */}
-      {isCreate && (
-        <>
-          <SettingsDivider />
-          <div className="flex items-center justify-end gap-2 py-4">
-            {saveError && <p className="mr-auto text-[11px] text-destructive">{saveError}</p>}
-            <Button variant="outline" size="sm" onClick={onBack}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void handleCreate()}
-              disabled={!isDirty || createSaving || !name.trim() || !agentProfileId}
-              data-testid="agent-detail-save"
-            >
-              {createSaving && <Spinner className="size-3.5" />}
-              Create Agent
-            </Button>
-          </div>
-        </>
-      )}
-
-      {/* ── Skills (edit mode only) ───────────────────────────── */}
-      {!isCreate && agent && (
-        <>
-          <SettingsDivider />
-          <SkillManager
-            agentId={agent.id}
-            editableScope="agent"
-            title="Skills"
-            description={`Agent-exclusive skills stored in ~/.cradle/agents/${agent.id}/skills`}
-            pageTestId={`agent-skills-${agent.id}`}
-          />
-        </>
-      )}
-
-      {saveError && !isCreate && (
-        <p className="mt-2 text-[11px] text-destructive">{saveError}</p>
-      )}
-    </div>
+    </FormProvider>
   )
 }

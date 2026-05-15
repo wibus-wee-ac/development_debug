@@ -25,6 +25,24 @@ import {
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { cn } from '~/lib/cn'
 
+interface FilesystemFavoriteEntry {
+  name: string
+  path: string
+  icon: string
+}
+
+interface FilesystemBrowseEntry {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+}
+
+interface FilesystemBrowseResult {
+  current: string
+  parent?: string
+  entries: FilesystemBrowseEntry[]
+}
+
 interface DirectoryBrowserDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -43,41 +61,37 @@ export function DirectoryBrowserDialog({
     return localStorage.getItem(LAST_PATH_KEY) ?? undefined
   })
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null)
-  const [lastValidPath, setLastValidPath] = useState<string>('')
+  const [lastResolvedPath, setLastResolvedPath] = useState<string>(localStorage.getItem(LAST_PATH_KEY) ?? '')
 
-  const { data: favoritesData } = useQuery({
+  const { data: favoritesData } = useQuery<FilesystemFavoriteEntry[]>({
     queryKey: ['filesystem-favorites'],
     queryFn: async () => {
       const result = await getFilesystemFavorites()
-      return result.data!
+      return (result.data ?? []) as FilesystemFavoriteEntry[]
     },
     enabled: open,
     staleTime: 60_000,
   })
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error } = useQuery<FilesystemBrowseResult>({
     queryKey: ['filesystem-browse', currentPath],
     queryFn: async () => {
       const result = await getFilesystemBrowse({
         query: currentPath ? { path: currentPath } : {},
       })
-      return result.data!
+      return result.data as FilesystemBrowseResult
     },
     enabled: open,
     staleTime: 10_000,
   })
 
-  // Track last successfully loaded path
-  useEffect(() => {
-    if (data?.current) {
-      setLastValidPath(data.current)
-    }
-  }, [data?.current])
+  const currentDirectory = data?.current ?? null
 
-  // Reset selection when changing directory
   useEffect(() => {
-    setSelectedEntry(null)
-  }, [currentPath])
+    if (currentDirectory) {
+      setLastResolvedPath(currentDirectory)
+    }
+  }, [currentDirectory])
 
   const navigateTo = useCallback((path: string) => {
     setCurrentPath(path)
@@ -86,12 +100,12 @@ export function DirectoryBrowserDialog({
   }, [])
 
   const handleConfirm = useCallback(() => {
-    const chosen = selectedEntry ?? data?.current
+    const chosen = selectedEntry ?? currentDirectory
     if (chosen) {
       onSelect(chosen)
       onOpenChange(false)
     }
-  }, [selectedEntry, data?.current, onSelect, onOpenChange])
+  }, [selectedEntry, currentDirectory, onSelect, onOpenChange])
 
   const handleDoubleClick = useCallback((path: string) => {
     navigateTo(path)
@@ -125,7 +139,7 @@ export function DirectoryBrowserDialog({
           <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
             {/* Editable breadcrumb / path bar */}
             <PathBar
-              currentPath={data?.current ?? lastValidPath}
+              currentPath={currentDirectory ?? lastResolvedPath}
               onNavigate={navigateTo}
               onGoUp={data?.parent ? () => navigateTo(data.parent!) : undefined}
             />
@@ -221,13 +235,13 @@ function PathBar({
   const parentDir = lastSlash >= 0 ? editValue.slice(0, lastSlash) || '/' : undefined
   const prefix = lastSlash >= 0 ? editValue.slice(lastSlash + 1).toLowerCase() : ''
 
-  const { data: suggestionsData } = useQuery({
+  const { data: suggestionsData } = useQuery<FilesystemBrowseResult>({
     queryKey: ['filesystem-browse', parentDir],
     queryFn: async () => {
       const result = await getFilesystemBrowse({
         query: parentDir ? { path: parentDir } : {},
       })
-      return result.data!
+      return result.data as FilesystemBrowseResult
     },
     enabled: editing && !!parentDir,
     staleTime: 10_000,
@@ -239,12 +253,21 @@ function PathBar({
 
   const segments = currentPath.split('/').filter(Boolean)
 
+  useEffect(() => {
+    if (!editing) {
+      return
+    }
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    })
+  }, [editing])
+
   const startEditing = useCallback(() => {
     setEditValue(currentPath)
     setEditing(true)
     setShowSuggestions(true)
     setSelectedSuggestion(-1)
-    setTimeout(() => inputRef.current?.select(), 0)
   }, [currentPath])
 
   const commitEdit = useCallback(() => {
@@ -292,7 +315,7 @@ function PathBar({
       e.preventDefault()
       const idx = selectedSuggestion >= 0 ? selectedSuggestion : 0
       if (suggestions[idx]) {
-        setEditValue(suggestions[idx].path + '/')
+        setEditValue(`${suggestions[idx].path}/`)
         setSelectedSuggestion(-1)
       }
     }
@@ -304,7 +327,6 @@ function PathBar({
         <div className="flex items-center h-8 px-3 border-b bg-muted/30">
           <input
             ref={inputRef}
-            autoFocus
             value={editValue}
             onChange={(e) => {
               setEditValue(e.target.value)

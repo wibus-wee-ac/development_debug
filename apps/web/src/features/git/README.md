@@ -13,7 +13,6 @@ The first real UI-driven E2E coverage enters this feature from `new-chat` → ch
 - **graph-layout.ts**: Pure `computeGraphLayout` function — assigns lane numbers and SVG line metadata to each commit using a classic open-slots algorithm
 - **git-graph-row.tsx**: Memoized row component — SVG swimlane column + Gravatar avatar + shortSha badge + message + ref labels + relative date; each rendered row exposes stable commit metadata attributes for E2E assertions
 - **git-panel.tsx**: Full panel component — status bar (branch button, ahead/behind badges, fetch button) + virtualized commit graph (`VList` from virtua); panel, branch trigger, fetch button, and graph wrapper expose stable `data-testid` anchors
-- **branch-picker.tsx**: Popover listing local and remote branches with search, checkout-on-click, inline branch creation, and fetch button; branch options and create controls expose stable `data-testid` anchors
-- **create-branch-dialog.tsx**: Dialog for creating a new branch; uses imperative `CreateBranchDialogHandle` ref so BranchPicker can open it
+- **branch-picker.tsx**: Popover listing local and remote branches with search, checkout-on-click, inline branch creation, and fetch button; branch options and create controls expose stable `data-testid` anchors, and this component now owns the full branch switching/creation interaction flow
 - **git-branch-control.tsx**: Compact branch button for AppHeader — shows `⎇ branch ↑N ↓N`, opens `BranchPicker` on click, and now renders through the AppHeader breadcrumb slot with a stable E2E anchor
 - **index.ts**: Barrel re-exporting `GitPanel` and `GitBranchControl`

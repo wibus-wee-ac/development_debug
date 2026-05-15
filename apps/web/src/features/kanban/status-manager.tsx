@@ -8,7 +8,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVerticalIcon, TrashIcon } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
@@ -136,7 +136,7 @@ function SortableStatusRow({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   const [editing, setEditing] = useState(false)
-  const [editValue, setEditValue] = useState(name)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -144,8 +144,18 @@ function SortableStatusRow({
     opacity: isDragging ? 0.5 : 1,
   }
 
+  useEffect(() => {
+    if (!editing) {
+      return
+    }
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    })
+  }, [editing])
+
   const handleConfirm = () => {
-    const trimmed = editValue.trim()
+    const trimmed = inputRef.current?.value.trim() ?? ''
     if (trimmed && trimmed !== name) {
       onRename(trimmed)
     }
@@ -172,15 +182,14 @@ function SortableStatusRow({
 
       {editing ? (
         <input
+          ref={inputRef}
           data-testid={`status-input-${id}`}
-          value={editValue}
-          onChange={e => setEditValue(e.target.value)}
+          defaultValue={name}
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleConfirm()
             else if (e.key === 'Escape') setEditing(false)
           }}
           onBlur={handleConfirm}
-          autoFocus
           className="flex-1 bg-transparent text-[13px] outline-none"
         />
       ) : (
@@ -188,13 +197,9 @@ function SortableStatusRow({
           role="button"
           tabIndex={0}
           data-testid={`status-name-${id}`}
-          onClick={() => {
-            setEditValue(name)
-            setEditing(true)
-          }}
+          onClick={() => setEditing(true)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              setEditValue(name)
               setEditing(true)
             }
           }}

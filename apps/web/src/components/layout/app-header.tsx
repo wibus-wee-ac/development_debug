@@ -4,14 +4,13 @@
 
 import type { TabInstance } from '@cradle/tabs'
 import { TabBar } from '@cradle/tabs'
-import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, XIcon } from 'lucide-react'
+import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
 import { useCallback } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { useLayoutStore } from '~/store/layout'
-import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+import { useCradleTabStore } from '~/tabs/registry'
 
 interface AppHeaderProps {
   hasAside?: boolean
@@ -32,26 +31,6 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
   const handleNewTab = useCallback(() => {
     useCradleTabStore.getState().openTab('new-chat')
   }, [])
-
-  const renderTabIcon = useCallback((tab: TabInstance) => {
-    const def = cradleRegistry[tab.type as keyof typeof cradleRegistry]
-    if (!def?.icon) {
-      return null
-    }
-    const Icon = def.icon
-    return <Icon className="size-3 text-muted-foreground/60" />
-  }, [])
-
-  const renderTooltip = useCallback((tab: TabInstance, children: React.ReactElement) => (
-    <TooltipProvider key={tab.id} delay={400}>
-      <Tooltip>
-        <TooltipTrigger render={children} />
-        <TooltipContent side="bottom" sideOffset={4}>
-          {tab.label}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  ), [])
 
   const handleTabTearOff = useCallback((tab: TabInstance, screenX: number, screenY: number) => {
     // In Electron, tear off the tab into a new window
@@ -89,10 +68,6 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
           onNewTab={handleNewTab}
           onTabActivated={handleTabActivated}
           onTabTearOff={handleTabTearOff}
-          renderCloseIcon={() => <XIcon className="size-2.5" />}
-          renderNewTabIcon={() => <PlusIcon className="size-3" />}
-          renderTabIcon={renderTabIcon}
-          renderTooltip={renderTooltip}
         />
       </div>
 
