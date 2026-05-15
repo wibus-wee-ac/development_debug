@@ -17,6 +17,9 @@ export const sessions = sqliteTable('sessions', {
   agentProfileId: text('agent_profile_id')
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  runtimeKind: text('runtime_kind', {
+    enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
+  }).notNull().default('standard'),
   agentId: text('agent_id')
     .references(() => agents.id, { onDelete: 'set null' }),
   linkedIssueId: text('linked_issue_id')

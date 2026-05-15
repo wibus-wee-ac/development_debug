@@ -17,7 +17,6 @@ import {
   PaperclipIcon,
   SearchIcon,
   SparklesIcon,
-  TerminalIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
@@ -270,8 +269,8 @@ function useNewChatPageOwner() {
   const effectiveModel = selectedModel ?? restoredModel ?? models[0] ?? null
   const thinkingEffort = draft.thinkingEffortProfileId === effectiveProfileId ? draft.thinkingEffort : null
 
-  const showModelPicker = selectedProfile && selectedProfile.providerKind !== 'cli-tui' && (isLoadingModels || models.length > 0)
-  const isCliTui = selectedProfile?.providerKind === 'cli-tui'
+  const showModelPicker = selectedProfile && (isLoadingModels || models.length > 0)
+  const isCliTui = false // cli-tui is now a runtime, not a provider kind
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
@@ -536,9 +535,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
                   crossOrigin="anonymous"
                 />
               )
-              : isCliTui
-                ? <TerminalIcon className="size-3 shrink-0" />
-                : selectedProfile
+              : selectedProfile
                   ? (
                     <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-foreground/10 text-[8px] font-bold leading-none text-foreground/70">
                       {profileInitials(selectedProfile.name)}
@@ -576,9 +573,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
                 ? <MenuItem disabled>暂无可用的 Provider</MenuItem>
                 : profiles.map(profile => (
                     <MenuItem key={profile.id} onClick={() => selectProfile(profile.id)}>
-                      {profile.providerKind === 'cli-tui'
-                        ? <TerminalIcon className="size-3" />
-                        : <BotIcon className="size-3" />}
+                      <BotIcon className="size-3" />
                       <span className="flex-1">{profile.name}</span>
                       {!selectedAgent && profile.id === effectiveProfileId && (
                         <CheckIcon className="size-3 text-foreground/50" />

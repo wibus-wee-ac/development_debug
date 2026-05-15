@@ -190,9 +190,9 @@ function emitResolved(approvalId: string, response: ApprovalResponse): void {
 
 const allowedPolicies = new Map<string, Set<string>>()
 
-export function generatePolicyKeys(input: { providerKind: string, chatSessionId: string, toolName: string }): string[] {
+export function generatePolicyKeys(input: { runtimeKind: string, chatSessionId: string, toolName: string }): string[] {
   return [
-    `${input.providerKind}:session:${input.chatSessionId}:tool:${input.toolName}`,
+    `${input.runtimeKind}:session:${input.chatSessionId}:tool:${input.toolName}`,
   ]
 }
 

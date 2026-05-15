@@ -154,7 +154,7 @@ describe('session capability', () => {
         id: bindingId,
         chatSessionId: sessionId,
         agentProfileId,
-        providerKind: 'openai-compatible',
+        runtimeKind: 'standard',
         requestedModelId: 'gpt-test',
       }).run()
 

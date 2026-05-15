@@ -25,7 +25,7 @@ import { packCodebase } from './modules/pack-codebase'
 import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
 import { providers } from './modules/providers'
-import { pty } from './modules/pty'
+import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
 import { secrets } from './modules/secrets'
 import { session } from './modules/session'
@@ -68,7 +68,7 @@ export function createServerApp() {
   app.use(approval)
   app.use(acp)
   app.use(chatRuntime)
-  app.use(pty)
+  registerPtyRoutes(app)
   app.use(observability)
   app.use(issueAgent)
   if (process.env.NODE_ENV === 'test') {

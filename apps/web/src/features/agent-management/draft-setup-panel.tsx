@@ -22,7 +22,7 @@ import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { buildProfileId, PROVIDER_KIND_LABELS } from './agent-runtime-settings'
+import { buildProfileId } from './agent-runtime-settings'
 import type { DraftProvider } from './agent-runtime-settings'
 import { PROVIDER_ICONS } from './provider-icons'
 import type { ProviderPreset } from './provider-templates'
@@ -92,7 +92,7 @@ export function DraftSetupPanel({
                       {p.name}
                     </div>
                     <div className="truncate text-[11px] text-muted-foreground">
-                      {PROVIDER_KIND_LABELS[p.providerKind]}
+                      {p.tagline}
                     </div>
                   </div>
                   <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/30 transition-[transform,color] duration-150 group-hover/preset:translate-x-0.5 group-hover/preset:text-muted-foreground" />
@@ -241,14 +241,11 @@ function PresetSetupForm({
         {preset.fields.map((field) => {
           const isApiKey = field.key === 'apiKey'
           const isBaseUrl = field.key === 'baseUrl'
-          const isModel = field.key === 'model'
           const testId = isBaseUrl
             ? 'provider-baseurl'
             : isApiKey
               ? 'provider-apikey'
-              : isModel
-                ? 'provider-model'
-                : `provider-field-${field.key}`
+              : `provider-field-${field.key}`
           return (
             <div key={field.key}>
               <SettingsDivider />

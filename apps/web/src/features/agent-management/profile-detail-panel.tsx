@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { useForm, useWatch } from 'react-hook-form'
 
@@ -36,10 +36,12 @@ import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ALL_DISABLED_SENTINEL, parseConfig, presetForProfile, PROVIDER_KIND_LABELS, providerVisuals } from './agent-runtime-settings'
+import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
 
 type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
@@ -158,10 +160,8 @@ export function ProfileDetailPanel({
   const { Icon } = providerVisuals(preset.id)
 
   const parsed = useMemo(() => parseConfig(profile.configJson), [profile.configJson])
-  const supportsModels = profile.providerKind === 'openai-compatible'
-    || profile.providerKind === 'codex'
-    || profile.providerKind === 'claude-agent'
-  const supportsCommand = profile.providerKind === 'cli-tui' || profile.providerKind === 'acp-chat'
+  const supportsModels = true
+  const supportsCommand = false
 
   const form = useForm<ProfileDetailFormValues>({
     defaultValues: getProfileFormValues(profile),
@@ -305,12 +305,6 @@ export function ProfileDetailPanel({
             : undefined,
       })
     }
-    if (profile.providerKind === 'cli-tui') {
-      return JSON.stringify({ executable: command, args: [] })
-    }
-    if (profile.providerKind === 'acp-chat') {
-      return JSON.stringify({ ...parsed, cmd: command })
-    }
     return profile.configJson
   }, [profile.providerKind, profile.configJson, parsed, supportsModels, baseUrl, model, enabledModels, command])
 
@@ -428,6 +422,10 @@ export function ProfileDetailPanel({
             enabledModels={enabledModels}
             onChange={next => form.setValue('enabledModels', next, { shouldDirty: true })}
           />
+        )}
+
+        {supportsModels && (
+          <ProfileCustomModelsSection profileId={profile.id} customModelsJson={profile.customModels} onSaved={onSaved} />
         )}
       </div>
 
@@ -612,6 +610,65 @@ function ProfileModelsSection({
           models={models}
           enabledModels={enabledModels}
           onChange={onChange}
+        />
+      </section>
+    </>
+  )
+}
+
+function ProfileCustomModelsSection({
+  profileId,
+  customModelsJson,
+  onSaved,
+}: {
+  profileId: string
+  customModelsJson: string
+  onSaved: () => void
+}) {
+  const [models, setModels] = useState(() => {
+    try {
+      return JSON.parse(customModelsJson) as Array<{ id: string, label: string, contextWindow: number | null }>
+    }
+    catch {
+      return []
+    }
+  })
+
+  // Sync from props when profile changes
+  useEffect(() => {
+    try {
+      setModels(JSON.parse(customModelsJson))
+    }
+    catch {
+      setModels([])
+    }
+  }, [customModelsJson])
+
+  const handleChange = useCallback(async (next: Array<{ id: string, label: string, contextWindow: number | null }>) => {
+    setModels(next)
+    try {
+      const res = await fetch(`${getServerUrl()}/profiles/${profileId}/custom-models`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ models: next.map(m => ({ id: m.id, label: m.label !== m.id ? m.label : undefined })) }),
+      })
+      if (res.ok) {
+        const saved = await res.json() as Array<{ id: string, label: string, contextWindow: number | null }>
+        setModels(saved)
+        onSaved()
+      }
+    }
+    catch { /* ignore — optimistic update stays */ }
+  }, [profileId, onSaved])
+
+  return (
+    <>
+      <Separator className="bg-foreground/6" />
+      <section className="mt-4 flex flex-col gap-4">
+        <CustomModelsEditor
+          profileId={profileId}
+          models={models}
+          onChange={handleChange}
         />
       </section>
     </>

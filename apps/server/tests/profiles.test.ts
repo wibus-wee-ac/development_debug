@@ -194,7 +194,7 @@ describe('profiles capability', () => {
 
       process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-profiles'
 
-      const unsupportedProfile = await app.handle(new Request('http://localhost/profiles/profile-unsupported', {
+      const invalidProviderKind = await app.handle(new Request('http://localhost/profiles/profile-unsupported', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -204,7 +204,7 @@ describe('profiles capability', () => {
           config: {},
         }),
       }))
-      expect(unsupportedProfile.status).toBe(200)
+      expect(invalidProviderKind.status).toBe(400)
 
       const invalidProviderBody = await app.handle(new Request('http://localhost/providers/health-check', {
         method: 'POST',
@@ -218,15 +218,13 @@ describe('profiles capability', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          profileId: 'profile-unsupported',
-          providerKind: 'cli-tui',
+          providerKind: 'not-a-real-provider',
           label: 'Unsupported Profile',
           config: {},
           secretRef: null,
         }),
       }))
-      expect(unavailableProvider.status).toBe(501)
-      expect((await unavailableProvider.json()).code).toBe('provider_not_available')
+      expect(unavailableProvider.status).toBe(400)
     }
     finally {
       shutdownInfra()

@@ -155,7 +155,7 @@ describe('approval capability', () => {
 describe('approval policy keys', () => {
   it('generates correct policy key format', () => {
     const keys = generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId: 'sess-1',
       toolName: 'file_write',
     })
@@ -166,7 +166,7 @@ describe('approval policy keys', () => {
 
   it('returns false for isPreviouslyAllowed when no keys are set', () => {
     const keys = generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId: 'sess-fresh',
       toolName: 'bash',
     })
@@ -175,7 +175,7 @@ describe('approval policy keys', () => {
 
   it('returns true for isPreviouslyAllowed after markAllowed', () => {
     const keys = generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId: 'sess-mark',
       toolName: 'bash',
     })
@@ -185,7 +185,7 @@ describe('approval policy keys', () => {
 
   it('clearSessionPolicies removes all keys for a session', () => {
     const keys = generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId: 'sess-clear',
       toolName: 'file_read',
     })
@@ -198,12 +198,12 @@ describe('approval policy keys', () => {
 
   it('different sessions do not share policy keys', () => {
     const keysA = generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId: 'sess-a',
       toolName: 'bash',
     })
     const keysB = generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId: 'sess-b',
       toolName: 'bash',
     })

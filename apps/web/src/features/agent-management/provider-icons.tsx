@@ -53,6 +53,7 @@ function CustomIcon({ className, ...props }: IconProps) {
 }
 
 export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Element> = {
+  'anthropic': ClaudeIcon,
   'claude-agent': ClaudeIcon,
   'claude-cli': ClaudeCodeIcon,
   'codex': CodexIcon,

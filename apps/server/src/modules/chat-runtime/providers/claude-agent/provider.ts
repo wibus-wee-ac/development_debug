@@ -12,11 +12,11 @@ import type { UIMessageChunk } from 'ai'
 import * as Approval from '../../../approval/service'
 import { langfuseEnabled } from '../../../../langfuse'
 import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
-import type { ProviderKind } from '../../../providers/types'
+import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
-  ChatRuntimeProvider,
+  ChatRuntime,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -30,10 +30,10 @@ interface ClaudeAgentProviderDeps {
   resolveSkillPaths?: (workspacePath: string) => string[]
 }
 
-const PROVIDER_KIND: ProviderKind = 'claude-agent'
+const RUNTIME_KIND: RuntimeKind = 'claude-agent'
 
-export class ClaudeAgentProvider implements ChatRuntimeProvider {
-  readonly providerKind = PROVIDER_KIND
+export class ClaudeAgentProvider implements ChatRuntime {
+  readonly runtimeKind = RUNTIME_KIND
 
   private readonly activeQueries = new Map<string, { query: Query, abortController: AbortController }>()
   private _lastUsage: TokenUsage | null = null
@@ -49,7 +49,7 @@ export class ClaudeAgentProvider implements ChatRuntimeProvider {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       agentProfileId: input.profile.id,
-      providerKind: PROVIDER_KIND,
+      runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         workspacePath: input.workspacePath,
@@ -258,7 +258,7 @@ function buildCanUseTool(chatSessionId: string, abortSignal: AbortSignal): CanUs
     }
 
     const policyKeys = Approval.generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId,
       toolName,
     })

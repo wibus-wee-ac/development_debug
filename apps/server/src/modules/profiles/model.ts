@@ -4,17 +4,11 @@ export const ProfilesModel = {
   agentProfile: t.Object({
     id: t.String(),
     name: t.String(),
-    providerKind: t.Union([
-      t.Literal('acp-chat'),
-      t.Literal('cli-tui'),
-      t.Literal('openai-compatible'),
-      t.Literal('codex'),
-      t.Literal('claude-agent'),
-      t.Literal('system-agent'),
-    ]),
+    providerKind: t.Literal('openai-compatible'),
     enabled: t.Boolean(),
     configJson: t.String(),
     credentialRef: t.Nullable(t.String()),
+    customModels: t.String(),
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -25,16 +19,22 @@ export const ProfilesModel = {
 
   upsertBody: t.Object({
     name: t.String({ minLength: 1 }),
-    providerKind: t.Union([
-      t.Literal('openai-compatible'),
-      t.Literal('codex'),
-      t.Literal('claude-agent'),
-      t.Literal('acp-chat'),
-      t.Literal('cli-tui'),
-      t.Literal('system-agent'),
-    ]),
+    providerKind: t.Literal('openai-compatible'),
     enabled: t.Boolean(),
     config: t.Record(t.String(), t.Any()),
     credentialRef: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+  }),
+
+  customModelsBody: t.Object({
+    models: t.Array(t.Object({
+      id: t.String({ minLength: 1 }),
+      label: t.Optional(t.String()),
+    })),
+  }),
+
+  customModelEntry: t.Object({
+    id: t.String(),
+    label: t.String(),
+    contextWindow: t.Union([t.Number(), t.Null()]),
   }),
 }

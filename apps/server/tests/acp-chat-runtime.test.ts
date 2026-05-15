@@ -66,7 +66,9 @@ vi.mock('@agentclientprotocol/sdk', () => {
   }
 })
 
-vi.mock('node:child_process', () => {
+vi.mock('node:child_process', async () => {
+  const { PassThrough } = await import('node:stream')
+
   class FakeChildProcess extends PassThrough {
     readonly stdin = new PassThrough()
     readonly stdout = new PassThrough()
@@ -108,7 +110,7 @@ async function createAcpProfileAndSession(app: ElysiaApp, workspaceId: string) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       name: 'ACP Runtime Profile',
-      providerKind: 'acp-chat',
+      providerKind: 'openai-compatible',
       enabled: true,
       config: { distributionType: 'npx', cmd: '@demo/acp-agent', args: ['--stdio'] },
       credentialRef: null,
@@ -124,6 +126,7 @@ async function createAcpProfileAndSession(app: ElysiaApp, workspaceId: string) {
       workspaceId,
       title: 'ACP Runtime Session',
       agentProfileId: 'profile-acp',
+      runtimeKind: 'acp-chat',
     }),
   }))
   expect(sessionRes.status).toBe(200)

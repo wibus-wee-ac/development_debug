@@ -1,5 +1,5 @@
 // Input: ProviderKind type
-// Output: Provider preset catalog
+// Output: Provider preset catalog for LLM connection setup
 // Position: Data layer for provider setup
 
 import type { ProviderKind } from '~/lib/types'
@@ -24,52 +24,28 @@ interface PresetField {
 
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
-    id: 'claude-agent',
-    name: 'Claude',
-    tagline: 'Anthropic — autonomous coding agent',
-    providerKind: 'claude-agent',
+    id: 'anthropic',
+    name: 'Anthropic',
+    tagline: 'Claude — high-capability models',
+    providerKind: 'openai-compatible',
     accent: 'orange',
     fields: [
       { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.anthropic.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-ant-...', mono: true },
-      { key: 'model', label: 'Model', type: 'text', placeholder: 'claude-sonnet-4-20250514', mono: true },
     ],
-    defaults: { model: 'claude-sonnet-4-20250514', baseUrl: 'https://api.anthropic.com/v1', permissionMode: 'acceptEdits' },
-  },
-  {
-    id: 'claude-cli',
-    name: 'Claude CLI',
-    tagline: 'Local terminal — full system access',
-    providerKind: 'cli-tui',
-    accent: 'amber',
-    fields: [],
-    defaults: { executable: 'claude', args: [] },
-  },
-  {
-    id: 'codex',
-    name: 'Codex',
-    tagline: 'OpenAI — reasoning agent',
-    providerKind: 'codex',
-    accent: 'emerald',
-    fields: [
-      { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.openai.com/v1', mono: true },
-      { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...', mono: true },
-      { key: 'model', label: 'Model', type: 'text', placeholder: 'codex-mini-latest', mono: true },
-    ],
-    defaults: { model: 'codex-mini-latest', baseUrl: 'https://api.openai.com/v1' },
+    defaults: { baseUrl: 'https://api.anthropic.com/v1' },
   },
   {
     id: 'openai',
     name: 'OpenAI',
-    tagline: 'GPT-4o — chat completions',
+    tagline: 'GPT / o-series models',
     providerKind: 'openai-compatible',
-    accent: 'sky',
+    accent: 'emerald',
     fields: [
       { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.openai.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...', mono: true },
-      { key: 'model', label: 'Model', type: 'text', placeholder: 'gpt-4o', mono: true },
     ],
-    defaults: { model: 'gpt-4o', baseUrl: 'https://api.openai.com/v1' },
+    defaults: { baseUrl: 'https://api.openai.com/v1' },
   },
   {
     id: 'custom',
@@ -80,8 +56,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     fields: [
       { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.example.com/v1', mono: true },
       { key: 'apiKey', label: 'API Key', type: 'password', placeholder: 'sk-...', mono: true },
-      { key: 'model', label: 'Model', type: 'text', placeholder: 'model-name', mono: true },
     ],
-    defaults: { model: '', baseUrl: '' },
+    defaults: { baseUrl: '' },
   },
 ]

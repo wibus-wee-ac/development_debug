@@ -24,8 +24,11 @@ export class MigrationRunner {
       migrate(db, { migrationsFolder: getMigrationsPath() })
     }
     catch (error) {
+      const cause = error instanceof Error && 'cause' in error ? (error as any).cause : undefined
       this.logger.error('Database migration failed', {
         dbPath,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        causeMessage: cause instanceof Error ? cause.message : cause?.message ?? cause?.code,
         error,
       })
       throw error

@@ -22,10 +22,10 @@ import { createChildLogger } from '../../logging/logger'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
 import * as Profiles from '../profiles/service'
-import type { ProviderKind } from '../providers/types'
+import type { RuntimeKind } from '../providers/types'
 import { estimateCost } from '../usage/pricing'
-import { getProviderRegistry } from './chat-runtime-provider-registry'
-import type { ChatRuntimeProvider, RuntimeSession, TokenUsage } from './runtime-provider-types'
+import { getRuntimeRegistry } from './chat-runtime-provider-registry'
+import type { ChatRuntime, RuntimeSession, TokenUsage } from './runtime-provider-types'
 import type { StoredChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
 import { decodeChunk, encodeChunk, extractChunkContext } from './timeline-events'
 
@@ -55,7 +55,7 @@ interface ActiveRun {
   sessionId: string
   messageId: string
   agentProfileId: string
-  provider: ChatRuntimeProvider
+  runtime: ChatRuntime
   runtimeSession: RuntimeSession
   modelId: string | null
 }
@@ -125,7 +125,7 @@ export function listChatSessionIdsByBackendSessionId(backendSessionId: string): 
 function attachBinding(input: {
   sessionId: string
   agentProfileId: string
-  providerKind: ProviderKind
+  runtimeKind: RuntimeKind
   runtimeSession: RuntimeSession
   requestedModelId: string | null
 }): BackendSessionBinding {
@@ -135,7 +135,7 @@ function attachBinding(input: {
   if (existing) {
     db().update(backendSessionBindings).set({
         agentProfileId: input.agentProfileId,
-        providerKind: input.providerKind,
+        runtimeKind: input.runtimeKind,
         backendSessionId: input.runtimeSession.providerSessionId,
         backendStateSnapshot: input.runtimeSession.providerStateSnapshot,
         requestedModelId: input.requestedModelId,
@@ -148,7 +148,7 @@ function attachBinding(input: {
     id: randomUUID(),
     chatSessionId: input.sessionId,
     agentProfileId: input.agentProfileId,
-    providerKind: input.providerKind,
+    runtimeKind: input.runtimeKind,
     backendSessionId: input.runtimeSession.providerSessionId,
     backendStateSnapshot: input.runtimeSession.providerStateSnapshot,
     requestedModelId: input.requestedModelId,
@@ -464,20 +464,21 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     throw new AppError({ code: 'chat_profile_not_available', status: 409, message: 'Agent profile is disabled', details: { profileId: context.profile.id } })
   }
 
-  const registry = getProviderRegistry()
-  const provider = registry.get(context.profile.providerKind)
-  if (!provider) {
-    throw new AppError({ code: 'chat_provider_not_available', status: 501, message: `Provider is not available: ${context.profile.providerKind}` })
+  const registry = getRuntimeRegistry()
+  const runtimeKind = context.session.runtimeKind ?? 'standard'
+  const runtime = registry.get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({ code: 'chat_runtime_not_available', status: 501, message: `Runtime is not available: ${runtimeKind}` })
   }
 
   const binding = getBinding(input.sessionId)
   const runtimeSession = binding
-    ? await provider.resumeChatSession({
+    ? await runtime.resumeChatSession({
         runtimeSession: {
           id: input.sessionId,
           chatSessionId: input.sessionId,
           agentProfileId: context.profile.id,
-          providerKind: binding.providerKind,
+          runtimeKind,
           providerSessionId: binding.backendSessionId,
           providerStateSnapshot: binding.backendStateSnapshot,
         },
@@ -485,7 +486,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
         workspacePath: context.workspacePath,
         modelId: input.modelId,
       })
-    : await provider.startChatSession({
+    : await runtime.startChatSession({
         chatSessionId: input.sessionId,
         profile: context.profile,
         workspacePath: context.workspacePath,
@@ -495,7 +496,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
   attachBinding({
     sessionId: input.sessionId,
     agentProfileId: context.profile.id,
-    providerKind: runtimeSession.providerKind,
+    runtimeKind: runtimeSession.runtimeKind,
     runtimeSession,
     requestedModelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
   })
@@ -507,7 +508,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     sessionId: input.sessionId,
     messageId: draft.assistantMessageId,
     agentProfileId: context.profile.id,
-    provider,
+    runtime,
     runtimeSession,
     modelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
   }
@@ -565,7 +566,7 @@ export async function abortRun(runId: string): Promise<void> {
     throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId: active.sessionId } })
   }
 
-  await active.provider?.cancelTurn({ runtimeSession: active.runtimeSession, profile: context.profile })
+  await active.runtime?.cancelTurn({ runtimeSession: active.runtimeSession, profile: context.profile })
 }
 
 /**
@@ -586,7 +587,7 @@ export async function abortAllRuns(): Promise<void> {
     try {
       const active = activeRuns.get(runId)
       if (active) {
-        await active.provider?.cancelTurn({ runtimeSession: active.runtimeSession, profile: {} as AgentProfile })
+        await active.runtime?.cancelTurn({ runtimeSession: active.runtimeSession, profile: {} as AgentProfile })
       }
     }
     catch { /* best-effort */ }
@@ -678,7 +679,7 @@ async function executeRun(activeRun: ActiveRun, input: {
   try {
     publishChunk(persist(activeRun, { type: 'start' }))
 
-    for await (const chunk of activeRun.provider!.streamTurn({
+    for await (const chunk of activeRun.runtime!.streamTurn({
       runtimeSession: activeRun.runtimeSession,
       profile: input.profile,
       message: input.text,
@@ -740,7 +741,7 @@ async function executeRun(activeRun: ActiveRun, input: {
           : undefined,
         attrs: {
           agentProfileId: activeRun.agentProfileId,
-          providerKind: activeRun.runtimeSession.providerKind,
+          runtimeKind: activeRun.runtimeSession.runtimeKind,
           providerSessionId: activeRun.runtimeSession.providerSessionId,
           diagnostics,
           ...(failurePayload ? { payload: failurePayload } : {}),
@@ -748,7 +749,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       })
     }
 
-    const usage = activeRun.provider?.lastUsage
+    const usage = activeRun.runtime?.lastUsage
     if (usage) {
       insertUsage({
         sessionId: activeRun.sessionId,
@@ -759,9 +760,9 @@ async function executeRun(activeRun: ActiveRun, input: {
       })
     }
 
-    // Write per-step usage if the provider supports it
-    const provider = activeRun.provider as { lastStepUsages?: Array<{ stepNumber: number, stepType: string, modelId?: string, usage: TokenUsage }> }
-    const steps = provider.lastStepUsages ?? []
+    // Write per-step usage if the runtime supports it
+    const runtimeWithSteps = activeRun.runtime as { lastStepUsages?: Array<{ stepNumber: number, stepType: string, modelId?: string, usage: TokenUsage }> }
+    const steps = runtimeWithSteps.lastStepUsages ?? []
     if (steps.length > 0) {
       const fallbackModelId = activeRun.modelId ?? 'gpt-4o'
       for (const step of steps) {
@@ -791,7 +792,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       attachBinding({
         sessionId: activeRun.sessionId,
         agentProfileId: activeRun.agentProfileId,
-        providerKind: activeRun.runtimeSession.providerKind,
+        runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
         requestedModelId: activeRun.modelId,
       })

@@ -29,7 +29,7 @@ function truncateForDisplay(input: unknown): string {
 
 export interface ToolApprovalContext {
   chatSessionId: string
-  providerKind: string
+  runtimeKind: string
 }
 
 export function wrapToolsWithApproval(
@@ -57,7 +57,7 @@ function wrapSingleTool(name: string, original: Tool, ctx: ToolApprovalContext):
     execute: original.execute
       ? async (input: unknown, options: unknown) => {
           const policyKeys = ApprovalService.generatePolicyKeys({
-            providerKind: ctx.providerKind,
+            runtimeKind: ctx.runtimeKind,
             chatSessionId: ctx.chatSessionId,
             toolName: name,
           })
@@ -70,7 +70,7 @@ function wrapSingleTool(name: string, original: Tool, ctx: ToolApprovalContext):
           // Request approval (blocks until user responds)
           const response = await ApprovalService.requestApproval({
             chatSessionId: ctx.chatSessionId,
-            agentId: ctx.providerKind,
+            agentId: ctx.runtimeKind,
             prompt: `Allow tool "${name}"?\nInput: ${truncateForDisplay(input)}`,
             options: [
               { optionId: 'allow_once', label: 'Allow Once' },

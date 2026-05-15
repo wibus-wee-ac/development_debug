@@ -387,7 +387,7 @@ function CapsuleComposerToolbar({ owner }: { owner: ReturnType<typeof useCapsule
               )
           )}
 
-          {selectedProfile && selectedProfile.providerKind !== 'cli-tui' && (
+          {selectedProfile && (
             <Menu>
               <MenuTrigger render={<Button variant="ghost" size="xs" />}>
                 <BrainIcon className="size-3" aria-hidden="true" />

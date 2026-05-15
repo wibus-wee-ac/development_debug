@@ -10,11 +10,11 @@ import {
   parseConfigWith,
   SystemAgentConfigSchema,
 } from '../../../providers/provider-base'
-import type { ProviderKind } from '../../../providers/types'
+import type { RuntimeKind } from '../../../providers/types'
 import * as Preferences from '../../../preferences/service'
 import type {
   CancelTurnInput,
-  ChatRuntimeProvider,
+  ChatRuntime,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -25,10 +25,10 @@ interface SystemAgentProviderDeps {
   readSecret: (credentialRef: string) => string
 }
 
-const PROVIDER_KIND: ProviderKind = 'system-agent'
+const RUNTIME_KIND: RuntimeKind = 'jar-core'
 
-export class SystemAgentProvider implements ChatRuntimeProvider {
-  readonly providerKind = PROVIDER_KIND
+export class SystemAgentProvider implements ChatRuntime {
+  readonly runtimeKind = RUNTIME_KIND
 
   private readonly activeTurns = new Map<string, AbortController>()
 
@@ -39,7 +39,7 @@ export class SystemAgentProvider implements ChatRuntimeProvider {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       agentProfileId: input.profile.id,
-      providerKind: PROVIDER_KIND,
+      runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         models: { currentModelId: input.modelId ?? null },

@@ -136,7 +136,8 @@ export function JarvisPopover({
             workspaceId,
             title: 'Jarvis',
             agentProfileId: profileId,
-          },
+            runtimeKind: 'jar-core',
+          } as never,
         })
         const session = data as { id: string } | null
         if (!session?.id) {

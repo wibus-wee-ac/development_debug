@@ -88,3 +88,23 @@ export async function lookupContextWindow(modelId: string): Promise<number | nul
   const info = findModel(data, modelId)
   return info?.limit?.context ?? null
 }
+
+/**
+ * Look up a single model's metadata from models.dev registry.
+ * Returns null if the model is not found.
+ */
+export async function lookupModel(modelId: string): Promise<{ id: string, label: string, contextWindow: number | null } | null> {
+  const data = await fetchModelsDevData()
+  if (!data) {
+    return null
+  }
+  const info = findModel(data, modelId)
+  if (!info) {
+    return null
+  }
+  return {
+    id: modelId,
+    label: info.name ?? modelId,
+    contextWindow: info.limit?.context ?? null,
+  }
+}

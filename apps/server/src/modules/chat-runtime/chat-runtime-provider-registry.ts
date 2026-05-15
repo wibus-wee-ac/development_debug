@@ -1,12 +1,12 @@
-// Input: credential-backed runtime profile store and concrete providers
-// Output: runtime provider registry for chat-runtime module
+// Input: credential-backed runtime store and concrete runtime implementations
+// Output: runtime registry for chat-runtime module
 // Position: apps/server/src/modules/chat-runtime/chat-runtime-provider-registry.ts
 
 import fs from 'node:fs'
 import path from 'node:path'
 
 import { record as recordObservability } from '../observability/service'
-import type { ProviderKind } from '../providers/types'
+import type { RuntimeKind } from '../providers/types'
 import * as Secrets from '../secrets/service'
 import { resolveScopeRoot } from '../skills/skills-paths'
 import { AcpConnectionManager } from './providers/acp/connection-manager'
@@ -18,21 +18,21 @@ import { CodexProvider } from './providers/codex/provider'
 import { MockClaudeAgentProvider } from './providers/mock-claude-agent/provider'
 import { OpenAICompatibleProvider } from './providers/openai-compatible/provider'
 import { SystemAgentProvider } from './providers/system-agent/provider'
-import type { ChatRuntimeProvider } from './runtime-provider-types'
+import type { ChatRuntime } from './runtime-provider-types'
 
-export class ChatRuntimeProviderRegistry {
-  private readonly providers = new Map<ProviderKind, ChatRuntimeProvider>()
+export class RuntimeRegistry {
+  private readonly runtimes = new Map<RuntimeKind, ChatRuntime>()
 
-  register(provider: ChatRuntimeProvider): void {
-    this.providers.set(provider.providerKind, provider)
+  register(runtime: ChatRuntime): void {
+    this.runtimes.set(runtime.runtimeKind, runtime)
   }
 
-  get(providerKind: ProviderKind): ChatRuntimeProvider | undefined {
-    return this.providers.get(providerKind)
+  get(runtimeKind: RuntimeKind): ChatRuntime | undefined {
+    return this.runtimes.get(runtimeKind)
   }
 }
 
-/** Resolve all skill folder paths that should be given to a provider for a workspace. */
+/** Resolve all skill folder paths that should be given to a runtime for a workspace. */
 function resolveSkillPaths(workspacePath: string): string[] {
   const roots = [
     resolveScopeRoot('builtin', {}),
@@ -52,11 +52,11 @@ function resolveSkillPaths(workspacePath: string): string[] {
   return paths
 }
 
-let registry: ChatRuntimeProviderRegistry | null = null
+let registry: RuntimeRegistry | null = null
 
-export function getProviderRegistry(): ChatRuntimeProviderRegistry {
+export function getRuntimeRegistry(): RuntimeRegistry {
   if (!registry) {
-    registry = new ChatRuntimeProviderRegistry()
+    registry = new RuntimeRegistry()
     const acpRuntime = new AcpConnectionManager(new AcpProcessManager())
     wireAcpIntegration(acpRuntime)
     registry.register(new AcpChatProvider({ runtime: acpRuntime }))
@@ -84,6 +84,6 @@ export function getProviderRegistry(): ChatRuntimeProviderRegistry {
   return registry
 }
 
-export function registerProvider(provider: ChatRuntimeProvider): void {
-  getProviderRegistry().register(provider)
+export function registerRuntime(runtime: ChatRuntime): void {
+  getRuntimeRegistry().register(runtime)
 }

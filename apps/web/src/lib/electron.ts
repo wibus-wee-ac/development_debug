@@ -20,6 +20,28 @@ export function getServerUrl(): string {
 }
 
 /**
+ * Build a WebSocket URL from the configured server base URL.
+ */
+export function getServerWebSocketUrl(
+  path: string,
+  query?: Record<string, string | number | boolean | null | undefined>,
+): string {
+  const url = new URL(path, getServerUrl())
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value === null || value === undefined) {
+        continue
+      }
+      url.searchParams.set(key, String(value))
+    }
+  }
+
+  return url.toString()
+}
+
+/**
  * Whether this is a tearoff window (session-specific).
  */
 const isTearoff = !!window.cradle?.env?.isTearoff

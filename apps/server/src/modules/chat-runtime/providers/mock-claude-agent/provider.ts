@@ -7,11 +7,11 @@ import { randomUUID } from 'node:crypto'
 import type { UIMessageChunk } from 'ai'
 
 import * as Approval from '../../../approval/service'
-import type { ProviderKind } from '../../../providers/types'
+import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
-  ChatRuntimeProvider,
+  ChatRuntime,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -20,10 +20,10 @@ import type {
 import type { ClaudeAgentChunkMapperState } from '../claude-agent/mapper'
 import { mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
 
-const PROVIDER_KIND = 'claude-agent' as ProviderKind
+const RUNTIME_KIND = 'claude-agent' as RuntimeKind
 
-export class MockClaudeAgentProvider implements ChatRuntimeProvider {
-  readonly providerKind = PROVIDER_KIND
+export class MockClaudeAgentProvider implements ChatRuntime {
+  readonly runtimeKind = RUNTIME_KIND
 
   private readonly activeAbortControllers = new Map<string, AbortController>()
   private _lastUsage: TokenUsage | null = null
@@ -37,7 +37,7 @@ export class MockClaudeAgentProvider implements ChatRuntimeProvider {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       agentProfileId: input.profile.id,
-      providerKind: PROVIDER_KIND,
+      runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         workspacePath: input.workspacePath,
@@ -174,7 +174,7 @@ export class MockClaudeAgentProvider implements ChatRuntimeProvider {
 
     // Check if previously allowed
     const policyKeys = Approval.generatePolicyKeys({
-      providerKind: 'claude-agent',
+      runtimeKind: 'claude-agent',
       chatSessionId,
       toolName,
     })

@@ -22,9 +22,9 @@ Cradle 现在的 PTY 终端能力把长寿命的 PTY runtime、可回放的终�
 - [x] (2026-05-15 10:28 local) 读取 Elysia WebSocket / unit-test / Node 参考并完成 reviewer 审查，确认 WebSocket route 需使用 Elysia `.ws()` 定义，`app.handle()` 仅覆盖 HTTP，WebSocket 验证必须启动真实 Node listener。
 - [x] (2026-05-15 10:31 local) 收敛 owner 边界：chat `cli-tui` 终端继续是 session-owned durable PTY；generic shell 改为 panel-owned ephemeral PTY，卸载时显式 `DELETE`，异常断连由 server lease/TTL 清理。
 - [x] (2026-05-15 11:06 local) 根据用户新指令，将实施策略从“短命双轨迁移”改为“直接 breaking cutover”：不再保留 SSE `/stream` 兼容层，直接以 WebSocket live channel 替换旧流式路径。
-- [ ] 建立 transport-neutral PTY runtime/timeline，并引入 WebSocket live channel 的 server 端实现。
-- [ ] 引入前端共享 PTY channel adapter，并将 `TuiView` / `ShellView` 从 `EventSource` 迁移到 WebSocket。
-- [ ] 新增用户可感知的终端回归验证，删除旧 SSE stream 路由与相关文档陈迹，完成 build/typecheck/test/E2E 验收。
+- [x] (2026-05-15 local) 建立 transport-neutral PTY runtime/timeline，并引入 WebSocket live channel 的 server 端实现；chat terminal 与 shell terminal 都改为 HTTP control plane + WebSocket live channel。
+- [x] (2026-05-15 local) 引入前端共享 PTY channel adapter，并将 `TuiView` / `ShellView` 从 `EventSource` 迁移到 WebSocket；shell panel 保持 panel-owned stop 语义。
+- [x] (2026-05-15 local) 新增用户可感知的终端回归验证，删除旧 SSE stream 路由与相关遗留状态机，并完成 server focused tests、web build/typecheck、repo typecheck 与 targeted E2E 验收。
 
 ## Surprises & Discoveries
 
@@ -48,6 +48,9 @@ Cradle 现在的 PTY 终端能力把长寿命的 PTY runtime、可回放的终�
 
 - Observation: Elysia 的 `app.handle(new Request(...))` 只适用于 HTTP Request/Response 测试；WebSocket route 需要真实 listener + 真实 client 才能验证 `open/message/close` 生命周期。
   Evidence: Elysia unit-test 文档把 `handle()` 定义为 Web Standard Request 测试入口，而 WebSocket 文档要求使用 `.ws()` route 并在真实连接上消费消息。
+
+- Observation: 终端 E2E 不能直接依赖 xterm 的可见 DOM 文本；在 WebGL/canvas renderer 下，直接抓 DOM 会读到样式或被软换行截断的内容，因此需要稳定的 plain-text transcript 锚点。
+  Evidence: `@CRADLE-PTY-001` 初版 E2E 连续失败，先读到样式文本，后读到被 prompt/软换行撕裂的路径；最终通过 `shell-view-transcript` 隐藏 transcript + 基于当前 session workspace 的断言才稳定通过。
 
 ## Decision Log
 
@@ -85,11 +88,11 @@ Cradle 现在的 PTY 终端能力把长寿命的 PTY runtime、可回放的终�
 
 ## Outcomes & Retrospective
 
-当前结果是完成了协议和 owner 边界的重定义，但尚未进入代码实施阶段。我们已经确认：本次工作不是“修一个 SSE 清理 bug”，而是把 PTY 从单向流错误抽象重新定义为 live session。更重要的是，本计划已经把一个潜在的“全仓库改 WebSocket”冲动收束成了 capability-specific 方案：只有 PTY live channel 例外切到 WebSocket，其余只读时间线继续保留 SSE。这个边界如果不先写清楚，后续任何并行实施都会漂移。
+当前结果已经从“协议重定义”推进到“代码落地并通过验证”。server 端已经把旧 `pty.manager.ts` 主体职责拆到 runtime / timeline / socket adapter，PTY live path 统一切到 WebSocket；web 端已经以共享 `pty-channel.ts` 适配 `TuiView` 与 `ShellView`，不再维持 `EventSource + HTTP input/resize` 的旧 transport 组合。更重要的是，旧 `/stream` 路由与相关遗留状态机已经被清掉，breaking cutover 实际发生了，而不是停留在计划文字里。
 
-尚未完成的部分集中在三个地方。第一，server 端如何在不破坏 session/profile cleanup 的前提下把 `pty.manager.ts` 拆开。第二，web 端如何把 `TuiView` 与 `ShellView` 收敛到一个共享 channel adapter，而不是复制两套 socket 逻辑。第三，如何用用户可感知的验证证明“刷新、重连、继续输入命令”这条真实链路已经修好，而不是仅仅 server 测试变绿。
+验证结果也从“只有 server focused tests 绿”扩大到了真实用户路径。server focused tests (`tests/pty.test.ts` + `tests/pty-websocket.test.ts`) 通过，`apps/server` typecheck/build 通过，`apps/web` build/typecheck 通过，repo 级 `pnpm typecheck` 通过；此外新增的 `@CRADLE-PTY-001` 终端 E2E 证明了用户可以在聊天页底部打开工作区 shell、执行 `pwd`、并看到与当前会话 workspace 一致的目录输出。
 
-在执行阶段，每个停顿点都必须回写本节，尤其要记录是否成功删除 SSE stream route、是否保留了 shell path、以及真实 E2E 是否覆盖了用户能看见的终端行为。
+这次收尾阶段唯一的意外不是 PTY 逻辑，而是测试语义：Mock Provider 初始化会预先创建默认 workspace，因此“记住的测试工作区”不一定就是当前 chat session 绑定的 workspace。最终 E2E 改为从 active chat session 反查真实 workspace，再对 shell transcript 做断言，这也进一步说明验证必须贴近产品真实 owner，而不能依赖测试夹具想当然。
 
 ## Context and Orientation
 
@@ -219,6 +222,22 @@ Milestone 1 的验收是 server 端出现 transport-neutral PTY core，并且 We
     - 关闭 shell panel 后 scratch shell 退出且不残留孤儿 runtime
 
 实施过程中若出现协议调整、snapshot 退化、shell path 单独拆分等变化，必须把最小日志、测试输出或 diff 摘要贴回本节，方便下一位执行者从这份计划单独恢复上下文。
+
+本次实际验证摘要：
+
+  server focused validation
+  - `cd /Users/wibus/dev/Cradle/apps/server && pnpm vitest run tests/pty.test.ts tests/pty-websocket.test.ts` → 6 tests passed
+  - `cd /Users/wibus/dev/Cradle/apps/server && pnpm typecheck && pnpm build` → passed
+
+  web validation
+  - `cd /Users/wibus/dev/Cradle/apps/web && pnpm build` → passed
+  - `cd /Users/wibus/dev/Cradle/apps/web && pnpm typecheck` → passed
+
+  repo validation
+  - `cd /Users/wibus/dev/Cradle && pnpm typecheck` → passed
+
+  user-visible terminal validation
+  - `cd /Users/wibus/dev/Cradle && npx cucumber-js --config e2e/cucumber.mjs --tags "@cradle and @P1 and @CRADLE-PTY-001"` → 1 scenario passed
 
 ## Interfaces and Dependencies
 

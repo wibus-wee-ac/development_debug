@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { Message, Session } from '@cradle/db'
+import type { RuntimeKind } from '../providers/types'
 import {
   backendRuns,
   backendSessionBindings,
@@ -32,6 +33,7 @@ export function create(input: {
   workspaceId: string
   title: string
   agentProfileId: string
+  runtimeKind?: RuntimeKind
   agentId?: string | null
   linkedIssueId?: string | null
 }): Session {
@@ -43,6 +45,7 @@ export function create(input: {
       workspaceId: input.workspaceId,
       title: input.title,
       agentProfileId: input.agentProfileId,
+      runtimeKind: input.runtimeKind ?? 'standard',
       agentId: input.agentId ?? null,
       linkedIssueId: input.linkedIssueId ?? null,
     })

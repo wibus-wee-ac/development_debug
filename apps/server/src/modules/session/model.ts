@@ -1,5 +1,14 @@
 import { t } from 'elysia'
 
+const runtimeKindSchema = t.Union([
+  t.Literal('standard'),
+  t.Literal('claude-agent'),
+  t.Literal('codex'),
+  t.Literal('jar-core'),
+  t.Literal('acp-chat'),
+  t.Literal('cli-tui'),
+])
+
 export const SessionModel = {
   session: t.Object({
     id: t.String(),
@@ -8,6 +17,7 @@ export const SessionModel = {
     agentProfileId: t.Nullable(t.String()),
     agentId: t.Nullable(t.String()),
     linkedIssueId: t.Nullable(t.String()),
+    runtimeKind: runtimeKindSchema,
     pinned: t.Number(),
     createdAt: t.Number(),
     updatedAt: t.Number(),
@@ -40,6 +50,7 @@ export const SessionModel = {
     workspaceId: t.String({ minLength: 1 }),
     title: t.String({ minLength: 1 }),
     agentProfileId: t.String({ minLength: 1 }),
+    runtimeKind: t.Optional(runtimeKindSchema),
     id: t.Optional(t.String()),
   }),
 

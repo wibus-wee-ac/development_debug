@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  agentProfiles,
   backendCapabilitySnapshots,
   runtimeAuditLog,
 } from '@cradle/db'
+import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
@@ -72,6 +74,31 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
       subject: input.label,
       count: models.length,
     })
+
+    // Merge custom models from profile
+    if (input.profileId) {
+      const profile = db().select().from(agentProfiles).where(eq(agentProfiles.id, input.profileId)).get()
+      if (profile?.customModels) {
+        try {
+          const customModels = JSON.parse(profile.customModels) as Array<{ id: string, label: string, contextWindow: number | null }>
+          const upstreamIds = new Set(models.map(m => m.id))
+          for (const cm of customModels) {
+            if (!upstreamIds.has(cm.id)) {
+              models.push({
+                id: cm.id,
+                label: cm.label,
+                providerKind: input.providerKind,
+                contextWindow: cm.contextWindow,
+              })
+            }
+          }
+        }
+        catch {
+          // Ignore malformed JSON
+        }
+      }
+    }
+
     return models
   }
   catch (error) {
@@ -128,7 +155,7 @@ function recordCapabilitySnapshot(input: {
   db().insert(backendCapabilitySnapshots).values({
     id: randomUUID(),
     agentProfileId: input.profileId,
-    providerKind: input.providerKind,
+    runtimeKind: 'standard',
     source: 'health_check',
     capabilitiesJson: input.capabilitiesJson,
     recordedAt: Math.floor(Date.now() / 1000),

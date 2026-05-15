@@ -66,3 +66,20 @@ export const profiles = new Elysia({
     params: ProfilesModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
+  .patch('/:id/custom-models', async ({ params, body }) => {
+    const profile = Profiles.getProfile(params.id)
+    if (!profile) {
+      throw new AppError({ code: 'profile_not_found', status: 404, message: 'Profile not found' })
+    }
+    return Profiles.updateCustomModels(params.id, body.models)
+  }, {
+    detail: {
+      summary: 'Update custom models for a profile',
+      'x-cradle-cli': {
+        command: ['profile', 'custom-models'],
+      },
+    },
+    params: ProfilesModel.idParams,
+    body: ProfilesModel.customModelsBody,
+    response: { 200: t.Array(ProfilesModel.customModelEntry) },
+  })

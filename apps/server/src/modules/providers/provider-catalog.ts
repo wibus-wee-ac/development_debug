@@ -1,16 +1,12 @@
 // Input: provider request config, secret reader, and provider metadata HTTP fetches
-// Output: provider metadata registry for provider-facing capability queries
+// Output: provider metadata registry for LLM connection health and model discovery
 // Position: apps/server/src/modules/providers/provider-catalog.ts
 
 import { AppError } from '../../errors/app-error'
-import { enrichModelsFromRegistry } from './model-info-registry'
 import {
-  ClaudeAgentConfigSchema,
-  CodexConfigSchema,
   normalizeBaseUrl,
   OpenAICompatibleConfigSchema,
   parseConfigWith,
-  resolveApiKey,
 } from './provider-base'
 import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, ProviderRequest } from './types'
 
@@ -27,9 +23,6 @@ export class ProviderCatalog {
 
   constructor() {
     this.register(new OpenAICompatibleMetadataProvider())
-    this.register(new ClaudeAgentMetadataProvider())
-    this.register(new CodexMetadataProvider())
-    this.register(new CliTuiMetadataProvider())
   }
 
   register(provider: ProviderMetadataProvider): void {
@@ -38,157 +31,6 @@ export class ProviderCatalog {
 
   get(providerKind: ProviderKind): ProviderMetadataProvider | undefined {
     return this.providers.get(providerKind)
-  }
-}
-
-class ClaudeAgentMetadataProvider implements ProviderMetadataProvider {
-  readonly providerKind = 'claude-agent' as const
-
-  async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
-    const config = parseConfigWith(input.configJson, ClaudeAgentConfigSchema)
-    const apiKey = resolveApiKey(input, config.apiKey, 'ANTHROPIC_API_KEY', deps)
-    if (!apiKey) {
-      return {
-        ok: false,
-        label: input.label,
-        version: null,
-        details: {},
-        errorText: 'API key is required (secret or ANTHROPIC_API_KEY env)',
-      }
-    }
-
-    return {
-      ok: true,
-      label: input.label,
-      version: null,
-      details: {
-        baseUrl: normalizeBaseUrl(config.baseUrl ?? 'https://api.anthropic.com/v1'),
-        model: config.model ?? null,
-      },
-      errorText: null,
-    }
-  }
-
-  async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
-    const config = parseConfigWith(input.configJson, ClaudeAgentConfigSchema)
-    const apiKey = resolveApiKey(input, config.apiKey, 'ANTHROPIC_API_KEY', deps)
-    if (!apiKey) {
-      throw invalidProviderRequest('API key is required (secret or ANTHROPIC_API_KEY env)')
-    }
-
-    const baseUrl = normalizeBaseUrl(config.baseUrl ?? 'https://api.anthropic.com/v1')
-    try {
-      const response = await fetch(`${baseUrl}/models`, {
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-      })
-
-      if (!response.ok) {
-        throw providerModelsUnavailable(this.providerKind, `Claude models request failed with status ${response.status}`)
-      }
-
-      const payload = await response.json() as { data?: Array<{ id: string, display_name?: string }> }
-      if (!Array.isArray(payload.data) || payload.data.length === 0) {
-        throw providerModelsUnavailable(this.providerKind, 'Claude models response was empty')
-      }
-
-      const models = await enrichModelsFromRegistry(payload.data.map(item => ({
-        id: item.id,
-        label: item.display_name ?? item.id,
-        providerKind: this.providerKind,
-        contextWindow: null,
-      })))
-
-      return models
-    }
-    catch (error) {
-      throw wrapProviderModelsError(this.providerKind, error)
-    }
-  }
-}
-
-class CodexMetadataProvider implements ProviderMetadataProvider {
-  readonly providerKind = 'codex' as const
-
-  async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
-    const config = parseConfigWith(input.configJson, CodexConfigSchema)
-    const apiKey = resolveApiKey(input, config.apiKey, 'OPENAI_API_KEY', deps)
-    if (!apiKey) {
-      return {
-        ok: false,
-        label: input.label,
-        version: null,
-        details: { baseUrl: normalizeBaseUrl(config.baseUrl ?? 'https://api.openai.com/v1') },
-        errorText: 'API key is required (secret or OPENAI_API_KEY env)',
-      }
-    }
-
-    return {
-      ok: true,
-      label: input.label,
-      version: null,
-      details: {
-        baseUrl: normalizeBaseUrl(config.baseUrl ?? 'https://api.openai.com/v1'),
-        model: config.model ?? null,
-      },
-      errorText: null,
-    }
-  }
-
-  async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
-    const config = parseConfigWith(input.configJson, CodexConfigSchema)
-    const apiKey = resolveApiKey(input, config.apiKey, 'OPENAI_API_KEY', deps)
-    if (!apiKey) {
-      throw invalidProviderRequest('API key is required (secret or OPENAI_API_KEY env)')
-    }
-
-    const baseUrl = normalizeBaseUrl(config.baseUrl ?? 'https://api.openai.com/v1')
-
-    try {
-      const response = await fetch(`${baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      })
-      if (!response.ok) {
-        throw providerModelsUnavailable(this.providerKind, `Codex models request failed with status ${response.status}`)
-      }
-
-      const payload = await response.json() as { data?: Array<{ id: string }> }
-      if (!Array.isArray(payload.data) || payload.data.length === 0) {
-        throw providerModelsUnavailable(this.providerKind, 'Codex models response was empty')
-      }
-
-      const models = await enrichModelsFromRegistry(payload.data.map(item => ({
-        id: item.id,
-        label: item.id,
-        providerKind: this.providerKind,
-        contextWindow: null,
-      })))
-
-      return models
-    }
-    catch (error) {
-      throw wrapProviderModelsError(this.providerKind, error)
-    }
-  }
-}
-
-class CliTuiMetadataProvider implements ProviderMetadataProvider {
-  readonly providerKind = 'cli-tui' as const
-
-  async checkHealth(input: ProviderRequest): Promise<ProviderHealthCheckResult> {
-    return {
-      ok: true,
-      label: input.label,
-      version: null,
-      details: {},
-      errorText: null,
-    }
-  }
-
-  async listModels(): Promise<ModelDescriptor[]> {
-    return []
   }
 }
 
@@ -234,9 +76,10 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
     }
 
     const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
+    const baseUrl = normalizeBaseUrl(config.baseUrl)
 
     try {
-      const response = await fetch(`${config.baseUrl.replace(TRAILING_SLASH_RE, '')}/models`, {
+      const response = await fetch(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/models`, {
         headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
       })
       if (!response.ok) {
@@ -248,21 +91,16 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
         throw providerModelsUnavailable(this.providerKind, 'Provider models response was empty')
       }
 
-      const models = payload.data.map(item => toModelDescriptor(item.id))
-      return models
+      return payload.data.map(item => ({
+        id: item.id,
+        label: item.id,
+        providerKind: 'openai-compatible' as const,
+        contextWindow: null,
+      }))
     }
     catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
-  }
-}
-
-function toModelDescriptor(id: string): ModelDescriptor {
-  return {
-    id,
-    label: id,
-    providerKind: 'openai-compatible',
-    contextWindow: null,
   }
 }
 

@@ -17,9 +17,9 @@ export const backendSessionBindings = sqliteTable('backend_session_bindings', {
   agentProfileId: text('agent_profile_id')
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
-  providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent', 'system-agent'],
-  }).notNull(),
+  runtimeKind: text('runtime_kind', {
+    enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
+  }).notNull().default('standard'),
   backendSessionId: text('backend_session_id'),
   backendStateSnapshot: text('backend_state_snapshot'),
   requestedModelId: text('requested_model_id'),
@@ -52,9 +52,9 @@ export const backendCapabilitySnapshots = sqliteTable('backend_capability_snapsh
   agentProfileId: text('agent_profile_id')
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
-  providerKind: text('provider_kind', {
-    enum: ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent', 'system-agent'],
-  }).notNull(),
+  runtimeKind: text('runtime_kind', {
+    enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
+  }).notNull().default('standard'),
   source: text('source', {
     enum: ['health_check', 'session_start'],
   }).notNull(),

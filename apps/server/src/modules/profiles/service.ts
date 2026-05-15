@@ -10,6 +10,7 @@ import {
 import { eq } from 'drizzle-orm'
 
 import { db } from '../../infra'
+import { enrichModelsFromRegistry } from '../providers/model-info-registry'
 import type { ProviderKind } from '../providers/types'
 import * as Session from '../session/service'
 
@@ -71,4 +72,43 @@ export function removeProfile(id: string): void {
     tx.delete(usageLogs).where(eq(usageLogs.agentProfileId, id)).run()
     tx.delete(agentProfiles).where(eq(agentProfiles.id, id)).run()
   })
+}
+
+// ── custom models ──
+
+export interface CustomModelEntry {
+  id: string
+  label: string
+  contextWindow: number | null
+}
+
+export async function updateCustomModels(
+  profileId: string,
+  models: Array<{ id: string, label?: string }>,
+): Promise<CustomModelEntry[]> {
+  // Enrich from models.dev registry
+  const descriptors = models.map(m => ({
+    id: m.id,
+    label: m.label ?? m.id,
+    providerKind: 'openai-compatible' as const,
+    contextWindow: null as number | null,
+  }))
+
+  const enriched = await enrichModelsFromRegistry(descriptors)
+
+  const entries: CustomModelEntry[] = enriched.map(m => ({
+    id: m.id,
+    label: m.label,
+    contextWindow: m.contextWindow,
+  }))
+
+  db().update(agentProfiles)
+    .set({
+      customModels: JSON.stringify(entries),
+      updatedAt: Math.floor(Date.now() / 1000),
+    })
+    .where(eq(agentProfiles.id, profileId))
+    .run()
+
+  return entries
 }

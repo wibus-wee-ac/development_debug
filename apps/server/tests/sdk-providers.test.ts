@@ -114,7 +114,7 @@ async function createProfileAndSession(app: ElysiaApp, input: {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       name: input.profileId,
-      providerKind: input.providerKind,
+      providerKind: 'openai-compatible',
       enabled: true,
       config: input.config,
       credentialRef: credential.id,
@@ -130,6 +130,7 @@ async function createProfileAndSession(app: ElysiaApp, input: {
       workspaceId: input.workspaceId,
       title: `${input.providerKind} session`,
       agentProfileId: input.profileId,
+      runtimeKind: input.providerKind,
     }),
   }))
   expect(sessionRes.status).toBe(200)
@@ -209,7 +210,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       app = createServerApp()
       db().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
 
-      const { credentialRef } = await createProfileAndSession(app, {
+      await createProfileAndSession(app, {
         workspaceId: 'workspace-sdk',
         providerKind: 'claude-agent',
         profileId: 'profile-claude',
@@ -217,36 +218,6 @@ describe('sdk-backed providers in unified chat runtime', () => {
         config: { model: 'claude-sonnet-4-20250514' },
         secret: 'sk-ant-123',
       })
-
-      const healthCheckRes = await app.handle(new Request('http://localhost/providers/health-check', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          profileId: 'profile-claude',
-          providerKind: 'claude-agent',
-          label: 'profile-claude',
-          config: { model: 'claude-sonnet-4-20250514' },
-          secretRef: credentialRef,
-        }),
-      }))
-      expect(healthCheckRes.status).toBe(200)
-      expect(await healthCheckRes.json()).toEqual(expect.objectContaining({ ok: true }))
-
-      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          profileId: 'profile-claude',
-          providerKind: 'claude-agent',
-          label: 'profile-claude',
-          config: { model: 'claude-sonnet-4-20250514' },
-          secretRef: credentialRef,
-        }),
-      }))
-      expect(modelsRes.status).toBe(200)
-      expect(await modelsRes.json()).toEqual([
-        expect.objectContaining({ id: 'claude-sonnet-4-20250514', providerKind: 'claude-agent' }),
-      ])
 
       const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude/response', {
         method: 'POST',
@@ -331,7 +302,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       app = createServerApp()
       db().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
 
-      const { credentialRef } = await createProfileAndSession(app, {
+      await createProfileAndSession(app, {
         workspaceId: 'workspace-sdk',
         providerKind: 'codex',
         profileId: 'profile-codex',
@@ -339,36 +310,6 @@ describe('sdk-backed providers in unified chat runtime', () => {
         config: { model: 'gpt-5-codex' },
         secret: 'sk-openai-123',
       })
-
-      const healthCheckRes = await app.handle(new Request('http://localhost/providers/health-check', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          profileId: 'profile-codex',
-          providerKind: 'codex',
-          label: 'profile-codex',
-          config: { model: 'gpt-5-codex' },
-          secretRef: credentialRef,
-        }),
-      }))
-      expect(healthCheckRes.status).toBe(200)
-      expect(await healthCheckRes.json()).toEqual(expect.objectContaining({ ok: true }))
-
-      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          profileId: 'profile-codex',
-          providerKind: 'codex',
-          label: 'profile-codex',
-          config: { model: 'gpt-5-codex' },
-          secretRef: credentialRef,
-        }),
-      }))
-      expect(modelsRes.status).toBe(200)
-      expect(await modelsRes.json()).toEqual([
-        expect.objectContaining({ id: 'gpt-5-codex', providerKind: 'codex' }),
-      ])
 
       const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-codex/response', {
         method: 'POST',

@@ -19,9 +19,11 @@ export type {
   Workspace,
 } from '@cradle/db'
 
-// ── Provider / agent-runtime types ─────────────────────────────────────────
+// ── Provider / Runtime types ───────────────────────────────────────────────
 
-export type ProviderKind = 'acp-chat' | 'cli-tui' | 'openai-compatible' | 'codex' | 'claude-agent' | 'system-agent'
+export type ProviderKind = 'openai-compatible'
+
+export type RuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
 
 export interface ModelDescriptor {
   id: string

@@ -1,10 +1,14 @@
-// Input: provider taxonomy and metadata responses
-// Output: shared provider types for provider catalog and chat-runtime modules
+// Input: provider taxonomy, runtime kinds, and metadata responses
+// Output: shared provider + runtime types for provider catalog and chat-runtime modules
 // Position: apps/server/src/modules/providers/types.ts
 
-export const providerKinds = ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent', 'system-agent'] as const
+export const providerKinds = ['openai-compatible'] as const
 
 export type ProviderKind = (typeof providerKinds)[number]
+
+export const runtimeKinds = ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'] as const
+
+export type RuntimeKind = (typeof runtimeKinds)[number]
 
 export interface ProviderHealthCheckResult {
   ok: boolean

@@ -17,11 +17,11 @@ import { langfuseEnabled } from '../../../../langfuse'
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
 import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
-import type { ProviderKind } from '../../../providers/types'
+import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
-  ChatRuntimeProvider,
+  ChatRuntime,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -36,7 +36,7 @@ interface CodexProviderDeps {
   recordObservability: (input: CreateEventInput) => void
 }
 
-const PROVIDER_KIND: ProviderKind = 'codex'
+const RUNTIME_KIND: RuntimeKind = 'codex'
 const MAX_EVENT_SAMPLES = 20
 
 interface CodexStreamDiagnostics {
@@ -47,8 +47,8 @@ interface CodexStreamDiagnostics {
   sampleEvents: Array<Record<string, unknown>>
 }
 
-export class CodexProvider implements ChatRuntimeProvider {
-  readonly providerKind = PROVIDER_KIND
+export class CodexProvider implements ChatRuntime {
+  readonly runtimeKind = RUNTIME_KIND
 
   private readonly activeThreads = new Map<string, { thread: Thread, abortController: AbortController }>()
   private _lastUsage: TokenUsage | null = null
@@ -64,7 +64,7 @@ export class CodexProvider implements ChatRuntimeProvider {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       agentProfileId: input.profile.id,
-      providerKind: PROVIDER_KIND,
+      runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({ workspacePath: input.workspacePath, models: { currentModelId: input.modelId ?? null } }),
     }
@@ -232,7 +232,7 @@ export class CodexProvider implements ChatRuntimeProvider {
             chatSessionId: input.runtimeSession.chatSessionId,
             runId: null,
           }),
-          attrs: { providerKind: PROVIDER_KIND, diagnostics, model: effectiveModel ?? null, baseUrl: config.baseUrl ?? null },
+          attrs: { runtimeKind: RUNTIME_KIND, diagnostics, model: effectiveModel ?? null, baseUrl: config.baseUrl ?? null },
         })
         throw new Error(errorText)
       }

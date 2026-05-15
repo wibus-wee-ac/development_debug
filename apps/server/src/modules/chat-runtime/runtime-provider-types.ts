@@ -1,17 +1,17 @@
-// Input: provider kind definitions and chat runtime provider contract
-// Output: runtime provider types for chat-runtime module
+// Input: runtime kind definitions and chat runtime contract
+// Output: runtime types for chat-runtime module
 // Position: apps/server/src/modules/chat-runtime/runtime-provider-types.ts
 
 import type { AgentProfile } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
 
-import type { ProviderKind } from '../providers/types'
+import type { RuntimeKind } from '../providers/types'
 
 export interface RuntimeSession {
   id: string
   chatSessionId: string
   agentProfileId: string
-  providerKind: ProviderKind
+  runtimeKind: RuntimeKind
   providerSessionId: string | null
   providerStateSnapshot: string | null
 }
@@ -54,8 +54,8 @@ export interface TokenUsage {
   totalTokens: number
 }
 
-export interface ChatRuntimeProvider {
-  readonly providerKind: ProviderKind
+export interface ChatRuntime {
+  readonly runtimeKind: RuntimeKind
   readonly lastUsage?: TokenUsage | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>

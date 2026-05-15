@@ -7,7 +7,7 @@ import type { UIMessageChunk } from 'ai'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
-  ChatRuntimeProvider,
+  ChatRuntime,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -20,8 +20,8 @@ interface AcpChatProviderDeps {
   runtime: AcpConnectionManager
 }
 
-export class AcpChatProvider implements ChatRuntimeProvider {
-  readonly providerKind = 'acp-chat' as const
+export class AcpChatProvider implements ChatRuntime {
+  readonly runtimeKind = 'acp-chat' as const
 
   private _lastUsage: TokenUsage | null = null
 
@@ -48,7 +48,7 @@ export class AcpChatProvider implements ChatRuntimeProvider {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       agentProfileId: input.profile.id,
-      providerKind: this.providerKind,
+      runtimeKind: this.runtimeKind,
       providerSessionId: response.sessionId,
       providerStateSnapshot: JSON.stringify({
         models: response.models ?? null,

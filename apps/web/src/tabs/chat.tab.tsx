@@ -12,7 +12,6 @@ import { getProfilesById, getSessionsById, getWorkspacesById } from '~/api-gen/s
 import { RightAside } from '~/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import type { ChatTimelineGroupRow } from '~/features/chat/use-chat-session'
-import { GitBranchControl } from '~/features/git'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
 import { getServerUrl } from '~/lib/electron'
@@ -32,6 +31,7 @@ function ChatTabLayoutSlots({
 }) {
   const [shellGen, bumpShellGen] = useReducer((value: number) => value + 1, 0)
   const hasWorkspace = !!(workspaceId && workspacePath)
+  const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
   const closeBottomPanel = useLayoutStore(s => s.setBottomPanelOpen)
 
   const aside = useMemo(
@@ -52,6 +52,7 @@ function ChatTabLayoutSlots({
           key={`${sessionId}:${shellGen}`}
           ptyId={`shell:${sessionId}:${shellGen}`}
           cwd={workspacePath!}
+          active={bottomPanelOpen}
           onExited={() => {
             closeBottomPanel(false)
             bumpShellGen()
@@ -59,7 +60,7 @@ function ChatTabLayoutSlots({
         />
       )
       : undefined,
-    [closeBottomPanel, hasWorkspace, workspacePath, sessionId, shellGen],
+    [bottomPanelOpen, closeBottomPanel, hasWorkspace, workspacePath, sessionId, shellGen],
   )
 
   useRegisterLayoutSlots(sessionId, useMemo(() => ({
@@ -87,7 +88,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
   })
 
   // Fetch agent profile to determine rendering mode (cli-tui vs chat)
-  const { data: agentProfile } = useQuery({
+  const { data: _agentProfile } = useQuery({
     queryKey: ['agent-profile', session?.agentProfileId],
     queryFn: async () => {
       const { data } = await getProfilesById({ path: { id: session!.agentProfileId } })
@@ -97,7 +98,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
     staleTime: 60_000,
   })
 
-  const isCliTui = agentProfile?.providerKind === 'cli-tui'
+  const isCliTui = session?.runtimeKind === 'cli-tui'
 
   // Update tab label to session title when loaded
   useEffect(() => {
@@ -123,8 +124,6 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
   })
 
   const workspacePath = workspace?.path ?? null
-
-  const hasWorkspace = !!(workspaceId && workspacePath)
 
   if (isCliTui) {
     return (

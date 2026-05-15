@@ -9,13 +9,13 @@ import {
   OpenAICompatibleConfigSchema,
   parseConfigWith,
 } from '../../../providers/provider-base'
-import type { ProviderKind } from '../../../providers/types'
+import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import { buildModelMessages, executeAiSdkTurn } from '../../engine/ai-sdk-engine'
 import { createLanguageModel, detectApiFormat } from '../../engine/providers'
 import type {
   CancelTurnInput,
-  ChatRuntimeProvider,
+  ChatRuntime,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -33,8 +33,8 @@ export interface StepUsageEntry {
   usage: TokenUsage
 }
 
-export class OpenAICompatibleProvider implements ChatRuntimeProvider {
-  readonly providerKind = 'openai-compatible' as const satisfies ProviderKind
+export class OpenAICompatibleProvider implements ChatRuntime {
+  readonly runtimeKind = 'standard' as const satisfies RuntimeKind
 
   private readonly activeTurns = new Map<string, AbortController>()
   private _lastUsage: TokenUsage | null = null
@@ -58,7 +58,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       agentProfileId: input.profile.id,
-      providerKind: this.providerKind,
+      runtimeKind: this.runtimeKind,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         baseUrl: config.baseUrl ?? null,
@@ -128,7 +128,7 @@ export class OpenAICompatibleProvider implements ChatRuntimeProvider {
         onStepFinish: (step) => { this._lastStepUsages.push(step) },
         approvalContext: {
           chatSessionId: runtimeSession.chatSessionId,
-          providerKind: this.providerKind,
+          runtimeKind: this.runtimeKind,
         },
         contextWindow,
         chatSessionId: runtimeSession.chatSessionId,

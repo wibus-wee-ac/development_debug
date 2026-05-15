@@ -93,7 +93,7 @@ describe('search capability', () => {
         id: bindingId,
         chatSessionId: sessionOneId,
         agentProfileId,
-        providerKind: 'openai-compatible',
+        runtimeKind: 'standard',
       }).run()
       d.insert(backendRuns).values({
         id: runId,
