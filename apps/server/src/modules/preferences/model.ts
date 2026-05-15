@@ -7,6 +7,16 @@ export const PreferencesModel = {
     modelId: t.Nullable(t.String()),
     configSelections: t.Record(t.String(), t.Union([t.String(), t.Boolean()])),
   }, { additionalProperties: false }),
+  jarvisPreferences: t.Object({
+    profileId: t.Nullable(t.String({ description: 'ID of the agent profile to use for Jarvis' })),
+    thinkingLevel: t.Union([
+      t.Literal('minimal'),
+      t.Literal('low'),
+      t.Literal('medium'),
+      t.Literal('high'),
+      t.Literal('xhigh'),
+    ], { default: 'medium' }),
+  }, { additionalProperties: false }),
   savedResponse: t.Object({
     ok: t.Literal(true),
   }),
@@ -17,7 +27,13 @@ export const defaultChatPreferences: Static<typeof PreferencesModel['chatPrefere
   configSelections: {},
 }
 
+export const defaultJarvisPreferences: Static<typeof PreferencesModel['jarvisPreferences']> = {
+  profileId: null,
+  thinkingLevel: 'medium',
+}
+
 const chatPreferencesValidator = TypeCompiler.Compile(PreferencesModel.chatPreferences)
+const jarvisPreferencesValidator = TypeCompiler.Compile(PreferencesModel.jarvisPreferences)
 
 export function parseChatPreferences(value: unknown):
   | { success: true, data: Static<typeof PreferencesModel['chatPreferences']> }
@@ -28,6 +44,21 @@ export function parseChatPreferences(value: unknown):
   return {
     success: false,
     issues: Array.from(chatPreferencesValidator.Errors(value), issue => ({
+      path: normalizeTypeBoxPath(issue.path),
+      message: issue.message,
+    })),
+  }
+}
+
+export function parseJarvisPreferences(value: unknown):
+  | { success: true, data: Static<typeof PreferencesModel['jarvisPreferences']> }
+  | { success: false, issues: Array<{ path: string, message: string }> } {
+  if (jarvisPreferencesValidator.Check(value)) {
+    return { success: true, data: value }
+  }
+  return {
+    success: false,
+    issues: Array.from(jarvisPreferencesValidator.Errors(value), issue => ({
       path: normalizeTypeBoxPath(issue.path),
       message: issue.message,
     })),

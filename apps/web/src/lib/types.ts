@@ -21,7 +21,7 @@ export type {
 
 // ── Provider / agent-runtime types ─────────────────────────────────────────
 
-export type ProviderKind = 'acp-chat' | 'cli-tui' | 'openai-compatible' | 'codex' | 'claude-agent'
+export type ProviderKind = 'acp-chat' | 'cli-tui' | 'openai-compatible' | 'codex' | 'claude-agent' | 'system-agent'
 
 export interface ModelDescriptor {
   id: string

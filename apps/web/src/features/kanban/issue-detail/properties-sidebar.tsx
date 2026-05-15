@@ -238,6 +238,7 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
           <span>{delegatedProfile ? delegatedProfile.name : 'Unassigned'}</span>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-48 p-1">
+          <div>
           {delegatedProfile && (
             <button
               type="button"
@@ -268,6 +269,7 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
               </button>
             ))
           )}
+          </div>
         </PopoverContent>
       </Popover>
     </PropertyRow>

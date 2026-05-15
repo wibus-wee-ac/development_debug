@@ -7,11 +7,13 @@ import { AgentRuntimeSettings } from '~/features/agent-management/agent-runtime-
 import { GlobalSkillsSettings } from '~/features/skills/global-skills-settings'
 
 import { AppearanceSettings } from './appearance-settings'
+import { JarvisSettings } from './jarvis-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
   providers: AgentRuntimeSettings,
   agents: AgentList,
+  jarvis: JarvisSettings,
   skills: GlobalSkillsSettings,
 }
 

@@ -17,6 +17,7 @@ export function AssigneeAvatar({ name, size = 20, className }: {
     <div
       className={cn(
         'shrink-0 rounded-full bg-muted flex items-center justify-center text-muted-foreground',
+        'border border-border',
         className,
       )}
       style={{ width: size, height: size }}

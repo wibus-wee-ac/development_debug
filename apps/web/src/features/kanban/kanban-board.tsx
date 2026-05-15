@@ -10,6 +10,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
+import { m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -123,7 +124,7 @@ export function KanbanBoard({
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex-1 flex gap-2 overflow-x-auto px-4 py-2" data-testid="kanban-board">
+      <div className="flex-1 flex gap-3 overflow-x-auto px-4 py-2" data-testid="kanban-board">
         {visibleGroups.map(group => (
           <KanbanColumn
             key={group.id}
@@ -141,13 +142,21 @@ export function KanbanBoard({
 
       <DragOverlay>
         {activeIssue && (
-          <div className="w-72 opacity-90">
+          <m.div
+            initial={{ scale: 1 }}
+            animate={{ scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+            className="w-72"
+            style={{
+              boxShadow: '0 8px 24px -4px rgba(0,0,0,0.12)',
+            }}
+          >
             <KanbanCard
               issue={activeIssue}
               displayProperties={config.displayProperties}
               onClick={() => {}}
             />
-          </div>
+          </m.div>
         )}
       </DragOverlay>
     </DndContext>

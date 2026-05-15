@@ -139,11 +139,11 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
     <>
       <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
       <Suspense fallback={null}>
-        {hasWorkspace && (
+        {/* {hasWorkspace && (
           <div className="flex items-center gap-2 border-b border-border/50 px-4 py-1">
             <GitBranchControl workspaceId={workspaceId} />
           </div>
-        )}
+        )} */}
         <ChatView key={sessionId} sessionId={sessionId} initialTimelineGroups={loaderData} />
       </Suspense>
     </>

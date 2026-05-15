@@ -2,7 +2,7 @@
 // Output: SettingsSidebar component — section navigation for settings view
 // Position: Sidebar content shown in AppSidebar when isSettings=true; fully prop-driven
 
-import { ArrowLeftIcon, BotIcon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
+import { ArrowLeftIcon, BotIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -17,6 +17,7 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'appearance', label: '外观', icon: PaletteIcon },
   { id: 'providers', label: 'Providers', icon: PlugIcon },
   { id: 'agents', label: 'Agents', icon: BotIcon },
+  { id: 'jarvis', label: 'Jarvis', icon: MousePointer2Icon },
   { id: 'skills', label: 'Skills', icon: SparklesIcon },
 ]
 

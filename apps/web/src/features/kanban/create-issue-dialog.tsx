@@ -1,12 +1,10 @@
 // Input: workspaceId, defaultStatusId, open state, onClose callback
-// Output: Quick create issue dialog
-// Position: Modal dialog for creating new kanban issues
+// Output: Inline create issue panel
+// Position: Panel for creating new kanban issues
 
 import { useEffect, useRef, useState } from 'react'
 
-import { Button } from '~/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
-import { Input } from '~/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import type { KanbanStatus } from '~/lib/types'
 
 import { useCreateIssue, useStatuses } from './use-kanban'
@@ -18,106 +16,106 @@ interface CreateIssueDialogProps {
   onClose: () => void
 }
 
+const priorityOptions = [
+  { value: 'none', label: '无优先级' },
+  { value: 'low', label: '低' },
+  { value: 'medium', label: '中' },
+  { value: 'high', label: '高' },
+  { value: 'urgent', label: '紧急' },
+] as const
+
 export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose }: CreateIssueDialogProps) {
   const [title, setTitle] = useState('')
-  const [priority, setPriority] = useState<'none' | 'low' | 'medium' | 'high' | 'urgent'>('none')
+  const [priority, setPriority] = useState('none')
   const [statusId, setStatusId] = useState(defaultStatusId ?? '')
   const titleInputRef = useRef<HTMLInputElement>(null)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const createIssue = useCreateIssue()
 
   useEffect(() => {
-    if (!open) {
-      return
-    }
-    requestAnimationFrame(() => {
-      titleInputRef.current?.focus()
-    })
-  }, [open])
+    if (!open) return
+    if (defaultStatusId) setStatusId(defaultStatusId)
+    requestAnimationFrame(() => titleInputRef.current?.focus())
+  }, [open, defaultStatusId])
 
   const handleSubmit = () => {
     if (!title.trim()) return
     createIssue.mutate({
       workspaceId,
       title: title.trim(),
-      priority,
+      priority: priority as 'none' | 'low' | 'medium' | 'high' | 'urgent',
       statusId: statusId || undefined,
     }, {
       onSuccess: () => {
         setTitle('')
         setPriority('none')
+        setStatusId('')
         onClose()
       },
     })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSubmit()
-    } else if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit()
+    } else if (e.key === 'Escape') {
+      onClose()
     }
   }
 
+  if (!open) return null
+
   return (
-    <Dialog open={open} onOpenChange={v => { if (!v) onClose() }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-[14px]">新建事项</DialogTitle>
-        </DialogHeader>
+    <div className="absolute inset-0 z-20 flex items-start justify-center pt-[15vh]">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-background/80" onClick={onClose} />
 
-        <div className="space-y-3 pt-2">
-          <Input
-            ref={titleInputRef}
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="事项标题"
-            className="text-[13px]"
-          />
+      {/* Panel */}
+      <div className="relative w-full max-w-md rounded-xl border border-border bg-card shadow-lg p-4">
+        <input
+          ref={titleInputRef}
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="事项标题..."
+          className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
+        />
 
-          <div className="flex items-center gap-2">
-            <select
-              value={statusId}
-              onChange={e => setStatusId(e.target.value)}
-              className="h-7 rounded-md bg-muted px-2 text-[12px] text-foreground border-none outline-none"
-            >
-              <option value="">选择状态</option>
+        <div className="flex items-center gap-2 mt-3">
+          <Select value={statusId} onValueChange={setStatusId}>
+            <SelectTrigger size="sm" className="w-auto text-[12px]">
+              <SelectValue placeholder="选择状态" />
+            </SelectTrigger>
+            <SelectContent>
               {statuses.map((s: KanbanStatus) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
               ))}
-            </select>
+            </SelectContent>
+          </Select>
 
-            <select
-              value={priority}
-              onChange={e => setPriority(e.target.value as typeof priority)}
-              className="h-7 rounded-md bg-muted px-2 text-[12px] text-foreground border-none outline-none"
-            >
-              <option value="none">无优先级</option>
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-              <option value="urgent">紧急</option>
-            </select>
-          </div>
+          <Select value={priority} onValueChange={setPriority}>
+            <SelectTrigger size="sm" className="w-auto text-[12px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {priorityOptions.map(p => (
+                <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" size="sm" onClick={onClose} className="h-7 text-[12px]">
-              取消
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSubmit}
-              disabled={!title.trim() || createIssue.isPending}
-              className="h-7 text-[12px]"
-            >
-              创建
-            </Button>
-          </div>
+          <div className="flex-1" />
+
+          <button
+            onClick={handleSubmit}
+            disabled={!title.trim() || createIssue.isPending}
+            className="rounded-full bg-foreground px-3 py-1 text-[12px] font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            创建
+          </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   )
 }

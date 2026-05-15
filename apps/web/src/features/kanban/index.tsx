@@ -4,14 +4,11 @@
 
 import { useCallback, useMemo, useReducer } from 'react'
 
-import type { KanbanIssue } from '~/lib/types'
-
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
 import { KanbanBoard } from './kanban-board'
 import { KanbanList } from './kanban-list'
 import { KanbanToolbar } from './kanban-toolbar'
-import { StatusManager } from './status-manager'
 import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
 import { useViewConfig } from './use-view-config'
 import type { FilterState } from './use-view-config'
@@ -28,7 +25,6 @@ interface KanbanViewUiState {
   createDialogOpen: boolean
   createDefaultStatusId?: string
   localSelectedIssueId: string | null
-  settingsOpen: boolean
 }
 
 type KanbanViewUiAction =
@@ -36,7 +32,6 @@ type KanbanViewUiAction =
   | { type: 'open-create', defaultStatusId?: string }
   | { type: 'close-create' }
   | { type: 'select-issue', issueId: string | null }
-  | { type: 'toggle-settings' }
 
 function kanbanViewUiReducer(state: KanbanViewUiState, action: KanbanViewUiAction): KanbanViewUiState {
   switch (action.type) {
@@ -48,8 +43,6 @@ function kanbanViewUiReducer(state: KanbanViewUiState, action: KanbanViewUiActio
       return { ...state, createDialogOpen: false }
     case 'select-issue':
       return { ...state, localSelectedIssueId: action.issueId }
-    case 'toggle-settings':
-      return { ...state, settingsOpen: !state.settingsOpen }
     default:
       return state
   }
@@ -62,7 +55,6 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
     createDialogOpen: false,
     createDefaultStatusId: undefined,
     localSelectedIssueId: externalSelectedIssueId ?? null,
-    settingsOpen: false,
   })
   const selectedIssueId = uiState.localSelectedIssueId || externalSelectedIssueId || null
 
@@ -140,7 +132,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
   }, [config.groupBy])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="relative flex flex-1 flex-col overflow-hidden h-full">
       {selectedIssueId ? (
         <IssueDetail
           issueId={selectedIssueId}
@@ -161,14 +153,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
             searchQuery={uiState.searchQuery}
             onSearchChange={(value) => dispatch({ type: 'set-search', searchQuery: value })}
             onCreateIssue={() => dispatch({ type: 'open-create' })}
-            onOpenSettings={() => dispatch({ type: 'toggle-settings' })}
           />
-
-          {uiState.settingsOpen && (
-            <div className="px-4 pb-2">
-              <StatusManager boardId={workspaceId} />
-            </div>
-          )}
 
           {config.layout === 'board' ? (
             <KanbanBoard

@@ -38,10 +38,26 @@ export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
   maxTurns: z.number().optional(),
 })
 
+export const SystemAgentConfigSchema = z.object({
+  /** Upstream provider for jar-core (e.g. "openai", "anthropic", "google") */
+  provider: z.string(),
+  /** Model ID to use */
+  model: z.string(),
+  /** Base URL override for the upstream provider */
+  baseUrl: z.string().optional(),
+  /** API key (inline, or resolved from secretRef/credentialRef) */
+  apiKey: z.string().optional(),
+  /** Thinking level: how much reasoning budget to give */
+  thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('medium'),
+  /** Max turns before the agent stops */
+  maxTurns: z.number().default(20),
+})
+
 export type BaseProviderConfigInput = z.infer<typeof BaseProviderConfig>
 export type OpenAICompatibleConfig = z.infer<typeof OpenAICompatibleConfigSchema>
 export type CodexConfig = z.infer<typeof CodexConfigSchema>
 export type ClaudeAgentConfig = z.infer<typeof ClaudeAgentConfigSchema>
+export type SystemAgentConfig = z.infer<typeof SystemAgentConfigSchema>
 
 export interface ProviderDeps {
   readSecret: (secretRef: string) => string

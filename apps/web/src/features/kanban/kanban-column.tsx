@@ -4,6 +4,7 @@
 
 import { useDroppable } from '@dnd-kit/core'
 import { PlusIcon } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -70,21 +71,22 @@ export function KanbanColumn({
   }, [inlineTitle, groupId, createIssue, workspaceId])
 
   return (
-    <div className="flex flex-col w-72 shrink-0" data-kanban-column-id={groupId}>
+    <div className="flex flex-col w-72 shrink-0 bg-muted/80 rounded-xl h-full" data-kanban-column-id={groupId}>
       {/* Column header */}
-      <div className="flex items-center gap-2 p-2 mb-1">
+      <div className="flex items-center gap-2 px-3 py-2">
         {category && <StatusIcon category={category} size={14} />}
-        <span className="text-[12px] font-medium text-muted-foreground" data-testid={`kanban-column-title-${groupId}`}>{groupName}</span>
-        <span className="text-[11px] text-text-dim">{issues.length}</span>
+        <span className="text-[12px] font-medium text-foreground" data-testid={`kanban-column-title-${groupId}`}>{groupName}</span>
+        <span className="text-[11px] text-muted-foreground tabular-nums">{issues.length}</span>
       </div>
 
-      {/* Droppable zone */}
+      {/* Droppable zone — stretches to fill remaining height */}
       <div
         ref={setNodeRef}
         data-testid={`kanban-column-dropzone-${groupId}`}
         className={cn(
-          'flex-1 flex flex-col gap-1 px-1 py-1 rounded-lg min-h-25 transition-colors',
-          isOver && 'bg-muted/30',
+          'flex-1 flex flex-col gap-0.5 px-1.5 pb-1.5 min-h-0',
+          'transition-colors duration-150 ease-out',
+          isOver && 'bg-muted/80 rounded-b-xl',
         )}
       >
         {issues.map(issue => (
@@ -92,37 +94,54 @@ export function KanbanColumn({
             key={issue.id}
             issue={issue}
             displayProperties={displayProperties}
+            category={category}
             onClick={() => onIssueClick(issue.id)}
           />
         ))}
 
-        {showInlineInput && (
-          <div className="px-2 py-1">
-            <input
-              ref={inputRef}
-              value={inlineTitle}
-              onChange={e => setInlineTitle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  handleConfirmInlineCreate()
-                } else if (e.key === 'Escape') {
-                  setShowInlineInput(false)
-                }
-              }}
-              onBlur={handleConfirmInlineCreate}
-              placeholder="事项标题"
-              data-testid="kanban-new-issue-input"
-              className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-text-dim focus:border-ring"
-            />
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {showInlineInput && (
+            <m.div
+              key="inline-input"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+              className="overflow-hidden"
+            >
+              <div className="px-0.5 py-0.5">
+                <input
+                  ref={inputRef}
+                  value={inlineTitle}
+                  onChange={e => setInlineTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleConfirmInlineCreate()
+                    } else if (e.key === 'Escape') {
+                      setShowInlineInput(false)
+                    }
+                  }}
+                  onBlur={handleConfirmInlineCreate}
+                  placeholder="事项标题"
+                  data-testid="kanban-new-issue-input"
+                  className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
+                />
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
 
         {/* Quick create button */}
         <button
           onClick={handleStartInlineCreate}
           data-testid={`kanban-column-add-${groupId}`}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] text-text-tertiary hover:text-muted-foreground rounded-md transition-colors"
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 text-[12px]',
+            'text-muted-foreground hover:text-foreground',
+            'rounded-md transition-[color,transform] duration-150 ease-out',
+            'active:scale-[0.96]',
+          )}
         >
           <PlusIcon className="size-3" />
           新建

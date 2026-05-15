@@ -2,6 +2,7 @@
 // Output: Grouped list view with collapsible sections
 // Position: List layout component for kanban view
 
+import { AnimatePresence, m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -108,16 +109,29 @@ export function KanbanList({
               collapsed={isCollapsed}
               onToggle={() => toggleCollapse(group.id)}
             />
-            {!isCollapsed && groupIssues.map(issue => (
-              <KanbanListRow
-                key={issue.id}
-                issue={issue}
-                statuses={statuses}
-                displayProperties={config.displayProperties}
-                onClick={() => onIssueClick(issue.id)}
-                selected={issue.id === selectedIssueId}
-              />
-            ))}
+            <AnimatePresence initial={false}>
+              {!isCollapsed && (
+                <m.div
+                  key={`${group.id}-content`}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+                  className="overflow-hidden"
+                >
+                  {groupIssues.map(issue => (
+                    <KanbanListRow
+                      key={issue.id}
+                      issue={issue}
+                      statuses={statuses}
+                      displayProperties={config.displayProperties}
+                      onClick={() => onIssueClick(issue.id)}
+                      selected={issue.id === selectedIssueId}
+                    />
+                  ))}
+                </m.div>
+              )}
+            </AnimatePresence>
           </div>
         )
       })}

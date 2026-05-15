@@ -44,9 +44,11 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
       className={cn(
-        'h-8 flex items-center gap-2 px-3 text-[13px] cursor-pointer transition-colors',
-        'hover:bg-muted/50',
-        selected && 'bg-muted/70',
+        'h-8 flex items-center gap-2 px-3 text-[13px] cursor-pointer',
+        'transition-colors duration-100 ease-out',
+        'hover:bg-muted',
+        selected && 'bg-muted',
+        !selected && 'border-l-2 border-l-transparent',
       )}
     >
       {displayProperties.status && (
@@ -58,12 +60,12 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       )}
 
       {displayProperties.id && (
-        <span className="text-[11px] font-mono text-muted-foreground/70 w-14 shrink-0">
+        <span className="text-[11px] font-mono text-muted-foreground w-14 shrink-0 tabular-nums">
           {issue.id.slice(0, 6).toUpperCase()}
         </span>
       )}
 
-      <span className="flex-1 truncate text-foreground">
+      <span className="flex-1 truncate text-foreground text-pretty">
         {issue.title}
       </span>
 
@@ -78,7 +80,7 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       )}
 
       {displayProperties.createdAt && issue.createdAt && (
-        <span className="text-[11px] text-muted-foreground/60 w-8 shrink-0 text-right">
+        <span className="text-[11px] text-muted-foreground w-8 shrink-0 text-right tabular-nums">
           {formatRelativeTime(issue.createdAt)}
         </span>
       )}

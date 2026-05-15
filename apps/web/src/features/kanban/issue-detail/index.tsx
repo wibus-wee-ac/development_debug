@@ -67,7 +67,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
         </div>
 
         {/* Sidebar */}
-        <div className="w-70 shrink-0 overflow-y-auto border-l border-border/50 px-4 py-6">
+        <div className="w-70 shrink-0 overflow-y-auto border-l border-border px-4 py-6">
           <PropertiesSidebar
             issue={issue}
             statuses={statuses}

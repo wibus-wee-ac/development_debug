@@ -1,23 +1,19 @@
 // Input: ViewConfig, FilterState, callbacks
-// Output: Compact toolbar with search, filter, group, sort, display, and layout controls
+// Output: Compact toolbar with icon pill buttons
 // Position: Kanban toolbar component
 
 import {
-  ChevronDownIcon,
+  CheckIcon,
   ColumnsIcon,
   FilterIcon,
   GroupIcon,
   ListIcon,
   PlusIcon,
-  SearchIcon,
   SlidersHorizontalIcon,
   SortAscIcon,
 } from 'lucide-react'
-import { useState } from 'react'
 
-import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
-import { Input } from '~/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { cn } from '~/lib/cn'
 
@@ -32,7 +28,28 @@ interface ToolbarProps {
   searchQuery: string
   onSearchChange: (q: string) => void
   onCreateIssue?: () => void
-  onOpenSettings?: () => void
+}
+
+function ToolbarPill({ children, active, className, ...props }: {
+  children: React.ReactNode
+  active?: boolean
+  className?: string
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex items-center justify-center size-7 rounded-full border border-border shadow-sm',
+        'transition-[background-color,transform] duration-150 ease-out',
+        'hover:bg-muted active:scale-[0.92]',
+        active && 'bg-muted',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  )
 }
 
 export function KanbanToolbar({
@@ -41,10 +58,9 @@ export function KanbanToolbar({
   filter,
   setFilter,
   resetFilter,
-  searchQuery,
-  onSearchChange,
+  searchQuery: _searchQuery,
+  onSearchChange: _onSearchChange,
   onCreateIssue,
-  onOpenSettings,
 }: ToolbarProps) {
   const hasFilter = !!(
     filter.statusIds?.length
@@ -55,80 +71,51 @@ export function KanbanToolbar({
   )
 
   return (
-    <div className="flex items-center gap-1.5 px-4 py-2">
-      {/* Search */}
-      <div className="relative">
-        <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-        <Input
-          value={searchQuery}
-          onChange={e => onSearchChange(e.target.value)}
-          placeholder="搜索..."
-          className="h-7 w-48 pl-7 text-[13px]"
-          data-testid="kanban-search-input"
-        />
-      </div>
-
-      {/* Filter */}
-      <FilterPopover filter={filter} setFilter={setFilter} resetFilter={resetFilter} hasFilter={hasFilter} />
-
-      {/* Group By */}
-      <GroupByPopover config={config} setConfig={setConfig} />
-
-      {/* Sort */}
-      <SortPopover config={config} setConfig={setConfig} />
-
-      {/* Display */}
-      <DisplayPopover config={config} setConfig={setConfig} />
-
+    <div className="relative flex items-center gap-1 px-4 py-2">
       <div className="flex-1" />
 
-      {/* Create issue */}
-      {onCreateIssue && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 text-[13px]"
-          onClick={onCreateIssue}
-          data-testid="kanban-create-issue-btn"
-        >
-          <PlusIcon className="size-3.5" />
-          新建
-        </Button>
-      )}
+      {/* Right: icon pills */}
+      <div className="flex items-center gap-1">
+        <FilterPopover filter={filter} setFilter={setFilter} resetFilter={resetFilter} hasFilter={hasFilter} />
 
-      {/* Settings */}
-      {onOpenSettings && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1 text-[13px]"
-          onClick={onOpenSettings}
-          data-testid="kanban-settings-btn"
-        >
-          <SlidersHorizontalIcon className="size-3.5" />
-        </Button>
-      )}
+        <GroupByPopover config={config} setConfig={setConfig} />
 
-      {/* Layout toggle */}
-      <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
-        <button
-          onClick={() => setConfig({ layout: 'board' })}
-          className={cn(
-            'flex items-center justify-center size-6 rounded-sm transition-colors',
-            config.layout === 'board' ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <ColumnsIcon className="size-3.5" />
-        </button>
-        <button
-          onClick={() => setConfig({ layout: 'list' })}
-          className={cn(
-            'flex items-center justify-center size-6 rounded-sm transition-colors',
-            config.layout === 'list' ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <ListIcon className="size-3.5" />
-        </button>
+        <SortPopover config={config} setConfig={setConfig} />
+
+        <DisplayPopover config={config} setConfig={setConfig} />
+
+        {onCreateIssue && (
+          <ToolbarPill
+            onClick={onCreateIssue}
+            data-testid="kanban-create-issue-btn"
+          >
+            <PlusIcon className="size-3.5" />
+          </ToolbarPill>
+        )}
+
+        {/* Layout toggle */}
+        <div className="flex items-center gap-0.5 ml-1 rounded-full border border-border p-0.5">
+          <button
+            onClick={() => setConfig({ layout: 'board' })}
+            className={cn(
+              'flex items-center justify-center size-6 rounded-full',
+              'transition-colors duration-100',
+              config.layout === 'board' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ColumnsIcon className="size-3.5" />
+          </button>
+          <button
+            onClick={() => setConfig({ layout: 'list' })}
+            className={cn(
+              'flex items-center justify-center size-6 rounded-full',
+              'transition-colors duration-100',
+              config.layout === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ListIcon className="size-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -145,15 +132,13 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
 
   return (
     <Popover>
-      <PopoverTrigger>
-        <Button variant="ghost" size="sm" className={cn('h-7 gap-1 text-[13px]', hasFilter && 'text-foreground')}>
+      <PopoverTrigger asChild>
+        <ToolbarPill active={hasFilter} data-testid="kanban-filter-btn">
           <FilterIcon className="size-3.5" />
-          筛选
-          {hasFilter && <span className="size-1.5 rounded-full bg-blue-500" />}
-        </Button>
+        </ToolbarPill>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-3">
-        <div className="space-y-3">
+      <PopoverContent align="end" className="w-56 p-0">
+        <div className="p-3 space-y-3">
           <div>
             <p className="text-[12px] font-medium text-muted-foreground mb-1.5">优先级</p>
             <div className="space-y-1">
@@ -174,9 +159,8 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
             </div>
           </div>
           <div>
-            <label htmlFor="filter-is-delegated" className="flex items-center gap-2 text-[13px] cursor-pointer">
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer">
               <Checkbox
-                id="filter-is-delegated"
                 checked={filter.isDelegated === true}
                 onCheckedChange={(checked) => {
                   setFilter({ isDelegated: checked ? true : null })
@@ -186,9 +170,9 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
             </label>
           </div>
           {hasFilter && (
-            <Button variant="ghost" size="sm" className="w-full h-7 text-[12px]" onClick={resetFilter}>
+            <button onClick={resetFilter} className="text-[12px] text-muted-foreground hover:text-foreground">
               清除筛选
-            </Button>
+            </button>
           )}
         </div>
       </PopoverContent>
@@ -207,26 +191,27 @@ function GroupByPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
 
   return (
     <Popover>
-      <PopoverTrigger>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 text-[13px]">
+      <PopoverTrigger asChild>
+        <ToolbarPill data-testid="kanban-group-btn">
           <GroupIcon className="size-3.5" />
-          分组
-          <ChevronDownIcon className="size-3" />
-        </Button>
+        </ToolbarPill>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-40 p-2">
-        {options.map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => setConfig({ groupBy: opt.value })}
-            className={cn(
-              'w-full text-left px-2 py-1.5 rounded-md text-[13px] transition-colors',
-              config.groupBy === opt.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
+      <PopoverContent align="end" className="w-40 p-0">
+        <div className="p-1">
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setConfig({ groupBy: opt.value })}
+              className={cn(
+                'w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] transition-colors',
+                config.groupBy === opt.value ? 'text-foreground' : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              <span className="flex-1">{opt.label}</span>
+              {config.groupBy === opt.value && <CheckIcon className="size-3 text-muted-foreground" />}
+            </button>
+          ))}
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -243,33 +228,34 @@ function SortPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p:
 
   return (
     <Popover>
-      <PopoverTrigger>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 text-[13px]">
+      <PopoverTrigger asChild>
+        <ToolbarPill data-testid="kanban-sort-btn">
           <SortAscIcon className="size-3.5" />
-          排序
-          <ChevronDownIcon className="size-3" />
-        </Button>
+        </ToolbarPill>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-40 p-2">
-        {options.map(opt => (
-          <button
-            key={opt.value}
-            onClick={() => setConfig({ orderBy: opt.value })}
-            className={cn(
-              'w-full text-left px-2 py-1.5 rounded-md text-[13px] transition-colors',
-              config.orderBy === opt.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50',
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-        <div className="border-t border-border mt-1.5 pt-1.5">
-          <button
-            onClick={() => setConfig({ orderDirection: config.orderDirection === 'asc' ? 'desc' : 'asc' })}
-            className="w-full text-left px-2 py-1.5 rounded-md text-[13px] text-muted-foreground hover:bg-muted/50"
-          >
-            {config.orderDirection === 'asc' ? '升序 ↑' : '降序 ↓'}
-          </button>
+      <PopoverContent align="end" className="w-40 p-0">
+        <div className="p-1">
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setConfig({ orderBy: opt.value })}
+              className={cn(
+                'w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] transition-colors',
+                config.orderBy === opt.value ? 'text-foreground' : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              <span className="flex-1">{opt.label}</span>
+              {config.orderBy === opt.value && <CheckIcon className="size-3 text-muted-foreground" />}
+            </button>
+          ))}
+          <div className="border-t border-border mt-1 pt-1">
+            <button
+              onClick={() => setConfig({ orderDirection: config.orderDirection === 'asc' ? 'desc' : 'asc' })}
+              className="w-full text-left px-2 py-1.5 rounded-md text-[13px] text-muted-foreground hover:bg-muted"
+            >
+              {config.orderDirection === 'asc' ? '升序 ↑' : '降序 ↓'}
+            </button>
+          </div>
         </div>
       </PopoverContent>
     </Popover>
@@ -277,8 +263,6 @@ function SortPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p:
 }
 
 function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
-  const [open, setOpen] = useState(false)
-
   const properties: { key: keyof ViewConfig['displayProperties'], label: string }[] = [
     { key: 'id', label: '编号' },
     { key: 'priority', label: '优先级' },
@@ -292,17 +276,16 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
   ]
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 text-[13px]">
+    <Popover>
+      <PopoverTrigger asChild>
+        <ToolbarPill data-testid="kanban-display-btn">
           <SlidersHorizontalIcon className="size-3.5" />
-          显示
-        </Button>
+        </ToolbarPill>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-48 p-3">
-        <div className="space-y-1">
+      <PopoverContent align="end" className="w-48 p-0">
+        <div className="p-2">
           {properties.map(p => (
-            <label key={p.key} className="flex items-center gap-2 text-[13px] cursor-pointer">
+            <label key={p.key} className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted">
               <Checkbox
                 checked={config.displayProperties[p.key]}
                 onCheckedChange={(checked) => {
@@ -317,16 +300,15 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
               {p.label}
             </label>
           ))}
-        </div>
-        <div className="border-t border-border mt-2 pt-2">
-          <label htmlFor="config-show-empty-groups" className="flex items-center gap-2 text-[13px] cursor-pointer">
-            <Checkbox
-              id="config-show-empty-groups"
-              checked={config.showEmptyGroups}
-              onCheckedChange={(checked) => setConfig({ showEmptyGroups: !!checked })}
-            />
-            显示空分组
-          </label>
+          <div className="border-t border-border mt-1 pt-1">
+            <label className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted">
+              <Checkbox
+                checked={config.showEmptyGroups}
+                onCheckedChange={(checked) => setConfig({ showEmptyGroups: !!checked })}
+              />
+              显示空分组
+            </label>
+          </div>
         </div>
       </PopoverContent>
     </Popover>

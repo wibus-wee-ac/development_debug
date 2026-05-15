@@ -2,7 +2,7 @@
 // Output: shared provider types for provider catalog and chat-runtime modules
 // Position: apps/server/src/modules/providers/types.ts
 
-export const providerKinds = ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent'] as const
+export const providerKinds = ['acp-chat', 'cli-tui', 'openai-compatible', 'codex', 'claude-agent', 'system-agent'] as const
 
 export type ProviderKind = (typeof providerKinds)[number]
 

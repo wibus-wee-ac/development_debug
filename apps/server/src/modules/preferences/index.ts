@@ -35,3 +35,31 @@ export const preferences = new Elysia({
       200: PreferencesModel.savedResponse,
     },
   })
+  .get('/jarvis', () => Preferences.getJarvisPreferences(), {
+    detail: {
+      summary: 'Get Jarvis preferences',
+      description: 'Read the system agent (Jarvis) configuration.',
+      'x-cradle-cli': {
+        command: ['preferences', 'jarvis', 'get'],
+      },
+    },
+    response: {
+      200: PreferencesModel.jarvisPreferences,
+    },
+  })
+  .put('/jarvis', async ({ body }) => {
+    await Preferences.setJarvisPreferences(body)
+    return { ok: true as const }
+  }, {
+    detail: {
+      summary: 'Set Jarvis preferences',
+      description: 'Persist the system agent (Jarvis) provider and model config.',
+      'x-cradle-cli': {
+        command: ['preferences', 'jarvis', 'set'],
+      },
+    },
+    body: PreferencesModel.jarvisPreferences,
+    response: {
+      200: PreferencesModel.savedResponse,
+    },
+  })

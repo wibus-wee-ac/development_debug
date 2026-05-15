@@ -2,7 +2,8 @@
 // Output: Collapsible group header row for list view
 // Position: List view group separator
 
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronDownIcon } from 'lucide-react'
+import { m } from 'motion/react'
 
 import { cn } from '~/lib/cn'
 
@@ -23,15 +24,19 @@ export function KanbanGroupHeader({ name, count, category, collapsed, onToggle }
       onClick={onToggle}
       className={cn(
         'h-8 w-full flex items-center gap-2 px-3 text-[12px] font-medium text-muted-foreground',
-        'hover:bg-muted/30 transition-colors',
+        'hover:bg-muted transition-[background-color] duration-150 ease-out',
       )}
     >
-      {collapsed
-        ? <ChevronRightIcon className="size-3.5" />
-        : <ChevronDownIcon className="size-3.5" />}
+      <m.span
+        animate={{ rotate: collapsed ? -90 : 0 }}
+        transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+        className="flex items-center"
+      >
+        <ChevronDownIcon className="size-3.5" />
+      </m.span>
       {category && <StatusIcon category={category} size={14} />}
       <span>{name}</span>
-      <span className="text-muted-foreground/60">{count}</span>
+      <span className="text-muted-foreground tabular-nums">{count}</span>
     </button>
   )
 }

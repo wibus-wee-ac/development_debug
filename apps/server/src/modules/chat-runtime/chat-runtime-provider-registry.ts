@@ -17,6 +17,7 @@ import { ClaudeAgentProvider } from './providers/claude-agent/provider'
 import { CodexProvider } from './providers/codex/provider'
 import { MockClaudeAgentProvider } from './providers/mock-claude-agent/provider'
 import { OpenAICompatibleProvider } from './providers/openai-compatible/provider'
+import { SystemAgentProvider } from './providers/system-agent/provider'
 import type { ChatRuntimeProvider } from './runtime-provider-types'
 
 export class ChatRuntimeProviderRegistry {
@@ -75,6 +76,9 @@ export function getProviderRegistry(): ChatRuntimeProviderRegistry {
       readSecret: secretRef => Secrets.readSecret(secretRef),
       recordObservability,
       resolveSkillPaths,
+    }))
+    registry.register(new SystemAgentProvider({
+      readSecret: secretRef => Secrets.readSecret(secretRef),
     }))
   }
   return registry

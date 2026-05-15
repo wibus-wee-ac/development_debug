@@ -1,20 +1,20 @@
-import * as React from 'react'
-import { AnimatePresence, m } from 'motion/react'
-import { ArrowUpIcon, MaximizeIcon, MinimizeIcon, MousePointer2Icon, SquareIcon, XIcon } from 'lucide-react'
 import { StaticRender } from '@cradle/streamdown'
+import { ArrowUpIcon, MaximizeIcon, MinimizeIcon, MousePointer2Icon, SquareIcon, XIcon } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
+import * as React from 'react'
 
-import { postSessions } from '~/api-gen/sdk.gen'
+import { getWorkspaces, postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { useChatSession } from '~/features/chat/use-chat-session'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
-import { useNewChatStore } from '~/store/new-chat'
 
 import { formatContextForAgent } from './format-context'
 import { collectContextSnapshot } from './use-context-snapshot'
+
+const SERVER_BASE = getServerUrl()
 
 export function JarvisPopover({
   open,
@@ -26,7 +26,7 @@ export function JarvisPopover({
   const [input, setInput] = React.useState('')
   const [jarvisSessionId, setJarvisSessionId] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
-  const pendingTextRef = React.useRef<string | null>(null)
+  const [profileId, setProfileId] = React.useState<string | null>(null)
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const panelRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -34,30 +34,28 @@ export function JarvisPopover({
   const jarvisExpanded = useLayoutStore(s => s.jarvisExpanded)
   const setJarvisExpanded = useLayoutStore(s => s.setJarvisExpanded)
 
-  const { workspaces } = useWorkspaces()
-  const { profiles } = useAgentProfiles()
-  const lastAgentProfileId = useNewChatStore(s => s.lastAgentProfileId)
-
-  const workspaceId = workspaces[0]?.id ?? null
-  const profileId = lastAgentProfileId && profiles.some(p => p.id === lastAgentProfileId)
-    ? lastAgentProfileId
-    : profiles[0]?.id ?? null
+  // Load profile ID from Jarvis preferences
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${SERVER_BASE}/preferences/jarvis`)
+        if (res.ok) {
+          const data = await res.json() as { profileId: string | null }
+          setProfileId(data.profileId)
+        }
+      }
+      catch { /* ignore */ }
+    })()
+  }, [])
 
   const { messages, status, sendMessage, stop } = useChatSession(jarvisSessionId)
   const isStreaming = status === 'streaming'
 
-  // When session is created and there's a pending message, send it
-  React.useEffect(() => {
-    if (jarvisSessionId && pendingTextRef.current) {
-      const text = pendingTextRef.current
-      pendingTextRef.current = null
-      sendMessage(text)
-    }
-  }, [jarvisSessionId, sendMessage])
-
   // Click outside to close (only in popover mode)
   React.useEffect(() => {
-    if (!open || jarvisExpanded) return
+    if (!open || jarvisExpanded) {
+      return
+    }
     function handlePointerDown(e: PointerEvent) {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         onOpenChange(false)
@@ -69,12 +67,15 @@ export function JarvisPopover({
 
   // Escape to close/collapse
   React.useEffect(() => {
-    if (!open) return
+    if (!open) {
+      return
+    }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (jarvisExpanded) {
           setJarvisExpanded(false)
-        } else {
+        }
+        else {
           onOpenChange(false)
         }
       }
@@ -107,37 +108,55 @@ export function JarvisPopover({
 
   const handleSend = React.useCallback(async () => {
     const text = input.trim()
-    if (!text || isStreaming || creating) return
-    if (!workspaceId || !profileId) return
-
-    const snapshot = collectContextSnapshot()
-    const contextBlock = formatContextForAgent(snapshot)
-    const enrichedText = `${contextBlock}\n\n${text}`
+    if (!text || isStreaming || !profileId || creating) {
+      return
+    }
 
     setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
 
-    if (jarvisSessionId) {
-      sendMessage(enrichedText)
-    } else {
+    // Collect context and prepend to user message (client-side injection)
+    const ctx = collectContextSnapshot()
+    const contextBlock = formatContextForAgent(ctx)
+    const fullText = contextBlock
+      ? `<cradle_context>\n${contextBlock}\n</cradle_context>\n\n${text}`
+      : text
+
+    // Lazy-create session on first message
+    let sessionId = jarvisSessionId
+    if (!sessionId) {
       setCreating(true)
-      pendingTextRef.current = enrichedText
       try {
+        const { data: wsData } = await getWorkspaces()
+        const workspaceId = (wsData as Array<{ id: string }> | null)?.[0]?.id ?? 'default'
         const { data } = await postSessions({
-          body: { workspaceId, title: 'Jarvis', agentProfileId: profileId },
+          body: {
+            workspaceId,
+            title: 'Jarvis',
+            agentProfileId: profileId,
+          },
         })
         const session = data as { id: string } | null
-        if (session?.id) {
-          setJarvisSessionId(session.id)
+        if (!session?.id) {
+          return
         }
-      } finally {
+        sessionId = session.id
+        setJarvisSessionId(sessionId)
+      }
+      finally {
         setCreating(false)
       }
     }
-  }, [input, isStreaming, creating, workspaceId, profileId, jarvisSessionId, sendMessage])
+
+    await sendMessage(fullText)
+  }, [input, isStreaming, profileId, creating, jarvisSessionId, sendMessage])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.nativeEvent.isComposing) return
+    if (e.nativeEvent.isComposing) {
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void handleSend()
@@ -149,15 +168,15 @@ export function JarvisPopover({
   const [popoverBounds, setPopoverBounds] = React.useState({ top: 0, left: 0, width: 384, height: 480 })
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open) {
+      return
+    }
     function measure() {
       const centerEl = document.querySelector('[data-slot="app-center-column"]') as HTMLElement | null
       if (centerEl) {
         const r = centerEl.getBoundingClientRect()
-        // Jarvis slightly wider than center column + tighter top for depth gap
         setExpandedBounds({ top: r.top + 12, left: r.left - 8, width: r.width + 16, height: r.height + 4 })
       }
-      // Popover position: above the footer, right-aligned
       const footerEl = document.querySelector('footer') as HTMLElement | null
       if (footerEl) {
         const fr = footerEl.getBoundingClientRect()
@@ -193,7 +212,7 @@ export function JarvisPopover({
             jarvisExpanded && 'shadow-[0_1px_10px_rgba(0,0,0,0.08)]',
           )}
         >
-          {/* Title bar — inline, no border */}
+          {/* Title bar */}
           <div className="flex items-center justify-between px-4 py-3 shrink-0">
             <div className="flex items-center gap-2">
               <MousePointer2Icon className="size-3.5 text-muted-foreground" />
@@ -224,46 +243,48 @@ export function JarvisPopover({
 
           {/* Messages */}
           <ScrollArea className="flex-1 min-h-0" viewportRef={viewportRef}>
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-72 px-8">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-muted mb-4">
-                  <MousePointer2Icon className="size-4.5 text-foreground" />
+            {messages.length === 0
+              ? (
+                <div className="flex flex-col items-center justify-center h-full min-h-72 px-8">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-muted mb-4">
+                    <MousePointer2Icon className="size-4.5 text-foreground" />
+                  </div>
+                  <p className="text-[13px] font-medium text-foreground mb-1.5">What can I help with?</p>
+                  <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                    I have full awareness of your workspace — active tabs, chat sessions, and current layout.
+                  </p>
                 </div>
-                <p className="text-[13px] font-medium text-foreground mb-1.5">What can I help with?</p>
-                <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                  I have full awareness of your workspace — active tabs, chat sessions, and current layout.
-                </p>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-5 px-4 py-3">
-                {messages.map(msg => (
-                  <div key={msg.id}>
-                    {msg.role === 'user' && (
-                      <div className="flex justify-end">
-                        <div className="max-w-[85%] rounded-lg rounded-br-sm bg-muted px-3 py-2 text-sm text-foreground whitespace-pre-wrap">
-                          {extractUserText(msg)}
+              )
+              : (
+                <div className="flex flex-col gap-5 px-4 py-3">
+                  {messages.map(msg => (
+                    <div key={msg.id}>
+                      {msg.role === 'user' && (
+                        <div className="flex justify-end">
+                          <div className="max-w-[85%] rounded-lg rounded-br-sm bg-muted px-3 py-2 text-sm text-foreground whitespace-pre-wrap">
+                            {extractUserText(msg)}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {msg.role === 'assistant' && (
-                      <div className="text-sm text-foreground prose prose-sm dark:prose-invert max-w-none">
-                        <StaticRender content={extractAssistantText(msg)} />
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {isStreaming && (
-                  <div className="flex items-center gap-1.5 py-1">
-                    <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse" />
-                    <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse [animation-delay:150ms]" />
-                    <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
-                  </div>
-                )}
-              </div>
-            )}
+                      )}
+                      {msg.role === 'assistant' && (
+                        <div className="text-sm text-foreground prose prose-sm dark:prose-invert max-w-none">
+                          <StaticRender content={extractAssistantText(msg)} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {isStreaming && (
+                    <div className="flex items-center gap-1.5 py-1">
+                      <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse" />
+                      <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse [animation-delay:150ms]" />
+                      <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
+                    </div>
+                  )}
+                </div>
+              )}
           </ScrollArea>
 
-          {/* Input card — no shadow, border only */}
+          {/* Input */}
           <div className="shrink-0 px-3 pb-3">
             <div className="rounded-xl border border-border bg-background">
               <textarea
@@ -307,12 +328,19 @@ export function JarvisPopover({
   )
 }
 
-/** Extract visible user text, stripping the <cradle_context> block */
+const CONTEXT_RE = /<cradle_context>[\s\S]*?<\/cradle_context>\s*/
+
 function extractUserText(msg: { parts?: Array<{ type: string, text?: string }> }): string {
-  const text = msg.parts?.find(p => p.type === 'text')?.text ?? ''
-  return text.replace(/<cradle_context>[\s\S]*?<\/cradle_context>\s*/, '')
+  const text = msg.parts
+    ?.filter(p => p.type === 'text' && typeof p.text === 'string')
+    .map(p => p.text!)
+    .join('\n') ?? ''
+  return text.replace(CONTEXT_RE, '')
 }
 
 function extractAssistantText(msg: { parts?: Array<{ type: string, text?: string }> }): string {
-  return msg.parts?.find(p => p.type === 'text')?.text ?? ''
+  return msg.parts
+    ?.filter(p => p.type === 'text' && typeof p.text === 'string')
+    .map(p => p.text!)
+    .join('\n') ?? ''
 }

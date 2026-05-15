@@ -45,6 +45,7 @@ export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   'cli-tui': 'CLI',
   'codex': 'Codex',
   'claude-agent': 'Claude Agent',
+  'system-agent': 'System Agent',
 }
 
 export interface DraftProvider {

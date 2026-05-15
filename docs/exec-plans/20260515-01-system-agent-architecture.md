@@ -223,13 +223,15 @@ This maps to Cradle's existing chat streaming infrastructure (SSE → `useChatSt
 |-----------|--------|----------|
 | Context Schema | ✅ Done | `apps/web/src/features/system-agent/context-schema.ts` |
 | Context Collector | ✅ Done | `apps/web/src/features/system-agent/use-context-snapshot.ts` |
-| Context Reporter | ✅ Done | `apps/web/src/features/system-agent/report-context.ts` |
+| Context Reporter | ✅ Done | `apps/web/src/features/system-agent/use-system-agent-chat.ts` (reports before each message) |
 | Server Module | ✅ Done | `apps/server/src/modules/system-agent/` |
-| Context Formatter | 🔜 Next | `apps/web/src/features/system-agent/format-context.ts` |
-| HiJarvis Integration | ⏳ Blocked | Waiting for `@hijarvis/jar-core` publish |
-| Cradle Plugin | ⏳ Blocked | Waiting for jar-core |
-| DB Memory Provider | ⏳ Blocked | Waiting for jar-core |
-| Streaming Bridge | ⏳ Blocked | Waiting for jar-core |
+| Context Formatter | ✅ Done | `apps/server/src/modules/system-agent/format-context.ts` |
+| HiJarvis Integration | ✅ Done | `apps/server/src/modules/system-agent/service.ts` (jar-core linked) |
+| Event Bridge | ✅ Done | `service.ts` → `bridgeEventToChunks()` (AgentEvent → UIMessageChunk) |
+| Frontend Chat Hook | ✅ Done | `apps/web/src/features/system-agent/use-system-agent-chat.ts` |
+| Cradle Plugin | ⏳ Next | Context injection via hook, CLI tool, memory provider |
+| DB Memory Provider | ⏳ Next | Waiting for stable jar-core memory interface |
+| Streaming Bridge | ✅ Done | SSE in `StoredChunk` format, consumed by existing frontend |
 
 ## Future Considerations
 

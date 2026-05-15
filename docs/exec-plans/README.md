@@ -44,3 +44,5 @@ Current canonical main-process backend paths after the 2026-05-05 ownership refa
 - **20260512-03-tool-approval-native-ai-sdk.md**: Execution plan for integrating AI SDK native `needsApproval` tool approval into the openai-compatible provider, with policy-key auto-approval and frontend approval UI.
 - **20260512-04-auto-compaction.md**: Execution plan for automatic context window management via `prepareStep`, implementing sliding window compaction and optional summarization for long sessions.
 - **20260512-05-cost-dashboard-per-step-tracking.md**: Execution plan for per-step token usage tracking via `onStepFinish`, model-based cost estimation, optional budget controls, and a cost dashboard frontend.
+- **20260515-01-system-agent-architecture.md**: Architecture and integration plan for the System Agent, covering HiJarvis integration, context reporting, plugin hooks, and streaming bridge design.
+- **20260515-02-pty-websocket-live-channel.md**: Execution plan for refactoring PTY live transport to a WebSocket session channel while keeping HTTP-owned lifecycle, splitting runtime/timeline/transport ownership, and adding user-visible terminal regression validation.
