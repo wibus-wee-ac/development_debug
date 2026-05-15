@@ -42,7 +42,7 @@ Agent Host (VS Code / Claude Desktop)
 2. Under **Bot Token Scopes**, add:
    - `chat:write` — Post messages
    - `commands` — Handle slash commands
-   - `reactions:write` — Add reaction on receipt
+  - `reactions:write` — Add reaction on receipt（可选，没有也不影响主流程）
    - `channels:history` — Read messages in public channels (for thread replies)
    - `groups:history` — Read messages in private channels (if needed)
 3. Click **Install to Workspace** (or reinstall if already installed)
@@ -161,6 +161,9 @@ Shows: bound channel and current in-flight zhi calls.
 - The bridge only keeps an in-memory mapping from `thread_ts` to the currently waiting tool call.
 - Once you reply, that mapping is discarded immediately.
 - The only persistent state is the bound Slack channel.
+- Pending calls do **not** time out by default; they keep waiting until you reply or the bridge is explicitly shut down.
+- The MCP side keeps retrying bridge socket reconnection during bridge restarts instead of failing fast.
+- Long messages continue as additional thread replies, so the bridge no longer depends on Slack file-upload scopes.
 
 ## Development
 

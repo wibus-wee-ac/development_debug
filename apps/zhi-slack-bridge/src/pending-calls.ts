@@ -11,7 +11,7 @@ export class PendingCallManager extends EventEmitter {
     threadTs: string
     resolve: (response: string) => void
     reject: (error: Error) => void
-    timeout: ReturnType<typeof setTimeout>
+    timeout?: ReturnType<typeof setTimeout>
   }>()
 
   private threadToCallId = new Map<string, string>()
@@ -20,12 +20,14 @@ export class PendingCallManager extends EventEmitter {
    * Wait for a response to a pending call.
    * Returns when the user replies in Slack.
    */
-  waitForResponse(callId: string, threadTs: string, timeoutMs = 30 * 60 * 1000): Promise<string> {
+  waitForResponse(callId: string, threadTs: string, timeoutMs?: number): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.cleanup(callId)
-        reject(new Error(`Zhi call ${callId} timed out after ${timeoutMs}ms`))
-      }, timeoutMs)
+      const timeout = typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? setTimeout(() => {
+            this.cleanup(callId)
+            reject(new Error(`Zhi call ${callId} timed out after ${timeoutMs}ms`))
+          }, timeoutMs)
+        : undefined
 
       this.pending.set(callId, { threadTs, resolve, reject, timeout })
       this.threadToCallId.set(threadTs, callId)
@@ -45,7 +47,9 @@ export class PendingCallManager extends EventEmitter {
   resolveCall(callId: string, response: string): boolean {
     const pending = this.pending.get(callId)
     if (!pending) return false
-    clearTimeout(pending.timeout)
+    if (pending.timeout) {
+      clearTimeout(pending.timeout)
+    }
     pending.resolve(response)
     this.cleanup(callId)
     return true
@@ -74,7 +78,9 @@ export class PendingCallManager extends EventEmitter {
    */
   cancelAll(): void {
     for (const [callId, pending] of this.pending) {
-      clearTimeout(pending.timeout)
+      if (pending.timeout) {
+        clearTimeout(pending.timeout)
+      }
       pending.reject(new Error('Bridge shutting down'))
     }
     this.pending.clear()

@@ -44,6 +44,7 @@ export function markdownToSlackMrkdwn(md: string): string {
  * We keep this lower than Slack's payload limits for readability.
  */
 const MAX_MESSAGE_LENGTH = 3000
+const TRUNCATION_NOTICE = '\n\n_…message truncated. Full content continues in thread below._'
 
 /**
  * Format a zhi message for Slack markdown block posting.
@@ -61,15 +62,29 @@ export function formatForSlack(message: string): SlackMessage {
   }
 
   // Truncate at a natural break point
-  const truncated = truncateAtBreak(formatted, MAX_MESSAGE_LENGTH - 100)
-  const summary = truncated + '\n\n_…message truncated. Full content in thread below._'
+  const truncated = truncateAtBreak(formatted, MAX_MESSAGE_LENGTH - TRUNCATION_NOTICE.length)
+  const summary = truncated + TRUNCATION_NOTICE
+  const continuation = chunkSlackMarkdown(formatted.slice(truncated.length))
 
-  return { type: 'split', summary, full: formatted }
+  return { type: 'split', summary, full: formatted, continuation }
 }
 
 export type SlackMessage =
   | { type: 'inline'; text: string }
-  | { type: 'split'; summary: string; full: string }
+  | { type: 'split'; summary: string; full: string; continuation: string[] }
+
+function chunkSlackMarkdown(text: string): string[] {
+  const chunks: string[] = []
+  let remaining = text
+
+  while (remaining.length > 0) {
+    const chunk = truncateAtBreak(remaining, MAX_MESSAGE_LENGTH)
+    chunks.push(chunk)
+    remaining = remaining.slice(chunk.length)
+  }
+
+  return chunks.filter((chunk) => chunk.length > 0)
+}
 
 function truncateAtBreak(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text

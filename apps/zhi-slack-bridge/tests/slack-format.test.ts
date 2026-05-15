@@ -70,10 +70,13 @@ describe('formatForSlack', () => {
       expect(result.summary.length).toBeLessThan(3100)
       expect(result.full).toBe(longMessage)
       expect(result.summary).toContain('truncated')
+      expect(result.continuation.length).toBeGreaterThan(0)
+      expect(result.summary).toContain('continues in thread below')
+      expect(result.continuation.join('')).toBe(longMessage.slice(result.summary.length - '\n\n_…message truncated. Full content continues in thread below._'.length))
     }
   })
 
-  it('always applies markdown conversion', () => {
+  it('preserves markdown as-is', () => {
     const result = formatForSlack('**bold**')
     expect(result.type).toBe('inline')
     if (result.type === 'inline') {

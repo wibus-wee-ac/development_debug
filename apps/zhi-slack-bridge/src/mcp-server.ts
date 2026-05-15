@@ -1,9 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
-import { createConnection } from 'node:net'
+import { callBridge } from './bridge-client.js'
 
 const SOCKET_PATH = process.env.ZHI_SOCKET_PATH || '/tmp/zhi-bridge.sock'
+const RETRY_DELAY_MS = Number(process.env.ZHI_BRIDGE_RETRY_MS || 1000)
 
 /**
  * MCP server that exposes the `zhi` tool.
@@ -24,7 +25,10 @@ server.tool(
   },
   async ({ message }) => {
     try {
-      const response = await callBridge(message)
+      const response = await callBridge(message, {
+        socketPath: SOCKET_PATH,
+        retryDelayMs: RETRY_DELAY_MS,
+      })
       if (response.success && response.result) {
         return {
           content: [
@@ -62,47 +66,6 @@ interface BridgeResponse {
   success: boolean
   result?: { user_input: string; selected_options: string[] }
   error?: string
-}
-
-function callBridge(message: string): Promise<BridgeResponse> {
-  return new Promise((resolve, reject) => {
-    const socket = createConnection(SOCKET_PATH)
-    let buffer = ''
-
-    socket.on('connect', () => {
-      const request = JSON.stringify({
-        method: 'zhi',
-        params: {
-          message,
-        },
-      })
-      socket.write(request + '\n')
-    })
-
-    socket.on('data', (chunk) => {
-      buffer += chunk.toString()
-      const newlineIdx = buffer.indexOf('\n')
-      if (newlineIdx !== -1) {
-        const line = buffer.slice(0, newlineIdx)
-        try {
-          resolve(JSON.parse(line))
-        } catch (e) {
-          reject(new Error(`Invalid bridge response: ${line}`))
-        }
-        socket.end()
-      }
-    })
-
-    socket.on('error', (err) => {
-      reject(new Error(`Cannot connect to bridge at ${SOCKET_PATH}: ${err.message}`))
-    })
-
-    socket.on('close', () => {
-      if (!buffer.includes('\n')) {
-        reject(new Error('Bridge closed connection without response'))
-      }
-    })
-  })
 }
 
 async function main() {

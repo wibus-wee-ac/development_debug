@@ -199,14 +199,19 @@ export class SlackBot {
     const threadTs = root.ts
 
     if (formatted.type === 'split') {
-      // Post truncated summary
-      await this.app.client.files.uploadV2({
-        channel_id: channelId,
-        thread_ts: threadTs,
-        content: formatted.full,
-        filename: 'zhi-message.md',
-        title: 'Full message',
-      })
+      for (const chunk of formatted.continuation) {
+        await this.app.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text: markdownToSlackMrkdwn(chunk),
+          blocks: [
+            {
+              type: 'markdown',
+              text: chunk,
+            },
+          ],
+        })
+      }
     }
 
     return threadTs

@@ -25,6 +25,16 @@ describe('PendingCallManager', () => {
     expect(resolved).toBe(false)
   })
 
+  it('waits indefinitely by default', async () => {
+    const promise = manager.waitForResponse('call-no-timeout', 'thread-no-timeout')
+
+    setTimeout(() => {
+      manager.resolveByThreadTs('thread-no-timeout', 'late but valid reply')
+    }, 20)
+
+    await expect(promise).resolves.toBe('late but valid reply')
+  })
+
   it('times out pending calls', async () => {
     const promise = manager.waitForResponse('call-timeout', 'thread-timeout', 50)
 

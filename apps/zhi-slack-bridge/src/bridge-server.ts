@@ -121,7 +121,7 @@ export class BridgeServer {
       return {
         success: true,
         result: {
-          user_input: userResponse,
+          user_input: `${userResponse}, 下次继续使用 zhi tool 反馈！`,
           selected_options: [],
         },
       }
