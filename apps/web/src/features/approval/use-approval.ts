@@ -1,10 +1,10 @@
-// Input: unified signal bridge (window.cradle.subscribe), HTTP approval API
+// Input: SSE approval stream, HTTP approval API
 // Output: useApprovalRequests hook for subscribing to pending approval lifecycle
 // Position: Renderer approval feature — real-time approval state management
 
 import { useCallback, useSyncExternalStore } from 'react'
 
-import { getApprovals, postApprovalsByApprovalIdRespond } from '~/api-gen'
+import { postApprovalsByApprovalIdRespond } from '~/api-gen'
 import type {
   ApprovalRequestedPayload,
   ApprovalResolvedPayload,
@@ -19,7 +19,6 @@ let pendingApprovals: ApprovalRequestedPayload[] = []
 const listeners = new Set<() => void>()
 
 let _subscribed = false
-let _pollTimer: ReturnType<typeof setInterval> | null = null
 
 function notify(): void {
   for (const listener of listeners) {
@@ -50,6 +49,11 @@ function ensureSubscription(): void {
   // Direct SSE connection to approval stream
   const es = new EventSource(`${SERVER_BASE}/approvals/stream`)
 
+  es.addEventListener('open', () => {
+    // Reset on (re)connect so the initial burst fully replaces local state
+    pendingApprovals = []
+  })
+
   es.addEventListener('approval.requested', (ev: MessageEvent) => {
     try {
       const payload = JSON.parse(ev.data) as ApprovalRequestedPayload
@@ -69,24 +73,6 @@ function ensureSubscription(): void {
     }
     catch { /* malformed JSON — skip */ }
   })
-
-  // Polling fallback — checks every 2s regardless of SSE status
-  _pollTimer = setInterval(() => {
-    void getApprovals().then((res) => {
-      const items = (res.data ?? []) as ApprovalRequestedPayload[]
-      if (items.length > 0) {
-        console.warn(`[approval] poll: ${items.length} pending approval(s)`, items.map(i => i.id))
-        mergeApprovals(items)
-      }
-      else if (pendingApprovals.length > 0) {
-        // Server has no pending — clear local state
-        pendingApprovals = []
-        notify()
-      }
-    }).catch((err) => {
-      console.warn('[approval] poll error:', err)
-    })
-  }, 2000)
 }
 
 function subscribe(listener: () => void): () => void {
@@ -105,7 +91,7 @@ function getSnapshot(): ApprovalRequestedPayload[] {
 
 /**
  * Returns the current list of pending approval requests.
- * Automatically subscribes to incoming approval events via signal bus + polling.
+ * Automatically subscribes to incoming approval events via SSE.
  */
 function useApprovalRequests(): {
   pending: ApprovalRequestedPayload[]
