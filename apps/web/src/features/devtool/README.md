@@ -2,7 +2,7 @@
 
 # Features/Devtool
 
-Developer tooling feature with four sub-domains: IPC inspection, ACP runtime events, agent-context snapshots, and local observability events/incidents.
+Developer tooling feature with runtime diagnostics for observability, health, memory, and tabs-next state.
 Reorganized from the flat `features/ipc-devtool/` to reflect clear domain boundaries.
 Rendered at the `/devtool` route in a separate Electron window.
 
@@ -12,6 +12,7 @@ Rendered at the `/devtool` route in a separate Electron window.
 - **acp/**: ACP event inspection — real-time view of ACP agent protocol events
 - **agent-context/**: Agent context snapshots captured before provider stream execution
 - **observability/**: Canonical observability event/incident inspection and local export controls
+- **tabs/**: Tabs-next runtime state, render policy, mounted IDs, and metrics
 
 ## Files
 

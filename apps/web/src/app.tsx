@@ -4,8 +4,9 @@
 
 import './styles.css'
 
+import type { TabRenderPolicy } from '@cradle/tabs-next'
 import { TabRenderer, TabsProvider } from '@cradle/tabs-next'
-import { LazyMotion, domAnimation } from 'motion/react'
+import { domAnimation, LazyMotion } from 'motion/react'
 import { useEffect } from 'react'
 
 import { AppLayout } from '~/components/layout/app-layout'
@@ -18,8 +19,13 @@ import { SettingsContent } from '~/features/settings/settings-content'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useLayoutStore } from '~/store/layout'
 import { useThemeStore } from '~/store/theme'
-import { BenchmarkPage } from '~/tabs/benchmark'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+
+const PERSONAL_WORKSPACE_TAB_POLICY: TabRenderPolicy = {
+  strategy: 'activity-pool',
+  maxMountedTabs: 15,
+  keepPinnedMounted: true,
+}
 
 function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -42,14 +48,11 @@ function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
 export function App() {
   'use no memo'
 
-  // Benchmark harness — only mounts when ?benchmark is in the URL
-  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('benchmark')) {
-    return (
-      <AppEnvironmentProviders>
-        <BenchmarkPage />
-      </AppEnvironmentProviders>
-    )
-  }
+  return <AppRuntime />
+}
+
+function AppRuntime() {
+  'use no memo'
 
   const mode = useThemeStore(s => s.mode)
   const { isSettings, settingsSection } = useLayoutStore()
@@ -108,6 +111,7 @@ export function App() {
                     <TabRenderer
                       fallback={null}
                       className="h-full flex overflow-hidden w-full"
+                      policy={PERSONAL_WORKSPACE_TAB_POLICY}
                     />
                   )}
             </AppLayout>

@@ -46,7 +46,7 @@ export interface TerminalSessionContext {
 
 interface TerminalSessionRecord {
   id: string
-  workspaceId: string
+  workspaceId: string | null
   agentProfileId: string
   runtimeKind: string
   ptyStartedAt: number | null
@@ -74,7 +74,9 @@ function getTerminalContext(sessionId: string): TerminalSessionContext | null {
     return null
   }
 
-  const workspace = db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
+  const workspace = session.workspaceId
+    ? db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
+    : undefined
   const profile = db().select({
     id: agentProfiles.id,
     providerKind: agentProfiles.providerKind,
@@ -171,7 +173,7 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
     env: {
       ...config.env,
       CRADLE_CHAT_SESSION_ID: input.sessionId,
-      CRADLE_WORKSPACE_ID: context.session.workspaceId,
+      CRADLE_WORKSPACE_ID: context.session.workspaceId ?? undefined,
     },
   })
 

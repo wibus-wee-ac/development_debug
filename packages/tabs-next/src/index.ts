@@ -2,14 +2,18 @@
 // Output: @cradle/tabs-next public API
 // Position: Package entry point
 
-export { defineTab, createTabLocation } from './route-definition'
-export { createTabStore, selectCurrentLocation } from './store'
-export { TabsContext, useTabsContext } from './context'
-export { TabsProvider } from './provider'
-export { useTabNavigation } from './hooks/use-tab-navigation'
+export type { TabBarProps } from './components/tab-bar'
 export { TabBar } from './components/tab-bar'
-export { TabRenderer, chooseMountedTabIds } from './components/tab-renderer'
-
+export type { TabRendererProps } from './components/tab-renderer'
+export { chooseMountedTabIds, TabRenderer } from './components/tab-renderer'
+export { TabsContext, useTabsContext } from './context'
+export type { DebugApi, DebugMetrics, DebugSnapshot, DebugState } from './debug'
+export { DEBUG_CHANNEL_NAME, DEBUG_COMMAND_CHANNEL_NAME, DEBUG_STORAGE_KEY } from './debug'
+export { useTabNavigation } from './hooks/use-tab-navigation'
+export { TabsProvider } from './provider'
+export { createTabLocation, defineTab } from './route-definition'
+export type { TabStoreState } from './store'
+export { createTabStore, selectCurrentLocation } from './store'
 export type {
   NavigateTabOptions,
   OpenTabOptions,
@@ -26,7 +30,3 @@ export type {
   TabRouteCapabilities,
   TabRouteDefinition,
 } from './types'
-
-export type { TabStoreState } from './store'
-export type { TabBarProps } from './components/tab-bar'
-export type { TabRendererProps } from './components/tab-renderer'

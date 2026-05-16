@@ -121,7 +121,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       ...process.env,
       ANTHROPIC_API_KEY: apiKey,
       CRADLE_CHAT_SESSION_ID: input.runtimeSession.chatSessionId,
-      CRADLE_WORKSPACE_ID: input.workspaceId,
+      CRADLE_WORKSPACE_ID: input.workspaceId ?? undefined,
       ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
     }
 

@@ -5,7 +5,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import { installDebug, metrics } from './debug'
+import { installDebug, notifyDebugStateChanged, recordTabAction } from './debug'
 import { resolveLocation, resolveRouteTitle } from './route-definition'
 import type {
   NavigateTabOptions,
@@ -221,7 +221,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         activeTabId: null,
 
         openTab: (type, params = {}, opts) => {
-          metrics.openCount++
+          recordTabAction('open')
           const route = registry[type]
           const pinned = opts?.pinned ?? route?.pinned ?? false
           const dedupe = opts?.dedupe ?? (pinned || Object.keys(params).length > 0)
@@ -243,7 +243,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         },
 
         createTab: (type, params = {}, opts) => {
-          metrics.createCount++
+          recordTabAction('create')
           const { entry, label, pinned: routePinned, keepAlive } = createEntry(registry, type, params, opts?.label)
           const id = makeId()
           const pinned = opts?.pinned ?? routePinned
@@ -268,7 +268,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         },
 
         closeTab: (tabId) => {
-          metrics.closeCount++
+          recordTabAction('close')
           const { tabs, activeTabId } = get()
           const tab = tabs.find(t => t.id === tabId)
           if (!tab || tab.pinned || tabs.length <= 1) {
@@ -285,7 +285,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         },
 
         setActiveTab: (tabId) => {
-          metrics.activateCount++
+          recordTabAction('activate')
           if (!get().tabs.some(t => t.id === tabId)) {
             return
           }
@@ -297,7 +297,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         },
 
         navigateTab: (tabId, location, options) => {
-          metrics.navigateCount++
+          recordTabAction('navigate')
           set((s) => {
             const context = s.contexts.find(item => item.id === tabId)
             if (!context) {
@@ -440,6 +440,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
   )
 
   installDebug(() => store.getState())
+  store.subscribe(() => notifyDebugStateChanged())
 
   return store
 }

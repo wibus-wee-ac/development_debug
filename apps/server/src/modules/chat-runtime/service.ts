@@ -534,6 +534,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     systemPrompt: turnContext.systemPrompt,
     history: turnContext.history,
     workspaceId: context.session.workspaceId,
+    workspacePath: context.workspacePath,
   })
 
   return {
@@ -665,7 +666,8 @@ async function executeRun(activeRun: ActiveRun, input: {
   thinkingEffort?: 'low' | 'medium' | 'high'
   systemPrompt?: string
   history?: Array<{ role: 'user' | 'assistant', content: string }>
-  workspaceId: string
+  workspaceId?: string | null
+  workspacePath?: string
 }): Promise<void> {
   const diagnostics: TurnOutputDiagnostics = {
     emittedEventCount: 0,
@@ -690,6 +692,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       message: input.text,
       modelId: input.modelId,
       workspaceId: input.workspaceId,
+      workspacePath: input.workspacePath,
       providerOptions: input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : undefined,
       systemPrompt: input.systemPrompt,
       history: input.history,

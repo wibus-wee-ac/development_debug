@@ -5,18 +5,18 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
-import type { UIMessageChunk } from 'ai'
 import type { LoadedRuntimeConfig, MessageIngressCommand } from '@hijarvis/jar-core'
 import { executeIngressCommand } from '@hijarvis/jar-core'
+import type { UIMessageChunk } from 'ai'
 
 import { getServerConfig } from '../../../../infra'
+import * as Preferences from '../../../preferences/service'
 import {
   BaseProviderConfig,
   parseConfigWith,
   SystemAgentConfigSchema,
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
-import * as Preferences from '../../../preferences/service'
 import type {
   CancelTurnInput,
   ChatRuntime,
@@ -96,10 +96,10 @@ export class SystemAgentProvider implements ChatRuntime {
       configFilePath: '',
       logging: { level: 'error', stderr: false },
       agent: {
-        provider: provider as any,
+        provider: provider as unknown as LoadedRuntimeConfig['agent']['provider'],
         model,
         systemPrompt,
-        thinkingLevel: thinkingLevel as any,
+        thinkingLevel: thinkingLevel as unknown as LoadedRuntimeConfig['agent']['thinkingLevel'],
         providerConfig: { apiKey: apiKey ?? undefined, baseUrl },
         execution: {
           requestTimeoutMs: 60_000,
@@ -128,11 +128,11 @@ export class SystemAgentProvider implements ChatRuntime {
         truncatedByLimit: false,
       },
       toolOptions: {
-        provider: provider as any,
+        provider: provider as unknown as LoadedRuntimeConfig['toolOptions']['provider'],
         model,
         providerBaseUrl: baseUrl,
         providerApiKey: apiKey ?? undefined,
-        workspaceRoot: input.workspacePath || process.cwd(),
+        workspaceRoot: input.workspacePath ?? process.cwd(),
         maxFileBytes: 5 * 1024 * 1024,
         commandTimeoutMs: 30_000,
         maxCommandOutputBytes: 1024 * 1024,
@@ -169,7 +169,9 @@ export class SystemAgentProvider implements ChatRuntime {
       audit: { trigger: 'user_input' },
       execution: {
         onEvent: (event) => {
-          if (abortController.signal.aborted) return
+          if (abortController.signal.aborted) {
+            return
+          }
 
           if (event.type === 'message_update') {
             const ame = event.assistantMessageEvent
@@ -202,6 +204,7 @@ export class SystemAgentProvider implements ChatRuntime {
     })
 
     try {
+      // eslint-disable-next-line no-unmodified-loop-condition
       while (!done || chunks.length > 0) {
         if (abortController.signal.aborted) {
           break
@@ -210,7 +213,9 @@ export class SystemAgentProvider implements ChatRuntime {
           yield chunks.shift()!
         }
         else if (!done) {
-          await new Promise<void>((resolve) => { resolveNext = resolve })
+          await new Promise<void>((resolve) => {
+            resolveNext = resolve
+          })
           resolveNext = null
         }
       }
@@ -236,7 +241,9 @@ export class SystemAgentProvider implements ChatRuntime {
 // ── helpers ──
 
 function parseSnapshot(raw: string | null): Record<string, unknown> {
-  if (!raw) return {}
+  if (!raw) {
+    return {}
+  }
   try {
     const parsed = JSON.parse(raw)
     return typeof parsed === 'object' && parsed !== null ? parsed : {}
@@ -280,226 +287,6 @@ function bridgeEvent(ame: AssistantMessageEvent, textItemId: string, assistantSt
       out.push({ type: 'reasoning-end' } as UIMessageChunk)
       break
     case 'error':
-      out.push({ type: 'text-delta', delta: '\n\n[Error occurred]' } as UIMessageChunk)
-      break
-  }
-
-  return out
-}
-
-
-interface SystemAgentProviderDeps {
-  readSecret: (credentialRef: string) => string
-}
-
-const RUNTIME_KIND: RuntimeKind = 'jar-core'
-
-export class SystemAgentProvider implements ChatRuntime {
-  readonly runtimeKind = RUNTIME_KIND
-
-  private readonly activeTurns = new Map<string, AbortController>()
-
-  constructor(private readonly deps: SystemAgentProviderDeps) {}
-
-  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
-    return {
-      id: input.chatSessionId,
-      chatSessionId: input.chatSessionId,
-      agentProfileId: input.profile.id,
-      runtimeKind: RUNTIME_KIND,
-      providerSessionId: null,
-      providerStateSnapshot: JSON.stringify({
-        models: { currentModelId: input.modelId ?? null },
-      }),
-    }
-  }
-
-  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    if (!input.modelId) {
-      return input.runtimeSession
-    }
-    const snapshot = parseSnapshot(input.runtimeSession.providerStateSnapshot)
-    return {
-      ...input.runtimeSession,
-      providerStateSnapshot: JSON.stringify({
-        ...snapshot,
-        models: { currentModelId: input.modelId },
-      }),
-    }
-  }
-
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
-    // Read Jarvis preferences for thinking level override
-    const jarvisPrefs = await Preferences.getJarvisPreferences()
-    const config = parseConfigWith(input.profile.configJson, SystemAgentConfigSchema)
-    // Fallback: parse as base profile config (standard openai-compatible profiles lack
-    // the jar-core-specific "provider" field — derive it from providerKind instead)
-    const baseConfig = parseConfigWith(input.profile.configJson, BaseProviderConfig)
-
-    const provider = config.provider ?? 'openai'
-    const model = config.model ?? baseConfig.model ?? input.modelId
-    const baseUrl = config.baseUrl ?? baseConfig.baseUrl
-    if (!model) {
-      throw new Error('No model configured for Jarvis. Set a model in Settings → Providers for the selected profile.')
-    }
-
-    // Resolve API key from profile credentialRef or inline config
-    const secretRef = input.profile.credentialRef ?? null
-    const apiKey = secretRef
-      ? this.deps.readSecret(secretRef)
-      : (config.apiKey ?? baseConfig.apiKey ?? null)
-
-    const abortController = new AbortController()
-    this.activeTurns.set(input.runtimeSession.chatSessionId, abortController)
-
-    try {
-      const { createAgent } = await import('@hijarvis/jar-core')
-
-      const agent = createAgent({
-        provider: provider as any,
-        model,
-        systemPrompt: input.systemPrompt ?? 'You are Jarvis, a helpful system assistant.',
-        thinkingLevel: jarvisPrefs.thinkingLevel ?? config.thinkingLevel ?? 'medium',
-        providerConfig: {
-          apiKey: apiKey ?? undefined,
-          baseUrl: baseUrl,
-        },
-        execution: {
-          requestTimeoutMs: 60_000,
-          retryAttempts: 2,
-          retryInitialDelayMs: 1000,
-          retryBackoffMultiplier: 2,
-          retryMaxDelayMs: 10_000,
-        },
-        tools: [],
-      })
-
-      const textItemId = randomUUID()
-      let assistantStarted = false
-
-      // Subscribe to agent events and bridge to UIMessageChunk
-      const chunks: UIMessageChunk[] = []
-      let resolveNext: (() => void) | null = null
-      let done = false
-      let streamError: Error | null = null
-
-      const unsubscribe = agent.subscribe((event) => {
-        if (abortController.signal.aborted) return
-
-        if (event.type === 'message_update') {
-          const ame = event.assistantMessageEvent
-          const newChunks = bridgeEvent(ame, textItemId, assistantStarted)
-          if (newChunks.length > 0) {
-            if (!assistantStarted && newChunks.some(c => c.type === 'text-start')) {
-              assistantStarted = true
-            }
-            chunks.push(...newChunks)
-            resolveNext?.()
-          }
-        }
-        else if (event.type === 'agent_end') {
-          if (assistantStarted) {
-            chunks.push({ type: 'text-end', id: textItemId })
-          }
-          done = true
-          resolveNext?.()
-        }
-      })
-
-      // Start the prompt
-      const promptPromise = agent.prompt(input.message).catch((err) => {
-        streamError = err instanceof Error ? err : new Error(String(err))
-        done = true
-        resolveNext?.()
-      })
-
-      // Yield chunks as they arrive
-      try {
-        while (!done || chunks.length > 0) {
-          if (abortController.signal.aborted) {
-            agent.abort()
-            break
-          }
-          if (chunks.length > 0) {
-            yield chunks.shift()!
-          }
-          else if (!done) {
-            await new Promise<void>((resolve) => { resolveNext = resolve })
-            resolveNext = null
-          }
-        }
-      }
-      finally {
-        unsubscribe()
-        await promptPromise
-      }
-
-      if (streamError) {
-        throw streamError
-      }
-    }
-    finally {
-      this.activeTurns.delete(input.runtimeSession.chatSessionId)
-    }
-  }
-
-  async cancelTurn(input: CancelTurnInput): Promise<void> {
-    const controller = this.activeTurns.get(input.runtimeSession.chatSessionId)
-    if (controller) {
-      controller.abort()
-      this.activeTurns.delete(input.runtimeSession.chatSessionId)
-    }
-  }
-}
-
-// ── helpers ──
-
-function parseSnapshot(raw: string | null): Record<string, unknown> {
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  }
-  catch { return {} }
-}
-
-type AssistantMessageEvent = {
-  type: string
-  delta?: string
-  contentIndex?: number
-  [key: string]: unknown
-}
-
-function bridgeEvent(ame: AssistantMessageEvent, textItemId: string, assistantStarted: boolean): UIMessageChunk[] {
-  const out: UIMessageChunk[] = []
-
-  switch (ame.type) {
-    case 'text_start':
-      if (!assistantStarted) {
-        out.push({ type: 'text-start', id: textItemId })
-      }
-      break
-    case 'text_delta':
-      if (!assistantStarted) {
-        out.push({ type: 'text-start', id: textItemId })
-      }
-      if (ame.delta) {
-        out.push({ type: 'text-delta', delta: ame.delta } as UIMessageChunk)
-      }
-      break
-    case 'thinking_start':
-      out.push({ type: 'reasoning-start' } as UIMessageChunk)
-      break
-    case 'thinking_delta':
-      if (ame.delta) {
-        out.push({ type: 'reasoning-delta', delta: ame.delta } as UIMessageChunk)
-      }
-      break
-    case 'thinking_end':
-      out.push({ type: 'reasoning-end' } as UIMessageChunk)
-      break
-    case 'error':
-      // Stream error as text for the user to see
       out.push({ type: 'text-delta', delta: '\n\n[Error occurred]' } as UIMessageChunk)
       break
   }

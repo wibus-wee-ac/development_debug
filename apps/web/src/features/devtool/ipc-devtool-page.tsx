@@ -7,8 +7,9 @@ import { MemoryPanel } from './memory/memory-panel'
 import { ObservabilityEventDetail } from './observability/observability-event-detail'
 import { ObservabilityEventsTable } from './observability/observability-events-table'
 import { useObservabilityDevtoolStore } from './observability/use-observability-events'
+import { TabsPanel } from './tabs/tabs-panel'
 
-type DevtoolTab = 'observability' | 'health' | 'memory'
+type DevtoolTab = 'observability' | 'health' | 'memory' | 'tabs'
 
 export function DevtoolPage() {
   const loadObservability = useObservabilityDevtoolStore(s => s.load)
@@ -22,6 +23,7 @@ export function DevtoolPage() {
     { id: 'observability', label: 'Observability' },
     { id: 'health', label: 'Server Health' },
     { id: 'memory', label: 'Memory' },
+    { id: 'tabs', label: 'Tabs' },
   ]
 
   return (
@@ -65,6 +67,12 @@ export function DevtoolPage() {
       {tab === 'memory' && (
         <div className="flex-1 overflow-hidden">
           <MemoryPanel />
+        </div>
+      )}
+
+      {tab === 'tabs' && (
+        <div className="flex-1 overflow-hidden">
+          <TabsPanel />
         </div>
       )}
     </div>
