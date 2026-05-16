@@ -5,6 +5,7 @@ import { acpAgents, acpAuditLog } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { currentUnixSeconds } from '../../helpers/time'
 import { db, getServerConfig } from '../../infra'
 import type { InstallResult } from './acp.installer'
 import { AcpInstaller } from './acp.installer'
@@ -19,10 +20,6 @@ const registry = new AcpRegistry()
 const installer = new AcpInstaller()
 
 // ── helpers ──
-
-function nowUnix(): number {
-  return Math.floor(Date.now() / 1000)
-}
 
 function stringifyError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -49,7 +46,7 @@ function getInstalledFromDb(agentId: string): AcpAgent | undefined {
 }
 
 function markInstalling(input: { agentId: string, name: string, version: string, distributionType: AcpDistributionType }): void {
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   db().insert(acpAgents).values({
     id: input.agentId,
     name: input.name,
@@ -70,7 +67,7 @@ function markInstalling(input: { agentId: string, name: string, version: string,
 }
 
 function saveInstalledToDb(input: { agent: RegistryAgent, distributionType: AcpDistributionType, result: InstallResult }): void {
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   db().insert(acpAgents).values({
     id: input.agent.id,
     name: input.agent.name,
@@ -99,7 +96,7 @@ function saveInstalledToDb(input: { agent: RegistryAgent, distributionType: AcpD
 }
 
 function markFailed(agentId: string): void {
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   const existing = getInstalledFromDb(agentId)
   db().insert(acpAgents).values({
     id: agentId,

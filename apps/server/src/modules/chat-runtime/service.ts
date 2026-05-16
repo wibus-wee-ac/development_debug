@@ -16,6 +16,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
+import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
@@ -112,13 +113,10 @@ interface TurnOutputDiagnostics {
 
 const activeRuns = new Map<string, ActiveRun>()
 const activeRunIdsBySession = new Map<string, string>()
+const pendingRunSessionIds = new Set<string>()
 const runSubscribers = new Map<string, Set<RunSubscriber>>()
 
 // ── store helpers (merged from chat-runtime.store.ts) ──
-
-function nowUnix(): number {
-  return Math.floor(Date.now() / 1000)
-}
 
 function getSessionRunContext(sessionId: string): SessionRunContext | null {
   const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
@@ -161,7 +159,7 @@ function attachBinding(input: {
   runtimeSession: RuntimeSession
   requestedModelId: string | null
 }): BackendSessionBinding {
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   const existing = getBinding(input.sessionId)
 
   if (existing) {
@@ -192,7 +190,7 @@ function attachBinding(input: {
 function createDraftTurn(input: { sessionId: string, userText: string }): { userMessageId: string, assistantMessageId: string } {
   const userMessageId = randomUUID()
   const assistantMessageId = randomUUID()
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   const userMessage = createUserMessage(userMessageId, input.userText)
   const assistantMessage = createAssistantMessage(assistantMessageId)
 
@@ -245,7 +243,7 @@ function startRun(input: { sessionId: string, messageId: string, origin: 'user' 
     status: 'streaming',
     stopReason: null,
     errorText: null,
-    startedAt: nowUnix(),
+    startedAt: currentUnixSeconds(),
     finishedAt: null,
   }).returning().get()
 }
@@ -261,7 +259,7 @@ function persistMessageSnapshot(input: {
   messageStatus: ChatMessageStatus
   errorText: string | null
 }): void {
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   db().transaction((tx) => {
     tx.update(messages)
       .set({
@@ -291,7 +289,7 @@ function insertUsage(input: { sessionId: string, messageId: string, agentProfile
     promptTokens: input.usage.promptTokens,
     completionTokens: input.usage.completionTokens,
     totalTokens: input.usage.totalTokens,
-    createdAt: nowUnix(),
+    createdAt: currentUnixSeconds(),
   }).run()
 }
 
@@ -384,94 +382,102 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
 }
 
 export async function createRun(input: { sessionId: string, text: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) {
-  if (activeRunIdsBySession.has(input.sessionId)) {
+  if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessionIds.has(input.sessionId)) {
     throw new AppError({ code: 'chat_run_in_progress', status: 409, message: 'Chat session already has an active run', details: { sessionId: input.sessionId } })
   }
+  pendingRunSessionIds.add(input.sessionId)
 
-  const context = getSessionRunContext(input.sessionId)
-  if (!context) {
-    throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId: input.sessionId } })
-  }
-  if (!context.profile.enabled) {
-    throw new AppError({ code: 'chat_profile_not_available', status: 409, message: 'Agent profile is disabled', details: { profileId: context.profile.id } })
-  }
+  try {
+    const context = getSessionRunContext(input.sessionId)
+    if (!context) {
+      throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId: input.sessionId } })
+    }
+    if (!context.profile.enabled) {
+      throw new AppError({ code: 'chat_profile_not_available', status: 409, message: 'Agent profile is disabled', details: { profileId: context.profile.id } })
+    }
 
-  const registry = getRuntimeRegistry()
-  const runtimeKind = context.session.runtimeKind ?? 'standard'
-  const runtime = registry.get(runtimeKind)
-  if (!runtime) {
-    throw new AppError({ code: 'chat_runtime_not_available', status: 501, message: `Runtime is not available: ${runtimeKind}` })
-  }
+    const registry = getRuntimeRegistry()
+    const runtimeKind = context.session.runtimeKind ?? 'standard'
+    const runtime = registry.get(runtimeKind)
+    if (!runtime) {
+      throw new AppError({ code: 'chat_runtime_not_available', status: 501, message: `Runtime is not available: ${runtimeKind}` })
+    }
 
-  const binding = getBinding(input.sessionId)
-  const runtimeSession = binding
-    ? await runtime.resumeChatSession({
-        runtimeSession: {
-          id: input.sessionId,
+    const binding = getBinding(input.sessionId)
+    const runtimeSession = binding
+      ? await runtime.resumeChatSession({
+          runtimeSession: {
+            id: input.sessionId,
+            chatSessionId: input.sessionId,
+            agentProfileId: context.profile.id,
+            runtimeKind,
+            providerSessionId: binding.backendSessionId,
+            providerStateSnapshot: binding.backendStateSnapshot,
+          },
+          profile: context.profile,
+          workspacePath: context.workspacePath,
+          modelId: input.modelId,
+        })
+      : await runtime.startChatSession({
           chatSessionId: input.sessionId,
-          agentProfileId: context.profile.id,
-          runtimeKind,
-          providerSessionId: binding.backendSessionId,
-          providerStateSnapshot: binding.backendStateSnapshot,
-        },
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        modelId: input.modelId,
-      })
-    : await runtime.startChatSession({
-        chatSessionId: input.sessionId,
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        modelId: input.modelId,
-      })
+          profile: context.profile,
+          workspacePath: context.workspacePath,
+          modelId: input.modelId,
+        })
 
-  attachBinding({
-    sessionId: input.sessionId,
-    agentProfileId: context.profile.id,
-    runtimeKind: runtimeSession.runtimeKind,
-    runtimeSession,
-    requestedModelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
-  })
+    attachBinding({
+      sessionId: input.sessionId,
+      agentProfileId: context.profile.id,
+      runtimeKind: runtimeSession.runtimeKind,
+      runtimeSession,
+      requestedModelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
+    })
 
-  const draft = createDraftTurn({ sessionId: input.sessionId, userText: input.text })
-  const run = startRun({ sessionId: input.sessionId, messageId: draft.assistantMessageId, origin: 'user' })
-  const activeRun: ActiveRun = {
-    runId: run.id,
-    sessionId: input.sessionId,
-    messageId: draft.assistantMessageId,
-    agentProfileId: context.profile.id,
-    runtime,
-    runtimeSession,
-    modelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
-    mainProjection: createMessageProjection(createAssistantMessage(draft.assistantMessageId)),
-    subagentProjections: new Map(),
-    nextSeq: 0,
-    eventBuffer: [],
+    const draft = createDraftTurn({ sessionId: input.sessionId, userText: input.text })
+    const run = startRun({ sessionId: input.sessionId, messageId: draft.assistantMessageId, origin: 'user' })
+    const activeRun: ActiveRun = {
+      runId: run.id,
+      sessionId: input.sessionId,
+      messageId: draft.assistantMessageId,
+      agentProfileId: context.profile.id,
+      runtime,
+      runtimeSession,
+      modelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
+      mainProjection: createMessageProjection(createAssistantMessage(draft.assistantMessageId)),
+      subagentProjections: new Map(),
+      nextSeq: 0,
+      eventBuffer: [],
+    }
+    activeRuns.set(run.id, activeRun)
+    activeRunIdsBySession.set(input.sessionId, run.id)
+    pendingRunSessionIds.delete(input.sessionId)
+
+    const turnContext = resolveTurnContext({
+      sessionId: input.sessionId,
+      draftMessageId: draft.assistantMessageId,
+      draftUserMessageId: draft.userMessageId,
+    })
+
+    void executeRun(activeRun, {
+      text: input.text,
+      profile: context.profile,
+      modelId: input.modelId,
+      thinkingEffort: input.thinkingEffort,
+      systemPrompt: turnContext.systemPrompt,
+      history: turnContext.history,
+      workspaceId: context.session.workspaceId,
+      workspacePath: context.workspacePath,
+    })
+
+    return {
+      runId: run.id,
+      assistantMessageId: draft.assistantMessageId,
+      userMessageId: draft.userMessageId,
+    }
   }
-  activeRuns.set(run.id, activeRun)
-  activeRunIdsBySession.set(input.sessionId, run.id)
-
-  const turnContext = resolveTurnContext({
-    sessionId: input.sessionId,
-    draftMessageId: draft.assistantMessageId,
-    draftUserMessageId: draft.userMessageId,
-  })
-
-  void executeRun(activeRun, {
-    text: input.text,
-    profile: context.profile,
-    modelId: input.modelId,
-    thinkingEffort: input.thinkingEffort,
-    systemPrompt: turnContext.systemPrompt,
-    history: turnContext.history,
-    workspaceId: context.session.workspaceId,
-    workspacePath: context.workspacePath,
-  })
-
-  return {
-    runId: run.id,
-    assistantMessageId: draft.assistantMessageId,
-    userMessageId: draft.userMessageId,
+  catch (error) {
+    pendingRunSessionIds.delete(input.sessionId)
+    throw error
   }
 }
 
@@ -582,6 +588,43 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
         }
       }
     },
+  })
+}
+
+export function waitForRunCompletion(runId: string): Promise<BackendRun> {
+  const run = getRun(runId)
+  if (!run) {
+    throw new AppError({ code: 'chat_run_not_found', status: 404, message: 'Chat run not found', details: { runId } })
+  }
+  if (run.status !== 'streaming') {
+    return Promise.resolve(run)
+  }
+
+  return new Promise((resolve) => {
+    const subscribers = runSubscribers.get(runId) ?? new Set<RunSubscriber>()
+    const subscriber: RunSubscriber = (_event, terminal) => {
+      if (!terminal) {
+        return
+      }
+      const current = runSubscribers.get(runId)
+      current?.delete(subscriber)
+      if (current?.size === 0) {
+        runSubscribers.delete(runId)
+      }
+      resolve(getRun(runId) ?? run)
+    }
+    subscribers.add(subscriber)
+    runSubscribers.set(runId, subscribers)
+
+    const latest = getRun(runId)
+    if (latest && latest.status !== 'streaming') {
+      const current = runSubscribers.get(runId)
+      current?.delete(subscriber)
+      if (current?.size === 0) {
+        runSubscribers.delete(runId)
+      }
+      resolve(latest)
+    }
   })
 }
 
@@ -760,7 +803,7 @@ async function executeRun(activeRun: ActiveRun, input: {
           completionTokens: step.usage.completionTokens,
           totalTokens: step.usage.totalTokens,
           estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
-          createdAt: nowUnix(),
+          createdAt: currentUnixSeconds(),
         }).run()
       }
     }
@@ -898,14 +941,14 @@ function getSubagentProjection(activeRun: ActiveRun, parentToolCallId: string, t
     if (!existing.context.taskId && taskId) {
       existing.context.taskId = taskId
       db().update(messages)
-        .set({ taskId, updatedAt: nowUnix() })
+        .set({ taskId, updatedAt: currentUnixSeconds() })
         .where(eq(messages.id, existing.context.messageId))
         .run()
     }
     return existing
   }
 
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   const messageId = randomUUID()
   const message = createAssistantMessage(messageId)
   const context: SubagentMessageContext = {
@@ -950,7 +993,7 @@ function finalizeRun(activeRun: ActiveRun, status: ChatMessageStatus, errorText:
       status,
       stopReason,
       errorText,
-      finishedAt: nowUnix(),
+      finishedAt: currentUnixSeconds(),
     })
     .where(eq(backendRuns.id, activeRun.runId))
     .run()

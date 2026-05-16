@@ -108,6 +108,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
 
 class AnthropicMetadataProvider implements ProviderMetadataProvider {
   readonly providerKind = 'anthropic' as const
+  private readonly defaultBaseUrl = 'https://api.anthropic.com/v1'
 
   async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
     const config = parseConfigWith(input.configJson, BaseProviderConfig)
@@ -127,23 +128,20 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
       ok: true,
       label: input.label,
       version: null,
-      details: { baseUrl: config.baseUrl ?? 'https://api.anthropic.com' },
+      details: { baseUrl: config.baseUrl ?? this.defaultBaseUrl },
       errorText: null,
     }
   }
 
   async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
     const config = parseConfigWith(input.configJson, BaseProviderConfig)
-    if (!config.baseUrl) {
-      throw invalidProviderRequest('Base URL is required')
-    }
 
     const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
-    const baseUrl = config.baseUrl.replace(TRAILING_SLASH_RE, '')
+    const baseUrl = normalizeBaseUrl(config.baseUrl ?? this.defaultBaseUrl).replace(TRAILING_SLASH_RE, '')
 
     try {
       const response = await fetch(`${baseUrl}/models`, {
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+        headers: apiKey ? { 'x-api-key': apiKey } : undefined,
       })
       if (!response.ok) {
         throw providerModelsUnavailable(this.providerKind, `Anthropic models request failed with status ${response.status}`)

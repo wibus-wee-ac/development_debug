@@ -212,7 +212,7 @@ export function onSessionCleanup(handler: CleanupHandler): void {
 
 // ...
 
-export function remove(id: string): void {
+function cleanupSessionResources(id: string): void {
   for (const handler of cleanupHandlers) {
     try {
       handler(id)
@@ -221,11 +221,17 @@ export function remove(id: string): void {
       // cleanup handlers must not break the delete flow
     }
   }
+}
+
+export function remove(id: string): void {
+  cleanupSessionResources(id)
   db().delete(sessions).where(eq(sessions.id, id)).run()
 }
 
-export function deleteByAgentProfile(agentProfileId: string): void {
-  const ids = db()
+type SessionDeleteDb = Pick<ReturnType<typeof db>, 'select' | 'delete'>
+
+export function deleteByAgentProfileInDb(agentProfileId: string, d: SessionDeleteDb): void {
+  const ids = d
     .select({ id: sessions.id })
     .from(sessions)
     .where(eq(sessions.agentProfileId, agentProfileId))
@@ -233,8 +239,18 @@ export function deleteByAgentProfile(agentProfileId: string): void {
     .map(row => row.id)
 
   for (const id of ids) {
-    remove(id)
+    cleanupSessionResources(id)
   }
+
+  if (ids.length > 0) {
+    d.delete(sessions).where(inArray(sessions.id, ids)).run()
+  }
+}
+
+export function deleteByAgentProfile(agentProfileId: string): void {
+  db().transaction((tx) => {
+    deleteByAgentProfileInDb(agentProfileId, tx)
+  })
 }
 
 // ── messages ──

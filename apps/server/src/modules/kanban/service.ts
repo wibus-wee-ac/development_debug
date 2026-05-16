@@ -14,23 +14,11 @@ import {
 import { desc, eq, or, sql } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { parseJsonStringArray } from '../../helpers/json-text'
+import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 
 // ── helpers ──
-
-function nowUnix(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function parseStringArray(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
-  }
-  catch {
-    return []
-  }
-}
 
 function workspaceExists(workspaceId: string): boolean {
   return !!db().select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.id, workspaceId)).get()
@@ -75,7 +63,7 @@ function createStatusRow(input: { workspaceId: string, name: string, color: stri
     color: input.color,
     category: input.category,
     order: input.order,
-    createdAt: nowUnix(),
+    createdAt: currentUnixSeconds(),
   }).returning().get()
 }
 
@@ -94,7 +82,7 @@ export function listBoards(workspaceId?: string): KanbanBoard[] {
 
 export function createBoard(input: { workspaceId: string, name: string, filterConfig?: string | null }): KanbanBoard {
   requireWorkspace(input.workspaceId)
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   const board = db().insert(kanbanBoards).values({
     id: randomUUID(),
     workspaceId: input.workspaceId,
@@ -115,7 +103,7 @@ export function deleteBoard(id: string): void {
 }
 
 export function updateBoard(id: string, patch: { name?: string, filterConfig?: string | null }): KanbanBoard {
-  const updates: Record<string, unknown> = { updatedAt: nowUnix() }
+  const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if (patch.name !== undefined) {
     updates.name = patch.name
   }
@@ -186,7 +174,7 @@ export function listMilestones(workspaceId: string): KanbanMilestone[] {
 
 export function createMilestone(input: { workspaceId: string, title: string, description?: string | null, dueDate?: number | null, status?: 'open' | 'closed' }): KanbanMilestone {
   requireWorkspace(input.workspaceId)
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   return db().insert(kanbanMilestones).values({
     id: randomUUID(),
     workspaceId: input.workspaceId,
@@ -200,7 +188,7 @@ export function createMilestone(input: { workspaceId: string, title: string, des
 }
 
 export function updateMilestone(id: string, patch: { title?: string, description?: string | null, dueDate?: number | null, status?: 'open' | 'closed' }): KanbanMilestone {
-  const updates: Record<string, unknown> = { updatedAt: nowUnix() }
+  const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if (patch.title !== undefined) {
     updates.title = patch.title
   }
@@ -225,7 +213,7 @@ export function deleteMilestone(id: string): void {
   if (!db().select().from(kanbanMilestones).where(eq(kanbanMilestones.id, id)).get()) {
     throw new AppError({ code: 'kanban_milestone_not_found', status: 404, message: 'Milestone not found', details: { milestoneId: id } })
   }
-  db().update(kanbanIssues).set({ milestoneId: null, updatedAt: nowUnix() }).where(eq(kanbanIssues.milestoneId, id)).run()
+  db().update(kanbanIssues).set({ milestoneId: null, updatedAt: currentUnixSeconds() }).where(eq(kanbanIssues.milestoneId, id)).run()
   db().delete(kanbanMilestones).where(eq(kanbanMilestones.id, id)).run()
 }
 
@@ -258,7 +246,7 @@ export function listIssues(params: IssueListParams): KanbanIssue[] {
       if (!params.labels || params.labels.length === 0) {
         return true
       }
-      const labels = parseStringArray(issue.labels)
+      const labels = parseJsonStringArray(issue.labels)
       return params.labels.every(label => labels.includes(label))
     })
 }
@@ -290,7 +278,7 @@ export function createIssue(input: {
   statusId?: string | null
 }): KanbanIssue {
   requireWorkspace(input.workspaceId)
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${kanbanIssues.order}), 0)` }).from(kanbanIssues).where(eq(kanbanIssues.workspaceId, input.workspaceId)).get()
   const order = (maxOrderRow?.maxOrder ?? 0) + 1024
   return db().insert(kanbanIssues).values({
@@ -325,7 +313,7 @@ export function updateIssue(id: string, patch: Partial<{
   assigneeId: string | null
   order: number
 }>): KanbanIssue {
-  const updates: Record<string, unknown> = { updatedAt: nowUnix() }
+  const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if (patch.title !== undefined) {
     updates.title = patch.title
   }
@@ -365,17 +353,25 @@ export function updateIssue(id: string, patch: Partial<{
   return issue
 }
 
+export function updateIssueDelegation(id: string, agentProfileId: string | null): KanbanIssue {
+  db().update(kanbanIssues)
+    .set({ delegateAgentProfileId: agentProfileId, updatedAt: currentUnixSeconds() })
+    .where(eq(kanbanIssues.id, id))
+    .run()
+  return getIssue(id)
+}
+
 export function deleteIssue(id: string): void {
   if (!db().select().from(kanbanIssues).where(eq(kanbanIssues.id, id)).get()) {
     throw new AppError({ code: 'kanban_issue_not_found', status: 404, message: 'Issue not found', details: { issueId: id } })
   }
-  db().update(kanbanIssues).set({ parentIssueId: null, updatedAt: nowUnix() }).where(eq(kanbanIssues.parentIssueId, id)).run()
+  db().update(kanbanIssues).set({ parentIssueId: null, updatedAt: currentUnixSeconds() }).where(eq(kanbanIssues.parentIssueId, id)).run()
   db().delete(kanbanIssues).where(eq(kanbanIssues.id, id)).run()
 }
 
 export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string | null, priority?: string, labels?: string, milestoneId?: string | null, assigneeKind?: string | null, assigneeId?: string | null }): number {
   if (issueIds.length === 0) return 0
-  const updates: Record<string, unknown> = { updatedAt: nowUnix() }
+  const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if ('statusId' in update) updates.statusId = update.statusId ?? null
   if (update.priority !== undefined) updates.priority = update.priority
   if (update.labels !== undefined) updates.labels = update.labels
@@ -406,7 +402,7 @@ export function addComment(input: { issueId: string, content: string, authorKind
     authorKind: input.authorKind ?? 'user',
     authorId: input.authorId ?? '__self__',
     agentActivityId: null,
-    createdAt: nowUnix(),
+    createdAt: currentUnixSeconds(),
   }).returning().get()
 }
 
@@ -441,7 +437,7 @@ export function createRelation(input: { sourceIssueId: string, targetIssueId: st
     sourceIssueId: input.sourceIssueId,
     targetIssueId: input.targetIssueId,
     type: input.type,
-    createdAt: nowUnix(),
+    createdAt: currentUnixSeconds(),
   }).returning().get()
 }
 
@@ -456,20 +452,20 @@ export function deleteRelation(id: string): void {
 
 export function addContextRef(issueId: string, ref: string): KanbanIssue {
   const issue = getIssue(issueId)
-  const refs = parseStringArray(issue.contextRefs)
+  const refs = parseJsonStringArray(issue.contextRefs)
   refs.push(ref)
-  db().update(kanbanIssues).set({ contextRefs: JSON.stringify(refs), updatedAt: nowUnix() }).where(eq(kanbanIssues.id, issueId)).run()
+  db().update(kanbanIssues).set({ contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }).where(eq(kanbanIssues.id, issueId)).run()
   return getIssue(issueId)
 }
 
 export function removeContextRef(issueId: string, index: number): KanbanIssue {
   const issue = getIssue(issueId)
-  const refs = parseStringArray(issue.contextRefs)
+  const refs = parseJsonStringArray(issue.contextRefs)
   if (index < 0 || index >= refs.length) {
     throw new AppError({ code: 'kanban_context_ref_invalid_index', status: 400, message: 'Invalid context ref index', details: { issueId, index } })
   }
   refs.splice(index, 1)
-  db().update(kanbanIssues).set({ contextRefs: JSON.stringify(refs), updatedAt: nowUnix() }).where(eq(kanbanIssues.id, issueId)).run()
+  db().update(kanbanIssues).set({ contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }).where(eq(kanbanIssues.id, issueId)).run()
   return getIssue(issueId)
 }
 

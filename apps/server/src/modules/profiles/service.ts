@@ -25,22 +25,6 @@ export interface UpsertProfileInput {
   credentialRef: string | null
 }
 
-// ── helpers ──
-
-function stripModelFromConfigJson(configJson: string): string {
-  try {
-    const parsed = JSON.parse(configJson)
-    if (typeof parsed === 'object' && parsed !== null && 'model' in parsed) {
-      const { model: _removed, ...rest } = parsed as Record<string, unknown>
-      return JSON.stringify(rest)
-    }
-  }
-  catch {
-    // Malformed JSON — return as-is
-  }
-  return configJson
-}
-
 // ── public API ──
 
 export function listProfiles(): AgentProfile[] {
@@ -53,7 +37,7 @@ export function getProfile(id: string): AgentProfile | null {
 
 export function upsertProfile(input: UpsertProfileInput): AgentProfile {
   const now = Math.floor(Date.now() / 1000)
-  const configJson = stripModelFromConfigJson(input.configJson)
+  const configJson = input.configJson
   db().insert(agentProfiles).values({
       id: input.id,
       name: input.name,
@@ -79,9 +63,9 @@ export function upsertProfile(input: UpsertProfileInput): AgentProfile {
 }
 
 export function removeProfile(id: string): void {
-  Session.deleteByAgentProfile(id)
   const d = db()
   d.transaction((tx) => {
+    Session.deleteByAgentProfileInDb(id, tx)
     tx.delete(agents).where(eq(agents.agentProfileId, id)).run()
     tx.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
     tx.delete(backendCapabilitySnapshots).where(eq(backendCapabilitySnapshots.agentProfileId, id)).run()

@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto'
 
-import type { AgentActivity, AgentSession, BackendRun, KanbanIssue } from '@cradle/db'
+import type { AgentActivity, AgentSession } from '@cradle/db'
 import {
   agentActivities,
   agentProfiles,
   agentSessions,
-  backendRuns,
-  kanbanIssues,
 } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { parseJsonStringArray } from '../../helpers/json-text'
+import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import * as ChatRuntime from '../chat-runtime/service'
 import * as Kanban from '../kanban/service'
@@ -43,20 +43,6 @@ const activeRuns = new Map<string, ActiveAgentRun>()
 
 // ── helpers ──
 
-function nowUnix(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function parseStringArray(raw: string): string[] {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
-  }
-  catch {
-    return []
-  }
-}
-
 function parseContextRefs(raw: string): Array<{ type: string, value: string, label?: string }> {
   try {
     const parsed = JSON.parse(raw) as unknown
@@ -71,15 +57,7 @@ function parseContextRefs(raw: string): Array<{ type: string, value: string, lab
   }
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
 // ── DB queries (merged from store) ──
-
-function getIssue(issueId: string): KanbanIssue | undefined {
-  return db().select().from(kanbanIssues).where(eq(kanbanIssues.id, issueId)).get()
-}
 
 function getAgentProfile(agentProfileId: string) {
   return db()
@@ -102,7 +80,7 @@ function listAgentActivities(agentSessionId: string): AgentActivity[] {
 }
 
 function createDelegationSession(input: { issueId: string, agentProfileId: string }): AgentSession {
-  const now = nowUnix()
+  const now = currentUnixSeconds()
   return db().insert(agentSessions).values({
     id: randomUUID(),
     issueId: input.issueId,
@@ -117,13 +95,13 @@ function createDelegationSession(input: { issueId: string, agentProfileId: strin
 function attachChatSession(input: { agentSessionId: string, chatSessionId: string }): AgentSession | undefined {
   db().update(agentSessions).set({
     chatSessionId: input.chatSessionId,
-    updatedAt: nowUnix(),
+    updatedAt: currentUnixSeconds(),
   }).where(eq(agentSessions.id, input.agentSessionId)).run()
   return getAgentSession(input.agentSessionId)
 }
 
 function updateAgentSessionStatus(agentSessionId: string, status: AgentSession['status']): AgentSession | undefined {
-  db().update(agentSessions).set({ status, updatedAt: nowUnix() }).where(eq(agentSessions.id, agentSessionId)).run()
+  db().update(agentSessions).set({ status, updatedAt: currentUnixSeconds() }).where(eq(agentSessions.id, agentSessionId)).run()
   return getAgentSession(agentSessionId)
 }
 
@@ -141,19 +119,17 @@ function createActivity(input: {
     content: JSON.stringify({ body: input.body }),
     signal: input.signal ?? null,
     signalMetadata: input.signalMetadata ? JSON.stringify(input.signalMetadata) : null,
-    createdAt: nowUnix(),
+    createdAt: currentUnixSeconds(),
   }).returning().get()
-}
-
-function getLatestRun(runId: string): BackendRun | undefined {
-  return db().select().from(backendRuns).where(eq(backendRuns.id, runId)).get()
 }
 
 // ── require helpers ──
 
 function requireIssue(issueId: string) {
-  const issue = getIssue(issueId)
-  if (!issue) {
+  try {
+    return Kanban.getIssue(issueId)
+  }
+  catch {
     throw new AppError({
       code: 'issue_agent_issue_not_found',
       status: 404,
@@ -161,7 +137,6 @@ function requireIssue(issueId: string) {
       details: { issueId },
     })
   }
-  return issue
 }
 
 function requireAgentProfile(agentProfileId: string) {
@@ -204,7 +179,7 @@ function buildIssuePrompt(
 
   parts.push(`Priority: ${issue.priority}`)
 
-  const labels = parseStringArray(issue.labels)
+  const labels = parseJsonStringArray(issue.labels)
   if (labels.length > 0) {
     parts.push(`Labels: ${labels.join(', ')}`)
   }
@@ -234,25 +209,8 @@ function buildIssuePrompt(
 // ── background run watcher ──
 
 async function watchRunCompletion(agentSessionId: string, runId: string): Promise<void> {
-  while (true) {
-    const run = getLatestRun(runId)
-    if (!run) {
-      activeRuns.delete(agentSessionId)
-      updateAgentSessionStatus(agentSessionId, 'failed')
-      createActivity({
-        agentSessionId,
-        type: 'error',
-        body: 'Issue agent run disappeared before completion',
-        signal: 'run.failed',
-      })
-      return
-    }
-
-    if (run.status === 'streaming') {
-      await wait(25)
-      continue
-    }
-
+  try {
+    const run = await ChatRuntime.waitForRunCompletion(runId)
     const tracked = activeRuns.get(agentSessionId)
     activeRuns.delete(agentSessionId)
 
@@ -288,6 +246,16 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
       })
     }
     return
+  }
+  catch (error) {
+    activeRuns.delete(agentSessionId)
+    updateAgentSessionStatus(agentSessionId, 'failed')
+    createActivity({
+      agentSessionId,
+      type: 'error',
+      body: error instanceof Error ? error.message : 'Issue agent run disappeared before completion',
+      signal: 'run.failed',
+    })
   }
 }
 
@@ -388,8 +356,7 @@ export async function delegateIssue(input: { issueId: string, agentProfileId: st
     })
   }
 
-  // Update issue's delegateAgentProfileId
-  db().update(kanbanIssues).set({ delegateAgentProfileId: input.agentProfileId, updatedAt: nowUnix() }).where(eq(kanbanIssues.id, input.issueId)).run()
+  Kanban.updateIssueDelegation(input.issueId, input.agentProfileId)
 
   // Add system comment to activity timeline
   Kanban.addComment({ issueId: input.issueId, content: `Delegated to ${profile.name}`, authorKind: 'system.delegated' })
@@ -444,8 +411,7 @@ export async function undelegateIssue(issueId: string): Promise<void> {
     updateAgentSessionStatus(state.agentSessionId, 'stopped')
   }
 
-  // Clear issue's delegateAgentProfileId
-  db().update(kanbanIssues).set({ delegateAgentProfileId: null, updatedAt: nowUnix() }).where(eq(kanbanIssues.id, issueId)).run()
+  Kanban.updateIssueDelegation(issueId, null)
 
   // Add system comment to activity timeline
   Kanban.addComment({ issueId, content: 'Delegation removed', authorKind: 'system.undelegated' })

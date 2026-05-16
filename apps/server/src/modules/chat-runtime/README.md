@@ -8,7 +8,7 @@ Route metadata includes `x-cradle-cli` descriptors for non-streaming generated C
 
 - `index.ts`: Elysia route surface for `POST /chat/sessions/:sessionId/response`, `GET /chat/sessions/:sessionId/messages`, and `POST /chat/sessions/:sessionId/cancel`.
 - `model.ts`: HTTP params/body schemas for the chat runtime surface.
-- `service.ts`: active-run orchestration, native AI SDK snapshot diffing, chunk projection for non-AI SDK runtimes, snapshot persistence, strict snapshot hydration, and event broadcasting.
+- `service.ts`: active-run orchestration, duplicate-run reservation, native AI SDK snapshot diffing, chunk projection for non-AI SDK runtimes, snapshot persistence, strict snapshot hydration, completion subscription, and event broadcasting.
 - `delta-events.ts`: backend adapter for both provider `UIMessageChunk` streams and progressive `UIMessage` snapshots, producing persisted message snapshots and sequenced part-level delta events with global `seq` assignment and subagent routing by `parentToolCallId`.
 - `chat-turn-context.ts`: system prompt and history resolution.
 - `chat-runtime-provider-registry.ts`: runtime provider registry for ACP Chat, OpenAI-compatible, Claude Agent, Codex, System Agent (`jar-core`), and debug/mock variants.

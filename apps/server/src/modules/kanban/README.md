@@ -7,4 +7,4 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 - `index.ts`: Elysia `/kanban` routes, OpenAPI metadata, and generated CLI descriptors.
 - `model.ts`: TypeBox schemas for kanban requests and responses.
-- `service.ts`: board, status, milestone, issue, relation, context-ref, and comment semantics.
+- `service.ts`: board, status, milestone, issue, relation, context-ref, delegation marker, and comment semantics, using shared helpers for JSON text metadata and timestamps.

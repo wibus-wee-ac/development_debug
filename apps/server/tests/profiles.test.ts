@@ -243,4 +243,76 @@ describe('profiles capability', () => {
       }
     }
   })
+
+  it('lists Anthropic models with the official default base URL and x-api-key auth', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-anthropic'
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      expect(url).toBe('https://api.anthropic.com/v1/models')
+      expect(init?.headers).toMatchObject({ 'x-api-key': 'sk-ant-test' })
+      return new Response(JSON.stringify({ data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+
+    let app: ReturnType<typeof createServerApp> | undefined
+
+    try {
+      app = createServerApp()
+      const saveSecret = await app.handle(new Request('http://localhost/secrets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'anthropic',
+          label: 'Anthropic Key',
+          secret: 'sk-ant-test',
+        }),
+      }))
+      expect(saveSecret.status).toBe(200)
+      const secret = await saveSecret.json() as { id: string }
+
+      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          providerKind: 'anthropic',
+          label: 'Anthropic',
+          config: {},
+          secretRef: secret.id,
+        }),
+      }))
+
+      expect(modelsRes.status).toBe(200)
+      expect(await modelsRes.json()).toEqual([
+        expect.objectContaining({
+          id: 'claude-sonnet-4-20250514',
+          label: 'Claude Sonnet 4',
+          providerKind: 'anthropic',
+        }),
+      ])
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
 })
