@@ -8,6 +8,7 @@ import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon,
 import { useCallback, useMemo } from 'react'
 
 import { Button } from '~/components/ui/button'
+import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import { useLayoutStore } from '~/store/layout'
@@ -105,6 +106,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
 
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <ResourcesPopover />
         {hasPanel && (
           <Button
             variant="ghost"
