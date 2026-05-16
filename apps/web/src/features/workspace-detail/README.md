@@ -8,7 +8,7 @@ Shiki provides syntax highlighting for code blocks with a language selector wher
 
 ## Files
 
-- **workspace-detail-page.tsx**: Main page component with inline workspace rename, Overview AGENTS.md content, Workflow Rules + Skills tabs, and two-column layout
+- **workspace-detail-page.tsx**: Main page component with inline workspace rename, Overview AGENTS.md content, Workflow Rules + Skills tabs, and two-column layout; its capsule launcher now shares the chat feature's response-start command when opening a fresh chat
 - **capsule-composer.tsx**: Workspace overview composer，复用 shared persisted new-chat preference state，避免组件自己直接读写 localStorage
 - **workspace-workflow-rules.tsx**: Workflow rules editor with Agent scope selector, stable E2E anchors, and scope-safe editor remounting so async-loaded global / per-Agent rules stay aligned during switching and reopen flows
 - **markdown-editor.tsx**: Tiptap-based WYSIWYG Markdown editor with auto-save

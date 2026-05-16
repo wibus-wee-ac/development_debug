@@ -30,8 +30,8 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Spinner } from '~/components/ui/spinner'
 import { Textarea } from '~/components/ui/textarea'
 import { TruncatedText } from '~/components/ui/truncated-text'
-import { cn } from '~/lib/cn'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
+import { cn } from '~/lib/cn'
 import type { SkillInventoryEntry, SkillScope } from '~/lib/types'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
@@ -94,11 +94,11 @@ interface SkillEditState {
 
 type SkillEditAction
   = { type: 'reset-draft' }
-  | { type: 'hydrate', payload: { name: string, description: string, body: string, frontmatter: Record<string, unknown> } }
-  | { type: 'set-name', value: string }
-  | { type: 'set-description', value: string }
-  | { type: 'set-body', value: string }
-  | { type: 'set-error', value: string | null }
+    | { type: 'hydrate', payload: { name: string, description: string, body: string, frontmatter: Record<string, unknown> } }
+    | { type: 'set-name', value: string }
+    | { type: 'set-description', value: string }
+    | { type: 'set-body', value: string }
+    | { type: 'set-error', value: string | null }
 
 const initialSkillEditState: SkillEditState = {
   nameVal: '',
@@ -148,15 +148,15 @@ interface SkillManagerUiState {
 
 type SkillManagerUiAction
   = { type: 'open-draft', scope: SkillScope }
-  | { type: 'set-selected-skill', value: SelectedSkillRef | null }
-  | { type: 'open-detail', value: boolean }
-  | { type: 'open-dialog', value: boolean }
-  | { type: 'open-import', value: boolean }
-  | { type: 'set-editing-skill', value: SelectedSkillRef | null }
-  | { type: 'set-search-query', value: string }
-  | { type: 'set-scope-filter', value: SkillScope | 'all' }
-  | { type: 'set-error', value: string | null }
-  | { type: 'skill-saved', value: SelectedSkillRef }
+    | { type: 'set-selected-skill', value: SelectedSkillRef | null }
+    | { type: 'open-detail', value: boolean }
+    | { type: 'open-dialog', value: boolean }
+    | { type: 'open-import', value: boolean }
+    | { type: 'set-editing-skill', value: SelectedSkillRef | null }
+    | { type: 'set-search-query', value: string }
+    | { type: 'set-scope-filter', value: SkillScope | 'all' }
+    | { type: 'set-error', value: string | null }
+    | { type: 'skill-saved', value: SelectedSkillRef }
 
 const initialSkillManagerUiState: SkillManagerUiState = {
   selectedSkill: null,
@@ -554,6 +554,7 @@ export function SkillManager({
       <SettingsSectionHeader
         title={title}
         description={description}
+        className="pt-3"
         action={(
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="sm" onClick={() => void handleImport()} data-testid="skill-import-btn" className="text-muted-foreground hover:text-foreground">

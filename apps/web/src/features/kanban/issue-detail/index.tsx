@@ -51,7 +51,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
         <div className="flex-1 overflow-y-auto px-10 py-6">
-          <div className="max-w-180">
+          <div>
             <IssueTitle issue={issue} onUpdate={handleUpdate} />
             <IssueDescription issue={issue} onUpdate={handleUpdate} />
 
@@ -72,7 +72,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
         </div>
 
         {/* Sidebar */}
-        <div className="w-70 shrink-0 overflow-y-auto border-l border-border px-4 py-6">
+        <div className="w-70 shrink-0 overflow-y-auto px-3 py-6">
           <PropertiesSidebar
             issue={issue}
             statuses={statuses}

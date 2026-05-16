@@ -5,6 +5,7 @@
 import * as React from 'react'
 import { MousePointer2Icon } from 'lucide-react'
 
+import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { Button } from '~/components/ui/button'
 import { JarvisPopover } from '~/features/system-agent/jarvis-popover'
 import { useShortcut } from '~/hooks/use-shortcut'
@@ -12,11 +13,13 @@ import { cn } from '~/lib/cn'
 
 export function AppFooter({ className }: { className?: string }) {
   const [jarvisOpen, setJarvisOpen] = React.useState(false)
+  const { registerFooter } = useLayoutGeometry()
 
   useShortcut('toggle-jarvis', { meta: true, key: 'j' }, () => setJarvisOpen(prev => !prev))
 
   return (
     <footer
+      ref={registerFooter}
       className={cn(
         'relative flex h-9 shrink-0 items-center bg-sidebar px-1',
         className,

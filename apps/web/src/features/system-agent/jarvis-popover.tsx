@@ -4,13 +4,14 @@ import { AnimatePresence, m } from 'motion/react'
 import * as React from 'react'
 
 import { postSessions } from '~/api-gen/sdk.gen'
+import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
-import { useLayoutStore } from '~/store/layout'
 
 import { formatContextForAgent } from './format-context'
+import { useJarvisUiStore } from './jarvis-ui-store'
 import { collectContextSnapshot } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
 
@@ -29,8 +30,9 @@ export function JarvisPopover({
   const panelRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
-  const jarvisExpanded = useLayoutStore(s => s.jarvisExpanded)
-  const setJarvisExpanded = useLayoutStore(s => s.setJarvisExpanded)
+  const jarvisExpanded = useJarvisUiStore(s => s.expanded)
+  const setJarvisExpanded = useJarvisUiStore(s => s.setExpanded)
+  const { centerColumnRect, footerRect } = useLayoutGeometry()
   const { prefs } = useJarvisPreferences()
 
   const { messages, status, error, sendMessage, stop } = useChatSession(jarvisSessionId)
@@ -163,35 +165,31 @@ export function JarvisPopover({
     }
   }
 
-  // Measure the center column bounds for expanded positioning
-  const [expandedBounds, setExpandedBounds] = React.useState({ top: 44, left: 268, width: 800, height: 600 })
-  const [popoverBounds, setPopoverBounds] = React.useState({ top: 0, left: 0, width: 384, height: 480 })
+  const expandedBounds = React.useMemo(() => {
+    if (!centerColumnRect) {
+      return { top: 44, left: 268, width: 800, height: 600 }
+    }
 
-  React.useEffect(() => {
-    if (!open) {
-      return
+    return {
+      top: centerColumnRect.top + 12,
+      left: centerColumnRect.left - 8,
+      width: centerColumnRect.width + 16,
+      height: centerColumnRect.height + 4,
     }
-    function measure() {
-      const centerEl = document.querySelector('[data-slot="app-center-column"]') as HTMLElement | null
-      if (centerEl) {
-        const r = centerEl.getBoundingClientRect()
-        setExpandedBounds({ top: r.top + 12, left: r.left - 8, width: r.width + 16, height: r.height + 4 })
-      }
-      const footerEl = document.querySelector('footer') as HTMLElement | null
-      if (footerEl) {
-        const fr = footerEl.getBoundingClientRect()
-        setPopoverBounds({
-          top: fr.top - 8 - 480,
-          left: fr.right - 12 - 384,
-          width: 384,
-          height: 480,
-        })
-      }
+  }, [centerColumnRect])
+
+  const popoverBounds = React.useMemo(() => {
+    if (!footerRect) {
+      return { top: 0, left: 0, width: 384, height: 480 }
     }
-    measure()
-    window.addEventListener('resize', measure)
-    return () => window.removeEventListener('resize', measure)
-  }, [open])
+
+    return {
+      top: footerRect.top - 8 - 480,
+      left: footerRect.right - 12 - 384,
+      width: 384,
+      height: 480,
+    }
+  }, [footerRect])
 
   const targetBounds = jarvisExpanded ? expandedBounds : popoverBounds
 

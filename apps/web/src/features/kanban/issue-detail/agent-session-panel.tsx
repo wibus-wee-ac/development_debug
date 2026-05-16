@@ -49,7 +49,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
   const canRerun = status === 'completed' || status === 'stopped' || status === 'failed'
 
   return (
-    <div className="rounded-lg border border-border" data-testid="issue-agent-session">
+    <div className="rounded-lg border border-border bg-card shadow-xs" data-testid="issue-agent-session">
       {/* Status bar */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2 text-[13px]">

@@ -9,15 +9,15 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   getChatSessionsBySessionIdMessagesOptions,
   getChatSessionsBySessionIdMessagesQueryKey,
+  getSessionsByIdQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
-import { getServerUrl } from '~/lib/electron'
 import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
+import { projectAssistantMessageFromChunks } from './chat-chunk-reducer'
+import { startChatResponse } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { buildChunkStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
-
-const SERVER_BASE = getServerUrl()
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -66,122 +66,7 @@ export type ChatTimelineGroupRow = {
   userText?: string
   status: string
   errorText?: string
-  chunks: Array<{ chunk: UIMessageChunk, runId: string, [key: string]: unknown }>
-}
-
-type ReplayReasoningPart = {
-  type: 'reasoning'
-  text: string
-  reasoning: string
-  details: Array<{ type: 'text', text: string }>
-  state?: string
-}
-
-type ReplayToolPart = {
-  type: 'dynamic-tool'
-  toolCallId: string
-  toolName: string
-  state: string
-  input?: unknown
-  output?: unknown
-  errorText?: string
-}
-
-// ── Replay Utility ──────────────────────────────────────────
-
-function replayChunksToAssistantMessage(messageId: string, chunks: UIMessageChunk[]): UIMessage {
-  const message: UIMessage = { id: messageId, role: 'assistant', parts: [] }
-  const parts = message.parts
-
-  let currentTextPart: { type: 'text', text: string } | null = null
-  let currentReasoningPart: ReplayReasoningPart | null = null
-
-  for (const chunk of chunks) {
-    switch (chunk.type) {
-      case 'text-start': {
-        const meta = (chunk as unknown as { providerMetadata?: Record<string, unknown> }).providerMetadata
-        currentTextPart = meta
-          ? { type: 'text', text: '', providerMetadata: meta } as unknown as { type: 'text', text: string }
-          : { type: 'text', text: '' }
-        parts.push(currentTextPart as UIMessage['parts'][number])
-        break
-      }
-      case 'text-delta':
-        if (currentTextPart) {
-          currentTextPart.text += (chunk as { delta: string }).delta
-        }
-        else {
-          currentTextPart = { type: 'text', text: (chunk as { delta: string }).delta }
-          parts.push(currentTextPart)
-        }
-        break
-      case 'text-end':
-        currentTextPart = null
-        break
-      case 'reasoning-start':
-        currentReasoningPart = { type: 'reasoning', text: '', reasoning: '', details: [] }
-        parts.push(currentReasoningPart as UIMessage['parts'][number])
-        break
-      case 'reasoning-delta':
-        if (currentReasoningPart) {
-          currentReasoningPart.reasoning += (chunk as { delta: string }).delta
-          currentReasoningPart.text += (chunk as { delta: string }).delta
-        }
-        break
-      case 'reasoning-end':
-        currentReasoningPart = null
-        break
-      case 'tool-input-start': {
-        const toolChunk = chunk as unknown as { toolCallId: string, toolName: string, providerMetadata?: Record<string, unknown> }
-        const toolPart: Record<string, unknown> = {
-          type: 'dynamic-tool',
-          toolCallId: toolChunk.toolCallId,
-          toolName: toolChunk.toolName,
-          state: 'input-streaming',
-          input: undefined,
-        }
-        if (toolChunk.providerMetadata) {
-          toolPart.callProviderMetadata = toolChunk.providerMetadata
-        }
-        parts.push(toolPart as unknown as UIMessage['parts'][number])
-        break
-      }
-      case 'tool-input-available': {
-        const toolChunk = chunk as { toolCallId: string, input: unknown }
-        const existing = findToolPart(parts, toolChunk.toolCallId)
-        if (existing) {
-          existing.state = 'input-available'
-          existing.input = toolChunk.input
-        }
-        break
-      }
-      case 'tool-input-error': {
-        const toolChunk = chunk as { toolCallId: string, input: unknown, errorText: string }
-        const existing = findToolPart(parts, toolChunk.toolCallId)
-        if (existing) {
-          existing.state = 'output-error'
-          existing.input = toolChunk.input
-          existing.errorText = toolChunk.errorText
-        }
-        break
-      }
-      case 'tool-output-available': {
-        const toolChunk = chunk as { toolCallId: string, output: unknown }
-        const existing = findToolPart(parts, toolChunk.toolCallId)
-        if (existing) {
-          existing.state = 'output-available'
-          existing.output = toolChunk.output
-        }
-        break
-      }
-    }
-  }
-
-  return message
-}
-
-function findToolPart(parts: UIMessage['parts'], toolCallId: string): ReplayToolPart | undefined {
-  return parts.find((part): part is UIMessage['parts'][number] & ReplayToolPart => 'toolCallId' in part && part.toolCallId === toolCallId)
+  chunks: Array<{ chunk: UIMessageChunk, runId: string, parentToolCallId?: string | null, [key: string]: unknown }>
 }
 
 function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
@@ -195,7 +80,7 @@ function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
   // Filter out subagent chunks (parentToolCallId != null) for main message replay
   const mainChunks = group.chunks
     .flatMap(c => !c.parentToolCallId ? [c.chunk] : [])
-  return replayChunksToAssistantMessage(group.messageId, mainChunks)
+  return projectAssistantMessageFromChunks(group.messageId, mainChunks)
 }
 
 /**
@@ -289,6 +174,12 @@ export function useChatSession(chatSessionId: string | null, options?: {
       : null,
     [chatSessionId],
   )
+  const sessionBindingQueryKey = useMemo(
+    () => chatSessionId
+      ? getSessionsByIdQueryKey({ path: { id: chatSessionId } })
+      : null,
+    [chatSessionId],
+  )
 
   const timelineQuery = useQuery({
     ...getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
@@ -307,7 +198,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
   })
 
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
-    if (!timelineQueryKey) {
+    if (!timelineQueryKey && !sessionBindingQueryKey) {
       return
     }
     if (snapshotTimerRef.current) {
@@ -315,9 +206,14 @@ export function useChatSession(chatSessionId: string | null, options?: {
     }
     snapshotTimerRef.current = setTimeout(() => {
       snapshotTimerRef.current = null
-      void queryClient.invalidateQueries({ queryKey: timelineQueryKey })
+      if (timelineQueryKey) {
+        void queryClient.invalidateQueries({ queryKey: timelineQueryKey })
+      }
+      if (sessionBindingQueryKey) {
+        void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
+      }
     }, delay)
-  }, [queryClient, timelineQueryKey])
+  }, [queryClient, sessionBindingQueryKey, timelineQueryKey])
 
   // ── Initial load ──
 
@@ -424,16 +320,19 @@ export function useChatSession(chatSessionId: string | null, options?: {
 
     try {
       // 3. Initiate SSE stream
-      const res = await fetch(`${SERVER_BASE}/chat/sessions/${chatSessionId}/response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+      const res = await startChatResponse({
+        sessionId: chatSessionId,
+        body: { text },
         signal: controller.signal,
       })
 
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         throw new Error(`Failed to start chat response: ${res.status} ${body}`)
+      }
+
+      if (sessionBindingQueryKey) {
+        void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
 
       // 4. Pipe chunks to handler
@@ -467,7 +366,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
       // Sync from server to get canonical message IDs
       scheduleSnapshotRefresh(0)
     }
-  }, [chatSessionId, scheduleSnapshotRefresh])
+  }, [chatSessionId, queryClient, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
   // ── Stop ──
 

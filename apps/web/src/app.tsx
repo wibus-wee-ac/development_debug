@@ -15,10 +15,10 @@ import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
 import { AnchoredToastProvider, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { cn } from '~/lib/cn'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
-import { useLayoutStore } from '~/store/layout'
 import { useThemeStore } from '~/store/theme'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
@@ -56,7 +56,9 @@ function AppRuntime() {
   'use no memo'
 
   const mode = useThemeStore(s => s.mode)
-  const { settingsTabId, settingsSection, closeSettings } = useLayoutStore()
+  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
+  const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
+  const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
 
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   const tabs = useCradleTabStore(s => s.tabs)

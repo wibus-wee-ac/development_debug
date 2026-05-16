@@ -1,4 +1,4 @@
-// Input: UIMessage from ai, Streamdown renderer, ReasoningBlock, ToolCallBlock, motion
+// Input: UIMessage from ai, shared chat chunk reducer, Streamdown renderer, ReasoningBlock, ToolCallBlock, motion
 // Output: MessageBubble — animated message with parts rendering and action bar
 // Position: Core display component in chat feature for rendering individual messages
 
@@ -12,107 +12,27 @@ import { cn } from '~/lib/cn'
 import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
+import { replayAssistantChunks } from './chat-chunk-reducer'
 import { ReasoningBlock } from './reasoning-block'
 import { ToolCallBlock } from './tool-call-block'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyPart = any
-
-/**
- * Replay UIMessageChunks into renderable parts for subagent fold display.
- */
-function replayChunksToParts(chunks: UIMessageChunk[]): AnyPart[] {
-  const parts: AnyPart[] = []
-  const toolCallIndex = new Map<string, AnyPart>()
-  let currentTextPart: { type: 'text', text: string } | null = null
-  let currentReasoningPart: { type: 'reasoning', text: string, state: string } | null = null
-
-  for (const chunk of chunks) {
-    switch (chunk.type) {
-      case 'text-start':
-        currentTextPart = { type: 'text', text: '' }
-        parts.push(currentTextPart)
-        break
-      case 'text-delta':
-        if (currentTextPart) {
-          currentTextPart.text += (chunk as { delta: string }).delta
-        }
-        else {
-          currentTextPart = { type: 'text', text: (chunk as { delta: string }).delta }
-          parts.push(currentTextPart)
-        }
-        break
-      case 'text-end':
-        currentTextPart = null
-        break
-      case 'reasoning-start':
-        currentReasoningPart = { type: 'reasoning', text: '', state: 'streaming' }
-        parts.push(currentReasoningPart)
-        break
-      case 'reasoning-delta':
-        if (currentReasoningPart) {
-          currentReasoningPart.text += (chunk as { delta: string }).delta
-        }
-        break
-      case 'reasoning-end':
-        if (currentReasoningPart) {
-          currentReasoningPart.state = 'done'
-        }
-        currentReasoningPart = null
-        break
-      case 'tool-input-start': {
-        const tc = chunk as unknown as { toolCallId: string, toolName: string }
-        const part: AnyPart = {
-          type: 'dynamic-tool',
-          toolCallId: tc.toolCallId,
-          toolName: tc.toolName,
-          state: 'input-streaming',
-          input: undefined,
-        }
-        parts.push(part)
-        toolCallIndex.set(tc.toolCallId, part)
-        break
-      }
-      case 'tool-input-available': {
-        const tc = chunk as { toolCallId: string, input: unknown }
-        const existing = toolCallIndex.get(tc.toolCallId)
-        if (existing) {
-          existing.state = 'input-available'
-          existing.input = tc.input
-        }
-        break
-      }
-      case 'tool-output-available': {
-        const tc = chunk as { toolCallId: string, output: unknown }
-        const existing = toolCallIndex.get(tc.toolCallId)
-        if (existing) {
-          existing.state = 'output-available'
-          existing.output = tc.output
-        }
-        break
-      }
-      case 'tool-input-error': {
-        const tc = chunk as { toolCallId: string, input: unknown, errorText: string }
-        const existing = toolCallIndex.get(tc.toolCallId)
-        if (existing) {
-          existing.state = 'output-error'
-          existing.input = tc.input
-          existing.errorText = tc.errorText
-        }
-        break
-      }
-    }
-  }
-
-  return parts
+type MessagePart = UIMessage['parts'][number]
+type RenderableToolPart = {
+  type: string
+  toolName?: string
+  toolCallId: string
+  state: 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'
+  input?: unknown
+  output?: unknown
+  errorText?: string
 }
 
 /**
  * Render a single subagent part inside the fold.
  */
-function renderSubagentPart(part: AnyPart, key: string, isStreaming: boolean, streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean }) {
+function renderSubagentPart(part: MessagePart, key: string, isStreaming: boolean, streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean }) {
   if (part.type === 'text') {
     return (
       <Streamdown
@@ -126,18 +46,19 @@ function renderSubagentPart(part: AnyPart, key: string, isStreaming: boolean, st
     )
   }
   if (part.type === 'reasoning') {
-    return <ReasoningBlock key={key} text={part.text} state={part.state} />
+    return <ReasoningBlock key={key} text={part.text} state={(part as { state?: 'streaming' | 'done' }).state} />
   }
   if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
+    const toolPart = part as RenderableToolPart
     return (
       <ToolCallBlock
         key={key}
-        toolName={part.toolName ?? part.type.replace('tool-', '')}
-        toolCallId={part.toolCallId}
-        state={part.state}
-        input={part.input}
-        output={part.output}
-        errorText={part.errorText}
+        toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
+        toolCallId={toolPart.toolCallId}
+        state={toolPart.state}
+        input={toolPart.input}
+        output={toolPart.output}
+        errorText={toolPart.errorText}
       />
     )
   }
@@ -282,7 +203,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
 
               // Render subagent parts inline inside the ToolCallBlock
               const subagentChunks = subagentMap?.get(toolPart.toolCallId)
-              const subagentParts = subagentChunks ? replayChunksToParts(subagentChunks) : []
+              const subagentParts = subagentChunks ? replayAssistantChunks(subagentChunks as UIMessageChunk[]) : []
 
               return (
                 <ToolCallBlock

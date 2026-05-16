@@ -12,6 +12,8 @@ import { useNewChatStore } from '~/store/new-chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 
+import { useSettingsOverlayStore } from '../settings/settings-overlay-store'
+
 import type { SystemAgentContext } from './context-schema'
 
 const MAX_RECENT_MESSAGES = 5
@@ -39,6 +41,7 @@ export function collectContextSnapshot(): SystemAgentContext {
   const tabState = useCradleTabStore.getState()
   const chatState = useChatStore.getState()
   const layoutState = useLayoutStore.getState()
+  const settingsState = useSettingsOverlayStore.getState()
   const newChatState = useNewChatStore.getState()
   const activityState = useSessionActivityStore.getState()
 
@@ -78,8 +81,8 @@ export function collectContextSnapshot(): SystemAgentContext {
       asideOpen: layoutState.asideOpen,
       asideActiveTab: layoutState.asideActiveTab,
       bottomPanelOpen: layoutState.bottomPanelOpen,
-      settingsTabId: layoutState.settingsTabId,
-      settingsSection: layoutState.settingsSection,
+      settingsTabId: settingsState.settingsTabId,
+      settingsSection: settingsState.settingsSection,
     },
     activeProfileId: newChatState.lastAgentProfileId,
     unreadSessionIds: [...activityState.unread],

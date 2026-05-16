@@ -1,12 +1,12 @@
-// Input: WorkspaceSidebar, SettingsSidebar, KanbanSidebar, layout store, useShortcut, motion/react, tab store
-// Output: AppSidebar — persistent collapsible sidebar with drill-in navigation
+// Input: WorkspaceSidebar, SettingsSidebar, layout store, useShortcut, motion/react, tab store
+// Output: AppSidebar — persistent collapsible sidebar with drill-in for settings
 // Position: Rendered at app root; persists across tab changes
 
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback } from 'react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'
-import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { SettingsSidebar } from '~/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '~/features/workspace'
 import { useShortcut } from '~/hooks/use-shortcut'
@@ -32,16 +32,13 @@ export function AppSidebar() {
     setSidebarWidth,
     sidebarCollapsed,
     toggleSidebar,
-    settingsTabId,
-    settingsSection,
-    openSettings,
-    closeSettings,
-    setSettingsSection,
   } = useLayoutStore()
+  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
+  const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
+  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+  const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
+  const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
-  const isKanban = activeTabType === 'kanban-board'
-  // Sidebar shows settings nav when the active tab has settings overlaid on it
   const isSettings = settingsTabId !== null && settingsTabId === activeTabId
 
   const handleToggleSettings = useCallback(() => {
@@ -60,10 +57,8 @@ export function AppSidebar() {
   useShortcut('exit-settings', { key: 'Escape' }, closeSettings, isSettings)
   useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebar)
 
-  const sidebarMode: 'settings' | 'kanban' | 'main' = isSettings ? 'settings' : isKanban ? 'kanban' : 'main'
-  const isDrillIn = sidebarMode !== 'main'
-  // Drill-in modes force sidebar open; only main mode respects user's collapse preference
-  const collapsed = sidebarCollapsed && !isDrillIn
+  // Settings drill-in forces sidebar open; main mode respects user's collapse preference
+  const collapsed = sidebarCollapsed && !isSettings
   const currentWidth = collapsed ? COLLAPSED_WIDTH : sidebarWidth
 
   return (
@@ -74,7 +69,7 @@ export function AppSidebar() {
         transition={SIDEBAR_SPRING}
         style={{ width: currentWidth }}
         data-testid="app-sidebar"
-        data-sidebar-mode={sidebarMode}
+        data-sidebar-mode={isSettings ? 'settings' : 'main'}
         data-sidebar-collapsed={collapsed ? 'true' : 'false'}
       >
         {/* Traffic light spacer — drag region matching AppHeader height */}
@@ -84,7 +79,7 @@ export function AppSidebar() {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           <AnimatePresence mode="popLayout" initial={false}>
-            {sidebarMode === 'settings'
+            {isSettings
               ? (
                 <m.div
                   key="settings-nav"
@@ -101,31 +96,18 @@ export function AppSidebar() {
                   />
                 </m.div>
               )
-              : sidebarMode === 'kanban'
-                ? (
-                  <m.div
-                    key="kanban-nav"
-                    className="flex flex-1 flex-col overflow-hidden"
-                    initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                    animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                    exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                    transition={DRILL_TRANSITION}
-                  >
-                    <KanbanSidebar />
-                  </m.div>
-                )
-                : (
-                  <m.div
-                    key="main-nav"
-                    className="flex flex-1 flex-col overflow-hidden"
-                    initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                    animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                    exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                    transition={DRILL_TRANSITION}
-                  >
-                    <WorkspaceSidebar collapsed={collapsed} />
-                  </m.div>
-                )}
+              : (
+                <m.div
+                  key="main-nav"
+                  className="flex flex-1 flex-col overflow-hidden"
+                  initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                  animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
+                  exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
+                  transition={DRILL_TRANSITION}
+                >
+                  <WorkspaceSidebar collapsed={collapsed} />
+                </m.div>
+              )}
           </AnimatePresence>
         </div>
       </m.aside>

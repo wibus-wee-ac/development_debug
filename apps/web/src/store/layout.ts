@@ -15,10 +15,6 @@ interface LayoutState {
   asideOpen: boolean
   asideActiveTab: string
   bottomPanelOpen: boolean
-  /** The tab id that currently has settings overlaid on it, or null if no settings open */
-  settingsTabId: string | null
-  settingsSection: string
-  jarvisExpanded: boolean
   setSidebarWidth: (w: number) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
@@ -29,10 +25,6 @@ interface LayoutState {
   openAsideTab: (tab: string) => void
   toggleBottomPanel: () => void
   setBottomPanelOpen: (open: boolean) => void
-  openSettings: (tabId: string) => void
-  closeSettings: () => void
-  setSettingsSection: (section: string) => void
-  setJarvisExpanded: (expanded: boolean) => void
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -45,9 +37,6 @@ export const useLayoutStore = create<LayoutState>()(
       asideOpen: false,
       asideActiveTab: 'files',
       bottomPanelOpen: false,
-      settingsTabId: null,
-      settingsSection: 'appearance',
-      jarvisExpanded: false,
       setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
       setSidebarCollapsed: sidebarCollapsed => set({ sidebarCollapsed }),
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -58,10 +47,6 @@ export const useLayoutStore = create<LayoutState>()(
       openAsideTab: (tab: string) => set({ asideOpen: true, asideActiveTab: tab }),
       toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
       setBottomPanelOpen: (open: boolean) => set({ bottomPanelOpen: open }),
-      openSettings: (tabId: string) => set({ settingsTabId: tabId }),
-      closeSettings: () => set({ settingsTabId: null }),
-      setSettingsSection: (settingsSection: string) => set({ settingsSection }),
-      setJarvisExpanded: (jarvisExpanded: boolean) => set({ jarvisExpanded }),
     }),
     {
       name: 'cradle:layout:v1',

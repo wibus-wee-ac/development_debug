@@ -4,6 +4,7 @@
 
 import { ArrowLeftIcon, CheckIcon, DicesIcon } from 'lucide-react'
 import { m } from 'motion/react'
+import { Select as RadixSelect } from 'radix-ui'
 import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef } from 'react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 
@@ -27,9 +28,44 @@ import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
 import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
-import { SettingsDivider } from '../settings/settings-row'
+import { SettingsDivider, SettingsRow } from '../settings/settings-row'
+import { PROVIDER_ICONS } from './provider-icons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+// ── Runtime options ───────────────────────────────────────────────────────────
+
+const ClaudeIcon = PROVIDER_ICONS['claude-agent']!
+const ClaudeCodeIcon = PROVIDER_ICONS['claude-cli']!
+// eslint-disable-next-line dot-notation
+const CodexIcon = PROVIDER_ICONS['codex']!
+
+const RUNTIME_OPTIONS: { value: RuntimeKind, label: string, description: string, icon: React.ReactNode }[] = [
+  {
+    value: 'standard',
+    label: 'Standard',
+    description: 'Direct model calls via the configured provider profile',
+    icon: <span className="flex size-5 items-center justify-center rounded bg-foreground/8 text-foreground/60 text-[9px] font-bold leading-none">AI</span>,
+  },
+  {
+    value: 'claude-agent',
+    label: 'Claude Agent',
+    description: 'Agentic loop powered by Claude with tool-use support',
+    icon: <ClaudeIcon className="size-4 text-[#D97757]" />,
+  },
+  {
+    value: 'codex',
+    label: 'Codex',
+    description: 'OpenAI Codex CLI for code-focused autonomous tasks',
+    icon: <CodexIcon className="size-4 text-foreground/70" />,
+  },
+  {
+    value: 'cli-tui',
+    label: 'Claude Code',
+    description: 'Claude Code CLI / TUI — full terminal interface',
+    icon: <ClaudeCodeIcon className="size-4 text-[#D97757]" />,
+  },
+]
 
 const AVATAR_STYLES = [
   { id: 'bottts-neutral', label: 'Bottts' },
@@ -62,12 +98,12 @@ interface AgentDetailUiState {
   saveError: string | null
 }
 
-type AgentDetailUiAction =
-  | { type: 'reset' }
-  | { type: 'avatar/spin' }
-  | { type: 'save/state', state: SaveState }
-  | { type: 'create/saving', value: boolean }
-  | { type: 'save/error', error: string | null }
+type AgentDetailUiAction
+  = | { type: 'reset' }
+    | { type: 'avatar/spin' }
+    | { type: 'save/state', state: SaveState }
+    | { type: 'create/saving', value: boolean }
+    | { type: 'save/error', error: string | null }
 
 const INITIAL_AGENT_DETAIL_UI_STATE: AgentDetailUiState = {
   avatarSpinKey: 0,
@@ -164,20 +200,39 @@ function ModelSelect({
   }, [profileId, modelId, models])
 
   if (!profileId) {
-    return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">–</span>
+    return (
+      <Select disabled>
+        <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-model-empty">
+          <SelectValue placeholder="Select a profile first" />
+        </SelectTrigger>
+        <SelectContent />
+      </Select>
+    )
   }
 
   if (isLoading) {
-    return <Spinner className="size-3 text-muted-foreground" data-testid="agent-model-loading" />
+    return (
+      <div className="flex h-8 w-48 items-center gap-2 rounded-md border border-border px-3">
+        <Spinner className="size-3 text-muted-foreground" data-testid="agent-model-loading" />
+        <span className="text-[12.5px] text-muted-foreground">Loading…</span>
+      </div>
+    )
   }
 
   if (models.length === 0) {
-    return <span className="text-[11px] text-muted-foreground/50" data-testid="agent-model-empty">No models</span>
+    return (
+      <Select disabled>
+        <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-model-empty">
+          <SelectValue placeholder="No models" />
+        </SelectTrigger>
+        <SelectContent />
+      </Select>
+    )
   }
 
   return (
     <Select value={modelId ?? models[0]?.id ?? undefined} onValueChange={value => onModelChange(value, { shouldDirty: true })}>
-      <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-model-select">
+      <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-model-select">
         <SelectValue placeholder="Model" />
       </SelectTrigger>
       <SelectContent>
@@ -368,51 +423,52 @@ function AgentIdentitySection({
   const form = useFormContext<AgentDetailFormValues>()
 
   return (
-    <div className="flex items-start gap-5">
-      <div className="flex shrink-0 flex-col items-center gap-1.5">
-        <m.button
-          type="button"
-          onClick={onShuffleAvatar}
-          data-testid="agent-avatar-preview"
-          className="group relative size-18 cursor-pointer overflow-hidden rounded-2xl bg-foreground/5"
-          title="Click to shuffle"
-          whileTap={{ scale: 0.91 }}
-        >
-          <m.img
-            key={avatarSpinKey}
-            src={avatarUrl}
-            alt={draft.name || 'Agent'}
-            className="size-full object-cover"
-            crossOrigin="anonymous"
-            initial={{ scale: 0.82, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: 'spring', stiffness: 380, damping: 22 }}
-          />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
-            <DicesIcon className="size-4 text-white" />
-          </div>
-        </m.button>
-
-        <Select value={draft.avatarStyle} onValueChange={value => form.setValue('avatarStyle', value, { shouldDirty: true })}>
-          <SelectTrigger
-            size="sm"
-            data-testid="agent-avatar-style"
-            className="h-5 w-18 border-0 bg-transparent px-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground"
+    <div className="flex flex-col gap-0">
+      {/* Avatar + name hero row */}
+      <div className="flex items-start gap-4 py-3">
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          <m.button
+            type="button"
+            onClick={onShuffleAvatar}
+            data-testid="agent-avatar-preview"
+            className="group relative size-16 cursor-pointer overflow-hidden rounded-2xl bg-foreground/5"
+            title="Click to shuffle"
+            whileTap={{ scale: 0.91 }}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {AVATAR_STYLES.map(style => (
-              <SelectItem key={style.id} value={style.id} className="text-xs">
-                {style.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+            <m.img
+              key={avatarSpinKey}
+              src={avatarUrl}
+              alt={draft.name || 'Agent'}
+              className="size-full object-cover"
+              crossOrigin="anonymous"
+              initial={{ scale: 0.82, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
+              <DicesIcon className="size-4 text-white" />
+            </div>
+          </m.button>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-4 pt-1">
-        <div className="flex flex-col gap-0.5">
+          <Select value={draft.avatarStyle} onValueChange={value => form.setValue('avatarStyle', value, { shouldDirty: true })}>
+            <SelectTrigger
+              size="sm"
+              data-testid="agent-avatar-style"
+              className="h-5 w-16 border-0 bg-transparent px-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {AVATAR_STYLES.map(style => (
+                <SelectItem key={style.id} value={style.id} className="text-xs">
+                  {style.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1">
           <input
             type="text"
             {...form.register('name')}
@@ -428,53 +484,98 @@ function AgentIdentitySection({
             className="bg-transparent text-[12px] text-muted-foreground outline-none placeholder:text-muted-foreground/25"
           />
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={draft.agentProfileId ?? undefined}
-            onValueChange={(value) => {
-              form.setValue('agentProfileId', value, { shouldDirty: true })
-              form.setValue('modelId', null, { shouldDirty: true })
-            }}
-          >
-            <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-provider-select">
-              <SelectValue placeholder="Profile" />
-            </SelectTrigger>
-            <SelectContent>
-              {enabledProfiles.map(profile => (
-                <SelectItem key={profile.id} value={profile.id} className="text-xs">
-                  {profile.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <ModelSelect
-            profileId={draft.agentProfileId}
-            modelId={draft.modelId}
-            onModelChange={(id, options) => {
-              form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
-            }}
-          />
-
-          <Select
-            value={draft.runtimeKind}
-            onValueChange={value => form.setValue('runtimeKind', value as RuntimeKind, { shouldDirty: true })}
-          >
-            <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-runtime-select">
-              <SelectValue placeholder="Runtime" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="standard" className="text-xs">Standard</SelectItem>
-              <SelectItem value="claude-agent" className="text-xs">Claude Agent</SelectItem>
-              <SelectItem value="codex" className="text-xs">Codex</SelectItem>
-              <SelectItem value="cli-tui" className="text-xs">CLI / TUI</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
-        </div>
       </div>
+
+      {/* Provider profile row */}
+      <SettingsDivider />
+      <SettingsRow label="Provider profile" description="Which provider profile this agent uses">
+        <Select
+          value={draft.agentProfileId ?? undefined}
+          onValueChange={(value) => {
+            form.setValue('agentProfileId', value, { shouldDirty: true })
+            form.setValue('modelId', null, { shouldDirty: true })
+          }}
+        >
+          <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-provider-select">
+            <SelectValue placeholder="Select a profile…" />
+          </SelectTrigger>
+          <SelectContent>
+            {enabledProfiles.map(profile => (
+              <SelectItem key={profile.id} value={profile.id} className="text-xs">
+                {profile.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+
+      {/* Model row */}
+      <SettingsDivider />
+      <SettingsRow label="Model" description="Which model the agent uses from the selected profile">
+        <ModelSelect
+          profileId={draft.agentProfileId}
+          modelId={draft.modelId}
+          onModelChange={(id, options) => {
+            form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
+          }}
+        />
+      </SettingsRow>
+
+      {/* Runtime row */}
+      <SettingsDivider />
+      <SettingsRow label="Runtime" description="Which execution mode the agent runs in">
+        <Select
+          value={draft.runtimeKind}
+          onValueChange={value => form.setValue('runtimeKind', value as RuntimeKind, { shouldDirty: true })}
+        >
+          <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-runtime-select">
+            <SelectValue aria-hidden className="absolute opacity-0 pointer-events-none" />
+            {(() => {
+              const opt = RUNTIME_OPTIONS.find(o => o.value === draft.runtimeKind)
+              return opt
+                ? (
+                  <span className="flex items-center gap-2">
+                    {opt.icon}
+                    <span>{opt.label}</span>
+                  </span>
+                )
+                : <span className="text-muted-foreground">Select runtime…</span>
+            })()}
+          </SelectTrigger>
+          <SelectContent className="w-72">
+            {RUNTIME_OPTIONS.map(opt => (
+              <RadixSelect.Item
+                key={opt.value}
+                value={opt.value}
+                className={cn(
+                  'relative flex w-full cursor-default items-center gap-3 rounded-md py-2.5 pr-8 pl-2 text-sm outline-hidden select-none',
+                  'focus:bg-accent focus:text-accent-foreground',
+                  'data-disabled:pointer-events-none data-disabled:opacity-50',
+                )}
+              >
+                <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
+                  <RadixSelect.ItemIndicator>
+                    <CheckIcon className="pointer-events-none size-3" />
+                  </RadixSelect.ItemIndicator>
+                </span>
+                <span className="shrink-0">{opt.icon}</span>
+                <RadixSelect.ItemText asChild>
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-[12.5px] font-medium leading-tight">{opt.label}</span>
+                    <span className="text-[11px] text-muted-foreground leading-snug">{opt.description}</span>
+                  </span>
+                </RadixSelect.ItemText>
+              </RadixSelect.Item>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+
+      {/* Thinking effort row */}
+      <SettingsDivider />
+      <SettingsRow label="Thinking effort" description="How much reasoning budget to allocate for this agent">
+        <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
+      </SettingsRow>
     </div>
   )
 }
@@ -483,8 +584,7 @@ function AgentSystemPromptSection() {
   const form = useFormContext<AgentDetailFormValues>()
 
   return (
-    <div className="flex flex-col gap-2 py-4">
-      <span className="text-[13px] font-medium text-foreground">System Prompt</span>
+    <SettingsRow label="System Prompt" description="Optional instructions for this agent" vertical>
       <textarea
         {...form.register('systemPrompt')}
         placeholder="Optional instructions for this agent..."
@@ -496,7 +596,7 @@ function AgentSystemPromptSection() {
           'transition-colors focus:bg-foreground/5',
         )}
       />
-    </div>
+    </SettingsRow>
   )
 }
 

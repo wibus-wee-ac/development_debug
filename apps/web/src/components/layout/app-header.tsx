@@ -8,6 +8,7 @@ import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon,
 import { useCallback, useMemo } from 'react'
 
 import { Button } from '~/components/ui/button'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import { useLayoutStore } from '~/store/layout'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
@@ -22,12 +23,12 @@ const renderNewTabIcon = () => <PlusIcon className="size-3" />
 
 export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
-  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, settingsTabId } = useLayoutStore()
-  const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
-  const isKanban = activeTabType === 'kanban-board'
+  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar } = useLayoutStore()
+  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
-  const isSettingsActive = settingsTabId !== null
-  const isDrillIn = isSettingsActive || isKanban
+  const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
+  const isDrillIn = isSettingsActive
 
   const handleTabActivated = useCallback(() => {
     // No-op: settings is now per-tab, tab switching is handled by isSettingsVisible in app.tsx

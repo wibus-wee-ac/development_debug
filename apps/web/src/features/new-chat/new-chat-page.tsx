@@ -46,11 +46,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import { startChatResponse } from '~/features/chat/chat-response-command'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import type { Agent, ModelDescriptor } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
@@ -145,24 +145,26 @@ interface NewChatDraftState {
   sending: boolean
 }
 
-type NewChatDraftAction =
-  | { type: 'select-agent', agentId: string }
+type NewChatDraftAction = { type: 'select-agent', agentId: string }
   | { type: 'select-profile', profileId: string }
+  | { type: 'restore-profile', profileId: string }
   | { type: 'select-workspace', workspaceId: string }
   | { type: 'select-model', modelId: string | null }
   | { type: 'set-thinking-effort', profileId: string | null, thinkingEffort: ThinkingEffort | null }
   | { type: 'set-input', input: string }
   | { type: 'set-sending', sending: boolean }
 
-const INITIAL_NEW_CHAT_DRAFT_STATE: NewChatDraftState = {
-  selectedAgentId: null,
-  selectedProfileId: useNewChatStore.getState().lastAgentProfileId,
-  selectedWorkspaceId: null,
-  selectedModelId: null,
-  thinkingEffortProfileId: null,
-  thinkingEffort: null,
-  input: '',
-  sending: false,
+function createInitialNewChatDraftState(selectedProfileId: string | null | undefined): NewChatDraftState {
+  return {
+    selectedAgentId: null,
+    selectedProfileId: selectedProfileId ?? null,
+    selectedWorkspaceId: null,
+    selectedModelId: null,
+    thinkingEffortProfileId: null,
+    thinkingEffort: null,
+    input: '',
+    sending: false,
+  }
 }
 
 function newChatDraftReducer(state: NewChatDraftState, action: NewChatDraftAction): NewChatDraftState {
@@ -178,6 +180,15 @@ function newChatDraftReducer(state: NewChatDraftState, action: NewChatDraftActio
       return {
         ...state,
         selectedAgentId: null,
+        selectedProfileId: action.profileId,
+        selectedModelId: null,
+      }
+    case 'restore-profile':
+      if (state.selectedAgentId || state.selectedProfileId) {
+        return state
+      }
+      return {
+        ...state,
         selectedProfileId: action.profileId,
         selectedModelId: null,
       }
@@ -209,7 +220,7 @@ function useNewChatPageOwner() {
   const lastAgentProfileId = useNewChatStore(state => state.lastAgentProfileId)
   const setLastAgentProfileId = useNewChatStore(state => state.setLastAgentProfileId)
   const setLastModelForProfile = useNewChatStore(state => state.setLastModelForProfile)
-  const [draft, dispatch] = useReducer(newChatDraftReducer, INITIAL_NEW_CHAT_DRAFT_STATE)
+  const [draft, dispatch] = useReducer(newChatDraftReducer, lastAgentProfileId, createInitialNewChatDraftState)
 
   const selectedAgent: Agent | null = useMemo(
     () => agents.find(agent => agent.id === draft.selectedAgentId && agent.enabled) ?? null,
@@ -291,6 +302,16 @@ function useNewChatPageOwner() {
     textareaRef.current?.focus()
   }, [])
 
+  useEffect(() => {
+    if (!lastAgentProfileId) {
+      return
+    }
+    if (!profiles.some(profile => profile.id === lastAgentProfileId)) {
+      return
+    }
+    dispatch({ type: 'restore-profile', profileId: lastAgentProfileId })
+  }, [lastAgentProfileId, profiles])
+
   const selectAgent = useCallback((agentId: string) => {
     const nextAgent = agents.find(agent => agent.id === agentId) ?? null
     dispatch({ type: 'select-agent', agentId })
@@ -365,14 +386,13 @@ function useNewChatPageOwner() {
       }
       // Trigger the response stream — wait for headers only so the server creates
       // the run before we navigate, but don't block on the SSE body.
-      await fetch(`${getServerUrl()}/chat/sessions/${session.id}/response`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      await startChatResponse({
+        sessionId: session.id,
+        body: {
           text: draft.input.trim(),
           modelId: effectiveModel?.id ?? undefined,
           thinkingEffort: thinkingEffort ?? undefined,
-        }),
+        },
       })
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
       void openTab('chat', { sessionId: session.id })
@@ -383,7 +403,7 @@ function useNewChatPageOwner() {
     finally {
       dispatch({ type: 'set-sending', sending: false })
     }
-  }, [canSend, draft.input, effectiveModel, effectiveWorkspaceId, isCliTui, openTab, queryClient, selectedProfile, selectedWorkspace, thinkingEffort])
+  }, [canSend, draft.input, effectiveAgent?.runtimeKind, effectiveModel, effectiveWorkspaceId, isCliTui, openTab, queryClient, selectedProfile, selectedWorkspace, thinkingEffort])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -401,7 +421,7 @@ function useNewChatPageOwner() {
         autoResize(el)
       }
     })
-  }, [])
+  }, [setInput])
 
   const handleResumeSession = useCallback((sessionId: string) => {
     void openTab('chat', { sessionId })
@@ -410,7 +430,7 @@ function useNewChatPageOwner() {
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
     autoResize(e.target)
-  }, [])
+  }, [setInput])
 
   return {
     agents,

@@ -1,6 +1,6 @@
-// Input: Tab store, board list
-// Output: Kanban sidebar with board list and management
-// Position: App sidebar drill-in panel when kanban tab is active
+// Input: Tab store, board list, collapsed state
+// Output: Kanban boards navigation section, embeddable in any sidebar
+// Position: Section component used inside WorkspaceSidebar
 
 import { LayoutDashboardIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
@@ -12,7 +12,7 @@ import { useCradleTabStore } from '~/tabs/registry'
 
 import { useBoards, useCreateBoard, useDeleteBoard } from './use-kanban'
 
-export function KanbanSidebar() {
+export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { workspaces } = useWorkspaces()
   const firstWorkspaceId = workspaces?.[0]?.id ?? ''
   const boards = useBoards(firstWorkspaceId)
@@ -56,22 +56,26 @@ export function KanbanSidebar() {
   }, [deleteBoard])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" data-testid="kanban-sidebar">
-      <div className="flex items-center justify-between px-3 py-2">
-        <span className="text-[12px] font-medium text-muted-foreground">看板</span>
+    <div
+      className="flex flex-col"
+      style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
+      data-testid="kanban-sidebar"
+    >
+      <div className="flex items-center px-2.5 py-1.5">
+        <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">看板</span>
         <Button
           variant="ghost"
-          size="sm"
-          className="size-6 p-0"
+          size="icon-xs"
+          className="size-5 text-muted-foreground/60 hover:text-foreground"
           onClick={handleStartCreate}
           disabled={creating}
           data-testid="kanban-add-board-btn"
         >
-          <PlusIcon className="size-3.5" />
+          <PlusIcon className="size-3" />
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-1">
+      <div className="px-2 pb-1">
         {showNameInput && (
           <div className="px-2 py-1">
             <input
@@ -82,7 +86,8 @@ export function KanbanSidebar() {
                 if (e.key === 'Enter') {
                   e.preventDefault()
                   handleConfirmCreate()
-                } else if (e.key === 'Escape') {
+                }
+                else if (e.key === 'Escape') {
                   setShowNameInput(false)
                 }
               }}
@@ -99,27 +104,27 @@ export function KanbanSidebar() {
           <div
             key={board.id}
             data-testid={`kanban-board-${board.id}`}
-            className="group flex items-center gap-1 rounded-md hover:bg-muted/50 transition-colors"
+            className="group flex items-center rounded-lg hover:bg-accent/50 transition-colors"
           >
             <button
               onClick={() => openTab('kanban-board', { boardId: board.id })}
-              className="flex-1 flex items-center gap-2 px-2 py-1.5 text-[13px] text-foreground"
+              className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs text-sidebar-foreground/80"
             >
-              <LayoutDashboardIcon className="size-3.5 text-muted-foreground" />
-              {board.name}
+              <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+              <span className="truncate">{board.name}</span>
             </button>
 
             <Menu>
               <MenuTrigger
-                className="flex size-6 items-center justify-center rounded text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-fill hover:text-foreground transition-all"
+                className="shrink-0 flex size-6 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:bg-accent/80 hover:text-foreground transition-all mr-1"
                 data-testid={`kanban-board-menu-trigger-${board.id}`}
               >
-                <MoreHorizontalIcon className="size-3.5" />
+                <MoreHorizontalIcon className="size-3" />
               </MenuTrigger>
               <MenuPopup>
                 <MenuItem
                   onClick={() => handleDeleteBoard(board.id)}
-                  className="text-red-500"
+                  variant="destructive"
                   data-testid={`kanban-board-delete-${board.id}`}
                 >
                   <TrashIcon className="size-3.5 mr-2" />
@@ -131,9 +136,7 @@ export function KanbanSidebar() {
         ))}
 
         {boards.data?.length === 0 && !showNameInput && (
-          <p className="px-3 py-4 text-[11px] text-muted-foreground text-center">
-            暂无看板
-          </p>
+          <p className="px-3 py-2 text-[11px] text-muted-foreground">暂无看板</p>
         )}
       </div>
     </div>

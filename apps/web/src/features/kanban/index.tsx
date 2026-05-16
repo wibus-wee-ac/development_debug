@@ -174,6 +174,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
               config={config}
               selectedIssueId={selectedIssueId}
               onIssueClick={handleIssueClick}
+              onCreateIssue={handleCreateIssue}
             />
           )}
 

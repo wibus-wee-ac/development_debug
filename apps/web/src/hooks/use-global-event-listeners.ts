@@ -1,15 +1,40 @@
-// Input: layout store and tab store
-// Output: useGlobalEventListeners hook — registers panel keyboard shortcuts
-// Position: Called once at the AppLayout level; centralises all side-effect subscriptions for main-window events
+// Input: layout store, settings overlay store, session activity store, chat run events, and tab store
+// Output: useGlobalEventListeners hook — registers shell shortcuts plus global unread/session activity ownership
+// Position: Called once at the AppLayout level; centralises app-shell side effects for the main window
 
 import { useEffect } from 'react'
 
+import { onAnyChatRunEvent } from '~/features/chat/sse-chat-transport'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useLayoutStore } from '~/store/layout'
+import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
+
+function deriveVisibleChatSessionId(args: {
+  activeTabId: string | null
+  settingsTabId: string | null
+  tabs: Array<{ id: string, type: string, params?: Record<string, unknown> }>
+}) {
+  const { activeTabId, settingsTabId, tabs } = args
+  if (!activeTabId || settingsTabId === activeTabId) {
+    return null
+  }
+
+  const activeTab = tabs.find(tab => tab.id === activeTabId)
+  if (activeTab?.type !== 'chat') {
+    return null
+  }
+
+  const sessionId = activeTab.params?.sessionId
+  return typeof sessionId === 'string' ? sessionId : null
+}
 
 export function useGlobalEventListeners() {
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const tabs = useCradleTabStore(s => s.tabs)
+  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
 
   // Panel + tab keyboard shortcuts
   useEffect(() => {
@@ -80,4 +105,19 @@ export function useGlobalEventListeners() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [toggleBottomPanel, toggleAside])
+
+  useEffect(() => {
+    const visibleSessionId = deriveVisibleChatSessionId({
+      activeTabId,
+      settingsTabId,
+      tabs,
+    })
+    useSessionActivityStore.getState().setVisibleSession(visibleSessionId)
+  }, [activeTabId, settingsTabId, tabs])
+
+  useEffect(() => {
+    return onAnyChatRunEvent(({ chatSessionId }) => {
+      useSessionActivityStore.getState().recordActivity(chatSessionId)
+    })
+  }, [])
 }

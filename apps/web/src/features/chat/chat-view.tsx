@@ -2,14 +2,17 @@
 // Output: ChatView — virtualized chat view: only renders visible messages, instant-to-bottom scroll
 // Position: Primary chat feature view — does NOT own message sending lifecycle
 
+import { useQuery } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
 
-import { getUsageSessionsBySessionId } from '~/api-gen'
+import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
@@ -45,6 +48,16 @@ interface ChatScrollMetrics {
 
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0, barProgress: [] }
+
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(1)}M`
+  }
+  if (tokens >= 1_000) {
+    return `${(tokens / 1_000).toFixed(1)}K`
+  }
+  return String(tokens)
+}
 
 function ChatTimelinePane({
   messages,
@@ -184,6 +197,7 @@ function ChatComposerSection({
   contextBar,
   droppedPath,
   sessionTokens,
+  sessionContextWindow,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   onSend: (text: string) => void
@@ -196,6 +210,7 @@ function ChatComposerSection({
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
   sessionTokens: number
+  sessionContextWindow: number | null
 }) {
   return (
     <div className="shrink-0 bg-background/80 px-4 py-3 backdrop-blur-sm">
@@ -216,16 +231,19 @@ function ChatComposerSection({
         {sessionTokens > 0 && (
           <div className="mt-1.5 flex items-center justify-end gap-2">
             <div className="flex items-center gap-1.5">
-              <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary/40 transition-all"
-                  style={{ width: `${Math.min(100, (sessionTokens / 128_000) * 100)}%` }}
-                />
-              </div>
+              {sessionContextWindow != null && sessionContextWindow > 0 && (
+                <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary/40 transition-all"
+                    style={{ width: `${Math.min(100, (sessionTokens / sessionContextWindow) * 100)}%` }}
+                  />
+                </div>
+              )}
               <span className="text-[10px] tabular-nums text-muted-foreground">
-                {sessionTokens >= 1_000
-                  ? `${(sessionTokens / 1_000).toFixed(1)}K`
-                  : sessionTokens}
+                {formatTokenCount(sessionTokens)}
+                {sessionContextWindow != null && sessionContextWindow > 0
+                  ? ` / ${formatTokenCount(sessionContextWindow)}`
+                  : ''}
               </span>
             </div>
           </div>
@@ -249,6 +267,27 @@ export function ChatView({
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const { data: sessionBinding } = useQuery({
+    ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
+    enabled: !!sessionId,
+    staleTime: 60_000,
+    select: data => data
+      ? {
+          agentProfileId: typeof data.agentProfileId === 'string' ? data.agentProfileId : null,
+          modelId: typeof data.modelId === 'string' ? data.modelId : null,
+        }
+      : null,
+  })
+  const { models: sessionModels } = useAgentModels(sessionBinding?.agentProfileId ?? null)
+  const sessionContextWindow = useMemo(() => {
+    if (!sessionBinding?.modelId) {
+      return null
+    }
+
+    const model = sessionModels.find(candidate => candidate.id === sessionBinding.modelId)
+    const contextWindow = model?.capabilities.contextWindow
+    return contextWindow != null && contextWindow > 0 ? contextWindow : null
+  }, [sessionBinding?.modelId, sessionModels])
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
@@ -464,6 +503,7 @@ export function ChatView({
         contextBar={composerContextBar}
         droppedPath={droppedPath}
         sessionTokens={sessionTokens}
+        sessionContextWindow={sessionContextWindow}
       />
     </div>
   )

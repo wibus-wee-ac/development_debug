@@ -10,12 +10,17 @@ import type { UIMessageChunk } from 'ai'
 interface ChatTimelineEventPayload {
   chatSessionId: string
   messageId: string
-  event: Record<string, unknown>
+  event: {
+    type: 'run.streaming' | 'run.completed' | 'run.aborted' | 'run.failed'
+    chunkType?: UIMessageChunk['type']
+    raw?: Record<string, unknown>
+  }
 }
 
 type RunEventHandler = (data: ChatTimelineEventPayload) => void
 
 const sessionHandlers = new Map<string, Set<RunEventHandler>>()
+const globalHandlers = new Set<RunEventHandler>()
 
 /**
  * Subscribe to chat run events for a specific session.
@@ -36,7 +41,21 @@ export function onChatRunEvent(sessionId: string, handler: RunEventHandler): () 
   }
 }
 
+/**
+ * Subscribe to chat run events for all sessions.
+ * Returns an unsubscribe function.
+ */
+export function onAnyChatRunEvent(handler: RunEventHandler): () => void {
+  globalHandlers.add(handler)
+  return () => {
+    globalHandlers.delete(handler)
+  }
+}
+
 function emitRunEvent(data: ChatTimelineEventPayload): void {
+  for (const fn of globalHandlers) {
+    fn(data)
+  }
   const handlers = sessionHandlers.get(data.chatSessionId)
   if (!handlers) {
     return
@@ -145,16 +164,27 @@ export function buildChunkStreamFromResponse(
           }
           catch { continue }
 
+          const chunkType = stored.chunk.type
+          const eventType = chunkType === 'finish'
+            ? 'run.completed'
+            : chunkType === 'abort'
+              ? 'run.aborted'
+              : chunkType === 'error'
+                ? 'run.failed'
+                : 'run.streaming'
+
           emitRunEvent({
             chatSessionId,
             messageId: stored.runId,
-            // eslint-disable-next-line ts/no-explicit-any
-            event: stored as any,
+            event: {
+              type: eventType,
+              chunkType,
+              raw: stored,
+            },
           })
 
           safeEnqueue({ chunk: stored.chunk, parentToolCallId: stored.parentToolCallId })
 
-          const chunkType = stored.chunk.type
           if (chunkType === 'finish' || chunkType === 'abort') {
             closeCleanly()
             return

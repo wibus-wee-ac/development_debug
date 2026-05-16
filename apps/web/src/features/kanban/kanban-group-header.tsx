@@ -1,8 +1,8 @@
-// Input: Group name, count, collapse state
+// Input: Group name, count, collapse state, create callback
 // Output: Collapsible group header row for list view
 // Position: List view group separator
 
-import { ChevronDownIcon } from 'lucide-react'
+import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { m } from 'motion/react'
 
 import { cn } from '~/lib/cn'
@@ -16,27 +16,45 @@ interface GroupHeaderProps {
   category?: StatusCategory
   collapsed: boolean
   onToggle: () => void
+  onCreateIssue?: () => void
 }
 
-export function KanbanGroupHeader({ name, count, category, collapsed, onToggle }: GroupHeaderProps) {
+export function KanbanGroupHeader({ name, count, category, collapsed, onToggle, onCreateIssue }: GroupHeaderProps) {
   return (
-    <button
-      onClick={onToggle}
-      className={cn(
-        'h-8 w-full flex items-center gap-2 px-3 text-[12px] font-medium text-muted-foreground',
-        'hover:bg-muted transition-[background-color] duration-150 ease-out',
-      )}
-    >
-      <m.span
-        animate={{ rotate: collapsed ? -90 : 0 }}
-        transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-        className="flex items-center"
+    <div className="group/header flex items-center h-8 px-2 gap-1.5 bg-muted/60 rounded-lg">
+      <button
+        onClick={onToggle}
+        className={cn(
+          'flex flex-1 items-center gap-1.5 h-full text-[12px] font-medium text-muted-foreground',
+          'hover:text-foreground transition-colors duration-150',
+        )}
       >
-        <ChevronDownIcon className="size-3.5" />
-      </m.span>
-      {category && <StatusIcon category={category} size={14} />}
-      <span>{name}</span>
-      <span className="text-muted-foreground tabular-nums">{count}</span>
-    </button>
+        <m.span
+          animate={{ rotate: collapsed ? 0 : 90 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+          className="flex items-center text-muted-foreground"
+        >
+          <ChevronRightIcon className="size-3" />
+        </m.span>
+        {category && <StatusIcon category={category} size={14} />}
+        <span>{name}</span>
+        <span className="rounded px-1.5 py-0.5 bg-muted text-muted-foreground text-[11px] tabular-nums font-normal">
+          {count}
+        </span>
+      </button>
+
+      {onCreateIssue && (
+        <button
+          onClick={onCreateIssue}
+          className={cn(
+            'flex size-5 items-center justify-center rounded text-muted-foreground',
+            'opacity-0 group-hover/header:opacity-100',
+            'hover:bg-muted hover:text-foreground transition-all duration-150',
+          )}
+        >
+          <PlusIcon className="size-3" />
+        </button>
+      )}
+    </div>
   )
 }

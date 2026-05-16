@@ -2,6 +2,8 @@
 // Output: Ultra-compact list row (32px height)
 // Position: List view row component
 
+import { BotIcon } from 'lucide-react'
+
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 
@@ -44,46 +46,67 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick() }}
       className={cn(
-        'h-8 flex items-center gap-2 px-3 text-[13px] cursor-pointer',
+        'group/row relative flex items-center gap-2 px-3 h-9 text-[13px] cursor-pointer rounded-md',
         'transition-colors duration-100 ease-out',
-        'hover:bg-muted',
-        selected && 'bg-muted',
-        !selected && 'border-l-2 border-l-transparent',
+        selected ? 'bg-muted' : 'hover:bg-muted',
       )}
     >
-      {displayProperties.status && (
-        <StatusIcon category={category} size={14} />
+      {/* Selected indicator */}
+      {selected && (
+        <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary" />
       )}
 
-      {displayProperties.priority && (
-        <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={14} />
-      )}
+      {/* Left: status + priority icons — fixed width so titles align */}
+      <span className="flex items-center gap-1.5 shrink-0">
+        {displayProperties.status && (
+          <StatusIcon category={category} size={14} />
+        )}
+        {displayProperties.priority && (
+          <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={14} />
+        )}
+      </span>
 
+      {/* ID — mono, fixed width */}
       {displayProperties.id && (
-        <span className="text-[11px] font-mono text-muted-foreground w-14 shrink-0 tabular-nums">
+        <span className="text-[11px] font-mono text-muted-foreground w-12 shrink-0 tabular-nums">
           {issue.id.slice(0, 6).toUpperCase()}
         </span>
       )}
 
-      <span className="flex-1 truncate text-foreground text-pretty">
+      {/* Title */}
+      <span className="flex-1 truncate text-foreground">
         {issue.title}
       </span>
 
-      {displayProperties.labels && labels.length > 0 && (
-        <div className="flex items-center gap-1 shrink-0">
-          {labels.slice(0, 2).map(l => <LabelChip key={l} label={l} />)}
-        </div>
-      )}
+      {/* Right: metadata — only visible on hover or when selected */}
+      <span className={cn(
+        'flex items-center gap-2 shrink-0',
+        'transition-opacity duration-100',
+        selected ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100',
+      )}>
+        {displayProperties.agentIndicator && issue.delegateAgentProfileId && (
+          <BotIcon className="size-3 text-muted-foreground" />
+        )}
 
-      {displayProperties.assignee && issue.assigneeId && (
-        <AssigneeAvatar name={issue.assigneeId} size={16} />
-      )}
+        {displayProperties.labels && labels.length > 0 && (
+          <span className="flex items-center gap-1">
+            {labels.slice(0, 2).map(l => <LabelChip key={l} label={l} />)}
+            {labels.length > 2 && (
+              <span className="text-[11px] text-muted-foreground tabular-nums">+{labels.length - 2}</span>
+            )}
+          </span>
+        )}
 
-      {displayProperties.createdAt && issue.createdAt && (
-        <span className="text-[11px] text-muted-foreground w-8 shrink-0 text-right tabular-nums">
-          {formatRelativeTime(issue.createdAt)}
-        </span>
-      )}
+        {displayProperties.assignee && issue.assigneeId && (
+          <AssigneeAvatar name={issue.assigneeId} size={16} />
+        )}
+
+        {displayProperties.createdAt && issue.createdAt && (
+          <span className="text-[11px] text-muted-foreground w-8 text-right tabular-nums">
+            {formatRelativeTime(issue.createdAt)}
+          </span>
+        )}
+      </span>
     </div>
   )
 }

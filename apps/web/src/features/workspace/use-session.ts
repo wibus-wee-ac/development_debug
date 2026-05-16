@@ -5,7 +5,21 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { getSessions } from '~/api-gen/sdk.gen'
-import type { Session } from '~/lib/types'
+import type { RuntimeKind } from '~/lib/types'
+
+export interface WorkspaceSession {
+  id: string
+  workspaceId: string | null
+  title: string | null
+  agentProfileId: string | null
+  agentId: string | null
+  modelId: string | null
+  linkedIssueId: string | null
+  runtimeKind: RuntimeKind
+  pinned: number
+  createdAt: number
+  updatedAt: number
+}
 
 export const sessionsQueryKey = (workspaceId: string | null) =>
   ['sessions', workspaceId] as const
@@ -15,7 +29,7 @@ export function useSessions(workspaceId: string | null) {
     queryKey: sessionsQueryKey(workspaceId),
     queryFn: async () => {
       const { data } = await getSessions({ query: { workspaceId: workspaceId! } })
-      return (data ?? []) as Session[]
+      return (data ?? []) as WorkspaceSession[]
     },
     enabled: !!workspaceId,
   })

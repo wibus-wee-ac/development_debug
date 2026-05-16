@@ -8,11 +8,12 @@ Store naming convention: `use<Domain>Store`.
 
 ## Files
 
-- **layout.ts**: Layout state — sidebar/aside/panel dimensions and visibility
+- **layout.ts**: Layout shell state — sidebar/aside/panel dimensions and visibility only; feature UI state such as Settings overlay and Jarvis expansion now lives with the owning feature
 - **layout-slots.ts**: Layout slot registry — pages inject content into aside/panel regions
 - **theme.ts**: Theme preference state — light/dark/system mode
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)
-- **session-activity.ts**: Session activity state — tracks which sessions received a new response while not being viewed, drives the sidebar dot indicator
+- **session-activity.ts**: Session activity owner — tracks the currently visible chat session plus unread background activity, so sidebar session items stay display-only while the app shell owns unread reconciliation
+- **session-activity.test.ts**: Regression tests for unread ownership, background activity marking, and visible-session clearing semantics
 - **chat.ts**: Chat streaming state — stores per-session UI messages, generation flags, errors, and reconciles equivalent server snapshots without changing message references
 - **chat.test.ts**: Regression tests for chat snapshot structural sharing and unchanged message reference preservation
 - **new-chat.ts**: New chat preferences — persisted last selected agent profile / per-profile model choice, plus profile reconciliation when the available profile list changes

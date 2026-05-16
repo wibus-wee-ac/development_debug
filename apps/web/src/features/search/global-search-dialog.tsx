@@ -17,7 +17,8 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { getKanbanIssuesSearch, getSessionsById, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getKanbanIssuesSearch, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import {
   Command,
   CommandDialog,
@@ -30,8 +31,9 @@ import {
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { Spinner } from '~/components/ui/spinner'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import type { Session, ThreadSearchHit } from '~/lib/types'
+import type { ThreadSearchHit } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
@@ -60,7 +62,8 @@ interface CommandAction {
 
 function useCommands(close: () => void): CommandAction[] {
   const { openTab } = useCradleNavigation()
-  const { openSettings, toggleSidebar } = useLayoutStore()
+  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+  const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
 
   return useMemo(() => [
     {
@@ -150,13 +153,14 @@ function useFileSearch(query: string, enabled: boolean) {
 
   // Load sessions to get workspaceId
   const { data: session } = useQuery({
-    queryKey: ['chat-session', activeTab?.sessionId],
-    queryFn: async () => {
-      const { data } = await getSessionsById({ path: { id: activeTab!.sessionId! } })
-      return data as Session | undefined
-    },
+    ...getSessionsByIdOptions({ path: { id: activeTab?.sessionId ?? '' } }),
     enabled: !!activeTab?.sessionId,
     staleTime: 60_000,
+    select: data => data
+      ? {
+          workspaceId: typeof data.workspaceId === 'string' ? data.workspaceId : null,
+        }
+      : undefined,
   })
 
   const workspaceId = session?.workspaceId ?? null

@@ -57,87 +57,91 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
 
   return (
     <div className="flex flex-col gap-1">
-      {/* Status */}
-      <PropertyRow label="Status">
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
-            {currentStatus && <StatusIcon category={currentStatus.category as StatusCategory} size={14} />}
-            <span>{currentStatus?.name ?? 'None'}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
-            <DropdownMenuRadioGroup value={issue.statusId ?? ''} onValueChange={(v) => onUpdate({ statusId: v })}>
-              {statuses.map(s => (
-                <DropdownMenuRadioItem key={s.id} value={s.id}>
-                  <StatusIcon category={s.category as StatusCategory} size={14} />
-                  {s.name}
+      <div className="bg-card rounded-lg px-3 py-2 text-sm shadow-xs font-medium text-muted-foreground border border-border">
+        {/* Status */}
+        <PropertyRow label="Status">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
+              {currentStatus && <StatusIcon category={currentStatus.category as StatusCategory} size={14} />}
+              <span>{currentStatus?.name ?? 'None'}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuRadioGroup value={issue.statusId ?? ''} onValueChange={(v) => onUpdate({ statusId: v })}>
+                {statuses.map(s => (
+                  <DropdownMenuRadioItem key={s.id} value={s.id}>
+                    <StatusIcon category={s.category as StatusCategory} size={14} />
+                    {s.name}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </PropertyRow>
+
+        {/* Priority */}
+        <PropertyRow label="Priority">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors"
+              data-testid="issue-priority-trigger"
+            >
+              <PriorityIcon priority={issue.priority as IssuePriority} size={14} />
+              <span>{priorityOptions.find(p => p.value === issue.priority)?.label ?? 'No priority'}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-40">
+              <DropdownMenuRadioGroup value={issue.priority} onValueChange={(v) => onUpdate({ priority: v as IssuePriority })}>
+                {priorityOptions.map(p => (
+                  <DropdownMenuRadioItem key={p.value} value={p.value} data-testid={`issue-priority-option-${p.value}`}>
+                    <PriorityIcon priority={p.value} size={14} />
+                    {p.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </PropertyRow>
+
+        {/* Assignee */}
+        <PropertyRow label="Assignee">
+          <span className="text-[13px] text-muted-foreground px-1.5 py-0.5">Unassigned</span>
+        </PropertyRow>
+
+        {/* Agent Delegate */}
+        <AgentDelegateRow issue={issue} />
+
+        {/* Labels */}
+        <PropertyRow label="Labels">
+          <LabelsEditor labels={labels} onUpdate={(newLabels) => onUpdate({ labels: newLabels })} />
+        </PropertyRow>
+
+        {/* Milestone */}
+        <PropertyRow label="Milestone">
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
+              <span>{currentMilestone?.title ?? 'None'}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-44">
+              <DropdownMenuRadioGroup value={issue.milestoneId ?? ''} onValueChange={(v) => onUpdate({ milestoneId: v || null })}>
+                <DropdownMenuRadioItem value="">
+                  No milestone
                 </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </PropertyRow>
-
-      {/* Priority */}
-      <PropertyRow label="Priority">
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors"
-            data-testid="issue-priority-trigger"
-          >
-            <PriorityIcon priority={issue.priority as IssuePriority} size={14} />
-            <span>{priorityOptions.find(p => p.value === issue.priority)?.label ?? 'No priority'}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-40">
-            <DropdownMenuRadioGroup value={issue.priority} onValueChange={(v) => onUpdate({ priority: v as IssuePriority })}>
-              {priorityOptions.map(p => (
-                <DropdownMenuRadioItem key={p.value} value={p.value} data-testid={`issue-priority-option-${p.value}`}>
-                  <PriorityIcon priority={p.value} size={14} />
-                  {p.label}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </PropertyRow>
-
-      {/* Assignee */}
-      <PropertyRow label="Assignee">
-        <span className="text-[13px] text-muted-foreground px-1.5 py-0.5">Unassigned</span>
-      </PropertyRow>
-
-      {/* Agent Delegate */}
-      <AgentDelegateRow issue={issue} />
-
-      {/* Labels */}
-      <PropertyRow label="Labels">
-        <LabelsEditor labels={labels} onUpdate={(newLabels) => onUpdate({ labels: newLabels })} />
-      </PropertyRow>
-
-      {/* Milestone */}
-      <PropertyRow label="Milestone">
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
-            <span>{currentMilestone?.title ?? 'None'}</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
-            <DropdownMenuRadioGroup value={issue.milestoneId ?? ''} onValueChange={(v) => onUpdate({ milestoneId: v || null })}>
-              <DropdownMenuRadioItem value="">
-                No milestone
-              </DropdownMenuRadioItem>
-              {milestones.length > 0 && <DropdownMenuSeparator />}
-              {milestones.map(m => (
-                <DropdownMenuRadioItem key={m.id} value={m.id}>
-                  {m.title}
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </PropertyRow>
+                {milestones.length > 0 && <DropdownMenuSeparator />}
+                {milestones.map(m => (
+                  <DropdownMenuRadioItem key={m.id} value={m.id}>
+                    {m.title}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </PropertyRow>
+      </div>
 
       <div className="my-3" />
 
-      <RelationManager issueId={issue.id} />
+      <div className="bg-card rounded-lg px-3 py-2 shadow-xs text-sm font-medium text-muted-foreground border border-border">
+        <RelationManager issueId={issue.id} />
+      </div>
     </div>
   )
 }
@@ -235,15 +239,15 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
           {agents.length === 0 && !delegatedAgent
             ? <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
             : agents.map(a => (
-                <DropdownMenuItem
-                  key={a.id}
-                  onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId, agentId: a.id })}
-                  data-testid={`issue-agent-option-${a.id}`}
-                >
-                  <BotIcon className="size-3 text-muted-foreground" />
-                  {a.name}
-                </DropdownMenuItem>
-              ))
+              <DropdownMenuItem
+                key={a.id}
+                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId, agentId: a.id })}
+                data-testid={`issue-agent-option-${a.id}`}
+              >
+                <BotIcon className="size-3 text-muted-foreground" />
+                {a.name}
+              </DropdownMenuItem>
+            ))
           }
         </DropdownMenuContent>
       </DropdownMenu>

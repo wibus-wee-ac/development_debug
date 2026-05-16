@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { getServerUrl } from '~/lib/electron'
-
-const SERVER_BASE = getServerUrl()
+import { getPreferencesJarvisOptions, getPreferencesJarvisQueryKey } from '~/api-gen/@tanstack/react-query.gen'
+import { putPreferencesJarvis } from '~/api-gen/sdk.gen'
+import type { PutPreferencesJarvisData } from '~/api-gen/types.gen'
 
 export interface JarvisPreferences {
   profileId: string | null
@@ -10,31 +10,31 @@ export interface JarvisPreferences {
   thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 }
 
-export const JARVIS_PREFS_QUERY_KEY = ['jarvis-preferences'] as const
+export const JARVIS_PREFS_QUERY_KEY = getPreferencesJarvisQueryKey()
 
-export function useJarvisPreferences() {
+export function useJarvisPreferencesQuery() {
+  return useQuery({
+    ...getPreferencesJarvisOptions(),
+    select: data => data as JarvisPreferences,
+  })
+}
+
+export function useUpdateJarvisPreferencesMutation() {
   const queryClient = useQueryClient()
 
-  const { data: prefs, isLoading } = useQuery({
-    queryKey: JARVIS_PREFS_QUERY_KEY,
-    queryFn: async (): Promise<JarvisPreferences> => {
-      const res = await fetch(`${SERVER_BASE}/preferences/jarvis`)
-      if (!res.ok) throw new Error('Failed to load Jarvis preferences')
-      return res.json() as Promise<JarvisPreferences>
-    },
-  })
+  return useMutation<JarvisPreferences | null, Error, Partial<JarvisPreferences>>({
+    mutationFn: async (updates) => {
+      const current = queryClient.getQueryData<JarvisPreferences>(JARVIS_PREFS_QUERY_KEY)
+      if (!current) {
+        return null
+      }
 
-  const { mutateAsync: savePrefs, isPending: isSaving } = useMutation({
-    mutationFn: async (updates: Partial<JarvisPreferences>) => {
-      const current = prefs
-      if (!current) return undefined
-      const updated = { ...current, ...updates }
-      await fetch(`${SERVER_BASE}/preferences/jarvis`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
+      const next = { ...current, ...updates }
+      await putPreferencesJarvis({
+        body: next as unknown as PutPreferencesJarvisData['body'],
       })
-      return updated
+
+      return next
     },
     onSuccess: (updated) => {
       if (updated) {
@@ -42,6 +42,11 @@ export function useJarvisPreferences() {
       }
     },
   })
+}
+
+export function useJarvisPreferences() {
+  const { data: prefs, isLoading } = useJarvisPreferencesQuery()
+  const { mutateAsync: savePrefs, isPending: isSaving } = useUpdateJarvisPreferencesMutation()
 
   return { prefs: prefs ?? null, isLoading, savePrefs, isSaving }
 }

@@ -69,6 +69,7 @@ describe('session capability', () => {
         workspaceId,
         title: 'Chat',
         agentProfileId,
+        modelId: null,
       }))
       expect(created.createdAt).toBeTypeOf('number')
       expect(created.updatedAt).toBeTypeOf('number')
@@ -76,11 +77,11 @@ describe('session capability', () => {
       const listRes = await app.handle(new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`))
       const list = await listRes.json()
       expect(list).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: sessionId }),
+        expect.objectContaining({ id: sessionId, modelId: null }),
       ]))
 
       const getRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
-      expect(await getRes.json()).toEqual(expect.objectContaining({ id: sessionId }))
+      expect(await getRes.json()).toEqual(expect.objectContaining({ id: sessionId, modelId: null }))
 
       const missingGet = await app.handle(new Request('http://localhost/sessions/missing'))
       expect(missingGet.status).toBe(404)
@@ -157,6 +158,12 @@ describe('session capability', () => {
         runtimeKind: 'standard',
         requestedModelId: 'gpt-test',
       }).run()
+
+      const getWithBindingRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await getWithBindingRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        modelId: 'gpt-test',
+      }))
 
       const runId = randomUUID()
       d.insert(backendRuns).values({

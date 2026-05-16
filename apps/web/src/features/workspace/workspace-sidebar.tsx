@@ -27,20 +27,22 @@ import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { deleteSessionsById, getSessionsByIdExportMarkdown, patchSessionsById } from '~/api-gen'
+import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
+import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
-import type { Session, Workspace } from '~/lib/types'
-import { useLayoutStore } from '~/store/layout'
+import type { Workspace } from '~/lib/types'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
-import { sessionsQueryKey, useSessions } from './use-session'
+import { sessionsQueryKey, type WorkspaceSession, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
 
 function SessionRenameInput({
@@ -72,12 +74,12 @@ function SessionRenameInput({
   return (
     <div
       role="group"
-      className="flex min-w-0 flex-1 items-center gap-1.5 px-2.5 py-1.5 text-sidebar-foreground/80"
+      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-sidebar-foreground/80"
       onClick={e => e.stopPropagation()}
       onKeyDown={e => e.stopPropagation()}
     >
       {pinned
-        ? <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${sessionId}`} />
+        ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${sessionId}`} />
         : null}
       <input
         ref={renameInputRef}
@@ -123,26 +125,19 @@ function formatRelativeTime(unixTimestamp: number): string {
 
 // ── Session item ──────────────────────────────────────────────────────────────
 
-function SessionItem({ session, workspaceId }: { session: Session, workspaceId: string }) {
+function SessionItem({ session, workspaceId }: { session: WorkspaceSession, workspaceId: string }) {
   'use no memo'
   const isActive = useIsActiveTab('chat', { sessionId: session.id })
   const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
-  const clearUnread = useSessionActivityStore(s => s.clearUnread)
   const [isRenaming, setIsRenaming] = useState(false)
-
-  // Clear unread badge when user navigates to this session
-  useEffect(() => {
-    if (isActive && isUnread) {
-      clearUnread(session.id)
-    }
-  }, [isActive, isUnread, clearUnread, session.id])
+  const sessionTitle = session.title ?? 'Untitled'
 
   const invalidateSessionQueries = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: ['chat-session', session.id] }),
+      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
     ])
   }, [queryClient, session.id, workspaceId])
 
@@ -167,13 +162,13 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
     const nextTitle = nextTitleRaw.trim()
     setIsRenaming(false)
 
-    if (!nextTitle || nextTitle === session.title) {
+    if (!nextTitle || nextTitle === sessionTitle) {
       return
     }
 
     await patchSessionsById({ path: { id: session.id }, body: { title: nextTitle } })
     await invalidateSessionQueries()
-  }, [invalidateSessionQueries, session.id, session.title])
+  }, [invalidateSessionQueries, session.id, sessionTitle])
 
   const handleRenameCancel = useCallback(() => {
     setIsRenaming(false)
@@ -216,7 +211,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       className={cn(
-        'group flex w-full items-center gap-1.5 rounded-md text-left text-xs transition-colors hover:bg-accent/60',
+        'group flex w-full items-center rounded-lg text-left text-xs transition-colors hover:bg-accent/50',
         !isRenaming && 'cursor-grab active:cursor-grabbing',
         isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
@@ -226,8 +221,8 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
       {isRenaming
         ? (
           <SessionRenameInput
-            key={`${session.id}:${session.title}`}
-            initialTitle={session.title}
+            key={`${session.id}:${sessionTitle}`}
+            initialTitle={sessionTitle}
             sessionId={session.id}
             pinned={Boolean(session.pinned)}
             updatedAt={session.updatedAt}
@@ -241,14 +236,14 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
               type="button"
               onClick={openSessionTab}
               data-testid={`session-open-${session.id}`}
-              className="flex flex-1 items-center gap-1.5 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
+              className="flex flex-1 items-center gap-2 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
             >
               {session.pinned
 ? (
-                <PinIcon className="size-2.5 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
+                <PinIcon className="size-3 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
               )
 : null}
-              <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{session.title}</span>
+              <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{sessionTitle}</span>
               {isUnread && !isActive && (
                 <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
               )}
@@ -261,7 +256,7 @@ function SessionItem({ session, workspaceId }: { session: Session, workspaceId: 
                 render={(
                   <button
                     type="button"
-                    className="shrink-0 rounded p-0.5 mr-2 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
+                    className="shrink-0 rounded-md p-0.5 mr-1 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
                     onClick={e => e.stopPropagation()}
                     aria-label="会话菜单"
                   />
@@ -318,25 +313,25 @@ function WorkspaceGroup({
 
   return (
     <div className="flex flex-col" data-testid={`workspace-group-${workspace.id}`}>
-      <div className="group flex items-center gap-1 rounded-lg px-1 py-0.5 hover:bg-accent/40 transition-colors">
+      <div className="group flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50 transition-colors">
         <button
           type="button"
           onClick={toggleExpanded}
           aria-label="切换工作区折叠状态"
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors"
+          className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70"
         >
           {expanded
-            ? <FolderOpenIcon className="size-4" aria-hidden="true" />
-            : <FolderClosedIcon className="size-4" aria-hidden="true" />}
+            ? <FolderOpenIcon className="size-3.5" aria-hidden="true" />
+            : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
         </button>
 
         <button
           type="button"
           onClick={openWorkspaceHome}
           data-testid={`workspace-open-${workspace.id}`}
-          className="flex min-w-0 flex-1 items-center px-1 py-1.5 text-left"
+          className="flex min-w-0 flex-1 items-center text-left"
         >
-          <span className="truncate text-xs font-medium text-sidebar-foreground/90">
+          <span className="truncate text-xs font-medium text-sidebar-foreground/80">
             {workspace.name}
           </span>
         </button>
@@ -347,7 +342,7 @@ function WorkspaceGroup({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                className="opacity-0 group-hover:opacity-100 transition-opacity -mr-1"
                 onClick={e => e.stopPropagation()}
               />
             )}
@@ -395,7 +390,7 @@ function WorkspaceGroup({
             transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
             className="overflow-hidden"
           >
-            <div className="ml-5 flex flex-col gap-0.5 border-l border-sidebar-border/50 pl-2.5 py-0.5">
+            <div className="ml-4.25 flex flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
               {sessions.length === 0 && (
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground">暂无会话</p>
               )}
@@ -433,13 +428,13 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: N
       type="button"
       onClick={onClick}
       data-testid={dataTestId}
-      className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
+      className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
     >
       {collapsed
         ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
+              <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
                 {icon}
               </span>
             </TooltipTrigger>
@@ -447,7 +442,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: N
           </Tooltip>
         )
         : (
-          <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
+          <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
             {icon}
           </span>
         )}
@@ -494,7 +489,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
   const { openTab } = useCradleNavigation()
-  const openSettings = useLayoutStore(s => s.openSettings)
+  const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const handleOpenSettings = useCallback(() => {
     const activeTabId = useCradleTabStore.getState().activeTabId
     if (activeTabId) {
@@ -518,42 +513,42 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       <TooltipProvider delayDuration={collapsed ? 0 : 600}>
         <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
           <TopNavItem
-            icon={<HomeIcon className="size-4" />}
+            icon={<HomeIcon className="size-3.5" />}
             label="首页"
             collapsed={collapsed}
             onClick={() => openTab('home')}
             dataTestId="nav-home"
           />
           <TopNavItem
-            icon={<MessageSquarePlusIcon className="size-4" />}
+            icon={<MessageSquarePlusIcon className="size-3.5" />}
             label="新建聊天"
             collapsed={collapsed}
             onClick={() => openTab('new-chat')}
             dataTestId="nav-new-chat"
           />
           <TopNavItem
-            icon={<SearchIcon className="size-4" />}
+            icon={<SearchIcon className="size-3.5" />}
             label="搜索"
             shortcut="⌘K"
             collapsed={collapsed}
             onClick={openSearch}
           />
           <TopNavItem
-            icon={<LayoutDashboardIcon className="size-4" />}
+            icon={<LayoutDashboardIcon className="size-3.5" />}
             label="看板"
             collapsed={collapsed}
             onClick={() => openTab('kanban-board')}
             dataTestId="nav-kanban"
           />
           <TopNavItem
-            icon={<BarChart3Icon className="size-4" />}
+            icon={<BarChart3Icon className="size-3.5" />}
             label="用量"
             collapsed={collapsed}
             onClick={() => openTab('usage')}
             dataTestId="nav-usage"
           />
           <TopNavItem
-            icon={<SettingsIcon className="size-4" />}
+            icon={<SettingsIcon className="size-3.5" />}
             label="设置"
             shortcut="⌘,"
             collapsed={collapsed}
@@ -563,12 +558,15 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         </nav>
       </TooltipProvider>
 
+      {/* ── Kanban section ── */}
+      <KanbanSidebar collapsed={collapsed} />
+
       {/* ── Projects section — always rendered, opacity fades on collapse ── */}
       <div
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
         style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
       >
-        <div className="flex items-center px-3.5 py-1.5">
+        <div className="flex items-center px-2.5 py-1.5">
           <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
             项目
           </span>
@@ -604,7 +602,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         </div>
 
         {/* Workspace list */}
-        <nav className="flex flex-col gap-0.5 overflow-y-auto px-1.5 pb-2" data-testid="workspace-list">
+        <nav className="flex flex-col gap-0.5 overflow-y-auto px-2 pb-2" data-testid="workspace-list">
           {workspaces.length === 0 && (
             <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
               <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">

@@ -18,6 +18,7 @@ interface ListProps {
   config: ViewConfig
   selectedIssueId?: string | null
   onIssueClick: (id: string) => void
+  onCreateIssue?: (groupId: string) => void
 }
 
 interface GroupDef {
@@ -32,6 +33,7 @@ export function KanbanList({
   milestones,
   config,
   selectedIssueId,
+  onCreateIssue,
   onIssueClick,
 }: ListProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
@@ -95,19 +97,20 @@ export function KanbanList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-4">
       {visibleGroups.map(group => {
         const groupIssues = groupedIssues[group.id] ?? []
         const isCollapsed = collapsed[group.id] ?? false
 
         return (
-          <div key={group.id}>
+          <div key={group.id} className="flex flex-col">
             <KanbanGroupHeader
               name={group.name}
               count={groupIssues.length}
               category={group.category}
               collapsed={isCollapsed}
               onToggle={() => toggleCollapse(group.id)}
+              onCreateIssue={onCreateIssue ? () => onCreateIssue(group.id) : undefined}
             />
             <AnimatePresence initial={false}>
               {!isCollapsed && (
@@ -117,7 +120,7 @@ export function KanbanList({
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-                  className="overflow-hidden"
+                  className="overflow-hidden flex flex-col gap-0.5 pt-1"
                 >
                   {groupIssues.map(issue => (
                     <KanbanListRow

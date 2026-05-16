@@ -8,14 +8,15 @@ import { useQuery } from '@tanstack/react-query'
 import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useReducer } from 'react'
 
-import { getProfilesById, getSessionsById, getWorkspacesById } from '~/api-gen/sdk.gen'
+import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
 import { RightAside } from '~/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import type { ChatTimelineGroupRow } from '~/features/chat/use-chat-session'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
 import { getServerUrl } from '~/lib/electron'
-import type { AgentProfile, Session, Workspace } from '~/lib/types'
+import type { AgentProfile, Workspace } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 
 const ChatView = lazy(() => import('~/features/chat/chat-view').then(m => ({ default: m.ChatView })))
@@ -79,22 +80,28 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
 
   // Fetch session metadata to get workspaceId → workspacePath for aside/panel
   const { data: session } = useQuery({
-    queryKey: ['chat-session', sessionId],
-    queryFn: async () => {
-      const { data } = await getSessionsById({ path: { id: sessionId } })
-      return data as Session | undefined
-    },
+    ...getSessionsByIdOptions({ path: { id: sessionId } }),
     enabled: !!sessionId,
+    select: data => data
+      ? {
+          id: data.id,
+          title: typeof data.title === 'string' ? data.title : null,
+          workspaceId: typeof data.workspaceId === 'string' ? data.workspaceId : null,
+          agentProfileId: typeof data.agentProfileId === 'string' ? data.agentProfileId : null,
+          runtimeKind: data.runtimeKind,
+        }
+      : undefined,
   })
+  const sessionAgentProfileId = session?.agentProfileId ?? null
 
   // Fetch agent profile to determine rendering mode (cli-tui vs chat)
   const { data: _agentProfile } = useQuery({
-    queryKey: ['agent-profile', session?.agentProfileId],
+    queryKey: ['agent-profile', sessionAgentProfileId],
     queryFn: async () => {
-      const { data } = await getProfilesById({ path: { id: session!.agentProfileId } })
+      const { data } = await getProfilesById({ path: { id: sessionAgentProfileId! } })
       return data as AgentProfile | undefined
     },
-    enabled: !!session?.agentProfileId,
+    enabled: !!sessionAgentProfileId,
     staleTime: 60_000,
   })
 

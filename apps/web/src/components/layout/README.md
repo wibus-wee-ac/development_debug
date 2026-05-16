@@ -14,6 +14,7 @@ Place domain-specific content components in `features/` instead.
 - **app-sidebar.tsx**: Workspace sidebar wrapper with settings navigation button. Handles keyboard shortcuts for toggling settings route and sidebar collapse, and now exposes stable sidebar mode / collapsed-state anchors for E2E assertions.
   Extracted from AppLayout to keep layout concerns separate from sidebar orchestration.
 - **dev-bottom-bar.tsx**: Dev-only slim footer inside `AppLayout` with a single button that opens the IPC devtool second window
+- **layout-geometry-context.tsx**: Explicit layout geometry contract that measures the center column and footer so overlay features can position themselves without DOM selectors or layout-tree guessing
 - **layout-slots-context.tsx**: React context + `LayoutSlotsProvider` for per-tab layout slot injection (aside, panel, hasAside, hasPanel, title, workspace, gitBranch). Consumed by `AppLayout` and used by tab content components via `useRegisterLayoutSlots`.
 - **resize-handle.tsx**: Draggable handle for resizing sidebar, aside, and panel widths/heights.
 - **right-aside.tsx**: Tabbed right side panel with File Tree, Git, and Issue tabs; accepts workspaceId, workspacePath, and sessionId props, can launch the pack-codebase dialog from the file tree flow, and exposes stable tab/content `data-testid` anchors for E2E navigation

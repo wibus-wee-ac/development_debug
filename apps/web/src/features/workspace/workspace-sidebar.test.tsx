@@ -13,6 +13,14 @@ const mockedDeps = vi.hoisted(() => ({
   navigate: vi.fn(),
   openInFinder: vi.fn(),
   deleteWorkspace: vi.fn(),
+  recordActivity: vi.fn(),
+  sessions: [
+    {
+      id: 'session-1',
+      title: 'Session One',
+      updatedAt: 100,
+    },
+  ],
 }))
 
 vi.mock('~/components/ui/button', () => ({
@@ -54,6 +62,10 @@ vi.mock('~/features/search/global-search-dialog', () => ({
   GlobalSearchDialog: () => null,
 }))
 
+vi.mock('~/features/kanban/kanban-sidebar', () => ({
+  KanbanSidebar: () => null,
+}))
+
 vi.mock('~/hooks/use-shortcut', () => ({
   useShortcut: () => { },
 }))
@@ -81,16 +93,27 @@ vi.mock('~/lib/ipc', () => ({
 }))
 
 vi.mock('~/store/session-activity', () => ({
-  useSessionActivityStore: (selector: (state: {
-    unread: Set<string>
-    clearUnread: ReturnType<typeof vi.fn>
-  }) => unknown) => selector({
-    unread: new Set(),
-    clearUnread: vi.fn(),
-  }),
+  useSessionActivityStore: Object.assign(
+    (selector: (state: {
+      unread: Set<string>
+    }) => unknown) => selector({
+      unread: new Set(),
+    }),
+    {
+      getState: () => ({
+        recordActivity: mockedDeps.recordActivity,
+      }),
+    },
+  ),
 }))
 
 vi.mock('@tanstack/react-query', () => ({
+  useQuery: () => ({
+    data: [],
+    isPending: false,
+    isFetching: false,
+    isLoading: false,
+  }),
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
   }),
@@ -104,8 +127,36 @@ vi.mock('~/tabs/use-cradle-navigation', () => ({
   useIsActiveTab: () => false,
 }))
 
+vi.mock('~/tabs/registry', () => ({
+  useCradleTabStore: Object.assign(
+    (selector: (state: {
+      activeTabId: string | null
+      tabs: Array<{ id: string, type: string }>
+    }) => unknown) => selector({
+      activeTabId: 'tab-1',
+      tabs: [{ id: 'tab-1', type: 'home' }],
+    }),
+    {
+      getState: () => ({
+        activeTabId: 'tab-1',
+        tabs: [{ id: 'tab-1', type: 'home' }],
+      }),
+    },
+  ),
+}))
+
 vi.mock('motion/react', () => ({
   AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  m: {
+    div: ({
+      children,
+      ...props
+    }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
+    span: ({
+      children,
+      ...props
+    }: React.HTMLAttributes<HTMLSpanElement>) => <span {...props}>{children}</span>,
+  },
   motion: {
     div: ({
       children,
@@ -121,13 +172,7 @@ vi.mock('motion/react', () => ({
 vi.mock('./use-session', () => ({
   sessionsQueryKey: (workspaceId: string) => ['sessions', workspaceId],
   useSessions: () => ({
-    sessions: [
-      {
-        id: 'session-1',
-        title: 'Session One',
-        updatedAt: Math.floor(Date.now() / 1000),
-      },
-    ],
+    sessions: mockedDeps.sessions,
   }),
 }))
 
@@ -153,6 +198,13 @@ vi.mock('./use-workspace', () => ({
 describe('workspaceSidebar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedDeps.sessions = [
+      {
+        id: 'session-1',
+        title: 'Session One',
+        updatedAt: 100,
+      },
+    ]
   })
 
   it('opens workspace-detail tab when workspace name is clicked without collapsing sessions', () => {
@@ -172,9 +224,29 @@ describe('workspaceSidebar', () => {
   it('collapses the session list only when the folder toggle is clicked', () => {
     render(<WorkspaceSidebar />)
 
-    fireEvent.click(screen.getByLabelText('切换工作区折叠状态'))
+    for (const toggle of screen.getAllByLabelText('切换工作区折叠状态')) {
+      fireEvent.click(toggle)
+    }
 
     expect(screen.queryByText('Session One')).toBeNull()
     expect(mockedDeps.navigate).not.toHaveBeenCalled()
+  })
+
+  it('does not infer unread activity from background session updatedAt changes', () => {
+    const view = render(<WorkspaceSidebar />)
+
+    expect(mockedDeps.recordActivity).not.toHaveBeenCalled()
+
+    mockedDeps.sessions = [
+      {
+        id: 'session-1',
+        title: 'Session One',
+        updatedAt: 101,
+      },
+    ]
+
+    view.rerender(<WorkspaceSidebar />)
+
+    expect(mockedDeps.recordActivity).not.toHaveBeenCalled()
   })
 })

@@ -7,6 +7,7 @@ Position: apps/server/src/modules/session
 # Session Module
 
 Session CRUD, pin toggle, message read, and markdown export.
+Session list/get responses also expose the currently requested model id from backend session bindings as `modelId` when a run has selected one.
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files

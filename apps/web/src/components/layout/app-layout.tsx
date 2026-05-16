@@ -8,11 +8,15 @@ import { useState } from 'react'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
+import { LayoutGeometryProvider, useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
+import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { useLayoutStore } from '~/store/layout'
+import { useCradleTabStore } from '~/tabs/registry'
 
 const ASIDE = { min: 200, max: 560 }
 const PANEL = { min: 80, max: 480 }
@@ -33,9 +37,20 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLayoutProps) {
+  return (
+    <LayoutGeometryProvider>
+      <AppLayoutContent hasAside={hasAside} hasPanel={hasPanel} aside={aside} panel={panel}>
+        {children}
+      </AppLayoutContent>
+    </LayoutGeometryProvider>
+  )
+}
+
+function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
 
   useGlobalEventListeners()
+  const { registerCenterColumn } = useLayoutGeometry()
 
   // Per-tab layout slots registered by tab content components
   const { slots } = useLayoutSlotsCtx()
@@ -45,18 +60,19 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
   const resolvedPanel = slots.panel ?? panel
   const resolvedHasAside = slots.hasAside ?? hasAside
   const resolvedHasPanel = slots.hasPanel ?? hasPanel
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
+  const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
   const {
-    settingsTabId,
     asideWidth,
     setAsideWidth,
     asideOpen,
     bottomPanelHeight,
     setBottomPanelHeight,
     bottomPanelOpen,
-    jarvisExpanded,
   } = useLayoutStore()
-  const isSettings = settingsTabId !== null
+  const isSettings = settingsTabId !== null && settingsTabId === activeTabId
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
@@ -70,6 +86,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
       <div className="flex flex-1 overflow-hidden min-h-0">
         {/* Center column */}
         <m.div
+          ref={registerCenterColumn}
           data-slot="app-center-column"
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
           animate={jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }}

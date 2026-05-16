@@ -15,17 +15,57 @@ import { db } from '../../infra'
 
 // ── session CRUD ──
 
-export function list(workspaceId: string): Session[] {
-  return db()
+export type SessionView = Session & { modelId: string | null }
+
+function listRequestedModelIdsBySessionIds(sessionIds: string[]): Map<string, string | null> {
+  if (sessionIds.length === 0) {
+    return new Map()
+  }
+
+  const bindings = db()
+    .select({
+      chatSessionId: backendSessionBindings.chatSessionId,
+      requestedModelId: backendSessionBindings.requestedModelId,
+    })
+    .from(backendSessionBindings)
+    .where(inArray(backendSessionBindings.chatSessionId, sessionIds))
+    .all()
+
+  return new Map(bindings.map(binding => [binding.chatSessionId, binding.requestedModelId ?? null]))
+}
+
+function toSessionView(session: Session, modelId: string | null): SessionView {
+  return {
+    ...session,
+    modelId,
+  }
+}
+
+export function list(workspaceId: string): SessionView[] {
+  const rows = db()
     .select()
     .from(sessions)
     .where(eq(sessions.workspaceId, workspaceId))
     .orderBy(desc(sessions.updatedAt))
     .all()
+
+  const modelIdsBySessionId = listRequestedModelIdsBySessionIds(rows.map(row => row.id))
+  return rows.map(row => toSessionView(row, modelIdsBySessionId.get(row.id) ?? null))
 }
 
-export function get(id: string): Session | null {
-  return db().select().from(sessions).where(eq(sessions.id, id)).get() ?? null
+export function get(id: string): SessionView | null {
+  const row = db().select().from(sessions).where(eq(sessions.id, id)).get() ?? null
+  if (!row) {
+    return null
+  }
+
+  const modelId = db()
+    .select({ requestedModelId: backendSessionBindings.requestedModelId })
+    .from(backendSessionBindings)
+    .where(eq(backendSessionBindings.chatSessionId, id))
+    .get()?.requestedModelId ?? null
+
+  return toSessionView(row, modelId)
 }
 
 export function create(input: {
@@ -36,9 +76,9 @@ export function create(input: {
   runtimeKind?: RuntimeKind
   agentId?: string | null
   linkedIssueId?: string | null
-}): Session {
+}): SessionView {
   const id = input.id ?? randomUUID()
-  return db()
+  const created = db()
     .insert(sessions)
     .values({
       id,
@@ -51,9 +91,11 @@ export function create(input: {
     })
     .returning()
     .get()
+
+  return toSessionView(created, null)
 }
 
-export function update(input: { id: string, title?: string, pinned?: boolean }): Session | null {
+export function update(input: { id: string, title?: string, pinned?: boolean }): SessionView | null {
   const record = db().select().from(sessions).where(eq(sessions.id, input.id)).get()
   if (!record) {
     return null
@@ -70,7 +112,7 @@ export function update(input: { id: string, title?: string, pinned?: boolean }):
   }
 
   db().update(sessions).set(patch).where(eq(sessions.id, input.id)).run()
-  return db().select().from(sessions).where(eq(sessions.id, input.id)).get() ?? null
+  return get(input.id)
 }
 
 export function updateTitle(input: { id: string, title: string }): void {

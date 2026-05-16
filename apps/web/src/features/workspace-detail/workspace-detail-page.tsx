@@ -19,13 +19,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getSessions, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
+import { startChatResponse } from '~/features/chat/chat-response-command'
 import { SkillManager } from '~/features/skills/skill-manager'
-import { sessionsQueryKey } from '~/features/workspace/use-session'
+import { sessionsQueryKey, type WorkspaceSession } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
-import type { Session, Workspace } from '~/lib/types'
+import type { Workspace } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { CapsuleComposer } from './capsule-composer'
@@ -392,7 +392,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     queryKey: sessionsQueryKey(workspaceId),
     queryFn: async () => {
       const { data } = await getSessions({ query: { workspaceId } })
-      return (data ?? []) as Session[]
+      return (data ?? []) as WorkspaceSession[]
     },
     enabled: !!workspaceId,
   })
@@ -459,10 +459,9 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     if (!session?.id) {
       return
     }
-    await fetch(`${getServerUrl()}/chat/sessions/${session.id}/response`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort }),
+    await startChatResponse({
+      sessionId: session.id,
+      body: { text, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
     })
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     openTab('chat', { sessionId: session.id })
