@@ -150,6 +150,9 @@
       "electron",
       "esbuild",
       "node-pty"
-    ]
+    ],
+    "patchedDependencies": {
+      "@elysiajs/node@1.4.5": "patches/@elysiajs__node@1.4.5.patch"
+    }
   }
 }
