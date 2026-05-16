@@ -56,7 +56,7 @@ export const kanbanIssues = sqliteTable('kanban_issues', {
   labels: text('labels').notNull().default('[]'),
   assigneeKind: text('assignee_kind'),
   assigneeId: text('assignee_id'),
-  delegateAgentId: text('delegate_agent_id'),
+  delegateAgentProfileId: text('delegate_agent_profile_id'),
   contextRefs: text('context_refs').notNull().default('[]'),
   order: int('order').notNull().default(0),
   ...timestamps(),
