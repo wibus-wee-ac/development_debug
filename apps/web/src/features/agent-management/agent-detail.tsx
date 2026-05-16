@@ -529,26 +529,27 @@ function AgentIdentitySection({
           onValueChange={value => form.setValue('runtimeKind', value as RuntimeKind, { shouldDirty: true })}
         >
           <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-runtime-select">
-            <SelectValue aria-hidden className="absolute opacity-0 pointer-events-none" />
-            {(() => {
+          <div className="flex items-center gap-2">
+          {(() => {
               const opt = RUNTIME_OPTIONS.find(o => o.value === draft.runtimeKind)
               return opt
                 ? (
-                  <span className="flex items-center gap-2">
+                  <span className="">
                     {opt.icon}
-                    <span>{opt.label}</span>
                   </span>
                 )
                 : <span className="text-muted-foreground">Select runtime…</span>
             })()}
+            <SelectValue />
+          </div>
           </SelectTrigger>
-          <SelectContent className="w-72">
+          <SelectContent className="w-64">
             {RUNTIME_OPTIONS.map(opt => (
               <RadixSelect.Item
                 key={opt.value}
                 value={opt.value}
                 className={cn(
-                  'relative flex w-full cursor-default items-center gap-3 rounded-md py-2.5 pr-8 pl-2 text-sm outline-hidden select-none',
+                  'relative flex w-full cursor-default items-start gap-2.5 rounded-md py-2 pr-8 pl-2 text-sm outline-hidden select-none',
                   'focus:bg-accent focus:text-accent-foreground',
                   'data-disabled:pointer-events-none data-disabled:opacity-50',
                 )}
@@ -558,13 +559,15 @@ function AgentIdentitySection({
                     <CheckIcon className="pointer-events-none size-3" />
                   </RadixSelect.ItemIndicator>
                 </span>
-                <span className="shrink-0">{opt.icon}</span>
-                <RadixSelect.ItemText asChild>
-                  <span className="flex flex-col gap-0.5">
-                    <span className="text-[12.5px] font-medium leading-tight">{opt.label}</span>
-                    <span className="text-[11px] text-muted-foreground leading-snug">{opt.description}</span>
+                <span className="mt-0.5 shrink-0">{opt.icon}</span>
+                <div className="flex flex-col gap-0.5 min-w-0">
+                  <RadixSelect.ItemText className="text-[12.5px] font-medium">
+                    {opt.label}
+                  </RadixSelect.ItemText>
+                  <span className="text-[11px] text-muted-foreground leading-snug">
+                    {opt.description}
                   </span>
-                </RadixSelect.ItemText>
+                </div>
               </RadixSelect.Item>
             ))}
           </SelectContent>

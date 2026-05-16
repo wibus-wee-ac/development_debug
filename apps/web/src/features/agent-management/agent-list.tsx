@@ -49,7 +49,7 @@ function AgentSidebarRow({
 }) {
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
   const profile = profiles.find(p => p.id === agent.agentProfileId)
-  const subtitle = [profile?.name, agent.modelId].filter(Boolean).join(' · ')
+  const subtitle = [profile?.name, agent.modelId].filter(Boolean).join(' ·\n') || undefined
 
   return (
     <button
@@ -87,7 +87,7 @@ function AgentSidebarRow({
           <StatusDot tone={agent.enabled ? 'active' : 'muted'} />
         </div>
         {subtitle && (
-          <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/70">
+          <span className="block text-[10.5px] leading-tight text-muted-foreground/70 truncate whitespace-pre">
             {subtitle}
           </span>
         )}
