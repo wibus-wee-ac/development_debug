@@ -44,7 +44,7 @@ apps/desktop/
 
 ### Phase 3: Tab Tearoff
 - [x] `WindowManager` — manage session tearoff windows
-- [x] Hook into @cradle/tabs `onTabTearOff` → IPC → new BrowserWindow
+- [x] Hook into the tab runtime `onTabTearOff` → IPC → new BrowserWindow
 
 ### Phase 4: Devbar
 - [ ] Electron-only devtool window (IPC observer panel)

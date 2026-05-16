@@ -66,12 +66,12 @@ Desktop should use `activity-pool` with a small maximum. Web can use `single`.
 
 ## Migration Strategy
 
-1. Add `@cradle/tabs-next` alongside `@cradle/tabs`.
+1. Add `@cradle/tabs-next` alongside the legacy tab package.
 2. Switch the app imports to the compatibility surface.
 3. Keep current tab definitions working through `defineTab()`.
 4. Move page metadata into route-owned capabilities.
 5. Replace compatibility actions with route-location navigation.
-6. Remove the old `@cradle/tabs` package after all route owners are migrated.
+6. Remove the old legacy tab package after all route owners are migrated.
 
 ## Current Prototype Scope
 

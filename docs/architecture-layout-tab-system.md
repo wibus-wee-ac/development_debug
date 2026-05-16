@@ -1,16 +1,16 @@
 # Cradle Layout & Tab Router System — 核心架构解析
 
-> 本文档于 2026-04-29 生成，覆盖 Tab 系统、Layout 系统、LayoutSlots 注入机制的完整设计。
-> 对应实现见 `packages/tabs/`、`src/renderer/src/tabs/`、`src/renderer/src/components/layout/`。
+> 本文档于 2026-04-29 生成，覆盖旧版 Tab 系统、Layout 系统、LayoutSlots 注入机制的历史设计。
+> 旧版 `packages/tabs/` 已迁移到 `packages/tabs-next/`；当前实现见 `apps/web/src/tabs/` 与 `apps/web/src/components/layout/`。
 
 ---
 
-## 1. Tab 系统核心 (`packages/tabs/`)
+## 1. Tab 系统核心（legacy）
 
 ### 1.1 `defineTab()` / `TabDefinition`
 
 ```typescript
-// packages/tabs/src/define-tab.ts
+// legacy packages/tabs/src/define-tab.ts
 interface TabDefinition<TType, TParams, TLoaderData> {
   type: TType                         // 唯一字符串 key
   label: string | ((params) => string)
@@ -396,7 +396,7 @@ Tab 内容（TabRenderer 内部）在 TabsProvider 内，可正常访问 LayoutS
 ## 6. 关键依赖关系图
 
 ```
-packages/tabs/ (@cradle/tabs)
+legacy packages/tabs/
   define-tab.ts        ←── 类型定义
   store.ts             ←── createTabStore (zustand+persist)
   context.ts           ←── TabsContext

@@ -35,7 +35,7 @@ Current architecture references:
 
 | Package | Description | Status |
 |---|---|---|
-| [`@cradle/tabs`](./packages/tabs) | Activity-based tab management for React desktop apps. Uses React 19 `<Activity>` for tab lifecycle and a registry pattern for tab types. | ![Beta](https://img.shields.io/badge/status-Beta-yellow) |
+| [`@cradle/tabs-next`](./packages/tabs-next) | Navigation-context tab runtime for React desktop apps, with retained tab history and bounded Activity rendering. | ![Beta](https://img.shields.io/badge/status-Beta-yellow) |
 | [`@cradle/ipc`](./packages/ipc) [^ipc-decorator] | Type-safe IPC communication layer for Electron apps, built on top of `electron-ipc-decorator`. Provides a structured way to define IPC services with decorators, automatic type inference, and error handling. | ![Stable](https://img.shields.io/badge/status-Stable-green) |
 
 ## Author

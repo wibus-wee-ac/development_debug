@@ -28,7 +28,7 @@ Feature: Electron Wrapper (Native Features)
     - 关闭时清理 Map
     - 新窗口 sidebar 默认隐藏、不干扰全局 tab 切换
   - Tab bar DnD 集成 — 拖 tab item 到窗口外 → 调 ipc.window.tearOffSession(sessionId, x, y)
-    - 需要 @cradle/tabs 包的 TabBar 支持 dragend 事件 + 屏幕坐标捕获
+    - 需要 tab runtime 的 TabBar 支持 dragend 事件 + 屏幕坐标捕获
 
   四、Native Features
      

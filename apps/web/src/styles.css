@@ -11,7 +11,7 @@
   }
 }
 
-@source "../../../packages/tabs/src/**/*.tsx";
+@source "../../../packages/tabs-next/src/**/*.tsx";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/sn-pro";
 @import "@fontsource-variable/geist";

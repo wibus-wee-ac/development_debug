@@ -28,9 +28,6 @@ importers:
       '@cradle/ipc':
         specifier: workspace:*
         version: link:packages/ipc
-      '@cradle/tabs':
-        specifier: workspace:*
-        version: link:packages/tabs
       '@cradle/tabs-next':
         specifier: workspace:*
         version: link:packages/tabs-next
@@ -569,9 +566,6 @@ importers:
       '@cradle/streamdown':
         specifier: workspace:*
         version: link:../../packages/streamdown
-      '@cradle/tabs':
-        specifier: workspace:*
-        version: link:../../packages/tabs
       '@cradle/tabs-next':
         specifier: workspace:*
         version: link:../../packages/tabs-next
@@ -874,24 +868,6 @@ importers:
       shiki:
         specifier: ^3.0.0
         version: 3.23.0
-
-  packages/tabs:
-    dependencies:
-      clsx:
-        specifier: '>=2.0.0'
-        version: 2.1.1
-      react:
-        specifier: '>=19.0.0'
-        version: 19.2.5
-      react-dom:
-        specifier: '>=19.0.0'
-        version: 19.2.5(react@19.2.5)
-      tailwind-merge:
-        specifier: '>=2.0.0'
-        version: 3.5.0
-      zustand:
-        specifier: '>=5.0.0'
-        version: 5.0.12(@types/react@19.2.14)(immer@11.1.4)(react@19.2.5)(use-sync-external-store@1.6.0(react@19.2.5))
 
   packages/tabs-next:
     dependencies:
