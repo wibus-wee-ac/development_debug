@@ -173,7 +173,7 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
     env: {
       ...config.env,
       CRADLE_CHAT_SESSION_ID: input.sessionId,
-      CRADLE_WORKSPACE_ID: context.session.workspaceId ?? undefined,
+      ...(context.session.workspaceId ? { CRADLE_WORKSPACE_ID: context.session.workspaceId } : {}),
     },
   })
 

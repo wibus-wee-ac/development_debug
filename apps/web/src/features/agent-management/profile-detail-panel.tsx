@@ -190,6 +190,8 @@ export function ProfileDetailPanel({
   const saveRequestRef = useRef(0)
 
   const createProviderRequestBody = useCallback(() => buildProviderRequestBody(profile), [profile])
+  const createProviderRequestBodyRef = useRef(createProviderRequestBody)
+  createProviderRequestBodyRef.current = createProviderRequestBody
 
   const clearAutoSaveTimer = useCallback(() => {
     clearTimer(autoSaveTimerRef)
@@ -239,7 +241,7 @@ export function ProfileDetailPanel({
     dispatch({ type: 'models/loading' })
 
     postProvidersModels({
-      body: createProviderRequestBody(),
+      body: createProviderRequestBodyRef.current(),
     })
       .then(({ data }) => {
         if (requestId !== modelsRequestRef.current) {
@@ -255,7 +257,7 @@ export function ProfileDetailPanel({
 
         dispatch({ type: 'models/failed' })
       })
-  }, [supportsModels, profile.id, modelFetchKey, createProviderRequestBody])
+  }, [supportsModels, profile.id, modelFetchKey])
 
   // Health check on load + when key fields change
   const runHealthCheck = useCallback(async () => {

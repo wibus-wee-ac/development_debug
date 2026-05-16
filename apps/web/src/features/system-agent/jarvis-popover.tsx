@@ -49,7 +49,7 @@ export function JarvisPopover({
     })()
   }, [])
 
-  const { messages, status, sendMessage, stop } = useChatSession(jarvisSessionId)
+  const { messages, status, error, sendMessage, stop } = useChatSession(jarvisSessionId)
   const isStreaming = status === 'streaming'
 
   // Send the initial message once the session ID becomes available
@@ -115,12 +115,15 @@ export function JarvisPopover({
     }
   }, [open])
 
+  const [sendError, setSendError] = React.useState<string | null>(null)
+
   const handleSend = React.useCallback(async () => {
     const text = input.trim()
     if (!text || isStreaming || !profileId || creating) {
       return
     }
 
+    setSendError(null)
     setInput('')
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -137,21 +140,26 @@ export function JarvisPopover({
     if (!sessionId) {
       setCreating(true)
       try {
-        const { data } = await postSessions({
+        const res = await postSessions({
           body: {
             title: 'Jarvis',
             agentProfileId: profileId,
             runtimeKind: 'jar-core',
-          } as never,
+          },
         })
-        const session = data as { id: string } | null
+        const session = res.data as { id: string } | null
         if (!session?.id) {
+          setSendError(res.error ? String((res.error as { message?: string }).message ?? res.error) : 'Session creation failed')
           return
         }
         sessionId = session.id
         setJarvisSessionId(sessionId)
         setPendingInitialText(fullText)
         return  // useEffect will send once sessionId state propagates
+      }
+      catch (e) {
+        setSendError(e instanceof Error ? e.message : 'Failed to create session')
+        return
       }
       finally {
         setCreating(false)
@@ -257,10 +265,26 @@ export function JarvisPopover({
                   <div className="flex size-10 items-center justify-center rounded-xl bg-muted mb-4">
                     <MousePointer2Icon className="size-4.5 text-foreground" />
                   </div>
-                  <p className="text-[13px] font-medium text-foreground mb-1.5">What can I help with?</p>
-                  <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                    I have full awareness of your workspace — active tabs, chat sessions, and current layout.
-                  </p>
+                  {profileId === null
+                    ? (
+                      <>
+                        <p className="text-[13px] font-medium text-foreground mb-1.5">No profile configured</p>
+                        <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                          Go to Settings → Jarvis and select a provider profile and model.
+                        </p>
+                      </>
+                    )
+                    : (
+                      <>
+                        <p className="text-[13px] font-medium text-foreground mb-1.5">What can I help with?</p>
+                        <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                          I have full awareness of your workspace — active tabs, chat sessions, and current layout.
+                        </p>
+                        {sendError && (
+                          <p className="text-xs text-destructive/80 text-center mt-3">{sendError}</p>
+                        )}
+                      </>
+                    )}
                 </div>
               )
               : (
@@ -288,6 +312,16 @@ export function JarvisPopover({
                       <span className="size-1.5 rounded-full bg-foreground/20 animate-pulse [animation-delay:300ms]" />
                     </div>
                   )}
+                  {error && (
+                    <div className="text-xs text-destructive/80 px-1 py-1">
+                      {error}
+                    </div>
+                  )}
+                  {sendError && (
+                    <div className="text-xs text-destructive/80 px-1 py-1">
+                      {sendError}
+                    </div>
+                  )}
                 </div>
               )}
           </ScrollArea>
@@ -305,9 +339,10 @@ export function JarvisPopover({
                   el.style.height = `${Math.min(el.scrollHeight, 120)}px`
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask Jarvis..."
+                placeholder={!profileId ? 'Configure a profile in Settings → Jarvis' : 'Ask Jarvis...'}
                 rows={1}
-                className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none min-h-9 max-h-30 rounded-t-xl"
+                disabled={!profileId}
+                className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none min-h-9 max-h-30 rounded-t-xl disabled:opacity-50"
               />
               <div className="flex items-center justify-end px-2.5 pb-2">
                 {isStreaming
@@ -320,7 +355,7 @@ export function JarvisPopover({
                     <Button
                       variant="default"
                       size="icon-xs"
-                      disabled={!input.trim() || creating}
+                      disabled={!input.trim() || creating || !profileId}
                       onClick={() => void handleSend()}
                       aria-label="Send"
                     >

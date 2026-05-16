@@ -3,6 +3,7 @@
 // Position: Rendered at app root; persists across tab changes
 
 import { AnimatePresence, m } from 'motion/react'
+import { useCallback } from 'react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
@@ -31,16 +32,31 @@ export function AppSidebar() {
     setSidebarWidth,
     sidebarCollapsed,
     toggleSidebar,
-    isSettings,
+    settingsTabId,
     settingsSection,
     openSettings,
     closeSettings,
     setSettingsSection,
   } = useLayoutStore()
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
   const activeTabType = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type)
   const isKanban = activeTabType === 'kanban-board'
+  // Sidebar shows settings nav when the active tab has settings overlaid on it
+  const isSettings = settingsTabId !== null && settingsTabId === activeTabId
 
-  useShortcut('toggle-settings', { meta: true, key: ',' }, isSettings ? closeSettings : openSettings)
+  const handleToggleSettings = useCallback(() => {
+    if (isSettings) {
+      closeSettings()
+    }
+    else {
+      const id = useCradleTabStore.getState().activeTabId
+      if (id) {
+        openSettings(id)
+      }
+    }
+  }, [isSettings, closeSettings, openSettings])
+
+  useShortcut('toggle-settings', { meta: true, key: ',' }, handleToggleSettings)
   useShortcut('exit-settings', { key: 'Escape' }, closeSettings, isSettings)
   useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebar)
 

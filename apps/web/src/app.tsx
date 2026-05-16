@@ -16,6 +16,7 @@ import { AnchoredToastProvider, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
 import { SettingsContent } from '~/features/settings/settings-content'
+import { cn } from '~/lib/cn'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useLayoutStore } from '~/store/layout'
 import { useThemeStore } from '~/store/theme'
@@ -55,13 +56,15 @@ function AppRuntime() {
   'use no memo'
 
   const mode = useThemeStore(s => s.mode)
-  const { isSettings, settingsSection } = useLayoutStore()
+  const { settingsTabId, settingsSection, closeSettings } = useLayoutStore()
 
-  // Derive active slot id from tab store (replaces ActiveSlotSync effect)
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   const tabs = useCradleTabStore(s => s.tabs)
   const activeTab = tabs.find(t => t.id === activeTabId)
   const activeSlotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+
+  // Settings overlay is visible when the settings tab is the currently active tab
+  const isSettingsVisible = settingsTabId !== null && settingsTabId === activeTabId
 
   // Ensure at least one home tab exists on startup (fresh or cleared state)
   useEffect(() => {
@@ -70,7 +73,7 @@ function AppRuntime() {
     if (homeTabs.length === 0) {
       openTab('home', {}, { pinned: true })
     }
- else if (homeTabs.length > 1) {
+    else if (homeTabs.length > 1) {
       // Clean up duplicate pinned home tabs (persist migration)
       for (const dup of homeTabs.slice(1)) {
         useCradleTabStore.setState(s => ({
@@ -105,15 +108,32 @@ function AppRuntime() {
           <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
             <AppSidebar />
             <AppLayout>
-              {isSettings
-                ? <SettingsContent section={settingsSection} />
-                : (
-                    <TabRenderer
-                      fallback={null}
-                      className="h-full flex overflow-hidden w-full"
-                      policy={PERSONAL_WORKSPACE_TAB_POLICY}
-                    />
-                  )}
+              <div className="relative h-full w-full overflow-hidden">
+                <div
+                  className={cn('h-full w-full overflow-hidden', isSettingsVisible && 'invisible pointer-events-none')}
+                  aria-hidden={isSettingsVisible ? 'true' : undefined}
+                >
+                  <TabRenderer
+                    fallback={null}
+                    className="h-full flex overflow-hidden w-full"
+                    policy={PERSONAL_WORKSPACE_TAB_POLICY}
+                  />
+                </div>
+                {isSettingsVisible && (
+                  <div
+                    className="absolute inset-0 bg-background"
+                    data-testid="settings-tab-overlay"
+                    onKeyDownCapture={(event) => {
+                      if (event.key === 'Escape' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                        event.preventDefault()
+                        closeSettings()
+                      }
+                    }}
+                  >
+                    <SettingsContent section={settingsSection} />
+                  </div>
+                )}
+              </div>
             </AppLayout>
           </div>
         </TabsProvider>

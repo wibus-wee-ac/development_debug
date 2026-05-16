@@ -1,4 +1,4 @@
-// Input: ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, SettingsContent, useLayoutSlotsCtx
+// Input: ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, useLayoutSlotsCtx
 // Output: AppLayout component — content area layout (header + main + aside + panel)
 // Position: Core layout component; sidebar is rendered separately in __root.tsx
 
@@ -11,7 +11,6 @@ import { AppHeader } from '~/components/layout/app-header'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
-import { SettingsContent } from '~/features/settings/settings-content'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { useLayoutStore } from '~/store/layout'
 
@@ -48,8 +47,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
   const resolvedHasPanel = slots.hasPanel ?? hasPanel
 
   const {
-    isSettings,
-    settingsSection,
+    settingsTabId,
     asideWidth,
     setAsideWidth,
     asideOpen,
@@ -58,6 +56,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
     bottomPanelOpen,
     jarvisExpanded,
   } = useLayoutStore()
+  const isSettings = settingsTabId !== null
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
@@ -77,7 +76,7 @@ export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLay
           transition={SPRING}
         >
           <main className="flex flex-col flex-1 bg-background overflow-hidden rounded-xl">
-            {isSettings ? <SettingsContent section={settingsSection} /> : children}
+            {children}
           </main>
 
           {/* Bottom panel resize handle */}

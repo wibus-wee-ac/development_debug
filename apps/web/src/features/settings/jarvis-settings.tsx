@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { getServerUrl } from '~/lib/electron'
 
@@ -10,6 +11,7 @@ const SERVER_BASE = getServerUrl()
 
 interface JarvisPreferences {
   profileId: string | null
+  model?: string
   thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 }
 
@@ -25,6 +27,7 @@ export function JarvisSettings() {
   const [prefs, setPrefs] = useState<JarvisPreferences | null>(null)
   const [saving, setSaving] = useState(false)
   const { profiles } = useAgentProfiles()
+  const { models, isLoading: isLoadingModels } = useAgentModels(prefs?.profileId ?? null)
 
   useEffect(() => {
     void (async () => {
@@ -79,6 +82,24 @@ export function JarvisSettings() {
             <SelectItem value="__none__">Not configured</SelectItem>
             {profiles.map(p => (
               <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingsRow>
+
+      <SettingsRow label="Model" description="Which model Jarvis should use from the selected profile">
+        <Select
+          value={prefs.model ?? '__none__'}
+          onValueChange={v => void save({ model: v === '__none__' ? undefined : v })}
+          disabled={saving || isLoadingModels || !prefs.profileId}
+        >
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder={isLoadingModels ? 'Loading…' : 'Select a model…'} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Auto (profile default)</SelectItem>
+            {models.map(m => (
+              <SelectItem key={m.id} value={m.id}>{m.label ?? m.id}</SelectItem>
             ))}
           </SelectContent>
         </Select>

@@ -4,7 +4,7 @@ import { BotIcon, CheckIcon, PlusIcon } from 'lucide-react'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { useAgents } from '~/features/agent-runtime/use-agents'
 import { LabelChip } from '../shared/label-chip'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
@@ -218,13 +218,13 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
 }
 
 function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
-  const { profiles } = useAgentProfiles()
+  const { agents } = useAgents()
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
-  const enabledProfiles = profiles.filter(p => p.enabled)
 
-  const delegatedProfile = issue.delegateAgentId
-    ? profiles.find(p => p.id === issue.delegateAgentId)
+  // delegateAgentId stores the agentProfileId; find the agent whose profile matches
+  const delegatedAgent = issue.delegateAgentId
+    ? agents.find(a => a.agentProfileId === issue.delegateAgentId) ?? null
     : null
 
   return (
@@ -235,11 +235,11 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
           data-testid="issue-agent-delegate-trigger"
         >
           <BotIcon className="size-3" />
-          <span>{delegatedProfile ? delegatedProfile.name : 'Unassigned'}</span>
+          <span>{delegatedAgent ? delegatedAgent.name : 'Unassigned'}</span>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-48 p-1">
           <div>
-          {delegatedProfile && (
+          {delegatedAgent && (
             <button
               type="button"
               onClick={() => undelegateIssue.mutate({ issueId: issue.id })}
@@ -249,23 +249,23 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
               <span className="flex-1 text-left">Unassigned</span>
             </button>
           )}
-          {enabledProfiles.length === 0 ? (
-            !delegatedProfile && <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No providers configured</p>
+          {agents.length === 0 ? (
+            !delegatedAgent && <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
           ) : (
-            enabledProfiles.map(p => (
+            agents.map(a => (
               <button
-                key={p.id}
+                key={a.id}
                 type="button"
-                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: p.id })}
+                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId, agentId: a.id })}
                 className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] transition-colors ${
-                  delegatedProfile?.id === p.id
+                  delegatedAgent?.id === a.id
                     ? 'text-foreground bg-fill/50'
                     : 'text-foreground hover:bg-fill'
                 }`}
-                data-testid={`issue-agent-option-${p.id}`}
+                data-testid={`issue-agent-option-${a.id}`}
               >
                 <BotIcon className="size-3 text-muted-foreground" />
-                <span className="flex-1 text-left">{p.name}</span>
+                <span className="flex-1 text-left">{a.name}</span>
               </button>
             ))
           )}

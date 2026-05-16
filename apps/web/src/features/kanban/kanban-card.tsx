@@ -56,9 +56,10 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onClick() } }}
         data-testid={`issue-card-${issue.id}`}
         className={cn(
-          'bg-card rounded-lg px-3.5 py-2.5 cursor-pointer',
-          'transition-[background-color,transform] duration-150 ease-out',
-          'hover:bg-accent',
+          'bg-card rounded-md px-3.5 py-2.5 cursor-pointer',
+          'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_rgba(0,0,0,0.04)]',
+          'transition-[background-color,transform,box-shadow] duration-150 ease-out',
+          'hover:bg-accent hover:shadow-[0_2px_6px_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.05)]',
           'active:scale-[0.97]',
           isDragging && 'opacity-50',
         )}

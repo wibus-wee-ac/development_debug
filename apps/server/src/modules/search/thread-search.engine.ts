@@ -26,7 +26,7 @@ export interface ThreadSearchSnippet {
 
 export interface ThreadSearchHit {
   sessionId: string
-  workspaceId: string
+  workspaceId: string | null
   workspaceName: string | null
   sessionTitle: string
   titleRanges: MatchRange[]
@@ -275,7 +275,7 @@ function searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
   const sessionIds = [...sessionMap.keys()]
   const sessionRows = d.select().from(sessions).where(inArray(sessions.id, sessionIds)).all()
   const sessionById = new Map(sessionRows.map(session => [session.id, session]))
-  const workspaceIds = [...new Set(sessionRows.map(session => session.workspaceId))]
+  const workspaceIds = [...new Set(sessionRows.map(session => session.workspaceId).filter((id): id is string => !!id))]
   const workspaceRows = workspaceIds.length > 0
     ? d.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)).all()
     : []
@@ -300,7 +300,7 @@ function searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
     hits.push({
       sessionId,
       workspaceId: session.workspaceId,
-      workspaceName: workspaceNameById.get(session.workspaceId) ?? null,
+      workspaceName: session.workspaceId ? workspaceNameById.get(session.workspaceId) ?? null : null,
       sessionTitle: session.title,
       titleRanges,
       snippets,
@@ -332,7 +332,7 @@ function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
     return []
   }
 
-  const workspaceIds = [...new Set(sessionRows.map(session => session.workspaceId))]
+  const workspaceIds = [...new Set(sessionRows.map(session => session.workspaceId).filter((id): id is string => !!id))]
   const workspaceRows = workspaceIds.length > 0
     ? d.select().from(workspaces).where(inArray(workspaces.id, workspaceIds)).all()
     : []
@@ -393,7 +393,7 @@ function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
     hits.push({
       sessionId: session.id,
       workspaceId: session.workspaceId,
-      workspaceName: workspaceNameById.get(session.workspaceId) ?? null,
+      workspaceName: session.workspaceId ? workspaceNameById.get(session.workspaceId) ?? null : null,
       sessionTitle: session.title,
       titleRanges,
       snippets: candidateSnippets.slice(0, snippetsPerHit).map(({ matchCount: _ignored, ...snippet }) => snippet),

@@ -15,7 +15,7 @@ const threadSearchSnippet = t.Object({
 
 const threadSearchHit = t.Object({
   sessionId: t.String(),
-  workspaceId: t.String(),
+  workspaceId: t.Nullable(t.String()),
   workspaceName: t.Nullable(t.String()),
   sessionTitle: t.Nullable(t.String()),
   titleRanges: t.Array(matchRange),

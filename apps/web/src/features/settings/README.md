@@ -2,8 +2,8 @@
 
 # Features/Settings
 
-应用设置模块负责渲染独立的 `/settings` 路由与各类全局配置页面。
-侧边栏只处理 section 导航，具体设置能力由各 feature 页面承载。
+应用设置模块负责渲染全局配置页面。
+设置页由 app shell 作为当前 active tab 的临时 overlay 展示；侧边栏只处理 section 导航，具体设置能力由各 feature 页面承载。
 新增设置分类时，应同步维护导航映射与本目录的文件清单。
 
 ## Files

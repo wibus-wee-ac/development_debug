@@ -8,7 +8,7 @@ export function LabelChip({ label, className }: { label: string, className?: str
   return (
     <span className={cn(
       'inline-flex items-center px-1.5 h-4 rounded text-[11px]',
-      'bg-muted text-muted-foreground',
+      'bg-muted text-muted-foreground border border-border/50',
       className,
     )}>
       {label}

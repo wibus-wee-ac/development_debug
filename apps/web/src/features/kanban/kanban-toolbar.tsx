@@ -39,7 +39,7 @@ function ToolbarPill({ children, active, className, ...props }: {
     <button
       type="button"
       className={cn(
-        'flex items-center justify-center size-7 rounded-full border border-border shadow-sm',
+        'flex items-center justify-center size-8 rounded-full border border-border shadow-sm',
         'transition-[background-color,transform] duration-150 ease-out',
         'hover:bg-muted active:scale-[0.92]',
         active && 'bg-muted',
@@ -98,7 +98,7 @@ export function KanbanToolbar({
           <button
             onClick={() => setConfig({ layout: 'board' })}
             className={cn(
-              'flex items-center justify-center size-6 rounded-full',
+              'flex items-center justify-center size-7 rounded-full',
               'transition-colors duration-100',
               config.layout === 'board' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
@@ -108,7 +108,7 @@ export function KanbanToolbar({
           <button
             onClick={() => setConfig({ layout: 'list' })}
             className={cn(
-              'flex items-center justify-center size-6 rounded-full',
+              'flex items-center justify-center size-7 rounded-full',
               'transition-colors duration-100',
               config.layout === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}

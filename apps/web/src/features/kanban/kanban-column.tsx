@@ -137,7 +137,7 @@ export function KanbanColumn({
           onClick={handleStartInlineCreate}
           data-testid={`kanban-column-add-${groupId}`}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1 text-[12px]',
+            'flex items-center gap-1.5 px-2 py-1.5 text-[12px]',
             'text-muted-foreground hover:text-foreground',
             'rounded-md transition-[color,transform] duration-150 ease-out',
             'active:scale-[0.96]',

@@ -40,9 +40,9 @@ export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
 
 export const SystemAgentConfigSchema = z.object({
   /** Upstream provider for jar-core (e.g. "openai", "anthropic", "google") */
-  provider: z.string(),
+  provider: z.string().optional(),
   /** Model ID to use */
-  model: z.string(),
+  model: z.string().optional(),
   /** Base URL override for the upstream provider */
   baseUrl: z.string().optional(),
   /** API key (inline, or resolved from secretRef/credentialRef) */

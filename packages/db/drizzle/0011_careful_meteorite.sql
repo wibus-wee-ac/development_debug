@@ -11,8 +11,8 @@ CREATE TABLE `__new_backend_capability_snapshots` (
 --> statement-breakpoint
 INSERT INTO `__new_backend_capability_snapshots`("id", "agent_profile_id", "runtime_kind", "source", "capabilities_json", "recorded_at") SELECT "id", "agent_profile_id", "runtime_kind", "source", "capabilities_json", "recorded_at" FROM `backend_capability_snapshots`;--> statement-breakpoint
 DROP TABLE `backend_capability_snapshots`;--> statement-breakpoint
-ALTER TABLE `__new_backend_capability_snapshots` RENAME TO `backend_capability_snapshots`;--> statement-breakpoint
-PRAGMA foreign_keys=ON;--> statement-breakpoint
+ALTER TABLE `__new_backend_capability_snapshots` RENAME TO `backend_capability_snapshots`;
+--> statement-breakpoint
 CREATE TABLE `__new_backend_session_bindings` (
 	`id` text PRIMARY KEY NOT NULL,
 	`chat_session_id` text NOT NULL,
@@ -51,4 +51,5 @@ CREATE TABLE `__new_sessions` (
 --> statement-breakpoint
 INSERT INTO `__new_sessions`("id", "workspace_id", "title", "agent_profile_id", "runtime_kind", "agent_id", "linked_issue_id", "pinned", "pty_started_at", "created_at", "updated_at") SELECT "id", "workspace_id", "title", "agent_profile_id", "runtime_kind", "agent_id", "linked_issue_id", "pinned", "pty_started_at", "created_at", "updated_at" FROM `sessions`;--> statement-breakpoint
 DROP TABLE `sessions`;--> statement-breakpoint
-ALTER TABLE `__new_sessions` RENAME TO `sessions`;
+ALTER TABLE `__new_sessions` RENAME TO `sessions`;--> statement-breakpoint
+PRAGMA foreign_keys=ON;
