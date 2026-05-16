@@ -30,7 +30,7 @@ export function get(id: string): Session | null {
 
 export function create(input: {
   id?: string
-  workspaceId: string
+  workspaceId?: string | null
   title: string
   agentProfileId: string
   runtimeKind?: RuntimeKind
@@ -42,7 +42,7 @@ export function create(input: {
     .insert(sessions)
     .values({
       id,
-      workspaceId: input.workspaceId,
+      workspaceId: input.workspaceId ?? null,
       title: input.title,
       agentProfileId: input.agentProfileId,
       runtimeKind: input.runtimeKind ?? 'standard',

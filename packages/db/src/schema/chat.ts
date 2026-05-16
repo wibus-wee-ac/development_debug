@@ -11,7 +11,6 @@ import { createdAt, textPk, timestamps, workspaces } from './shared'
 export const sessions = sqliteTable('sessions', {
   id: textPk(),
   workspaceId: text('workspace_id')
-    .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   agentProfileId: text('agent_profile_id')

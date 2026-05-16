@@ -101,12 +101,17 @@ function getSessionRunContext(sessionId: string): SessionRunContext | null {
   if (!session) {
     return null
   }
-  const workspace = db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
+  const workspace = session.workspaceId
+    ? db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
+    : null
   const profile = Profiles.getProfile(session.agentProfileId)
-  if (!workspace || !profile) {
+  if (!profile) {
     return null
   }
-  return { session, workspacePath: workspace.path, profile }
+  if (session.workspaceId && !workspace) {
+    return null
+  }
+  return { session, workspacePath: workspace?.path ?? '', profile }
 }
 
 function getBinding(sessionId: string): BackendSessionBinding | undefined {

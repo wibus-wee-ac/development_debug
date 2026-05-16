@@ -3,7 +3,7 @@ import { ArrowUpIcon, MaximizeIcon, MinimizeIcon, MousePointer2Icon, SquareIcon,
 import { AnimatePresence, m } from 'motion/react'
 import * as React from 'react'
 
-import { getWorkspaces, postSessions } from '~/api-gen/sdk.gen'
+import { postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { useChatSession } from '~/features/chat/use-chat-session'
@@ -27,6 +27,7 @@ export function JarvisPopover({
   const [jarvisSessionId, setJarvisSessionId] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
   const [profileId, setProfileId] = React.useState<string | null>(null)
+  const [pendingInitialText, setPendingInitialText] = React.useState<string | null>(null)
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const panelRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
@@ -50,6 +51,14 @@ export function JarvisPopover({
 
   const { messages, status, sendMessage, stop } = useChatSession(jarvisSessionId)
   const isStreaming = status === 'streaming'
+
+  // Send the initial message once the session ID becomes available
+  React.useEffect(() => {
+    if (jarvisSessionId && pendingInitialText) {
+      void sendMessage(pendingInitialText)
+      setPendingInitialText(null)
+    }
+  }, [jarvisSessionId, pendingInitialText, sendMessage])
 
   // Click outside to close (only in popover mode)
   React.useEffect(() => {
@@ -118,22 +127,18 @@ export function JarvisPopover({
     }
 
     // Collect context and prepend to user message (client-side injection)
+    // formatContextForAgent already returns a complete <cradle_context>...</cradle_context> block
     const ctx = collectContextSnapshot()
     const contextBlock = formatContextForAgent(ctx)
-    const fullText = contextBlock
-      ? `<cradle_context>\n${contextBlock}\n</cradle_context>\n\n${text}`
-      : text
+    const fullText = contextBlock ? `${contextBlock}\n\n${text}` : text
 
     // Lazy-create session on first message
     let sessionId = jarvisSessionId
     if (!sessionId) {
       setCreating(true)
       try {
-        const { data: wsData } = await getWorkspaces()
-        const workspaceId = (wsData as Array<{ id: string }> | null)?.[0]?.id ?? 'default'
         const { data } = await postSessions({
           body: {
-            workspaceId,
             title: 'Jarvis',
             agentProfileId: profileId,
             runtimeKind: 'jar-core',
@@ -145,6 +150,8 @@ export function JarvisPopover({
         }
         sessionId = session.id
         setJarvisSessionId(sessionId)
+        setPendingInitialText(fullText)
+        return  // useEffect will send once sessionId state propagates
       }
       finally {
         setCreating(false)

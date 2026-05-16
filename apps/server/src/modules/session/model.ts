@@ -12,7 +12,7 @@ const runtimeKindSchema = t.Union([
 export const SessionModel = {
   session: t.Object({
     id: t.String(),
-    workspaceId: t.String(),
+    workspaceId: t.Nullable(t.String()),
     title: t.Nullable(t.String()),
     agentProfileId: t.Nullable(t.String()),
     agentId: t.Nullable(t.String()),
@@ -47,7 +47,7 @@ export const SessionModel = {
   }),
 
   createBody: t.Object({
-    workspaceId: t.String({ minLength: 1 }),
+    workspaceId: t.Optional(t.String({ minLength: 1 })),
     title: t.String({ minLength: 1 }),
     agentProfileId: t.String({ minLength: 1 }),
     runtimeKind: t.Optional(runtimeKindSchema),
