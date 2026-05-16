@@ -394,7 +394,7 @@ function SidebarRow({
   )
 }
 
-function StatusDot({ tone }: { tone: 'active' | 'muted' | 'warning' }) {
+export function StatusDot({ tone }: { tone: 'active' | 'muted' | 'warning' }) {
   return (
     <span
       className={cn(

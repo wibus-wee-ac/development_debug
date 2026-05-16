@@ -1,205 +1,342 @@
-// Input: useAgents hook, useAgentProfiles, AgentDetailPage; Switch, Button, Spinner UI; lucide icons
-// Output: AgentList — compact agent card index; clicking a row or "Add" navigates to AgentDetailPage
+// Input: useAgents hook, useAgentProfiles, AgentDetailPage; motion/react, lucide icons, UI primitives
+// Output: AgentList — master-detail layout matching Providers page pattern
 // Position: Settings section rendered under "Agents" tab
 
-import { PlusIcon, Trash2Icon } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { BotIcon, ChevronRightIcon, PlusIcon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { Spinner } from '~/components/ui/spinner'
-import { Switch } from '~/components/ui/switch'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '~/components/ui/empty'
+import { Input } from '~/components/ui/input'
+import { ScrollArea } from '~/components/ui/scroll-area'
+import { Separator } from '~/components/ui/separator'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
 import type { Agent, AgentProfile } from '~/lib/types'
 
-import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
 import { AgentDetailPage } from './agent-detail'
+import { StatusDot } from './agent-runtime-settings'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+const DRAFT_ID = '__agent-draft__'
 
 function buildAvatarUrl(style: string, seed: string): string {
   return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
 }
 
-// ── Agent Row ─────────────────────────────────────────────────────────────────
+// ── Sidebar row ───────────────────────────────────────────────────────────────
 
-function AgentRow({
+function AgentSidebarRow({
   agent,
   profiles,
-  onNavigate,
-  onRemove,
-  onToggle,
+  active,
+  onClick,
 }: {
   agent: Agent
   profiles: AgentProfile[]
-  onNavigate: () => void
-  onRemove: () => void
-  onToggle: () => void
+  active: boolean
+  onClick: () => void
 }) {
-  const profile = profiles.find(p => p.id === agent.agentProfileId)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
-  const profileLabel = profile?.name || profile?.providerKind
+  const profile = profiles.find(p => p.id === agent.agentProfileId)
+  const subtitle = [profile?.name, agent.modelId].filter(Boolean).join(' · ')
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onNavigate}
-      onKeyDown={e => e.key === 'Enter' && onNavigate()}
+    <button
+      type="button"
+      data-testid={`agent-sidebar-row-${agent.id}`}
+      onClick={onClick}
+      aria-pressed={active}
       className={cn(
-        'group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-foreground/3',
-        !agent.enabled && 'opacity-50',
+        'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
+        'transition-[background-color,opacity,scale] duration-150',
+        'focus-visible:ring-2 focus-visible:ring-ring/50',
+        active
+          ? 'bg-accent text-accent-foreground'
+          : 'hover:bg-foreground/[0.035] active:bg-foreground/6 active:scale-[0.98]',
+        !agent.enabled && !active && 'opacity-60',
       )}
-      data-testid={`agent-row-${agent.id}`}
     >
-      {/* Avatar */}
-      <div className="size-9 shrink-0 overflow-hidden rounded-xl bg-foreground/3">
+      <div className="size-7 shrink-0 overflow-hidden rounded-lg bg-foreground/5">
         <img
           src={avatarUrl}
           alt={agent.name}
           className="size-full object-cover"
           crossOrigin="anonymous"
-          data-testid={`agent-row-avatar-${agent.id}`}
         />
       </div>
-
-      {/* Info */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-medium" data-testid={`agent-row-name-${agent.id}`}>{agent.name}</span>
-          {profileLabel && (
-            <span className="shrink-0 rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              {profileLabel}
-            </span>
+        <div className="flex items-center gap-1.5">
+          <span className={cn(
+            'block truncate text-[12.5px] leading-tight',
+            active ? 'font-medium text-foreground' : 'text-foreground/90',
           )}
-          {agent.modelId && (
-            <span className="max-w-32 shrink-0 truncate rounded bg-foreground/5 px-1.5 py-0.5 text-[10px] text-muted-foreground" data-testid={`agent-row-model-${agent.id}`}>
-              {agent.modelId}
-            </span>
-          )}
+          >
+            {agent.name}
+          </span>
+          <StatusDot tone={agent.enabled ? 'active' : 'muted'} />
         </div>
-        {agent.description && (
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{agent.description}</p>
+        {subtitle && (
+          <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/70">
+            {subtitle}
+          </span>
         )}
       </div>
-
-      {/* Hover actions */}
-      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={(e) => {
-            e.stopPropagation()
-            onRemove()
-          }}
-          aria-label="Remove"
-        >
-          <Trash2Icon className="size-3" />
-        </Button>
-      </div>
-
-      <Switch
-        checked={agent.enabled}
-        onCheckedChange={() => onToggle()}
-        onClick={e => e.stopPropagation()}
+      <ChevronRightIcon
+        className={cn(
+          'size-3 shrink-0 text-muted-foreground/40 transition-[opacity,transform] duration-150',
+          active
+            ? 'opacity-100 translate-x-0'
+            : 'opacity-0 -translate-x-1 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0',
+        )}
       />
-    </div>
+    </button>
   )
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-type NavigationState
-  = | { mode: 'list' }
-    | { mode: 'create' }
-    | { mode: 'detail', agentId: string }
-
 export function AgentList() {
-  const { agents, isLoading, updateAgent, removeAgent } = useAgents()
+  const { agents, isLoading } = useAgents()
   const { profiles } = useAgentProfiles()
 
-  const [nav, setNav] = useState<NavigationState>({ mode: 'list' })
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isDrafting, setIsDrafting] = useState(false)
+  const [filter, setFilter] = useState('')
 
-  const handleRemove = useCallback(async (id: string) => {
-    await removeAgent.mutateAsync(id)
-  }, [removeAgent])
-
-  const handleToggle = useCallback(async (agent: Agent) => {
-    await updateAgent.mutateAsync({ id: agent.id, patch: { enabled: !agent.enabled } })
-  }, [updateAgent])
+  const visibleAgents = useMemo(() => {
+    if (!filter.trim()) {
+      return agents
+    }
+    const q = filter.trim().toLowerCase()
+    return agents.filter(a => a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q))
+  }, [agents, filter])
 
   const selectedAgent = useMemo(
-    () => nav.mode === 'detail' ? agents.find(a => a.id === nav.agentId) : undefined,
-    [agents, nav],
+    () => (selectedId && selectedId !== DRAFT_ID) ? agents.find(a => a.id === selectedId) : undefined,
+    [agents, selectedId],
   )
 
-  const goList = useCallback(() => setNav({ mode: 'list' }), [])
+  const isDraftSelected = isDrafting && selectedId === DRAFT_ID
 
-  // Create or edit mode — show detail page
-  if (nav.mode === 'create' || nav.mode === 'detail') {
-    return (
-      <AgentDetailPage
-        agent={selectedAgent}
-        profiles={profiles}
-        onBack={goList}
-        onCreated={id => setNav({ mode: 'detail', agentId: id })}
-        onDeleted={goList}
-      />
-    )
-  }
+  // If the selected agent gets removed, clear selection
+  useEffect(() => {
+    if (!selectedId || selectedId === DRAFT_ID) {
+      return
+    }
+    if (!agents.some(a => a.id === selectedId)) {
+      setSelectedId(null)
+    }
+  }, [agents, selectedId])
 
-  // List mode
+  const startDraft = useCallback(() => {
+    setIsDrafting(true)
+    setSelectedId(DRAFT_ID)
+  }, [])
+
+  const handleCreated = useCallback((newAgentId: string) => {
+    setIsDrafting(false)
+    setSelectedId(newAgentId)
+  }, [])
+
+  const handleDeleted = useCallback(() => {
+    setSelectedId(null)
+  }, [])
+
   return (
-    <div className="flex flex-col gap-1" data-testid="agent-list">
-      <SettingsSectionHeader
-        title="Agents"
-        description="Create AI agents with unique identities bound to your runtime profiles."
-        action={(
-          <Button
-            size="sm"
-            onClick={() => setNav({ mode: 'create' })}
-            data-testid="new-agent-btn"
-          >
-            <PlusIcon className="size-3.5" />
-            Add
-          </Button>
-        )}
-      />
+    <div
+      data-testid="agent-list"
+      className="flex h-full flex-col overflow-hidden"
+    >
+      {/* Header */}
+      <header className="flex items-end justify-between gap-6 pb-5">
+        <div className="space-y-1">
+          <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground">
+            Agents
+          </h3>
+          <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+            Create AI agents with unique identities, personas, and runtime profiles.
+          </p>
+        </div>
+        <Button
+          data-testid="new-agent-btn"
+          size="sm"
+          onClick={startDraft}
+          disabled={isDrafting}
+        >
+          <PlusIcon />
+          Add agent
+        </Button>
+      </header>
 
-      <SettingsDivider />
+      <Separator className="bg-foreground/6" />
 
-      {isLoading
-        ? (
-          <div className="flex justify-center py-12">
-            <Spinner className="size-4 text-muted-foreground" />
+      {/* Body — master-detail */}
+      <div className="grid flex-1 grid-cols-[260px_1fr] gap-0 overflow-hidden">
+        {/* ── Left rail ────────────────────────────────────────────────── */}
+        <aside className="flex flex-col gap-3 overflow-hidden py-4 pr-4 border-r border-foreground/6">
+          {/* Search */}
+          <div className="relative">
+            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+            <Input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Search agents"
+              className="h-8 pl-8 pr-2 text-[12.5px]"
+            />
           </div>
-        )
-        : agents.length === 0
-          ? (
-            <div className="flex flex-col items-center gap-2 py-16 text-center">
-              <p className="text-sm text-muted-foreground" data-testid="agent-empty-state">
-                No agents yet
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Create an agent to give your AI a name, avatar, and preferred model.
-              </p>
-            </div>
-          )
-          : (
-            <div className="flex flex-col">
-              {agents.map(agent => (
-                <AgentRow
+
+          {/* List */}
+          <ScrollArea className="-mx-1 flex-1">
+            <div className="flex flex-col gap-0.5 px-1">
+              {/* Draft row */}
+              <AnimatePresence initial={false}>
+                {isDrafting && (
+                  <m.div
+                    key={DRAFT_ID}
+                    initial={{ opacity: 0, y: -4, height: 0 }}
+                    animate={{ opacity: 1, y: 0, height: 'auto' }}
+                    exit={{ opacity: 0, y: -4, height: 0 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(DRAFT_ID)}
+                      aria-pressed={isDraftSelected}
+                      className={cn(
+                        'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
+                        'transition-[background-color] duration-150',
+                        'focus-visible:ring-2 focus-visible:ring-ring/50',
+                        isDraftSelected
+                          ? 'bg-accent text-accent-foreground'
+                          : 'opacity-90 hover:bg-foreground/[0.035]',
+                      )}
+                    >
+                      <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
+                        <SparklesIcon className="size-3.5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-[12.5px] leading-tight text-foreground/70">
+                          New agent
+                        </span>
+                        <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/60">
+                          Set up identity
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setIsDrafting(false)
+                          setSelectedId(null)
+                        }}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </button>
+                  </m.div>
+                )}
+              </AnimatePresence>
+
+              {/* Agent rows */}
+              {!isLoading && visibleAgents.map(agent => (
+                <AgentSidebarRow
                   key={agent.id}
                   agent={agent}
                   profiles={profiles}
-                  onNavigate={() => setNav({ mode: 'detail', agentId: agent.id })}
-                  onRemove={() => handleRemove(agent.id)}
-                  onToggle={() => handleToggle(agent)}
+                  active={selectedId === agent.id && !isDraftSelected}
+                  onClick={() => {
+                    setSelectedId(agent.id)
+                    setIsDrafting(false)
+                  }}
                 />
               ))}
+
+              {/* Empty state inside list */}
+              {!isLoading && visibleAgents.length === 0 && !isDrafting && (
+                <div className="px-2 py-6 text-center">
+                  <p className="text-[11.5px] text-muted-foreground/70">
+                    {filter ? 'No matches' : 'No agents yet'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Footer hint */}
+          {agents.length > 0 && (
+            <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
+              {agents.length}
+              {' '}
+              agent
+              {agents.length === 1 ? '' : 's'}
+              {' '}
+              ·
+              {' '}
+              {agents.filter(a => a.enabled).length}
+              {' '}
+              active
             </div>
           )}
+        </aside>
+
+        {/* ── Right panel ──────────────────────────────────────────────── */}
+        <section className="flex flex-col overflow-y-auto py-4 pl-6 pr-2">
+          {isDraftSelected
+            ? (
+              <div key={DRAFT_ID} className="flex-1">
+                <AgentDetailPage
+                  profiles={profiles}
+                  onCreated={handleCreated}
+                  onDeleted={handleDeleted}
+                />
+              </div>
+            )
+            : selectedAgent
+              ? (
+                <div key={selectedAgent.id} className="flex-1">
+                  <AgentDetailPage
+                    agent={selectedAgent}
+                    profiles={profiles}
+                    onDeleted={handleDeleted}
+                  />
+                </div>
+              )
+              : (
+                <div className="flex flex-1 items-center justify-center">
+                  <Empty className="border-none">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <BotIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>No agent selected</EmptyTitle>
+                      <EmptyDescription>
+                        Pick an agent on the left to view its configuration, or
+                        add a new one to get started.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button size="sm" variant="outline" onClick={startDraft} disabled={isDrafting}>
+                        <PlusIcon />
+                        Add agent
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
+                </div>
+              )}
+        </section>
+      </div>
     </div>
   )
 }

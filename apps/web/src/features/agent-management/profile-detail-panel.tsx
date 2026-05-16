@@ -551,16 +551,6 @@ function ProfileGeneralSettings({
           </SettingsRow>
 
           <SettingsDivider />
-          <SettingsRow label="Default model" description="Used when no model is specified in the session">
-            <Input
-              data-testid="provider-edit-model"
-              {...form.register('model')}
-              className="h-9 w-56 text-[12.5px] font-mono"
-              placeholder="e.g. gpt-4o"
-            />
-          </SettingsRow>
-
-          <SettingsDivider />
           <SettingsRow
             label="API key"
             description={profile.credentialRef

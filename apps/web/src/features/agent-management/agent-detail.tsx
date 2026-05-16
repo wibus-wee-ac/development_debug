@@ -242,20 +242,24 @@ function AgentDetailHeader({
   isCreate: boolean
   saveState: SaveState
   agentName?: string
-  onBack: () => void
+  onBack?: () => void
   onDelete: () => void
 }) {
   return (
-    <div className="mb-6 flex items-center justify-between">
-      <button
-        type="button"
-        onClick={onBack}
-        data-testid="agent-detail-back"
-        className="flex items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeftIcon className="size-3.5" />
-        Agents
-      </button>
+    <div className={cn('flex items-center justify-between', onBack ? 'mb-6' : 'mb-4')}>
+      {onBack
+        ? (
+          <button
+            type="button"
+            onClick={onBack}
+            data-testid="agent-detail-back"
+            className="flex items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeftIcon className="size-3.5" />
+            Agents
+          </button>
+        )
+        : <div />}
 
       <div className="flex items-center gap-3">
         {!isCreate && <SaveIndicator state={saveState} />}
@@ -506,15 +510,17 @@ function AgentCreateActions({
   createSaving: boolean
   createDisabled: boolean
   saveError: string | null
-  onCancel: () => void
+  onCancel?: () => void
   onCreate: () => void
 }) {
   return (
     <div className="flex items-center justify-end gap-2 py-4">
       {saveError && <p className="mr-auto text-[11px] text-destructive">{saveError}</p>}
-      <Button variant="outline" size="sm" onClick={onCancel}>
-        Cancel
-      </Button>
+      {onCancel && (
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      )}
       <Button
         size="sm"
         onClick={() => void onCreate()}
@@ -755,7 +761,7 @@ export function AgentDetailPage({
 }: {
   agent?: Agent
   profiles: AgentProfile[]
-  onBack: () => void
+  onBack?: () => void
   onCreated?: (agentId: string) => void
   onDeleted?: () => void
 }) {
