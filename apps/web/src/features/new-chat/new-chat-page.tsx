@@ -1,63 +1,33 @@
-// Input: useWorkspaces, useAgentProfiles, useAgentModels, useSessions, HTTP client, router, motion
+// Input: useComposerState, ComposerToolbar, workspaces, sessions, HTTP client, motion
 // Output: NewChatPage — premium task Composer inspired by Linear/Vercel/Devin design language
 // Position: Feature component for the /new-chat route
 
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUpIcon,
-  BotIcon,
-  BrainIcon,
-  CheckIcon,
-  ChevronDownIcon,
   ClockIcon,
-  CpuIcon,
   FolderIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
   PaperclipIcon,
-  SearchIcon,
-  SparklesIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { postSessions } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxTrigger,
-} from '~/components/ui/combobox'
 import { Kbd } from '~/components/ui/kbd'
-import {
-  Menu,
-  MenuGroup,
-  MenuGroupLabel,
-  MenuItem,
-  MenuPopup,
-  MenuSeparator,
-  MenuTrigger,
-} from '~/components/ui/menu'
+import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
-import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import { useAgents } from '~/features/agent-runtime/use-agents'
+import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
-import type { Agent, ModelDescriptor } from '~/lib/types'
-import { useNewChatStore } from '~/store/new-chat'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 /* ─── Constants ───────────────────────────────────────────────────────── */
-
-const WORD_SPLIT = /\s+/
 
 const PLACEHOLDER_HINTS = [
   '描述你想让 Agent 完成的任务…',
@@ -75,23 +45,7 @@ const QUICK_ACTIONS = [
   { label: 'Debug', prompt: '帮我排查以下问题的根本原因' },
 ]
 
-const THINKING_EFFORTS = {
-  low: { label: '快速', description: '低延迟' },
-  medium: { label: '平衡', description: '速度与质量' },
-  high: { label: '深度', description: '仔细推理' },
-} as const
-
-type ThinkingEffort = keyof typeof THINKING_EFFORTS
-
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
-
-function profileInitials(name: string): string {
-  const parts = name.trim().split(WORD_SPLIT)
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase()
-  }
-  return name.slice(0, 2).toUpperCase()
-}
 
 function timeAgo(timestamp: number, now: number): string {
   const seconds = Math.floor((now - timestamp) / 1000)
@@ -134,154 +88,31 @@ function useRotatingPlaceholder(hints: string[], interval = 4000): string {
   return hints[index]
 }
 
-interface NewChatDraftState {
-  selectedAgentId: string | null
-  selectedProfileId: string | null
-  selectedWorkspaceId: string | null
-  selectedModelId: string | null
-  thinkingEffortProfileId: string | null
-  thinkingEffort: ThinkingEffort | null
-  input: string
-  sending: boolean
-}
-
-type NewChatDraftAction = { type: 'select-agent', agentId: string }
-  | { type: 'select-profile', profileId: string }
-  | { type: 'restore-profile', profileId: string }
-  | { type: 'select-workspace', workspaceId: string }
-  | { type: 'select-model', modelId: string | null }
-  | { type: 'set-thinking-effort', profileId: string | null, thinkingEffort: ThinkingEffort | null }
-  | { type: 'set-input', input: string }
-  | { type: 'set-sending', sending: boolean }
-
-function createInitialNewChatDraftState(selectedProfileId: string | null | undefined): NewChatDraftState {
-  return {
-    selectedAgentId: null,
-    selectedProfileId: selectedProfileId ?? null,
-    selectedWorkspaceId: null,
-    selectedModelId: null,
-    thinkingEffortProfileId: null,
-    thinkingEffort: null,
-    input: '',
-    sending: false,
-  }
-}
-
-function newChatDraftReducer(state: NewChatDraftState, action: NewChatDraftAction): NewChatDraftState {
-  switch (action.type) {
-    case 'select-agent':
-      return {
-        ...state,
-        selectedAgentId: action.agentId,
-        selectedProfileId: null,
-        selectedModelId: null,
-      }
-    case 'select-profile':
-      return {
-        ...state,
-        selectedAgentId: null,
-        selectedProfileId: action.profileId,
-        selectedModelId: null,
-      }
-    case 'restore-profile':
-      if (state.selectedAgentId || state.selectedProfileId) {
-        return state
-      }
-      return {
-        ...state,
-        selectedProfileId: action.profileId,
-        selectedModelId: null,
-      }
-    case 'select-workspace':
-      return { ...state, selectedWorkspaceId: action.workspaceId }
-    case 'select-model':
-      return { ...state, selectedModelId: action.modelId }
-    case 'set-thinking-effort':
-      return {
-        ...state,
-        thinkingEffortProfileId: action.profileId,
-        thinkingEffort: action.thinkingEffort,
-      }
-    case 'set-input':
-      return { ...state, input: action.input }
-    case 'set-sending':
-      return { ...state, sending: action.sending }
-    default:
-      return state
-  }
-}
+/* ─── Owner Hook ──────────────────────────────────────────────────────── */
 
 function useNewChatPageOwner() {
+  const composerState = useComposerState({ context: 'new-chat' })
+  const { selection, effectiveProfile, effectiveModel } = composerState
   const { workspaces } = useWorkspaces()
-  const { profiles } = useAgentProfiles()
-  const { agents } = useAgents()
   const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
-  const lastAgentProfileId = useNewChatStore(state => state.lastAgentProfileId)
-  const setLastAgentProfileId = useNewChatStore(state => state.setLastAgentProfileId)
-  const setLastModelForProfile = useNewChatStore(state => state.setLastModelForProfile)
-  const [draft, dispatch] = useReducer(newChatDraftReducer, lastAgentProfileId, createInitialNewChatDraftState)
 
-  const selectedAgent: Agent | null = useMemo(
-    () => agents.find(agent => agent.id === draft.selectedAgentId && agent.enabled) ?? null,
-    [agents, draft.selectedAgentId],
-  )
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
 
-  const selectedProfileId = useMemo(() => {
-    if (!draft.selectedProfileId) {
-      return null
-    }
-    return profiles.some(profile => profile.id === draft.selectedProfileId) ? draft.selectedProfileId : null
-  }, [draft.selectedProfileId, profiles])
-
-  const fallbackAgent = useMemo(() => {
-    if (selectedAgent || selectedProfileId) {
-      return null
-    }
-    return agents.find(agent => agent.enabled) ?? null
-  }, [agents, selectedAgent, selectedProfileId])
-
-  const preferredProfileId = useMemo(() => {
-    if (lastAgentProfileId && profiles.some(profile => profile.id === lastAgentProfileId)) {
-      return lastAgentProfileId
-    }
-    return profiles[0]?.id ?? null
-  }, [lastAgentProfileId, profiles])
-
-  const effectiveAgent = selectedAgent ?? fallbackAgent
-  const effectiveProfileId = effectiveAgent?.agentProfileId ?? selectedProfileId ?? preferredProfileId
   const effectiveWorkspaceId = useMemo(() => {
-    if (draft.selectedWorkspaceId && workspaces.some(workspace => workspace.id === draft.selectedWorkspaceId)) {
-      return draft.selectedWorkspaceId
+    if (selectedWorkspaceId && workspaces.some(w => w.id === selectedWorkspaceId)) {
+      return selectedWorkspaceId
     }
     return workspaces[0]?.id ?? null
-  }, [draft.selectedWorkspaceId, workspaces])
+  }, [selectedWorkspaceId, workspaces])
 
-  const { models, isLoading: isLoadingModels } = useAgentModels(effectiveProfileId)
+  const selectedWorkspace = workspaces.find(w => w.id === effectiveWorkspaceId) ?? null
   const { sessions } = useSessions(effectiveWorkspaceId)
   const now = useNow()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
-  const lastSelectedModelId = useNewChatStore(
-    state => effectiveProfileId ? state.lastModelByProfile[effectiveProfileId] : undefined,
-  )
-
-  const selectedProfile = profiles.find(p => p.id === effectiveProfileId) ?? null
-  const selectedWorkspace = workspaces.find(w => w.id === effectiveWorkspaceId) ?? null
-
-  const selectedModel = useMemo(
-    () => draft.selectedModelId ? models.find(model => model.id === draft.selectedModelId) ?? null : null,
-    [draft.selectedModelId, models],
-  )
-  const restoredModel = useMemo(
-    () => lastSelectedModelId ? models.find(model => model.id === lastSelectedModelId) ?? null : null,
-    [lastSelectedModelId, models],
-  )
-  const effectiveModel = selectedModel ?? restoredModel ?? models[0] ?? null
-  const thinkingEffort = draft.thinkingEffortProfileId === effectiveProfileId ? draft.thinkingEffort : null
-
-  const showModelPicker = selectedProfile && (isLoadingModels || models.length > 0)
-  const isCliTui = false // cli-tui is now a runtime, not a provider kind
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
@@ -302,96 +133,33 @@ function useNewChatPageOwner() {
     textareaRef.current?.focus()
   }, [])
 
-  useEffect(() => {
-    if (!lastAgentProfileId) {
-      return
-    }
-    if (!profiles.some(profile => profile.id === lastAgentProfileId)) {
-      return
-    }
-    dispatch({ type: 'restore-profile', profileId: lastAgentProfileId })
-  }, [lastAgentProfileId, profiles])
-
-  const selectAgent = useCallback((agentId: string) => {
-    const nextAgent = agents.find(agent => agent.id === agentId) ?? null
-    dispatch({ type: 'select-agent', agentId })
-    if (nextAgent?.agentProfileId) {
-      setLastAgentProfileId(nextAgent.agentProfileId)
-    }
-  }, [agents, setLastAgentProfileId])
-
-  const selectProfile = useCallback((profileId: string) => {
-    dispatch({ type: 'select-profile', profileId })
-    setLastAgentProfileId(profileId)
-  }, [setLastAgentProfileId])
-
-  const selectWorkspace = useCallback((workspaceId: string) => {
-    dispatch({ type: 'select-workspace', workspaceId })
-  }, [])
-
-  const selectModel = useCallback((nextModel: ModelDescriptor | null) => {
-    dispatch({ type: 'select-model', modelId: nextModel?.id ?? null })
-    if (nextModel && effectiveProfileId) {
-      setLastModelForProfile(effectiveProfileId, nextModel.id)
-    }
-  }, [effectiveProfileId, setLastModelForProfile])
-
-  const selectThinkingEffort = useCallback((nextThinkingEffort: ThinkingEffort | null) => {
-    dispatch({
-      type: 'set-thinking-effort',
-      profileId: effectiveProfileId,
-      thinkingEffort: nextThinkingEffort,
-    })
-  }, [effectiveProfileId])
-
-  const setInput = useCallback((input: string) => {
-    dispatch({ type: 'set-input', input })
-  }, [])
-
-  const canSend = !!selectedProfile && !!effectiveWorkspaceId && (isCliTui || draft.input.trim().length > 0) && !draft.sending
+  const canSend = !!effectiveProfile && !!effectiveWorkspaceId && input.trim().length > 0 && !sending
 
   const handleSend = useCallback(async () => {
-    if (!canSend || !selectedProfile || !effectiveWorkspaceId || !selectedWorkspace) {
+    if (!canSend || !effectiveProfile || !effectiveWorkspaceId || !selectedWorkspace) {
       return
     }
 
-    dispatch({ type: 'set-sending', sending: true })
+    setSending(true)
     try {
-      if (isCliTui) {
-        const { data: sessionData } = await postSessions({
-          body: {
-            workspaceId: effectiveWorkspaceId,
-            title: selectedProfile.name,
-            agentProfileId: selectedProfile.id,
-            runtimeKind: effectiveAgent?.runtimeKind ?? undefined,
-          },
-        })
-        const session = sessionData as { id: string } | null
-        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
-        void openTab('chat', { sessionId: session?.id ?? '' })
-        return
-      }
-
       const { data: sessionData } = await postSessions({
         body: {
           workspaceId: effectiveWorkspaceId,
-          title: draft.input.trim().slice(0, 80) || selectedProfile.name,
-          agentProfileId: selectedProfile.id,
-          runtimeKind: effectiveAgent?.runtimeKind ?? undefined,
+          title: input.trim().slice(0, 80) || effectiveProfile.name,
+          agentProfileId: effectiveProfile.id,
+          runtimeKind: selection.runtimeKind,
         },
       })
       const session = sessionData as { id: string } | null
       if (!session?.id) {
         return
       }
-      // Trigger the response stream — wait for headers only so the server creates
-      // the run before we navigate, but don't block on the SSE body.
       await startChatResponse({
         sessionId: session.id,
         body: {
-          text: draft.input.trim(),
+          text: input.trim(),
           modelId: effectiveModel?.id ?? undefined,
-          thinkingEffort: thinkingEffort ?? undefined,
+          thinkingEffort: selection.thinkingEffort ?? undefined,
         },
       })
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
@@ -401,9 +169,9 @@ function useNewChatPageOwner() {
       console.error('[NewChatPage] send failed:', err)
     }
     finally {
-      dispatch({ type: 'set-sending', sending: false })
+      setSending(false)
     }
-  }, [canSend, draft.input, effectiveAgent?.runtimeKind, effectiveModel, effectiveWorkspaceId, isCliTui, openTab, queryClient, selectedProfile, selectedWorkspace, thinkingEffort])
+  }, [canSend, effectiveProfile, effectiveWorkspaceId, effectiveModel, input, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, openTab])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -421,7 +189,7 @@ function useNewChatPageOwner() {
         autoResize(el)
       }
     })
-  }, [setInput])
+  }, [])
 
   const handleResumeSession = useCallback((sessionId: string) => {
     void openTab('chat', { sessionId })
@@ -430,70 +198,45 @@ function useNewChatPageOwner() {
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
     autoResize(e.target)
-  }, [setInput])
+  }, [])
 
   return {
-    agents,
     canSend,
-    draft,
-    effectiveModel,
-    effectiveProfileId,
+    composerState,
+    effectiveWorkspaceId,
     handleInput,
     handleKeyDown,
     handleQuickAction,
     handleResumeSession,
     handleSend,
-    isCliTui,
-    isLoadingModels,
-    models,
+    input,
     now,
     openTab,
     placeholder,
-    profiles,
     recentSessions,
-    selectAgent,
-    selectModel,
-    selectProfile,
-    selectThinkingEffort,
-    selectedAgent: effectiveAgent,
-    selectedProfile,
     selectedWorkspace,
-    selectWorkspace,
-    sending: draft.sending,
-    showModelPicker,
+    sending,
+    setSelectedWorkspaceId,
     textareaRef,
-    thinkingEffort,
     workspaces,
   }
 }
 
+/* ─── Composer Card ───────────────────────────────────────────────────── */
+
 function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const {
-    agents,
     canSend,
-    draft,
-    effectiveModel,
-    effectiveProfileId,
+    composerState,
     handleInput,
     handleKeyDown,
     handleSend,
-    isCliTui,
-    isLoadingModels,
-    models,
-    placeholder,
-    profiles,
-    selectAgent,
-    selectModel,
-    selectProfile,
-    selectThinkingEffort,
-    selectedAgent,
-    selectedProfile,
-    selectedWorkspace,
-    selectWorkspace,
+    input,
     sending,
-    showModelPicker,
+    setSelectedWorkspaceId,
+    selectedWorkspace,
     textareaRef,
-    thinkingEffort,
+    placeholder,
     workspaces,
   } = owner
 
@@ -509,11 +252,10 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
       <div className="relative bg-background">
         <textarea
           ref={textareaRef}
-          value={draft.input}
+          value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           disabled={sending}
-          placeholder={isCliTui ? '按下发送以启动终端会话…' : undefined}
           data-testid="new-chat-textarea"
           rows={5}
           className={cn(
@@ -521,13 +263,12 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
             'px-5 pt-5 pb-3 text-[15px] leading-[1.75] tracking-[-0.01em]',
             'text-foreground',
             'disabled:opacity-30',
-            !isCliTui && 'placeholder:text-transparent',
-            isCliTui && 'placeholder:text-muted-foreground/40 placeholder:font-light',
+            'placeholder:text-transparent',
           )}
           style={{ minHeight: 120, maxHeight: 320 }}
         />
 
-        {!isCliTui && draft.input.length === 0 && !sending && (
+        {input.length === 0 && !sending && (
           <div className="pointer-events-none absolute inset-0 px-5 pt-5">
             <AnimatePresence mode="wait">
               <m.span
@@ -546,145 +287,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
       </div>
 
       <div className="flex items-center gap-1 border-t border-border/60 px-2.5 py-2">
-        <Menu>
-          <MenuTrigger render={<Button variant="ghost" size="xs" />} data-testid="new-chat-agent-selector">
-            {selectedAgent
-              ? (
-                <img
-                  src={selectedAgent.avatarUrl || `https://api.dicebear.com/9.x/${selectedAgent.avatarStyle}/svg?seed=${selectedAgent.avatarSeed}`}
-                  alt=""
-                  className="size-4 shrink-0 rounded"
-                  crossOrigin="anonymous"
-                />
-              )
-              : selectedProfile
-                  ? (
-                    <span className="inline-flex size-4 shrink-0 items-center justify-center rounded bg-foreground/10 text-[8px] font-bold leading-none text-foreground/70">
-                      {profileInitials(selectedProfile.name)}
-                    </span>
-                  )
-                  : <BotIcon className="size-3 shrink-0" />}
-            <span className="max-w-24 truncate">{selectedAgent?.name ?? selectedProfile?.name ?? 'Agent'}</span>
-            <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/30" />
-          </MenuTrigger>
-          <MenuPopup>
-            {agents.length > 0 && (
-              <MenuGroup>
-                <MenuGroupLabel>Agents</MenuGroupLabel>
-                <MenuSeparator />
-                {agents.flatMap(agent => agent.enabled
-                  ? [
-                      <MenuItem key={agent.id} onClick={() => selectAgent(agent.id)}>
-                        <img
-                          src={agent.avatarUrl || `https://api.dicebear.com/9.x/${agent.avatarStyle}/svg?seed=${agent.avatarSeed}`}
-                          alt=""
-                          className="size-4 rounded"
-                          crossOrigin="anonymous"
-                        />
-                        <span className="flex-1">{agent.name}</span>
-                        {agent.id === selectedAgent?.id && <CheckIcon className="size-3 text-foreground/50" />}
-                      </MenuItem>,
-                    ]
-                  : [])}
-              </MenuGroup>
-            )}
-            <MenuGroup>
-              <MenuGroupLabel>Agent Profiles</MenuGroupLabel>
-              <MenuSeparator />
-              {profiles.length === 0
-                ? <MenuItem disabled>暂无可用的 Provider</MenuItem>
-                : profiles.map(profile => (
-                    <MenuItem key={profile.id} onClick={() => selectProfile(profile.id)}>
-                      <BotIcon className="size-3" />
-                      <span className="flex-1">{profile.name}</span>
-                      {!selectedAgent && profile.id === effectiveProfileId && (
-                        <CheckIcon className="size-3 text-foreground/50" />
-                      )}
-                    </MenuItem>
-                  ))}
-            </MenuGroup>
-          </MenuPopup>
-        </Menu>
-
-        {showModelPicker && (
-          isLoadingModels
-            ? (
-              <div className="inline-flex h-7 items-center gap-1 px-2 text-[12px] text-muted-foreground/40">
-                <LoaderCircleIcon className="size-3 animate-spin" />
-                <span>加载中</span>
-              </div>
-            )
-            : (
-              <Combobox<ModelDescriptor>
-                items={models}
-                value={effectiveModel}
-                itemToStringLabel={model => model.label}
-                isItemEqualToValue={(a, b) => a.id === b.id}
-                onValueChange={selectModel}
-              >
-                <ComboboxTrigger
-                  render={(
-                    <Button variant="ghost" size="xs" className="text-muted-foreground/50 hover:text-foreground/70" data-testid="new-chat-model-selector" />
-                  )}
-                >
-                  <CpuIcon className="size-3 shrink-0" />
-                  <span className="max-w-28 truncate">{effectiveModel?.label ?? '模型'}</span>
-                  <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/25" />
-                </ComboboxTrigger>
-                <ComboboxContent aria-label="选择模型" className="min-w-56" side="top" align="start">
-                  <div className="border-b p-2">
-                    <ComboboxInput
-                      showTrigger={false}
-                      startAddon={<SearchIcon />}
-                      placeholder="搜索模型..."
-                      className="rounded-md before:rounded-[calc(var(--radius-md)-1px)]"
-                    />
-                  </div>
-                  <ComboboxEmpty>未找到匹配的模型</ComboboxEmpty>
-                  <ComboboxList>
-                    {(item: ModelDescriptor) => (
-                      <ComboboxItem key={item.id} value={item}>
-                        {item.label}
-                      </ComboboxItem>
-                    )}
-                  </ComboboxList>
-                </ComboboxContent>
-              </Combobox>
-            )
-        )}
-
-        {selectedProfile && !isCliTui && (
-          <Menu>
-            <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/40 hover:text-muted-foreground/70" />}>
-              <BrainIcon className="size-3 shrink-0" />
-              {thinkingEffort
-                ? <span className="max-w-20 truncate">{THINKING_EFFORTS[thinkingEffort].label}</span>
-                : <span>思考</span>}
-            </MenuTrigger>
-            <MenuPopup>
-              <MenuGroup>
-                <MenuGroupLabel>思考深度</MenuGroupLabel>
-                <MenuSeparator />
-                <MenuItem onClick={() => selectThinkingEffort(null)}>
-                  <SparklesIcon className="size-3" />
-                  <span>默认</span>
-                  {thinkingEffort === null && <CheckIcon className="size-3 text-foreground/50" />}
-                </MenuItem>
-                {(Object.keys(THINKING_EFFORTS) as ThinkingEffort[]).map((key) => {
-                  const { label, description } = THINKING_EFFORTS[key]
-                  return (
-                    <MenuItem key={key} onClick={() => selectThinkingEffort(key)}>
-                      <BrainIcon className="size-3" />
-                      <span className="flex-1">{label}</span>
-                      <span className="text-[11px] text-muted-foreground/40">{description}</span>
-                      {thinkingEffort === key && <CheckIcon className="size-3 text-foreground/50" />}
-                    </MenuItem>
-                  )
-                })}
-              </MenuGroup>
-            </MenuPopup>
-          </Menu>
-        )}
+        <ComposerToolbar context="new-chat" state={composerState} />
 
         <Button variant="ghost" size="icon-xs" className="text-muted-foreground/30" aria-label="附加文件">
           <PaperclipIcon className="size-3" />
@@ -704,10 +307,9 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
               {workspaces.length === 0
                 ? <MenuItem disabled>暂无工作区</MenuItem>
                 : workspaces.map(workspace => (
-                    <MenuItem key={workspace.id} onClick={() => selectWorkspace(workspace.id)}>
+                    <MenuItem key={workspace.id} onClick={() => setSelectedWorkspaceId(workspace.id)}>
                       <FolderIcon className="size-3" />
                       <span className="flex-1">{workspace.name}</span>
-                      {workspace.id === selectedWorkspace?.id && <CheckIcon className="size-3 text-foreground/50" />}
                     </MenuItem>
                   ))}
             </MenuGroup>
@@ -744,8 +346,10 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
   )
 }
 
+/* ─── Quick Actions ───────────────────────────────────────────────────── */
+
 function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
-  if (owner.isCliTui || owner.draft.input.length > 0) {
+  if (owner.input.length > 0) {
     return null
   }
 
@@ -777,6 +381,8 @@ function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPag
     </m.div>
   )
 }
+
+/* ─── Recent Sessions ─────────────────────────────────────────────────── */
 
 function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   if (owner.recentSessions.length === 0) {

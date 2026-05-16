@@ -33,6 +33,8 @@ interface ChatViewProps {
   availableFiles?: MentionItem[]
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
+  /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
+  sendOverridesRef?: React.MutableRefObject<{ modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null }>
   /** Custom context bar rendered before the send button */
   composerContextBar?: React.ReactNode
   /** Placeholder text for composer */
@@ -259,6 +261,7 @@ export function ChatView({
   availableFiles = EMPTY_FILES,
   composerToolbar,
   composerContextBar,
+  sendOverridesRef,
   placeholder,
 }: ChatViewProps) {
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialTimelineGroups })
@@ -426,9 +429,10 @@ export function ChatView({
       if (!isReady || !text.trim()) {
         return
       }
-      sendMessage(text)
+      const overrides = sendOverridesRef?.current
+      sendMessage(text, overrides)
     },
-    [isReady, sendMessage],
+    [isReady, sendMessage, sendOverridesRef],
   )
 
   const handleMinimapScrollToIndex = useCallback(

@@ -253,13 +253,13 @@ function MenuShortcut({
   );
 }
 
-function MenuSub(
+export function MenuSub(
   props: MenuPrimitive.SubmenuRoot.Props,
 ): React.ReactElement {
   return <MenuPrimitive.SubmenuRoot data-slot="menu-sub" {...props} />;
 }
 
-function MenuSubTrigger({
+export function MenuSubTrigger({
   className,
   inset,
   children,
@@ -283,7 +283,7 @@ function MenuSubTrigger({
   );
 }
 
-function MenuSubPopup({
+export function MenuSubPopup({
   className,
   sideOffset = 0,
   alignOffset,

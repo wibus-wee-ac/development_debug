@@ -208,8 +208,8 @@ export function AgentRuntimeSettings() {
                       active={isDraftSelected}
                       onClick={() => setSelectedId(draft.id)}
                       icon={(
-                        <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
-                          <SparklesIcon className="size-3.5" />
+                        <span className="flex size-5 items-center justify-center rounded-sm border border-dashed border-foreground/15 text-muted-foreground -ml-0.5">
+                          <SparklesIcon className="size-2.5" />
                         </span>
                       )}
                       title="New provider"

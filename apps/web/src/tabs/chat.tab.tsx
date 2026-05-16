@@ -6,12 +6,13 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useReducer } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef } from 'react'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
 import { RightAside } from '~/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
+import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { ChatTimelineGroupRow } from '~/features/chat/use-chat-session'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
@@ -107,6 +108,23 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
 
+  const composerState = useComposerState({
+    context: 'chat',
+    boundProfileId: sessionAgentProfileId ?? undefined,
+    boundRuntimeKind: session?.runtimeKind ?? undefined,
+  })
+
+  // Ref to communicate per-message overrides to ChatView's internal sendMessage
+  const sendOverridesRef = useRef({ modelId: undefined as string | undefined, thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined })
+  sendOverridesRef.current = {
+    modelId: composerState.selection.modelId ?? undefined,
+    thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
+  }
+
+  const composerToolbar = useMemo(() => (
+    <ComposerToolbar context="chat" state={composerState} />
+  ), [composerState])
+
   // Update tab label to session title when loaded
   useEffect(() => {
     if (session?.title) {
@@ -150,7 +168,13 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
             <GitBranchControl workspaceId={workspaceId} />
           </div>
         )} */}
-        <ChatView key={sessionId} sessionId={sessionId} initialTimelineGroups={loaderData} />
+        <ChatView
+          key={sessionId}
+          sessionId={sessionId}
+          initialTimelineGroups={loaderData}
+          composerToolbar={composerToolbar}
+          sendOverridesRef={sendOverridesRef}
+        />
       </Suspense>
     </>
   )

@@ -297,7 +297,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
 
   // ── Send message ──
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, opts?: { modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null | undefined }) => {
     if (!chatSessionId || !text.trim()) {
       return
     }
@@ -322,7 +322,11 @@ export function useChatSession(chatSessionId: string | null, options?: {
       // 3. Initiate SSE stream
       const res = await startChatResponse({
         sessionId: chatSessionId,
-        body: { text },
+        body: {
+          text,
+          modelId: opts?.modelId ?? undefined,
+          thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+        },
         signal: controller.signal,
       })
 
