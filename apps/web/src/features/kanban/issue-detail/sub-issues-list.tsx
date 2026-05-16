@@ -11,18 +11,12 @@ import {
 import { cn } from '~/lib/utils'
 import type { KanbanStatus } from '~/lib/types'
 
+import { priorityOptions } from '../shared/issue-metadata'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
 import { useCreateIssue, useIssues } from '../use-kanban'
+import type { IssuePriority } from '../use-kanban'
 import type { StatusCategory } from '../use-view-config'
-
-const priorityOptions = [
-  { value: 'none', label: 'No priority' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
-] as const
 
 interface SubIssuesListProps {
   issueId: string
@@ -52,7 +46,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
       title: trimmed,
       parentIssueId: issueId,
       statusId: statusId || undefined,
-      priority: priority as 'none' | 'low' | 'medium' | 'high' | 'urgent',
+      priority: priority as IssuePriority,
     })
     setNewTitle('')
     setStatusId('')
@@ -134,7 +128,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
                       type="button"
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                     >
-                      <PriorityIcon priority={priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={11} />
+                      <PriorityIcon priority={priority as IssuePriority} size={11} />
                       <span>{priorityOptions.find(p => p.value === priority)?.label ?? 'Priority'}</span>
                     </button>
                   </DropdownMenuTrigger>

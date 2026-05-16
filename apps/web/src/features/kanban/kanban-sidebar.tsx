@@ -8,7 +8,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import { useCradleTabStore } from '~/tabs/registry'
+import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { useBoards, useCreateBoard, useDeleteBoard } from './use-kanban'
 
@@ -18,7 +18,7 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const boards = useBoards(firstWorkspaceId)
   const createBoard = useCreateBoard()
   const deleteBoard = useDeleteBoard()
-  const openTab = useCradleTabStore(s => s.openTab)
+  const { openTab } = useCradleNavigation()
   const [creating, setCreating] = useState(false)
   const [showNameInput, setShowNameInput] = useState(false)
   const [newBoardName, setNewBoardName] = useState('')

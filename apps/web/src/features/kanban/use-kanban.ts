@@ -42,6 +42,13 @@ import {
   postKanbanStatusesReorder,
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
+import type {
+  GetKanbanIssuesByIdResponse,
+  GetKanbanIssuesResponse,
+  GetKanbanIssuesSearchResponse,
+  PatchKanbanIssuesByIdResponse,
+  PostKanbanIssuesResponse,
+} from '~/api-gen/types.gen'
 import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { sessionsQueryKey } from '../workspace/use-session'
@@ -121,6 +128,37 @@ type AddCommentInput = { issueId: string, content: string }
 type DeleteCommentInput = { id: string, issueId: string }
 type AddRelationInput = { sourceIssueId: string, targetIssueId: string, type: 'blocks' | 'duplicates' | 'relates_to' }
 type DeleteRelationInput = { id: string, issueId: string }
+
+type ApiKanbanIssue =
+  | GetKanbanIssuesResponse[number]
+  | GetKanbanIssuesSearchResponse[number]
+  | GetKanbanIssuesByIdResponse
+  | PostKanbanIssuesResponse
+  | PatchKanbanIssuesByIdResponse
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function toKanbanIssue(row: ApiKanbanIssue): KanbanIssue {
+  return {
+    ...row,
+    statusId: nullableString(row.statusId),
+    milestoneId: nullableString(row.milestoneId),
+    parentIssueId: nullableString(row.parentIssueId),
+    description: nullableString(row.description),
+    assigneeKind: nullableString(row.assigneeKind),
+    assigneeId: nullableString(row.assigneeId),
+    delegateAgentProfileId: nullableString(row.delegateAgentProfileId),
+  }
+}
+
+function readKanbanIssue(row: ApiKanbanIssue | undefined, action: string): KanbanIssue {
+  if (!row) {
+    throw new Error(`Failed to ${action} issue`)
+  }
+  return toKanbanIssue(row)
+}
 
 // ── Boards ────────────────────────────────────────────────────────────────────
 
@@ -292,7 +330,7 @@ export function useIssues(params: IssueFilterParams) {
           labels: params.labels?.length ? params.labels.join(',') : undefined,
         },
       })
-      return (data ?? []) as KanbanIssue[]
+      return (data ?? []).map(toKanbanIssue)
     },
     enabled: !!params.workspaceId,
   })
@@ -307,7 +345,7 @@ function useSearchIssues(query: string, limit = 20, enabled = true) {
       const { data } = await getKanbanIssuesSearch({
         query: { q: trimmed, limit: String(limit) },
       })
-      return (data ?? []) as KanbanIssue[]
+      return (data ?? []).map(toKanbanIssue)
     },
     enabled: enabled && trimmed.length > 0,
     staleTime: 5_000,
@@ -319,7 +357,7 @@ export function useIssue(id: string) {
     queryKey: kanbanKeys.issue(id),
     queryFn: async () => {
       const { data } = await getKanbanIssuesById({ path: { id } })
-      return data as KanbanIssue | undefined
+      return data ? toKanbanIssue(data) : undefined
     },
     enabled: !!id,
   })
@@ -331,7 +369,7 @@ export function useCreateIssue() {
     mutationFn: async (input: CreateIssueInput) => {
       const { data, error } = await postKanbanIssues({ body: input })
       if (error || !data) throw new Error('Failed to create issue')
-      return data as KanbanIssue
+      return readKanbanIssue(data, 'create')
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
   })
@@ -342,7 +380,7 @@ export function useUpdateIssue() {
   return useMutation({
     mutationFn: async (vars: UpdateIssueInput) => {
       const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: vars.patch })
-      return data as KanbanIssue
+      return readKanbanIssue(data, 'update')
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
@@ -355,8 +393,8 @@ export function useMoveIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: MoveIssueInput) => {
-      const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } as never })
-      return data as KanbanIssue
+      const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
+      return readKanbanIssue(data, 'move')
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
   })
@@ -389,7 +427,7 @@ export function useAddComment() {
     mutationFn: async (input: AddCommentInput) => {
       const { data } = await postKanbanIssuesByIdComments({
         path: { id: input.issueId },
-        body: { content: input.content } as never,
+        body: { content: input.content },
       })
       return data as KanbanIssueComment
     },
@@ -450,7 +488,7 @@ export function useDelegateIssue() {
     mutationFn: async (vars: { issueId: string, agentProfileId: string, agentId?: string }) => {
       const { data } = await postKanbanIssuesByIdDelegation({
         path: { id: vars.issueId },
-        body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId } as unknown as never,
+        body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId },
       })
       return data as AgentSession | null
     },
@@ -498,12 +536,11 @@ export function useStartAgentSession() {
       issueId: string
       workspaceId?: string
       agentSessionId: string
-      agentProfileId: string
       agentId?: string
     }) => {
       await postIssueAgentSessionsByAgentSessionIdRerun({
         path: { agentSessionId: vars.agentSessionId },
-        body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId } as unknown as never,
+        body: { agentId: vars.agentId },
       })
     },
     onSuccess: (_data, vars) => {

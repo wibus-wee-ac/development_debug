@@ -79,7 +79,6 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
                 agentSessionId: activeSession.id,
                 issueId,
                 workspaceId,
-                agentProfileId: activeSession.agentProfileId,
               })}
             >
               Rerun

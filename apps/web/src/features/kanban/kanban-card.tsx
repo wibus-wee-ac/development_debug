@@ -10,6 +10,7 @@ import type { KanbanIssue } from '~/lib/types'
 
 import type { ViewConfig } from './use-view-config'
 import { AssigneeAvatar } from './shared/assignee-avatar'
+import { parseIssueLabels } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -38,10 +39,7 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
 
-  const labels: string[] = (() => {
-    try { return JSON.parse(issue.labels || '[]') }
-    catch { return [] }
-  })()
+  const labels = parseIssueLabels(issue.labels)
 
   return (
     <div data-testid={`issue-sortable-${issue.id}`}>

@@ -16,7 +16,7 @@ interface IssueDetailProps {
 }
 
 export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) {
-  const { data: issue } = useIssue(issueId)
+  const { data: issue, isLoading, isError, error } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
   const updateIssue = useUpdateIssue()
@@ -27,14 +27,31 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
   }, [issueId, updateIssue])
 
   const handleDelete = useCallback(() => {
-    deleteIssue.mutate(issueId)
-    onBack()
+    deleteIssue.mutate(issueId, {
+      onSuccess: () => onBack(),
+    })
   }, [issueId, deleteIssue, onBack])
+
+  if (isError) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-4 text-center text-[13px] text-destructive">
+        {error instanceof Error ? error.message : 'Failed to load issue'}
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
+        Loading…
+      </div>
+    )
+  }
 
   if (!issue) {
     return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground text-[13px]">
-        Loading…
+      <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
+        Issue not found
       </div>
     )
   }

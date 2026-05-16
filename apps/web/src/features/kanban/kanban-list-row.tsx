@@ -9,6 +9,7 @@ import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 
 import type { StatusCategory, ViewConfig } from './use-view-config'
 import { AssigneeAvatar } from './shared/assignee-avatar'
+import { parseIssueLabels } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -34,10 +35,7 @@ function formatRelativeTime(ts: number): string {
 export function KanbanListRow({ issue, statuses, displayProperties, onClick, selected }: ListRowProps) {
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
-  const labels: string[] = (() => {
-    try { return JSON.parse(issue.labels || '[]') }
-    catch { return [] }
-  })()
+  const labels = parseIssueLabels(issue.labels)
 
   return (
     <div
@@ -83,8 +81,9 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       <span className={cn(
         'flex items-center gap-2 shrink-0',
         'transition-opacity duration-100',
-        selected ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100',
-      )}>
+        selected ? 'opacity-100' : 'opacity-50 group-hover/row:opacity-100',
+      )}
+      >
         {displayProperties.agentIndicator && issue.delegateAgentProfileId && (
           <BotIcon className="size-3 text-muted-foreground" />
         )}

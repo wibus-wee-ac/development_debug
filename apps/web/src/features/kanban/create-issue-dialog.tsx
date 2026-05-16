@@ -18,9 +18,11 @@ import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { KanbanStatus } from '~/lib/types'
 
+import { priorityOptions } from './shared/issue-metadata'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import { useCreateIssue, useStatuses } from './use-kanban'
+import type { IssuePriority } from './use-kanban'
 
 interface CreateIssueDialogProps {
   workspaceId: string
@@ -28,14 +30,6 @@ interface CreateIssueDialogProps {
   open: boolean
   onClose: () => void
 }
-
-const priorityOptions = [
-  { value: 'none', label: 'No priority' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'urgent', label: 'Urgent' },
-] as const
 
 export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose }: CreateIssueDialogProps) {
   const [title, setTitle] = useState('')
@@ -63,7 +57,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
       workspaceId,
       title: title.trim(),
       description: description.trim() || null,
-      priority: priority as 'none' | 'low' | 'medium' | 'high' | 'urgent',
+      priority: priority as IssuePriority,
       statusId: statusId || undefined,
     }, {
       onSuccess: () => {
@@ -259,7 +253,7 @@ function PriorityPicker({ value, onChange }: { value: string, onChange: (v: stri
           type="button"
           className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          <PriorityIcon priority={value as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
+          <PriorityIcon priority={value as IssuePriority} size={13} />
           <span>{priorityOptions.find(p => p.value === value)?.label ?? 'Priority'}</span>
         </button>
       </DropdownMenuTrigger>

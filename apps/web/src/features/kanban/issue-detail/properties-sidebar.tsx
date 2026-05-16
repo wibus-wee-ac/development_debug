@@ -15,6 +15,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { LabelChip } from '../shared/label-chip'
+import { parseIssueLabels, priorityOptions } from '../shared/issue-metadata'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
 import type { IssuePriority } from '../use-kanban'
@@ -42,18 +43,10 @@ interface PropertiesSidebarProps {
   onUpdate: (patch: IssuePatch) => void
 }
 
-const priorityOptions: { value: IssuePriority, label: string }[] = [
-  { value: 'urgent', label: 'Urgent' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
-  { value: 'none', label: 'No priority' },
-]
-
 export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) {
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
-  const labels: string[] = (() => { try { return JSON.parse(issue.labels || '[]') } catch { return [] } })()
+  const labels = parseIssueLabels(issue.labels)
 
   return (
     <div className="flex flex-col gap-1">

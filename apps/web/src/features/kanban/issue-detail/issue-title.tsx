@@ -76,7 +76,7 @@ function IssueTitleEditor({
         placeholder="Issue title"
         rows={1}
         data-testid="issue-title-input"
-        className="w-full resize-none overflow-hidden border-none bg-transparent text-xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/50"
+        className="w-full resize-none overflow-hidden border-none bg-transparent text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/50"
       />
     </div>
   )
