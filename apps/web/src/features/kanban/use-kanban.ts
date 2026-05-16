@@ -292,7 +292,7 @@ export function useIssues(params: IssueFilterParams) {
           labels: params.labels?.length ? params.labels.join(',') : undefined,
         },
       })
-      return (data ?? []) as KanbanIssue[]
+      return (data ?? []) as unknown as KanbanIssue[]
     },
     enabled: !!params.workspaceId,
   })
@@ -307,7 +307,7 @@ function useSearchIssues(query: string, limit = 20, enabled = true) {
       const { data } = await getKanbanIssuesSearch({
         query: { q: trimmed, limit: String(limit) },
       })
-      return (data ?? []) as KanbanIssue[]
+      return (data ?? []) as unknown as KanbanIssue[]
     },
     enabled: enabled && trimmed.length > 0,
     staleTime: 5_000,
@@ -319,7 +319,7 @@ export function useIssue(id: string) {
     queryKey: kanbanKeys.issue(id),
     queryFn: async () => {
       const { data } = await getKanbanIssuesById({ path: { id } })
-      return data as KanbanIssue | undefined
+      return data as unknown as KanbanIssue | undefined
     },
     enabled: !!id,
   })
@@ -331,7 +331,7 @@ export function useCreateIssue() {
     mutationFn: async (input: CreateIssueInput) => {
       const { data, error } = await postKanbanIssues({ body: input })
       if (error || !data) throw new Error('Failed to create issue')
-      return data as KanbanIssue
+      return data as unknown as KanbanIssue
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
   })
@@ -342,7 +342,7 @@ export function useUpdateIssue() {
   return useMutation({
     mutationFn: async (vars: UpdateIssueInput) => {
       const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: vars.patch })
-      return data as KanbanIssue
+      return data as unknown as KanbanIssue
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
@@ -356,7 +356,7 @@ export function useMoveIssue() {
   return useMutation({
     mutationFn: async (vars: MoveIssueInput) => {
       const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } as never })
-      return data as KanbanIssue
+      return data as unknown as KanbanIssue
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
   })

@@ -3,7 +3,6 @@
 // Position: Kanban toolbar component
 
 import {
-  CheckIcon,
   ColumnsIcon,
   FilterIcon,
   GroupIcon,
@@ -14,6 +13,15 @@ import {
 } from 'lucide-react'
 
 import { Checkbox } from '~/components/ui/checkbox'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { cn } from '~/lib/cn'
 
@@ -74,32 +82,26 @@ export function KanbanToolbar({
     <div className="relative flex items-center gap-1 px-4 py-2">
       <div className="flex-1" />
 
-      {/* Right: icon pills */}
       <div className="flex items-center gap-1">
         <FilterPopover filter={filter} setFilter={setFilter} resetFilter={resetFilter} hasFilter={hasFilter} />
 
-        <GroupByPopover config={config} setConfig={setConfig} />
+        <GroupByDropdown config={config} setConfig={setConfig} />
 
-        <SortPopover config={config} setConfig={setConfig} />
+        <SortDropdown config={config} setConfig={setConfig} />
 
         <DisplayPopover config={config} setConfig={setConfig} />
 
         {onCreateIssue && (
-          <ToolbarPill
-            onClick={onCreateIssue}
-            data-testid="kanban-create-issue-btn"
-          >
+          <ToolbarPill onClick={onCreateIssue} data-testid="kanban-create-issue-btn">
             <PlusIcon className="size-3.5" />
           </ToolbarPill>
         )}
 
-        {/* Layout toggle */}
         <div className="flex items-center gap-0.5 ml-1 rounded-full border border-border p-0.5">
           <button
             onClick={() => setConfig({ layout: 'board' })}
             className={cn(
-              'flex items-center justify-center size-7 rounded-full',
-              'transition-colors duration-100',
+              'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
               config.layout === 'board' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >
@@ -108,8 +110,7 @@ export function KanbanToolbar({
           <button
             onClick={() => setConfig({ layout: 'list' })}
             className={cn(
-              'flex items-center justify-center size-7 rounded-full',
-              'transition-colors duration-100',
+              'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
               config.layout === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >
@@ -180,7 +181,7 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
   )
 }
 
-function GroupByPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
+function GroupByDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
   const options = [
     { value: 'status', label: '状态' },
     { value: 'priority', label: '优先级' },
@@ -190,34 +191,26 @@ function GroupByPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
   ] as const
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <ToolbarPill data-testid="kanban-group-btn">
           <GroupIcon className="size-3.5" />
         </ToolbarPill>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-40 p-0">
-        <div className="p-1">
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuRadioGroup value={config.groupBy} onValueChange={(v) => setConfig({ groupBy: v as ViewConfig['groupBy'] })}>
           {options.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setConfig({ groupBy: opt.value })}
-              className={cn(
-                'w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] transition-colors',
-                config.groupBy === opt.value ? 'text-foreground' : 'text-muted-foreground hover:bg-muted',
-              )}
-            >
-              <span className="flex-1">{opt.label}</span>
-              {config.groupBy === opt.value && <CheckIcon className="size-3 text-muted-foreground" />}
-            </button>
+            <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </DropdownMenuRadioItem>
           ))}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
-function SortPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
+function SortDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
   const options = [
     { value: 'manual', label: '手动' },
     { value: 'priority', label: '优先级' },
@@ -227,38 +220,26 @@ function SortPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p:
   ] as const
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <ToolbarPill data-testid="kanban-sort-btn">
           <SortAscIcon className="size-3.5" />
         </ToolbarPill>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-40 p-0">
-        <div className="p-1">
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuRadioGroup value={config.orderBy} onValueChange={(v) => setConfig({ orderBy: v as ViewConfig['orderBy'] })}>
           {options.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setConfig({ orderBy: opt.value })}
-              className={cn(
-                'w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md text-[13px] transition-colors',
-                config.orderBy === opt.value ? 'text-foreground' : 'text-muted-foreground hover:bg-muted',
-              )}
-            >
-              <span className="flex-1">{opt.label}</span>
-              {config.orderBy === opt.value && <CheckIcon className="size-3 text-muted-foreground" />}
-            </button>
+            <DropdownMenuRadioItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </DropdownMenuRadioItem>
           ))}
-          <div className="border-t border-border mt-1 pt-1">
-            <button
-              onClick={() => setConfig({ orderDirection: config.orderDirection === 'asc' ? 'desc' : 'asc' })}
-              className="w-full text-left px-2 py-1.5 rounded-md text-[13px] text-muted-foreground hover:bg-muted"
-            >
-              {config.orderDirection === 'asc' ? '升序 ↑' : '降序 ↓'}
-            </button>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setConfig({ orderDirection: config.orderDirection === 'asc' ? 'desc' : 'asc' })}>
+          {config.orderDirection === 'asc' ? '升序 ↑' : '降序 ↓'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -289,12 +270,7 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
               <Checkbox
                 checked={config.displayProperties[p.key]}
                 onCheckedChange={(checked) => {
-                  setConfig({
-                    displayProperties: {
-                      ...config.displayProperties,
-                      [p.key]: !!checked,
-                    },
-                  })
+                  setConfig({ displayProperties: { ...config.displayProperties, [p.key]: !!checked } })
                 }}
               />
               {p.label}

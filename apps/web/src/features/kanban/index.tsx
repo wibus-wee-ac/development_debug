@@ -83,7 +83,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
       result = result.filter(i => i.milestoneId === filter.milestoneId)
     }
     if (filter.isDelegated === true) {
-      result = result.filter(i => !!i.delegateAgentId)
+      result = result.filter(i => !!i.delegateAgentProfileId)
     }
 
     // Search

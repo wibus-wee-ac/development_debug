@@ -388,8 +388,8 @@ export async function delegateIssue(input: { issueId: string, agentProfileId: st
     })
   }
 
-  // Update issue's delegateAgentId
-  db().update(kanbanIssues).set({ delegateAgentId: input.agentProfileId, updatedAt: nowUnix() }).where(eq(kanbanIssues.id, input.issueId)).run()
+  // Update issue's delegateAgentProfileId
+  db().update(kanbanIssues).set({ delegateAgentProfileId: input.agentProfileId, updatedAt: nowUnix() }).where(eq(kanbanIssues.id, input.issueId)).run()
 
   // Add system comment to activity timeline
   Kanban.addComment({ issueId: input.issueId, content: `Delegated to ${profile.name}`, authorKind: 'system.delegated' })
@@ -444,8 +444,8 @@ export async function undelegateIssue(issueId: string): Promise<void> {
     updateAgentSessionStatus(state.agentSessionId, 'stopped')
   }
 
-  // Clear issue's delegateAgentId
-  db().update(kanbanIssues).set({ delegateAgentId: null, updatedAt: nowUnix() }).where(eq(kanbanIssues.id, issueId)).run()
+  // Clear issue's delegateAgentProfileId
+  db().update(kanbanIssues).set({ delegateAgentProfileId: null, updatedAt: nowUnix() }).where(eq(kanbanIssues.id, issueId)).run()
 
   // Add system comment to activity timeline
   Kanban.addComment({ issueId, content: 'Delegation removed', authorKind: 'system.undelegated' })

@@ -90,7 +90,7 @@ export function KanbanSidebar() {
               placeholder="看板名称"
               disabled={creating}
               data-testid="kanban-new-board-input"
-              className="w-full rounded-md border border-border/50 bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
+              className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
             />
           </div>
         )}

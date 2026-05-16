@@ -45,7 +45,7 @@ export function AgentPromptInput({ agentSessionId, sessionStatus, issueId }: Age
   }, [handleSubmit])
 
   return (
-    <div className="flex items-end gap-2 border-t border-border/50 px-3 py-2">
+    <div className="flex items-end gap-2 border-t border-border px-3 py-2">
       <textarea
         className="min-h-8 flex-1 resize-none bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
         placeholder={isAgentBusy ? 'Agent is working...' : 'Send a message...'}

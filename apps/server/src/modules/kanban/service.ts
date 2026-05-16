@@ -305,7 +305,7 @@ export function createIssue(input: {
     statusId: input.statusId ?? null,
     assigneeKind: null,
     assigneeId: null,
-    delegateAgentId: null,
+    delegateAgentProfileId: null,
     contextRefs: '[]',
     order,
     createdAt: now,

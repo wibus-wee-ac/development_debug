@@ -60,7 +60,7 @@ export const KanbanModel = {
     labels: t.String(),
     assigneeKind: t.Nullable(t.String()),
     assigneeId: t.Nullable(t.String()),
-    delegateAgentId: t.Nullable(t.String()),
+    delegateAgentProfileId: t.Nullable(t.String()),
     contextRefs: t.String(),
     order: t.Number(),
     createdAt: t.Number(),

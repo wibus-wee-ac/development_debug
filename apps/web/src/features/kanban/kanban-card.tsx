@@ -57,9 +57,9 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
         data-testid={`issue-card-${issue.id}`}
         className={cn(
           'bg-card rounded-md px-3.5 py-2.5 cursor-pointer',
-          'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_rgba(0,0,0,0.04)]',
-          'transition-[background-color,transform,box-shadow] duration-150 ease-out',
-          'hover:bg-accent hover:shadow-[0_2px_6px_rgba(0,0,0,0.07),0_0_0_1px_rgba(0,0,0,0.05)]',
+          'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_rgba(0,0,0,0.05)]',
+          'transition-[transform,box-shadow] duration-150 ease-out',
+          'hover:shadow-[0_3px_10px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.07)]',
           'active:scale-[0.97]',
           isDragging && 'opacity-50',
         )}
@@ -100,7 +100,7 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
             </div>
           )}
 
-          {displayProperties.agentIndicator && issue.delegateAgentId && (
+          {displayProperties.agentIndicator && issue.delegateAgentProfileId && (
             <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <BotIcon className="size-3.5" />
               <span>Agent</span>

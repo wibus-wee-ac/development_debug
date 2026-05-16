@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BotIcon, CheckIcon, PlusIcon } from 'lucide-react'
+import { BotIcon, PlusIcon } from 'lucide-react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { LabelChip } from '../shared/label-chip'
@@ -50,59 +59,50 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
     <div className="flex flex-col gap-1">
       {/* Status */}
       <PropertyRow label="Status">
-        <Popover>
-          <PopoverTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
             {currentStatus && <StatusIcon category={currentStatus.category as StatusCategory} size={14} />}
             <span>{currentStatus?.name ?? 'None'}</span>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-48 p-1">
-            {statuses.map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => onUpdate({ statusId: s.id })}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] text-foreground hover:bg-fill transition-colors"
-              >
-                <StatusIcon category={s.category as StatusCategory} size={14} />
-                <span className="flex-1 text-left">{s.name}</span>
-                {s.id === issue.statusId && <CheckIcon className="size-3 text-muted-foreground" />}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            <DropdownMenuRadioGroup value={issue.statusId ?? ''} onValueChange={(v) => onUpdate({ statusId: v })}>
+              {statuses.map(s => (
+                <DropdownMenuRadioItem key={s.id} value={s.id}>
+                  <StatusIcon category={s.category as StatusCategory} size={14} />
+                  {s.name}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PropertyRow>
 
       {/* Priority */}
       <PropertyRow label="Priority">
-        <Popover>
-          <PopoverTrigger
+        <DropdownMenu>
+          <DropdownMenuTrigger
             className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors"
             data-testid="issue-priority-trigger"
           >
             <PriorityIcon priority={issue.priority as IssuePriority} size={14} />
             <span>{priorityOptions.find(p => p.value === issue.priority)?.label ?? 'No priority'}</span>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-44 p-1">
-            {priorityOptions.map(p => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => onUpdate({ priority: p.value })}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] text-foreground hover:bg-fill transition-colors"
-                data-testid={`issue-priority-option-${p.value}`}
-              >
-                <PriorityIcon priority={p.value} size={14} />
-                <span className="flex-1 text-left">{p.label}</span>
-                {issue.priority === p.value && <CheckIcon className="size-3 text-muted-foreground" />}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-40">
+            <DropdownMenuRadioGroup value={issue.priority} onValueChange={(v) => onUpdate({ priority: v as IssuePriority })}>
+              {priorityOptions.map(p => (
+                <DropdownMenuRadioItem key={p.value} value={p.value} data-testid={`issue-priority-option-${p.value}`}>
+                  <PriorityIcon priority={p.value} size={14} />
+                  {p.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PropertyRow>
 
       {/* Assignee */}
       <PropertyRow label="Assignee">
-        <span className="text-[13px] text-muted-foreground/60 px-1.5 py-0.5">Unassigned</span>
+        <span className="text-[13px] text-muted-foreground px-1.5 py-0.5">Unassigned</span>
       </PropertyRow>
 
       {/* Agent Delegate */}
@@ -115,37 +115,28 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
 
       {/* Milestone */}
       <PropertyRow label="Milestone">
-        <Popover>
-          <PopoverTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
             <span>{currentMilestone?.title ?? 'None'}</span>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-48 p-1">
-            <button
-              type="button"
-              onClick={() => onUpdate({ milestoneId: null })}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-fill transition-colors"
-            >
-              No milestone
-              {!issue.milestoneId && <CheckIcon className="size-3 ml-auto" />}
-            </button>
-            {milestones.map(m => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => onUpdate({ milestoneId: m.id })}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] text-foreground hover:bg-fill transition-colors"
-              >
-                <span className="flex-1 text-left">{m.title}</span>
-                {m.id === issue.milestoneId && <CheckIcon className="size-3 text-muted-foreground" />}
-              </button>
-            ))}
-          </PopoverContent>
-        </Popover>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            <DropdownMenuRadioGroup value={issue.milestoneId ?? ''} onValueChange={(v) => onUpdate({ milestoneId: v || null })}>
+              <DropdownMenuRadioItem value="">
+                No milestone
+              </DropdownMenuRadioItem>
+              {milestones.length > 0 && <DropdownMenuSeparator />}
+              {milestones.map(m => (
+                <DropdownMenuRadioItem key={m.id} value={m.id}>
+                  {m.title}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PropertyRow>
 
       <div className="my-3" />
 
-      {/* Relations */}
       <RelationManager issueId={issue.id} />
     </div>
   )
@@ -166,12 +157,8 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!open) {
-      return
-    }
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-    })
+    if (!open) return
+    requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
 
   const handleAdd = useCallback(() => {
@@ -203,13 +190,10 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleAdd()
-              }
+              if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
             }}
             placeholder="Add label..."
-            className="w-full border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
+            className="w-full border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
           />
         </PopoverContent>
       </Popover>
@@ -222,56 +206,47 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
 
-  // delegateAgentId stores the agentProfileId; find the agent whose profile matches
-  const delegatedAgent = issue.delegateAgentId
-    ? agents.find(a => a.agentProfileId === issue.delegateAgentId) ?? null
+  const delegatedAgent = issue.delegateAgentProfileId
+    ? agents.find(a => a.agentProfileId === issue.delegateAgentProfileId) ?? null
     : null
 
   return (
     <PropertyRow label="Agent">
-      <Popover>
-        <PopoverTrigger
-          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-text-tertiary hover:text-foreground hover:bg-fill transition-colors"
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-muted-foreground hover:text-foreground hover:bg-fill transition-colors"
           data-testid="issue-agent-delegate-trigger"
         >
           <BotIcon className="size-3" />
           <span>{delegatedAgent ? delegatedAgent.name : 'Unassigned'}</span>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-48 p-1">
-          <div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-44">
           {delegatedAgent && (
-            <button
-              type="button"
-              onClick={() => undelegateIssue.mutate({ issueId: issue.id })}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] text-muted-foreground hover:bg-fill transition-colors"
-              data-testid="issue-agent-option-unassigned"
-            >
-              <span className="flex-1 text-left">Unassigned</span>
-            </button>
-          )}
-          {agents.length === 0 ? (
-            !delegatedAgent && <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
-          ) : (
-            agents.map(a => (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId, agentId: a.id })}
-                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-[13px] transition-colors ${
-                  delegatedAgent?.id === a.id
-                    ? 'text-foreground bg-fill/50'
-                    : 'text-foreground hover:bg-fill'
-                }`}
-                data-testid={`issue-agent-option-${a.id}`}
+            <>
+              <DropdownMenuItem
+                onClick={() => undelegateIssue.mutate({ issueId: issue.id })}
+                data-testid="issue-agent-option-unassigned"
               >
-                <BotIcon className="size-3 text-muted-foreground" />
-                <span className="flex-1 text-left">{a.name}</span>
-              </button>
-            ))
+                Unassigned
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
           )}
-          </div>
-        </PopoverContent>
-      </Popover>
+          {agents.length === 0 && !delegatedAgent
+            ? <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
+            : agents.map(a => (
+                <DropdownMenuItem
+                  key={a.id}
+                  onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId, agentId: a.id })}
+                  data-testid={`issue-agent-option-${a.id}`}
+                >
+                  <BotIcon className="size-3 text-muted-foreground" />
+                  {a.name}
+                </DropdownMenuItem>
+              ))
+          }
+        </DropdownMenuContent>
+      </DropdownMenu>
     </PropertyRow>
   )
 }

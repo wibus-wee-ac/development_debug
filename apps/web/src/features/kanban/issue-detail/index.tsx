@@ -41,7 +41,12 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden" data-testid="issue-detail-panel">
-      <IssueHeader issue={issue} onBack={onBack} onDelete={handleDelete} />
+      <IssueHeader
+        issue={issue}
+        status={statuses.find(s => s.id === issue.statusId)}
+        onBack={onBack}
+        onDelete={handleDelete}
+      />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
@@ -54,7 +59,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
               <SubIssuesList issueId={issueId} workspaceId={workspaceId} statuses={statuses} />
             </div>
 
-            {issue.delegateAgentId && (
+            {issue.delegateAgentProfileId && (
               <div className="mt-8">
                 <AgentSessionPanel issueId={issueId} workspaceId={workspaceId} />
               </div>

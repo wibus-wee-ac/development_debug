@@ -14,7 +14,7 @@ export function AgentActivityItem({ activity }: AgentActivityItemProps) {
   switch (activity.type) {
     case 'thought':
       return (
-        <div className={cn(base, 'border-l-2 border-border/50 italic text-muted-foreground/60')}>
+        <div className={cn(base, 'border-l-2 border-border italic text-muted-foreground/60')}>
           {activity.content}
         </div>
       )
