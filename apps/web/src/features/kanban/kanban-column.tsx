@@ -84,7 +84,7 @@ export function KanbanColumn({
         ref={setNodeRef}
         data-testid={`kanban-column-dropzone-${groupId}`}
         className={cn(
-          'flex-1 flex flex-col gap-1.5 px-2 pb-1.5 min-h-0',
+          'flex-1 flex flex-col gap-1.5 px-2 pb-1.5 min-h-0 overflow-y-auto',
           'transition-colors duration-150 ease-out',
           isOver && 'bg-muted/80 rounded-b-xl',
         )}
