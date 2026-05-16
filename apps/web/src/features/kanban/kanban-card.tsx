@@ -56,21 +56,31 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onClick() } }}
         data-testid={`issue-card-${issue.id}`}
         className={cn(
-          'bg-card rounded-md px-3.5 py-2.5 cursor-pointer border border-border/50',
+          'bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border shadow-xs dark:border-muted',
           'flex flex-col gap-1',
-          'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_rgba(0,0,0,0.05)]',
+          // 'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_rgba(0,0,0,0.05)]',
           'transition-[transform,box-shadow,border] duration-150 ease-out',
-          'hover:shadow-[0_3px_10px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.07)] hover:border-border',
+          // 'hover:shadow-[0_3px_10px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.07)]',
+          'hover:bg-background/50',
+          'transition-colors duration-150 ease-out',
           'active:scale-[0.97]',
           isDragging && 'opacity-50',
         )}
       >
 
+        <div className="flex justify-between">
         {displayProperties.id && (
-          <span className="text-xs font-mono text-muted-foreground tabular-nums">
+          <span className="text-[10.5px] text-muted-foreground tabular-nums">
             {issue.id.slice(0, 6).toUpperCase()}
           </span>
         )}
+
+        {displayProperties.assignee && (
+          issue.assigneeId
+            ? <AssigneeAvatar name={issue.assigneeId} size={18} />
+            : <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground" />
+        )}
+        </div>
 
         {/* Title */}
         <div className="flex items-start gap-2">
@@ -79,7 +89,7 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
               <StatusIcon category={category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={16} />
             </span>
           )}
-          <p className="text-sm font-medium text-foreground leading-relaxed text-pretty">
+          <p className="text-[13px] font-medium text-foreground leading-relaxed text-pretty">
             {issue.title}
           </p>
         </div>
@@ -102,13 +112,7 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
             </div>
           )}
 
-          <div className="flex-1" />
-
-          {displayProperties.assignee && (
-            issue.assigneeId
-              ? <AssigneeAvatar name={issue.assigneeId} size={18} />
-              : <span className="size-[14px] shrink-0 rounded-full border border-dashed border-muted-foreground" />
-          )}
+          {/* <div className="flex-1" /> */}
         </div>
       </div>
     </div>

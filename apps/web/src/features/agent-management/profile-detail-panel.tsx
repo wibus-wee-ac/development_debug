@@ -7,8 +7,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import type { UseFormReturn } from 'react-hook-form'
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 
 import {
@@ -46,6 +45,7 @@ import { ModelsPanel } from './models-panel'
 
 type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'command'
 
 interface ProfileDetailFormValues {
   name: string
@@ -136,6 +136,31 @@ function buildProviderRequestBody(profile: AgentProfile) {
   }
 }
 
+function buildProfileConfig(values: ProfileDetailFormValues): Record<string, unknown> {
+  const cleanEnabled = values.enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
+  const allDisabledNow = values.enabledModels[0] === ALL_DISABLED_SENTINEL
+  return {
+    baseUrl: values.baseUrl,
+    model: values.model || undefined,
+    enabledModels: cleanEnabled.length > 0
+      ? cleanEnabled
+      : allDisabledNow
+        ? []
+        : undefined,
+  }
+}
+
+function createProfileSignature(values: ProfileDetailFormValues): string {
+  return JSON.stringify({
+    name: values.name,
+    apiKey: values.apiKey,
+    baseUrl: values.baseUrl,
+    model: values.model,
+    command: values.command,
+    enabledModels: values.enabledModels,
+  })
+}
+
 function clearTimer(timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>) {
   if (!timerRef.current) {
     return
@@ -159,7 +184,6 @@ export function ProfileDetailPanel({
   const preset = presetForProfile(profile)
   const { Icon } = providerVisuals(preset.id)
 
-  const parsed = useMemo(() => parseConfig(profile.configJson), [profile.configJson])
   const supportsModels = true
   const supportsCommand = false
 
@@ -188,10 +212,15 @@ export function ProfileDetailPanel({
   const modelsRequestRef = useRef(0)
   const healthRequestRef = useRef(0)
   const saveRequestRef = useRef(0)
+  const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
 
   const createProviderRequestBody = useCallback(() => buildProviderRequestBody(profile), [profile])
   const createProviderRequestBodyRef = useRef(createProviderRequestBody)
   createProviderRequestBodyRef.current = createProviderRequestBody
+
+  const setTextField = useCallback((field: ProfileTextField, value: string) => {
+    form.setValue(field, value, { shouldDirty: true })
+  }, [form])
 
   const clearAutoSaveTimer = useCallback(() => {
     clearTimer(autoSaveTimerRef)
@@ -216,7 +245,9 @@ export function ProfileDetailPanel({
     modelsRequestRef.current += 1
     healthRequestRef.current += 1
     saveRequestRef.current += 1
-    form.reset(getProfileFormValues(profile))
+    const initialValues = getProfileFormValues(profile)
+    savedSignatureRef.current = createProfileSignature(initialValues)
+    form.reset(initialValues)
     dispatch({ type: 'reset' })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId])
@@ -294,25 +325,7 @@ export function ProfileDetailPanel({
     void runHealthCheck()
   }, [profile.enabled, runHealthCheck])
 
-  // Build config json from current form values
-  const buildConfigJson = useCallback((): string => {
-    if (supportsModels) {
-      const cleanEnabled = enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
-      const allDisabledNow = enabledModels[0] === ALL_DISABLED_SENTINEL
-      return JSON.stringify({
-        baseUrl,
-        model: model || undefined,
-        enabledModels: cleanEnabled.length > 0
-          ? cleanEnabled
-          : allDisabledNow
-            ? []
-            : undefined,
-      })
-    }
-    return profile.configJson
-  }, [profile.providerKind, profile.configJson, parsed, supportsModels, baseUrl, model, enabledModels, command])
-
-  const doSave = useCallback(async () => {
+  const saveProfile = useEffectEvent(async () => {
     const currentValues = form.getValues()
     const requestId = ++saveRequestRef.current
     dispatch({ type: 'save/set', state: 'saving' })
@@ -332,7 +345,7 @@ export function ProfileDetailPanel({
           name: currentValues.name,
           providerKind: profile.providerKind,
           enabled: profile.enabled,
-          config: parseConfig(buildConfigJson()),
+          config: supportsModels ? buildProfileConfig(currentValues) : parseConfig(profile.configJson),
           credentialRef,
         },
       })
@@ -342,10 +355,12 @@ export function ProfileDetailPanel({
       }
 
       dispatch({ type: 'save/set', state: 'saved' })
-      form.reset({
+      const savedValues = {
         ...currentValues,
         apiKey: '',
-      })
+      }
+      savedSignatureRef.current = createProfileSignature(savedValues)
+      form.reset(savedValues)
       clearSavedClearTimer()
       savedClearTimerRef.current = setTimeout(() => {
         if (requestId === saveRequestRef.current) {
@@ -362,7 +377,7 @@ export function ProfileDetailPanel({
       dispatch({ type: 'save/set', state: 'error' })
       console.error('[ProfileDetailPanel] save failed', err)
     }
-  }, [clearSavedClearTimer, form, profile, supportsModels, buildConfigJson, onSaved])
+  })
 
   const watchedSignature = useMemo(() => JSON.stringify({
     name,
@@ -375,14 +390,14 @@ export function ProfileDetailPanel({
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
-    if (!form.formState.isDirty || saveState === 'saving') {
+    if (watchedSignature === savedSignatureRef.current || saveState === 'saving') {
       return
     }
 
     dispatch({ type: 'save/set', state: 'pending' })
     clearAutoSaveTimer()
     const timeoutId = setTimeout(() => {
-      void doSave()
+      void saveProfile()
     }, 1200)
 
     autoSaveTimerRef.current = timeoutId
@@ -393,7 +408,7 @@ export function ProfileDetailPanel({
         autoSaveTimerRef.current = null
       }
     }
-  }, [watchedSignature, doSave, form.formState.isDirty, saveState, clearAutoSaveTimer])
+  }, [watchedSignature, saveState, clearAutoSaveTimer])
 
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
 
@@ -414,7 +429,8 @@ export function ProfileDetailPanel({
       <div className="flex flex-col">
         <ProfileGeneralSettings
           profile={profile}
-          form={form}
+          values={{ name, apiKey, baseUrl, command }}
+          onTextFieldChange={setTextField}
           supportsModels={supportsModels}
           supportsCommand={supportsCommand}
         />
@@ -519,12 +535,14 @@ function ProfileDetailHeader({
 
 function ProfileGeneralSettings({
   profile,
-  form,
+  values,
+  onTextFieldChange,
   supportsModels,
   supportsCommand,
 }: {
   profile: AgentProfile
-  form: UseFormReturn<ProfileDetailFormValues>
+  values: Pick<ProfileDetailFormValues, ProfileTextField>
+  onTextFieldChange: (field: ProfileTextField, value: string) => void
   supportsModels: boolean
   supportsCommand: boolean
 }) {
@@ -533,7 +551,8 @@ function ProfileGeneralSettings({
       <SettingsRow label="Display name" description="The name shown in the provider list">
         <Input
           data-testid="provider-edit-name"
-          {...form.register('name')}
+          value={values.name}
+          onChange={e => onTextFieldChange('name', e.target.value)}
           className="h-9 w-56 text-[13px]"
         />
       </SettingsRow>
@@ -544,7 +563,8 @@ function ProfileGeneralSettings({
           <SettingsRow label="Endpoint" description="Base URL for the API">
             <Input
               data-testid="provider-edit-baseurl"
-              {...form.register('baseUrl')}
+              value={values.baseUrl}
+              onChange={e => onTextFieldChange('baseUrl', e.target.value)}
               className="h-9 w-56 text-[12.5px] font-mono"
               placeholder="https://api.openai.com/v1"
             />
@@ -560,7 +580,8 @@ function ProfileGeneralSettings({
             <Input
               data-testid="provider-edit-apikey"
               type="password"
-              {...form.register('apiKey')}
+              value={values.apiKey}
+              onChange={e => onTextFieldChange('apiKey', e.target.value)}
               placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
               className="h-9 w-56 text-[12.5px] font-mono"
             />
@@ -573,7 +594,8 @@ function ProfileGeneralSettings({
           <SettingsDivider />
           <SettingsRow label="Command" description="Executable that Cradle launches when this provider is used">
             <Input
-              {...form.register('command')}
+              value={values.command}
+              onChange={e => onTextFieldChange('command', e.target.value)}
               className="h-9 w-56 text-[12.5px] font-mono"
               placeholder="claude"
             />
@@ -649,7 +671,7 @@ function ProfileCustomModelsSection({
     }
   }, [customModelsJson])
 
-  const handleChange = useCallback(async (next: Array<{ id: string, label: string, capabilities: ModelCapabilities }>) => {
+  const saveCustomModels = useCallback(async (next: Array<{ id: string, label: string, capabilities: ModelCapabilities }>) => {
     setModels(next)
     try {
       const res = await fetch(`${getServerUrl()}/profiles/${profileId}/custom-models`, {
@@ -673,7 +695,7 @@ function ProfileCustomModelsSection({
         <CustomModelsEditor
           profileId={profileId}
           models={models}
-          onChange={handleChange}
+          onChange={saveCustomModels}
         />
       </section>
     </>

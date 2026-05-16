@@ -71,9 +71,9 @@ export function KanbanColumn({
   }, [inlineTitle, groupId, createIssue, workspaceId])
 
   return (
-    <div className="flex flex-col w-72 shrink-0 bg-muted/80 rounded-xl h-full" data-kanban-column-id={groupId}>
+    <div className="flex flex-col w-80 shrink-0 bg-muted/20 rounded-xl h-full" data-kanban-column-id={groupId}>
       {/* Column header */}
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div className="flex items-center gap-2 px-3 py-3">
         {category && <StatusIcon category={category} size={14} />}
         <span className="text-[12px] font-medium text-foreground" data-testid={`kanban-column-title-${groupId}`}>{groupName}</span>
         <span className="text-[11px] text-muted-foreground tabular-nums">{issues.length}</span>
@@ -84,7 +84,7 @@ export function KanbanColumn({
         ref={setNodeRef}
         data-testid={`kanban-column-dropzone-${groupId}`}
         className={cn(
-          'flex-1 flex flex-col gap-1.5 px-1.5 pb-1.5 min-h-0',
+          'flex-1 flex flex-col gap-1.5 px-2 pb-1.5 min-h-0',
           'transition-colors duration-150 ease-out',
           isOver && 'bg-muted/80 rounded-b-xl',
         )}
