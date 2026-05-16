@@ -1,12 +1,11 @@
-// Input: chat/session/agent rows and timeline-backed assistant text extraction
+// Input: chat/session/agent rows and message snapshot text
 // Output: minimal turn context resolver for system prompt and chat history
 // Position: apps/server/src/modules/chat-runtime/chat-turn-context.ts
 
-import { agents, backendRuns, backendTimelineEvents, messages, sessions } from '@cradle/db'
-import { and, desc, eq } from 'drizzle-orm'
+import { agents, messages, sessions } from '@cradle/db'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import { db } from '../../infra'
-import { decodeChunk } from './timeline-events'
 
 export interface ChatTurnContext {
   systemPrompt?: string
@@ -22,29 +21,23 @@ export function resolve(input: { sessionId: string, draftMessageId: string, draf
     systemPrompt = readAgentSystemPrompt(agent?.configJson)
   }
 
-  const historyRows = db().select().from(messages).where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'))).orderBy(messages.createdAt).all().filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
+  const historyRows = db()
+    .select()
+    .from(messages)
+    .where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'), isNull(messages.parentToolCallId)))
+    .orderBy(messages.createdAt)
+    .all()
+    .filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 
   const history = historyRows.map(row => ({
     role: row.role as 'user' | 'assistant',
-    content: row.role === 'assistant' ? readAssistantText(row.id) : row.content,
+    content: row.content,
   })).filter(item => item.content.length > 0)
 
   return {
     systemPrompt,
     history: history.length > 0 ? history : undefined,
   }
-}
-
-function readAssistantText(messageId: string): string {
-  const run = db().select({ id: backendRuns.id }).from(backendRuns).where(eq(backendRuns.messageId, messageId)).orderBy(desc(backendRuns.startedAt)).get()
-  if (!run) {
-    return ''
-  }
-  const rows = db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
-  return rows.map((row) => {
-    const chunk = decodeChunk({ payloadJson: row.payloadJson })
-    return chunk.type === 'text-delta' ? (chunk as { type: 'text-delta', delta: string }).delta : ''
-  }).join('')
 }
 
 function readAgentSystemPrompt(configJson: string | null | undefined): string | undefined {

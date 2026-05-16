@@ -1,5 +1,7 @@
 # Chat Engine Decomposition — From God Object to Pipeline
 
+> Historical note (2026-05-16): this plan captures a pre-snapshot chat architecture centered on timeline events, `UIMessageChunk` projection, and renderer broadcast. The current canonical runtime contract is defined by `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This plan follows `/.agents/skills/execplan/references/PLANS.md` from the repository root. The plan must remain self-contained and updated at each stop point.

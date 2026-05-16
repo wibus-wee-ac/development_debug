@@ -1,5 +1,7 @@
 # Chat Boundary Cleanup for Chunk Replay, Session Activity, and Jarvis Integration
 
+> Superseded note (2026-05-16): the later rewrite in `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md` removed chunk replay persistence and replaced it with `messages.messageJson` snapshot hydration plus sequenced SSE delta events. Any references below to `chat-chunk-reducer`, `StoredChunkEnvelope`, `group.chunks`, or chunk replay describe the superseded design that existed before that rewrite.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This repository does not currently check in a top-level `PLANS.md`. This document is maintained in accordance with `/Users/wibus/.agents/skills/execplan/references/PLANS.md`, whose requirements were reviewed before drafting this plan.

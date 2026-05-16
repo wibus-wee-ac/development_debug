@@ -1,5 +1,7 @@
 # ExecPlan: Migrate Renderer to `apps/web` — Full Frontend/Backend Separation
 
+> Historical note (2026-05-16): this migration plan includes an older chat transport transition narrative. The current canonical chat runtime uses `GET /chat/sessions/:sessionId/messages` for snapshot hydration and sequenced SSE delta events (`message_delta`, `subagent_message_delta`, `run_*`) for live updates.
+
 **Date**: 2026-05-09  
 **Author**: Lead Agent  
 **Status**: ✅ COMPLETE (2026-05-09)
@@ -52,9 +54,9 @@ Port convention: **server = 21423**, **web = 5174**
 
 ### apps/server 已有的 API 端点
 
-- `POST /chat/sessions/:sessionId/runs` — 创建 chat run
-- `GET /chat/sessions/:sessionId/timeline` — 获取 timeline 历史
-- `GET /chat/runs/:runId/stream` — **SSE** stream（`text/event-stream`）
+- `POST /chat/sessions/:sessionId/response` — 创建 chat run 并直接返回 SSE
+- `GET /chat/sessions/:sessionId/messages` — 获取 message snapshot rows
+- `POST /chat/sessions/:sessionId/cancel` — 中止当前 run
 - `GET /pty/:sessionId/stream` — **SSE** stream（`text/event-stream`）
 - `GET /openapi.json` — OpenAPI 3.1 spec
 - `GET /docs` — Scalar API reference
@@ -62,7 +64,7 @@ Port convention: **server = 21423**, **web = 5174**
 ### src/renderer 当前的 IPC 依赖
 
 - **通信层**: `window.electron.ipcRenderer` → `createIpcProxy` → `ipc.xxx()`
-- **实时事件**: Electron IPC push（`chat:timeline-event` 等），通过 `subscribe()` 订阅
+- **实时事件**: chat 用 SSE delta，其他通道仍可经 Electron IPC push / `subscribe()` 订阅
 - **类型推导**: `typeof window.ipc.xxx` → 后续换成从 Hono / OpenAPI 生成的类型
 
 ### 需要特殊处理的 Electron-native 功能
@@ -81,7 +83,7 @@ Port convention: **server = 21423**, **web = 5174**
 
 | 事件类型 | 当前机制 | 迁移后机制 |
 |---------|--------|----------|
-| Chat timeline | Electron IPC push | **SSE** — `GET /chat/runs/:runId/stream`（已有） |
+| Chat runtime | Electron IPC push | **SSE** — `POST /chat/sessions/:sessionId/response` 直接返回 stream |
 | PTY output | Electron IPC push | **SSE** — `GET /pty/:sessionId/stream`（已有） |
 | Agent context events | Electron IPC push | 加 polling 或 SSE 端点（Phase 4 决定） |
 | Observability events | Electron IPC push | 加 polling（低频，可接受） |
@@ -129,8 +131,8 @@ export default defineConfig({
 
 ```
 旧: POST → ipc.chat.send() → 等待 IPC push 事件
-新: POST /chat/sessions/:id/runs → 得到 { runId }
-    → GET /chat/runs/:runId/stream (SSE) → 解析 event → enqueue chunks
+新: POST /chat/sessions/:id/response → 直接消费 SSE
+  → 解析 `message_delta` / `subagent_message_delta` / `run_*` → enqueue deltas
 ```
 
 `projectTimelineEventToChunks` 函数可以直接复用，它是纯函数。

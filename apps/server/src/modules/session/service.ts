@@ -4,7 +4,6 @@ import type { Message, Session } from '@cradle/db'
 import { agents,
   backendRuns,
   backendSessionBindings,
-  backendTimelineEvents,
   messages,
   sessions } from '@cradle/db'
 import type { RuntimeKind } from '../providers/types'
@@ -287,35 +286,22 @@ export function getMessagesWithRunIds(sessionId: string): Array<Message & { runI
   }))
 }
 
-export function getTimelineEvents(runIds: string[]): { runId: string, content: string }[] {
+export function getRunMessageContents(runIds: string[]): { runId: string, content: string }[] {
   if (runIds.length === 0) {
     return []
   }
 
   const rows = db()
     .select({
-      runId: backendTimelineEvents.runId,
-      eventType: backendTimelineEvents.eventType,
-      payloadJson: backendTimelineEvents.payloadJson,
-      sequenceNumber: backendTimelineEvents.sequenceNumber,
+      runId: backendRuns.id,
+      content: messages.content,
     })
-    .from(backendTimelineEvents)
-    .where(inArray(backendTimelineEvents.runId, runIds))
-    .orderBy(backendTimelineEvents.runId, backendTimelineEvents.sequenceNumber)
+    .from(backendRuns)
+    .innerJoin(messages, eq(backendRuns.messageId, messages.id))
+    .where(inArray(backendRuns.id, runIds))
     .all()
 
-  const chunksByRunId = new Map<string, string[]>()
-  for (const row of rows) {
-    const delta = readAssistantDelta(row.eventType, row.payloadJson)
-    if (!delta) {
-      continue
-    }
-    const bucket = chunksByRunId.get(row.runId) ?? []
-    bucket.push(delta)
-    chunksByRunId.set(row.runId, bucket)
-  }
-
-  return Array.from(chunksByRunId, ([runId, chunks]) => ({ runId, content: chunks.join('') }))
+  return rows.map(row => ({ runId: row.runId, content: row.content }))
 }
 
 // ── export ──
@@ -350,70 +336,9 @@ export function exportMarkdown(sessionId: string): string {
     const role = msg.role === 'user' ? 'User' : 'Assistant'
     lines.push(`## ${role}`)
     lines.push('')
-    if (msg.role === 'assistant') {
-      lines.push(extractAssistantMarkdownText(d, msg.id, msg.content))
-    }
-    else {
-      lines.push(msg.content)
-    }
+    lines.push(msg.content)
     lines.push('')
   }
 
   return lines.join('\n')
-}
-
-// ── helpers ──
-
-function readAssistantDelta(eventType: string, payloadJson: string): string | null {
-  if (eventType !== 'assistant.text.delta') {
-    return null
-  }
-  try {
-    const payload = JSON.parse(payloadJson) as { delta?: unknown }
-    return typeof payload.delta === 'string' ? payload.delta : null
-  }
-  catch {
-    return null
-  }
-}
-
-function extractAssistantMarkdownText(
-  d: ReturnType<typeof db>,
-  messageId: string,
-  fallbackContent: string,
-): string {
-  const run = d
-    .select({ id: backendRuns.id })
-    .from(backendRuns)
-    .where(eq(backendRuns.messageId, messageId))
-    .orderBy(desc(backendRuns.startedAt))
-    .get()
-
-  if (!run) {
-    return fallbackContent
-  }
-
-  const rows = d
-    .select({ eventType: backendTimelineEvents.eventType, payloadJson: backendTimelineEvents.payloadJson })
-    .from(backendTimelineEvents)
-    .where(eq(backendTimelineEvents.runId, run.id))
-    .orderBy(backendTimelineEvents.sequenceNumber)
-    .all()
-
-  const text = rows
-    .filter(row => row.eventType === 'assistant.text.delta')
-    .map(row => safeParseDelta(row.payloadJson))
-    .join('')
-
-  return text || fallbackContent
-}
-
-function safeParseDelta(payloadJson: string): string {
-  try {
-    const parsed = JSON.parse(payloadJson) as { delta?: string }
-    return typeof parsed.delta === 'string' ? parsed.delta : ''
-  }
-  catch {
-    return ''
-  }
 }

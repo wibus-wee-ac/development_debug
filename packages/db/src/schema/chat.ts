@@ -33,11 +33,16 @@ export const messages = sqliteTable('messages', {
   sessionId: text('session_id')
     .notNull()
     .references(() => sessions.id, { onDelete: 'cascade' }),
+  parentMessageId: text('parent_message_id'),
+  parentToolCallId: text('parent_tool_call_id'),
+  taskId: text('task_id'),
+  depth: int('depth').notNull().default(0),
   role: text('role', { enum: ['user', 'assistant'] }).notNull(),
   status: text('status', {
     enum: ['streaming', 'complete', 'aborted', 'failed'],
   }).notNull().default('complete'),
   content: text('content').notNull(),
+  messageJson: text('message_json').notNull(),
   errorText: text('error_text'),
   ...timestamps(),
 })

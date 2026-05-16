@@ -47,21 +47,25 @@ This is backed by `@cradle/ipc` proxy generation against main-process service de
 
 ### 2.3 Push Event Contract
 
-Use the unified signal bridge for all main→renderer events:
+Cradle now has two push shapes:
+
+1. **Chat runtime** uses HTTP + SSE directly:
 
 ```ts
-import { subscribe } from '@renderer/lib/signal'
-
-const unsubscribe = subscribe('chat:timeline-event', payload => {
-  // handle payload
+const response = await fetch(`/chat/sessions/${sessionId}/response`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ text: 'Hello' }),
 })
+
+// Consume SSE events:
+// - message_delta
+// - subagent_message_delta
+// - run_completed / run_aborted / run_failed
 ```
 
-Current push topics:
+2. **Other app-owned push channels** may still use the renderer signal bridge:
 
-- `chat:timeline-event`
-- `chat:session-title`
-- `chat:session-activity`
 - `pty:data`
 - `pty:title`
 - `pty:exit`
@@ -77,19 +81,19 @@ Current push topics:
 
 Preferred model:
 
-1. Query initial snapshot over IPC.
-2. Subscribe to incremental push events.
+1. Query initial snapshot over HTTP/IPC.
+2. Subscribe to incremental SSE or signal events.
 3. Keep local projection deterministic and idempotent.
 
-Cradle chat uses this pattern (`getSessionTimeline` + `chat:timeline-event`).
+Cradle chat uses this pattern as `GET /chat/sessions/:sessionId/messages` + SSE delta events.
 
 ### 3.2 Session Watch Lifecycle
 
 For chat integrations:
 
-1. Call `ipc.chat.watchSession(chatSessionId)` when session view becomes active.
-2. Listen to `chat:timeline-event` and related push topics.
-3. Call `ipc.chat.unwatchSession(chatSessionId)` on teardown.
+1. Load the current snapshot from `GET /chat/sessions/:sessionId/messages`.
+2. Start or observe a run via `POST /chat/sessions/:sessionId/response`.
+3. Apply `message_delta` / `subagent_message_delta` / `run_*` events from the SSE stream.
 
 ### 3.3 PTY Lifecycle
 

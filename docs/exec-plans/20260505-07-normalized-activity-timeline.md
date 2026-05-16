@@ -1,5 +1,7 @@
 # Normalized Activity Timeline and Chat Projection
 
+> Historical note (2026-05-16): this plan documents the older `backend_timeline_events` / `chat:timeline-event` normalization design. The current chat runtime has since been superseded by `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`, where durable history is stored as `messages.messageJson` snapshots and live updates stream as sequenced SSE delta events.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This plan follows `/.agents/skills/execplan/references/PLANS.md` from the repository root. It assumes the control-plane foundation described in `docs/exec-plans/20260505-06-backend-control-plane-schema.md` has landed or is implemented together with this slice.

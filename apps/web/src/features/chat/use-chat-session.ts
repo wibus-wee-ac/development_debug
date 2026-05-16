@@ -3,7 +3,7 @@
 // Position: Feature hook for chat feature; manages lifecycle of streaming + passive observation
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { UIMessage, UIMessageChunk } from 'ai'
+import type { UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import {
@@ -14,10 +14,10 @@ import {
 import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import { projectAssistantMessageFromChunks } from './chat-chunk-reducer'
+import type { ChatMessageSnapshotRow } from './chat-delta-events'
 import { startChatResponse } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
-import { buildChunkStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
+import { buildEventStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -55,68 +55,43 @@ export async function stopChatTurn(args: {
   await Promise.resolve(args.chatStop())
 }
 
-// ── Timeline Types ──────────────────────────────────────────
+// ── Message Snapshot Types ──────────────────────────────────
+
+export type ChatSessionMessageRow = ChatMessageSnapshotRow
 
 /**
- * Chunk group row as returned by GET /chat/sessions/:sessionId/messages.
+ * Extract subagent message snapshots, keyed by parent message and tool call.
  */
-export type ChatTimelineGroupRow = {
-  messageId: string
-  role: 'user' | 'assistant'
-  userText?: string
-  status: string
-  errorText?: string
-  chunks: Array<{ chunk: UIMessageChunk, runId: string, parentToolCallId?: string | null, [key: string]: unknown }>
-}
-
-function projectTimelineGroup(group: ChatTimelineGroupRow): UIMessage {
-  if (group.role === 'user') {
-    return {
-      id: group.messageId,
-      role: 'user',
-      parts: [{ type: 'text', text: group.userText ?? '' }],
-    }
-  }
-  // Filter out subagent chunks (parentToolCallId != null) for main message replay
-  const mainChunks = group.chunks
-    .flatMap(c => !c.parentToolCallId ? [c.chunk] : [])
-  return projectAssistantMessageFromChunks(group.messageId, mainChunks)
-}
-
-/**
- * Extract subagent chunks from timeline groups, keyed by parentToolCallId.
- * Returns a map: messageId -> Map<parentToolCallId, UIMessageChunk[]>
- */
-function extractSubagentChunks(
-  groups: ChatTimelineGroupRow[],
-): Map<string, Map<string, UIMessageChunk[]>> {
-  const result = new Map<string, Map<string, UIMessageChunk[]>>()
-  for (const group of groups) {
-    if (group.role !== 'assistant') {
+export function bucketSubagentMessagesByParentToolCall(
+  rows: ChatSessionMessageRow[],
+): Map<string, Map<string, UIMessage[]>> {
+  const result = new Map<string, Map<string, UIMessage[]>>()
+  for (const row of rows) {
+    if (!row.parentMessageId || !row.parentToolCallId) {
       continue
     }
-    for (const row of group.chunks) {
-      const parentId = row.parentToolCallId as string | null | undefined
-      if (!parentId) {
-        continue
-      }
-      let messageMap = result.get(group.messageId)
-      if (!messageMap) {
-        messageMap = new Map()
-        result.set(group.messageId, messageMap)
-      }
-      let chunks = messageMap.get(parentId)
-      if (!chunks) {
-        chunks = []
-        messageMap.set(parentId, chunks)
-      }
-      chunks.push(row.chunk)
+    let messageMap = result.get(row.parentMessageId)
+    if (!messageMap) {
+      messageMap = new Map()
+      result.set(row.parentMessageId, messageMap)
     }
+    const messages = messageMap.get(row.parentToolCallId) ?? []
+    messages.push(row.message)
+    messageMap.set(row.parentToolCallId, messages)
   }
   return result
 }
 
-function derivePassiveStatus(rows: ChatTimelineGroupRow[]): PublicStatus {
+export function projectMainMessagesFromSnapshotRows(rows: ChatSessionMessageRow[]): UIMessage[] {
+  return rows.flatMap((row) => {
+    if (row.parentToolCallId) {
+      return []
+    }
+    return [row.message]
+  })
+}
+
+function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
   if (rows.some(row => row.status === 'streaming')) {
     return 'streaming'
   }
@@ -131,16 +106,16 @@ function derivePassiveStatus(rows: ChatTimelineGroupRow[]): PublicStatus {
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 const PASSIVE_STREAM_REFETCH_MS = 500
-const EMPTY_TIMELINE_GROUPS: ChatTimelineGroupRow[] = []
+const EMPTY_SNAPSHOT_ROWS: ChatSessionMessageRow[] = []
 
-function selectTimelineGroups(data: unknown): ChatTimelineGroupRow[] {
-  return Array.isArray(data) ? data as ChatTimelineGroupRow[] : EMPTY_TIMELINE_GROUPS
+function selectSnapshotRows(data: unknown): ChatSessionMessageRow[] {
+  return Array.isArray(data) ? data as ChatSessionMessageRow[] : EMPTY_SNAPSHOT_ROWS
 }
 
 export function useChatSession(chatSessionId: string | null, options?: {
-  initialTimelineGroups?: ChatTimelineGroupRow[]
+  initialSnapshotRows?: ChatSessionMessageRow[]
 }) {
-  const { initialTimelineGroups } = options ?? {}
+  const { initialSnapshotRows } = options ?? {}
   const queryClient = useQueryClient()
 
   // Active handler ref (for the currently streaming response)
@@ -168,7 +143,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
 
   // ── Hydration from server ──
 
-  const timelineQueryKey = useMemo(
+  const snapshotRowsQueryKey = useMemo(
     () => chatSessionId
       ? getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: chatSessionId } })
       : null,
@@ -181,10 +156,21 @@ export function useChatSession(chatSessionId: string | null, options?: {
     [chatSessionId],
   )
 
-  const timelineQuery = useQuery({
-    ...getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
+  const generatedSnapshotRowsOptions = useMemo(
+    () => getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
+    [chatSessionId],
+  )
+
+  const snapshotRowsQuery = useQuery<
+    unknown,
+    Error,
+    ChatSessionMessageRow[],
+    ReturnType<typeof getChatSessionsBySessionIdMessagesQueryKey>
+  >({
+    queryKey: generatedSnapshotRowsOptions.queryKey,
+    queryFn: generatedSnapshotRowsOptions.queryFn,
     enabled: !!chatSessionId,
-    initialData: initialTimelineGroups as unknown,
+    initialData: initialSnapshotRows as unknown,
     refetchInterval: () => {
       if (!chatSessionId) {
         return false
@@ -194,11 +180,11 @@ export function useChatSession(chatSessionId: string | null, options?: {
         ? PASSIVE_STREAM_REFETCH_MS
         : false
     },
-    select: selectTimelineGroups,
+    select: selectSnapshotRows,
   })
 
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
-    if (!timelineQueryKey && !sessionBindingQueryKey) {
+    if (!snapshotRowsQueryKey && !sessionBindingQueryKey) {
       return
     }
     if (snapshotTimerRef.current) {
@@ -206,19 +192,19 @@ export function useChatSession(chatSessionId: string | null, options?: {
     }
     snapshotTimerRef.current = setTimeout(() => {
       snapshotTimerRef.current = null
-      if (timelineQueryKey) {
-        void queryClient.invalidateQueries({ queryKey: timelineQueryKey })
+      if (snapshotRowsQueryKey) {
+        void queryClient.invalidateQueries({ queryKey: snapshotRowsQueryKey })
       }
       if (sessionBindingQueryKey) {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
     }, delay)
-  }, [queryClient, sessionBindingQueryKey, timelineQueryKey])
+  }, [queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
 
   // ── Initial load ──
 
   useEffect(() => {
-    if (!chatSessionId || !timelineQuery.data) {
+    if (!chatSessionId || !snapshotRowsQuery.data) {
       return
     }
     const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
@@ -226,23 +212,23 @@ export function useChatSession(chatSessionId: string | null, options?: {
       return
     }
 
-    const projected = timelineQuery.data.map(projectTimelineGroup)
+    const projected = projectMainMessagesFromSnapshotRows(snapshotRowsQuery.data)
     useChatStore.getState().setMessages(chatSessionId, projected)
-    useChatStore.getState().setPassiveStatus(chatSessionId, derivePassiveStatus(timelineQuery.data))
+    useChatStore.getState().setPassiveStatus(chatSessionId, derivePassiveStatus(snapshotRowsQuery.data))
 
     // Hydrate errorMap from server-side failed messages
-    for (const row of timelineQuery.data) {
+    for (const row of snapshotRowsQuery.data) {
       if (row.role === 'assistant' && row.status === 'failed' && row.errorText) {
         useChatStore.getState().failGeneration(row.messageId, row.errorText)
       }
     }
 
-    // Hydrate subagent chunks
-    const subagentMap = extractSubagentChunks(timelineQuery.data)
+    // Hydrate subagent messages
+    const subagentMap = bucketSubagentMessagesByParentToolCall(snapshotRowsQuery.data)
     for (const [messageId, parentMap] of subagentMap) {
-      useChatStore.getState().setSubagentChunks(messageId, parentMap)
+      useChatStore.getState().setSubagentMessages(messageId, parentMap)
     }
-  }, [chatSessionId, timelineQuery.data])
+  }, [chatSessionId, snapshotRowsQuery.data])
 
   useEffect(() => {
     return () => {
@@ -339,8 +325,8 @@ export function useChatSession(chatSessionId: string | null, options?: {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
 
-      // 4. Pipe chunks to handler
-      const stream = buildChunkStreamFromResponse(res, chatSessionId)
+      // 4. Pipe delta events to handler
+      const stream = buildEventStreamFromResponse(res, chatSessionId)
       const reader = stream.getReader()
 
       const pump = async (): Promise<void> => {
@@ -348,7 +334,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
         if (done) {
           return
         }
-        handler.handleChunk(value)
+        handler.handleEvent(value)
         await pump()
       }
 
@@ -387,7 +373,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
 
   // ── isReady (always true once hydrated) ──
 
-  const isReady = messages.length > 0 || !!initialTimelineGroups || chatSessionId === null
+  const isReady = messages.length > 0 || !!initialSnapshotRows || chatSessionId === null
 
   return {
     messages,

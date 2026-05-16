@@ -37,12 +37,20 @@ vi.mock('@openai/codex-sdk', () => ({
   },
 }))
 
-interface ChatChunkGroup {
+interface ChatMessageSnapshot {
   messageId: string
   role: 'user' | 'assistant'
-  userText?: string
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
-  chunks: Array<{ chunk: { type: string, delta?: string, [key: string]: unknown } }>
+  content: string
+  parentToolCallId?: string | null
+  message: {
+    parts: Array<{ type: string, text?: string, state?: string, toolCallId?: string, output?: unknown, errorText?: string }>
+  }
+}
+
+interface ChatStreamEvent {
+  type: string
+  data: Record<string, unknown>
 }
 
 type ElysiaApp = ReturnType<typeof createServerApp>
@@ -73,11 +81,11 @@ function makeAsyncSequence<T>(items: T[]) {
   }
 }
 
-async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatChunkGroup['status']): Promise<ChatChunkGroup[]> {
+async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatMessageSnapshot['status']): Promise<ChatMessageSnapshot[]> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
     if (response.status === 200) {
-      const groups = await response.json() as ChatChunkGroup[]
+      const groups = await response.json() as ChatMessageSnapshot[]
       const assistant = groups.find(group => group.role === 'assistant')
       if (assistant?.status === expectedStatus) {
         return groups
@@ -87,6 +95,22 @@ async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedS
   }
 
   throw new Error(`Timed out waiting for assistant status ${expectedStatus}`)
+}
+
+async function collectSseEvents(response: Response): Promise<ChatStreamEvent[]> {
+  const payload = await response.text()
+  return payload
+    .split('\n\n')
+    .map(block => block.trim())
+    .filter(block => block.startsWith('data: '))
+    .map((block) => {
+      const data = block
+        .split('\n')
+        .filter(line => line.startsWith('data: '))
+        .map(line => line.slice('data: '.length))
+        .join('\n')
+      return JSON.parse(data) as ChatStreamEvent
+    })
 }
 
 async function createProfileAndSession(app: ElysiaApp, input: {
@@ -228,14 +252,9 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
       const timeline = await waitForMessageStatus(app, 'session-claude', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      expect(assistant?.chunks.map((c: any) => c.chunk.type)).toEqual(expect.arrayContaining([
-        'start',
-        'reasoning-start',
-        'reasoning-delta',
-        'text-start',
-        'text-delta',
-        'text-end',
-        'finish',
+      expect(assistant?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'reasoning', text: 'Reasoning...', state: 'done' }),
+        expect.objectContaining({ type: 'text', text: 'Claude says hi', state: 'done' }),
       ]))
 
       const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-claude'))
@@ -320,16 +339,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
       const timeline = await waitForMessageStatus(app, 'session-codex', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      expect(assistant?.chunks.map((c: any) => c.chunk.type)).toEqual(expect.arrayContaining([
-        'start',
-        'reasoning-start',
-        'reasoning-end',
-        'text-start',
-        'text-delta',
-        'tool-input-start',
-        'tool-output-available',
-        'text-end',
-        'finish',
+      expect(assistant?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'reasoning', text: 'Thinking', state: 'done' }),
+        expect.objectContaining({ type: 'text', text: 'Codex reply', state: 'done' }),
+        expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'cmd-1', state: 'output-available', output: 'pass' }),
       ]))
 
       expect(sdkMocks.codexStartThread).toHaveBeenCalledWith(expect.objectContaining({
@@ -442,26 +455,280 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
       const timeline = await waitForMessageStatus(app, 'session-claude-tool', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      const eventTypes = assistant?.chunks.map((c: any) => c.chunk.type) ?? []
+      const partTypes = assistant?.message.parts.map(part => part.type) ?? []
 
-      // Regression: tool-input-start and tool-output-available must both be emitted
-      expect(eventTypes).toContain('tool-input-start')
-      expect(eventTypes).toContain('tool-output-available')
+      expect(partTypes).toContain('dynamic-tool')
+      expect(partTypes).toContain('text')
 
-      // Verify ordering: started before completed
-      const startedIdx = eventTypes.indexOf('tool-input-start')
-      const completedIdx = eventTypes.indexOf('tool-output-available')
-      expect(startedIdx).toBeLessThan(completedIdx)
+      const toolIdx = partTypes.indexOf('dynamic-tool')
+      const textIdx = partTypes.indexOf('text')
+      expect(toolIdx).toBeLessThan(textIdx)
 
-      // Verify the full lifecycle events are present
-      expect(eventTypes).toEqual(expect.arrayContaining([
-        'start',
-        'tool-input-start',
-        'tool-output-available',
-        'text-start',
-        'text-delta',
-        'text-end',
-        'finish',
+      expect(assistant?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'toolu_abc123', state: 'output-available', output: 'hello\n' }),
+        expect.objectContaining({ type: 'text', text: 'Done running bash', state: 'done' }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('routes parent_tool_use_id chunks into subagent_message_delta events with globally increasing seq values', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+
+    sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
+      {
+        type: 'assistant',
+        session_id: 'claude-subagent-session',
+        message: {
+          content: [
+            { type: 'text', text: 'Main task dispatch' },
+            { type: 'tool_use', id: 'toolu_parent_1', name: 'task', input: { description: 'Investigate runtime' } },
+          ],
+        },
+      },
+        {
+          type: 'system/task_started',
+          session_id: 'claude-subagent-session',
+          task_id: 'task_sub_1',
+          agent_name: 'Investigate Agent',
+          parent_tool_use_id: 'toolu_parent_1',
+        },
+      {
+        type: 'assistant',
+        session_id: 'claude-subagent-session',
+        parent_tool_use_id: 'toolu_parent_1',
+        message: {
+          content: [{ type: 'text', text: 'Subagent investigating' }],
+        },
+      },
+      {
+        type: 'assistant',
+        session_id: 'claude-subagent-session',
+        message: {
+          content: [{ type: 'text', text: 'Main task finished' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-subagent-session',
+        usage: { input_tokens: 21, output_tokens: 9 },
+      },
+    ]))
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === 'https://api.anthropic.com/v1/models') {
+        return new Response(JSON.stringify({
+          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url === 'https://models.dev/api.json') {
+        return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: ReturnType<typeof createServerApp> | undefined
+
+    try {
+      app = createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-subagent', name: 'Workspace Subagent', path: workspaceRoot }).run()
+
+      await createProfileAndSession(app, {
+        workspaceId: 'workspace-subagent',
+        providerKind: 'claude-agent',
+        profileId: 'profile-claude-subagent',
+        sessionId: 'session-claude-subagent',
+        config: { model: 'claude-sonnet-4-20250514' },
+        secret: 'sk-ant-subagent-test',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-subagent/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Dispatch a subagent' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const events = await collectSseEvents(runRes)
+      const mainEvents = events.filter(event => event.type === 'message_delta')
+      const subagentEvents = events.filter(event => event.type === 'subagent_message_delta')
+
+      expect(mainEvents.length).toBeGreaterThan(0)
+      expect(subagentEvents.length).toBeGreaterThan(0)
+      expect(events.at(-1)?.type).toBe('run_completed')
+
+      const seqs = events
+        .filter(event => event.type === 'message_delta' || event.type === 'subagent_message_delta')
+        .flatMap((event) => {
+          const data = event.data as { deltas?: Array<{ seq: number }> }
+          return (data.deltas ?? []).map(delta => delta.seq)
+        })
+      expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, index) => index))
+
+      const mainMessageId = (mainEvents[0]!.data as { messageId: string }).messageId
+      const subagentContext = (subagentEvents[0]!.data as {
+        context: {
+          messageId: string
+          parentMessageId: string
+          parentToolCallId: string
+        }
+      }).context
+
+      expect(subagentContext.parentToolCallId).toBe('toolu_parent_1')
+      expect(subagentContext.parentMessageId).toBe(mainMessageId)
+      expect(subagentContext.messageId).not.toBe(mainMessageId)
+      expect(subagentContext.taskId).toBe('task_sub_1')
+
+      const timeline = await waitForMessageStatus(app, 'session-claude-subagent', 'complete')
+      const assistantMessages = timeline.filter(message => message.role === 'assistant')
+      expect(assistantMessages).toHaveLength(2)
+      expect(assistantMessages.find(message => !message.parentToolCallId)?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'toolu_parent_1', state: 'input-available' }),
+        expect.objectContaining({ type: 'text', text: 'Main task dispatch', state: 'done' }),
+        expect.objectContaining({ type: 'text', text: 'Main task finished', state: 'done' }),
+      ]))
+      expect(assistantMessages.find(message => message.parentToolCallId === 'toolu_parent_1')).toEqual(expect.objectContaining({
+        parentToolCallId: 'toolu_parent_1',
+        taskId: 'task_sub_1',
+      }))
+      expect(assistantMessages.find(message => message.parentToolCallId === 'toolu_parent_1')?.content).toContain('Subagent investigating')
+      expect(assistantMessages.find(message => message.parentToolCallId === 'toolu_parent_1')?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'text', text: '[Investigate Agent started]' }),
+        expect.objectContaining({ type: 'text', text: 'Subagent investigating' }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('backfills late subagent taskId metadata and persists task_notification lifecycle text', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+
+    sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
+      {
+        type: 'assistant',
+        session_id: 'claude-subagent-late-task-session',
+        message: {
+          content: [
+            { type: 'text', text: 'Dispatch late-task subagent' },
+            { type: 'tool_use', id: 'toolu_parent_late', name: 'task', input: { description: 'Investigate late task metadata' } },
+          ],
+        },
+      },
+      {
+        type: 'assistant',
+        session_id: 'claude-subagent-late-task-session',
+        parent_tool_use_id: 'toolu_parent_late',
+        message: {
+          content: [{ type: 'text', text: 'Working before task metadata arrives' }],
+        },
+      },
+      {
+        type: 'system/task_notification',
+        session_id: 'claude-subagent-late-task-session',
+        task_id: 'task_sub_late',
+        status: 'completed',
+        parent_tool_use_id: 'toolu_parent_late',
+      },
+      {
+        type: 'result',
+        session_id: 'claude-subagent-late-task-session',
+        usage: { input_tokens: 21, output_tokens: 9 },
+      },
+    ]))
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url === 'https://api.anthropic.com/v1/models') {
+        return new Response(JSON.stringify({
+          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url === 'https://models.dev/api.json') {
+        return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: ReturnType<typeof createServerApp> | undefined
+
+    try {
+      app = createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-subagent-late-task', name: 'Workspace Subagent Late Task', path: workspaceRoot }).run()
+
+      await createProfileAndSession(app, {
+        workspaceId: 'workspace-subagent-late-task',
+        providerKind: 'claude-agent',
+        profileId: 'profile-claude-subagent-late-task',
+        sessionId: 'session-claude-subagent-late-task',
+        config: { model: 'claude-sonnet-4-20250514' },
+        secret: 'sk-ant-subagent-late-task',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-subagent-late-task/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Dispatch late task metadata subagent' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const events = await collectSseEvents(runRes)
+      const subagentEvents = events.filter(event => event.type === 'subagent_message_delta')
+      expect(subagentEvents.some((event) => (event.data as { context: { taskId?: string | null } }).context.taskId === 'task_sub_late')).toBe(true)
+
+      const timeline = await waitForMessageStatus(app, 'session-claude-subagent-late-task', 'complete')
+      const subagentMessage = timeline.find(message => message.parentToolCallId === 'toolu_parent_late')
+      expect(subagentMessage).toEqual(expect.objectContaining({
+        parentToolCallId: 'toolu_parent_late',
+        taskId: 'task_sub_late',
+      }))
+      expect(subagentMessage?.content).toContain('Working before task metadata arrives')
+      expect(subagentMessage?.content).toContain('[Task completed]')
+      expect(subagentMessage?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'text', text: 'Working before task metadata arrives' }),
+        expect.objectContaining({ type: 'text', text: '[Task completed]' }),
       ]))
     }
     finally {
@@ -561,11 +828,9 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
       const timeline = await waitForMessageStatus(app, 'session-claude-err', 'complete')
       const assistant = timeline.find(group => group.role === 'assistant')
-      const eventTypes = assistant?.chunks.map((c: any) => c.chunk.type) ?? []
-
-      // Regression: tool-output-error must be emitted for error results
-      expect(eventTypes).toContain('tool-input-start')
-      expect(eventTypes).toContain('tool-output-error')
+      expect(assistant?.message.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'toolu_err456', state: 'output-error', errorText: 'exit code 1' }),
+      ]))
     }
     finally {
       shutdownInfra()

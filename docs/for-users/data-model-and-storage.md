@@ -77,9 +77,14 @@ Message rows include:
 
 - `id`
 - `sessionId`
+- `parentMessageId`
+- `parentToolCallId`
+- `taskId`
+- `depth`
 - `role` (`user` or `assistant`)
 - `status` (`streaming`, `complete`, `aborted`, `failed`)
-- `content`
+- `content` (derived plain-text cache)
+- `messageJson` (hydration truth source snapshot)
 - `errorText`
 - timestamps
 
@@ -130,7 +135,7 @@ Delegation introduces:
 - Database access
 - Provider process orchestration
 - PTY lifecycle
-- Session mutation and timeline orchestration
+- Session mutation and message snapshot orchestration
 - Search indexing and recall
 - Diagnostics and observability capture
 
@@ -154,6 +159,7 @@ These are still governed through main-process APIs to preserve consistency.
 
 - Session deletion also removes related search index entries.
 - PTY processes are stopped when deleting associated sessions.
+- Pending approvals and session-scoped approval policy keys are cleared when deleting associated sessions.
 - Skills remote fetch sessions are cleaned after import/cancel.
 - Tab persistence is reconciled against existing sessions/workspaces at app startup.
 
@@ -162,7 +168,7 @@ These are still governed through main-process APIs to preserve consistency.
 Cradle owns lifecycle for:
 
 - Workspace metadata
-- Session metadata and timeline projections
+- Session metadata, message snapshots, and sequenced chat deltas
 - Runtime configuration and credentials metadata
 - Kanban and delegation records
 - Local observability buffers

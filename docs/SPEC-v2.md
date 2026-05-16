@@ -1,6 +1,6 @@
 ⏺ Cradle — Product Spec (v2)
 
-更新日期：2026-04-22
+更新日期：2026-05-16
 
 ## 一句话定位
 
@@ -107,7 +107,7 @@ v1 把 Cradle 主要定义为“指挥台”：你分派任务给不同 agent，
 ### 近期演进（Next）
 
 - 导航语义收口：settings 进入显式 route，并统一 router 与 shell state 的职责
-- 事件桥收敛：为 `chat:*` / `pty:*` / `acp:*` 建统一的 renderer-side event bridge，避免订阅点扩散
+- 事件桥收敛：chat 保持 server-owned snapshot + SSE delta，renderer-side event bridge 仅覆盖 `pty:*` / `acp:*` 等仍需要自定义推送桥的通道，避免订阅点扩散
 - 安全边界：引入 capability broker（workspace root allowlist + explicit policy + audit），逐步收回 preload 面
 - 收口节点：diff / test / PR 作为“关键决策点”的产品化 UI（而不是散落在输出里）
 - Bundle hygiene：把 devtool 与 chat-heavy 视图做真实 lazy boundary
@@ -149,11 +149,11 @@ User
   -> Preload Bridge
   -> IPC Main Handler
   -> Main Services
-  -> Orchestration (ChatEngine / AcpConnectionManager / PtyManager)
+  -> Orchestration (`apps/server` chat-runtime / ACP runtime / PTY runtime)
   -> SQLite / PTY / ACP Process
 
 Push Events
-  Main -> webContents.send("chat:*" / "ipc-devtool:*" / "acp-devtool:*" / "pty:*")
-  Renderer -> Event Bridge -> UI
+  Main -> SSE (`message_delta` / `subagent_message_delta` / `run_*`) and other owned channels (`ipc-devtool:*` / `acp-devtool:*` / `pty:*`)
+  Renderer -> Event Bridge / SSE Transport -> UI
 ```
 

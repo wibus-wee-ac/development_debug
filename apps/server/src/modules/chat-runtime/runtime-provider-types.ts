@@ -3,7 +3,7 @@
 // Position: apps/server/src/modules/chat-runtime/runtime-provider-types.ts
 
 import type { AgentProfile } from '@cradle/db'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 
 import type { RuntimeKind } from '../providers/types'
 
@@ -34,6 +34,7 @@ export interface StreamTurnInput {
   runtimeSession: RuntimeSession
   profile: AgentProfile
   message: string
+  responseMessageId?: string
   modelId?: string
   workspaceId?: string | null
   workspacePath?: string
@@ -60,6 +61,7 @@ export interface ChatRuntime {
   readonly lastUsage?: TokenUsage | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
+  streamTurnSnapshots?: (input: StreamTurnInput) => AsyncGenerator<UIMessage, void, void>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
    * No custom intermediate abstraction — pure AI SDK protocol.

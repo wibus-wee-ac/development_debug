@@ -73,13 +73,13 @@ For chat-capable providers, Cradle supports:
 
 - Streamed assistant output.
 - Structured rendering of text, reasoning, and tool call blocks.
-- Session watch/unwatch lifecycle for active timeline updates.
+- Message snapshot hydration plus live SSE delta updates.
 - Turn abort and live-session reconnection checks.
 - Workspace file mention support in composer.
 
 Session continuity model:
 
-- Timeline is persisted and rehydrated from local storage.
+- Message snapshots are persisted on the server and rehydrated into the chat view.
 - Active status and unread indicators update when events arrive in inactive tabs.
 
 ### 4.2 CLI-TUI Sessions

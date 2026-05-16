@@ -41,14 +41,13 @@ Each namespace maps to a main-process service group.
 
 ## 4. `chat`
 
-- `createAndSend(opts: { agentId: string, workspaceId: string, cwd: string, text: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high', agentIdentityId?: string }): Promise<string>`
-- `send(chatSessionId: string, text: string): Promise<void>`
-- `abort(chatSessionId: string): Promise<void>`
-- `getSessionTimeline(chatSessionId: string): ChatTimelineGroup[]`
-- `hasActiveTurn(chatSessionId: string): boolean`
-- `ensureLive(chatSessionId: string): Promise<EnsureLiveResult>`
-- `watchSession(chatSessionId: string): void`
-- `unwatchSession(chatSessionId: string): void`
+Legacy IPC-first chat APIs have been superseded by the server-owned HTTP + SSE runtime:
+
+- `POST /chat/sessions/:sessionId/response`
+- `GET /chat/sessions/:sessionId/messages`
+- `POST /chat/sessions/:sessionId/cancel`
+
+Renderer integrations should treat `message_delta` / `subagent_message_delta` / `run_*` as the live contract, rather than `getSessionTimeline()` or `chat:timeline-event`.
 
 ## 5. `agentRuntime`
 

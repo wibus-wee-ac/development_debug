@@ -1,5 +1,7 @@
 # Singleton Elimination + Directory Dehydration + Frontend Projection
 
+> Historical note (2026-05-16): this plan describes an earlier timeline-event / `chat:timeline-event` projection stage. The current chat runtime has since been superseded by `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`, where durable history comes from `messages.messageJson` snapshots and live updates stream as sequenced SSE delta events.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This plan follows `/.agents/skills/execplan/references/PLANS.md` from the repository root. The plan must remain self-contained and updated at each stop point.

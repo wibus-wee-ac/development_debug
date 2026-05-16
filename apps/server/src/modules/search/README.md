@@ -1,6 +1,6 @@
 # Search Module
 
-Provides thread search over session titles, user messages, and assistant timeline text using FTS-first lookup with legacy full-scan fallback.
+Provides thread search over session titles, user messages, and assistant plain-text cache from `messages.content` using FTS-first lookup with legacy full-scan fallback.
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files

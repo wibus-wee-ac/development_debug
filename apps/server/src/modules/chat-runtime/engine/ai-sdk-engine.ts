@@ -2,8 +2,8 @@
 // Yields UIMessageChunk directly — no intermediate timeline abstraction
 // Position: apps/server/src/modules/chat-runtime/engine/ai-sdk-engine.ts
 
-import type { LanguageModel, ModelMessage, ToolSet, UIMessageChunk } from 'ai'
-import { stepCountIs, streamText } from 'ai'
+import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
+import { readUIMessageStream, stepCountIs, streamText } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
 import type { BudgetConfig } from '../../usage/budget'
@@ -22,6 +22,7 @@ export interface TokenUsage {
 export interface AiSdkEngineInput {
   model: LanguageModel
   messages: ModelMessage[]
+  initialMessage?: UIMessage
   system?: string
   tools?: ToolSet
   maxSteps?: number
@@ -55,13 +56,10 @@ export interface AiSdkEngineInput {
   chatSessionId?: string
 }
 
-/**
- * Execute an AI SDK agent turn, yielding UIMessageChunk directly.
- *
- * Uses AI SDK's `streamText` + `toUIMessageStream()` to get native
- * UIMessageChunk events — no custom timeline abstraction needed.
- */
-export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator<UIMessageChunk, void, void> {
+function createAiSdkStreamResult(input: AiSdkEngineInput): {
+  result: ReturnType<typeof streamText>
+  effectiveAbortSignal: AbortSignal | undefined
+} {
   const {
     model,
     messages,
@@ -70,7 +68,6 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
     maxSteps = 1,
     abortSignal,
     abortController,
-    onUsage,
     onStepFinish,
     approvalContext,
     contextWindow,
@@ -82,7 +79,6 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
   } = input
 
   const effectiveAbortSignal = abortController?.signal ?? abortSignal
-
   let accumulatedTurnCost = 0
 
   const effectiveTools = approvalContext
@@ -130,7 +126,6 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
         })
       }
 
-      // Budget check after each step
       if (budgetConfig && step.usage) {
         const stepCost = estimateCost(step.model?.modelId ?? '', {
           promptTokens: step.usage.inputTokens ?? 0,
@@ -157,7 +152,6 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
     },
     prepareStep: async ({ steps, messages: currentMessages }) => {
       try {
-        // Only check compaction after at least 1 step
         if (steps.length === 0) {
           return undefined
         }
@@ -188,36 +182,121 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
     },
   })
 
+  return { result, effectiveAbortSignal }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) {
+    return
+  }
+
+  throw createAbortError()
+}
+
+function createAbortError(): Error {
+  const err = new Error('AI SDK turn aborted')
+  err.name = 'AbortError'
+  return err
+}
+
+async function nextOrAbort<T>(iterator: AsyncIterator<T>, signal: AbortSignal | undefined): Promise<IteratorResult<T>> {
+  if (!signal) {
+    return iterator.next()
+  }
+
+  throwIfAborted(signal)
+
+  return await new Promise<IteratorResult<T>>((resolve, reject) => {
+    const cleanup = () => {
+      signal.removeEventListener('abort', onAbort)
+    }
+
+    const onAbort = () => {
+      cleanup()
+      reject(createAbortError())
+    }
+
+    signal.addEventListener('abort', onAbort, { once: true })
+    iterator.next().then((result) => {
+      cleanup()
+      resolve(result)
+    }, (error) => {
+      cleanup()
+      reject(error)
+    })
+  })
+}
+
+async function emitUsage(result: ReturnType<typeof streamText>, onUsage?: (usage: TokenUsage) => void): Promise<void> {
+  if (!onUsage) {
+    return
+  }
+
+  try {
+    const usage = await result.usage
+    if (usage) {
+      onUsage({
+        promptTokens: usage.inputTokens ?? 0,
+        completionTokens: usage.outputTokens ?? 0,
+        totalTokens: usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+      })
+    }
+  }
+  catch {
+    // Usage extraction failure is non-fatal
+  }
+}
+
+/**
+ * Execute an AI SDK agent turn, yielding UIMessageChunk directly.
+ *
+ * Uses AI SDK's `streamText` + `toUIMessageStream()` to get native
+ * UIMessageChunk events — no custom timeline abstraction needed.
+ */
+export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator<UIMessageChunk, void, void> {
+  const { onUsage } = input
+  const { result, effectiveAbortSignal } = createAiSdkStreamResult(input)
+
   // Use toUIMessageStream() to get native UIMessageChunk events
   const uiStream = result.toUIMessageStream()
+  const iterator = uiStream[Symbol.asyncIterator]()
 
-  for await (const chunk of uiStream) {
-    // Explicit abort check — needed because in-memory streams don't auto-abort
-    if (effectiveAbortSignal?.aborted) {
-      const err = new Error('AI SDK turn aborted')
-      err.name = 'AbortError'
-      throw err
+  while (true) {
+    const { done, value } = await nextOrAbort(iterator, effectiveAbortSignal)
+    if (done) {
+      break
     }
 
-    yield chunk
+    yield value
   }
 
-  // Extract usage after stream completes
-  if (onUsage) {
-    try {
-      const usage = await result.usage
-      if (usage) {
-        onUsage({
-          promptTokens: usage.inputTokens ?? 0,
-          completionTokens: usage.outputTokens ?? 0,
-          totalTokens: usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-        })
-      }
+  await emitUsage(result, onUsage)
+}
+
+/**
+ * Execute an AI SDK turn and emit progressive assistant UIMessage snapshots.
+ */
+export async function* executeAiSdkTurnSnapshots(input: AiSdkEngineInput & { initialMessage: UIMessage }): AsyncGenerator<UIMessage, void, void> {
+  const { initialMessage, onUsage } = input
+  const { result, effectiveAbortSignal } = createAiSdkStreamResult(input)
+
+  const messageStream = readUIMessageStream<UIMessage>({
+    message: initialMessage,
+    stream: result.toUIMessageStream(),
+    terminateOnError: true,
+  })
+  const iterator = messageStream[Symbol.asyncIterator]()
+
+  while (true) {
+    const { done, value } = await nextOrAbort(iterator, effectiveAbortSignal)
+    if (done) {
+      break
     }
-    catch {
-      // Usage extraction failure is non-fatal
-    }
+
+    yield value
   }
+
+  await emitUsage(result, onUsage)
 }
 
 /**

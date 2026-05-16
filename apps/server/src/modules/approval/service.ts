@@ -123,7 +123,7 @@ export function rejectPendingBySession(chatSessionId: string): number {
   for (const [id, entry] of pending) {
     if (entry.approval.chatSessionId === chatSessionId) {
       pending.delete(id)
-      entry.resolve({ decision: 'rejected', selectedOptionId: 'deny' })
+      entry.resolve({ decision: 'rejected', selectedOptionId: resolveRejectedOptionId(entry.approval.options) })
       count++
     }
   }
@@ -162,6 +162,11 @@ const TOOL_NAME_RE = /^Allow tool "(.+?)"\?/
 function extractToolName(prompt: string): string {
   const match = prompt.match(TOOL_NAME_RE)
   return match?.[1] ?? prompt.slice(0, 100)
+}
+
+function resolveRejectedOptionId(options: ApprovalOption[]): string {
+  const denyOption = options.find(option => /deny|reject/i.test(option.optionId) || /deny|reject/i.test(option.label))
+  return denyOption?.optionId ?? options[0]?.optionId ?? 'rejected'
 }
 
 function emitRequested(approval: PendingApproval): void {

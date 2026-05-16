@@ -1,8 +1,8 @@
-// Input: UIMessage from ai, shared chat chunk reducer, Streamdown renderer, ReasoningBlock, ToolCallBlock, motion
+// Input: UIMessage from ai, subagent message store, Streamdown renderer, ReasoningBlock, ToolCallBlock, motion
 // Output: MessageBubble — animated message with parts rendering and action bar
 // Position: Core display component in chat feature for rendering individual messages
 
-import type { UIMessage, UIMessageChunk } from 'ai'
+import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -12,7 +12,6 @@ import { cn } from '~/lib/cn'
 import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
-import { replayAssistantChunks } from './chat-chunk-reducer'
 import { ReasoningBlock } from './reasoning-block'
 import { ToolCallBlock } from './tool-call-block'
 
@@ -84,7 +83,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
-  const subagentMap = useChatStore(s => s.subagentChunksMap.get(message.id))
+  const subagentMap = useChatStore(s => s.subagentMessagesMap.get(message.id))
 
   // Only animate on the true first appearance — skip if the virtualizer is
   // remounting an item that simply scrolled out of view.
@@ -201,9 +200,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
                 errorText?: string
               }
 
-              // Render subagent parts inline inside the ToolCallBlock
-              const subagentChunks = subagentMap?.get(toolPart.toolCallId)
-              const subagentParts = subagentChunks ? replayAssistantChunks(subagentChunks as UIMessageChunk[]) : []
+              const subagentMessages = subagentMap?.get(toolPart.toolCallId) ?? []
 
               return (
                 <ToolCallBlock
@@ -215,7 +212,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
                   output={toolPart.output}
                   errorText={toolPart.errorText}
                 >
-                  {subagentParts.map((sp, si) => renderSubagentPart(sp, `${toolPart.toolCallId}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor }))}
+                  {subagentMessages.flatMap(subagentMessage => subagentMessage.parts.map((sp, si) => renderSubagentPart(sp, `${subagentMessage.id}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor })))}
                 </ToolCallBlock>
               )
             }

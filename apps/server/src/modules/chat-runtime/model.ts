@@ -1,26 +1,24 @@
 import { t } from 'elysia'
 
-const storedChunkSchema = t.Object({
+const uiMessageSchema = t.Object({
   id: t.String(),
-  runId: t.String(),
-  chatSessionId: t.String(),
-  sequenceNumber: t.Number(),
-  schemaVersion: t.String(),
-  createdAt: t.Number(),
-  parentToolCallId: t.Union([t.String(), t.Null()]),
-  taskId: t.Union([t.String(), t.Null()]),
-  chunk: t.Object({
+  role: t.Union([t.Literal('user'), t.Literal('assistant')]),
+  parts: t.Array(t.Object({
     type: t.String(),
-  }, { additionalProperties: true }),
-})
+  }, { additionalProperties: t.Any() })),
+}, { additionalProperties: true })
 
-const chatChunkGroupSchema = t.Object({
+const chatMessageSnapshotSchema = t.Object({
   messageId: t.String(),
   role: t.Union([t.Literal('user'), t.Literal('assistant')]),
-  userText: t.Optional(t.String()),
   status: t.Union([t.Literal('streaming'), t.Literal('complete'), t.Literal('aborted'), t.Literal('failed')]),
   errorText: t.Optional(t.String()),
-  chunks: t.Array(storedChunkSchema),
+  content: t.String(),
+  message: uiMessageSchema,
+  parentMessageId: t.Union([t.String(), t.Null()]),
+  parentToolCallId: t.Union([t.String(), t.Null()]),
+  taskId: t.Union([t.String(), t.Null()]),
+  depth: t.Number(),
 })
 
 export const ChatRuntimeModel = {
@@ -38,5 +36,5 @@ export const ChatRuntimeModel = {
     ok: t.Literal(true),
   }),
 
-  chatMessages: t.Array(chatChunkGroupSchema),
+  chatMessages: t.Array(chatMessageSnapshotSchema),
 }

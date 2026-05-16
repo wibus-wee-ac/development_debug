@@ -15,6 +15,8 @@ import {
   generatePolicyKeys,
   isPreviouslyAllowed,
   markAllowed,
+  rejectPendingBySession,
+  requestApproval,
 } from '../src/modules/approval/service'
 
 function makeTempDir(prefix: string): string {
@@ -212,5 +214,23 @@ describe('approval policy keys', () => {
     expect(isPreviouslyAllowed('sess-b', keysB)).toBe(false)
 
     clearSessionPolicies('sess-a')
+  })
+
+  it('rejectPendingBySession resolves pending approvals with a valid rejection option', async () => {
+    const pendingApproval = requestApproval({
+      chatSessionId: 'sess-delete',
+      agentId: 'agent-delete',
+      prompt: 'Allow tool execution?',
+      options: [
+        { optionId: 'allow_once', label: 'Allow once' },
+        { optionId: 'reject_once', label: 'Reject once' },
+      ],
+    })
+
+    expect(rejectPendingBySession('sess-delete')).toBe(1)
+    await expect(pendingApproval).resolves.toEqual({
+      decision: 'rejected',
+      selectedOptionId: 'reject_once',
+    })
   })
 })

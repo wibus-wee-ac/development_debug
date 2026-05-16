@@ -1,5 +1,7 @@
 # Agent Client Console Architecture
 
+> Historical note (2026-05-16): this document belongs to an earlier provider-matrix and timeline-oriented architecture phase. Any references to Codex App Server, timeline-first chat views, or older bridge contracts are historical context, not the current canonical chat runtime.
+
 Cradle should evolve as an app-owned agent client console, not as a self-built coding agent runtime.
 The product value is in supervising, connecting, normalizing, and operating external coding-agent backends.
 Codex App Server, Claude Agent SDK, and ACP agents should remain backend capabilities that Cradle integrates rather than reimplements.

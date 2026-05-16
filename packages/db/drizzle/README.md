@@ -9,5 +9,6 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 ## Files
 
 - **0000_initial_baseline.sql**: 当前主进程 schema 的干净 baseline migration
-- **0001_steady_phalanx.sql**: 增量 migration，新增 `backend_timeline_events` append-only timeline 表
+- **0001_steady_phalanx.sql**: 历史增量 migration，曾新增 `backend_timeline_events` append-only timeline 表
+- **0015_message_snapshot_chat_runtime.sql**: 破坏性迁移，重建 `messages` 以引入无默认值的 `messages.message_json`、message-level subagent routing 字段，并删除 `backend_timeline_events`
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

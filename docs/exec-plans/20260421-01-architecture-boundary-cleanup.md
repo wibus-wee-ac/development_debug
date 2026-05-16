@@ -1,5 +1,7 @@
 # Architecture Boundary Cleanup
 
+> Historical note (2026-05-16): this plan belongs to an earlier Electron IPC era. References to chat event bridges or renderer-side chat orchestration should be read as historical context, not as the current server-owned snapshot + SSE delta runtime contract.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Maintained in accordance with `docs/exec-plans/README.md` and PLANS.md at repository root.

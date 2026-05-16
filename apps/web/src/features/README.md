@@ -9,7 +9,7 @@ Components, hooks, and utilities specific to a feature live together.
 ## Directories
 
 - **workspace/**: Workspace management — sidebar listing, directory picker, session grouping
-- **chat/**: Chat view, composer, and streaming transport bridging AI SDK's useChat to main-process ChatEngine
+- **chat/**: Chat view, composer, snapshot hydration, and sequenced SSE delta transport for the server-owned chat runtime
 - **search/**: Global thread search — command-palette dialog backed by jieba tokenization on the main process
 - **settings/**: Application settings — theme switching, user preferences dialog
 - **skills/**: Filesystem-backed skills management — shared inventory/editor UIs for global settings, workspace detail, and per-agent selection

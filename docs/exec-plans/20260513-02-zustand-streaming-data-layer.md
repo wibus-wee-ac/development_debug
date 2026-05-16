@@ -1,5 +1,7 @@
 # Exec Plan: Zustand 流式数据层（Lobe 架构模式）
 
+> Historical note (2026-05-16): this plan reflects an older `useChat`/chunk-accumulator era. The current chat runtime now hydrates from `messages.messageJson` snapshots and applies sequenced SSE delta events, as described in `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 > **Review Status: REVISED** — 已整合 review agent 反馈
 
 ## 目标

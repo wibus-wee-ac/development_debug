@@ -33,7 +33,21 @@ export interface ClaudeAgentChunkMapperResult {
  */
 function withParentMeta(chunk: UIMessageChunk, parentToolUseId: string | null): UIMessageChunk {
   if (!parentToolUseId) return chunk
-  return { ...(chunk as object), providerMetadata: { ...((chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata ?? {}), cradle: { parentToolUseId } } } as unknown as UIMessageChunk
+  const providerMetadata = (chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata ?? {}
+  const cradleMetadata = typeof providerMetadata.cradle === 'object' && providerMetadata.cradle !== null
+    ? providerMetadata.cradle as Record<string, unknown>
+    : {}
+
+  return {
+    ...(chunk as object),
+    providerMetadata: {
+      ...providerMetadata,
+      cradle: {
+        ...cradleMetadata,
+        parentToolUseId,
+      },
+    },
+  } as unknown as UIMessageChunk
 }
 
 export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
@@ -111,7 +125,7 @@ function mapSystemOrUnknown(msg: SDKMessage, state: ClaudeAgentChunkMapperState,
     }
   }
 
-  return { ...base, chunks, sessionId }
+  return { ...base, chunks: chunks.map(chunk => withParentMeta(chunk, state.currentParentToolUseId)), sessionId }
 }
 
 function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState, parentToolUseId: string | null): ClaudeAgentChunkMapperResult {

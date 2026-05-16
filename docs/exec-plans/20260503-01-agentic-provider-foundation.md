@@ -1,5 +1,7 @@
 # Agentic Provider Foundation: Claude Agent SDK + OpenAI Codex SDK
 
+> Historical note (2026-05-16): this plan documents an intermediate provider-layer stage that still assumed older chat transport contracts. The current canonical chat runtime contract is defined by `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`, where durable history is stored as `messages.messageJson` snapshots and live updates stream as sequenced SSE delta events.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Maintained in accordance with `docs/exec-plans/README.md` and `.agents/skills/execplan/references/PLANS.md`.

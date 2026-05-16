@@ -1,5 +1,7 @@
 # Vercel AI SDK Migration — Provider Layer Overhaul
 
+> Historical note (2026-05-16): this plan captures an earlier AI SDK migration stage. The current canonical chat runtime contract is the snapshot + sequenced delta rewrite in `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 ## Purpose / Big Picture

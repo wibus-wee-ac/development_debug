@@ -1,5 +1,7 @@
 # Build Local Observability Pipeline Without Conversion Sprawl
 
+> Historical note (2026-05-16): this plan references an earlier chat implementation in a few sections. Where chat storage or streaming is mentioned, the canonical current contract is `messages.messageJson` snapshot hydration plus sequenced SSE delta events from `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 This repository does not currently check in a root-level `PLANS.md`. This document is authored and must be maintained in accordance with `/Users/wibus/.agents/skills/execplan/references/PLANS.md`.
@@ -69,7 +71,7 @@ This repository does not currently check in a root-level `PLANS.md`. This docume
 
 `src/main/chat/chat-engine.ts` 是 chat turn 的核心编排点，也是错误最先出现的地方。`src/main/events/domain-event-bus.ts` 提供进程内事件总线，`src/main/signal/broadcaster.ts` 负责向 renderer 推送事件。`src/main/devtools/ipc-devtool.ts` 与对应 store 当前提供的是内存态调试缓冲，适合实时看，但不适合故障追溯。
 
-本计划引入一个新 owner namespace：`src/main/observability/`。该目录负责 Cradle 自有观测语义、规则、存储和导出，不写入其他领域命名空间。`backend_timeline_events` 仍然保留其 chat timeline owner 语义，不被强行复用为通用日志仓。
+本计划引入一个新 owner namespace：`src/main/observability/`。该目录负责 Cradle 自有观测语义、规则、存储和导出，不写入其他领域命名空间。后续 canonical chat durable source 已迁移到 `messages.messageJson`，旧 `backend_timeline_events` 已在 snapshot rewrite 中移除，因此 observability 也不应依赖该旧表。
 
 本计划中的“转换”一词仅指数据语义映射，不包括类型收窄或输入校验。禁止的模式是 `A -> B -> C -> D` 的连续中间模型搬运。允许的模式只有两类：一是“外部 SDK 事件 -> canonical event”边界适配；二是“canonical event -> UI 展示模型”展示适配。业务内部一律使用 canonical event 原型。
 

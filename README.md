@@ -17,6 +17,20 @@
 🧪 Working in Progress
 </pre>
 
+## Architecture Snapshot
+
+Cradle's current chat/runtime stack is centered on:
+
+- durable chat history stored as `messages.messageJson` snapshots
+- derived plain-text cache in `messages.content`
+- live chat updates streamed as sequenced SSE delta events (`message_delta`, `subagent_message_delta`, `run_*`)
+
+Current architecture references:
+
+- `docs/SPEC-v2.md`
+- `docs/for-users/`
+- `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`
+
 ## Packages
 
 | Package | Description | Status |

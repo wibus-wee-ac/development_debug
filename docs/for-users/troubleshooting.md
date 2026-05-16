@@ -23,18 +23,19 @@ The local JSON-RPC socket is unavailable.
 
 ### Symptom
 
-Session opens but no new timeline events appear.
+Session opens but no new chat deltas appear.
 
 ### Cause
 
-Session watch registration is missing or stale.
+The active run did not start, or the SSE stream is missing/stale.
 
 ### Resolution
 
 1. Confirm active session tab is focused.
 2. Reopen the session tab.
-3. Verify renderer registers `chat.watchSession` and receives `chat:timeline-event`.
-4. Use Devtool IPC pane to inspect watch/unwatch calls.
+3. Verify `GET /chat/sessions/:sessionId/messages` returns the latest message snapshot rows.
+4. Verify the active run stream emits `message_delta` / `subagent_message_delta` / `run_*` events.
+5. Use Devtool or network inspection to confirm the SSE stream stays connected.
 
 ## 3. TUI Session Shows Empty Terminal
 
@@ -129,13 +130,13 @@ Exported markdown misses expected assistant output details.
 
 ### Cause
 
-Assistant content is reconstructed from persisted timeline/message content.
+Assistant export depends on persisted message snapshots and the derived `messages.content` plain-text cache.
 
 ### Resolution
 
 1. Ensure session turn completed and persisted.
 2. Retry export after session refresh.
-3. Compare with timeline view for consistency.
+3. Compare the exported text with the current chat message snapshot after refresh.
 
 ## 9. Settings Changes Not Reflected Immediately
 

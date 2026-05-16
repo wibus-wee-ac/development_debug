@@ -12,9 +12,6 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
 
-- **session.module.ts**: Tsuki module registration.
-- **session.controller.ts**: HTTP endpoints for session module.
-- **session.service.ts**: Module semantics (CRUD + export + cleanup).
-- **session.store.ts**: Drizzle-backed session store.
-- **session.export.ts**: Markdown export + timeline text extraction.
-- **session.cleanup.ts**: Cleanup adapter (no-op for now).
+- **index.ts**: Elysia route surface for CRUD, message listing, export, and linked-issue helpers.
+- **model.ts**: Session HTTP params/body/response schemas.
+- **service.ts**: Module semantics (CRUD + export + cleanup).

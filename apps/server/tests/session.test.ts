@@ -12,7 +12,6 @@ import {
   agentProfiles,
   backendRuns,
   backendSessionBindings,
-  backendTimelineEvents,
   messages,
   workspaces,
 } from '@cradle/db'
@@ -20,11 +19,25 @@ import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-
-const TIMELINE_SCHEMA_VERSION = 'cradle.timeline.v1'
+import { createPending, listPending } from '../src/modules/approval/service'
+import { startOrAttach } from '../src/modules/pty/service'
+import { ptyTimeline } from '../src/modules/pty/pty.timeline'
+import { indexMessage, searchThreads } from '../src/modules/search/service'
+import { generatePolicyKeys, isPreviouslyAllowed, markAllowed } from '../src/modules/approval/service'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
+}
+
+async function waitForCondition(check: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (check()) {
+      return
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(`Timed out waiting for condition after ${timeoutMs}ms`)
 }
 
 describe('session capability', () => {
@@ -130,6 +143,7 @@ describe('session capability', () => {
           role: 'user',
           status: 'complete',
           content: 'Hello',
+          messageJson: JSON.stringify({ id: userMessageId, role: 'user', parts: [{ type: 'text', text: 'Hello' }] }),
           createdAt: now,
           updatedAt: now,
         },
@@ -138,7 +152,8 @@ describe('session capability', () => {
           sessionId,
           role: 'assistant',
           status: 'complete',
-          content: 'Fallback',
+          content: 'Hello world',
+          messageJson: JSON.stringify({ id: assistantMessageId, role: 'assistant', parts: [{ type: 'text', text: 'Hello world' }] }),
           createdAt: now + 1,
           updatedAt: now + 1,
         },
@@ -211,37 +226,6 @@ describe('session capability', () => {
         finishedAt: now + 1,
       }).run()
 
-      const sourceJson = JSON.stringify({
-        backend: 'openai-compatible',
-        eventType: 'response',
-        eventId: null,
-        itemId: null,
-      })
-      d.insert(backendTimelineEvents).values([
-        {
-          id: randomUUID(),
-          runId,
-          chatSessionId: sessionId,
-          sequenceNumber: 1,
-          eventType: 'assistant.text.delta',
-          schemaVersion: TIMELINE_SCHEMA_VERSION,
-          payloadJson: JSON.stringify({ itemId: 'item-1', delta: 'Hello ' }),
-          sourceJson,
-          createdAt: now,
-        },
-        {
-          id: randomUUID(),
-          runId,
-          chatSessionId: sessionId,
-          sequenceNumber: 2,
-          eventType: 'assistant.text.delta',
-          schemaVersion: TIMELINE_SCHEMA_VERSION,
-          payloadJson: JSON.stringify({ itemId: 'item-1', delta: 'world' }),
-          sourceJson,
-          createdAt: now + 1,
-        },
-      ]).run()
-
       const exportRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}/export/markdown`))
       const exportBody = await exportRes.json()
       expect(exportBody.markdown).toContain('# Renamed Chat')
@@ -268,6 +252,120 @@ describe('session capability', () => {
       expect(afterList).toEqual([
         expect.objectContaining({ id: expect.any(String), runtimeKind: 'cli-tui', agentId: cliAgentId }),
       ])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('deletes session-owned search, approvals, and cli-tui pty state', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: ReturnType<typeof createServerApp> | undefined
+
+    try {
+      app = createServerApp()
+      const d = db()
+
+      const workspaceId = randomUUID()
+      d.insert(workspaces).values({
+        id: workspaceId,
+        name: 'Workspace',
+        path: workspaceRoot,
+      }).run()
+
+      const agentId = randomUUID()
+      d.insert(agents).values({
+        id: agentId,
+        name: 'CLI Agent',
+        avatarStyle: 'bottts-neutral',
+        avatarSeed: 'cleanup-seed',
+        agentProfileId: null,
+        runtimeKind: 'cli-tui',
+        configJson: JSON.stringify({
+          cliTui: {
+            executable: process.execPath,
+            args: ['-e', 'setInterval(() => {}, 1000)'],
+          },
+        }),
+      }).run()
+
+      const sessionId = randomUUID()
+      const createRes = await app.handle(new Request('http://localhost/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: sessionId,
+          workspaceId,
+          title: 'CLI Cleanup Session',
+          agentId,
+        }),
+      }))
+      expect(createRes.status).toBe(200)
+
+      startOrAttach({ sessionId, cols: 80, rows: 24 })
+      expect(ptyTimeline.hasSession(sessionId)).toBe(true)
+
+      const approval = createPending({
+        chatSessionId: sessionId,
+        agentId,
+        prompt: 'Allow tool "bash"?',
+        options: [
+          { optionId: 'approve', label: 'Approve' },
+          { optionId: 'deny', label: 'Deny' },
+        ],
+      })
+      expect(listPending({ chatSessionId: sessionId })).toEqual([
+        expect.objectContaining({ id: approval.id, chatSessionId: sessionId }),
+      ])
+
+      const policyKeys = generatePolicyKeys({
+        runtimeKind: 'claude-agent',
+        chatSessionId: sessionId,
+        toolName: 'bash',
+      })
+      markAllowed(sessionId, policyKeys)
+      expect(isPreviouslyAllowed(sessionId, policyKeys)).toBe(true)
+
+      const messageId = randomUUID()
+      const now = Math.floor(Date.now() / 1000)
+      d.insert(messages).values({
+        id: messageId,
+        sessionId,
+        role: 'assistant',
+        status: 'complete',
+        content: 'cleanup sentinel text',
+        messageJson: JSON.stringify({
+          id: messageId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'cleanup sentinel text' }],
+        }),
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      indexMessage(sessionId, 'CLI Cleanup Session', messageId, 'cleanup sentinel text')
+      expect(searchThreads({ query: 'cleanup sentinel' })).toEqual([
+        expect.objectContaining({ sessionId }),
+      ])
+
+      const deleteRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`, { method: 'DELETE' }))
+      expect(deleteRes.status).toBe(200)
+      expect(await deleteRes.json()).toEqual({ ok: true })
+
+      await waitForCondition(() => !ptyTimeline.hasSession(sessionId))
+      expect(listPending({ chatSessionId: sessionId })).toEqual([])
+      expect(isPreviouslyAllowed(sessionId, policyKeys)).toBe(false)
+      expect(searchThreads({ query: 'cleanup sentinel' })).toEqual([])
     }
     finally {
       shutdownInfra()

@@ -1,5 +1,7 @@
 # Stream Architecture Refactor: OpenAI Responses API Style
 
+> Historical note (2026-05-16): this plan targets an older Electron IPC streaming architecture (`chat:message-chunk`, `chat:response-event`) that has since been superseded by the server-owned snapshot + SSE delta runtime in `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Reference the repository rules in `docs/exec-plans/README.md` and the format guide in `.agents/skills/execplan/references/PLANS.md`.

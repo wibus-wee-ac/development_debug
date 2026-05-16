@@ -1,5 +1,7 @@
 # Remove UIMessage Materialization from Main Process
 
+> Historical note (2026-05-16): this plan reflects an older timeline-event-based design. The current architecture has since been replaced by the breaking rewrite in `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`, where `messages.messageJson` is the durable hydration truth source and live updates stream as sequenced delta events.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds. This document must be maintained in accordance with `docs/exec-plans/` conventions described in `.agents/skills/execplan/references/PLANS.md`.
 
 ## Purpose / Big Picture

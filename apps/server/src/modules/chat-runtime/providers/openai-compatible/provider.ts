@@ -2,7 +2,7 @@
 // Output: openai-compatible chat runtime provider powered by Vercel AI SDK
 // Position: apps/server/src/modules/chat-runtime/providers/openai-compatible/provider.ts
 
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { lookupContextWindow } from '../../../providers/model-info-registry'
 import {
@@ -11,7 +11,8 @@ import {
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
-import { buildModelMessages, executeAiSdkTurn } from '../../engine/ai-sdk-engine'
+import { buildModelMessages, executeAiSdkTurn, executeAiSdkTurnSnapshots } from '../../engine/ai-sdk-engine'
+import { createAssistantMessage } from '../../delta-events'
 import { createLanguageModel, detectApiFormat } from '../../engine/providers'
 import type {
   CancelTurnInput,
@@ -79,6 +80,73 @@ export class OpenAICompatibleProvider implements ChatRuntime {
         ...snapshot,
         models: { currentModelId: input.modelId },
       }),
+    }
+  }
+
+  async* streamTurnSnapshots(input: StreamTurnInput): AsyncGenerator<UIMessage, void, void> {
+    const { runtimeSession, profile, message, modelId: requestedModelId, providerOptions } = input
+    const config = parseConfigWith(profile.configJson, OpenAICompatibleConfigSchema)
+    const effectiveModel = requestedModelId ?? config.model
+    if (!config.baseUrl || !effectiveModel) {
+      throw new Error('OpenAI-compatible provider requires baseUrl and model')
+    }
+    if (!input.responseMessageId) {
+      throw new Error('OpenAI-compatible snapshot streaming requires responseMessageId')
+    }
+
+    const apiKey = profile.credentialRef
+      ? this.deps.readSecret(profile.credentialRef)
+      : 'no-key'
+
+    const abortController = new AbortController()
+    this.activeTurns.set(runtimeSession.chatSessionId, abortController)
+    this._lastUsage = null
+    this._lastStepUsages = []
+
+    try {
+      const apiFormat = detectApiFormat(config.baseUrl)
+      const model = createLanguageModel({
+        apiFormat,
+        apiKey,
+        baseUrl: config.baseUrl,
+        modelId: effectiveModel,
+        apiMode: config.apiMode,
+      })
+
+      const messages = buildModelMessages(
+        input.history,
+        message,
+        config.maxMessages ?? 50,
+      )
+
+      const contextWindow = await lookupContextWindow(effectiveModel) ?? 128_000
+
+      yield* executeAiSdkTurnSnapshots({
+        model,
+        messages,
+        initialMessage: createAssistantMessage(input.responseMessageId),
+        system: input.systemPrompt,
+        maxSteps: 1,
+        abortSignal: abortController.signal,
+        providerOptions,
+        onUsage: (usage) => { this._lastUsage = usage },
+        onStepFinish: (step) => { this._lastStepUsages.push(step) },
+        approvalContext: {
+          chatSessionId: runtimeSession.chatSessionId,
+          runtimeKind: this.runtimeKind,
+        },
+        contextWindow,
+        chatSessionId: runtimeSession.chatSessionId,
+      })
+    }
+    catch (error) {
+      if (isAbortError(error)) {
+        throw createAbortError()
+      }
+      throw error
+    }
+    finally {
+      this.activeTurns.delete(runtimeSession.chatSessionId)
     }
   }
 

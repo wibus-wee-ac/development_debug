@@ -1,5 +1,7 @@
 # Chat Feature — Conversation with ACP Agents
 
+> Historical note (2026-05-16): this plan describes an early ACP chat implementation before the later server-owned snapshot + sequenced SSE delta runtime became canonical. For the current chat architecture, see `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 This ExecPlan is a living document.
 The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds.
 

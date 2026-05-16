@@ -31,21 +31,26 @@ Position: apps/server/specs/capabilities session spec.
 
 - IPC `SessionService` 支持 `list/get/create/delete/updateTitle/getMessages/togglePin/exportAsMarkdown`。
 - `delete` 会停止当前会话的 PTY，并移除该会话的搜索索引（FTS）。
-- `exportAsMarkdown` 读取 session + messages + backend session binding，并使用 timeline events 还原 assistant 文本。
+- `exportAsMarkdown` 读取 session + messages + backend session binding，assistant 文本直接来自 `messages.content` 派生缓存。
 
 ## Inputs / Outputs
 
 ### CRUD
 
 - `list(workspaceId)` → `Session[]`（按 `updatedAt` 倒序）
-- `get(id)` → `Session | null`
-- `create({ workspaceId, title, agentProfileId, id? })` → `Session`
-- `update({ id, title?, pinned? })` → `Session | null`（更新 `updatedAt`）
+- `get(id)` → `Session`（不存在时返回 `session_not_found` / 404）
+- `create({ workspaceId?, title, agentProfileId?, agentId?, runtimeKind?, id? })` → `Session`
+- `update({ id, title?, pinned? })` → `Session`（不存在时返回 `session_not_found` / 404；更新 `updatedAt`）
 - `delete(id)` → `{ ok: true }`
+
+Create-time note:
+
+- 标准 chat session 可通过 `agentProfileId` 创建。
+- `runtimeKind === 'cli-tui'` 的 session 必须通过 `agentId` 创建，由 agent/session runtime config owner 提供 launch meaning。
 
 ### Message Read
 
-- `getMessages(sessionId)` → `Message[]`（按 `createdAt` 升序）
+- `getMessages(sessionId)` → `Message[]`（按 `createdAt` 升序，返回原始 message rows；chat hydration 由 chat-runtime capability 负责）
 
 ### Export
 
@@ -53,16 +58,16 @@ Position: apps/server/specs/capabilities session spec.
   - Header: `# {title}`
   - Meta: `> Model: {requestedModelId|unknown} | Created: {local time}`
   - 每条消息按 `## User/Assistant` 分段
-  - Assistant 文本优先从 timeline events 提取
+  - Assistant 文本从 `messages.content` 派生缓存读取
 
 ## Side Effects
 
-- 删除会话时尝试触发 PTY 停止与搜索索引清理（若相关 capability 已迁移）。
-- 当前阶段可通过 SessionCleanup 适配器实现，默认 no-op，后续由 pty/search capability 接入。
+- 删除会话时触发 PTY 停止、搜索索引清理、以及 session-scoped approval cleanup。
+- 清理回调由 session capability 统一编排，当前已接入 PTY、search、approval capability。
 
 ## Dependencies
 
-- `@cradle/db`：`sessions` / `messages` / `backend_session_bindings` / `backend_runs` / `backend_timeline_events`。
+- `@cradle/db`：`sessions` / `messages` / `backend_session_bindings` / `backend_runs`。
 - `DbAccessor`（服务器 DB 访问）。
 - 搜索索引（thread search）与 PTY 能力（若已迁移，作为可选依赖）。
 
@@ -84,9 +89,14 @@ type Session = {
 type Message = {
   id: string
   sessionId: string
+  parentMessageId: string | null
+  parentToolCallId: string | null
+  taskId: string | null
+  depth: number
   role: 'user' | 'assistant'
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
   content: string
+  messageJson: string
   errorText: string | null
   createdAt: number
   updatedAt: number
@@ -98,7 +108,7 @@ type Message = {
 HTTP endpoints (Tsuki/Hono controller):
 
 - `GET /sessions?workspaceId=` → `Session[]`
-- `GET /sessions/:id` → `Session | null`
+- `GET /sessions/:id` → `Session`（不存在时返回 `session_not_found` / 404）
 - `POST /sessions` `{ workspaceId, title, agentProfileId, id? }` → `Session`
 - `PATCH /sessions/:id` `{ title?, pinned? }` → `Session`
 - `DELETE /sessions/:id` → `{ ok: true }`
@@ -108,7 +118,8 @@ HTTP endpoints (Tsuki/Hono controller):
 错误约定：
 
 - 输入缺失/非法 → `AppError` (HTTP 400)
-- 不存在 → 返回 `null` 或空列表
+- `GET /sessions/:id`、`PATCH /sessions/:id` 不存在 → `session_not_found` / 404
+- 列表和搜索型读取在无结果时返回空列表
 
 ## Target Module Design
 
@@ -116,7 +127,7 @@ HTTP endpoints (Tsuki/Hono controller):
   - `SessionController`: HTTP endpoints
   - `SessionService`: 业务语义 + side effects
   - `SessionStore`: DB 访问
-  - `SessionExport`: Markdown 导出与 timeline 文本提取
+  - `SessionExport`: Markdown 导出与 `messages.content` 纯文本读取
 
 ## Events
 
@@ -132,8 +143,8 @@ HTTP endpoints (Tsuki/Hono controller):
 - CRUD：创建/更新/删除/列表/读取。
 - `PATCH /sessions/:id`：支持 title / pinned 的资源字段更新。
 - `getMessages`：按时间升序返回。
-- `exportAsMarkdown`：包含标题、模型信息与消息内容，assistant 文本来自 timeline events。
-- 删除时调用 PTY/搜索清理（可用时）。
+- `exportAsMarkdown`：包含标题、模型信息与消息内容，assistant 文本来自 `messages.content`。
+- 删除时调用 PTY/搜索/approval 清理（可用时）。
 
 ## Cutover Plan
 

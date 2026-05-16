@@ -2,6 +2,8 @@
 
 # Backend Architecture Overhaul Audit (2026-05-04)
 
+> Historical note (2026-05-16): this audit describes a pre-`apps/server` transition stage. Chat flow references to `ChatEngine`, `chat:response-event`, or older Electron main-process paths should be read as historical context; the current canonical contract is `/chat/sessions/:sessionId/response` plus sequenced SSE delta events and `messages.messageJson` snapshot hydration.
+
 ## 1. Direct Conclusion
 
 当前后端是可运行但高耦合的单体 Main-Process Backend：

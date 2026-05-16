@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs-next, ChatView/TuiView components, HTTP timeline, layout slots context
-// Output: chat tab definition with session message loader and per-tab layout (aside + shell panel)
+// Input: defineTab from @cradle/tabs-next, ChatView/TuiView components, HTTP snapshot rows, layout slots context
+// Output: chat tab definition with session snapshot loader and per-tab layout (aside + shell panel)
 // Position: Tab type for chat sessions; forks to TuiView for cli-tui provider sessions
 
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
@@ -13,7 +13,7 @@ import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
 import { RightAside } from '~/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
-import type { ChatTimelineGroupRow } from '~/features/chat/use-chat-session'
+import type { ChatSessionMessageRow } from '~/features/chat/use-chat-session'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
 import { getServerUrl } from '~/lib/electron'
@@ -75,7 +75,7 @@ function ChatTabLayoutSlots({
   return null
 }
 
-function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatTimelineGroupRow[] }) {
+function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatSessionMessageRow[] }) {
   const { sessionId } = params
   const { store } = useTabsContext()
 
@@ -171,7 +171,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
         <ChatView
           key={sessionId}
           sessionId={sessionId}
-          initialTimelineGroups={loaderData}
+          initialSnapshotRows={loaderData}
           composerToolbar={composerToolbar}
           sendOverridesRef={sendOverridesRef}
         />
@@ -191,7 +191,7 @@ export const chatTab = defineTab({
       if (!res.ok) {
         return []
       }
-      return (await res.json()) as ChatTimelineGroupRow[]
+      return (await res.json()) as ChatSessionMessageRow[]
     }
     catch {
       return []

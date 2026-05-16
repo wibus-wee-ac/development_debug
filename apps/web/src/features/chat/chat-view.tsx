@@ -21,14 +21,14 @@ import { ChatMinimap } from './chat-minimap'
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
-import type { ChatTimelineGroupRow } from './use-chat-session'
+import type { ChatSessionMessageRow } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import { useSessionAwaitSummary } from './use-session-await'
 
 interface ChatViewProps {
   sessionId: string | null
-  /** Pre-loaded timeline groups from a route loader; eliminates empty-state flash on first visit. */
-  initialTimelineGroups?: ChatTimelineGroupRow[]
+  /** Pre-loaded snapshot rows from a route loader; eliminates empty-state flash on first visit. */
+  initialSnapshotRows?: ChatSessionMessageRow[]
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
   /** Custom toolbar rendered in the composer left slot */
@@ -61,7 +61,7 @@ function formatTokenCount(tokens: number): string {
   return String(tokens)
 }
 
-function ChatTimelinePane({
+function ChatMessageListPane({
   messages,
   status,
   error,
@@ -257,14 +257,14 @@ function ChatComposerSection({
 
 export function ChatView({
   sessionId,
-  initialTimelineGroups,
+  initialSnapshotRows,
   availableFiles = EMPTY_FILES,
   composerToolbar,
   composerContextBar,
   sendOverridesRef,
   placeholder,
 }: ChatViewProps) {
-  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialTimelineGroups })
+  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialSnapshotRows })
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const isAwaiting = awaitSummary?.awaiting ?? false
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
@@ -476,7 +476,7 @@ export function ChatView({
       }}
       onDragOver={e => e.preventDefault()}
     >
-      <ChatTimelinePane
+      <ChatMessageListPane
         messages={messages}
         status={status}
         error={error}

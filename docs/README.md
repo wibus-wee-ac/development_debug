@@ -13,9 +13,9 @@ Keep subdirectory inventories current when files are added or changed.
 - **SPEC-v1.md**: Initial product and architecture specification (historical baseline).
 - **SPEC-v2.md**: Updated product specification reflecting ACP chat, CLI-TUI sessions, and built-in observability.
 - **architecture-layout-tab-system.md**: Architecture notes for the layout and tab system.
-- **architecture-review-2026-04-21.md**: Consolidated frontend and backend architecture assessment covering routes, features, state flow, UI system, IPC, and main-process design.
-- **agent-client-console-architecture.md**: Architecture position for treating Cradle as an internal-first agent client console over Codex App Server, Claude Agent SDK, and ACP backends.
-- **backend-architecture-overhaul-2026-05-04.md**: Backend-only deep audit with data-flow mapping, DDD boundary assessment, and the evolving destructive refactor roadmap after application-layer extraction work.
+- **architecture-review-2026-04-21.md**: Historical frontend/backend architecture assessment from the earlier Electron IPC + renderer event-bridge era.
+- **agent-client-console-architecture.md**: Historical architecture position from an earlier provider-matrix and timeline-oriented agent console phase.
+- **backend-architecture-overhaul-2026-05-04.md**: Historical backend audit from the pre-`apps/server` / pre-snapshot-runtime architecture transition period.
 - **developers-guide.md**: Practical contributor guide for extending the current architecture without reintroducing service-layer coupling.
 - **design-system/**: Visual design documentation, tokens, and reference materials.
 - **draft-solutions/**: Working notes and proposal documents that are not yet formal execution plans.

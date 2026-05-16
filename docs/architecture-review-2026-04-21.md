@@ -2,6 +2,8 @@
 
 # Cradle Architecture Review
 
+> Historical note (2026-05-16): this review reflects an earlier Electron IPC + renderer event-bridge architecture. Chat-specific references to `useChat`, `chat:response-event`, renderer-side bridges, or timeline-driven hydration should be read as historical context; the current canonical runtime is server-owned `messages.messageJson` snapshot hydration plus sequenced SSE delta events.
+
 评估时间：2026-04-21  
 评估方式：主代理静态审查 + 4 个前端 SubAgent + 1 个后端 SubAgent 并行评估  
 覆盖范围：renderer 架构、feature 分层、状态与数据流、UI 系统、Electron main process、IPC、持久化、ACP 编排

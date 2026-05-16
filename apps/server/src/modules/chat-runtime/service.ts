@@ -5,15 +5,14 @@ import {
   agents,
   backendRuns,
   backendSessionBindings,
-  backendTimelineEvents,
   messages,
   sessions,
   stepUsage as stepUsageTable,
   usageLogs,
   workspaces,
 } from '@cradle/db'
-import type { UIMessageChunk } from 'ai'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import type { UIMessage, UIMessageChunk } from 'ai'
+import { and, desc, eq, isNull } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
@@ -25,9 +24,21 @@ import * as Profiles from '../profiles/service'
 import type { RuntimeKind } from '../providers/types'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry } from './chat-runtime-provider-registry'
+import {
+  applyChunkToProjection,
+  applySnapshotToProjection,
+  type ChatStreamEvent,
+  createAssistantMessage,
+  createMessageProjection,
+  createUserMessage,
+  extractMessageText,
+  type MessageProjection,
+  type ProjectionApplyResult,
+  parseMessageJson,
+  readChunkRouteContext,
+  type SubagentMessageContext,
+} from './delta-events'
 import type { ChatRuntime, RuntimeSession, TokenUsage } from './runtime-provider-types'
-import type { StoredChunk, TIMELINE_SCHEMA_VERSION } from './timeline-events'
-import { decodeChunk, encodeChunk, extractChunkContext } from './timeline-events'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
 
@@ -35,13 +46,17 @@ const chatLogger = createChildLogger({ module: 'chat-runtime' })
 
 export type ChatMessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
-export interface ChatChunkGroup {
+export interface ChatMessageSnapshotRow {
   messageId: string
   role: 'user' | 'assistant'
-  userText?: string
   status: ChatMessageStatus
   errorText?: string
-  chunks: StoredChunk[]
+  content: string
+  message: Omit<UIMessage, 'role'> & { role: 'user' | 'assistant' }
+  parentMessageId: string | null
+  parentToolCallId: string | null
+  taskId: string | null
+  depth: number
 }
 
 interface SessionRunContext {
@@ -58,9 +73,18 @@ interface ActiveRun {
   runtime: ChatRuntime
   runtimeSession: RuntimeSession
   modelId: string | null
+  mainProjection: MessageProjection
+  subagentProjections: Map<string, SubagentProjectionRecord>
+  nextSeq: number
+  eventBuffer: ChatStreamEvent[]
 }
 
-type RunSubscriber = (stored: StoredChunk, terminal: boolean) => void
+interface SubagentProjectionRecord {
+  context: SubagentMessageContext
+  projection: MessageProjection
+}
+
+type RunSubscriber = (event: ChatStreamEvent, terminal: boolean) => void
 
 interface SerializedChatError {
   text: string
@@ -169,23 +193,35 @@ function createDraftTurn(input: { sessionId: string, userText: string }): { user
   const userMessageId = randomUUID()
   const assistantMessageId = randomUUID()
   const now = nowUnix()
+  const userMessage = createUserMessage(userMessageId, input.userText)
+  const assistantMessage = createAssistantMessage(assistantMessageId)
 
   db().transaction((tx) => {
     tx.insert(messages).values({
       id: userMessageId,
       sessionId: input.sessionId,
+      parentMessageId: null,
+      parentToolCallId: null,
+      taskId: null,
+      depth: 0,
       role: 'user',
       status: 'complete',
       content: input.userText,
+      messageJson: JSON.stringify(userMessage),
       createdAt: now,
       updatedAt: now,
     }).run()
     tx.insert(messages).values({
       id: assistantMessageId,
       sessionId: input.sessionId,
+      parentMessageId: null,
+      parentToolCallId: null,
+      taskId: null,
+      depth: 0,
       role: 'assistant',
       status: 'streaming',
       content: '',
+      messageJson: JSON.stringify(assistantMessage),
       createdAt: now,
       updatedAt: now,
     }).run()
@@ -218,53 +254,19 @@ export function getRun(runId: string): BackendRun | undefined {
   return db().select().from(backendRuns).where(eq(backendRuns.id, runId)).get()
 }
 
-function persistChunk(input: {
+function persistMessageSnapshot(input: {
   sessionId: string
-  runId: string
   messageId: string
-  chunk: UIMessageChunk
+  message: UIMessage
   messageStatus: ChatMessageStatus
   errorText: string | null
-  runCompletion?: {
-    status: 'complete' | 'aborted' | 'failed'
-    stopReason: string | null
-    errorText: string | null
-  }
-}): StoredChunk {
-  return db().transaction((tx) => {
-    const now = nowUnix()
-    const ctx = extractChunkContext(input.chunk)
-    const encoded = encodeChunk(input.chunk, ctx)
-    const last = tx.select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, input.runId)).orderBy(desc(backendTimelineEvents.sequenceNumber)).get()
-    const sequenceNumber = (last?.sequenceNumber ?? -1) + 1
-
-    const row = tx.insert(backendTimelineEvents)
-      .values({
-        id: randomUUID(),
-        runId: input.runId,
-        chatSessionId: input.sessionId,
-        sequenceNumber,
-        eventType: encoded.eventType,
-        schemaVersion: encoded.schemaVersion,
-        payloadJson: encoded.payloadJson,
-        sourceJson: encoded.sourceJson,
-        parentToolCallId: encoded.parentToolCallId,
-        taskId: encoded.taskId,
-        createdAt: now,
-      })
-      .returning()
-      .get()
-
-    // Accumulate text content for messages table
-    const currentMessage = tx.select().from(messages).where(eq(messages.id, input.messageId)).get()
-    let nextContent = currentMessage?.content ?? ''
-    if (input.chunk.type === 'text-delta') {
-      nextContent += input.chunk.delta
-    }
-
+}): void {
+  const now = nowUnix()
+  db().transaction((tx) => {
     tx.update(messages)
       .set({
-        content: nextContent,
+        content: extractMessageText(input.message),
+        messageJson: JSON.stringify(input.message),
         status: input.messageStatus,
         errorText: input.errorText,
         updatedAt: now,
@@ -276,30 +278,6 @@ function persistChunk(input: {
       .set({ updatedAt: now })
       .where(eq(sessions.id, input.sessionId))
       .run()
-
-    if (input.runCompletion) {
-      tx.update(backendRuns)
-        .set({
-          status: input.runCompletion.status,
-          stopReason: input.runCompletion.stopReason,
-          errorText: input.runCompletion.errorText,
-          finishedAt: now,
-        })
-        .where(eq(backendRuns.id, input.runId))
-        .run()
-    }
-
-    return {
-      id: row.id,
-      runId: row.runId,
-      chatSessionId: row.chatSessionId,
-      sequenceNumber: row.sequenceNumber,
-      schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
-      createdAt: row.createdAt,
-      parentToolCallId: row.parentToolCallId,
-      taskId: row.taskId,
-      chunk: decodeChunk({ payloadJson: row.payloadJson }),
-    }
   })
 }
 
@@ -315,20 +293,6 @@ function insertUsage(input: { sessionId: string, messageId: string, agentProfile
     totalTokens: input.usage.totalTokens,
     createdAt: nowUnix(),
   }).run()
-}
-
-function listRunChunks(runId: string): StoredChunk[] {
-  return db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, runId)).orderBy(backendTimelineEvents.sequenceNumber).all().map(row => ({
-    id: row.id,
-    runId: row.runId,
-    chatSessionId: row.chatSessionId,
-    sequenceNumber: row.sequenceNumber,
-    schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
-    createdAt: row.createdAt,
-    parentToolCallId: row.parentToolCallId,
-    taskId: row.taskId,
-    chunk: decodeChunk({ payloadJson: row.payloadJson }),
-  }))
 }
 
 // ── turn context resolver (merged from chat-turn-context.ts) ──
@@ -355,29 +319,23 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
       : workflow
   }
 
-  const historyRows = db().select().from(messages).where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'))).orderBy(messages.createdAt).all().filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
+  const historyRows = db()
+    .select()
+    .from(messages)
+    .where(and(eq(messages.sessionId, input.sessionId), eq(messages.status, 'complete'), isNull(messages.parentToolCallId)))
+    .orderBy(messages.createdAt)
+    .all()
+    .filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 
   const history = historyRows.map(row => ({
     role: row.role as 'user' | 'assistant',
-    content: row.role === 'assistant' ? readAssistantText(row.id) : row.content,
+    content: row.content,
   })).filter(item => item.content.length > 0)
 
   return {
     systemPrompt,
     history: history.length > 0 ? history : undefined,
   }
-}
-
-function readAssistantText(messageId: string): string {
-  const run = db().select({ id: backendRuns.id }).from(backendRuns).where(eq(backendRuns.messageId, messageId)).orderBy(desc(backendRuns.startedAt)).get()
-  if (!run) {
-    return ''
-  }
-  const rows = db().select().from(backendTimelineEvents).where(eq(backendTimelineEvents.runId, run.id)).orderBy(backendTimelineEvents.sequenceNumber).all()
-  return rows.map((row) => {
-    const chunk = decodeChunk({ payloadJson: row.payloadJson })
-    return chunk.type === 'text-delta' ? chunk.delta : ''
-  }).join('')
 }
 
 function readAgentSystemPrompt(configJson: string | null | undefined): string | undefined {
@@ -395,66 +353,32 @@ function readAgentSystemPrompt(configJson: string | null | undefined): string | 
 
 // ── public service functions ──
 
-export function getMessageGroups(sessionId: string): ChatChunkGroup[] {
+export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
   const context = getSessionRunContext(sessionId)
   if (!context) {
     throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId } })
   }
 
-  const rows = db().select().from(messages).where(eq(messages.sessionId, sessionId)).orderBy(messages.createdAt).all()
-  const assistantIds = rows.filter(row => row.role === 'assistant').map(row => row.id)
-  const latestRunByMessageId = new Map<string, BackendRun>()
-
-  if (assistantIds.length > 0) {
-    const runs = db().select().from(backendRuns).where(inArray(backendRuns.messageId, assistantIds)).orderBy(desc(backendRuns.startedAt)).all()
-    for (const run of runs) {
-      if (!run.messageId || latestRunByMessageId.has(run.messageId)) {
-        continue
-      }
-      latestRunByMessageId.set(run.messageId, run)
-    }
-  }
-
-  const runIds = [...new Set(Array.from(latestRunByMessageId.values(), run => run.id))]
-  const chunksByRunId = new Map<string, StoredChunk[]>()
-
-  if (runIds.length > 0) {
-    const chunkRows = db().select().from(backendTimelineEvents).where(inArray(backendTimelineEvents.runId, runIds)).orderBy(backendTimelineEvents.runId, backendTimelineEvents.sequenceNumber).all()
-    for (const row of chunkRows) {
-      const bucket = chunksByRunId.get(row.runId) ?? []
-      bucket.push({
-        id: row.id,
-        runId: row.runId,
-        chatSessionId: row.chatSessionId,
-        sequenceNumber: row.sequenceNumber,
-        schemaVersion: row.schemaVersion as typeof TIMELINE_SCHEMA_VERSION,
-        createdAt: row.createdAt,
-        parentToolCallId: row.parentToolCallId,
-        taskId: row.taskId,
-        chunk: decodeChunk({ payloadJson: row.payloadJson }),
-      })
-      chunksByRunId.set(row.runId, bucket)
-    }
-  }
+  const rows = db()
+    .select()
+    .from(messages)
+    .where(eq(messages.sessionId, sessionId))
+    .orderBy(messages.createdAt)
+    .all()
 
   return rows.map((row) => {
-    if (row.role === 'user') {
-      return {
-        messageId: row.id,
-        role: 'user' as const,
-        userText: row.content,
-        status: row.status as ChatMessageStatus,
-        errorText: row.errorText ?? undefined,
-        chunks: [],
-      }
-    }
-    const runId = latestRunByMessageId.get(row.id)?.id
+    const role = row.role as 'user' | 'assistant'
     return {
       messageId: row.id,
-      role: 'assistant' as const,
+      role,
       status: row.status as ChatMessageStatus,
       errorText: row.errorText ?? undefined,
-      chunks: runId ? chunksByRunId.get(runId) ?? [] : [],
+      content: row.content,
+      message: parseMessageJson(row.id, role, row.messageJson) as ChatMessageSnapshotRow['message'],
+      parentMessageId: row.parentMessageId,
+      parentToolCallId: row.parentToolCallId,
+      taskId: row.taskId,
+      depth: row.depth,
     }
   })
 }
@@ -519,6 +443,10 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     runtime,
     runtimeSession,
     modelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
+    mainProjection: createMessageProjection(createAssistantMessage(draft.assistantMessageId)),
+    subagentProjections: new Map(),
+    nextSeq: 0,
+    eventBuffer: [],
   }
   activeRuns.set(run.id, activeRun)
   activeRunIdsBySession.set(input.sessionId, run.id)
@@ -610,23 +538,24 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
   if (!run) {
     throw new AppError({ code: 'chat_run_not_found', status: 404, message: 'Chat run not found', details: { runId } })
   }
+  const active = activeRuns.get(runId)
 
   const encoder = new TextEncoder()
   return new ReadableStream<Uint8Array>({
     start: (controller) => {
       let unsubscribe = () => {}
 
-      const writeChunk = (stored: StoredChunk, terminal: boolean) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(stored)}\n\n`))
+      const writeEvent = (event: ChatStreamEvent, terminal: boolean) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
         if (terminal) {
           unsubscribe()
           controller.close()
         }
       }
 
-      for (const stored of listRunChunks(runId)) {
-        const terminal = stored.chunk.type === 'finish' || stored.chunk.type === 'abort' || stored.chunk.type === 'error'
-        writeChunk(stored, terminal)
+      for (const event of active?.eventBuffer ?? []) {
+        const terminal = isTerminalStreamEvent(event)
+        writeEvent(event, terminal)
         if (terminal) {
           return
         }
@@ -638,7 +567,7 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
       }
 
       const subscribers = runSubscribers.get(runId) ?? new Set<RunSubscriber>()
-      const subscriber: RunSubscriber = (stored, terminal) => writeChunk(stored, terminal)
+      const subscriber: RunSubscriber = (event, terminal) => writeEvent(event, terminal)
       subscribers.add(subscriber)
       runSubscribers.set(runId, subscribers)
 
@@ -685,61 +614,103 @@ async function executeRun(activeRun: ActiveRun, input: {
   let failurePayload: SerializedChatError['payload'] | undefined
   let finalChunk: UIMessageChunk = { type: 'finish', finishReason: 'stop' }
   let streamEmittedError = false
+  let snapshotTerminal: { status: ChatMessageStatus, errorText: string | null } | null = null
+  const usesSnapshotStream = typeof activeRun.runtime.streamTurnSnapshots === 'function'
 
   try {
-    publishChunk(persist(activeRun, { type: 'start' }))
-
-    for await (const chunk of activeRun.runtime!.streamTurn({
-      runtimeSession: activeRun.runtimeSession,
-      profile: input.profile,
-      message: input.text,
-      modelId: input.modelId,
-      workspaceId: input.workspaceId,
-      workspacePath: input.workspacePath,
-      providerOptions: input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : undefined,
-      systemPrompt: input.systemPrompt,
-      history: input.history,
-    })) {
-      accumulateDiagnostics(diagnostics, chunk)
-      publishChunk(persist(activeRun, chunk))
-      if (chunk.type === 'error') {
-        streamEmittedError = true
-        finalChunk = chunk
+    if (usesSnapshotStream) {
+      for await (const message of activeRun.runtime.streamTurnSnapshots!({
+        runtimeSession: activeRun.runtimeSession,
+        profile: input.profile,
+        message: input.text,
+        responseMessageId: activeRun.messageId,
+        modelId: input.modelId,
+        workspaceId: input.workspaceId,
+        workspacePath: input.workspacePath,
+        providerOptions: input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : undefined,
+        systemPrompt: input.systemPrompt,
+        history: input.history,
+      })) {
+        const applied = applyAndPublishSnapshot(activeRun, message)
+        accumulateDeltaDiagnostics(diagnostics, applied.deltas)
       }
-    }
 
-    // Skip diagnostic validation if the stream already emitted an error chunk
-    if (!streamEmittedError) {
-      finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
+      const validation = validateTurnOutput(diagnostics)
+      snapshotTerminal = validation.ok
+        ? { status: 'complete', errorText: null }
+        : { status: 'failed', errorText: validation.errorText }
+    }
+    else {
+      applyAndPublishChunk(activeRun, { type: 'start' })
+
+      for await (const chunk of activeRun.runtime.streamTurn({
+        runtimeSession: activeRun.runtimeSession,
+        profile: input.profile,
+        message: input.text,
+        responseMessageId: activeRun.messageId,
+        modelId: input.modelId,
+        workspaceId: input.workspaceId,
+        workspacePath: input.workspacePath,
+        providerOptions: input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : undefined,
+        systemPrompt: input.systemPrompt,
+        history: input.history,
+      })) {
+        accumulateDiagnostics(diagnostics, chunk)
+        applyAndPublishChunk(activeRun, chunk)
+        if (chunk.type === 'error') {
+          streamEmittedError = true
+          finalChunk = chunk
+        }
+      }
+
+      if (!streamEmittedError) {
+        finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
+      }
     }
   }
   catch (error) {
     if (isAbortError(error)) {
+      snapshotTerminal = { status: 'aborted', errorText: null }
       finalChunk = { type: 'abort', reason: 'user' }
     }
     else {
       const serializedError = serializeChatError(error)
       failurePayload = serializedError.payload
+      snapshotTerminal = { status: 'failed', errorText: serializedError.text }
       finalChunk = { type: 'error', errorText: serializedError.text }
     }
   }
 
   try {
-    // Skip final persist if the stream already emitted (and persisted) an error chunk.
-    // The in-band error chunk was already persisted as terminal during the streaming loop.
-    if (!streamEmittedError) {
-      const terminal = persist(activeRun, finalChunk)
-      publishChunk(terminal)
+    if (usesSnapshotStream) {
+      applyAndPublishTerminalState(
+        activeRun,
+        snapshotTerminal?.status ?? 'complete',
+        snapshotTerminal?.errorText ?? null,
+      )
+    }
+    else if (!streamEmittedError) {
+      applyAndPublishChunk(activeRun, finalChunk)
     }
 
-    if (finalChunk.type === 'error') {
-      const observabilityCode = resolveTurnFailureObservabilityCode(finalChunk)
+    const finalFailureText = usesSnapshotStream
+      ? snapshotTerminal?.status === 'failed'
+        ? snapshotTerminal.errorText ?? 'Chat run failed'
+        : null
+      : finalChunk.type === 'error'
+        ? finalChunk.errorText
+        : null
+
+    if (finalFailureText) {
+      const observabilityCode = usesSnapshotStream
+        ? resolveSnapshotFailureObservabilityCode(finalFailureText)
+        : resolveTurnFailureObservabilityCode(finalChunk)
       Observability.record({
         source: 'chat-engine',
         code: observabilityCode,
         severity: 'error',
         category: 'chat',
-        message: finalChunk.errorText,
+        message: finalFailureText,
         chatSessionId: activeRun.sessionId,
         runId: activeRun.runId,
         messageId: activeRun.messageId,
@@ -816,54 +787,97 @@ async function executeRun(activeRun: ActiveRun, input: {
   }
 }
 
-function persist(activeRun: ActiveRun, chunk: UIMessageChunk): { stored: StoredChunk, terminal: boolean } {
-  const terminal = chunk.type === 'finish' || chunk.type === 'abort' || chunk.type === 'error'
-  const messageStatus: ChatMessageStatus = chunk.type === 'finish'
-    ? 'complete'
-    : chunk.type === 'abort'
-      ? 'aborted'
-      : chunk.type === 'error'
-        ? 'failed'
-        : 'streaming'
+function applyAndPublishChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {
+  const route = readChunkRouteContext(chunk)
+  const target = route.parentToolCallId
+    ? getSubagentProjection(activeRun, route.parentToolCallId, route.taskId)
+    : { projection: activeRun.mainProjection, context: null }
 
-  const stopReason = chunk.type === 'finish'
-    ? 'response.completed'
-    : chunk.type === 'abort'
-      ? 'response.cancelled'
-      : chunk.type === 'error'
-        ? 'response.failed'
-        : null
+  const applied = applyChunkToProjection(target.projection, chunk, activeRun.nextSeq)
+  activeRun.nextSeq = applied.nextSeq
 
-  const terminalStatus = messageStatus === 'streaming' ? null : messageStatus
-
-  const stored = persistChunk({
+  persistMessageSnapshot({
     sessionId: activeRun.sessionId,
-    runId: activeRun.runId,
-    messageId: activeRun.messageId,
-    chunk,
-    messageStatus,
-    errorText: chunk.type === 'error' ? chunk.errorText : null,
-    runCompletion: terminal && terminalStatus
-      ? {
-          status: terminalStatus,
-          stopReason,
-          errorText: chunk.type === 'error' ? chunk.errorText : null,
-        }
-      : undefined,
+    messageId: target.projection.message.id,
+    message: target.projection.message,
+    messageStatus: applied.status,
+    errorText: applied.errorText,
   })
 
-  return { stored, terminal }
+  if (applied.deltas.length > 0) {
+    publishStreamEvent(
+      activeRun,
+      target.context
+        ? { type: 'subagent_message_delta', data: { context: target.context, deltas: applied.deltas } }
+        : { type: 'message_delta', data: { messageId: activeRun.messageId, deltas: applied.deltas } },
+      false,
+    )
+  }
+
+  if (applied.terminal) {
+    applyAndPublishTerminalState(activeRun, applied.status, applied.errorText, false)
+  }
 }
 
-function publishChunk(input: { stored: StoredChunk, terminal: boolean }): void {
-  const subscribers = runSubscribers.get(input.stored.runId)
+function applyAndPublishSnapshot(activeRun: ActiveRun, message: UIMessage): ProjectionApplyResult {
+  const applied = applySnapshotToProjection(activeRun.mainProjection, message, activeRun.nextSeq)
+  activeRun.nextSeq = applied.nextSeq
+
+  persistMessageSnapshot({
+    sessionId: activeRun.sessionId,
+    messageId: activeRun.mainProjection.message.id,
+    message: activeRun.mainProjection.message,
+    messageStatus: applied.status,
+    errorText: applied.errorText,
+  })
+
+  if (applied.deltas.length > 0) {
+    publishStreamEvent(activeRun, {
+      type: 'message_delta',
+      data: { messageId: activeRun.messageId, deltas: applied.deltas },
+    }, false)
+  }
+
+  return applied
+}
+
+function applyAndPublishTerminalState(
+  activeRun: ActiveRun,
+  status: ChatMessageStatus,
+  errorText: string | null,
+  persistMainSnapshot = true,
+): void {
+  if (persistMainSnapshot) {
+    persistMessageSnapshot({
+      sessionId: activeRun.sessionId,
+      messageId: activeRun.mainProjection.message.id,
+      message: activeRun.mainProjection.message,
+      messageStatus: status,
+      errorText,
+    })
+  }
+
+  finalizeRun(activeRun, status, errorText)
+  finalizeSubagentSnapshots(activeRun, status, errorText)
+
+  const event: ChatStreamEvent = status === 'complete'
+    ? { type: 'run_completed', data: { messageId: activeRun.messageId } }
+    : status === 'aborted'
+      ? { type: 'run_aborted', data: { messageId: activeRun.messageId } }
+      : { type: 'run_failed', data: { messageId: activeRun.messageId, errorText: errorText ?? 'Chat run failed' } }
+  publishStreamEvent(activeRun, event, true)
+}
+
+function publishStreamEvent(activeRun: ActiveRun, event: ChatStreamEvent, terminal: boolean): void {
+  activeRun.eventBuffer.push(event)
+  const subscribers = runSubscribers.get(activeRun.runId)
   if (!subscribers) {
     return
   }
   const dead: RunSubscriber[] = []
   for (const subscriber of subscribers) {
     try {
-      subscriber(input.stored, input.terminal)
+      subscriber(event, terminal)
     }
     catch {
       // Subscriber stream was cancelled/closed — remove it
@@ -873,8 +887,84 @@ function publishChunk(input: { stored: StoredChunk, terminal: boolean }): void {
   for (const s of dead) {
     subscribers.delete(s)
   }
-  if (input.terminal || subscribers.size === 0) {
-    runSubscribers.delete(input.stored.runId)
+  if (terminal || subscribers.size === 0) {
+    runSubscribers.delete(activeRun.runId)
+  }
+}
+
+function getSubagentProjection(activeRun: ActiveRun, parentToolCallId: string, taskId: string | null): SubagentProjectionRecord {
+  const existing = activeRun.subagentProjections.get(parentToolCallId)
+  if (existing) {
+    if (!existing.context.taskId && taskId) {
+      existing.context.taskId = taskId
+      db().update(messages)
+        .set({ taskId, updatedAt: nowUnix() })
+        .where(eq(messages.id, existing.context.messageId))
+        .run()
+    }
+    return existing
+  }
+
+  const now = nowUnix()
+  const messageId = randomUUID()
+  const message = createAssistantMessage(messageId)
+  const context: SubagentMessageContext = {
+    messageId,
+    parentMessageId: activeRun.messageId,
+    parentToolCallId,
+    taskId,
+  }
+  db().insert(messages).values({
+    id: messageId,
+    sessionId: activeRun.sessionId,
+    parentMessageId: activeRun.messageId,
+    parentToolCallId,
+    taskId,
+    depth: 1,
+    role: 'assistant',
+    status: 'streaming',
+    content: '',
+    messageJson: JSON.stringify(message),
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+
+  const record = { context, projection: createMessageProjection(message) }
+  activeRun.subagentProjections.set(parentToolCallId, record)
+  return record
+}
+
+function finalizeRun(activeRun: ActiveRun, status: ChatMessageStatus, errorText: string | null): void {
+  const stopReason = status === 'complete'
+    ? 'response.completed'
+    : status === 'aborted'
+      ? 'response.cancelled'
+      : status === 'failed'
+        ? 'response.failed'
+        : null
+  if (!stopReason || status === 'streaming') {
+    return
+  }
+  db().update(backendRuns)
+    .set({
+      status,
+      stopReason,
+      errorText,
+      finishedAt: nowUnix(),
+    })
+    .where(eq(backendRuns.id, activeRun.runId))
+    .run()
+}
+
+function finalizeSubagentSnapshots(activeRun: ActiveRun, status: ChatMessageStatus, errorText: string | null): void {
+  for (const record of activeRun.subagentProjections.values()) {
+    persistMessageSnapshot({
+      sessionId: activeRun.sessionId,
+      messageId: record.context.messageId,
+      message: record.projection.message,
+      messageStatus: status,
+      errorText,
+    })
   }
 }
 
@@ -891,6 +981,10 @@ function extractModelId(providerStateSnapshot: string | null): string | null {
   catch {
     return null
   }
+}
+
+function isTerminalStreamEvent(event: ChatStreamEvent): boolean {
+  return event.type === 'run_completed' || event.type === 'run_aborted' || event.type === 'run_failed'
 }
 
 function isAbortError(error: unknown): boolean {
@@ -917,6 +1011,42 @@ function accumulateDiagnostics(diagnostics: TurnOutputDiagnostics, chunk: UIMess
       break
     default:
       break
+  }
+}
+
+function accumulateDeltaDiagnostics(diagnostics: TurnOutputDiagnostics, deltas: ProjectionApplyResult['deltas']): void {
+  diagnostics.emittedEventCount += Math.max(deltas.length, 1)
+
+  for (const delta of deltas) {
+    switch (delta.type) {
+      case 'part_add':
+        if (delta.part.type === 'text') {
+          diagnostics.assistantTextCharCount += delta.part.text?.length ?? 0
+        }
+        else if (delta.part.type === 'reasoning') {
+          diagnostics.reasoningTextCharCount += delta.part.text?.length ?? 0
+        }
+        else if (delta.part.type === 'dynamic-tool') {
+          diagnostics.toolEventCount += 1
+        }
+        break
+      case 'text_append':
+        if (delta.partType === 'reasoning') {
+          diagnostics.reasoningTextCharCount += delta.text.length
+        }
+        else {
+          diagnostics.assistantTextCharCount += delta.text.length
+        }
+        break
+      case 'tool_input_append':
+      case 'tool_input_set':
+      case 'tool_output_streaming':
+      case 'tool_output_set':
+        diagnostics.toolEventCount += 1
+        break
+      default:
+        break
+    }
   }
 }
 
@@ -967,6 +1097,14 @@ function resolveTurnFailureObservabilityCode(
 
   // Check if this is an empty-output failure
   if (chunk.errorText.includes('without any assistant output')) {
+    return OBSERVABILITY_CODES.chatEmptyOutputCompletion
+  }
+
+  return OBSERVABILITY_CODES.turnStreamFailed
+}
+
+function resolveSnapshotFailureObservabilityCode(errorText: string): string {
+  if (errorText.includes('without any assistant output')) {
     return OBSERVABILITY_CODES.chatEmptyOutputCompletion
   }
 

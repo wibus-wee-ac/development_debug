@@ -11,6 +11,7 @@ describe('useChatStore', () => {
   beforeEach(() => {
     useChatStore.setState({
       messagesMap: new Map(),
+      subagentMessagesMap: new Map(),
       generatingMessageIds: new Set(),
       activeAbortControllers: new Map(),
       errorMap: new Map(),
@@ -86,5 +87,40 @@ describe('useChatStore', () => {
     expect(updatedMessages).not.toBe(storedMessages)
     expect(updatedMessages[0]).toBe(storedMessages[0])
     expect(updatedMessages[1]).not.toBe(storedMessages[1])
+  })
+
+  it('keeps subagent messages isolated by parentToolCallId bucket', () => {
+    useChatStore.getState().upsertSubagentMessage('assistant-1', 'tool-1', {
+      id: 'subagent-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'first tool' }],
+    })
+    useChatStore.getState().upsertSubagentMessage('assistant-1', 'tool-2', {
+      id: 'subagent-2',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'second tool' }],
+    })
+    useChatStore.getState().upsertSubagentMessage('assistant-1', 'tool-1', {
+      id: 'subagent-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'first tool updated' }],
+    })
+
+    const subagentBuckets = chatSelectors.subagentMessages('assistant-1')(useChatStore.getState())
+
+    expect(subagentBuckets?.get('tool-1')).toEqual([
+      {
+        id: 'subagent-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'first tool updated' }],
+      },
+    ])
+    expect(subagentBuckets?.get('tool-2')).toEqual([
+      {
+        id: 'subagent-2',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'second tool' }],
+      },
+    ])
   })
 })

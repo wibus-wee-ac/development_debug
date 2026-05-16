@@ -1,5 +1,5 @@
 // Input: search HTTP endpoints
-// Output: integration tests for thread search over titles and assistant timeline text
+// Output: integration tests for thread search over titles and assistant message text
 // Position: apps/server/tests
 
 import { randomUUID } from 'node:crypto'
@@ -9,9 +9,6 @@ import { join } from 'node:path'
 
 import {
   agentProfiles,
-  backendRuns,
-  backendSessionBindings,
-  backendTimelineEvents,
   messages,
   sessions,
   workspaces,
@@ -21,14 +18,12 @@ import { describe, expect, it } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 
-const TIMELINE_SCHEMA_VERSION = 'cradle.timeline.v1'
-
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
 describe('search capability', () => {
-  it('searches titles, user content, and assistant timeline text with workspace filtering', async () => {
+  it('searches titles, user content, and assistant message text with workspace filtering', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRootOne = makeTempDir('cradle-workspace-one-')
     const workspaceRootTwo = makeTempDir('cradle-workspace-two-')
@@ -45,7 +40,9 @@ describe('search capability', () => {
       const agentProfileId = randomUUID()
       const sessionOneId = randomUUID()
       const sessionTwoId = randomUUID()
+      const userMessageOneId = randomUUID()
       const assistantMessageId = randomUUID()
+      const userMessageTwoId = randomUUID()
       const now = Math.floor(Date.now() / 1000)
 
       d.insert(workspaces).values([
@@ -59,11 +56,16 @@ describe('search capability', () => {
       ]).run()
       d.insert(messages).values([
         {
-          id: randomUUID(),
+          id: userMessageOneId,
           sessionId: sessionOneId,
           role: 'user',
           status: 'complete',
           content: 'The deployment log exploded yesterday',
+          messageJson: JSON.stringify({
+            id: userMessageOneId,
+            role: 'user',
+            parts: [{ type: 'text', text: 'The deployment log exploded yesterday' }],
+          }),
           createdAt: now,
           updatedAt: now,
         },
@@ -72,61 +74,28 @@ describe('search capability', () => {
           sessionId: sessionOneId,
           role: 'assistant',
           status: 'complete',
-          content: 'fallback assistant text',
+          content: 'assistant solved the deployment issue',
+          messageJson: JSON.stringify({
+            id: assistantMessageId,
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'assistant solved the deployment issue' }],
+          }),
           createdAt: now + 1,
           updatedAt: now + 1,
         },
         {
-          id: randomUUID(),
+          id: userMessageTwoId,
           sessionId: sessionTwoId,
           role: 'user',
           status: 'complete',
           content: 'Planning unrelated roadmap items',
+          messageJson: JSON.stringify({
+            id: userMessageTwoId,
+            role: 'user',
+            parts: [{ type: 'text', text: 'Planning unrelated roadmap items' }],
+          }),
           createdAt: now + 2,
           updatedAt: now + 2,
-        },
-      ]).run()
-
-      const runId = randomUUID()
-      const bindingId = randomUUID()
-      d.insert(backendSessionBindings).values({
-        id: bindingId,
-        chatSessionId: sessionOneId,
-        agentProfileId,
-        runtimeKind: 'standard',
-      }).run()
-      d.insert(backendRuns).values({
-        id: runId,
-        bindingId,
-        chatSessionId: sessionOneId,
-        messageId: assistantMessageId,
-        origin: 'user',
-        status: 'complete',
-        startedAt: now,
-        finishedAt: now + 1,
-      }).run()
-      d.insert(backendTimelineEvents).values([
-        {
-          id: randomUUID(),
-          runId,
-          chatSessionId: sessionOneId,
-          sequenceNumber: 1,
-          eventType: 'assistant.text.delta',
-          schemaVersion: TIMELINE_SCHEMA_VERSION,
-          payloadJson: JSON.stringify({ delta: 'assistant solved ' }),
-          sourceJson: JSON.stringify({ backend: 'openai-compatible', eventType: 'response' }),
-          createdAt: now,
-        },
-        {
-          id: randomUUID(),
-          runId,
-          chatSessionId: sessionOneId,
-          sequenceNumber: 2,
-          eventType: 'assistant.text.delta',
-          schemaVersion: TIMELINE_SCHEMA_VERSION,
-          payloadJson: JSON.stringify({ delta: 'the deployment issue' }),
-          sourceJson: JSON.stringify({ backend: 'openai-compatible', eventType: 'response' }),
-          createdAt: now + 1,
         },
       ]).run()
 
@@ -154,6 +123,15 @@ describe('search capability', () => {
       const noMatchScoped = await app.handle(new Request(`http://localhost/search/threads?query=deployment&workspaceId=${encodeURIComponent(workspaceTwoId)}`))
       expect(noMatchScoped.status).toBe(200)
       expect(await noMatchScoped.json()).toEqual([])
+
+      const deleteRes = await app.handle(new Request(`http://localhost/sessions/${sessionOneId}`, {
+        method: 'DELETE',
+      }))
+      expect(deleteRes.status).toBe(200)
+
+      const afterDeleteSearch = await app.handle(new Request('http://localhost/search/threads?query=assistant%20solved'))
+      expect(afterDeleteSearch.status).toBe(200)
+      expect(await afterDeleteSearch.json()).toEqual([])
 
       const invalidQuery = await app.handle(new Request('http://localhost/search/threads?query='))
       expect(invalidQuery.status).toBe(400)

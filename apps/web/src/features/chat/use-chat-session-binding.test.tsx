@@ -19,10 +19,10 @@ const mockedDeps = vi.hoisted(() => ({
   setMessages: vi.fn(),
   setPassiveStatus: vi.fn(),
   failGeneration: vi.fn(),
-  setSubagentChunks: vi.fn(),
+  setSubagentMessages: vi.fn(),
   startChatResponse: vi.fn(),
   onChatRunEvent: vi.fn(() => vi.fn()),
-  buildChunkStreamFromResponse: vi.fn(),
+  buildEventStreamFromResponse: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-query', async () => {
@@ -40,14 +40,18 @@ vi.mock('~/store/chat', () => {
   const state = {
     sessionMetaMap: new Map<string, { locallyDriving?: boolean, passiveStatus?: string }>(),
     messagesMap: new Map<string, Array<unknown>>(),
+    subagentMessagesMap: new Map<string, Map<string, Array<unknown>>>(),
     generatingMessageIds: new Set<string>(),
+    activeAbortControllers: new Map<string, AbortController>(),
     appendMessage: mockedDeps.appendMessage,
     setSessionMeta: mockedDeps.setSessionMeta,
     stopGeneration: mockedDeps.stopGeneration,
     setMessages: mockedDeps.setMessages,
     setPassiveStatus: mockedDeps.setPassiveStatus,
     failGeneration: mockedDeps.failGeneration,
-    setSubagentChunks: mockedDeps.setSubagentChunks,
+    setSubagentMessages: mockedDeps.setSubagentMessages,
+    startGeneration: vi.fn(),
+    finishGeneration: vi.fn(),
   }
 
   return {
@@ -70,14 +74,14 @@ vi.mock('./chat-response-command', () => ({
 }))
 
 vi.mock('./sse-chat-transport', () => ({
-  buildChunkStreamFromResponse: mockedDeps.buildChunkStreamFromResponse,
+  buildEventStreamFromResponse: mockedDeps.buildEventStreamFromResponse,
   onChatRunEvent: mockedDeps.onChatRunEvent,
 }))
 
 vi.mock('./chat-streaming-handler', () => ({
   ChatStreamingHandler: class {
     start() {}
-    handleChunk() {}
+    handleEvent() {}
     finish() {}
     fail() {}
   },
@@ -91,7 +95,7 @@ describe('useChatSession session binding invalidation', () => {
       ok: true,
       text: vi.fn().mockResolvedValue(''),
     })
-    mockedDeps.buildChunkStreamFromResponse.mockReturnValue({
+    mockedDeps.buildEventStreamFromResponse.mockReturnValue({
       getReader: () => ({
         read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
       }),

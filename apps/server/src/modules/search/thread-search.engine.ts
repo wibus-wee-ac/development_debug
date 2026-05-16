@@ -1,6 +1,4 @@
 import {
-  backendRuns,
-  backendTimelineEvents,
   messages,
   sessions,
   workspaces,
@@ -117,34 +115,6 @@ function buildIndexedValues(sessionTitle: string, content: string): { segmentedT
   return { segmentedTitle, segmentedText }
 }
 
-function extractAssistantTextByMessageId(messageId: string, fallbackContent: string): string {
-  const d = db()
-  const run = d
-    .select({ id: backendRuns.id })
-    .from(backendRuns)
-    .where(eq(backendRuns.messageId, messageId))
-    .orderBy(desc(backendRuns.startedAt))
-    .get()
-
-  if (!run) {
-    return fallbackContent
-  }
-
-  const rows = d
-    .select({ eventType: backendTimelineEvents.eventType, payloadJson: backendTimelineEvents.payloadJson })
-    .from(backendTimelineEvents)
-    .where(eq(backendTimelineEvents.runId, run.id))
-    .orderBy(backendTimelineEvents.sequenceNumber)
-    .all()
-
-  const text = rows
-    .filter(row => row.eventType === 'assistant.text.delta')
-    .map(row => safeParseDelta(row.payloadJson))
-    .join('')
-
-  return text || fallbackContent
-}
-
 // ── public class (kept as stateless wrapper for compatibility) ──
 
 export class ThreadSearchEngine {
@@ -198,10 +168,7 @@ export class ThreadSearchEngine {
 
     for (const message of messageRows) {
       const title = sessionTitleById.get(message.sessionId) ?? ''
-      const content = message.role === 'assistant'
-        ? extractAssistantTextByMessageId(message.id, message.content)
-        : message.content
-      this.indexMessage(message.sessionId, title, message.id, content)
+      this.indexMessage(message.sessionId, title, message.id, message.content)
     }
   }
 }
@@ -355,9 +322,7 @@ function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
     let contentMatchCount = 0
 
     for (const message of messageCandidates) {
-      const text = message.role === 'assistant'
-        ? extractAssistantTextByMessageId(message.id, message.content)
-        : message.content
+      const text = message.content
       if (!text) {
         continue
       }
@@ -413,16 +378,6 @@ function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
 }
 
 // ── utility functions ──
-
-function safeParseDelta(payloadJson: string): string {
-  try {
-    const parsed = JSON.parse(payloadJson) as { delta?: string }
-    return typeof parsed.delta === 'string' ? parsed.delta : ''
-  }
-  catch {
-    return ''
-  }
-}
 
 function extractMarkRanges(html: string): MatchRange[] {
   const ranges: MatchRange[] = []

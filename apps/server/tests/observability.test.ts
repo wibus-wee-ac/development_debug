@@ -14,12 +14,15 @@ import { db, shutdownInfra } from '../src/infra'
 
 type ElysiaApp = ReturnType<typeof createServerApp>
 
-type ChatChunkGroup = {
+type ChatMessageSnapshot = {
   messageId: string
   role: 'user' | 'assistant'
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
   errorText?: string
-  chunks: Array<{ chunk: { type: string, [key: string]: unknown } }>
+  content: string
+  message: {
+    parts: Array<{ type: string, text?: string, state?: string }>
+  }
 }
 
 function makeTempDir(prefix: string): string {
@@ -73,13 +76,13 @@ async function createProfileAndSession(app: ElysiaApp, workspaceRoot: string) {
 async function waitForLatestAssistantStatus(
   app: ElysiaApp,
   sessionId: string,
-  expectedStatus: ChatChunkGroup['status'],
+  expectedStatus: ChatMessageSnapshot['status'],
   expectedAssistantCount: number,
-): Promise<ChatChunkGroup[]> {
+): Promise<ChatMessageSnapshot[]> {
   for (let attempt = 0; attempt < 80; attempt += 1) {
     const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
     if (response.status === 200) {
-      const groups = await response.json() as ChatChunkGroup[]
+      const groups = await response.json() as ChatMessageSnapshot[]
       const assistants = groups.filter(group => group.role === 'assistant')
       const latestAssistant = assistants.at(-1)
       if (assistants.length === expectedAssistantCount && latestAssistant?.status === expectedStatus) {
@@ -131,23 +134,18 @@ describe('observability capability', () => {
       app = createServerApp()
       await createProfileAndSession(app, workspaceRoot)
 
-      let finalRunId = ''
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-observability/response', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: `empty output attempt ${attempt}` }),
+          body: JSON.stringify({ text: `empty output attempt ${attempt}`, modelId: 'gpt-4o-mini' }),
         }))
         expect(runRes.status).toBe(200)
 
         const timeline = await waitForLatestAssistantStatus(app, 'session-observability', 'failed', attempt)
         const latestAssistant = timeline.filter(group => group.role === 'assistant').at(-1)
         expect(latestAssistant).toEqual(expect.objectContaining({ status: 'failed' }))
-        expect(latestAssistant?.chunks.map((c: any) => c.chunk.type)).toContain('error')
-        // Extract runId from the chunks
-        if (latestAssistant?.chunks.length) {
-          finalRunId = (latestAssistant.chunks[0] as any).runId
-        }
+        expect(latestAssistant?.errorText).toBeTruthy()
       }
 
       await flushObservability(app)
@@ -158,6 +156,8 @@ describe('observability capability', () => {
       expect(events).toHaveLength(3)
       expect(events.every(event => event.code === 'CHAT_EMPTY_OUTPUT_COMPLETION')).toBe(true)
       expect(events.every(event => event.severity === 'error')).toBe(true)
+      const finalRunId = events.at(-1)?.runId ?? ''
+      expect(finalRunId).not.toBe('')
 
       const incidentsRes = await app.handle(new Request('http://localhost/observability/incidents?chatSessionId=session-observability&code=CHAT_EMPTY_OUTPUT_COMPLETION'))
       expect(incidentsRes.status).toBe(200)
@@ -177,8 +177,8 @@ describe('observability capability', () => {
         timeline: Array<{ runId: string, eventType: string }>
       }
       expect(bundle.events).toEqual([expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
-      expect(bundle.incidents).toEqual([expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
-      expect(bundle.timeline.some(event => event.runId === finalRunId && event.eventType === 'error')).toBe(true)
+      expect(bundle.incidents).toEqual([])
+      expect(bundle.timeline).toEqual([])
       expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(3)
     }
     finally {
@@ -226,7 +226,7 @@ describe('observability capability', () => {
       const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-observability/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: 'explode stream' }),
+        body: JSON.stringify({ text: 'explode stream', modelId: 'gpt-4o-mini' }),
       }))
       expect(runRes.status).toBe(200)
 
@@ -234,15 +234,14 @@ describe('observability capability', () => {
       const latestAssistant = timeline.filter(group => group.role === 'assistant').at(-1)
       expect(latestAssistant?.errorText).toBeTruthy()
 
-      // Extract runId from the chunks
-      const runId = latestAssistant?.chunks.length ? (latestAssistant.chunks[0] as any).runId : ''
-
       await flushObservability(app)
 
-      const eventsRes = await app.handle(new Request(`http://localhost/observability/events?runId=${encodeURIComponent(runId)}&code=TURN_STREAM_FAILED`))
+      const eventsRes = await app.handle(new Request('http://localhost/observability/events?code=TURN_STREAM_FAILED'))
       expect(eventsRes.status).toBe(200)
-      const events = await eventsRes.json() as Array<{ code: string, message: string }>
+      const events = await eventsRes.json() as Array<{ code: string, message: string, runId?: string }>
       expect(events).toEqual([expect.objectContaining({ code: 'TURN_STREAM_FAILED' })])
+      const runId = events[0]?.runId ?? ''
+      expect(runId).not.toBe('')
 
       const incidentsRes = await app.handle(new Request(`http://localhost/observability/incidents?runId=${encodeURIComponent(runId)}&code=TURN_STREAM_FAILED`))
       expect(incidentsRes.status).toBe(200)

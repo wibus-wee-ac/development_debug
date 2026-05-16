@@ -1,5 +1,7 @@
 # System Agent — Architecture & Integration Plan
 
+> Historical note (2026-05-16): the chat streaming references in this plan predate the current server-owned chat runtime. Treat any `UIMessageChunk`, chunk-bridge, or stored-chunk transport details below as historical context; the canonical runtime contract is `messages.messageJson` snapshot hydration plus sequenced SSE delta events from `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 ## Overview
 
 Cradle's System Agent is an AI agent that has full awareness of what the user is seeing and doing in the application, and can operate Cradle on the user's behalf. It is powered by [HiJarvis](https://github.com/user/HiJarvis) (`@hijarvis/jar-core`) as the agent runtime, with Cradle providing context, tools, and memory via a HiJarvis Plugin.

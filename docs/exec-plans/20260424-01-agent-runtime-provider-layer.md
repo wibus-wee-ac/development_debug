@@ -1,5 +1,7 @@
 # Agent Runtime Provider Layer
 
+> Historical note (2026-05-16): this plan belongs to an earlier provider/runtime consolidation phase before the later server-owned `messages.messageJson` snapshot + sequenced SSE delta chat contract became canonical. References below to `codex-app-server`, older provider matrices, or pre-snapshot chat transport expectations should be treated as historical context, not current product scope.
+
 This ExecPlan is a living document. The sections `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Maintained in accordance with `docs/exec-plans/README.md` and `.agents/skills/execplan/references/PLANS.md`.

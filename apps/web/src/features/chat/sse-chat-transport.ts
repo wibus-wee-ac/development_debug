@@ -1,23 +1,22 @@
 // Input: chatSessionId + server HTTP API
-// Output: SSE response stream helpers and run event emitter
+// Output: SSE chat delta stream helpers and run event emitter
 // Position: apps/web/src/features/chat/sse-chat-transport.ts
 
-import type { UIMessageChunk } from 'ai'
+import type { ChatStreamEvent } from './chat-delta-events'
 
 // ── Per-session run event emitter ───────────────────────────
 
-/** Payload shape for chat timeline / run lifecycle events. */
-interface ChatTimelineEventPayload {
+/** Payload shape for chat snapshot-stream / run lifecycle events. */
+interface ChatRunEventPayload {
   chatSessionId: string
   messageId: string
   event: {
     type: 'run.streaming' | 'run.completed' | 'run.aborted' | 'run.failed'
-    chunkType?: UIMessageChunk['type']
     raw?: Record<string, unknown>
   }
 }
 
-type RunEventHandler = (data: ChatTimelineEventPayload) => void
+type RunEventHandler = (data: ChatRunEventPayload) => void
 
 const sessionHandlers = new Map<string, Set<RunEventHandler>>()
 const globalHandlers = new Set<RunEventHandler>()
@@ -52,7 +51,7 @@ export function onAnyChatRunEvent(handler: RunEventHandler): () => void {
   }
 }
 
-function emitRunEvent(data: ChatTimelineEventPayload): void {
+function emitRunEvent(data: ChatRunEventPayload): void {
   for (const fn of globalHandlers) {
     fn(data)
   }
@@ -65,33 +64,14 @@ function emitRunEvent(data: ChatTimelineEventPayload): void {
   }
 }
 
-/** Minimal shape of a StoredChunk as delivered by the SSE stream. */
-type StoredChunkShape = {
-  runId: string
-  chatSessionId: string
-  chunk: UIMessageChunk
-  parentToolCallId?: string | null
-  taskId?: string | null
-  [key: string]: unknown
-}
-
-/**
- * Envelope passed from the SSE stream to the streaming handler.
- * Carries the chunk plus routing metadata from StoredChunk.
- */
-export interface StoredChunkEnvelope {
-  chunk: UIMessageChunk
-  parentToolCallId?: string | null
-}
-
-export function buildChunkStreamFromResponse(
+export function buildEventStreamFromResponse(
   response: Response,
   chatSessionId: string,
-): ReadableStream<StoredChunkEnvelope> {
-  let ctrl: ReadableStreamDefaultController<StoredChunkEnvelope> = null!
+): ReadableStream<ChatStreamEvent> {
+  let ctrl: ReadableStreamDefaultController<ChatStreamEvent> = null!
   let closed = false
 
-  const readable = new ReadableStream<StoredChunkEnvelope>({
+  const readable = new ReadableStream<ChatStreamEvent>({
     start(controller) {
       ctrl = controller
     },
@@ -119,12 +99,12 @@ export function buildChunkStreamFromResponse(
     catch { /* Already closed */ }
   }
 
-  const safeEnqueue = (envelope: StoredChunkEnvelope) => {
+  const safeEnqueue = (event: ChatStreamEvent) => {
     if (closed) {
       return
     }
     try {
-      ctrl.enqueue(envelope)
+      ctrl.enqueue(event)
     }
     catch { /* Stream closed by consumer */ }
   }
@@ -158,40 +138,42 @@ export function buildChunkStreamFromResponse(
             continue
           }
 
-          let stored: StoredChunkShape
+          let event: ChatStreamEvent
           try {
-            stored = JSON.parse(data) as StoredChunkShape
+            event = JSON.parse(data) as ChatStreamEvent
           }
           catch { continue }
 
-          const chunkType = stored.chunk.type
-          const eventType = chunkType === 'finish'
+          const eventType = event.type === 'run_completed'
             ? 'run.completed'
-            : chunkType === 'abort'
+            : event.type === 'run_aborted'
               ? 'run.aborted'
-              : chunkType === 'error'
+              : event.type === 'run_failed'
                 ? 'run.failed'
                 : 'run.streaming'
+          const messageId = 'data' in event && typeof event.data === 'object' && event.data !== null && 'messageId' in event.data
+            ? String((event.data as { messageId?: unknown }).messageId)
+            : event.type === 'subagent_message_delta'
+              ? event.data.context.messageId
+              : ''
 
           emitRunEvent({
             chatSessionId,
-            messageId: stored.runId,
+            messageId,
             event: {
               type: eventType,
-              chunkType,
-              raw: stored,
+              raw: event as unknown as Record<string, unknown>,
             },
           })
 
-          safeEnqueue({ chunk: stored.chunk, parentToolCallId: stored.parentToolCallId })
+          safeEnqueue(event)
 
-          if (chunkType === 'finish' || chunkType === 'abort') {
+          if (event.type === 'run_completed' || event.type === 'run_aborted') {
             closeCleanly()
             return
           }
-          if (chunkType === 'error') {
-            const msg = (stored.chunk as { type: 'error', errorText: string }).errorText || 'chat run failed'
-            closeWithError(new Error(msg))
+          if (event.type === 'run_failed') {
+            closeWithError(new Error(event.data.errorText || 'chat run failed'))
             return
           }
         }

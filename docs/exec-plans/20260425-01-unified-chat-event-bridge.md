@@ -1,5 +1,7 @@
 # Unified Chat Event Bridge
 
+> Historical note (2026-05-16): this plan targets the old Electron IPC chat push architecture (`chat:response-event`, `chat:session-title`). The current chat runtime has since moved to server-owned HTTP + SSE with `message_delta` / `subagent_message_delta` / `run_*`, as described in `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`.
+
 This ExecPlan is a living document. The sections Progress, Surprises & Discoveries, Decision Log, and Outcomes & Retrospective must be kept up to date as work proceeds. This document must be maintained in accordance with docs/exec-plans/README.md and the PLANS.md conventions.
 
 ## Purpose / Big Picture
