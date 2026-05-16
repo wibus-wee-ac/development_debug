@@ -54,6 +54,7 @@ export interface DebugApi {
 declare global {
   interface Window {
     __CRADLE_TABS_DEBUG__?: DebugApi
+    __CRADLE_TABS_PROFILE_RENDERER__?: boolean
   }
 }
 

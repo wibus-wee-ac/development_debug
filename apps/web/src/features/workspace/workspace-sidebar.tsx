@@ -37,6 +37,7 @@ import { cn } from '~/lib/cn'
 import type { Session, Workspace } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionActivityStore } from '~/store/session-activity'
+import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import { sessionsQueryKey, useSessions } from './use-session'
@@ -494,6 +495,12 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const { remove } = useDeleteWorkspace()
   const { openTab } = useCradleNavigation()
   const openSettings = useLayoutStore(s => s.openSettings)
+  const handleOpenSettings = useCallback(() => {
+    const activeTabId = useCradleTabStore.getState().activeTabId
+    if (activeTabId) {
+      openSettings(activeTabId)
+    }
+  }, [openSettings])
   const [searchOpen, setSearchOpen] = useState(false)
 
   const handleDelete = useCallback((id: string) => {
@@ -550,7 +557,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             label="设置"
             shortcut="⌘,"
             collapsed={collapsed}
-            onClick={openSettings}
+            onClick={handleOpenSettings}
             dataTestId="settings-btn"
           />
         </nav>

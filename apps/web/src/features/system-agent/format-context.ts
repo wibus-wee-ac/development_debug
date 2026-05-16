@@ -52,7 +52,7 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
 
   // Layout awareness (only notable states)
   const layout: string[] = []
-  if (ctx.layout.isSettings) {
+  if (ctx.layout.settingsTabId) {
     layout.push(`in settings (${ctx.layout.settingsSection})`)
   }
   if (ctx.layout.asideOpen) {

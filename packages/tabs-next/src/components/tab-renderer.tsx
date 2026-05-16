@@ -117,46 +117,54 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DE
     recordRendererDuration(actualDuration)
   }
 
+  const content = (
+    <div className={className ?? 'flex-1 flex overflow-hidden'} data-testid="tab-content-renderer">
+      {mountedIds.map((tabId) => {
+        const tab = tabById.get(tabId)
+        const context = contextById.get(tabId)
+        const location = context ? selectCurrentLocation(context) : null
+        const route = location ? registry[location.routeId] : undefined
+        if (!tab || !context || !location || !route) {
+          return null
+        }
+
+        const content = (
+          <RetainedTabFrame
+            tab={tab}
+            context={context}
+            visible={tab.id === activeTabId}
+            onSaveScrollPositions={saveScrollPositions}
+          >
+            {Wrapper
+              ? (
+                <Wrapper>
+                  <TabRouteContent tab={tab} route={route} fallback={fallback} />
+                </Wrapper>
+              )
+              : <TabRouteContent tab={tab} route={route} fallback={fallback} />}
+          </RetainedTabFrame>
+        )
+
+        if (policy.strategy === 'single') {
+          return <div key={tab.id}>{content}</div>
+        }
+
+        return (
+          <Activity key={tab.id} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
+            {content}
+          </Activity>
+        )
+      })}
+    </div>
+  )
+
+  if (!isRendererDurationProfilingEnabled()) {
+    return content
+  }
+
   return (
     <Profiler id="tabs-next-renderer" onRender={handleProfilerRender}>
-      <div className={className ?? 'flex-1 flex overflow-hidden'} data-testid="tab-content-renderer">
-        {mountedIds.map((tabId) => {
-          const tab = tabById.get(tabId)
-          const context = contextById.get(tabId)
-          const location = context ? selectCurrentLocation(context) : null
-          const route = location ? registry[location.routeId] : undefined
-          if (!tab || !context || !location || !route) {
-            return null
-          }
-
-          const content = (
-            <RetainedTabFrame
-              tab={tab}
-              context={context}
-              visible={tab.id === activeTabId}
-              onSaveScrollPositions={saveScrollPositions}
-            >
-              {Wrapper
-                ? (
-                  <Wrapper>
-                    <TabRouteContent tab={tab} route={route} fallback={fallback} />
-                  </Wrapper>
-                )
-                : <TabRouteContent tab={tab} route={route} fallback={fallback} />}
-            </RetainedTabFrame>
-          )
-
-          if (policy.strategy === 'single') {
-            return <div key={tab.id}>{content}</div>
-          }
-
-          return (
-            <Activity key={tab.id} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
-              {content}
-            </Activity>
-          )
-        })}
-      </div>
+      {content}
     </Profiler>
   )
 }
@@ -277,6 +285,10 @@ function canScroll(element: HTMLElement): boolean {
     || element.scrollTop !== 0
     || element.scrollLeft !== 0
   )
+}
+
+function isRendererDurationProfilingEnabled(): boolean {
+  return typeof window !== 'undefined' && window.__CRADLE_TABS_PROFILE_RENDERER__ === true
 }
 
 interface TabRouteContentProps {

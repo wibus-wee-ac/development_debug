@@ -81,7 +81,10 @@ function useCommands(close: () => void): CommandAction[] {
       shortcut: '⌘,',
       handler: () => {
         close()
-        openSettings()
+        const activeTabId = useCradleTabStore.getState().activeTabId
+        if (activeTabId) {
+          openSettings(activeTabId)
+        }
       },
     },
     {

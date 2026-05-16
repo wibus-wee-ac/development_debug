@@ -32,7 +32,7 @@ export interface SystemAgentContext {
     asideOpen: boolean
     asideActiveTab: string
     bottomPanelOpen: boolean
-    isSettings: boolean
+    settingsTabId: string | null
     settingsSection: string
   }
 

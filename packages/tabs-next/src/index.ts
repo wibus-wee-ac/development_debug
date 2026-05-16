@@ -2,7 +2,7 @@
 // Output: @cradle/tabs-next public API
 // Position: Package entry point
 
-export type { TabBarProps } from './components/tab-bar'
+export type { TabBarProps, TabPresentation } from './components/tab-bar'
 export { TabBar } from './components/tab-bar'
 export type { TabRendererProps } from './components/tab-renderer'
 export { chooseMountedTabIds, TabRenderer } from './components/tab-renderer'

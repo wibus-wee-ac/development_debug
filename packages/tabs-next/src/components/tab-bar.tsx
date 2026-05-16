@@ -14,10 +14,16 @@ import type { TabInstance } from '../types'
 import type { ScreenCoordinates } from './screen-coordinates'
 import { getEventScreenCoordinates, isPointerOutsideWindow } from './screen-coordinates'
 
+export interface TabPresentation {
+  icon?: React.ReactNode
+  label?: React.ReactNode
+}
+
 export interface TabBarProps {
   className?: string
   tabClassName?: string
   activeTabClassName?: string
+  tabPresentation?: Record<string, TabPresentation>
   renderCloseIcon?: () => React.ReactNode
   renderNewTabIcon?: () => React.ReactNode
   renderTabIcon?: (tab: TabInstance) => React.ReactNode
@@ -31,6 +37,7 @@ export interface TabBarProps {
 interface TabPillProps {
   tab: TabInstance
   isActive: boolean
+  presentation?: TabPresentation
   tabClassName?: string
   activeTabClassName?: string
   renderCloseIcon?: () => React.ReactNode
@@ -40,7 +47,18 @@ interface TabPillProps {
   onClose: (event: React.MouseEvent, id: string) => void
 }
 
-const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName, renderCloseIcon, renderTabIcon, renderTooltip, onActivate, onClose }: TabPillProps) => {
+const SortableTabPill = memo(({
+  tab,
+  isActive,
+  presentation,
+  tabClassName,
+  activeTabClassName,
+  renderCloseIcon,
+  renderTabIcon,
+  renderTooltip,
+  onActivate,
+  onClose,
+}: TabPillProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.id })
 
   const style: React.CSSProperties = {
@@ -49,6 +67,7 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
     opacity: isDragging ? 0.5 : undefined,
     zIndex: isDragging ? 10 : undefined,
   }
+  const tabIcon = presentation?.icon ?? (renderTabIcon ? renderTabIcon(tab) : null)
 
   const pill = (
     <div
@@ -73,18 +92,18 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
       className={cn(
         'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium',
         tab.pinned ? 'px-3' : 'pl-3 pr-7',
-        'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden',
+        'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden bg-background ',
         isActive
-          ? cn('bg-background text-foreground shadow-xs', activeTabClassName)
-          : cn('text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-foreground/3', tabClassName),
+          ? cn('text-foreground shadow-xs', activeTabClassName)
+          : cn('opacity-80 hover:opacity-100! text-muted-foreground hover:text-foreground/70', tabClassName),
       )}
     >
-      {renderTabIcon && (
+      {tabIcon && (
         <span className="shrink-0 flex items-center">
-          {renderTabIcon(tab)}
+          {tabIcon}
         </span>
       )}
-      <span className="truncate select-none">{tab.label}</span>
+      <span className="truncate select-none">{presentation?.label ?? tab.label}</span>
       {!tab.pinned && (
         <button
           type="button"
@@ -92,10 +111,7 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
           data-testid={`tab-close-${tab.id}`}
           className={cn(
             'absolute right-1 top-1/2 z-10 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-transparent p-0',
-            isActive
-              ? 'opacity-40 hover:opacity-100!'
-              : 'opacity-0 group-hover:opacity-60 hover:opacity-100!',
-            'transition-opacity hover:bg-foreground/10',
+              'opacity-80 hover:opacity-100!',
           )}
         >
           {renderCloseIcon ? renderCloseIcon() : '×'}
@@ -107,7 +123,20 @@ const SortableTabPill = memo(({ tab, isActive, tabClassName, activeTabClassName,
   return renderTooltip ? renderTooltip(tab, pill) as React.ReactElement : pill
 })
 
-export const TabBar = memo(({ className, tabClassName, activeTabClassName, renderCloseIcon, renderNewTabIcon, renderTabIcon, renderTooltip, onNewTab, onTabActivated, onTabClosed, onTabTearOff }: TabBarProps) => {
+export const TabBar = memo(({
+  className,
+  tabClassName,
+  activeTabClassName,
+  tabPresentation,
+  renderCloseIcon,
+  renderNewTabIcon,
+  renderTabIcon,
+  renderTooltip,
+  onNewTab,
+  onTabActivated,
+  onTabClosed,
+  onTabTearOff,
+}: TabBarProps) => {
   'use no memo'
   const { store } = useTabsContext()
   const tabs = store(s => s.tabs)
@@ -205,6 +234,7 @@ export const TabBar = memo(({ className, tabClassName, activeTabClassName, rende
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeTabId}
+              presentation={tabPresentation?.[tab.id]}
               tabClassName={tabClassName}
               activeTabClassName={activeTabClassName}
               renderCloseIcon={renderCloseIcon}

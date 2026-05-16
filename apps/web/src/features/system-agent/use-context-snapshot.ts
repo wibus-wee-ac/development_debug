@@ -78,7 +78,7 @@ export function collectContextSnapshot(): SystemAgentContext {
       asideOpen: layoutState.asideOpen,
       asideActiveTab: layoutState.asideActiveTab,
       bottomPanelOpen: layoutState.bottomPanelOpen,
-      isSettings: layoutState.isSettings,
+      settingsTabId: layoutState.settingsTabId,
       settingsSection: layoutState.settingsSection,
     },
     activeProfileId: newChatState.lastAgentProfileId,

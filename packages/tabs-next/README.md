@@ -37,7 +37,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/provider.tsx**: Provider component for store and registry injection.
 - **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper.
 - **src/components/tab-renderer.tsx**: Policy-driven renderer with React Activity pool support.
-- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, and tear-off hooks.
+- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, tear-off hooks, and optional per-tab presentation overrides.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
 - **src/__tests__/store.test.ts**: Store lifecycle and history tests.
 - **src/__tests__/renderer-policy.test.ts**: Render policy tests.
