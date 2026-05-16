@@ -45,14 +45,13 @@ import { ModelsPanel } from './models-panel'
 
 type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'command'
+type ProfileTextField = 'name' | 'apiKey' | 'baseUrl'
 
 interface ProfileDetailFormValues {
   name: string
   apiKey: string
   baseUrl: string
   model: string
-  command: string
   enabledModels: string[]
 }
 
@@ -119,9 +118,6 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     apiKey: '',
     baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
     model: typeof parsed.model === 'string' ? parsed.model : '',
-    command: typeof parsed.executable === 'string'
-      ? parsed.executable
-      : typeof parsed.cmd === 'string' ? parsed.cmd : '',
     enabledModels: getInitialEnabledModels(parsed),
   }
 }
@@ -156,7 +152,6 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     apiKey: values.apiKey,
     baseUrl: values.baseUrl,
     model: values.model,
-    command: values.command,
     enabledModels: values.enabledModels,
   })
 }
@@ -185,7 +180,6 @@ export function ProfileDetailPanel({
   const { Icon } = providerVisuals(preset.id)
 
   const supportsModels = true
-  const supportsCommand = false
 
   const form = useForm<ProfileDetailFormValues>({
     defaultValues: getProfileFormValues(profile),
@@ -195,7 +189,6 @@ export function ProfileDetailPanel({
   const apiKey = watchedValues.apiKey ?? ''
   const baseUrl = watchedValues.baseUrl ?? ''
   const model = watchedValues.model ?? ''
-  const command = watchedValues.command ?? ''
   const enabledModels = useMemo(() => watchedValues.enabledModels ?? [], [watchedValues.enabledModels])
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
@@ -334,7 +327,7 @@ export function ProfileDetailPanel({
       let credentialRef = profile.credentialRef ?? null
       if (currentValues.apiKey && supportsModels) {
         const { data: meta } = await postSecrets({
-          body: { kind: profile.providerKind, label: currentValues.name, secret: currentValues.apiKey } as unknown as never,
+          body: { kind: profile.providerKind, label: currentValues.name, secret: currentValues.apiKey },
         })
         credentialRef = (meta as Record<string, unknown>)?.id as string ?? credentialRef
       }
@@ -384,9 +377,8 @@ export function ProfileDetailPanel({
     apiKey,
     baseUrl,
     model,
-    command,
     enabledModels,
-  }), [name, apiKey, baseUrl, model, command, enabledModels])
+  }), [name, apiKey, baseUrl, model, enabledModels])
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
@@ -429,10 +421,9 @@ export function ProfileDetailPanel({
       <div className="flex flex-col">
         <ProfileGeneralSettings
           profile={profile}
-          values={{ name, apiKey, baseUrl, command }}
+          values={{ name, apiKey, baseUrl }}
           onTextFieldChange={setTextField}
           supportsModels={supportsModels}
-          supportsCommand={supportsCommand}
         />
 
         {supportsModels && (
@@ -538,13 +529,11 @@ function ProfileGeneralSettings({
   values,
   onTextFieldChange,
   supportsModels,
-  supportsCommand,
 }: {
   profile: AgentProfile
   values: Pick<ProfileDetailFormValues, ProfileTextField>
   onTextFieldChange: (field: ProfileTextField, value: string) => void
   supportsModels: boolean
-  supportsCommand: boolean
 }) {
   return (
     <>
@@ -589,19 +578,6 @@ function ProfileGeneralSettings({
         </>
       )}
 
-      {supportsCommand && (
-        <>
-          <SettingsDivider />
-          <SettingsRow label="Command" description="Executable that Cradle launches when this provider is used">
-            <Input
-              value={values.command}
-              onChange={e => onTextFieldChange('command', e.target.value)}
-              className="h-9 w-56 text-[12.5px] font-mono"
-              placeholder="claude"
-            />
-          </SettingsRow>
-        </>
-      )}
     </>
   )
 }

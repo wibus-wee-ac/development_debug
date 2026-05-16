@@ -35,7 +35,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/store.ts**: Zustand runtime store for tab contexts, history, restore validation, and compatibility actions.
 - **src/context.ts**: React context and `useTabsContext()`.
 - **src/provider.tsx**: Provider component for store and registry injection.
-- **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper.
+- **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
 - **src/components/tab-renderer.tsx**: Policy-driven renderer with React Activity pool support.
 - **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, tear-off hooks, and optional per-tab presentation overrides.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
@@ -50,6 +50,7 @@ The prototype intentionally ships with a compatibility layer:
 - `createTab(type, params)` opens a fresh context and bypasses dedupe.
 - `updateTabParams()` replaces the current tab location without changing the tab identity.
 - `navigateTab()` pushes a new location into the tab-local history.
+- `useTabNavigation().navigateInTab()` pushes into the active tab history by default, while pinned active tabs fall back to `openTab()`.
 - `goBack()` and `goForward()` move within the tab-local history.
 
 This lets Cradle migrate first while keeping existing tab definitions readable. The next migration step is to move `defineTab()` metadata into route-owned capability objects.

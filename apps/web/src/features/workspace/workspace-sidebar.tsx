@@ -534,13 +534,6 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             onClick={openSearch}
           />
           <TopNavItem
-            icon={<LayoutDashboardIcon className="size-3.5" />}
-            label="看板"
-            collapsed={collapsed}
-            onClick={() => openTab('kanban-board')}
-            dataTestId="nav-kanban"
-          />
-          <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}
             label="用量"
             collapsed={collapsed}

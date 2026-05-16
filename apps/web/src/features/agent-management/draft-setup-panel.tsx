@@ -151,7 +151,7 @@ function PresetSetupForm({
       const apiKey = currentValues.values.apiKey
       if (apiKey) {
         const { data: meta } = await postSecrets({
-          body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey } as unknown as never,
+          body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey },
         })
         credentialRef = (meta as Record<string, unknown>)?.id as string ?? null
       }

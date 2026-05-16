@@ -29,6 +29,7 @@ import { cn } from '~/lib/cn'
 import type { Agent, AgentProfile, AgentRuntimeConfig, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
+import { buildAvatarUrl } from './avatar-url'
 import { PROVIDER_ICONS } from './provider-icons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -137,10 +138,6 @@ function agentDetailUiReducer(state: AgentDetailUiState, action: AgentDetailUiAc
     default:
       return state
   }
-}
-
-function buildAvatarUrl(style: string, seed: string): string {
-  return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
 }
 
 function generateSeed(): string {

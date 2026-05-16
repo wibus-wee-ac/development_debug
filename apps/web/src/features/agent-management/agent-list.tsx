@@ -25,14 +25,11 @@ import type { Agent, AgentProfile, CliTuiLaunchConfig } from '~/lib/types'
 
 import { AgentDetailPage } from './agent-detail'
 import { StatusDot } from './agent-runtime-settings'
+import { buildAvatarUrl } from './avatar-url'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DRAFT_ID = '__agent-draft__'
-
-function buildAvatarUrl(style: string, seed: string): string {
-  return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
-}
 
 function readCliTuiLaunch(configJson?: string | null): CliTuiLaunchConfig | null {
   try {

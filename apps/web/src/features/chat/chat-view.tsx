@@ -366,7 +366,7 @@ export function ChatView({
         }
       })
     }
-  })
+  }, [messages.length, sessionId])
 
   // Ongoing auto-scroll during streaming and after new messages are appended —
   // but only when the user was already near the bottom (respect manual scroll-up).
@@ -384,34 +384,13 @@ export function ChatView({
       return
     }
     isAtBottomRef.current = offset + vp.offsetHeight >= vp.scrollHeight - 200
-    const sh = vp.scrollHeight
-    const vh = vp.offsetHeight
-
-    // Compute per-message reading progress from real virtualizer item sizes
-    const virt = virtualizerRef.current
-    let progress: number[] = []
-    if (virt && messages.length > 0) {
-      const vpTop = offset
-      const vpBottom = offset + vh
-      progress = messages.map((_, i) => {
-        const msgTop = virt.getItemOffset(i)
-        const msgSize = virt.getItemSize(i)
-        const msgBottom = msgTop + msgSize
-        if (vpBottom <= msgTop) {
-          return 0
-        }
-        if (vpTop >= msgBottom) {
-          return 1
-        }
-        if (msgSize <= 0) {
-          return 0
-        }
-        return Math.min((Math.max(vpTop, msgTop) - msgTop) / msgSize, 1)
-      })
-    }
-
-    setScrollMetrics({ offset, scrollHeight: sh, viewportHeight: vh, barProgress: progress })
-  }, [messages])
+    setScrollMetrics(prev => ({
+      ...prev,
+      offset,
+      scrollHeight: vp.scrollHeight,
+      viewportHeight: vp.offsetHeight,
+    }))
+  }, [])
 
   // Fetch session token count after each turn completes
   useEffect(() => {

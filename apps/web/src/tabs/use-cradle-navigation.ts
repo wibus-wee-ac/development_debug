@@ -8,12 +8,12 @@ import { useCallback } from 'react'
 import { useCradleTabStore } from '~/tabs/registry'
 
 export function useCradleNavigation() {
-  const { navigateTo, openInNewTab } = useTabNavigation()
+  const { navigateInTab, openInNewTab } = useTabNavigation()
 
-  /** Open or activate a tab. */
+  /** Navigate in the current tab; pinned tabs fall back to opening or activating another tab. */
   const openTab = useCallback((type: string, params?: Record<string, string | undefined>) => {
-    return navigateTo(type, params)
-  }, [navigateTo])
+    return navigateInTab(type, params)
+  }, [navigateInTab])
 
   /** Always open a new tab. */
   const openNewTab = useCallback((type: string, params?: Record<string, string | undefined>) => {
