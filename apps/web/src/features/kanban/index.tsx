@@ -2,7 +2,7 @@
 // Output: Main kanban view with toolbar + board/list layout
 // Position: Entry point for the kanban feature UI
 
-import { useCallback, useMemo, useReducer } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
@@ -20,43 +20,11 @@ interface KanbanViewProps {
   onSelectIssue?: (id: string | null) => void
 }
 
-interface KanbanViewUiState {
-  searchQuery: string
-  createDialogOpen: boolean
-  createDefaultStatusId?: string
-  localSelectedIssueId: string | null
-}
-
-type KanbanViewUiAction =
-  | { type: 'set-search', searchQuery: string }
-  | { type: 'open-create', defaultStatusId?: string }
-  | { type: 'close-create' }
-  | { type: 'select-issue', issueId: string | null }
-
-function kanbanViewUiReducer(state: KanbanViewUiState, action: KanbanViewUiAction): KanbanViewUiState {
-  switch (action.type) {
-    case 'set-search':
-      return { ...state, searchQuery: action.searchQuery }
-    case 'open-create':
-      return { ...state, createDialogOpen: true, createDefaultStatusId: action.defaultStatusId }
-    case 'close-create':
-      return { ...state, createDialogOpen: false }
-    case 'select-issue':
-      return { ...state, localSelectedIssueId: action.issueId }
-    default:
-      return state
-  }
-}
-
-export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: externalSelectedIssueId, onSelectIssue }: KanbanViewProps) {
+export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, onSelectIssue }: KanbanViewProps) {
   const { config, setConfig, filter, setFilter, resetFilter } = useViewConfig(workspaceId)
-  const [uiState, dispatch] = useReducer(kanbanViewUiReducer, {
-    searchQuery: '',
-    createDialogOpen: false,
-    createDefaultStatusId: undefined,
-    localSelectedIssueId: externalSelectedIssueId ?? null,
-  })
-  const selectedIssueId = uiState.localSelectedIssueId || externalSelectedIssueId || null
+  const [searchQuery, setSearchQuery] = useState('')
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [createDefaultStatusId, setCreateDefaultStatusId] = useState<string | undefined>()
 
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -87,8 +55,8 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
     }
 
     // Search
-    if (uiState.searchQuery.trim()) {
-      const q = uiState.searchQuery.toLowerCase()
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase()
       result = result.filter(i =>
         i.title.toLowerCase().includes(q) || i.id.toLowerCase().includes(q),
       )
@@ -111,10 +79,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
     })
 
     return result
-  }, [allIssues, filter, uiState.searchQuery, config.orderBy, config.orderDirection])
+  }, [allIssues, filter, searchQuery, config.orderBy, config.orderDirection])
 
   const handleIssueClick = useCallback((id: string) => {
-    dispatch({ type: 'select-issue', issueId: id })
     onSelectIssue?.(id)
   }, [onSelectIssue])
 
@@ -125,10 +92,8 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
   }, [config.groupBy, moveIssue])
 
   const handleCreateIssue = useCallback((groupId: string) => {
-    dispatch({
-      type: 'open-create',
-      defaultStatusId: config.groupBy === 'status' ? groupId : undefined,
-    })
+    setCreateDefaultStatusId(config.groupBy === 'status' ? groupId : undefined)
+    setCreateDialogOpen(true)
   }, [config.groupBy])
 
   return (
@@ -137,10 +102,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
         <IssueDetail
           issueId={selectedIssueId}
           workspaceId={workspaceId}
-          onBack={() => {
-            dispatch({ type: 'select-issue', issueId: null })
-            onSelectIssue?.(null)
-          }}
+          onBack={() => onSelectIssue?.(null)}
         />
       ) : (
         <>
@@ -150,9 +112,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
             filter={filter}
             setFilter={setFilter}
             resetFilter={resetFilter}
-            searchQuery={uiState.searchQuery}
-            onSearchChange={(value) => dispatch({ type: 'set-search', searchQuery: value })}
-            onCreateIssue={() => dispatch({ type: 'open-create' })}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onCreateIssue={() => setCreateDialogOpen(true)}
           />
 
           {config.layout === 'board' ? (
@@ -180,9 +142,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId: ex
 
           <CreateIssueDialog
             workspaceId={workspaceId}
-            defaultStatusId={uiState.createDefaultStatusId}
-            open={uiState.createDialogOpen}
-            onClose={() => dispatch({ type: 'close-create' })}
+            defaultStatusId={createDefaultStatusId}
+            open={createDialogOpen}
+            onClose={() => setCreateDialogOpen(false)}
           />
         </>
       )}
