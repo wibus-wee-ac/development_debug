@@ -36,6 +36,22 @@ import { usage } from './modules/usage'
 import { workflowRules } from './modules/workflow-rules'
 import { workspace } from './modules/workspace'
 
+function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
+  const origin = headers.get('origin')
+  if (!origin || origin === 'null') {
+    return true
+  }
+
+  try {
+    const parsed = new URL(origin)
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+  }
+  catch {
+    return false
+  }
+}
+
 export function createServerApp() {
   const app = new Elysia({
     name: 'cradle.server.elysia',
@@ -43,7 +59,7 @@ export function createServerApp() {
     normalize: 'typebox',
   })
 
-  app.use(cors())
+  app.use(cors({ origin: isAllowedCorsOrigin }))
   app.use(createRequestIdPlugin())
   app.use(createRequestLoggerPlugin())
   app.onError(createErrorHandler())

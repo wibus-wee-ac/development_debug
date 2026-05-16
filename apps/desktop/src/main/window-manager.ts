@@ -46,7 +46,7 @@ export class WindowManager {
         preload: join(__dirname, '../preload/index.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
         additionalArguments: [
           `--server-url=${this.serverUrl}`,
           `--session-id=${sessionId}`,
@@ -128,7 +128,7 @@ export class WindowManager {
         preload: join(__dirname, '../preload/index.mjs'),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: false,
+        sandbox: true,
         additionalArguments: [
           `--server-url=${this.serverUrl}`,
           '--devtool=true',

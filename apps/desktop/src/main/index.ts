@@ -31,7 +31,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
       preload: join(__dirname, '../preload/index.mjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       additionalArguments: [`--server-url=${serverUrl}`],
     },
     show: false,
