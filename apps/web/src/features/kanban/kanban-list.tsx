@@ -10,6 +10,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import type { ViewConfig } from './use-view-config'
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
+import { cn } from '~/lib/cn'
 
 interface ListProps {
   issues: KanbanIssue[]
@@ -97,7 +98,7 @@ export function KanbanList({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-4">
+    <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1">
       {visibleGroups.map(group => {
         const groupIssues = groupedIssues[group.id] ?? []
         const isCollapsed = collapsed[group.id] ?? false
@@ -120,7 +121,9 @@ export function KanbanList({
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-                  className="overflow-hidden flex flex-col gap-0.5 pt-1"
+                  className={cn(
+                    'overflow-hidden flex flex-col gap-0.5',
+                  )}
                 >
                   {groupIssues.map(issue => (
                     <KanbanListRow

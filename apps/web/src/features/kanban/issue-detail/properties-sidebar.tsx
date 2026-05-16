@@ -236,12 +236,12 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
               <DropdownMenuSeparator />
             </>
           )}
-          {agents.length === 0 && !delegatedAgent
+          {agents.filter(a => !!a.agentProfileId).length === 0 && !delegatedAgent
             ? <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
-            : agents.map(a => (
+            : agents.filter(a => !!a.agentProfileId).map(a => (
               <DropdownMenuItem
                 key={a.id}
-                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId, agentId: a.id })}
+                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId!, agentId: a.id })}
                 data-testid={`issue-agent-option-${a.id}`}
               >
                 <BotIcon className="size-3 text-muted-foreground" />

@@ -447,13 +447,28 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
   const handleCapsuleSend = useCallback(async (
     text: string,
-    opts: { agentProfileId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
+    opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, agentProfileId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
   ) => {
     if (!workspace) {
       return
     }
+    if (opts.runtimeKind === 'cli-tui') {
+      if (!opts.agentId) {
+        return
+      }
+      const { data: sessionData } = await postSessions({
+        body: { workspaceId, agentId: opts.agentId, title: text.slice(0, 80) || 'CLI TUI Session' },
+      })
+      const session = sessionData as { id: string } | null
+      if (!session?.id) {
+        return
+      }
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+      openTab('chat', { sessionId: session.id })
+      return
+    }
     const { data: sessionData } = await postSessions({
-      body: { workspaceId, agentProfileId: opts.agentProfileId, title: text.slice(0, 80) || opts.agentProfileId || 'New Chat' },
+      body: { workspaceId, agentProfileId: opts.agentProfileId!, title: text.slice(0, 80) || opts.agentProfileId || 'New Chat' },
     })
     const session = sessionData as { id: string } | null
     if (!session?.id) {

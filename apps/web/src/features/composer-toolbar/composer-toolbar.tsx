@@ -4,6 +4,7 @@
 
 import type { ComposerStateResult } from './use-composer-state'
 
+import { CliTuiAgentSelector } from './cli-tui-agent-selector'
 import type { ComposerContext } from './types'
 import { ProviderModelSelector } from './provider-model-selector'
 import { RuntimeSelector } from './runtime-selector'
@@ -16,10 +17,12 @@ interface ComposerToolbarProps {
 export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
   const {
     selection,
+    setAgentId,
     setProfileId,
     setModelId,
     setThinkingEffort,
     setRuntimeKind,
+    agents,
     profiles,
     models,
     isLoadingModels,
@@ -37,17 +40,27 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
           onChange={setRuntimeKind}
         />
       )}
-      <ProviderModelSelector
-        profiles={profiles}
-        selectedProfileId={selection.profileId}
-        selectedModelId={selection.modelId}
-        models={models}
-        thinkingEffort={selection.thinkingEffort}
-        isLoadingModels={isLoadingModels}
-        onSelectProfile={setProfileId}
-        onSelectModel={setModelId}
-        onSelectThinkingEffort={setThinkingEffort}
-      />
+      {selection.runtimeKind === 'cli-tui'
+        ? (
+            <CliTuiAgentSelector
+              agents={agents}
+              selectedAgentId={selection.agentId}
+              onSelectAgent={setAgentId}
+            />
+          )
+        : (
+            <ProviderModelSelector
+              profiles={profiles}
+              selectedProfileId={selection.profileId}
+              selectedModelId={selection.modelId}
+              models={models}
+              thinkingEffort={selection.thinkingEffort}
+              isLoadingModels={isLoadingModels}
+              onSelectProfile={setProfileId}
+              onSelectModel={setModelId}
+              onSelectThinkingEffort={setThinkingEffort}
+            />
+          )}
     </div>
   )
 }

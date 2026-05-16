@@ -48,6 +48,7 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       className={cn(
         'group/row relative flex items-center gap-2 px-3 h-9 text-[13px] cursor-pointer rounded-md',
         'transition-colors duration-100 ease-out',
+        'first:mt-1',
         selected ? 'bg-muted' : 'hover:bg-muted',
       )}
     >

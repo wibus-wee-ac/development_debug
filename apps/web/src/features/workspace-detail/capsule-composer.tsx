@@ -18,12 +18,12 @@ import { cn } from '~/lib/cn'
 
 interface CapsuleComposerProps {
   workspaceId: string
-  onSend: (text: string, opts: { agentProfileId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
+  onSend: (text: string, opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, agentProfileId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
 }
 
 function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) {
   const composerState = useComposerState({ context: 'capsule' })
-  const { selection, effectiveProfile, effectiveModel } = composerState
+  const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
 
   const [expanded, setExpanded] = useState(false)
   const [input, setInput] = useState('')
@@ -119,13 +119,23 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 
   const handleSend = useCallback(async () => {
     const text = input.trim()
-    if (!text || !effectiveProfile) return
+    if (selection.runtimeKind === 'cli-tui') {
+      if (!effectiveAgent) return
+    }
+    else if (!text || !effectiveProfile) {
+      return
+    }
     setSending(true)
     try {
       await onSend(text, {
-        agentProfileId: effectiveProfile.id,
-        modelId: effectiveModel?.id,
-        thinkingEffort: selection.thinkingEffort ?? undefined,
+        runtimeKind: selection.runtimeKind,
+        ...(selection.runtimeKind === 'cli-tui'
+          ? { agentId: effectiveAgent?.id }
+          : {
+              agentProfileId: effectiveProfile?.id,
+              modelId: effectiveModel?.id,
+              thinkingEffort: selection.thinkingEffort ?? undefined,
+            }),
       })
       setInput('')
       setExpanded(false)
@@ -134,7 +144,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     finally {
       setSending(false)
     }
-  }, [onSend, effectiveProfile, effectiveModel, selection.thinkingEffort, input])
+  }, [onSend, effectiveAgent, effectiveProfile, effectiveModel, selection.runtimeKind, selection.thinkingEffort, input])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return
@@ -154,7 +164,9 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     requestAnimationFrame(() => autoResize())
   }, [autoResize])
 
-  const canSend = !!input.trim() && !!effectiveProfile && !sending
+  const canSend = selection.runtimeKind === 'cli-tui'
+    ? !!effectiveAgent && !sending
+    : !!input.trim() && !!effectiveProfile && !sending
 
   return {
     availableFiles,

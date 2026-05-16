@@ -1,16 +1,19 @@
-// Input: Menu, MenuSub, MenuSubTrigger, MenuSubPopup, agent profiles/models
-// Output: ProviderModelSelector — cascading menu: Provider > Model > Thinking
+// Input: Menu, MenuSub, MenuSubTrigger, MenuSubPopup, provider icons, agent profiles/models
+// Output: ProviderModelSelector — cascading menu: Provider > Model > Thinking with icons
 // Position: The core selector UI replacing 3 separate pill buttons
 
 import { CpuIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
-import { Menu, MenuItem, MenuPopup, MenuTrigger, MenuSub, MenuSubTrigger, MenuSubPopup } from '~/components/ui/menu'
+import { providerVisuals } from '~/features/agent-management/agent-runtime-settings'
+import { PROVIDER_ICONS } from '~/features/agent-management/provider-icons'
+import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 import { cn } from '~/lib/cn'
 
 import { THINKING_EFFORTS } from './constants'
 import type { ThinkingEffort } from './types'
+import { Menu, MenuItem, MenuPopup, MenuTrigger, MenuSub, MenuSubTrigger, MenuSubPopup } from '~/components/ui/menu'
 
 interface ProviderModelSelectorProps {
   profiles: AgentProfile[]
@@ -45,6 +48,8 @@ function ProviderGroup({
   onSelectModel: (id: string) => void
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
 }) {
+  const preset = presetForProfile(profile)
+  const { Icon } = providerVisuals(preset.id)
   const profileModels = isActive ? models : []
 
   return (
@@ -59,10 +64,8 @@ function ProviderGroup({
             isActive ? 'bg-primary' : 'bg-muted-foreground/30',
           )}
         />
+        <Icon className="size-3.5 shrink-0" />
         <span>{profile.name}</span>
-        <span className="ml-1 text-[10px] uppercase text-muted-foreground/50">
-          {profile.providerKind === 'anthropic' ? 'Anthropic' : 'OpenAI'}
-        </span>
       </MenuSubTrigger>
       <MenuSubPopup>
         {isLoadingModels && profileModels.length === 0 && (
@@ -102,6 +105,13 @@ function ModelSubmenu({
   onSelectModel: (id: string) => void
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
 }) {
+  const family = model.capabilities?.family
+  const ctxK = model.capabilities?.contextWindow
+    ? model.capabilities.contextWindow >= 1000000
+      ? `${Math.round(model.capabilities.contextWindow / 1000000)}M`
+      : `${model.capabilities.contextWindow / 1000}K`
+    : null
+
   return (
     <MenuSub>
       <MenuSubTrigger
@@ -115,12 +125,8 @@ function ModelSubmenu({
           )}
         />
         <span className="truncate">{model.label}</span>
-        {model.capabilities?.contextWindow && (
-          <span className="ml-1 shrink-0 text-[10px] text-muted-foreground/40">
-            {model.capabilities.contextWindow >= 1000000
-              ? `${Math.round(model.capabilities.contextWindow / 1000000)}M`
-              : `${model.capabilities.contextWindow / 1000}K`}
-          </span>
+        {ctxK && (
+          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40">{ctxK}</span>
         )}
       </MenuSubTrigger>
       <MenuSubPopup>
@@ -157,10 +163,18 @@ export function ProviderModelSelector({
     ? THINKING_EFFORTS.find(t => t.value === thinkingEffort)?.label
     : null
 
+  // Icon for the trigger button — from the selected profile
+  const selectedProfile = profiles.find(p => p.id === selectedProfileId)
+  const TriggerIcon = selectedProfile
+    ? providerVisuals(presetForProfile(selectedProfile).id).Icon
+    : null
+
   return (
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="xs" data-testid="provider-model-selector" />}>
-        <CpuIcon className="size-3 shrink-0 text-muted-foreground/70" />
+        {TriggerIcon
+          ? <TriggerIcon className="size-3.5 shrink-0" />
+          : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
         <span className="max-w-40 truncate">
           {selectedModel?.label ?? (isLoadingModels ? 'Loading…' : 'Model')}
         </span>

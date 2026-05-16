@@ -92,7 +92,7 @@ function useRotatingPlaceholder(hints: string[], interval = 4000): string {
 
 function useNewChatPageOwner() {
   const composerState = useComposerState({ context: 'new-chat' })
-  const { selection, effectiveProfile, effectiveModel } = composerState
+  const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
   const { workspaces } = useWorkspaces()
   const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
@@ -133,15 +133,40 @@ function useNewChatPageOwner() {
     textareaRef.current?.focus()
   }, [])
 
-  const canSend = !!effectiveProfile && !!effectiveWorkspaceId && input.trim().length > 0 && !sending
+  const canSend = selection.runtimeKind === 'cli-tui'
+    ? !!effectiveAgent && !!effectiveWorkspaceId && !sending
+    : !!effectiveProfile && !!effectiveWorkspaceId && input.trim().length > 0 && !sending
 
   const handleSend = useCallback(async () => {
-    if (!canSend || !effectiveProfile || !effectiveWorkspaceId || !selectedWorkspace) {
+    if (!canSend || !effectiveWorkspaceId || !selectedWorkspace) {
       return
     }
 
     setSending(true)
     try {
+      if (selection.runtimeKind === 'cli-tui') {
+        if (!effectiveAgent) {
+          return
+        }
+        const { data: sessionData } = await postSessions({
+          body: {
+            workspaceId: effectiveWorkspaceId,
+            title: input.trim().slice(0, 80) || effectiveAgent.name,
+            agentId: effectiveAgent.id,
+          },
+        })
+        const session = sessionData as { id: string } | null
+        if (!session?.id) {
+          return
+        }
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+        void openTab('chat', { sessionId: session.id })
+        return
+      }
+
+      if (!effectiveProfile) {
+        return
+      }
       const { data: sessionData } = await postSessions({
         body: {
           workspaceId: effectiveWorkspaceId,
@@ -171,7 +196,7 @@ function useNewChatPageOwner() {
     finally {
       setSending(false)
     }
-  }, [canSend, effectiveProfile, effectiveWorkspaceId, effectiveModel, input, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, openTab])
+  }, [canSend, effectiveAgent, effectiveProfile, effectiveWorkspaceId, effectiveModel, input, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, openTab])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {

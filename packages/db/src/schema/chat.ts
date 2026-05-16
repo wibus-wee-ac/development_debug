@@ -14,13 +14,13 @@ export const sessions = sqliteTable('sessions', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   agentProfileId: text('agent_profile_id')
-    .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
   runtimeKind: text('runtime_kind', {
     enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
   }).notNull().default('standard'),
   agentId: text('agent_id')
     .references(() => agents.id, { onDelete: 'set null' }),
+  configJson: text('config_json').notNull().default('{}'),
   linkedIssueId: text('linked_issue_id')
     .references(() => kanbanIssues.id, { onDelete: 'set null' }),
   pinned: int('pinned').notNull().default(0),

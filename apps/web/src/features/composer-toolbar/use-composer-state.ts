@@ -1,12 +1,13 @@
-// Input: useNewChatStore, useAgentProfiles, useAgentModels, ComposerContext
+// Input: useNewChatStore, useAgentProfiles, useAgentModels, useAgents, ComposerContext
 // Output: useComposerState — unified state hook for all composer contexts
 // Position: Replaces duplicated useReducer logic across NewChat and Capsule composers
 
 import { useMemo, useState } from 'react'
 
+import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import type { AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { Agent, AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
 import type { ComposerContext, ComposerSelection, ThinkingEffort } from './types'
@@ -21,13 +22,16 @@ interface ComposerStateConfig {
 
 export interface ComposerStateResult {
   selection: ComposerSelection
+  setAgentId: (id: string) => void
   setProfileId: (id: string) => void
   setModelId: (id: string) => void
   setThinkingEffort: (effort: ThinkingEffort) => void
   setRuntimeKind: (kind: RuntimeKind) => void
+  agents: Agent[]
   profiles: AgentProfile[]
   models: ModelDescriptor[]
   isLoadingModels: boolean
+  effectiveAgent: Agent | null
   effectiveProfile: AgentProfile | null
   effectiveModel: ModelDescriptor | null
 }
@@ -42,30 +46,54 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   const lastModelByProfile = useNewChatStore(s => s.lastModelByProfile)
 
   // Data
+  const { agents } = useAgents()
   const { profiles } = useAgentProfiles()
 
   // Local non-persisted state
+  const [manualAgentId, setManualAgentId] = useState<string | null>(null)
   const [manualModelId, setManualModelId] = useState<string | null>(null)
   const [thinkingEffort, setThinkingEffortState] = useState<ThinkingEffort>(null)
   const [runtimeKind, setRuntimeKindState] = useState<RuntimeKind>(boundRuntimeKind ?? 'standard')
 
+  const cliTuiAgents = useMemo(
+    () => agents.filter(agent => agent.enabled && agent.runtimeKind === 'cli-tui'),
+    [agents],
+  )
+
+  const agentId = useMemo(() => {
+    if (runtimeKind !== 'cli-tui') {
+      return null
+    }
+    if (manualAgentId && cliTuiAgents.some(agent => agent.id === manualAgentId)) {
+      return manualAgentId
+    }
+    return cliTuiAgents[0]?.id ?? null
+  }, [runtimeKind, manualAgentId, cliTuiAgents])
+
   // Resolve effective profile
   const profileId = useMemo(() => {
+    if (runtimeKind === 'cli-tui') return null
     if (context === 'chat') return boundProfileId ?? null
     const persisted = lastProfileId && profiles.some(p => p.id === lastProfileId) ? lastProfileId : null
     return persisted ?? profiles[0]?.id ?? null
-  }, [context, boundProfileId, lastProfileId, profiles])
+  }, [runtimeKind, context, boundProfileId, lastProfileId, profiles])
 
   // Load models for effective profile
   const { models, isLoading: isLoadingModels } = useAgentModels(profileId)
 
   // Resolve effective model
   const modelId = useMemo(() => {
+    if (runtimeKind === 'cli-tui') return null
     if (manualModelId && models.some(m => m.id === manualModelId)) return manualModelId
     const persisted = profileId ? lastModelByProfile[profileId] : undefined
     if (persisted && models.some(m => m.id === persisted)) return persisted
     return models[0]?.id ?? null
-  }, [manualModelId, models, profileId, lastModelByProfile])
+  }, [runtimeKind, manualModelId, models, profileId, lastModelByProfile])
+
+  const effectiveAgent = useMemo(
+    () => cliTuiAgents.find(agent => agent.id === agentId) ?? null,
+    [cliTuiAgents, agentId],
+  )
 
   // Resolved objects
   const effectiveProfile = useMemo(
@@ -78,11 +106,16 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   )
 
   const selection = useMemo((): ComposerSelection => ({
+    agentId,
     profileId,
     modelId,
-    thinkingEffort,
+    thinkingEffort: runtimeKind === 'cli-tui' ? null : thinkingEffort,
     runtimeKind,
-  }), [profileId, modelId, thinkingEffort, runtimeKind])
+  }), [agentId, profileId, modelId, thinkingEffort, runtimeKind])
+
+  const setAgentId = (id: string) => {
+    setManualAgentId(id)
+  }
 
   const setProfileId = (id: string) => {
     if (context === 'chat') return // bound, immutable
@@ -103,13 +136,16 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   return {
     selection,
+    setAgentId,
     setProfileId,
     setModelId,
     setThinkingEffort,
     setRuntimeKind: setRuntimeKindState,
+    agents: cliTuiAgents,
     profiles,
     models,
     isLoadingModels,
+    effectiveAgent,
     effectiveProfile,
     effectiveModel,
   }

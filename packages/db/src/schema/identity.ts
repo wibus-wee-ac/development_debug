@@ -35,7 +35,6 @@ export const agents = sqliteTable('agents', {
   avatarStyle: text('avatar_style').notNull().default('bottts-neutral'),
   avatarSeed: text('avatar_seed').notNull(),
   agentProfileId: text('agent_profile_id')
-    .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
   modelId: text('model_id'),
   thinkingEffort: text('thinking_effort', {

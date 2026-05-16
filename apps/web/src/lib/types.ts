@@ -25,6 +25,19 @@ export type ProviderKind = 'openai-compatible' | 'anthropic'
 
 export type RuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
 
+export interface CliTuiLaunchConfig {
+  preset?: string
+  executable: string
+  args?: string[]
+  env?: Record<string, string>
+}
+
+export interface AgentRuntimeConfig {
+  systemPrompt?: string
+  cliTui?: CliTuiLaunchConfig
+  [key: string]: unknown
+}
+
 export interface ModelCapabilities {
   contextWindow?: number
   maxOutput?: number
@@ -74,7 +87,7 @@ export interface CreateAgentInput {
   description?: string | null
   avatarStyle: string
   avatarSeed: string
-  agentProfileId: string
+  agentProfileId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   runtimeKind?: RuntimeKind
@@ -87,7 +100,7 @@ export interface UpdateAgentInput {
   avatarStyle?: string
   avatarSeed?: string
   avatarUrl?: string | null
-  agentProfileId?: string
+  agentProfileId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   runtimeKind?: RuntimeKind

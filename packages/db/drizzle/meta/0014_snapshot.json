@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5e75e2e3-1d52-4b23-9ec9-6d626b6d43ce",
-  "prevId": "111d89a8-e8a7-4acf-894e-6ab261dfdc53",
+  "id": "8f11782c-76ed-498d-8111-b9174c48c4cf",
+  "prevId": "a3f72c1d-9b4e-4d8f-b2e1-7c3a5d6e0f9a",
   "tables": {
     "acp_agents": {
       "name": "acp_agents",
@@ -740,7 +740,7 @@
           "name": "agent_profile_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "runtime_kind": {
@@ -757,6 +757,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "config_json": {
+          "name": "config_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
         },
         "linked_issue_id": {
           "name": "linked_issue_id",
@@ -1248,7 +1256,7 @@
           "name": "agent_profile_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "model_id": {
@@ -1801,8 +1809,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "delegate_agent_id": {
-          "name": "delegate_agent_id",
+        "delegate_agent_profile_id": {
+          "name": "delegate_agent_profile_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

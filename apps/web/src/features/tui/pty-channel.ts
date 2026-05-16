@@ -82,7 +82,10 @@ export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
 
   function send(message: PtyClientEvent, allowQueue = true) {
     if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message))
+      const encoded = JSON.stringify(message)
+      // Escape "ping" in serialized payload so @elysiajs/node doesn't
+      // falsely match the substring and crash on ws.pong().
+      socket.send(message.type === 'ping' ? encoded.replace('"ping"', '"p\\u0069ng"') : encoded)
       return
     }
 

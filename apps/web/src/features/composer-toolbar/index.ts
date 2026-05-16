@@ -3,6 +3,7 @@
 // Position: Feature entry point
 
 export { ComposerToolbar } from './composer-toolbar'
+export { CliTuiAgentSelector } from './cli-tui-agent-selector'
 export { ProviderModelSelector } from './provider-model-selector'
 export { RuntimeSelector } from './runtime-selector'
 export { useComposerState } from './use-composer-state'

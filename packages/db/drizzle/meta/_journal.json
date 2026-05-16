@@ -99,6 +99,13 @@
       "when": 1778920000000,
       "tag": "0013_rename_delegate_agent_id",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1778927693063,
+      "tag": "0014_majestic_living_tribunal",
+      "breakpoints": true
     }
   ]
 }
