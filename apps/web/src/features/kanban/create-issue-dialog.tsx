@@ -42,31 +42,29 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
   const createIssue = useCreateIssue()
 
   const workspaceName = workspaces.find(w => w.id === workspaceId)?.name ?? 'Issues'
-  const resolvedDefaultStatusId = defaultStatusId ?? statuses[0]?.id
   const currentStatus = statuses.find((s: KanbanStatus) => s.id === statusId)
 
   useEffect(() => {
     if (!open) return
-    setStatusId(resolvedDefaultStatusId ?? '')
+    if (defaultStatusId) setStatusId(defaultStatusId)
     const timer = setTimeout(() => titleInputRef.current?.focus(), 80)
     return () => clearTimeout(timer)
-  }, [open, resolvedDefaultStatusId])
+  }, [open, defaultStatusId])
 
   const handleSubmit = () => {
     if (!title.trim()) return
-    const selectedStatusId = statusId || resolvedDefaultStatusId
     createIssue.mutate({
       workspaceId,
       title: title.trim(),
       description: description.trim() || null,
       priority: priority as IssuePriority,
-      statusId: selectedStatusId,
+      statusId: statusId || undefined,
     }, {
       onSuccess: () => {
         setTitle('')
         setDescription('')
         setPriority('none')
-        setStatusId(resolvedDefaultStatusId ?? '')
+        setStatusId('')
         onClose()
       },
     })
@@ -77,8 +75,6 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
       e.preventDefault()
       handleSubmit()
     } else if (e.key === 'Escape') {
-      e.preventDefault()
-      e.stopPropagation()
       onClose()
     }
   }

@@ -2,7 +2,7 @@
 // Output: Main kanban view with toolbar + board/list layout
 // Position: Entry point for the kanban feature UI
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
@@ -96,96 +96,56 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     setCreateDialogOpen(true)
   }, [config.groupBy])
 
-  const handleCloseIssuePeek = useCallback(() => {
-    onSelectIssue?.(null)
-  }, [onSelectIssue])
-
-  useEffect(() => {
-    if (!selectedIssueId) {
-      return
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key !== 'Escape' || event.metaKey || event.ctrlKey || event.altKey) {
-        return
-      }
-      const target = event.target as HTMLElement | null
-      if (
-        target
-        && (target.tagName === 'INPUT'
-          || target.tagName === 'TEXTAREA'
-          || target.tagName === 'SELECT'
-          || target.isContentEditable
-          || target.closest('[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"]'))
-      ) {
-        return
-      }
-      event.preventDefault()
-      handleCloseIssuePeek()
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleCloseIssuePeek, selectedIssueId])
-
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden h-full">
-      <KanbanToolbar
-        config={config}
-        setConfig={setConfig}
-        filter={filter}
-        setFilter={setFilter}
-        resetFilter={resetFilter}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onCreateIssue={() => setCreateDialogOpen(true)}
-      />
-
-      {config.layout === 'board' ? (
-        <KanbanBoard
+      {selectedIssueId ? (
+        <IssueDetail
+          issueId={selectedIssueId}
           workspaceId={workspaceId}
-          issues={filteredIssues}
-          statuses={statuses}
-          milestones={milestones}
-          config={config}
-          onIssueClick={handleIssueClick}
-          onMoveIssue={handleMoveIssue}
-          onCreateIssue={handleCreateIssue}
+          onBack={() => onSelectIssue?.(null)}
         />
       ) : (
-        <KanbanList
-          issues={filteredIssues}
-          statuses={statuses}
-          milestones={milestones}
-          config={config}
-          selectedIssueId={selectedIssueId}
-          onIssueClick={handleIssueClick}
-          onCreateIssue={handleCreateIssue}
-        />
-      )}
-
-      <CreateIssueDialog
-        workspaceId={workspaceId}
-        defaultStatusId={createDefaultStatusId}
-        open={createDialogOpen}
-        onClose={() => setCreateDialogOpen(false)}
-      />
-
-      {selectedIssueId && (
         <>
-          <button
-            type="button"
-            aria-label="Close issue"
-            className="absolute inset-0 z-30 bg-background/55"
-            onClick={handleCloseIssuePeek}
+          <KanbanToolbar
+            config={config}
+            setConfig={setConfig}
+            filter={filter}
+            setFilter={setFilter}
+            resetFilter={resetFilter}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onCreateIssue={() => setCreateDialogOpen(true)}
           />
-          <div className="absolute top-3 right-3 bottom-3 z-40 flex w-[min(920px,calc(100%-1.5rem))] overflow-hidden rounded-lg border border-border bg-background shadow-2xl">
-            <IssueDetail
-              issueId={selectedIssueId}
+
+          {config.layout === 'board' ? (
+            <KanbanBoard
               workspaceId={workspaceId}
-              onBack={handleCloseIssuePeek}
+              issues={filteredIssues}
+              statuses={statuses}
+              milestones={milestones}
+              config={config}
+              onIssueClick={handleIssueClick}
+              onMoveIssue={handleMoveIssue}
+              onCreateIssue={handleCreateIssue}
             />
-          </div>
+          ) : (
+            <KanbanList
+              issues={filteredIssues}
+              statuses={statuses}
+              milestones={milestones}
+              config={config}
+              selectedIssueId={selectedIssueId}
+              onIssueClick={handleIssueClick}
+              onCreateIssue={handleCreateIssue}
+            />
+          )}
+
+          <CreateIssueDialog
+            workspaceId={workspaceId}
+            defaultStatusId={createDefaultStatusId}
+            open={createDialogOpen}
+            onClose={() => setCreateDialogOpen(false)}
+          />
         </>
       )}
     </div>
