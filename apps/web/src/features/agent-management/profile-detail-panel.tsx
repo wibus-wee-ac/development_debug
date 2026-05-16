@@ -37,7 +37,7 @@ import { Switch } from '~/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
-import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+import type { AgentProfile, ModelCapabilities, ModelDescriptor } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ALL_DISABLED_SENTINEL, parseConfig, presetForProfile, PROVIDER_KIND_LABELS, providerVisuals } from './agent-runtime-settings'
@@ -207,6 +207,7 @@ export function ProfileDetailPanel({
   }, [clearAutoSaveTimer, clearSavedClearTimer])
 
   // Reset state when switching profile
+  const profileId = profile.id
   useEffect(() => {
     clearAutoSaveTimer()
     clearSavedClearTimer()
@@ -215,7 +216,8 @@ export function ProfileDetailPanel({
     saveRequestRef.current += 1
     form.reset(getProfileFormValues(profile))
     dispatch({ type: 'reset' })
-  }, [clearAutoSaveTimer, clearSavedClearTimer, form, profile])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId])
 
   // Fetch available models (only when provider connection details change, not enabledModels)
   const modelFetchKey = useMemo(() => {
@@ -627,7 +629,13 @@ function ProfileCustomModelsSection({
 }) {
   const [models, setModels] = useState(() => {
     try {
-      return JSON.parse(customModelsJson) as Array<{ id: string, label: string, contextWindow: number | null }>
+      const parsed = JSON.parse(customModelsJson) as Array<{ id: string, label: string, capabilities?: ModelCapabilities, contextWindow?: number | null }>
+      // Backward compat: migrate old { contextWindow } → { capabilities: { contextWindow } }
+      return parsed.map(m => ({
+        id: m.id,
+        label: m.label,
+        capabilities: m.capabilities ?? (m.contextWindow != null ? { contextWindow: m.contextWindow } : {}),
+      }))
     }
     catch {
       return []
@@ -637,23 +645,28 @@ function ProfileCustomModelsSection({
   // Sync from props when profile changes
   useEffect(() => {
     try {
-      setModels(JSON.parse(customModelsJson))
+      const parsed = JSON.parse(customModelsJson) as Array<{ id: string, label: string, capabilities?: ModelCapabilities, contextWindow?: number | null }>
+      setModels(parsed.map(m => ({
+        id: m.id,
+        label: m.label,
+        capabilities: m.capabilities ?? (m.contextWindow != null ? { contextWindow: m.contextWindow } : {}),
+      })))
     }
     catch {
       setModels([])
     }
   }, [customModelsJson])
 
-  const handleChange = useCallback(async (next: Array<{ id: string, label: string, contextWindow: number | null }>) => {
+  const handleChange = useCallback(async (next: Array<{ id: string, label: string, capabilities: ModelCapabilities }>) => {
     setModels(next)
     try {
       const res = await fetch(`${getServerUrl()}/profiles/${profileId}/custom-models`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ models: next.map(m => ({ id: m.id, label: m.label !== m.id ? m.label : undefined })) }),
+        body: JSON.stringify({ models: next.map(m => ({ id: m.id, label: m.label !== m.id ? m.label : undefined, capabilities: m.capabilities })) }),
       })
       if (res.ok) {
-        const saved = await res.json() as Array<{ id: string, label: string, contextWindow: number | null }>
+        const saved = await res.json() as Array<{ id: string, label: string, capabilities: ModelCapabilities }>
         setModels(saved)
         onSaved()
       }

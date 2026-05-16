@@ -2,7 +2,7 @@
 // Output: shared provider + runtime types for provider catalog and chat-runtime modules
 // Position: apps/server/src/modules/providers/types.ts
 
-export const providerKinds = ['openai-compatible'] as const
+export const providerKinds = ['openai-compatible', 'anthropic'] as const
 
 export type ProviderKind = (typeof providerKinds)[number]
 
@@ -26,9 +26,29 @@ export interface ProviderRequest {
   profileId: string | null
 }
 
+export interface ModelCapabilities {
+  contextWindow?: number
+  maxOutput?: number
+  inputModalities?: string[]
+  outputModalities?: string[]
+  reasoning?: boolean
+  toolCall?: boolean
+  temperature?: boolean
+  structuredOutput?: boolean
+  cost?: {
+    input?: number
+    output?: number
+    cacheRead?: number
+    cacheWrite?: number
+  }
+  family?: string
+  knowledgeCutoff?: string
+  releaseDate?: string
+}
+
 export interface ModelDescriptor {
   id: string
   label: string
   providerKind: ProviderKind
-  contextWindow: number | null
+  capabilities: ModelCapabilities
 }

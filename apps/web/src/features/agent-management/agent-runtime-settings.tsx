@@ -41,6 +41,7 @@ export const ALL_DISABLED_SENTINEL = '__all_disabled__'
 
 export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
+  'anthropic': 'Anthropic',
 }
 
 export interface DraftProvider {

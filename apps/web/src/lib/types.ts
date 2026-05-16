@@ -21,15 +21,35 @@ export type {
 
 // ── Provider / Runtime types ───────────────────────────────────────────────
 
-export type ProviderKind = 'openai-compatible'
+export type ProviderKind = 'openai-compatible' | 'anthropic'
 
 export type RuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+
+export interface ModelCapabilities {
+  contextWindow?: number
+  maxOutput?: number
+  inputModalities?: string[]
+  outputModalities?: string[]
+  reasoning?: boolean
+  toolCall?: boolean
+  temperature?: boolean
+  structuredOutput?: boolean
+  cost?: {
+    input?: number
+    output?: number
+    cacheRead?: number
+    cacheWrite?: number
+  }
+  family?: string
+  knowledgeCutoff?: string
+  releaseDate?: string
+}
 
 export interface ModelDescriptor {
   id: string
   label: string
   providerKind: ProviderKind
-  contextWindow: number | null
+  capabilities: ModelCapabilities
 }
 
 interface ProviderHealthCheckResult {
@@ -57,6 +77,7 @@ export interface CreateAgentInput {
   agentProfileId: string
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
+  runtimeKind?: RuntimeKind
   configJson?: string
 }
 
@@ -69,6 +90,7 @@ export interface UpdateAgentInput {
   agentProfileId?: string
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
+  runtimeKind?: RuntimeKind
   configJson?: string
   enabled?: boolean
 }

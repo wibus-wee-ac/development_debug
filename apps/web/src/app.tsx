@@ -18,10 +18,39 @@ import { SettingsContent } from '~/features/settings/settings-content'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useLayoutStore } from '~/store/layout'
 import { useThemeStore } from '~/store/theme'
+import { BenchmarkPage } from '~/tabs/benchmark'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+
+function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <LazyMotion features={domAnimation}>
+      <ToastProvider>
+        <AnchoredToastProvider>
+          <TooltipProvider>
+            <ShortcutProvider>
+              <DirectoryPickerProvider>
+                {children}
+              </DirectoryPickerProvider>
+            </ShortcutProvider>
+          </TooltipProvider>
+        </AnchoredToastProvider>
+      </ToastProvider>
+    </LazyMotion>
+  )
+}
 
 export function App() {
   'use no memo'
+
+  // Benchmark harness — only mounts when ?benchmark is in the URL
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('benchmark')) {
+    return (
+      <AppEnvironmentProviders>
+        <BenchmarkPage />
+      </AppEnvironmentProviders>
+    )
+  }
+
   const mode = useThemeStore(s => s.mode)
   const { isSettings, settingsSection } = useLayoutStore()
 
@@ -67,34 +96,24 @@ export function App() {
   }, [mode])
 
   return (
-    <LazyMotion features={domAnimation}>
-    <ToastProvider>
-      <AnchoredToastProvider>
-        <TooltipProvider>
-          <ShortcutProvider>
-            <DirectoryPickerProvider>
-              <LayoutSlotsProvider activeSlotId={activeSlotId}>
-              <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-                <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-                  <AppSidebar />
-                  <AppLayout>
-                    {isSettings
-                      ? <SettingsContent section={settingsSection} />
-                      : (
-                        <TabRenderer
-                          fallback={null}
-                          className="h-full flex overflow-hidden w-full"
-                        />
-                      )}
-                  </AppLayout>
-                </div>
-              </TabsProvider>
-            </LayoutSlotsProvider>
-            </DirectoryPickerProvider>
-          </ShortcutProvider>
-        </TooltipProvider>
-      </AnchoredToastProvider>
-    </ToastProvider>
-    </LazyMotion>
+    <AppEnvironmentProviders>
+      <LayoutSlotsProvider activeSlotId={activeSlotId}>
+        <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
+          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+            <AppSidebar />
+            <AppLayout>
+              {isSettings
+                ? <SettingsContent section={settingsSection} />
+                : (
+                    <TabRenderer
+                      fallback={null}
+                      className="h-full flex overflow-hidden w-full"
+                    />
+                  )}
+            </AppLayout>
+          </div>
+        </TabsProvider>
+      </LayoutSlotsProvider>
+    </AppEnvironmentProviders>
   )
 }

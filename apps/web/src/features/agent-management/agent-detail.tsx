@@ -25,7 +25,7 @@ import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor } from '~/lib/types'
+import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider } from '../settings/settings-row'
 
@@ -51,6 +51,7 @@ interface AgentDetailFormValues {
   agentProfileId: string | null
   modelId: string | null
   thinkingEffort: ThinkingEffort
+  runtimeKind: RuntimeKind
   systemPrompt: string
 }
 
@@ -130,6 +131,7 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
     agentProfileId: agent?.agentProfileId ?? enabledProfiles[0]?.id ?? null,
     modelId: agent?.modelId ?? null,
     thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
+    runtimeKind: (agent?.runtimeKind as RuntimeKind) ?? 'standard',
     systemPrompt: initialConfig.systemPrompt,
   }
 }
@@ -226,6 +228,7 @@ interface AgentDetailDraft {
   agentProfileId: string | null
   modelId: string | null
   thinkingEffort: ThinkingEffort
+  runtimeKind: RuntimeKind
   systemPrompt: string
 }
 
@@ -450,6 +453,21 @@ function AgentIdentitySection({
             }}
           />
 
+          <Select
+            value={draft.runtimeKind}
+            onValueChange={value => form.setValue('runtimeKind', value as RuntimeKind, { shouldDirty: true })}
+          >
+            <SelectTrigger size="sm" className="h-7 text-xs" data-testid="agent-runtime-select">
+              <SelectValue placeholder="Runtime" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="standard" className="text-xs">Standard</SelectItem>
+              <SelectItem value="claude-agent" className="text-xs">Claude Agent</SelectItem>
+              <SelectItem value="codex" className="text-xs">Codex</SelectItem>
+              <SelectItem value="cli-tui" className="text-xs">CLI / TUI</SelectItem>
+            </SelectContent>
+          </Select>
+
           <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
         </div>
       </div>
@@ -549,6 +567,7 @@ function useAgentDetailOwner({
     agentProfileId: watchedValues.agentProfileId ?? null,
     modelId: watchedValues.modelId ?? null,
     thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
+    runtimeKind: watchedValues.runtimeKind ?? 'standard',
     systemPrompt: watchedValues.systemPrompt ?? '',
   }
   const [uiState, dispatch] = useReducer(agentDetailUiReducer, INITIAL_AGENT_DETAIL_UI_STATE)
@@ -620,6 +639,7 @@ function useAgentDetailOwner({
           agentProfileId: currentValues.agentProfileId,
           modelId: currentValues.modelId,
           thinkingEffort: currentValues.thinkingEffort,
+          runtimeKind: currentValues.runtimeKind,
           configJson,
         },
       })
@@ -681,6 +701,7 @@ function useAgentDetailOwner({
         agentProfileId: currentValues.agentProfileId,
         modelId: currentValues.modelId,
         thinkingEffort: currentValues.thinkingEffort,
+        runtimeKind: currentValues.runtimeKind,
         configJson: stringifyConfigJson(currentValues.systemPrompt, {}),
       } satisfies CreateAgentInput)
       onCreated?.(created.id)

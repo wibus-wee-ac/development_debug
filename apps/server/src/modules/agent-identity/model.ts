@@ -7,6 +7,15 @@ const thinkingEffortEnum = t.Union([
   t.Literal('auto'),
 ])
 
+const runtimeKindEnum = t.Union([
+  t.Literal('standard'),
+  t.Literal('claude-agent'),
+  t.Literal('codex'),
+  t.Literal('jar-core'),
+  t.Literal('acp-chat'),
+  t.Literal('cli-tui'),
+])
+
 export const AgentIdentityModel = {
   agent: t.Object({
     id: t.String(),
@@ -18,6 +27,7 @@ export const AgentIdentityModel = {
     agentProfileId: t.String(),
     modelId: t.Nullable(t.String()),
     thinkingEffort: thinkingEffortEnum,
+    runtimeKind: runtimeKindEnum,
     configJson: t.String(),
     enabled: t.Boolean(),
     createdAt: t.Number(),
@@ -41,6 +51,7 @@ export const AgentIdentityModel = {
     agentProfileId: t.String({ minLength: 1 }),
     modelId: t.Optional(t.Nullable(t.String())),
     thinkingEffort: t.Optional(thinkingEffortEnum),
+    runtimeKind: t.Optional(runtimeKindEnum),
     configJson: t.Optional(t.String()),
   }),
 
@@ -52,6 +63,7 @@ export const AgentIdentityModel = {
     agentProfileId: t.Optional(t.String({ minLength: 1 })),
     modelId: t.Optional(t.Nullable(t.String())),
     thinkingEffort: t.Optional(thinkingEffortEnum),
+    runtimeKind: t.Optional(runtimeKindEnum),
     configJson: t.Optional(t.String()),
     enabled: t.Optional(t.Boolean()),
   }),

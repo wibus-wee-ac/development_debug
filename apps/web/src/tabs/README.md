@@ -19,3 +19,4 @@ The registry exports the store instance consumed by the rest of the app.
 - **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name
 - **workspace-detail.tab.test.tsx**: Regression test covering workspace-detail runtime tab label updates
 - **usage.tab.tsx**: Usage/cost dashboard tab (no params)
+- **benchmark.tsx**: Dev-only `?benchmark` harness that runs identical heavy-tab scenarios against both `@cradle/tabs` and `@cradle/tabs-next`, using the live `cradleRegistry` to compare open/switch latency, remount behavior, and frame stability side-by-side

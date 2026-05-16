@@ -23,6 +23,7 @@ export interface CreateAgentInput {
   agentProfileId: string
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
+  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
   configJson?: string
 }
 
@@ -34,6 +35,7 @@ export interface UpdateAgentInput {
   agentProfileId?: string
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
+  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
   configJson?: string
   enabled?: boolean
 }
@@ -75,6 +77,7 @@ export function create(input: CreateAgentInput): Agent {
         agentProfileId: input.agentProfileId,
         modelId: input.modelId ?? null,
         thinkingEffort: input.thinkingEffort ?? 'auto',
+        runtimeKind: input.runtimeKind ?? 'standard',
         configJson: input.configJson ?? '{}',
         enabled: true,
       })
@@ -116,6 +119,9 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
   }
   if (patch.thinkingEffort !== undefined) {
     updatePatch.thinkingEffort = patch.thinkingEffort
+  }
+  if (patch.runtimeKind !== undefined) {
+    updatePatch.runtimeKind = patch.runtimeKind
   }
   if (patch.configJson !== undefined) {
     updatePatch.configJson = patch.configJson

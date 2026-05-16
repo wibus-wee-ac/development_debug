@@ -27,7 +27,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: 'anthropic',
     name: 'Anthropic',
     tagline: 'Claude — high-capability models',
-    providerKind: 'openai-compatible',
+    providerKind: 'anthropic',
     accent: 'orange',
     fields: [
       { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.anthropic.com/v1', mono: true },

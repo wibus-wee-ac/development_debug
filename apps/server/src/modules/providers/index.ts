@@ -1,6 +1,6 @@
 import { Elysia, t } from 'elysia'
 
-import { lookupModel } from './model-info-registry'
+import { lookupModel, searchModels } from './model-info-registry'
 import { ProvidersModel } from './model'
 import * as Providers from './service'
 
@@ -42,9 +42,26 @@ export const providers = new Elysia({
         t.Object({
           id: t.String(),
           label: t.String(),
-          contextWindow: t.Union([t.Number(), t.Null()]),
+          capabilities: ProvidersModel.modelCapabilities,
         }),
         t.Null(),
       ]),
+    },
+  })
+  .post('/model-search', async ({ body }) => {
+    return await searchModels(body.query, 20)
+  }, {
+    detail: {
+      summary: 'Search models from models.dev registry',
+    },
+    body: t.Object({
+      query: t.String({ minLength: 1 }),
+    }),
+    response: {
+      200: t.Array(t.Object({
+        id: t.String(),
+        label: t.String(),
+        capabilities: ProvidersModel.modelCapabilities,
+      })),
     },
   })

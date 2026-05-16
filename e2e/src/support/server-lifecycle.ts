@@ -4,6 +4,14 @@
 
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
+
+function killProcessGroup(proc: ChildProcess, signal: NodeJS.Signals) {
+  try {
+    if (proc.pid) process.kill(-proc.pid, signal)
+  } catch {
+    // Process may already be dead
+  }
+}
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -75,6 +83,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
       NODE_ENV: 'test',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   })
 
   serverProcess.stdout?.on('data', (chunk: Buffer) => {
@@ -107,6 +116,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
         VITE_SERVER_URL: serverUrl,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
     })
 
     webProcess.stdout?.on('data', (chunk: Buffer) => {
@@ -136,24 +146,23 @@ AfterAll({ timeout: 15_000 }, async () => {
 
   const { serverProcess, webProcess, dataDir } = instance
 
-  // Kill web dev server first
   if (webProcess) {
-    webProcess.kill('SIGTERM')
+    killProcessGroup(webProcess, 'SIGTERM')
     await new Promise<void>((resolve) => {
       webProcess.on('exit', () => resolve())
       setTimeout(() => {
-        webProcess.kill('SIGKILL')
+        killProcessGroup(webProcess, 'SIGKILL')
         resolve()
       }, 3000)
     })
   }
 
-  serverProcess.kill('SIGTERM')
+  killProcessGroup(serverProcess, 'SIGTERM')
 
   await new Promise<void>((resolve) => {
     serverProcess.on('exit', () => resolve())
     setTimeout(() => {
-      serverProcess.kill('SIGKILL')
+      killProcessGroup(serverProcess, 'SIGKILL')
       resolve()
     }, 5000)
   })

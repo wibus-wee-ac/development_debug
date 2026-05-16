@@ -9,9 +9,29 @@ const openaiCompatibleConfig = t.Object({
   maxMessages: t.Optional(t.Number()),
 })
 
+const modelCapabilities = t.Object({
+  contextWindow: t.Optional(t.Number()),
+  maxOutput: t.Optional(t.Number()),
+  inputModalities: t.Optional(t.Array(t.String())),
+  outputModalities: t.Optional(t.Array(t.String())),
+  reasoning: t.Optional(t.Boolean()),
+  toolCall: t.Optional(t.Boolean()),
+  temperature: t.Optional(t.Boolean()),
+  structuredOutput: t.Optional(t.Boolean()),
+  cost: t.Optional(t.Object({
+    input: t.Optional(t.Number()),
+    output: t.Optional(t.Number()),
+    cacheRead: t.Optional(t.Number()),
+    cacheWrite: t.Optional(t.Number()),
+  })),
+  family: t.Optional(t.String()),
+  knowledgeCutoff: t.Optional(t.String()),
+  releaseDate: t.Optional(t.String()),
+})
+
 export const ProvidersModel = {
   providerBody: t.Object({
-    providerKind: t.Literal('openai-compatible'),
+    providerKind: t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')]),
     label: t.String({ minLength: 1 }),
     config: openaiCompatibleConfig,
     secretRef: nullableRef,
@@ -22,8 +42,10 @@ export const ProvidersModel = {
     id: t.String(),
     label: t.String(),
     providerKind: t.String(),
-    contextWindow: t.Union([t.Number(), t.Null()]),
+    capabilities: modelCapabilities,
   }),
+
+  modelCapabilities,
 
   healthCheckResult: t.Object({
     ok: t.Boolean(),

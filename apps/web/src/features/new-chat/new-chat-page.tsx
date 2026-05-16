@@ -342,6 +342,7 @@ function useNewChatPageOwner() {
             workspaceId: effectiveWorkspaceId,
             title: selectedProfile.name,
             agentProfileId: selectedProfile.id,
+            runtimeKind: effectiveAgent?.runtimeKind ?? undefined,
           },
         })
         const session = sessionData as { id: string } | null
@@ -355,6 +356,7 @@ function useNewChatPageOwner() {
           workspaceId: effectiveWorkspaceId,
           title: draft.input.trim().slice(0, 80) || selectedProfile.name,
           agentProfileId: selectedProfile.id,
+          runtimeKind: effectiveAgent?.runtimeKind ?? undefined,
         },
       })
       const session = sessionData as { id: string } | null

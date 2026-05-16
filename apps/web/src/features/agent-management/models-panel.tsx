@@ -168,9 +168,9 @@ export function ModelsPanel({
                               </div>
                             )}
                           </div>
-                          {m.contextWindow != null && m.contextWindow > 0 && (
+                          {m.capabilities.contextWindow != null && m.capabilities.contextWindow > 0 && (
                             <Badge variant="secondary" className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground">
-                              {Math.round(m.contextWindow / 1000)}
+                              {Math.round(m.capabilities.contextWindow / 1000)}
                               k
                             </Badge>
                           )}

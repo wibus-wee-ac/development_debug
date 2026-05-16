@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm'
 
 import { db } from '../../infra'
 import { enrichModelsFromRegistry } from '../providers/model-info-registry'
-import type { ProviderKind } from '../providers/types'
+import type { ModelCapabilities, ProviderKind } from '../providers/types'
 import * as Session from '../session/service'
 
 // ── types ──
@@ -79,28 +79,37 @@ export function removeProfile(id: string): void {
 export interface CustomModelEntry {
   id: string
   label: string
-  contextWindow: number | null
+  capabilities: ModelCapabilities
 }
 
 export async function updateCustomModels(
   profileId: string,
-  models: Array<{ id: string, label?: string }>,
+  models: Array<{ id: string, label?: string, capabilities?: ModelCapabilities }>,
 ): Promise<CustomModelEntry[]> {
-  // Enrich from models.dev registry
+  // Build descriptors for enrichment
   const descriptors = models.map(m => ({
     id: m.id,
     label: m.label ?? m.id,
     providerKind: 'openai-compatible' as const,
-    contextWindow: null as number | null,
+    capabilities: m.capabilities ?? {},
   }))
 
-  const enriched = await enrichModelsFromRegistry(descriptors)
+  // Only enrich entries that don't already have contextWindow
+  const needsEnrich = descriptors.filter(d => d.capabilities.contextWindow == null)
+  const enriched = needsEnrich.length > 0 ? await enrichModelsFromRegistry(needsEnrich) : []
+  const enrichedMap = new Map(enriched.map(e => [e.id, e]))
 
-  const entries: CustomModelEntry[] = enriched.map(m => ({
-    id: m.id,
-    label: m.label,
-    contextWindow: m.contextWindow,
-  }))
+  const entries: CustomModelEntry[] = descriptors.map((m) => {
+    if (m.capabilities.contextWindow != null) {
+      return { id: m.id, label: m.label, capabilities: m.capabilities }
+    }
+    const enrichedEntry = enrichedMap.get(m.id)
+    return {
+      id: m.id,
+      label: enrichedEntry?.label ?? m.label,
+      capabilities: enrichedEntry?.capabilities ?? m.capabilities,
+    }
+  })
 
   db().update(agentProfiles)
     .set({

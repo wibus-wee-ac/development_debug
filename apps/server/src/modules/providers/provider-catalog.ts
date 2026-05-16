@@ -4,6 +4,7 @@
 
 import { AppError } from '../../errors/app-error'
 import {
+  BaseProviderConfig,
   normalizeBaseUrl,
   OpenAICompatibleConfigSchema,
   parseConfigWith,
@@ -23,6 +24,7 @@ export class ProviderCatalog {
 
   constructor() {
     this.register(new OpenAICompatibleMetadataProvider())
+    this.register(new AnthropicMetadataProvider())
   }
 
   register(provider: ProviderMetadataProvider): void {
@@ -95,7 +97,68 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
         id: item.id,
         label: item.id,
         providerKind: 'openai-compatible' as const,
-        contextWindow: null,
+        capabilities: {},
+      }))
+    }
+    catch (error) {
+      throw wrapProviderModelsError(this.providerKind, error)
+    }
+  }
+}
+
+class AnthropicMetadataProvider implements ProviderMetadataProvider {
+  readonly providerKind = 'anthropic' as const
+
+  async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
+    const config = parseConfigWith(input.configJson, BaseProviderConfig)
+    if (!input.secretRef) {
+      return {
+        ok: false,
+        label: input.label,
+        version: null,
+        details: { baseUrl: config.baseUrl },
+        errorText: 'API key secretRef is required',
+      }
+    }
+
+    deps.readSecret(input.secretRef)
+
+    return {
+      ok: true,
+      label: input.label,
+      version: null,
+      details: { baseUrl: config.baseUrl ?? 'https://api.anthropic.com' },
+      errorText: null,
+    }
+  }
+
+  async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
+    const config = parseConfigWith(input.configJson, BaseProviderConfig)
+    if (!config.baseUrl) {
+      throw invalidProviderRequest('Base URL is required')
+    }
+
+    const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
+    const baseUrl = config.baseUrl.replace(TRAILING_SLASH_RE, '')
+
+    try {
+      const response = await fetch(`${baseUrl}/models`, {
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+      })
+      if (!response.ok) {
+        throw providerModelsUnavailable(this.providerKind, `Anthropic models request failed with status ${response.status}`)
+      }
+
+      const payload = await response.json() as { data?: Array<{ id: string, display_name?: string }> }
+      if (!Array.isArray(payload.data) || payload.data.length === 0) {
+        throw providerModelsUnavailable(this.providerKind, 'Anthropic models response was empty')
+      }
+
+      return payload.data.map(item => ({
+        id: item.id,
+        label: item.display_name ?? item.id,
+        providerKind: 'anthropic' as const,
+        capabilities: {},
       }))
     }
     catch (error) {

@@ -10,7 +10,7 @@ export const agentProfiles = sqliteTable('agent_profiles', {
   id: textPk(),
   name: text('name').notNull(),
   providerKind: text('provider_kind', {
-    enum: ['openai-compatible'],
+    enum: ['openai-compatible', 'anthropic'],
   }).notNull(),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
   configJson: text('config_json').notNull().default('{}'),
@@ -41,6 +41,9 @@ export const agents = sqliteTable('agents', {
   thinkingEffort: text('thinking_effort', {
     enum: ['low', 'medium', 'high', 'auto'],
   }).notNull().default('auto'),
+  runtimeKind: text('runtime_kind', {
+    enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
+  }).notNull().default('standard'),
   configJson: text('config_json').notNull().default('{}'),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
   ...timestamps(),

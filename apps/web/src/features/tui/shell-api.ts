@@ -3,7 +3,7 @@
 // Position: API layer extracted from shell-view so HTTP ownership stays limited to explicit resource lifecycle
 
 import {
-  deleteTerminalSessionsShellBySessionId,
+  deleteTerminalSessionsShellByPtyId,
   postTerminalSessionsShellStart,
 } from '~/api-gen/sdk.gen'
 
@@ -14,7 +14,7 @@ export function startShell(params: { ptyId: string, cwd: string, cols: number, r
 }
 
 export function stopShell(ptyId: string) {
-  return deleteTerminalSessionsShellBySessionId({
-    path: { sessionId: ptyId },
+  return deleteTerminalSessionsShellByPtyId({
+    path: { ptyId },
   })
 }

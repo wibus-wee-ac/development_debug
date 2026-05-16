@@ -64,8 +64,10 @@ export async function healthCheck(input: ProviderRequest): Promise<ProviderHealt
 
 export async function listModels(input: ProviderRequest): Promise<ModelDescriptor[]> {
   const provider = requireProvider(input.providerKind)
+
+  let models: ModelDescriptor[] = []
   try {
-    const models = await provider.listModels(input, {
+    models = await provider.listModels(input, {
       readSecret: secretRef => Secrets.readSecret(secretRef),
     })
     recordModelList({
@@ -74,36 +76,46 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
       subject: input.label,
       count: models.length,
     })
-
-    // Merge custom models from profile
-    if (input.profileId) {
-      const profile = db().select().from(agentProfiles).where(eq(agentProfiles.id, input.profileId)).get()
-      if (profile?.customModels) {
-        try {
-          const customModels = JSON.parse(profile.customModels) as Array<{ id: string, label: string, contextWindow: number | null }>
-          const upstreamIds = new Set(models.map(m => m.id))
-          for (const cm of customModels) {
-            if (!upstreamIds.has(cm.id)) {
-              models.push({
-                id: cm.id,
-                label: cm.label,
-                providerKind: input.providerKind,
-                contextWindow: cm.contextWindow,
-              })
-            }
-          }
-        }
-        catch {
-          // Ignore malformed JSON
-        }
-      }
-    }
-
-    return models
   }
   catch (error) {
-    throw mapOperationalError(error)
+    // If no profile with custom models, propagate the error
+    if (!input.profileId) {
+      throw mapOperationalError(error)
+    }
+    const profile = db().select().from(agentProfiles).where(eq(agentProfiles.id, input.profileId)).get()
+    if (!profile?.customModels || profile.customModels === '[]') {
+      throw mapOperationalError(error)
+    }
+    // Upstream failed but we have custom models — fall through to merge them
   }
+
+  // Merge custom models from profile
+  if (input.profileId) {
+    const profile = db().select().from(agentProfiles).where(eq(agentProfiles.id, input.profileId)).get()
+    if (profile?.customModels) {
+      try {
+        const customModels = JSON.parse(profile.customModels) as Array<{ id: string, label: string, contextWindow?: number | null, capabilities?: Record<string, unknown> }>
+        const upstreamIds = new Set(models.map(m => m.id))
+        for (const cm of customModels) {
+          if (!upstreamIds.has(cm.id)) {
+            // Backward compat: migrate old { contextWindow } to { capabilities: { contextWindow } }
+            const capabilities = cm.capabilities ?? (cm.contextWindow != null ? { contextWindow: cm.contextWindow } : {})
+            models.push({
+              id: cm.id,
+              label: cm.label,
+              providerKind: input.providerKind,
+              capabilities,
+            })
+          }
+        }
+      }
+      catch {
+        // Ignore malformed JSON
+      }
+    }
+  }
+
+  return models
 }
 
 // ── audit persistence (merged from store) ──
