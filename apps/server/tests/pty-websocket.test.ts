@@ -61,13 +61,17 @@ async function createCliTuiSession(baseUrl: string, workspaceRoot: string) {
     path: workspaceRoot,
   }).run()
 
-  insertAgentProfileRow({
-    id: 'profile-cli-tui',
-    name: 'CLI TUI Profile',
-    providerKind: 'openai-compatible',
+  insertAgentRow({
+    id: 'agent-cli-tui',
+    name: 'CLI TUI Agent',
+    avatarStyle: 'bottts-neutral',
+    avatarSeed: 'cli-seed',
+    runtimeKind: 'cli-tui',
     configJson: JSON.stringify({
-      executable: process.execPath,
-      args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+      cliTui: {
+        executable: process.execPath,
+        args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+      },
     }),
   })
 
@@ -75,8 +79,14 @@ async function createCliTuiSession(baseUrl: string, workspaceRoot: string) {
     id: 'session-cli-tui',
     workspaceId: 'workspace-pty',
     title: 'CLI Session',
-    agentProfileId: 'profile-cli-tui',
+    agentId: 'agent-cli-tui',
     runtimeKind: 'cli-tui',
+    configJson: JSON.stringify({
+      cliTuiLaunch: {
+        executable: process.execPath,
+        args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+      },
+    }),
   })
 }
 
@@ -275,7 +285,7 @@ describe('pty websocket live channels', () => {
     }
   })
 
-  it('keeps chat PTY session/profile cleanup semantics when the owning profile is deleted', async () => {
+  it('keeps chat PTY running after the source agent is deleted because launch is session-owned', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-pty-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -300,16 +310,22 @@ describe('pty websocket live channels', () => {
       await socket.waitFor((message) => message.type === 'snapshot')
       await socket.waitFor((message): message is Extract<PtyServerEvent, { type: 'output' }> => message.type === 'output' && message.data.includes('READY'))
 
-      const deleteProfileRes = await fetch(`${started.baseUrl}/profiles/profile-cli-tui`, { method: 'DELETE' })
-      expect(deleteProfileRes.status).toBe(200)
-      expect(await deleteProfileRes.json()).toEqual({ ok: true })
+      const deleteAgentRes = await fetch(`${started.baseUrl}/agents/agent-cli-tui`, { method: 'DELETE' })
+      expect(deleteAgentRes.status).toBe(200)
+      expect(await deleteAgentRes.json()).toEqual({ ok: true })
 
+      socket.send({ type: 'input', data: 'echo STILL_RUNNING_AFTER_AGENT_DELETE\n' })
+      const output = await socket.waitFor((message): message is Extract<PtyServerEvent, { type: 'output' }> => message.type === 'output' && message.data.includes('STILL_RUNNING_AFTER_AGENT_DELETE'))
+      expect(output.type).toBe('output')
+
+      const retainedSession = db().select().from(sessions).where(eq(sessions.id, 'session-cli-tui')).get()
+      expect(retainedSession).toEqual(expect.objectContaining({ id: 'session-cli-tui' }))
+
+      const deleteSessionRes = await fetch(`${started.baseUrl}/sessions/session-cli-tui`, { method: 'DELETE' })
+      expect(deleteSessionRes.status).toBe(200)
       const exit = await socket.waitFor((message): message is Extract<PtyServerEvent, { type: 'exit' }> => message.type === 'exit')
       expect(exit.type).toBe('exit')
       await socket.waitForClose()
-
-      const deletedSession = db().select().from(sessions).where(eq(sessions.id, 'session-cli-tui')).get()
-      expect(deletedSession).toBeUndefined()
     }
     finally {
       if (app?.server) {
@@ -457,18 +473,18 @@ describe('pty websocket live channels', () => {
   })
 })
 
-function insertSessionRow(input: { id: string, workspaceId: string, title: string, agentProfileId: string, runtimeKind?: string }): void {
+function insertSessionRow(input: { id: string, workspaceId: string, title: string, agentProfileId?: string | null, agentId?: string | null, runtimeKind?: string, configJson?: string }): void {
   const now = Math.floor(Date.now() / 1000)
   db().run(sql`
-    INSERT INTO sessions (id, workspace_id, title, agent_profile_id, runtime_kind, pinned, created_at, updated_at)
-    VALUES (${input.id}, ${input.workspaceId}, ${input.title}, ${input.agentProfileId}, ${input.runtimeKind ?? 'standard'}, 0, ${now}, ${now})
+    INSERT INTO sessions (id, workspace_id, title, agent_profile_id, runtime_kind, agent_id, config_json, pinned, created_at, updated_at)
+    VALUES (${input.id}, ${input.workspaceId}, ${input.title}, ${input.agentProfileId ?? null}, ${input.runtimeKind ?? 'standard'}, ${input.agentId ?? null}, ${input.configJson ?? '{}'}, 0, ${now}, ${now})
   `)
 }
 
-function insertAgentProfileRow(input: { id: string, name: string, providerKind: string, configJson: string }): void {
+function insertAgentRow(input: { id: string, name: string, avatarStyle: string, avatarSeed: string, runtimeKind: string, configJson: string }): void {
   const now = Math.floor(Date.now() / 1000)
   db().run(sql`
-    INSERT INTO agent_profiles (id, name, provider_kind, enabled, config_json, credential_ref, created_at, updated_at)
-    VALUES (${input.id}, ${input.name}, ${input.providerKind}, 1, ${input.configJson}, NULL, ${now}, ${now})
+    INSERT INTO agents (id, name, avatar_style, avatar_seed, runtime_kind, config_json, enabled, created_at, updated_at)
+    VALUES (${input.id}, ${input.name}, ${input.avatarStyle}, ${input.avatarSeed}, ${input.runtimeKind}, ${input.configJson}, 1, ${now}, ${now})
   `)
 }

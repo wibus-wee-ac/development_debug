@@ -3,11 +3,11 @@
 // Position: apps/server/src/modules/pty business owner that coordinates runtime, timeline, and socket adapters
 
 import type { Workspace } from '@cradle/db'
-import { agentProfiles, sessions, workspaces } from '@cradle/db'
+import { sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
-import { cliTuiConfigSchema } from '../../helpers/provider-config-schemas'
+import { readCliTuiLaunchSpecFromSessionConfig } from '../../helpers/agent-runtime-config'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
 import * as SessionService from '../session/service'
@@ -41,21 +41,15 @@ SessionService.onSessionCleanup((sessionId) => {
 export interface TerminalSessionContext {
   session: TerminalSessionRecord
   workspace: Workspace
-  profile: TerminalProfileRecord
 }
 
 interface TerminalSessionRecord {
   id: string
   workspaceId: string | null
-  agentProfileId: string
+  agentProfileId: string | null
   runtimeKind: string
-  ptyStartedAt: number | null
-}
-
-interface TerminalProfileRecord {
-  id: string
-  providerKind: string
   configJson: string
+  ptyStartedAt: number | null
 }
 
 function getSession(sessionId: string): TerminalSessionRecord | undefined {
@@ -64,6 +58,7 @@ function getSession(sessionId: string): TerminalSessionRecord | undefined {
     workspaceId: sessions.workspaceId,
     agentProfileId: sessions.agentProfileId,
     runtimeKind: sessions.runtimeKind,
+    configJson: sessions.configJson,
     ptyStartedAt: sessions.ptyStartedAt,
   }).from(sessions).where(eq(sessions.id, sessionId)).get()
 }
@@ -77,16 +72,11 @@ function getTerminalContext(sessionId: string): TerminalSessionContext | null {
   const workspace = session.workspaceId
     ? db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
     : undefined
-  const profile = db().select({
-    id: agentProfiles.id,
-    providerKind: agentProfiles.providerKind,
-    configJson: agentProfiles.configJson,
-  }).from(agentProfiles).where(eq(agentProfiles.id, session.agentProfileId)).get() as TerminalProfileRecord | undefined
-  if (!workspace || !profile) {
+  if (!workspace) {
     return null
   }
 
-  return { session, workspace, profile }
+  return { session, workspace }
 }
 
 function requireSession(sessionId: string): TerminalSessionRecord {
@@ -111,21 +101,6 @@ function requireTimelineSession(sessionId: string, message: string): void {
   }
 }
 
-function readCliConfig(configJson: string): { executable: string, args: string[], env?: Record<string, string> } {
-  try {
-    const parsed = cliTuiConfigSchema.safeParse(JSON.parse(configJson))
-    const config = parsed.success ? parsed.data : {}
-    return {
-      executable: config.executable ?? process.env.SHELL ?? '/bin/sh',
-      args: config.args ?? [],
-      env: config.env,
-    }
-  }
-  catch {
-    return { executable: process.env.SHELL ?? '/bin/sh', args: [] }
-  }
-}
-
 function isClaudeCli(executable: string): boolean {
   const base = executable.split('/').pop() ?? ''
   return base === 'claude' || base.startsWith('claude-')
@@ -142,7 +117,15 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
     })
   }
 
-  const config = readCliConfig(context.profile.configJson)
+  const config = readCliTuiLaunchSpecFromSessionConfig(context.session.configJson)
+  if (!config) {
+    throw new AppError({
+      code: 'terminal_launch_config_missing',
+      status: 409,
+      message: 'Terminal launch configuration is missing for this session',
+      details: { sessionId: input.sessionId },
+    })
+  }
   const args = [...config.args]
 
   if (isClaudeCli(config.executable)) {

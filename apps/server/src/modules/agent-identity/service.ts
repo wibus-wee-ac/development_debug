@@ -6,6 +6,7 @@ import type { SQL } from 'drizzle-orm'
 import { and, desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 
 // ── types ──
@@ -20,7 +21,7 @@ export interface CreateAgentInput {
   description?: string | null
   avatarStyle: string
   avatarSeed: string
-  agentProfileId: string
+  agentProfileId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
@@ -32,7 +33,7 @@ export interface UpdateAgentInput {
   description?: string | null
   avatarStyle?: string
   avatarSeed?: string
-  agentProfileId?: string
+  agentProfileId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
@@ -63,29 +64,30 @@ export function get(id: string): Agent | null {
 }
 
 export function create(input: CreateAgentInput): Agent {
+  const normalized = normalizeAgentInput(input)
   const avatarUrl = buildAvatarUrl(input.avatarStyle, input.avatarSeed)
   try {
     return db()
       .insert(agents)
       .values({
         id: randomUUID(),
-        name: input.name,
-        description: input.description ?? null,
+        name: normalized.name,
+        description: normalized.description,
         avatarUrl,
-        avatarStyle: input.avatarStyle,
-        avatarSeed: input.avatarSeed,
-        agentProfileId: input.agentProfileId,
-        modelId: input.modelId ?? null,
-        thinkingEffort: input.thinkingEffort ?? 'auto',
-        runtimeKind: input.runtimeKind ?? 'standard',
-        configJson: input.configJson ?? '{}',
+        avatarStyle: normalized.avatarStyle,
+        avatarSeed: normalized.avatarSeed,
+        agentProfileId: normalized.agentProfileId,
+        modelId: normalized.modelId,
+        thinkingEffort: normalized.thinkingEffort,
+        runtimeKind: normalized.runtimeKind,
+        configJson: normalized.configJson,
         enabled: true,
       })
       .returning()
       .get()
   }
   catch (error) {
-    throw mapAgentIdentityError(error, input.agentProfileId)
+    throw mapAgentIdentityError(error, normalized.agentProfileId)
   }
 }
 
@@ -95,36 +97,48 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
     return null
   }
 
-  const nextStyle = patch.avatarStyle ?? current.avatarStyle
-  const nextSeed = patch.avatarSeed ?? current.avatarSeed
+  const normalized = normalizeAgentInput({
+    name: patch.name ?? current.name,
+    description: patch.description ?? current.description,
+    avatarStyle: patch.avatarStyle ?? current.avatarStyle,
+    avatarSeed: patch.avatarSeed ?? current.avatarSeed,
+    agentProfileId: patch.agentProfileId ?? current.agentProfileId,
+    modelId: patch.modelId ?? current.modelId,
+    thinkingEffort: patch.thinkingEffort ?? current.thinkingEffort,
+    runtimeKind: patch.runtimeKind ?? current.runtimeKind,
+    configJson: patch.configJson ?? current.configJson,
+  })
+
+  const nextStyle = normalized.avatarStyle
+  const nextSeed = normalized.avatarSeed
 
   const updatePatch: Record<string, unknown> = { updatedAt: Math.floor(Date.now() / 1000) }
   if (patch.name !== undefined) {
-    updatePatch.name = patch.name
+    updatePatch.name = normalized.name
   }
   if (patch.description !== undefined) {
-    updatePatch.description = patch.description
+    updatePatch.description = normalized.description
   }
   if (patch.avatarStyle !== undefined) {
-    updatePatch.avatarStyle = patch.avatarStyle
+    updatePatch.avatarStyle = normalized.avatarStyle
   }
   if (patch.avatarSeed !== undefined) {
-    updatePatch.avatarSeed = patch.avatarSeed
+    updatePatch.avatarSeed = normalized.avatarSeed
   }
   if (patch.agentProfileId !== undefined) {
-    updatePatch.agentProfileId = patch.agentProfileId
+    updatePatch.agentProfileId = normalized.agentProfileId
   }
   if (patch.modelId !== undefined) {
-    updatePatch.modelId = patch.modelId
+    updatePatch.modelId = normalized.modelId
   }
   if (patch.thinkingEffort !== undefined) {
-    updatePatch.thinkingEffort = patch.thinkingEffort
+    updatePatch.thinkingEffort = normalized.thinkingEffort
   }
   if (patch.runtimeKind !== undefined) {
-    updatePatch.runtimeKind = patch.runtimeKind
+    updatePatch.runtimeKind = normalized.runtimeKind
   }
   if (patch.configJson !== undefined) {
-    updatePatch.configJson = patch.configJson
+    updatePatch.configJson = normalized.configJson
   }
   if (patch.enabled !== undefined) {
     updatePatch.enabled = patch.enabled
@@ -137,7 +151,7 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
     return db().update(agents).set(updatePatch).where(eq(agents.id, id)).returning().get() ?? null
   }
   catch (error) {
-    throw mapAgentIdentityError(error, (patch.agentProfileId ?? current.agentProfileId)!)
+    throw mapAgentIdentityError(error, normalized.agentProfileId)
   }
 }
 
@@ -151,9 +165,68 @@ function buildAvatarUrl(style: string | null, seed: string | null): string {
   return `https://api.dicebear.com/9.x/${encodeURIComponent(style ?? 'bottts')}/svg?seed=${encodeURIComponent(seed ?? 'default')}`
 }
 
-function mapAgentIdentityError(error: unknown, agentProfileId: string): Error {
+function normalizeAgentInput(input: CreateAgentInput): Required<Omit<CreateAgentInput, 'agentProfileId'>> & { agentProfileId: string | null, description: string | null } {
+  const runtimeKind = input.runtimeKind ?? 'standard'
+  const configJson = input.configJson ?? '{}'
+
+  if (runtimeKind === 'cli-tui') {
+    if (input.agentProfileId) {
+      throw new AppError({
+        code: 'invalid_agent_input',
+        status: 400,
+        message: 'CLI TUI agents must not reference a provider profile',
+        details: { runtimeKind },
+      })
+    }
+
+    const launch = readCliTuiLaunchSpecFromAgentConfig(configJson)
+    if (!launch) {
+      throw new AppError({
+        code: 'invalid_agent_input',
+        status: 400,
+        message: 'CLI TUI agents require launch configuration',
+        details: { runtimeKind },
+      })
+    }
+
+    return {
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      avatarStyle: input.avatarStyle,
+      avatarSeed: input.avatarSeed,
+      agentProfileId: null,
+      modelId: null,
+      thinkingEffort: 'auto',
+      runtimeKind,
+      configJson,
+    }
+  }
+
+  if (!input.agentProfileId) {
+    throw new AppError({
+      code: 'invalid_agent_input',
+      status: 400,
+      message: 'Provider-backed agents require an agent profile',
+      details: { runtimeKind },
+    })
+  }
+
+  return {
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    avatarStyle: input.avatarStyle,
+    avatarSeed: input.avatarSeed,
+    agentProfileId: input.agentProfileId,
+    modelId: input.modelId ?? null,
+    thinkingEffort: input.thinkingEffort ?? 'auto',
+    runtimeKind,
+    configJson,
+  }
+}
+
+function mapAgentIdentityError(error: unknown, agentProfileId: string | null | undefined): Error {
   const message = error instanceof Error ? error.message : String(error)
-  if (message.includes('FOREIGN KEY constraint failed')) {
+  if (message.includes('FOREIGN KEY constraint failed') && agentProfileId) {
     return new AppError({
       code: 'agent_profile_not_found',
       status: 400,

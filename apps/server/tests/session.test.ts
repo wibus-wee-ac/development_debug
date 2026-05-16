@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  agents,
   agentProfiles,
   backendRuns,
   backendSessionBindings,
@@ -165,6 +166,39 @@ describe('session capability', () => {
         modelId: 'gpt-test',
       }))
 
+      const cliAgentId = randomUUID()
+      d.insert(agents).values({
+        id: cliAgentId,
+        name: 'CLI Agent',
+        avatarStyle: 'bottts-neutral',
+        avatarSeed: 'cli-seed',
+        agentProfileId: null,
+        runtimeKind: 'cli-tui',
+        configJson: JSON.stringify({
+          cliTui: {
+            preset: 'claude-code',
+            executable: 'claude',
+            args: ['--print'],
+          },
+        }),
+      }).run()
+
+      const cliSessionRes = await app.handle(new Request('http://localhost/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId,
+          title: 'CLI Session',
+          agentId: cliAgentId,
+        }),
+      }))
+      expect(cliSessionRes.status).toBe(200)
+      expect(await cliSessionRes.json()).toEqual(expect.objectContaining({
+        agentId: cliAgentId,
+        agentProfileId: null,
+        runtimeKind: 'cli-tui',
+      }))
+
       const runId = randomUUID()
       d.insert(backendRuns).values({
         id: runId,
@@ -231,7 +265,9 @@ describe('session capability', () => {
       expect(await deleteRes.json()).toEqual({ ok: true })
 
       const afterList = await (await app.handle(new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`))).json()
-      expect(afterList).toEqual([])
+      expect(afterList).toEqual([
+        expect.objectContaining({ id: expect.any(String), runtimeKind: 'cli-tui', agentId: cliAgentId }),
+      ])
     }
     finally {
       shutdownInfra()

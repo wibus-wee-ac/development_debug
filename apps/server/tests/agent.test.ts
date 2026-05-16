@@ -88,12 +88,39 @@ describe('agent identity capability', () => {
       expect(agentTwo.avatarUrl).toBe(buildAvatarUrl('identicon', 'seed-two'))
       expect(agentTwo.enabled).toBe(true)
 
+      const createCli = await app.handle(new Request('http://localhost/agents', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Terminal Agent',
+          avatarStyle: 'bottts-neutral',
+          avatarSeed: 'seed-cli',
+          runtimeKind: 'cli-tui',
+          configJson: JSON.stringify({
+            cliTui: {
+              preset: 'claude-code',
+              executable: 'claude',
+              args: ['--dangerously-skip-permissions'],
+            },
+          }),
+        }),
+      }))
+      expect(createCli.status).toBe(200)
+      const cliAgent = await createCli.json()
+      expect(cliAgent).toEqual(expect.objectContaining({
+        name: 'Terminal Agent',
+        runtimeKind: 'cli-tui',
+        agentProfileId: null,
+        modelId: null,
+      }))
+
       const listRes = await app.handle(new Request('http://localhost/agents'))
       expect(listRes.status).toBe(200)
       const list = await listRes.json()
       expect(list).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: agentOne.id }),
         expect.objectContaining({ id: agentTwo.id }),
+        expect.objectContaining({ id: cliAgent.id }),
       ]))
 
       const getRes = await app.handle(new Request(`http://localhost/agents/${agentOne.id}`))
@@ -129,9 +156,10 @@ describe('agent identity capability', () => {
 
       const enabledRes = await app.handle(new Request('http://localhost/agents?enabled=true'))
       expect(enabledRes.status).toBe(200)
-      expect(await enabledRes.json()).toEqual([
+      expect(await enabledRes.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: agentOne.id, enabled: true }),
-      ])
+        expect.objectContaining({ id: cliAgent.id, enabled: true }),
+      ]))
 
       const disabledRes = await app.handle(new Request('http://localhost/agents?enabled=false'))
       expect(disabledRes.status).toBe(200)
@@ -172,6 +200,19 @@ describe('agent identity capability', () => {
       expect(invalidProvider.status).toBe(400)
       const invalidProviderBody = await invalidProvider.json()
       expect(invalidProviderBody.code).toBe('agent_profile_not_found')
+
+      const invalidCli = await app.handle(new Request('http://localhost/agents', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Broken CLI Agent',
+          avatarStyle: 'bottts-neutral',
+          avatarSeed: 'seed-broken-cli',
+          runtimeKind: 'cli-tui',
+        }),
+      }))
+      expect(invalidCli.status).toBe(400)
+      expect((await invalidCli.json()).code).toBe('invalid_agent_input')
 
       const missingUpdate = await app.handle(new Request('http://localhost/agents/missing-agent', {
         method: 'PATCH',

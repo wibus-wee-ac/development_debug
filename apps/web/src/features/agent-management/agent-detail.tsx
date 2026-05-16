@@ -26,7 +26,7 @@ import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { Agent, AgentProfile, AgentRuntimeConfig, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { PROVIDER_ICONS } from './provider-icons'
@@ -61,11 +61,17 @@ const RUNTIME_OPTIONS: { value: RuntimeKind, label: string, description: string,
   },
   {
     value: 'cli-tui',
-    label: 'Claude Code',
-    description: 'Claude Code CLI / TUI — full terminal interface',
-    icon: <ClaudeCodeIcon className="size-4 text-[#D97757]" />,
+    label: 'CLI TUI',
+    description: 'Terminal-native runtime launched from an explicit command',
+    icon: <span className="flex size-5 items-center justify-center rounded bg-foreground/8 text-foreground/70 text-[9px] font-semibold leading-none">&gt;_</span>,
   },
 ]
+
+const CLI_TUI_PRESETS = [
+  { id: 'claude-code', label: 'Claude Code', executable: 'claude' },
+  { id: 'codex', label: 'Codex', executable: 'codex' },
+  { id: 'custom', label: 'Custom', executable: '' },
+] as const
 
 const AVATAR_STYLES = [
   { id: 'bottts-neutral', label: 'Bottts' },
@@ -89,6 +95,10 @@ interface AgentDetailFormValues {
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
   systemPrompt: string
+  cliTuiPreset: string
+  cliTuiExecutable: string
+  cliTuiArguments: string
+  cliTuiEnvText: string
 }
 
 interface AgentDetailUiState {
@@ -137,28 +147,87 @@ function generateSeed(): string {
   return Math.random().toString(36).slice(2, 10)
 }
 
-function parseConfigJson(configJson?: string | null): { systemPrompt: string, baseConfig: Record<string, unknown> } {
+function parseEnvText(env?: Record<string, string>): string {
+  return Object.entries(env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
+}
+
+function stringifyEnvText(text: string): Record<string, string> | undefined {
+  const entries = text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const eqIndex = line.indexOf('=')
+      if (eqIndex <= 0) {
+        return null
+      }
+      return [line.slice(0, eqIndex).trim(), line.slice(eqIndex + 1)] as const
+    })
+    .filter((entry): entry is readonly [string, string] => !!entry && !!entry[0])
+
+  if (entries.length === 0) {
+    return undefined
+  }
+  return Object.fromEntries(entries)
+}
+
+function inferCliPreset(launch: CliTuiLaunchConfig | null): string {
+  if (!launch) {
+    return 'claude-code'
+  }
+  if (launch.preset) {
+    return launch.preset
+  }
+  if (launch.executable === 'claude') {
+    return 'claude-code'
+  }
+  if (launch.executable === 'codex') {
+    return 'codex'
+  }
+  return 'custom'
+}
+
+function parseConfigJson(configJson?: string | null): { systemPrompt: string, cliTui: CliTuiLaunchConfig | null, baseConfig: Record<string, unknown> } {
   try {
-    const parsed = JSON.parse(configJson ?? '{}') as Record<string, unknown>
+    const parsed = JSON.parse(configJson ?? '{}') as AgentRuntimeConfig
     const systemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : ''
-    const { systemPrompt: _sp, skills: _sk, ...baseConfig } = parsed
-    return { systemPrompt, baseConfig }
+    const cliTui = parsed.cliTui && typeof parsed.cliTui.executable === 'string' ? parsed.cliTui : null
+    const { systemPrompt: _sp, skills: _sk, cliTui: _cliTui, ...baseConfig } = parsed
+    return { systemPrompt, cliTui, baseConfig }
   }
   catch {
-    return { systemPrompt: '', baseConfig: {} }
+    return { systemPrompt: '', cliTui: null, baseConfig: {} }
   }
 }
 
-function stringifyConfigJson(systemPrompt: string, baseConfig: Record<string, unknown>): string {
-  const config: Record<string, unknown> = { ...baseConfig }
-  if (systemPrompt.trim()) {
-    config.systemPrompt = systemPrompt
+function stringifyConfigJson(input: {
+  systemPrompt: string
+  baseConfig: Record<string, unknown>
+  runtimeKind: RuntimeKind
+  cliTuiPreset: string
+  cliTuiExecutable: string
+  cliTuiArguments: string
+  cliTuiEnvText: string
+}): string {
+  const config: Record<string, unknown> = { ...input.baseConfig }
+  if (input.systemPrompt.trim()) {
+    config.systemPrompt = input.systemPrompt
+  }
+  if (input.runtimeKind === 'cli-tui') {
+    config.cliTui = {
+      preset: input.cliTuiPreset,
+      executable: input.cliTuiExecutable.trim(),
+      args: input.cliTuiArguments.trim() ? input.cliTuiArguments.split(/\s+/).filter(Boolean) : [],
+      ...(stringifyEnvText(input.cliTuiEnvText) ? { env: stringifyEnvText(input.cliTuiEnvText) } : {}),
+    }
   }
   return JSON.stringify(config)
 }
 
 function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: AgentProfile[]): AgentDetailFormValues {
   const initialConfig = parseConfigJson(agent?.configJson)
+  const cliTuiPreset = inferCliPreset(initialConfig.cliTui)
+  const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === cliTuiPreset)?.executable ?? ''
   return {
     name: agent?.name ?? '',
     description: agent?.description ?? '',
@@ -169,6 +238,10 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
     thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
     runtimeKind: (agent?.runtimeKind as RuntimeKind) ?? 'standard',
     systemPrompt: initialConfig.systemPrompt,
+    cliTuiPreset,
+    cliTuiExecutable: initialConfig.cliTui?.executable ?? presetExecutable,
+    cliTuiArguments: initialConfig.cliTui?.args?.join(' ') ?? '',
+    cliTuiEnvText: parseEnvText(initialConfig.cliTui?.env),
   }
 }
 
@@ -285,6 +358,10 @@ interface AgentDetailDraft {
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
   systemPrompt: string
+  cliTuiPreset: string
+  cliTuiExecutable: string
+  cliTuiArguments: string
+  cliTuiEnvText: string
 }
 
 function AgentDetailHeader({
@@ -486,41 +563,6 @@ function AgentIdentitySection({
         </div>
       </div>
 
-      {/* Provider profile row */}
-      <SettingsDivider />
-      <SettingsRow label="Provider profile" description="Which provider profile this agent uses">
-        <Select
-          value={draft.agentProfileId ?? undefined}
-          onValueChange={(value) => {
-            form.setValue('agentProfileId', value, { shouldDirty: true })
-            form.setValue('modelId', null, { shouldDirty: true })
-          }}
-        >
-          <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-provider-select">
-            <SelectValue placeholder="Select a profile…" />
-          </SelectTrigger>
-          <SelectContent>
-            {enabledProfiles.map(profile => (
-              <SelectItem key={profile.id} value={profile.id} className="text-xs">
-                {profile.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-
-      {/* Model row */}
-      <SettingsDivider />
-      <SettingsRow label="Model" description="Which model the agent uses from the selected profile">
-        <ModelSelect
-          profileId={draft.agentProfileId}
-          modelId={draft.modelId}
-          onModelChange={(id, options) => {
-            form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
-          }}
-        />
-      </SettingsRow>
-
       {/* Runtime row */}
       <SettingsDivider />
       <SettingsRow label="Runtime" description="Which execution mode the agent runs in">
@@ -574,11 +616,113 @@ function AgentIdentitySection({
         </Select>
       </SettingsRow>
 
-      {/* Thinking effort row */}
-      <SettingsDivider />
-      <SettingsRow label="Thinking effort" description="How much reasoning budget to allocate for this agent">
-        <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
-      </SettingsRow>
+      {draft.runtimeKind === 'cli-tui'
+        ? (
+            <>
+              <SettingsDivider />
+              <SettingsRow label="Launch preset" description="A named starting point for the terminal runtime">
+                <Select
+                  value={draft.cliTuiPreset}
+                  onValueChange={(value) => {
+                    form.setValue('cliTuiPreset', value, { shouldDirty: true })
+                    const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === value)?.executable ?? ''
+                    if (value !== 'custom') {
+                      form.setValue('cliTuiExecutable', presetExecutable, { shouldDirty: true })
+                    }
+                  }}
+                >
+                  <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-cli-preset-select">
+                    <SelectValue placeholder="Select a preset…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CLI_TUI_PRESETS.map(preset => (
+                      <SelectItem key={preset.id} value={preset.id} className="text-xs">
+                        {preset.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+
+              <SettingsDivider />
+              <SettingsRow label="Executable" description="The command Cradle will launch for this terminal runtime">
+                <input
+                  type="text"
+                  {...form.register('cliTuiExecutable')}
+                  data-testid="agent-cli-executable"
+                  placeholder="claude"
+                  className="h-8 w-56 rounded-md bg-foreground/4 px-3 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/35"
+                />
+              </SettingsRow>
+
+              <SettingsDivider />
+              <SettingsRow label="Arguments" description="Optional CLI arguments appended to the executable">
+                <input
+                  type="text"
+                  {...form.register('cliTuiArguments')}
+                  data-testid="agent-cli-arguments"
+                  placeholder="--dangerously-skip-permissions"
+                  className="h-8 w-72 rounded-md bg-foreground/4 px-3 text-[12.5px] text-foreground outline-none placeholder:text-muted-foreground/35"
+                />
+              </SettingsRow>
+
+              <SettingsDivider />
+              <SettingsRow label="Environment" description="Optional KEY=value lines injected into the launched process" vertical>
+                <textarea
+                  {...form.register('cliTuiEnvText')}
+                  rows={4}
+                  data-testid="agent-cli-env"
+                  placeholder={'ANTHROPIC_API_KEY=...\nNO_COLOR=1'}
+                  className={cn(
+                    'w-full resize-none rounded-md bg-foreground/4 px-3 py-2.5 text-[12px] outline-none',
+                    'text-foreground placeholder:text-muted-foreground/30',
+                    'transition-colors focus:bg-foreground/5',
+                  )}
+                />
+              </SettingsRow>
+            </>
+          )
+        : (
+            <>
+              <SettingsDivider />
+              <SettingsRow label="Provider profile" description="Which provider profile this agent uses">
+                <Select
+                  value={draft.agentProfileId ?? undefined}
+                  onValueChange={(value) => {
+                    form.setValue('agentProfileId', value, { shouldDirty: true })
+                    form.setValue('modelId', null, { shouldDirty: true })
+                  }}
+                >
+                  <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-provider-select">
+                    <SelectValue placeholder="Select a profile…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {enabledProfiles.map(profile => (
+                      <SelectItem key={profile.id} value={profile.id} className="text-xs">
+                        {profile.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+
+              <SettingsDivider />
+              <SettingsRow label="Model" description="Which model the agent uses from the selected profile">
+                <ModelSelect
+                  profileId={draft.agentProfileId}
+                  modelId={draft.modelId}
+                  onModelChange={(id, options) => {
+                    form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
+                  }}
+                />
+              </SettingsRow>
+
+              <SettingsDivider />
+              <SettingsRow label="Thinking effort" description="How much reasoning budget to allocate for this agent">
+                <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
+              </SettingsRow>
+            </>
+          )}
     </div>
   )
 }
@@ -678,6 +822,10 @@ function useAgentDetailOwner({
     thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
     runtimeKind: watchedValues.runtimeKind ?? 'standard',
     systemPrompt: watchedValues.systemPrompt ?? '',
+    cliTuiPreset: watchedValues.cliTuiPreset ?? 'claude-code',
+    cliTuiExecutable: watchedValues.cliTuiExecutable ?? '',
+    cliTuiArguments: watchedValues.cliTuiArguments ?? '',
+    cliTuiEnvText: watchedValues.cliTuiEnvText ?? '',
   }
   const [uiState, dispatch] = useReducer(agentDetailUiReducer, INITIAL_AGENT_DETAIL_UI_STATE)
   const { avatarSpinKey, saveState, createSaving, saveError } = uiState
@@ -710,6 +858,9 @@ function useAgentDetailOwner({
     if (agent || !enabledProfiles[0]) {
       return
     }
+    if (form.getValues('runtimeKind') === 'cli-tui') {
+      return
+    }
     if (form.getValues('agentProfileId') !== null) {
       return
     }
@@ -724,7 +875,8 @@ function useAgentDetailOwner({
     }
 
     const currentValues = form.getValues()
-    if (!currentValues.name.trim() || !currentValues.agentProfileId) {
+    const requiresProfile = currentValues.runtimeKind !== 'cli-tui'
+    if (!currentValues.name.trim() || (requiresProfile && !currentValues.agentProfileId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
       return
     }
 
@@ -737,7 +889,15 @@ function useAgentDetailOwner({
     dispatch({ type: 'save/state', state: 'saving' })
     dispatch({ type: 'save/error', error: null })
     try {
-      const configJson = stringifyConfigJson(currentValues.systemPrompt, persistedConfig.baseConfig)
+      const configJson = stringifyConfigJson({
+        systemPrompt: currentValues.systemPrompt,
+        baseConfig: persistedConfig.baseConfig,
+        runtimeKind: currentValues.runtimeKind,
+        cliTuiPreset: currentValues.cliTuiPreset,
+        cliTuiExecutable: currentValues.cliTuiExecutable,
+        cliTuiArguments: currentValues.cliTuiArguments,
+        cliTuiEnvText: currentValues.cliTuiEnvText,
+      })
       await updateAgent.mutateAsync({
         id: agent.id,
         patch: {
@@ -745,9 +905,9 @@ function useAgentDetailOwner({
           description: normalizedValues.description || null,
           avatarStyle: currentValues.avatarStyle,
           avatarSeed: currentValues.avatarSeed,
-          agentProfileId: currentValues.agentProfileId,
-          modelId: currentValues.modelId,
-          thinkingEffort: currentValues.thinkingEffort,
+          agentProfileId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.agentProfileId,
+          modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
+          thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
           runtimeKind: currentValues.runtimeKind,
           configJson,
         },
@@ -789,7 +949,8 @@ function useAgentDetailOwner({
 
   const handleCreate = useCallback(async () => {
     const currentValues = form.getValues()
-    if (!currentValues.name.trim() || !currentValues.agentProfileId) {
+    const requiresProfile = currentValues.runtimeKind !== 'cli-tui'
+    if (!currentValues.name.trim() || (requiresProfile && !currentValues.agentProfileId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
       return
     }
 
@@ -807,11 +968,19 @@ function useAgentDetailOwner({
         description: normalizedValues.description || null,
         avatarStyle: currentValues.avatarStyle,
         avatarSeed: currentValues.avatarSeed,
-        agentProfileId: currentValues.agentProfileId,
-        modelId: currentValues.modelId,
-        thinkingEffort: currentValues.thinkingEffort,
+        agentProfileId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.agentProfileId,
+        modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
+        thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
         runtimeKind: currentValues.runtimeKind,
-        configJson: stringifyConfigJson(currentValues.systemPrompt, {}),
+        configJson: stringifyConfigJson({
+          systemPrompt: currentValues.systemPrompt,
+          baseConfig: {},
+          runtimeKind: currentValues.runtimeKind,
+          cliTuiPreset: currentValues.cliTuiPreset,
+          cliTuiExecutable: currentValues.cliTuiExecutable,
+          cliTuiArguments: currentValues.cliTuiArguments,
+          cliTuiEnvText: currentValues.cliTuiEnvText,
+        }),
       } satisfies CreateAgentInput)
       onCreated?.(created.id)
     }
@@ -846,7 +1015,7 @@ function useAgentDetailOwner({
     saveState,
     createSaving,
     saveError,
-    createDisabled: !isDirty || createSaving || !draft.name.trim() || !draft.agentProfileId,
+    createDisabled: !isDirty || createSaving || !draft.name.trim() || (draft.runtimeKind === 'cli-tui' ? !draft.cliTuiExecutable.trim() : !draft.agentProfileId),
     handleCreate,
     handleDelete,
     shuffleAvatar,

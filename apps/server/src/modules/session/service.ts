@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto'
 
 import type { Message, Session } from '@cradle/db'
-import type { RuntimeKind } from '../providers/types'
-import {
+import { agents,
   backendRuns,
   backendSessionBindings,
   backendTimelineEvents,
   messages,
-  sessions,
-} from '@cradle/db'
+  sessions } from '@cradle/db'
+import type { RuntimeKind } from '../providers/types'
 import { desc, eq, inArray } from 'drizzle-orm'
 
+import { AppError } from '../../errors/app-error'
+import { buildSessionRuntimeConfigJson, readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 
 // ── session CRUD ──
@@ -72,27 +73,109 @@ export function create(input: {
   id?: string
   workspaceId?: string | null
   title: string
-  agentProfileId: string
+  agentProfileId?: string | null
   runtimeKind?: RuntimeKind
   agentId?: string | null
   linkedIssueId?: string | null
 }): SessionView {
   const id = input.id ?? randomUUID()
+  const resolved = resolveSessionCreateInput(input)
   const created = db()
     .insert(sessions)
     .values({
       id,
       workspaceId: input.workspaceId ?? null,
       title: input.title,
-      agentProfileId: input.agentProfileId,
-      runtimeKind: input.runtimeKind ?? 'standard',
-      agentId: input.agentId ?? null,
+      agentProfileId: resolved.agentProfileId,
+      runtimeKind: resolved.runtimeKind,
+      agentId: resolved.agentId,
+      configJson: resolved.configJson,
       linkedIssueId: input.linkedIssueId ?? null,
     })
     .returning()
     .get()
 
   return toSessionView(created, null)
+}
+
+function resolveSessionCreateInput(input: {
+  agentProfileId?: string | null
+  runtimeKind?: RuntimeKind
+  agentId?: string | null
+}): {
+  agentProfileId: string | null
+  runtimeKind: RuntimeKind
+  agentId: string | null
+  configJson: string
+} {
+  if (input.agentId) {
+    const agent = db().select().from(agents).where(eq(agents.id, input.agentId)).get()
+    if (!agent) {
+      throw new AppError({
+        code: 'agent_not_found',
+        status: 404,
+        message: 'Agent not found',
+        details: { agentId: input.agentId },
+      })
+    }
+
+    if (input.runtimeKind && input.runtimeKind !== agent.runtimeKind) {
+      throw new AppError({
+        code: 'invalid_session_input',
+        status: 400,
+        message: 'Session runtime must match the selected agent runtime',
+        details: { agentId: input.agentId, runtimeKind: input.runtimeKind, agentRuntimeKind: agent.runtimeKind },
+      })
+    }
+
+    if (agent.runtimeKind === 'cli-tui') {
+      const launch = readCliTuiLaunchSpecFromAgentConfig(agent.configJson)
+      if (!launch) {
+        throw new AppError({
+          code: 'invalid_session_input',
+          status: 400,
+          message: 'CLI TUI session requires launch configuration on the selected agent',
+          details: { agentId: input.agentId },
+        })
+      }
+      return {
+        agentProfileId: null,
+        runtimeKind: agent.runtimeKind,
+        agentId: agent.id,
+        configJson: buildSessionRuntimeConfigJson({ cliTuiLaunch: launch }),
+      }
+    }
+
+    return {
+      agentProfileId: agent.agentProfileId,
+      runtimeKind: agent.runtimeKind,
+      agentId: agent.id,
+      configJson: '{}',
+    }
+  }
+
+  if ((input.runtimeKind ?? 'standard') === 'cli-tui') {
+    throw new AppError({
+      code: 'invalid_session_input',
+      status: 400,
+      message: 'CLI TUI sessions must be created from an agent',
+    })
+  }
+
+  if (!input.agentProfileId) {
+    throw new AppError({
+      code: 'invalid_session_input',
+      status: 400,
+      message: 'Session requires an agent profile or an agent',
+    })
+  }
+
+  return {
+    agentProfileId: input.agentProfileId,
+    runtimeKind: input.runtimeKind ?? 'standard',
+    agentId: input.agentId ?? null,
+    configJson: '{}',
+  }
 }
 
 export function update(input: { id: string, title?: string, pinned?: boolean }): SessionView | null {

@@ -50,7 +50,8 @@ export const SessionModel = {
   createBody: t.Object({
     workspaceId: t.Optional(t.String({ minLength: 1 })),
     title: t.String({ minLength: 1 }),
-    agentProfileId: t.String({ minLength: 1 }),
+    agentProfileId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+    agentId: t.Optional(t.String({ minLength: 1 })),
     runtimeKind: t.Optional(runtimeKindSchema),
     id: t.Optional(t.String()),
   }),

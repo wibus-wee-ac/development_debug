@@ -21,7 +21,7 @@ import { Separator } from '~/components/ui/separator'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile } from '~/lib/types'
+import type { Agent, AgentProfile, CliTuiLaunchConfig } from '~/lib/types'
 
 import { AgentDetailPage } from './agent-detail'
 import { StatusDot } from './agent-runtime-settings'
@@ -32,6 +32,16 @@ const DRAFT_ID = '__agent-draft__'
 
 function buildAvatarUrl(style: string, seed: string): string {
   return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
+}
+
+function readCliTuiLaunch(configJson?: string | null): CliTuiLaunchConfig | null {
+  try {
+    const parsed = JSON.parse(configJson ?? '{}') as { cliTui?: CliTuiLaunchConfig }
+    return parsed.cliTui && typeof parsed.cliTui.executable === 'string' ? parsed.cliTui : null
+  }
+  catch {
+    return null
+  }
 }
 
 // ── Sidebar row ───────────────────────────────────────────────────────────────
@@ -49,7 +59,10 @@ function AgentSidebarRow({
 }) {
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
   const profile = profiles.find(p => p.id === agent.agentProfileId)
-  const subtitle = [profile?.name, agent.modelId].filter(Boolean).join(' ·\n') || undefined
+  const cliTuiLaunch = agent.runtimeKind === 'cli-tui' ? readCliTuiLaunch(agent.configJson) : null
+  const subtitle = agent.runtimeKind === 'cli-tui'
+    ? ['CLI TUI', cliTuiLaunch?.preset ?? cliTuiLaunch?.executable].filter(Boolean).join(' ·\n') || 'CLI TUI'
+    : [profile?.name, agent.modelId].filter(Boolean).join(' ·\n') || undefined
 
   return (
     <button

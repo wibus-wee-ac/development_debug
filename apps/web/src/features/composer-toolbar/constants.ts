@@ -17,5 +17,5 @@ export const RUNTIME_KIND_OPTIONS: { value: RuntimeKind, label: string, descript
   { value: 'standard', label: 'Standard', description: 'Direct API calls' },
   { value: 'claude-agent', label: 'Claude Agent', description: 'Agentic tool-use loop' },
   { value: 'codex', label: 'Codex', description: 'Code-focused autonomous' },
-  { value: 'cli-tui', label: 'Claude Code', description: 'Full terminal interface' },
+  { value: 'cli-tui', label: 'CLI TUI', description: 'Agent-first terminal runtime' },
 ]

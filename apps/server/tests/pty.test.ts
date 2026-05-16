@@ -36,13 +36,17 @@ async function createCliTuiSession(app: ElysiaApp, workspaceRoot: string) {
     path: workspaceRoot,
   }).run()
 
-  insertAgentProfileRow({
-    id: 'profile-cli-tui',
-    name: 'CLI TUI Profile',
-    providerKind: 'openai-compatible',
+  insertAgentRow({
+    id: 'agent-cli-tui',
+    name: 'CLI TUI Agent',
+    avatarStyle: 'bottts-neutral',
+    avatarSeed: 'cli-seed',
+    runtimeKind: 'cli-tui',
     configJson: JSON.stringify({
-      executable: process.execPath,
-      args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+      cliTui: {
+        executable: process.execPath,
+        args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+      },
     }),
   })
 
@@ -50,8 +54,14 @@ async function createCliTuiSession(app: ElysiaApp, workspaceRoot: string) {
     id: 'session-cli-tui',
     workspaceId: 'workspace-pty',
     title: 'CLI Session',
-    agentProfileId: 'profile-cli-tui',
+    agentId: 'agent-cli-tui',
     runtimeKind: 'cli-tui',
+    configJson: JSON.stringify({
+      cliTuiLaunch: {
+        executable: process.execPath,
+        args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+      },
+    }),
   })
 }
 
@@ -119,18 +129,10 @@ describe('pty capability HTTP control plane', () => {
         path: workspaceRoot,
       }).run()
 
-      insertAgentProfileRow({
-        id: 'profile-chat-like',
-        name: 'OpenAI Compatible',
-        providerKind: 'openai-compatible',
-        configJson: JSON.stringify({ baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' }),
-      })
-
       insertSessionRow({
         id: 'session-non-cli',
         workspaceId: 'workspace-pty',
         title: 'Non CLI Session',
-        agentProfileId: 'profile-chat-like',
       })
 
       const missingSession = await app.handle(new Request('http://localhost/terminal-sessions/missing/start-or-attach', {
@@ -171,18 +173,18 @@ describe('pty capability HTTP control plane', () => {
   })
 })
 
-function insertSessionRow(input: { id: string, workspaceId: string, title: string, agentProfileId: string, runtimeKind?: string }): void {
+function insertSessionRow(input: { id: string, workspaceId: string, title: string, agentProfileId?: string | null, agentId?: string | null, runtimeKind?: string, configJson?: string }): void {
   const now = Math.floor(Date.now() / 1000)
   db().run(sql`
-    INSERT INTO sessions (id, workspace_id, title, agent_profile_id, runtime_kind, pinned, created_at, updated_at)
-    VALUES (${input.id}, ${input.workspaceId}, ${input.title}, ${input.agentProfileId}, ${input.runtimeKind ?? 'standard'}, 0, ${now}, ${now})
+    INSERT INTO sessions (id, workspace_id, title, agent_profile_id, runtime_kind, agent_id, config_json, pinned, created_at, updated_at)
+    VALUES (${input.id}, ${input.workspaceId}, ${input.title}, ${input.agentProfileId ?? null}, ${input.runtimeKind ?? 'standard'}, ${input.agentId ?? null}, ${input.configJson ?? '{}'}, 0, ${now}, ${now})
   `)
 }
 
-function insertAgentProfileRow(input: { id: string, name: string, providerKind: string, configJson: string }): void {
+function insertAgentRow(input: { id: string, name: string, avatarStyle: string, avatarSeed: string, runtimeKind: string, configJson: string }): void {
   const now = Math.floor(Date.now() / 1000)
   db().run(sql`
-    INSERT INTO agent_profiles (id, name, provider_kind, enabled, config_json, credential_ref, created_at, updated_at)
-    VALUES (${input.id}, ${input.name}, ${input.providerKind}, 1, ${input.configJson}, NULL, ${now}, ${now})
+    INSERT INTO agents (id, name, avatar_style, avatar_seed, runtime_kind, config_json, enabled, created_at, updated_at)
+    VALUES (${input.id}, ${input.name}, ${input.avatarStyle}, ${input.avatarSeed}, ${input.runtimeKind}, ${input.configJson}, 1, ${now}, ${now})
   `)
 }

@@ -101,6 +101,9 @@ function getSessionRunContext(sessionId: string): SessionRunContext | null {
   if (!session) {
     return null
   }
+  if (!session.agentProfileId) {
+    return null
+  }
   const workspace = session.workspaceId
     ? db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
     : null
