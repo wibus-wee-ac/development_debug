@@ -2,7 +2,7 @@
 // Output: Issue-agent session/activity tables plus inferred row types
 // Position: Issue-agent persistence schema module used by delegation flows and agent runtime orchestration
 
-import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { sessions } from './chat'
 import { agentProfiles } from './identity'
@@ -23,7 +23,11 @@ export const agentSessions = sqliteTable('agent_sessions', {
     enum: ['created', 'active', 'completed', 'stopped', 'failed'],
   }).notNull().default('created'),
   ...timestamps(),
-})
+}, table => ({
+  byIssue: index('agent_sessions_issue_id_idx').on(table.issueId),
+  byAgentProfile: index('agent_sessions_agent_profile_id_idx').on(table.agentProfileId),
+  byChatSession: index('agent_sessions_chat_session_id_idx').on(table.chatSessionId),
+}))
 
 export const agentActivities = sqliteTable('agent_activities', {
   id: textPk(),
@@ -37,7 +41,9 @@ export const agentActivities = sqliteTable('agent_activities', {
   signal: text('signal'),
   signalMetadata: text('signal_metadata'),
   ...createdAt(),
-})
+}, table => ({
+  byAgentSession: index('agent_activities_agent_session_id_idx').on(table.agentSessionId),
+}))
 
 export type AgentSession = typeof agentSessions.$inferSelect
 export type NewAgentSession = typeof agentSessions.$inferInsert

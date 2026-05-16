@@ -2,7 +2,7 @@
 // Output: Backend binding/run/capability tables plus inferred row types
 // Position: Control-plane persistence schema owned by Cradle's backend session model
 
-import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { messages, sessions } from './chat'
 import { agentProfiles } from './identity'
@@ -24,7 +24,10 @@ export const backendSessionBindings = sqliteTable('backend_session_bindings', {
   backendStateSnapshot: text('backend_state_snapshot'),
   requestedModelId: text('requested_model_id'),
   ...timestamps(),
-})
+}, table => ({
+  byAgentProfile: index('backend_session_bindings_agent_profile_id_idx').on(table.agentProfileId),
+  byRuntimeKind: index('backend_session_bindings_runtime_kind_idx').on(table.runtimeKind),
+}))
 
 export const backendRuns = sqliteTable('backend_runs', {
   id: textPk(),
@@ -45,7 +48,12 @@ export const backendRuns = sqliteTable('backend_runs', {
   errorText: text('error_text'),
   startedAt: int('started_at').notNull(),
   finishedAt: int('finished_at'),
-})
+}, table => ({
+  byBinding: index('backend_runs_binding_id_idx').on(table.bindingId),
+  byChatSession: index('backend_runs_chat_session_id_idx').on(table.chatSessionId),
+  byMessage: index('backend_runs_message_id_idx').on(table.messageId),
+  byStartedAt: index('backend_runs_started_at_idx').on(table.startedAt),
+}))
 
 export const backendCapabilitySnapshots = sqliteTable('backend_capability_snapshots', {
   id: textPk(),

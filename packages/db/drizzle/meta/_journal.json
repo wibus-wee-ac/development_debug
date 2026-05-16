@@ -113,6 +113,13 @@
       "when": 1778930520000,
       "tag": "0015_message_snapshot_chat_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1778942303759,
+      "tag": "0016_hot_path_indexes",
+      "breakpoints": true
     }
   ]
 }

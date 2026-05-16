@@ -21,6 +21,8 @@ export class DbProvider {
       try {
         this.sqlite = new Database(dbPath)
         this.sqlite.pragma('foreign_keys = ON')
+        this.sqlite.pragma('journal_mode = WAL')
+        this.sqlite.pragma('busy_timeout = 5000')
         this.db = drizzle(this.sqlite, { schema: dbSchema })
       }
       catch (error) {

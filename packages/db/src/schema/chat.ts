@@ -2,7 +2,7 @@
 // Output: Chat/session/message/usage tables and inferred row types
 // Position: Chat persistence schema module used by chat, search, and linked-session flows
 
-import { int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { agentProfiles, agents } from './identity'
 import { kanbanIssues } from './kanban'
@@ -26,7 +26,11 @@ export const sessions = sqliteTable('sessions', {
   pinned: int('pinned').notNull().default(0),
   ptyStartedAt: int('pty_started_at'),
   ...timestamps(),
-})
+}, table => ({
+  byWorkspace: index('sessions_workspace_id_idx').on(table.workspaceId),
+  byAgentProfile: index('sessions_agent_profile_id_idx').on(table.agentProfileId),
+  byLinkedIssue: index('sessions_linked_issue_id_idx').on(table.linkedIssueId),
+}))
 
 export const messages = sqliteTable('messages', {
   id: textPk(),
@@ -45,7 +49,11 @@ export const messages = sqliteTable('messages', {
   messageJson: text('message_json').notNull(),
   errorText: text('error_text'),
   ...timestamps(),
-})
+}, table => ({
+  bySession: index('messages_session_id_idx').on(table.sessionId),
+  bySessionCreatedAt: index('messages_session_created_at_idx').on(table.sessionId, table.createdAt),
+  byParentToolCall: index('messages_parent_tool_call_id_idx').on(table.parentToolCallId),
+}))
 
 export const usageLogs = sqliteTable('usage_logs', {
   id: textPk(),
@@ -60,7 +68,11 @@ export const usageLogs = sqliteTable('usage_logs', {
   completionTokens: int('completion_tokens').notNull().default(0),
   totalTokens: int('total_tokens').notNull().default(0),
   ...createdAt(),
-})
+}, table => ({
+  bySession: index('usage_logs_session_id_idx').on(table.sessionId),
+  byMessage: index('usage_logs_message_id_idx').on(table.messageId),
+  byAgentProfile: index('usage_logs_agent_profile_id_idx').on(table.agentProfileId),
+}))
 
 export const stepUsage = sqliteTable('step_usage', {
   id: textPk(),
@@ -76,7 +88,10 @@ export const stepUsage = sqliteTable('step_usage', {
   totalTokens: int('total_tokens').notNull().default(0),
   estimatedCostUsd: real('estimated_cost_usd').notNull().default(0),
   ...createdAt(),
-})
+}, table => ({
+  byRun: index('step_usage_run_id_idx').on(table.runId),
+  bySession: index('step_usage_session_id_idx').on(table.sessionId),
+}))
 
 export const approvalAudit = sqliteTable('approval_audit', {
   id: textPk(),
