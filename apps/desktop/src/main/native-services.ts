@@ -45,6 +45,10 @@ class NativeService extends IpcService {
 
   @IpcMethod()
   async openExternal(url: string): Promise<void> {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:' && parsed.protocol !== 'mailto:') {
+      throw new Error(`Unsupported external URL scheme: ${parsed.protocol}`)
+    }
     await shell.openExternal(url)
   }
 
@@ -93,6 +97,29 @@ class WindowService extends IpcService {
       throw new Error('WindowManager not initialized')
     }
     await windowManagerRef.openDevtoolWindow()
+  }
+
+  @IpcMethod()
+  async minimize(): Promise<void> {
+    windowManagerRef?.getMainWindow()?.minimize()
+  }
+
+  @IpcMethod()
+  async maximize(): Promise<void> {
+    const win = windowManagerRef?.getMainWindow()
+    if (!win) {
+      return
+    }
+    if (win.isMaximized()) {
+      win.unmaximize()
+      return
+    }
+    win.maximize()
+  }
+
+  @IpcMethod()
+  async close(): Promise<void> {
+    windowManagerRef?.getMainWindow()?.close()
   }
 }
 
