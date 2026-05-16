@@ -75,6 +75,8 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
       e.preventDefault()
       handleSubmit()
     } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
       onClose()
     }
   }

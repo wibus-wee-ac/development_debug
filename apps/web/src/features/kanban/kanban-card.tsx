@@ -51,7 +51,7 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
         role="button"
         tabIndex={0}
         onClick={(e) => { e.stopPropagation(); onClick() }}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onClick() } }}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onClick() } }}
         data-testid={`issue-card-${issue.id}`}
         className={cn(
           'bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border shadow-xs dark:border-muted',

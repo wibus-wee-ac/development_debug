@@ -1,11 +1,12 @@
 // Input: boardId, workspaceId, selectedIssueId, onSelectIssue
-// Output: Main kanban view with toolbar + board/list layout
+// Output: Main kanban view with toolbar + board/list layout + peek panel
 // Position: Entry point for the kanban feature UI
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
+import { IssuePeekPanel } from './issue-peek-panel'
 import { KanbanBoard } from './kanban-board'
 import { KanbanList } from './kanban-list'
 import { KanbanToolbar } from './kanban-toolbar'
@@ -25,6 +26,13 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const [searchQuery, setSearchQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [createDefaultStatusId, setCreateDefaultStatusId] = useState<string | undefined>()
+
+  // Peek state
+  const [peekIssueId, setPeekIssueId] = useState<string | null>(null)
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1)
+  const spaceDownTimeRef = useRef<number>(0)
+  const peekWasOpenRef = useRef(false)
+  const filteredIssuesRef = useRef<typeof allIssues>([])
 
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -96,6 +104,101 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     setCreateDialogOpen(true)
   }, [config.groupBy])
 
+  // Keep filteredIssues ref in sync
+  useEffect(() => {
+    filteredIssuesRef.current = filteredIssues
+  }, [filteredIssues])
+
+  // Keyboard navigation for peek
+  useEffect(() => {
+    if (selectedIssueId) return // Don't handle keys when in full detail view
+
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      // Skip if typing in input/textarea/contentEditable
+      if (
+        target
+        && (target.tagName === 'INPUT'
+          || target.tagName === 'TEXTAREA'
+          || target.tagName === 'SELECT'
+          || target.isContentEditable
+          || target.closest('[data-slot="dialog-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"]'))
+      ) {
+        return
+      }
+
+      const issues = filteredIssuesRef.current
+      if (issues.length === 0) return
+
+      // J or Down arrow: move focus down
+      if ((event.key === 'j' || event.key === 'ArrowDown') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        setFocusedIndex((prev) => {
+          const next = prev < 0 ? 0 : Math.min(prev + 1, issues.length - 1)
+          if (peekIssueId) setPeekIssueId(issues[next]?.id ?? null)
+          return next
+        })
+        return
+      }
+
+      // K or Up arrow: move focus up
+      if ((event.key === 'k' || event.key === 'ArrowUp') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        setFocusedIndex((prev) => {
+          const next = prev < 0 ? 0 : Math.max(prev - 1, 0)
+          if (peekIssueId) setPeekIssueId(issues[next]?.id ?? null)
+          return next
+        })
+        return
+      }
+
+      // Space: toggle or hold peek
+      if (event.key === ' ' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.repeat) {
+        event.preventDefault()
+        spaceDownTimeRef.current = Date.now()
+        peekWasOpenRef.current = !!peekIssueId
+
+        if (focusedIndex >= 0 && focusedIndex < issues.length) {
+          setPeekIssueId(issues[focusedIndex].id)
+        }
+        return
+      }
+
+      // Escape: close peek
+      if (event.key === 'Escape' && peekIssueId && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        setPeekIssueId(null)
+        return
+      }
+    }
+
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.key === ' ') {
+        const holdDuration = Date.now() - spaceDownTimeRef.current
+        // If held for >300ms, close on release; if tapped, toggle
+        if (holdDuration > 300) {
+          setPeekIssueId(null)
+        } else if (peekWasOpenRef.current) {
+          setPeekIssueId(null)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [selectedIssueId, peekIssueId, focusedIndex])
+
+  const focusedIssueId = useMemo(() => {
+    if (focusedIndex >= 0 && focusedIndex < filteredIssues.length) {
+      return filteredIssues[focusedIndex].id
+    }
+    return null
+  }, [focusedIndex, filteredIssues])
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden h-full">
       {selectedIssueId ? (
@@ -134,8 +237,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               statuses={statuses}
               milestones={milestones}
               config={config}
-              selectedIssueId={selectedIssueId}
+              selectedIssueId={focusedIssueId}
               onIssueClick={handleIssueClick}
+              onMoveIssue={handleMoveIssue}
               onCreateIssue={handleCreateIssue}
             />
           )}
@@ -146,6 +250,17 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
             open={createDialogOpen}
             onClose={() => setCreateDialogOpen(false)}
           />
+
+          {/* Peek panel */}
+          {peekIssueId && (
+            <div className="absolute top-0 right-0 bottom-0 z-40 w-[min(720px,50%)] border-l border-border shadow-2xl">
+              <IssuePeekPanel
+                issueId={peekIssueId}
+                workspaceId={workspaceId}
+                onClose={() => setPeekIssueId(null)}
+              />
+            </div>
+          )}
         </>
       )}
     </div>
