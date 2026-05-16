@@ -54,7 +54,7 @@ export function AppSidebar() {
   }, [isSettings, closeSettings, openSettings])
 
   useShortcut('toggle-settings', { meta: true, key: ',' }, handleToggleSettings)
-  useShortcut('exit-settings', { key: 'Escape' }, closeSettings, isSettings)
+  useShortcut('exit-settings', { meta: true, key: 'Escape' }, closeSettings, isSettings)
   useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebar)
 
   // Settings drill-in forces sidebar open; main mode respects user's collapse preference

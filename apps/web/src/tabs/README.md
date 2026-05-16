@@ -9,7 +9,7 @@ The registry exports the store instance consumed by the rest of the app.
 ## Files
 
 - **registry.ts**: Central registry mapping type strings to tab definitions; exports `useCradleTabStore`
-- **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates inside the current tab with tab-local history, while `openNewTab()` keeps explicit fresh-tab behavior
+- **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates inside the current tab with tab-local history, while `openNewTab()` keeps explicit fresh-tab behavior.
 - **reconcile-persisted-tabs.ts**: 启动时清理 dangling chat/workspace tabs 的纯函数，防止 localStorage 里的旧 session/workspace 引用继续污染 UI
 - **reconcile-persisted-tabs.test.ts**: 验证无效 chat/workspace tabs 会被剔除并修复 active tab
 - **home.tab.tsx**: Home/dashboard tab (pinned, no params)

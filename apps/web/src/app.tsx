@@ -126,7 +126,7 @@ function AppRuntime() {
                     className="absolute inset-0 bg-background"
                     data-testid="settings-tab-overlay"
                     onKeyDownCapture={(event) => {
-                      if (event.key === 'Escape' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                      if (event.key === 'Escape' && event.metaKey && !event.ctrlKey && !event.altKey) {
                         event.preventDefault()
                         closeSettings()
                       }
