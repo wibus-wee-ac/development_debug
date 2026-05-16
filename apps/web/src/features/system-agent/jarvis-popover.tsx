@@ -8,13 +8,11 @@ import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 
 import { formatContextForAgent } from './format-context'
 import { collectContextSnapshot } from './use-context-snapshot'
-
-const SERVER_BASE = getServerUrl()
+import { useJarvisPreferences } from './use-jarvis-preferences'
 
 export function JarvisPopover({
   open,
@@ -26,7 +24,6 @@ export function JarvisPopover({
   const [input, setInput] = React.useState('')
   const [jarvisSessionId, setJarvisSessionId] = React.useState<string | null>(null)
   const [creating, setCreating] = React.useState(false)
-  const [profileId, setProfileId] = React.useState<string | null>(null)
   const [pendingInitialText, setPendingInitialText] = React.useState<string | null>(null)
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const panelRef = React.useRef<HTMLDivElement>(null)
@@ -34,20 +31,7 @@ export function JarvisPopover({
 
   const jarvisExpanded = useLayoutStore(s => s.jarvisExpanded)
   const setJarvisExpanded = useLayoutStore(s => s.setJarvisExpanded)
-
-  // Load profile ID from Jarvis preferences
-  React.useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch(`${SERVER_BASE}/preferences/jarvis`)
-        if (res.ok) {
-          const data = await res.json() as { profileId: string | null }
-          setProfileId(data.profileId)
-        }
-      }
-      catch { /* ignore */ }
-    })()
-  }, [])
+  const { prefs } = useJarvisPreferences()
 
   const { messages, status, error, sendMessage, stop } = useChatSession(jarvisSessionId)
   const isStreaming = status === 'streaming'
@@ -119,7 +103,7 @@ export function JarvisPopover({
 
   const handleSend = React.useCallback(async () => {
     const text = input.trim()
-    if (!text || isStreaming || !profileId || creating) {
+    if (!text || isStreaming || !(prefs?.profileId) || creating) {
       return
     }
 
@@ -143,7 +127,7 @@ export function JarvisPopover({
         const res = await postSessions({
           body: {
             title: 'Jarvis',
-            agentProfileId: profileId,
+            agentProfileId: prefs!.profileId!,
             runtimeKind: 'jar-core',
           },
         })
@@ -167,7 +151,7 @@ export function JarvisPopover({
     }
 
     await sendMessage(fullText)
-  }, [input, isStreaming, profileId, creating, jarvisSessionId, sendMessage])
+  }, [input, isStreaming, prefs, creating, jarvisSessionId, sendMessage])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) {
@@ -265,7 +249,7 @@ export function JarvisPopover({
                   <div className="flex size-10 items-center justify-center rounded-xl bg-muted mb-4">
                     <MousePointer2Icon className="size-4.5 text-foreground" />
                   </div>
-                  {profileId === null
+                  {!(prefs?.profileId)
                     ? (
                       <>
                         <p className="text-[13px] font-medium text-foreground mb-1.5">No profile configured</p>
@@ -339,9 +323,9 @@ export function JarvisPopover({
                   el.style.height = `${Math.min(el.scrollHeight, 120)}px`
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder={!profileId ? 'Configure a profile in Settings → Jarvis' : 'Ask Jarvis...'}
+                placeholder={!(prefs?.profileId) ? 'Configure a profile in Settings → Jarvis' : 'Ask Jarvis...'}
                 rows={1}
-                disabled={!profileId}
+                disabled={!(prefs?.profileId)}
                 className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none min-h-9 max-h-30 rounded-t-xl disabled:opacity-50"
               />
               <div className="flex items-center justify-end px-2.5 pb-2">
@@ -355,7 +339,7 @@ export function JarvisPopover({
                     <Button
                       variant="default"
                       size="icon-xs"
-                      disabled={!input.trim() || creating || !profileId}
+                      disabled={!input.trim() || creating || !(prefs?.profileId)}
                       onClick={() => void handleSend()}
                       aria-label="Send"
                     >

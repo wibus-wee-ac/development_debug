@@ -72,7 +72,7 @@ export class SystemAgentProvider implements ChatRuntime {
     const baseConfig = parseConfigWith(input.profile.configJson, BaseProviderConfig)
 
     const provider = config.provider ?? 'openai'
-    const model = config.model ?? jarvisPrefs.model ?? baseConfig.model ?? input.modelId
+    const model = jarvisPrefs.model ?? config.model ?? baseConfig.model ?? input.modelId
     const baseUrl = config.baseUrl ?? baseConfig.baseUrl
     if (!model) {
       throw new Error('No model configured for Jarvis. Set a model in Settings → Jarvis.')

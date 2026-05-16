@@ -1,19 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import { getServerUrl } from '~/lib/electron'
+import { type JarvisPreferences, useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
-
-const SERVER_BASE = getServerUrl()
-
-interface JarvisPreferences {
-  profileId: string | null
-  model?: string
-  thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-}
 
 const THINKING_LEVELS = [
   { value: 'minimal', label: 'Minimal' },
@@ -24,40 +14,9 @@ const THINKING_LEVELS = [
 ] as const
 
 export function JarvisSettings() {
-  const [prefs, setPrefs] = useState<JarvisPreferences | null>(null)
-  const [saving, setSaving] = useState(false)
+  const { prefs, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { profiles } = useAgentProfiles()
   const { models, isLoading: isLoadingModels } = useAgentModels(prefs?.profileId ?? null)
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch(`${SERVER_BASE}/preferences/jarvis`)
-        if (res.ok) {
-          const data = await res.json() as JarvisPreferences
-          setPrefs(data)
-        }
-      }
-      catch { /* use defaults */ }
-    })()
-  }, [])
-
-  const save = useCallback(async (updates: Partial<JarvisPreferences>) => {
-    if (!prefs) return
-    setSaving(true)
-    const updated = { ...prefs, ...updates }
-    try {
-      await fetch(`${SERVER_BASE}/preferences/jarvis`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
-      })
-      setPrefs(updated)
-    }
-    finally {
-      setSaving(false)
-    }
-  }, [prefs])
 
   if (!prefs) return null
 
@@ -69,7 +28,7 @@ export function JarvisSettings() {
       />
       <SettingsDivider />
 
-      <SettingsRow label="Provider Profile" description="Which configured provider profile Jarvis should use">
+      <SettingsRow label="Agent Profile" description="Which configured agent profile Jarvis should use">
         <Select
           value={prefs.profileId ?? '__none__'}
           onValueChange={v => void save({ profileId: v === '__none__' ? null : v })}
