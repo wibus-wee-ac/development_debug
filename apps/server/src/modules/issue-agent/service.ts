@@ -168,10 +168,10 @@ function requireAgentSession(agentSessionId: string) {
 // ── prompt builder ──
 
 function buildIssuePrompt(
-  issue: { title: string, description: string | null, priority: string, labels: string, contextRefs: string },
+  issue: { id: string, title: string, description: string | null, priority: string, labels: string, contextRefs: string },
   rules: { global: string | null, profileSpecific: string | null },
 ): string {
-  const parts = [`# Issue: ${issue.title}`, '']
+  const parts = [`# Issue: ${issue.title}`, '', `Issue ID: ${issue.id}`, '']
 
   if (issue.description) {
     parts.push(issue.description, '')

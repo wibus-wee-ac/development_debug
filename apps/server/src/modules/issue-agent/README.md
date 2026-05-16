@@ -7,4 +7,4 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 - `index.ts`: Elysia routes for issue delegation and issue-agent sessions.
 - `model.ts`: TypeBox schemas for delegation state, session views, activity views, params, and bodies.
-- `service.ts`: delegation semantics and chat-runtime completion subscription for agent run status.
+- `service.ts`: delegation semantics, issue prompts with stable issue IDs, and chat-runtime completion subscription for agent run status.

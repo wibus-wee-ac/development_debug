@@ -120,11 +120,13 @@ describe('issue-agent capability', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'issue-agent-secret'
 
     let completionIndex = 0
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const completionBodies: string[] = []
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (!url.endsWith('/chat/completions')) {
         return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
       }
+      completionBodies.push(String(init?.body ?? ''))
       completionIndex += 1
       const responseText = completionIndex === 1 ? 'Hello from delegated run 1' : 'Hello from delegated run 2'
       const encoder = new TextEncoder()
@@ -196,6 +198,7 @@ describe('issue-agent capability', () => {
       expect(messagesRes.status).toBe(200)
       const messages = await messagesRes.json() as Array<{ role: string, content: string, status: string }>
       expect(messages.at(-1)).toEqual(expect.objectContaining({ role: 'assistant', content: 'Hello from delegated run 1', status: 'complete' }))
+      expect(completionBodies[0]).toContain(`Issue ID: ${issue.id}`)
 
       const rerunRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/rerun`, {
         method: 'POST',

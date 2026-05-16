@@ -89,6 +89,18 @@ describe('kanban capability', () => {
       const issue = await createIssue.json() as KanbanIssue
       expect(issue).toEqual(expect.objectContaining({ title: 'Server issue', statusId: todoStatusId, priority: 'high' }))
 
+      const createIssueWithoutStatus = await app.handle(new Request('http://localhost/kanban/issues', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: 'workspace-kanban',
+          title: 'Server issue without status',
+        }),
+      }))
+      expect(createIssueWithoutStatus.status).toBe(200)
+      const issueWithoutStatus = await createIssueWithoutStatus.json() as KanbanIssue
+      expect(issueWithoutStatus).toEqual(expect.objectContaining({ statusId: statuses[0].id }))
+
       const updateIssue = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -107,7 +119,10 @@ describe('kanban capability', () => {
 
       const listIssues = await app.handle(new Request('http://localhost/kanban/issues?workspaceId=workspace-kanban'))
       expect(listIssues.status).toBe(200)
-      expect(await listIssues.json()).toEqual([expect.objectContaining({ id: issue.id, statusId: inProgressStatusId })])
+      expect(await listIssues.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: issue.id, statusId: inProgressStatusId }),
+        expect.objectContaining({ id: issueWithoutStatus.id, statusId: statuses[0].id }),
+      ]))
 
       const addComment = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/comments`, {
         method: 'POST',
@@ -129,6 +144,10 @@ describe('kanban capability', () => {
       const deleteIssue = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}`, { method: 'DELETE' }))
       expect(deleteIssue.status).toBe(200)
       expect(await deleteIssue.json()).toEqual({ ok: true })
+
+      const deleteIssueWithoutStatus = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issueWithoutStatus.id)}`, { method: 'DELETE' }))
+      expect(deleteIssueWithoutStatus.status).toBe(200)
+      expect(await deleteIssueWithoutStatus.json()).toEqual({ ok: true })
 
       const issuesAfterDelete = await app.handle(new Request('http://localhost/kanban/issues?workspaceId=workspace-kanban'))
       expect(issuesAfterDelete.status).toBe(200)
