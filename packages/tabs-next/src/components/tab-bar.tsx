@@ -95,7 +95,7 @@ const SortableTabPill = memo(({
         'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden bg-background ',
         isActive
           ? cn('text-foreground shadow-xs', activeTabClassName)
-          : cn('opacity-80 hover:opacity-100! text-muted-foreground hover:text-foreground/70', tabClassName),
+          : cn('opacity-70 hover:opacity-100! text-muted-foreground hover:text-foreground/70', tabClassName),
       )}
     >
       {tabIcon && (
@@ -111,7 +111,7 @@ const SortableTabPill = memo(({
           data-testid={`tab-close-${tab.id}`}
           className={cn(
             'absolute right-1 top-1/2 z-10 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-transparent p-0',
-              'opacity-80 hover:opacity-100!',
+              'group-hover:opacity-80 group-data-[tab-active=true]:opacity-100',
           )}
         >
           {renderCloseIcon ? renderCloseIcon() : '×'}

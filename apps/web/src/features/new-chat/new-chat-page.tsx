@@ -569,7 +569,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
               </MenuGroup>
             )}
             <MenuGroup>
-              <MenuGroupLabel>Providers</MenuGroupLabel>
+              <MenuGroupLabel>Agent Profiles</MenuGroupLabel>
               <MenuSeparator />
               {profiles.length === 0
                 ? <MenuItem disabled>暂无可用的 Provider</MenuItem>

@@ -447,13 +447,13 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
   const handleCapsuleSend = useCallback(async (
     text: string,
-    opts: { agentId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
+    opts: { agentProfileId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
   ) => {
     if (!workspace) {
       return
     }
     const { data: sessionData } = await postSessions({
-      body: { workspaceId, agentProfileId: opts.agentId, title: text.slice(0, 80) || opts.agentId || 'New Chat' },
+      body: { workspaceId, agentProfileId: opts.agentProfileId, title: text.slice(0, 80) || opts.agentProfileId || 'New Chat' },
     })
     const session = sessionData as { id: string } | null
     if (!session?.id) {

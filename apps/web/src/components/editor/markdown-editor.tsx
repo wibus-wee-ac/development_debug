@@ -51,6 +51,7 @@ export function MarkdownEditor({
       StarterKit.configure({
         codeBlock: false,
         heading: false,
+        link: false,
       }),
       HeadingWithId,
       Markdown.configure({

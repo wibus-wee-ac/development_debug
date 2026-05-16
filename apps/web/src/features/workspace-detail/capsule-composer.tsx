@@ -42,7 +42,7 @@ import { useNewChatStore } from '~/store/new-chat'
 
 interface CapsuleComposerProps {
   workspaceId: string
-  onSend: (text: string, opts: { agentId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
+  onSend: (text: string, opts: { agentProfileId: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
 }
 
 interface CapsuleComposerState {
@@ -228,7 +228,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     dispatch({ type: 'set-sending', sending: true })
     try {
       await onSend(text, {
-        agentId: selectedProfile.id,
+        agentProfileId: selectedProfile.id,
         modelId: selectedModel?.id,
         thinkingEffort: thinkingEffort ?? undefined,
       })
