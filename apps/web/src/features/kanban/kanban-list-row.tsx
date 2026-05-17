@@ -21,6 +21,7 @@ interface ListRowProps {
   statuses: KanbanStatus[]
   displayProperties: ViewConfig['displayProperties']
   onClick: () => void
+  onHover?: (id: string | null) => void
   selected?: boolean
 }
 
@@ -34,7 +35,7 @@ function formatRelativeTime(ts: number): string {
   return `${days}d`
 }
 
-export function KanbanListRow({ issue, statuses, displayProperties, onClick, selected }: ListRowProps) {
+export function KanbanListRow({ issue, statuses, displayProperties, onClick, onHover, selected }: ListRowProps) {
   const { workspaces } = useWorkspaces()
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
@@ -46,6 +47,8 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter') onClick() }}
+      onMouseEnter={() => onHover?.(issue.id)}
+      onMouseLeave={() => onHover?.(null)}
       className={cn(
         'group/row relative flex items-center gap-2 px-3 h-9 text-[13px] cursor-pointer rounded-md',
         'transition-colors duration-100 ease-out',

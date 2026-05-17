@@ -2,7 +2,8 @@
 // Output: ProviderModelSelector — cascading menu: Provider > Model > Thinking with icons
 // Position: The core selector UI replacing 3 separate pill buttons
 
-import { CpuIcon } from 'lucide-react'
+import { useState } from 'react'
+import { CheckIcon, CpuIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { providerVisuals } from '~/features/agent-management/agent-runtime-settings'
@@ -52,6 +53,10 @@ function ProviderGroup({
   const preset = presetForProfile(profile)
   const { Icon } = providerVisuals(preset.id)
   const profileModels = models
+  const [modelSearch, setModelSearch] = useState('')
+  const filteredModels = profileModels.filter(m =>
+    !modelSearch || m.label.toLowerCase().includes(modelSearch.toLowerCase()) || m.id.toLowerCase().includes(modelSearch.toLowerCase()),
+  )
 
   return (
     <MenuSub>
@@ -59,20 +64,27 @@ function ProviderGroup({
         onClick={() => onSelectProfile(profile.id)}
         className={cn(isActive && 'font-medium')}
       >
-        <span
-          className={cn(
-            'size-1.5 shrink-0 rounded-full',
-            isActive ? 'bg-primary' : 'bg-muted-foreground/30',
-          )}
-        />
+        <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
         <Icon className="size-3.5 shrink-0" />
         <span>{profile.name}</span>
       </MenuSubTrigger>
       <MenuSubPopup>
+        {profileModels.length > 0 && (
+          <div className="px-2 py-1.5">
+            <input
+              value={modelSearch}
+              onChange={e => setModelSearch(e.target.value)}
+              placeholder="Search models..."
+              className="w-full rounded-md border border-border/50 bg-input/30 px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
+              onClick={e => e.stopPropagation()}
+              onKeyDown={e => e.stopPropagation()}
+            />
+          </div>
+        )}
         {isLoadingModels && profileModels.length === 0 && (
           <MenuItem disabled>Loading models…</MenuItem>
         )}
-        {profileModels.map(model => {
+        {filteredModels.map(model => {
           const isModelSelected = model.id === selectedModelId
           return (
             <ModelSubmenu
@@ -85,6 +97,9 @@ function ProviderGroup({
             />
           )
         })}
+        {filteredModels.length === 0 && profileModels.length > 0 && (
+          <MenuItem disabled>No matching models</MenuItem>
+        )}
         {profileModels.length === 0 && !isLoadingModels && (
           <MenuItem disabled>No models available</MenuItem>
         )}
@@ -119,13 +134,11 @@ function ModelSubmenu({
         onClick={() => onSelectModel(model.id)}
         className={cn(isModelSelected && 'text-primary font-medium')}
       >
-        <span
-          className={cn(
-            'size-1 shrink-0 rounded-full',
-            isModelSelected ? 'bg-primary' : 'bg-transparent',
-          )}
-        />
+        <CheckIcon className={cn('size-3.5 shrink-0', isModelSelected ? 'text-primary' : 'text-transparent')} />
         <span className="truncate">{model.label}</span>
+        {model.capabilities?.reasoning && (
+          <span className="shrink-0 rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">推理</span>
+        )}
         {ctxK && (
           <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40">{ctxK}</span>
         )}
@@ -135,12 +148,13 @@ function ModelSubmenu({
           <MenuItem
             key={te.value ?? 'auto'}
             onClick={() => onSelectThinkingEffort(te.value)}
-            className={cn(thinkingEffort === te.value && 'text-primary font-medium')}
+            className={cn('flex-col items-start', thinkingEffort === te.value && 'text-primary font-medium')}
           >
-            <span>{te.label}</span>
-            {thinkingEffort === te.value && (
-              <span className="ml-auto size-1.5 rounded-full bg-primary" />
-            )}
+            <div className="flex w-full items-center gap-2">
+              <span className="font-medium">{te.label}</span>
+              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', thinkingEffort === te.value ? 'text-primary' : 'text-transparent')} />
+            </div>
+            <span className="text-[11px] text-muted-foreground/60">{te.description}</span>
           </MenuItem>
         ))}
       </MenuSubPopup>

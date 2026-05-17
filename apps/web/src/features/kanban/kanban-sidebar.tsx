@@ -3,51 +3,21 @@
 // Position: Section component used inside WorkspaceSidebar
 
 import { LayoutDashboardIcon, MoreHorizontalIcon, PlusIcon, TrashIcon } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
-import { useBoards, useCreateBoard, useDeleteBoard } from './use-kanban'
+import { CreateBoardDialog } from './create-board-dialog'
+import { useBoards, useDeleteBoard } from './use-kanban'
 
 function WorkspaceBoardSection({ workspaceId, workspaceName }: { workspaceId: string, workspaceName: string }) {
   const boards = useBoards(workspaceId)
-  const createBoard = useCreateBoard()
   const deleteBoard = useDeleteBoard()
   const { openTab } = useCradleNavigation()
-  const [creating, setCreating] = useState(false)
-  const [showNameInput, setShowNameInput] = useState(false)
-  const [newBoardName, setNewBoardName] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  const handleStartCreate = useCallback(() => {
-    setShowNameInput(true)
-    setNewBoardName('')
-    setTimeout(() => inputRef.current?.focus(), 0)
-  }, [])
-
-  const handleConfirmCreate = useCallback(() => {
-    const name = newBoardName.trim()
-    if (!name) {
-      setShowNameInput(false)
-      return
-    }
-    setCreating(true)
-    createBoard.mutate({ workspaceId, name }, {
-      onSuccess: (board) => {
-        openTab('kanban-board', { boardId: board.id })
-        setCreating(false)
-        setShowNameInput(false)
-        setNewBoardName('')
-      },
-      onError: () => {
-        setCreating(false)
-        setShowNameInput(false)
-      },
-    })
-  }, [newBoardName, createBoard, openTab, workspaceId])
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   const handleDeleteBoard = useCallback((boardId: string) => {
     deleteBoard.mutate(boardId)
@@ -61,37 +31,19 @@ function WorkspaceBoardSection({ workspaceId, workspaceName }: { workspaceId: st
           variant="ghost"
           size="icon-xs"
           className="size-5 text-muted-foreground/60 hover:text-foreground"
-          onClick={handleStartCreate}
-          disabled={creating}
+          onClick={() => setDialogOpen(true)}
           data-testid={`kanban-add-board-btn-${workspaceId}`}
         >
           <PlusIcon className="size-3" />
         </Button>
       </div>
 
-      {showNameInput && (
-        <div className="px-4 py-1">
-          <input
-            ref={inputRef}
-            value={newBoardName}
-            onChange={e => setNewBoardName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleConfirmCreate()
-              }
-              else if (e.key === 'Escape') {
-                setShowNameInput(false)
-              }
-            }}
-            onBlur={handleConfirmCreate}
-            placeholder="看板名称"
-            disabled={creating}
-            data-testid={`kanban-new-board-input-${workspaceId}`}
-            className="w-full rounded-md border border-border bg-transparent px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
-          />
-        </div>
-      )}
+      <CreateBoardDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        defaultWorkspaceId={workspaceId}
+        onCreated={(board) => openTab('kanban-board', { boardId: board.id })}
+      />
 
       {boards.data?.map(board => (
         <div
@@ -128,7 +80,7 @@ function WorkspaceBoardSection({ workspaceId, workspaceName }: { workspaceId: st
         </div>
       ))}
 
-      {boards.data?.length === 0 && !showNameInput && (
+      {boards.data?.length === 0 && (
         <p className="px-5 py-1.5 text-[11px] text-muted-foreground/50">暂无看板</p>
       )}
     </div>

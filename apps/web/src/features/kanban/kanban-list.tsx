@@ -19,6 +19,7 @@ interface ListProps {
   config: ViewConfig
   selectedIssueId?: string | null
   onIssueClick: (id: string) => void
+  onIssueHover?: (id: string | null) => void
   onCreateIssue?: (groupId: string) => void
 }
 
@@ -34,6 +35,7 @@ export function KanbanList({
   milestones,
   config,
   selectedIssueId,
+  onIssueHover,
   onCreateIssue,
   onIssueClick,
 }: ListProps) {
@@ -132,6 +134,7 @@ export function KanbanList({
                       statuses={statuses}
                       displayProperties={config.displayProperties}
                       onClick={() => onIssueClick(issue.id)}
+                      onHover={onIssueHover ? (id: string | null) => onIssueHover(id) : undefined}
                       selected={issue.id === selectedIssueId}
                     />
                   ))}

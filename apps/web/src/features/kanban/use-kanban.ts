@@ -143,6 +143,7 @@ function nullableString(value: unknown): string | null {
 function toKanbanIssue(row: ApiKanbanIssue): KanbanIssue {
   return {
     ...row,
+    number: (row as { number?: number }).number ?? 0,
     statusId: nullableString(row.statusId),
     milestoneId: nullableString(row.milestoneId),
     parentIssueId: nullableString(row.parentIssueId),
