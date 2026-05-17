@@ -134,6 +134,20 @@
       "when": 1778998336710,
       "tag": "0018_wooden_echo",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1779018637638,
+      "tag": "0019_sudden_fantastic_four",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1779020854273,
+      "tag": "0020_dusty_hobgoblin",
+      "breakpoints": true
     }
   ]
 }

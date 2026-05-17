@@ -4,8 +4,10 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import type { ComponentProps } from 'react'
+import { useEffect, useState } from 'react'
 
 import { cn } from '~/lib/cn'
+import { getLobeIconUrl } from '~/lib/lobe-icons'
 
 type IconProps = ComponentProps<'svg'>
 
@@ -60,4 +62,47 @@ export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Elem
   'codex': CodexIcon,
   'openai': OpenAIIcon,
   'custom': CustomIcon,
+}
+
+// ── Unified provider icon component ──
+
+/**
+ * Renders the provider icon — custom PNG if iconSlug is set, otherwise the preset SVG.
+ */
+export function ProviderIcon({
+  iconSlug,
+  presetId,
+  className,
+}: {
+  iconSlug?: string | null
+  presetId: string | null
+  className?: string
+}) {
+  if (iconSlug) {
+    return <LobeIconImage slug={iconSlug} className={className} />
+  }
+  const Icon = PROVIDER_ICONS[presetId ?? ''] ?? PROVIDER_ICONS.custom!
+  return <Icon className={className} />
+}
+
+function LobeIconImage({ slug, className }: { slug: string, className?: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getLobeIconUrl(slug, 'dark').then((u) => {
+      if (!cancelled) {
+        setUrl(u)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [slug])
+
+  if (!url) {
+    return <div className={cn('animate-pulse rounded bg-muted', className)} />
+  }
+
+  return <img src={url} alt={slug} className={cn('object-contain', className)} />
 }

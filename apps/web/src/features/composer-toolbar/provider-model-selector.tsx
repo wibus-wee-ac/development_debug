@@ -7,7 +7,8 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSub, MenuSubPopup, MenuSubTrigger, MenuTrigger } from '~/components/ui/menu'
-import { presetForProfile, providerVisuals } from '~/features/agent-management/agent-runtime-settings'
+import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
+import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import { cn } from '~/lib/cn'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
@@ -50,7 +51,6 @@ function ProviderGroup({
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
 }) {
   const preset = presetForProfile(profile)
-  const { Icon } = providerVisuals(preset.id)
   const profileModels = models
   const [modelSearch, setModelSearch] = useState('')
   const filteredModels = profileModels.filter(m =>
@@ -82,7 +82,7 @@ function ProviderGroup({
         className={cn(isActive && 'font-medium')}
       >
         <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
-        <Icon className="size-3.5 shrink-0" />
+        <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-3.5 shrink-0" />
         <span>{profile.name}</span>
       </MenuSubTrigger>
       <MenuSubPopup>
@@ -225,15 +225,12 @@ export function ProviderModelSelector({
 
   // Icon for the trigger button — from the selected profile
   const selectedProfile = profiles.find(p => p.id === selectedProfileId)
-  const TriggerIcon = selectedProfile
-    ? providerVisuals(presetForProfile(selectedProfile).id).Icon
-    : null
 
   return (
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="xs" data-testid="provider-model-selector" />}>
-        {TriggerIcon
-          ? <TriggerIcon className="size-3.5 shrink-0" />
+        {selectedProfile
+          ? <ProviderIcon iconSlug={selectedProfile.iconSlug} presetId={presetForProfile(selectedProfile).id} className="size-3.5 shrink-0" />
           : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
         <span className="max-w-40 truncate">
           {selectedModel?.label ?? (isLoadingModels ? 'Loading…' : 'Model')}

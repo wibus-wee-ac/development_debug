@@ -32,7 +32,7 @@ import type { AgentProfile, ProviderKind } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
 import { ProfileDetailPanel } from './profile-detail-panel'
-import { PROVIDER_ICONS } from './provider-icons'
+import { PROVIDER_ICONS, ProviderIcon } from './provider-icons'
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
 
@@ -224,7 +224,6 @@ export function AgentRuntimeSettings() {
 
               {visibleProfiles.map((profile) => {
                 const preset = presetForProfile(profile)
-                const { Icon } = providerVisuals(preset.id)
                 const active = selectedId === profile.id && !isDraftSelected
                 return (
                   <SidebarRow
@@ -236,7 +235,7 @@ export function AgentRuntimeSettings() {
                       setDraft(null)
                     }}
                     icon={(
-                      <Icon className="size-4 shrink-0 text-muted-foreground" />
+                      <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-4 shrink-0 text-muted-foreground" />
                     )}
                     title={profile.name}
                     subtitle={(() => {

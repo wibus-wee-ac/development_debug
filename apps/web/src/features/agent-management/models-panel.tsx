@@ -1,4 +1,4 @@
-import { SearchIcon } from 'lucide-react'
+import { RefreshCwIcon, SearchIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { Badge } from '~/components/ui/badge'
@@ -12,16 +12,37 @@ import type { ModelDescriptor } from '~/lib/types'
 
 import { ALL_DISABLED_SENTINEL } from './agent-runtime-settings'
 
+function formatTimeAgo(ts: number): string {
+  const seconds = Math.round((Date.now() - ts) / 1000)
+  if (seconds < 60) {
+    return 'just now'
+  }
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
+  const days = Math.round(hours / 24)
+  return `${days}d ago`
+}
+
 export function ModelsPanel({
   loading,
   models,
   enabledModels,
   onChange,
+  onRefresh,
+  cachedAt,
 }: {
   loading: boolean
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
+  onRefresh?: () => void
+  cachedAt?: number | null
 }) {
   const [filter, setFilter] = useState('')
 
@@ -92,6 +113,17 @@ export function ModelsPanel({
           </p>
         </div>
         <div className="flex items-center gap-1">
+          {onRefresh && models.length > 0 && !loading && (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="gap-1 text-[11px] text-muted-foreground"
+              onClick={onRefresh}
+            >
+              <RefreshCwIcon className="size-3" />
+              Refresh
+            </Button>
+          )}
           {(isExplicitSelection || allDisabled) && (
             <Button
               size="xs"
@@ -144,6 +176,17 @@ export function ModelsPanel({
                 <p className="mt-1 text-[11px] text-muted-foreground/70">
                   Save your endpoint and API key first; they may be required to list models.
                 </p>
+                {onRefresh && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="mt-3 gap-1.5 text-[11px]"
+                    onClick={onRefresh}
+                  >
+                    <RefreshCwIcon className="size-3" />
+                    Fetch Models
+                  </Button>
+                )}
               </div>
             )
             : (
@@ -205,6 +248,13 @@ export function ModelsPanel({
               ? `All ${models.length || ''} models visible`.trim()
               : `${enabledCount} of ${models.length} model${models.length === 1 ? '' : 's'} visible`}
         </span>
+        {cachedAt && models.length > 0 && (
+          <span className="text-[10.5px] text-muted-foreground/60">
+            cached
+{' '}
+{formatTimeAgo(cachedAt)}
+          </span>
+        )}
       </div>
     </div>
   )

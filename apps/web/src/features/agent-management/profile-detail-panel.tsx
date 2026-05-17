@@ -29,6 +29,7 @@ import {
 } from '~/components/ui/alert-dialog'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
+import { IconPicker } from '~/components/ui/icon-picker'
 import { Input } from '~/components/ui/input'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
@@ -39,9 +40,10 @@ import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ModelCapabilities, ModelDescriptor } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { ALL_DISABLED_SENTINEL, parseConfig, presetForProfile, PROVIDER_KIND_LABELS, providerVisuals } from './agent-runtime-settings'
+import { ALL_DISABLED_SENTINEL, parseConfig, presetForProfile, PROVIDER_KIND_LABELS } from './agent-runtime-settings'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
+import { ProviderIcon } from './provider-icons'
 
 type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
@@ -58,6 +60,7 @@ interface ProfileDetailFormValues {
 interface ProfileDetailUiState {
   availableModels: ModelDescriptor[]
   modelsLoading: boolean
+  modelsCachedAt: number | null
   health: HealthStatus
   saveState: SaveState
   confirmRemove: boolean
@@ -65,7 +68,7 @@ interface ProfileDetailUiState {
 
 type ProfileDetailUiAction = { type: 'reset' }
   | { type: 'models/loading' }
-  | { type: 'models/loaded', models: ModelDescriptor[] }
+  | { type: 'models/loaded', models: ModelDescriptor[], cachedAt?: number | null }
   | { type: 'models/failed' }
   | { type: 'health/set', status: HealthStatus }
   | { type: 'save/set', state: SaveState }
@@ -74,6 +77,7 @@ type ProfileDetailUiAction = { type: 'reset' }
 const INITIAL_UI_STATE: ProfileDetailUiState = {
   availableModels: [],
   modelsLoading: false,
+  modelsCachedAt: null,
   health: 'unknown',
   saveState: 'idle',
   confirmRemove: false,
@@ -86,7 +90,7 @@ function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDeta
     case 'models/loading':
       return { ...state, modelsLoading: true }
     case 'models/loaded':
-      return { ...state, availableModels: action.models, modelsLoading: false }
+      return { ...state, availableModels: action.models, modelsLoading: false, modelsCachedAt: action.cachedAt ?? Date.now() }
     case 'models/failed':
       return { ...state, availableModels: [], modelsLoading: false }
     case 'health/set':
@@ -177,7 +181,6 @@ export function ProfileDetailPanel({
   onSaved: () => void
 }) {
   const preset = presetForProfile(profile)
-  const { Icon } = providerVisuals(preset.id)
 
   const supportsModels = true
 
@@ -194,6 +197,7 @@ export function ProfileDetailPanel({
   const {
     availableModels,
     modelsLoading,
+    modelsCachedAt,
     health,
     saveState,
     confirmRemove,
@@ -267,24 +271,82 @@ export function ProfileDetailPanel({
     const requestId = ++modelsRequestRef.current
     dispatch({ type: 'models/loading' })
 
-    postProvidersModels({
-      body: createProviderRequestBodyRef.current(),
-    })
-      .then(({ data }) => {
+    // Try cache first, then fresh fetch
+    const cacheUrl = `${getServerUrl()}/providers/${encodeURIComponent(profile.id)}/models-cache`
+    fetch(cacheUrl)
+      .then(res => res.ok ? res.json() : null)
+      .then((cache: { models: ModelDescriptor[], cached: boolean, stale: boolean } | null) => {
         if (requestId !== modelsRequestRef.current) {
           return
         }
 
-        dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[] })
+        if (cache?.cached && cache.models.length > 0) {
+          dispatch({ type: 'models/loaded', models: cache.models })
+          // If stale, also trigger a background refresh
+          if (cache.stale) {
+            postProvidersModels({ body: createProviderRequestBodyRef.current() })
+              .then(({ data }) => {
+                if (requestId !== modelsRequestRef.current) {
+                  return
+                }
+                dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+              })
+              .catch(() => {})
+          }
+          return
+        }
+
+        // No cache or empty — do a fresh fetch
+        postProvidersModels({ body: createProviderRequestBodyRef.current() })
+          .then(({ data }) => {
+            if (requestId !== modelsRequestRef.current) {
+              return
+            }
+            dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+          })
+          .catch(() => {
+            if (requestId !== modelsRequestRef.current) {
+              return
+            }
+            dispatch({ type: 'models/failed' })
+          })
+      })
+      .catch(() => {
+        // Cache fetch failed — fallback to direct fetch
+        postProvidersModels({ body: createProviderRequestBodyRef.current() })
+          .then(({ data }) => {
+            if (requestId !== modelsRequestRef.current) {
+              return
+            }
+            dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+          })
+          .catch(() => {
+            if (requestId !== modelsRequestRef.current) {
+              return
+            }
+            dispatch({ type: 'models/failed' })
+          })
+      })
+  }, [supportsModels, profile.id, modelFetchKey])
+
+  const handleRefreshModels = useCallback(() => {
+    const requestId = ++modelsRequestRef.current
+    dispatch({ type: 'models/loading' })
+
+    postProvidersModels({ body: createProviderRequestBodyRef.current() })
+      .then(({ data }) => {
+        if (requestId !== modelsRequestRef.current) {
+          return
+        }
+        dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
       })
       .catch(() => {
         if (requestId !== modelsRequestRef.current) {
           return
         }
-
         dispatch({ type: 'models/failed' })
       })
-  }, [supportsModels, profile.id, modelFetchKey])
+  }, [])
 
   // Health check on load + when key fields change
   const runHealthCheck = useCallback(async () => {
@@ -405,6 +467,17 @@ export function ProfileDetailPanel({
     }
   }, [watchedSignature, saveState, clearAutoSaveTimer])
 
+  // ── Icon change handler ──
+  const handleIconChange = useCallback((slug: string | null) => {
+    fetch(`${getServerUrl()}/profiles/${encodeURIComponent(profile.id)}/icon`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ iconSlug: slug }),
+    }).then(() => {
+      onSaved()
+    }).catch(() => {})
+  }, [profile.id, onSaved])
+
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
 
   return (
@@ -412,7 +485,13 @@ export function ProfileDetailPanel({
       <ProfileDetailHeader
         profile={profile}
         kindLabel={kindLabel}
-        icon={<Icon className="mt-1 size-6 shrink-0 text-foreground/80" />}
+        icon={(
+          <IconPicker value={profile.iconSlug ?? null} onChange={handleIconChange}>
+            <button type="button" className="mt-1 shrink-0 cursor-pointer rounded-md p-0.5 transition-colors hover:bg-fill">
+              <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-6" />
+            </button>
+          </IconPicker>
+        )}
         health={health}
         saveState={saveState}
         onRefreshHealth={() => void runHealthCheck()}
@@ -436,6 +515,8 @@ export function ProfileDetailPanel({
             models={availableModels}
             enabledModels={enabledModels}
             onChange={handleEnabledModelsChange}
+            onRefresh={handleRefreshModels}
+            cachedAt={modelsCachedAt}
           />
         )}
 
@@ -592,11 +673,15 @@ function ProfileModelsSection({
   models,
   enabledModels,
   onChange,
+  onRefresh,
+  cachedAt,
 }: {
   loading: boolean
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
+  onRefresh?: () => void
+  cachedAt?: number | null
 }) {
   return (
     <>
@@ -607,6 +692,8 @@ function ProfileModelsSection({
           models={models}
           enabledModels={enabledModels}
           onChange={onChange}
+          onRefresh={onRefresh}
+          cachedAt={cachedAt}
         />
       </section>
     </>

@@ -16,6 +16,7 @@ export const agentProfiles = sqliteTable('agent_profiles', {
   configJson: text('config_json').notNull().default('{}'),
   credentialRef: text('credential_ref'),
   customModels: text('custom_models').notNull().default('[]'),
+  iconSlug: text('icon_slug'),
   ...timestamps(),
 })
 
