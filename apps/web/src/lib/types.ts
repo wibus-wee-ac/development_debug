@@ -56,6 +56,7 @@ export interface ModelCapabilities {
   family?: string
   knowledgeCutoff?: string
   releaseDate?: string
+  registryMatch?: 'exact' | 'fuzzy'
 }
 
 export interface ModelDescriptor {

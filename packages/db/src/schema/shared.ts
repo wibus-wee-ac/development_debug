@@ -24,5 +24,11 @@ export const workspaces = sqliteTable('workspaces', {
   ...timestamps(),
 })
 
+export const kvCache = sqliteTable('kv_cache', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  expiresAt: int('expires_at').notNull(),
+})
+
 export type Workspace = typeof workspaces.$inferSelect
 export type NewWorkspace = typeof workspaces.$inferInsert

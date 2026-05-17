@@ -198,6 +198,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
       if (event.key === 'Escape' && curPeek && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault()
         setPeekIssueId(null)
+        setFocusedIndex(-1)
         return
       }
     }
@@ -207,8 +208,10 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
         const holdDuration = Date.now() - spaceDownTimeRef.current
         if (holdDuration > 300) {
           setPeekIssueId(null)
+          setFocusedIndex(-1)
         } else if (peekWasOpenRef.current) {
           setPeekIssueId(null)
+          setFocusedIndex(-1)
         }
       }
     }
@@ -232,6 +235,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   useEffect(() => {
     if (peekIssueId && hoveredIssueId && hoveredIssueId !== peekIssueId) {
       setPeekIssueId(hoveredIssueId)
+      // Sync focusedIndex so next keyboard nav starts from the hovered issue
+      const idx = filteredIssues.findIndex(i => i.id === hoveredIssueId)
+      if (idx >= 0) setFocusedIndex(idx)
     }
   }, [hoveredIssueId])
 

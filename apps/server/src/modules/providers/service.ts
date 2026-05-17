@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm'
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import * as Secrets from '../secrets/service'
+import { enrichModelsFromRegistry } from './model-info-registry'
 import { getProviderCatalog } from './provider-catalog'
 import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, ProviderRequest } from './types'
 
@@ -113,6 +114,17 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
         // Ignore malformed JSON
       }
     }
+  }
+
+  // Enrich models that lack capabilities with models.dev registry data
+  const needsEnrich = models.filter(m => !m.capabilities?.contextWindow)
+  if (needsEnrich.length > 0) {
+    const enriched = await enrichModelsFromRegistry(needsEnrich)
+    const enrichedMap = new Map(enriched.map(e => [e.id, e]))
+    models = models.map((m): ModelDescriptor => {
+      if (m.capabilities?.contextWindow) return m
+      return enrichedMap.get(m.id) ?? m
+    })
   }
 
   return models

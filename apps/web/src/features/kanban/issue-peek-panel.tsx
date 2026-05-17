@@ -5,7 +5,7 @@
 import { XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 
-
+import { StaticRender } from '@cradle/streamdown'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import { formatIssueId } from './shared/format-issue-id'
@@ -65,7 +65,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -6, scale: 0.97 }}
       transition={{ duration: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className="absolute top-3 right-3 z-40 w-95 max-h-100 rounded-xl border border-border bg-card overflow-hidden"
+      className="absolute top-2 right-3 z-40 w-120 max-h-180 rounded-xl border border-border bg-card overflow-hidden shadow-xs"
     >
       {isLoading || !issue ? (
         <div className="flex items-center justify-center h-24 text-[13px] text-muted-foreground">
@@ -74,7 +74,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
       ) : (
         <div className="flex flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-2.5">
+          <div className="flex items-center justify-between px-4 pt-2.5">
             <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
               {formatIssueId(issue, workspaces)}
             </span>
@@ -89,11 +89,11 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
           </div>
 
           {/* Title */}
-          <div className="px-4 pt-3 pb-1">
+          <div className="px-4 py-1">
             <button
               type="button"
               onClick={() => onOpenDetail(issueId)}
-              className="text-left text-[14px] font-medium text-foreground leading-snug hover:text-foreground/80 transition-colors"
+              className="text-left text-lg font-medium text-foreground leading-snug hover:text-foreground/80 transition-colors"
             >
               {issue.title}
             </button>
@@ -101,15 +101,15 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
 
           {/* Description */}
           {issue.description && (
-            <div className="px-4 pb-3">
-              <p className="text-[12.5px] text-muted-foreground leading-relaxed line-clamp-4">
-                {issue.description}
-              </p>
+            <div className="px-4 py-1 max-h-80 overflow-y-auto mask-[linear-gradient(to_bottom,transparent_0,black_8px,black_calc(100%-12px),transparent_100%)] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+              <div className="py-1 h-full text-muted-foreground leading-relaxed **:text-sm **:leading-relaxed">
+                <StaticRender content={issue.description} />
+              </div>
             </div>
           )}
 
           {/* Properties */}
-          <div className="px-4 py-2.5 flex flex-col gap-1.5">
+          <div className="px-4 py-2.5 flex flex-col gap-2.5">
             <div className="flex items-center gap-4">
               {/* Status */}
               {status && (

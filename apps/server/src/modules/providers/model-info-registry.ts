@@ -2,6 +2,10 @@
 // Output: best-effort model metadata enrichment
 // Position: apps/server/src/modules/providers/model-info-registry.ts
 
+import { eq } from 'drizzle-orm'
+import { kvCache } from '@cradle/db'
+
+import { db } from '../../infra'
 import type { ModelCapabilities, ModelDescriptor } from './types'
 
 interface ModelsDevModel {
@@ -26,34 +30,81 @@ interface ModelsDevProvider {
 type ModelsDevData = Record<string, ModelsDevProvider>
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
-const CACHE_TTL_MS = 1000 * 60 * 60
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24 // 24 hours (DB-backed)
+const CACHE_KEY = 'models_dev_api_json'
 
-let cachedData: ModelsDevData | null = null
-let cachedAt = 0
+let memCache: ModelsDevData | null = null
+let memCacheAt = 0
+const MEM_TTL_MS = 1000 * 60 * 10 // 10 min in-memory to avoid repeated DB reads
 
-async function fetchModelsDevData(): Promise<ModelsDevData | null> {
-  if (cachedData && Date.now() - cachedAt < CACHE_TTL_MS) {
-    return cachedData
-  }
-
+async function fetchFromNetwork(): Promise<ModelsDevData | null> {
   try {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000)
+    const timeout = setTimeout(() => controller.abort(), 8000)
     const response = await fetch(MODELS_DEV_URL, { signal: controller.signal })
     clearTimeout(timeout)
-
-    if (!response.ok) {
-      return cachedData
-    }
-
-    const data = await response.json() as ModelsDevData
-    cachedData = data
-    cachedAt = Date.now()
-    return data
+    if (!response.ok) return null
+    return await response.json() as ModelsDevData
   }
   catch {
-    return cachedData
+    return null
   }
+}
+
+function readDbCache(): ModelsDevData | null {
+  try {
+    const row = db().select().from(kvCache).where(eq(kvCache.key, CACHE_KEY)).get()
+    if (!row) return null
+    if (Date.now() / 1000 > row.expiresAt) return null
+    return JSON.parse(row.value) as ModelsDevData
+  }
+  catch {
+    return null
+  }
+}
+
+function writeDbCache(data: ModelsDevData): void {
+  try {
+    const expiresAt = Math.floor(Date.now() / 1000) + Math.floor(CACHE_TTL_MS / 1000)
+    db().insert(kvCache)
+      .values({ key: CACHE_KEY, value: JSON.stringify(data), expiresAt })
+      .onConflictDoUpdate({ target: kvCache.key, set: { value: JSON.stringify(data), expiresAt } })
+      .run()
+  }
+  catch {
+    // non-critical, ignore
+  }
+}
+
+async function fetchModelsDevData(): Promise<ModelsDevData | null> {
+  // 1. In-memory hot cache
+  if (memCache && Date.now() - memCacheAt < MEM_TTL_MS) {
+    return memCache
+  }
+
+  // 2. DB persistent cache (per-day)
+  const fromDb = readDbCache()
+  if (fromDb) {
+    memCache = fromDb
+    memCacheAt = Date.now()
+    return fromDb
+  }
+
+  // 3. Network fetch
+  const fresh = await fetchFromNetwork()
+  if (fresh) {
+    memCache = fresh
+    memCacheAt = Date.now()
+    writeDbCache(fresh)
+    return fresh
+  }
+
+  return memCache
+}
+
+/** Pre-warm the models.dev cache on server startup (fire and forget) */
+export function warmupModelsDevCache(): void {
+  void fetchModelsDevData()
 }
 
 function findModel(data: ModelsDevData, modelId: string): ModelsDevModel | null {
@@ -63,6 +114,49 @@ function findModel(data: ModelsDevData, modelId: string): ModelsDevModel | null 
       return model
     }
   }
+  return null
+}
+
+function findModelFuzzy(data: ModelsDevData, modelId: string): { model: ModelsDevModel, matchType: 'exact' | 'fuzzy' } | null {
+  // 1. Try exact match first
+  const exact = findModel(data, modelId)
+  if (exact) return { model: exact, matchType: 'exact' }
+
+  // 2. Try stripping date suffixes (e.g. "claude-sonnet-4-20250514" → "claude-sonnet-4")
+  const withoutDate = modelId.replace(/-\d{8}$/, '')
+  if (withoutDate !== modelId) {
+    const match = findModel(data, withoutDate)
+    if (match) return { model: match, matchType: 'fuzzy' }
+  }
+
+  // 3. Try stripping version suffixes (e.g. "gpt-4o-2024-11-20" → "gpt-4o")
+  const withoutVersion = modelId.replace(/-\d{4}-\d{2}-\d{2}$/, '')
+  if (withoutVersion !== modelId && withoutVersion !== withoutDate) {
+    const match = findModel(data, withoutVersion)
+    if (match) return { model: match, matchType: 'fuzzy' }
+  }
+
+  // 4. Try finding registry models that are prefixes of this modelId
+  const lower = modelId.toLowerCase()
+  for (const provider of Object.values(data)) {
+    if (!provider.models) continue
+    for (const [id, model] of Object.entries(provider.models)) {
+      if (lower.startsWith(id.toLowerCase()) && lower.length - id.length <= 12) {
+        return { model, matchType: 'fuzzy' }
+      }
+    }
+  }
+
+  // 5. Try finding registry models where this modelId is a prefix
+  for (const provider of Object.values(data)) {
+    if (!provider.models) continue
+    for (const [id, model] of Object.entries(provider.models)) {
+      if (id.toLowerCase().startsWith(lower) && id.length - lower.length <= 12) {
+        return { model, matchType: 'fuzzy' }
+      }
+    }
+  }
+
   return null
 }
 
@@ -97,15 +191,18 @@ export async function enrichModelsFromRegistry(models: ModelDescriptor[]): Promi
   }
 
   return models.map((model) => {
-    const info = findModel(data, model.id)
-    if (!info) {
+    const result = findModelFuzzy(data, model.id)
+    if (!result) {
       return model
     }
-    const registryCaps = extractCapabilities(info)
+    const registryCaps = extractCapabilities(result.model)
+    const registryName = result.model.name
+    // Use registry display name when available (both exact and fuzzy)
+    const label = registryName ?? model.label
     return {
       ...model,
-      label: info.name ?? model.label,
-      capabilities: { ...registryCaps, ...model.capabilities },
+      label,
+      capabilities: { ...registryCaps, ...model.capabilities, registryMatch: result.matchType },
     }
   })
 }

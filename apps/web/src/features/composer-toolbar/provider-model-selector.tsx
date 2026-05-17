@@ -3,7 +3,7 @@
 // Position: The core selector UI replacing 3 separate pill buttons
 
 import { useState } from 'react'
-import { CheckIcon, CpuIcon } from 'lucide-react'
+import { BrainIcon, CheckIcon, CpuIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { providerVisuals } from '~/features/agent-management/agent-runtime-settings'
@@ -68,9 +68,9 @@ function ProviderGroup({
         <Icon className="size-3.5 shrink-0" />
         <span>{profile.name}</span>
       </MenuSubTrigger>
-      <MenuSubPopup>
+      <MenuSubPopup  className="max-h-80">
         {profileModels.length > 0 && (
-          <div className="px-2 py-1.5">
+          <div className="-mx-1 -mt-1 px-1 pt-1 pb-1.5 sticky top-0 z-10 bg-popover border-b border-border/30">
             <input
               value={modelSearch}
               onChange={e => setModelSearch(e.target.value)}
@@ -84,7 +84,7 @@ function ProviderGroup({
         {isLoadingModels && profileModels.length === 0 && (
           <MenuItem disabled>Loading models…</MenuItem>
         )}
-        {filteredModels.map(model => {
+        {filteredModels.map((model) => {
           const isModelSelected = model.id === selectedModelId
           return (
             <ModelSubmenu
@@ -121,11 +121,12 @@ function ModelSubmenu({
   onSelectModel: (id: string) => void
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
 }) {
-  const family = model.capabilities?.family
-  const ctxK = model.capabilities?.contextWindow
-    ? model.capabilities.contextWindow >= 1000000
-      ? `${Math.round(model.capabilities.contextWindow / 1000000)}M`
-      : `${model.capabilities.contextWindow / 1000}K`
+  const caps = model.capabilities
+  const registryMatch = caps?.registryMatch
+  const ctxK = caps?.contextWindow
+    ? caps.contextWindow >= 1000000
+      ? `${Math.round(caps.contextWindow / 1000000)}M`
+      : `${Math.round(caps.contextWindow / 1000)}K`
     : null
 
   return (
@@ -134,14 +135,34 @@ function ModelSubmenu({
         onClick={() => onSelectModel(model.id)}
         className={cn(isModelSelected && 'text-primary font-medium')}
       >
-        <CheckIcon className={cn('size-3.5 shrink-0', isModelSelected ? 'text-primary' : 'text-transparent')} />
-        <span className="truncate">{model.label}</span>
-        {model.capabilities?.reasoning && (
-          <span className="shrink-0 rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">推理</span>
-        )}
-        {ctxK && (
-          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/40">{ctxK}</span>
-        )}
+        <CheckIcon className={cn('size-3.5 shrink-0 self-start mt-0.5', isModelSelected ? 'text-primary' : 'text-transparent')} />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-medium">{model.label}</span>
+            {registryMatch === 'fuzzy' && (
+              <span className="shrink-0 text-[9px] text-muted-foreground/50">≈</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 leading-tight">
+            <span className="max-w-35 truncate">{model.id}</span>
+            {ctxK && (
+              <>
+                <span className="shrink-0">·</span>
+                <span className="shrink-0">{ctxK}</span>
+              </>
+            )}
+            {(caps?.reasoning || caps?.inputModalities?.includes('image') || caps?.toolCall) && (
+              <>
+                <span className="shrink-0">·</span>
+                <span className="flex items-center gap-1 shrink-0">
+                  {caps?.reasoning && <BrainIcon className="size-2.5" />}
+                  {caps?.inputModalities?.includes('image') && <ScanEyeIcon className="size-2.5" />}
+                  {caps?.toolCall && <HammerIcon className="size-2.5" />}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
       </MenuSubTrigger>
       <MenuSubPopup>
         {THINKING_EFFORTS.map(te => (
