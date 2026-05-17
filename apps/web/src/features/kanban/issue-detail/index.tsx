@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import { useDeleteIssue, useIssue, useMilestones, useStatuses, useUpdateIssue } from '../use-kanban'
 import { ActivityTimeline } from './activity-timeline'
@@ -21,6 +21,16 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
   const { data: milestones = [] } = useMilestones(workspaceId)
   const updateIssue = useUpdateIssue()
   const deleteIssue = useDeleteIssue()
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        onBack()
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onBack])
 
   const handleUpdate = useCallback((patch: Parameters<typeof updateIssue.mutate>[0]['patch']) => {
     updateIssue.mutate({ id: issueId, patch })

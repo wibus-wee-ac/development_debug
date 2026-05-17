@@ -197,7 +197,7 @@ export function useCreateBoard() {
   })
 }
 
-function useUpdateBoard() {
+export function useUpdateBoard() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: UpdateBoardInput) => {
