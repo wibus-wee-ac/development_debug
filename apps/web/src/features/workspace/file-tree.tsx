@@ -170,11 +170,12 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequeste
         className="flex-1"
         style={{
           '--trees-theme-list-active-selection-bg': 'color-mix(in oklab, var(--color-accent) 30%, transparent)',
-          '--trees-theme-list-hover-bg': 'color-mix(in oklab, var(--color-accent) 14%, transparent)',
+          '--trees-theme-list-hover-bg': 'color-mix(in oklab, var(--color-accent) 30%, transparent)',
           '--trees-theme-list-inactive-selection-bg': 'color-mix(in oklab, var(--color-accent) 18%, transparent)',
           '--trees-theme-focus-ring': 'var(--color-accent)',
           '--trees-theme-foreground': 'var(--color-sidebar-foreground)',
-          '--trees-theme-background': 'transparent',
+          '--trees-bg': 'transparent',
+          '--trees-search-bg': 'transparent',
         } as React.CSSProperties}
         renderContextMenu={(item, context) => (
           <div className="min-w-40 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md">

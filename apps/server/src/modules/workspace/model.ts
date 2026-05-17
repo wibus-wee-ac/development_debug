@@ -7,6 +7,7 @@ export const WorkspaceModel = {
     id: t.String(),
     name: t.String(),
     path: t.String(),
+    identifier: t.String(),
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }, { additionalProperties: false }),

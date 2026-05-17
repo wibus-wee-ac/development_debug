@@ -132,7 +132,7 @@ function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLay
         </m.div>
 
         {/* Right Aside */}
-        {resolvedAside !== undefined && (
+        {!isSettings && resolvedAside !== undefined && (
           <>
             {asideOpen && (
               <ResizeHandle
