@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 
 import {
@@ -184,12 +184,11 @@ export function ProfileDetailPanel({
   const form = useForm<ProfileDetailFormValues>({
     defaultValues: getProfileFormValues(profile),
   })
-  const watchedValues = useWatch({ control: form.control }) as ProfileDetailFormValues
-  const name = watchedValues.name ?? ''
-  const apiKey = watchedValues.apiKey ?? ''
-  const baseUrl = watchedValues.baseUrl ?? ''
-  const model = watchedValues.model ?? ''
-  const enabledModels = useMemo(() => watchedValues.enabledModels ?? [], [watchedValues.enabledModels])
+  const name = useWatch({ control: form.control, name: 'name' }) ?? ''
+  const apiKey = useWatch({ control: form.control, name: 'apiKey' }) ?? ''
+  const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
+  const model = useWatch({ control: form.control, name: 'model' }) ?? ''
+  const enabledModels = useWatch({ control: form.control, name: 'enabledModels' }) ?? []
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
   const {
@@ -213,6 +212,10 @@ export function ProfileDetailPanel({
 
   const setTextField = useCallback((field: ProfileTextField, value: string) => {
     form.setValue(field, value, { shouldDirty: true })
+  }, [form])
+
+  const handleEnabledModelsChange = useCallback((next: string[]) => {
+    form.setValue('enabledModels', next, { shouldDirty: true })
   }, [form])
 
   const clearAutoSaveTimer = useCallback(() => {
@@ -427,16 +430,16 @@ export function ProfileDetailPanel({
         />
 
         {supportsModels && (
-          <ProfileModelsSection
+          <MemoizedProfileModelsSection
             loading={modelsLoading}
             models={availableModels}
             enabledModels={enabledModels}
-            onChange={next => form.setValue('enabledModels', next, { shouldDirty: true })}
+            onChange={handleEnabledModelsChange}
           />
         )}
 
         {supportsModels && (
-          <ProfileCustomModelsSection profileId={profile.id} customModelsJson={profile.customModels} onSaved={onSaved} />
+          <MemoizedProfileCustomModelsSection profileId={profile.id} customModelsJson={profile.customModels} onSaved={onSaved} />
         )}
       </div>
 
@@ -608,6 +611,8 @@ function ProfileModelsSection({
   )
 }
 
+const MemoizedProfileModelsSection = memo(ProfileModelsSection)
+
 function ProfileCustomModelsSection({
   profileId,
   customModelsJson,
@@ -677,6 +682,8 @@ function ProfileCustomModelsSection({
     </>
   )
 }
+
+const MemoizedProfileCustomModelsSection = memo(ProfileCustomModelsSection)
 
 function RemoveProfileDialog({
   open,

@@ -11,7 +11,7 @@ Kanban owns issue board/list/detail UI, issue metadata editing, and issue-agent 
 ## Files
 
 - **create-issue-dialog.tsx**: Floating create-issue panel with status and priority metadata controls.
-- **index.tsx**: Kanban feature entrypoint and page composition.
+- **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring while list view remains read/select/create focused.
 - **issue-aside-panel.tsx**: Side panel shell for issue detail surfaces.
 - **issue-detail/**: Issue detail subviews, including properties, activity, relations, sub-issues, and agent session controls.
 - **kanban-board.tsx**: Board layout and drag/drop composition.

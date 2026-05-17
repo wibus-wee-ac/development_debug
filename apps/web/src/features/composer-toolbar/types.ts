@@ -3,6 +3,7 @@
 // Position: Shared type definitions for the unified composer toolbar feature
 
 import type { RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor } from '~/lib/types'
 
 export type ComposerContext = 'new-chat' | 'capsule' | 'chat'
 
@@ -15,3 +16,5 @@ export interface ComposerSelection {
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
 }
+
+export type ModelsByProfileId = Record<string, ModelDescriptor[]>

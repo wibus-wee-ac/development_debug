@@ -6,13 +6,12 @@ import { CpuIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { providerVisuals } from '~/features/agent-management/agent-runtime-settings'
-import { PROVIDER_ICONS } from '~/features/agent-management/provider-icons'
 import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 import { cn } from '~/lib/cn'
 
 import { THINKING_EFFORTS } from './constants'
-import type { ThinkingEffort } from './types'
+import type { ModelsByProfileId, ThinkingEffort } from './types'
 import { Menu, MenuItem, MenuPopup, MenuTrigger, MenuSub, MenuSubTrigger, MenuSubPopup } from '~/components/ui/menu'
 
 interface ProviderModelSelectorProps {
@@ -20,6 +19,8 @@ interface ProviderModelSelectorProps {
   selectedProfileId: string | null
   selectedModelId: string | null
   models: ModelDescriptor[]
+  modelsByProfileId: ModelsByProfileId
+  loadingProfileIds: Set<string>
   thinkingEffort: ThinkingEffort
   isLoadingModels: boolean
   onSelectProfile: (id: string) => void
@@ -50,7 +51,7 @@ function ProviderGroup({
 }) {
   const preset = presetForProfile(profile)
   const { Icon } = providerVisuals(preset.id)
-  const profileModels = isActive ? models : []
+  const profileModels = models
 
   return (
     <MenuSub>
@@ -152,6 +153,8 @@ export function ProviderModelSelector({
   selectedProfileId,
   selectedModelId,
   models,
+  modelsByProfileId,
+  loadingProfileIds,
   thinkingEffort,
   isLoadingModels,
   onSelectProfile,
@@ -191,10 +194,10 @@ export function ProviderModelSelector({
             key={profile.id}
             profile={profile}
             isActive={profile.id === selectedProfileId}
-            models={models}
+            models={modelsByProfileId[profile.id] ?? []}
             selectedModelId={selectedModelId}
             thinkingEffort={thinkingEffort}
-            isLoadingModels={isLoadingModels}
+            isLoadingModels={loadingProfileIds.has(profile.id) || (profile.id === selectedProfileId && isLoadingModels)}
             onSelectProfile={onSelectProfile}
             onSelectModel={onSelectModel}
             onSelectThinkingEffort={onSelectThinkingEffort}

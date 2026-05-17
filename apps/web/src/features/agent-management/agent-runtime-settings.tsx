@@ -24,6 +24,7 @@ import {
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
+import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 import type { AgentProfile, ProviderKind } from '~/lib/types'
@@ -37,7 +38,7 @@ import type { ProviderPreset } from './provider-templates'
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 const RE_WHITESPACE = /\s+/g
-export const ALL_DISABLED_SENTINEL = '__all_disabled__'
+export const ALL_DISABLED_SENTINEL = ALL_MODELS_DISABLED_SENTINEL
 
 export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',

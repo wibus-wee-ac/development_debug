@@ -13,4 +13,5 @@ Agent 专属 Skills 基于文件系统表达，存储在 `~/.cradle/agents/{agen
 - **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持编辑 / 删除 / 启停
 - **avatar-url.ts**: 统一生成 Agent DiceBear avatar URL，避免列表与详情页重复编码规则
 - **index.ts**: Agent Management 功能模块的 barrel export
+- **models-panel.tsx**: Provider 模型可见性面板，复用 Agent Runtime 的模型可见性语义，保持默认全开 / 全禁用 / 显式列表三态一致
 - **profile-detail-panel.tsx**: Provider 详情面板，继续以 RHF 作为表单 owner，并把模型加载 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联

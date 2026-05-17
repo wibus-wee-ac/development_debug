@@ -8,6 +8,8 @@ import { deleteProfilesById, getProfiles, putProfilesById } from '~/api-gen/sdk.
 import type { PutProfilesByIdData } from '~/api-gen/types.gen'
 import type { AgentProfile } from '~/lib/types'
 
+import { AGENT_MODELS_QUERY_KEY } from './use-agent-models'
+
 const AGENT_PROFILES_QUERY_KEY = ['agent-profiles'] as const
 
 export function useAgentProfiles() {
@@ -30,7 +32,10 @@ export function useAgentProfiles() {
       return data as AgentProfile
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
+      ])
     },
   })
 
@@ -43,7 +48,10 @@ export function useAgentProfiles() {
       return data as AgentProfile
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
+      ])
     },
   })
 
@@ -52,7 +60,10 @@ export function useAgentProfiles() {
       await deleteProfilesById({ path: { id } })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
+      ])
     },
   })
 

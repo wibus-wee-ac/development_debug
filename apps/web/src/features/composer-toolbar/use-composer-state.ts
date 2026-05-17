@@ -5,12 +5,12 @@
 import { useMemo, useState } from 'react'
 
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
+import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import type { Agent, AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
-import type { ComposerContext, ComposerSelection, ThinkingEffort } from './types'
+import type { ComposerContext, ComposerSelection, ModelsByProfileId, ThinkingEffort } from './types'
 
 interface ComposerStateConfig {
   context: ComposerContext
@@ -30,6 +30,8 @@ export interface ComposerStateResult {
   agents: Agent[]
   profiles: AgentProfile[]
   models: ModelDescriptor[]
+  modelsByProfileId: ModelsByProfileId
+  loadingProfileIds: Set<string>
   isLoadingModels: boolean
   effectiveAgent: Agent | null
   effectiveProfile: AgentProfile | null
@@ -78,8 +80,9 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     return persisted ?? profiles[0]?.id ?? null
   }, [runtimeKind, context, boundProfileId, lastProfileId, profiles])
 
-  // Load models for effective profile
-  const { models, isLoading: isLoadingModels } = useAgentModels(profileId)
+  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
+  const models = profileId ? modelsByProfileId[profileId] ?? [] : []
+  const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
 
   // Resolve effective model
   const modelId = useMemo(() => {
@@ -144,6 +147,8 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     agents: cliTuiAgents,
     profiles,
     models,
+    modelsByProfileId,
+    loadingProfileIds,
     isLoadingModels,
     effectiveAgent,
     effectiveProfile,

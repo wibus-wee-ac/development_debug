@@ -25,6 +25,8 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
     agents,
     profiles,
     models,
+    modelsByProfileId,
+    loadingProfileIds,
     isLoadingModels,
   } = state
 
@@ -54,6 +56,8 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
               selectedProfileId={selection.profileId}
               selectedModelId={selection.modelId}
               models={models}
+              modelsByProfileId={modelsByProfileId}
+              loadingProfileIds={loadingProfileIds}
               thinkingEffort={selection.thinkingEffort}
               isLoadingModels={isLoadingModels}
               onSelectProfile={setProfileId}

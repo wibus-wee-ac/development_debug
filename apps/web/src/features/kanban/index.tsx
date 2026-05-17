@@ -239,7 +239,6 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               config={config}
               selectedIssueId={focusedIssueId}
               onIssueClick={handleIssueClick}
-              onMoveIssue={handleMoveIssue}
               onCreateIssue={handleCreateIssue}
             />
           )}

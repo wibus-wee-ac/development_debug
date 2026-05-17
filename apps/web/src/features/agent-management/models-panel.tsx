@@ -6,6 +6,7 @@ import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
+import { modelIsVisible, readModelVisibility } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/lib/types'
 
@@ -24,8 +25,9 @@ export function ModelsPanel({
 }) {
   const [filter, setFilter] = useState('')
 
-  const allDisabled = enabledModels.length === 1 && enabledModels[0] === ALL_DISABLED_SENTINEL
-  const isExplicitSelection = enabledModels.length > 0 && !allDisabled
+  const visibility = useMemo(() => readModelVisibility(enabledModels), [enabledModels])
+  const allDisabled = visibility.kind === 'none'
+  const isExplicitSelection = visibility.kind === 'list'
 
   const visible = useMemo(() => {
     let filtered = models
@@ -35,20 +37,21 @@ export function ModelsPanel({
     }
     // Sort: enabled first, then alphabetical within each group
     return filtered.toSorted((a, b) => {
-      const aEnabled = allDisabled ? false : enabledModels.length === 0 || enabledModels.includes(a.id)
-      const bEnabled = allDisabled ? false : enabledModels.length === 0 || enabledModels.includes(b.id)
+      const aEnabled = modelIsVisible(visibility, a.id)
+      const bEnabled = modelIsVisible(visibility, b.id)
       if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
       return (a.label || a.id).localeCompare(b.label || b.id)
     })
-  }, [models, filter, enabledModels, allDisabled])
+  }, [models, filter, visibility])
 
-  const enabledCount = allDisabled ? 0 : enabledModels.length === 0 ? models.length : enabledModels.length
+  const enabledCount = visibility.kind === 'none'
+    ? 0
+    : visibility.kind === 'all'
+      ? models.length
+      : models.filter(model => visibility.ids.has(model.id)).length
 
   const isChecked = (id: string): boolean => {
-    if (allDisabled) {
-      return false
-    }
-    return enabledModels.length === 0 || enabledModels.includes(id)
+    return modelIsVisible(visibility, id)
   }
 
   const handleToggle = (id: string, checked: boolean) => {
@@ -58,7 +61,7 @@ export function ModelsPanel({
         // From "all disabled" → enable only this one
         onChange([id])
       }
-      else if (enabledModels.length === 0) {
+      else if (visibility.kind === 'all') {
         // "All enabled" state — shouldn't normally check an already-checked item,
         // but just in case, keep all enabled (no-op)
         return
@@ -70,7 +73,7 @@ export function ModelsPanel({
     }
     else {
       // Disabling a model
-      const base = enabledModels.length === 0 ? models.map(m => m.id) : enabledModels
+      const base = visibility.kind === 'all' ? models.map(m => m.id) : enabledModels
       const next = base.filter(x => x !== id)
       onChange(next.length === 0 ? [ALL_DISABLED_SENTINEL] : next)
     }
@@ -196,7 +199,7 @@ export function ModelsPanel({
         <span>
           {allDisabled
             ? 'All models hidden from chat'
-            : enabledModels.length === 0
+            : visibility.kind === 'all'
               ? `All ${models.length || ''} models visible`.trim()
               : `${enabledCount} of ${models.length} model${models.length === 1 ? '' : 's'} visible`}
         </span>
