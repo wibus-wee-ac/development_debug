@@ -21,6 +21,7 @@ interface CardProps {
   issue: KanbanIssue
   displayProperties: ViewConfig['displayProperties']
   onClick: () => void
+  onHover?: (id: string | null) => void
   category?: string
 }
 
@@ -31,7 +32,7 @@ const priorityLabel: Record<string, string> = {
   low: 'Low',
 }
 
-export function KanbanCard({ issue, displayProperties, onClick, category }: CardProps) {
+export function KanbanCard({ issue, displayProperties, onClick, onHover, category }: CardProps) {
   const { workspaces } = useWorkspaces()
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: issue.id,
@@ -45,7 +46,11 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
   const labels = parseIssueLabels(issue.labels)
 
   return (
-    <div data-testid={`issue-sortable-${issue.id}`}>
+    <div
+      data-testid={`issue-sortable-${issue.id}`}
+      onMouseEnter={() => onHover?.(issue.id)}
+      onMouseLeave={() => onHover?.(null)}
+    >
       <div
         ref={setNodeRef}
         style={style}

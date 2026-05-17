@@ -23,6 +23,7 @@ interface ColumnProps {
   issues: KanbanIssue[]
   displayProperties: ViewConfig['displayProperties']
   onIssueClick: (id: string) => void
+  onIssueHover?: (id: string | null) => void
   onCreateIssue: (groupId: string) => void
 }
 
@@ -34,6 +35,7 @@ export function KanbanColumn({
   issues,
   displayProperties,
   onIssueClick,
+  onIssueHover,
   onCreateIssue,
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId })
@@ -96,6 +98,7 @@ export function KanbanColumn({
             displayProperties={displayProperties}
             category={category}
             onClick={() => onIssueClick(issue.id)}
+            onHover={onIssueHover}
           />
         ))}
 

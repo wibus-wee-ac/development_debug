@@ -26,6 +26,7 @@ interface BoardProps {
   milestones: KanbanMilestone[]
   config: ViewConfig
   onIssueClick: (id: string) => void
+  onIssueHover?: (id: string | null) => void
   onMoveIssue: (issueId: string, targetGroupId: string) => void
   onCreateIssue: (groupId: string) => void
 }
@@ -43,6 +44,7 @@ export function KanbanBoard({
   milestones,
   config,
   onIssueClick,
+  onIssueHover,
   onMoveIssue,
   onCreateIssue,
 }: BoardProps) {
@@ -135,6 +137,7 @@ export function KanbanBoard({
             issues={groupedIssues[group.id] ?? []}
             displayProperties={config.displayProperties}
             onIssueClick={onIssueClick}
+            onIssueHover={onIssueHover}
             onCreateIssue={onCreateIssue}
           />
         ))}

@@ -228,6 +228,13 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     return null
   }, [focusedIndex, filteredIssues])
 
+  // Follow hover when peek is active
+  useEffect(() => {
+    if (peekIssueId && hoveredIssueId && hoveredIssueId !== peekIssueId) {
+      setPeekIssueId(hoveredIssueId)
+    }
+  }, [hoveredIssueId])
+
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden h-full">
       {selectedIssueId ? (
@@ -257,6 +264,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               milestones={milestones}
               config={config}
               onIssueClick={handleIssueClick}
+              onIssueHover={setHoveredIssueId}
               onMoveIssue={handleMoveIssue}
               onCreateIssue={handleCreateIssue}
             />
@@ -281,15 +289,12 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
           />
 
           {/* Peek panel */}
-          {peekIssueId && (
-            <div className="absolute top-0 right-0 bottom-0 z-40 w-[min(720px,50%)] border-l border-border shadow-2xl">
-              <IssuePeekPanel
-                issueId={peekIssueId}
-                workspaceId={workspaceId}
-                onClose={() => setPeekIssueId(null)}
-              />
-            </div>
-          )}
+          <IssuePeekPanel
+            issueId={peekIssueId}
+            workspaceId={workspaceId}
+            onClose={() => setPeekIssueId(null)}
+            onOpenDetail={(id) => onSelectIssue?.(id)}
+          />
         </>
       )}
     </div>

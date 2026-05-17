@@ -1,86 +1,142 @@
-// Input: issueId, workspaceId, onClose
-// Output: Compact peek preview panel for quick issue viewing
-// Position: Peek overlay component triggered by Space key in kanban views
+// Input: issueId, workspaceId, onClose, onOpenDetail
+// Output: Compact floating peek card for quick issue preview
+// Position: Upper-right floating card triggered by Space key in kanban views
 
 import { XIcon } from 'lucide-react'
-import { useCallback } from 'react'
+import { AnimatePresence, m } from 'motion/react'
+
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 
-import { useIssue, useMilestones, useStatuses, useUpdateIssue } from './use-kanban'
 import { formatIssueId } from './shared/format-issue-id'
-import { IssueDescription } from './issue-detail/issue-description'
-import { IssueTitle } from './issue-detail/issue-title'
-import { PropertiesSidebar } from './issue-detail/properties-sidebar'
+import { parseIssueLabels } from './shared/issue-metadata'
+import { LabelChip } from './shared/label-chip'
+import { PriorityIcon } from './shared/priority-icon'
+import { StatusIcon } from './shared/status-icon'
+import { useIssue, useStatuses } from './use-kanban'
 
 interface IssuePeekPanelProps {
+  issueId: string | null
+  workspaceId: string
+  onClose: () => void
+  onOpenDetail: (id: string) => void
+}
+
+const priorityLabel: Record<string, string> = {
+  urgent: 'Urgent',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  none: 'None',
+}
+
+export function IssuePeekPanel({ issueId, workspaceId, onClose, onOpenDetail }: IssuePeekPanelProps) {
+  return (
+    <AnimatePresence>
+      {issueId && (
+        <IssuePeekCard
+          key="peek"
+          issueId={issueId}
+          workspaceId={workspaceId}
+          onClose={onClose}
+          onOpenDetail={onOpenDetail}
+        />
+      )}
+    </AnimatePresence>
+  )
+}
+
+function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
   issueId: string
   workspaceId: string
   onClose: () => void
-}
-
-export function IssuePeekPanel({ issueId, workspaceId, onClose }: IssuePeekPanelProps) {
+  onOpenDetail: (id: string) => void
+}) {
   const { workspaces } = useWorkspaces()
-  const { data: issue, isLoading, isError } = useIssue(issueId)
+  const { data: issue, isLoading } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
-  const { data: milestones = [] } = useMilestones(workspaceId)
-  const updateIssue = useUpdateIssue()
 
-  const handleUpdate = useCallback((patch: Parameters<typeof updateIssue.mutate>[0]['patch']) => {
-    updateIssue.mutate({ id: issueId, patch })
-  }, [issueId, updateIssue])
-
-  if (isError) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-4 text-center text-[13px] text-destructive">
-        Failed to load issue
-      </div>
-    )
-  }
-
-  if (isLoading || !issue) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
-        Loading…
-      </div>
-    )
-  }
+  const status = issue?.statusId ? statuses.find(s => s.id === issue.statusId) : undefined
+  const labels = parseIssueLabels(issue?.labels)
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-background">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
-        <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
-          {formatIssueId(issue, workspaces)}
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="size-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Close peek"
-        >
-          <XIcon className="size-3.5" />
-        </button>
-      </div>
-
-      <div className="flex flex-1 overflow-hidden">
-        {/* Main content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <IssueTitle issue={issue} onUpdate={handleUpdate} />
-          <IssueDescription issue={issue} onUpdate={handleUpdate} />
+    <m.div
+      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -6, scale: 0.97 }}
+      transition={{ duration: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className="absolute top-3 right-3 z-40 w-95 max-h-100 rounded-xl border border-border bg-card overflow-hidden"
+    >
+      {isLoading || !issue ? (
+        <div className="flex items-center justify-center h-24 text-[13px] text-muted-foreground">
+          Loading…
         </div>
+      ) : (
+        <div className="flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
+              {formatIssueId(issue, workspaces)}
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="size-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Close peek"
+            >
+              <XIcon className="size-3.5" />
+            </button>
+          </div>
 
-        {/* Sidebar */}
-        <div className="w-60 shrink-0 overflow-y-auto px-3 py-4 border-l border-border">
-          <PropertiesSidebar
-            issue={issue}
-            statuses={statuses}
-            milestones={milestones}
-            workspaceId={workspaceId}
-            onUpdate={handleUpdate}
-          />
+          {/* Title */}
+          <div className="px-4 pt-3 pb-1">
+            <button
+              type="button"
+              onClick={() => onOpenDetail(issueId)}
+              className="text-left text-[14px] font-medium text-foreground leading-snug hover:text-foreground/80 transition-colors"
+            >
+              {issue.title}
+            </button>
+          </div>
+
+          {/* Description */}
+          {issue.description && (
+            <div className="px-4 pb-3">
+              <p className="text-[12.5px] text-muted-foreground leading-relaxed line-clamp-4">
+                {issue.description}
+              </p>
+            </div>
+          )}
+
+          {/* Properties */}
+          <div className="px-4 py-2.5 flex flex-col gap-1.5">
+            <div className="flex items-center gap-4">
+              {/* Status */}
+              {status && (
+                <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                  <StatusIcon category={status.category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={13} />
+                  <span>{status.name}</span>
+                </span>
+              )}
+
+              {/* Priority */}
+              {issue.priority && issue.priority !== 'none' && (
+                <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                  <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
+                  <span>{priorityLabel[issue.priority] ?? ''}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Labels */}
+            {labels.length > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {labels.map(l => <LabelChip key={l} label={l} />)}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </div>
+      )}
+    </m.div>
   )
 }
