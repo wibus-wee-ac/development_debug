@@ -24,7 +24,7 @@ import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provi
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import type { Session, Workspace } from '~/lib/types'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
+import { Link } from '@cradle/tabs-next'
 
 // ── Mock data for backend-unsupported features ────────────────────────────────
 
@@ -156,16 +156,16 @@ interface ActivityCardProps {
   title: string
   meta: string
   onClick?: () => void
+  to?: string
+  params?: Record<string, string>
 }
 
-function ActivityCard({ kind, title, meta, onClick }: ActivityCardProps) {
+function ActivityCard({ kind, title, meta, onClick, to, params }: ActivityCardProps) {
   const theme = CARD_THEMES[kind]
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border not-disabled:inset-shadow-[0_1px_--theme(--color-white/10%)]"
-    >
+  const className = "flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border not-disabled:inset-shadow-[0_1px_--theme(--color-white/10%)]"
+
+  const content = (
+    <>
       <div className={`relative flex h-14 w-full items-center justify-center ${theme.bg}`}>
         {theme.icon}
       </div>
@@ -173,6 +173,24 @@ function ActivityCard({ kind, title, meta, onClick }: ActivityCardProps) {
         <span className="text-xs font-medium text-foreground line-clamp-1 leading-snug">{title}</span>
         <span className="text-[10px] text-muted-foreground leading-tight">{meta}</span>
       </div>
+    </>
+  )
+
+  if (to) {
+    return (
+      <Link to={to} params={params} className={className}>
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={className}
+    >
+      {content}
     </button>
   )
 }
@@ -201,11 +219,11 @@ function PendingRunRow({ run }: { run: PendingRun }) {
 
 // ── Recent session row ────────────────────────────────────────────────────────
 
-function RecentSessionRow({ session, workspaceName, onSelect }: { session: Session, workspaceName: string, onSelect: (sessionId: string) => void }) {
+function RecentSessionRow({ session, workspaceName }: { session: Session, workspaceName: string }) {
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(session.id)}
+    <Link
+      to="chat"
+      params={{ sessionId: session.id }}
       className="group flex items-center gap-3 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 w-full text-left"
       data-testid="home-recent-session"
     >
@@ -217,7 +235,7 @@ function RecentSessionRow({ session, workspaceName, onSelect }: { session: Sessi
       <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground tabular-nums">
         {formatRelativeTime(session.updatedAt)}
       </span>
-    </button>
+    </Link>
   )
 }
 
@@ -288,7 +306,6 @@ type ActivityItem
 export function HomeDashboard() {
   const { workspaces } = useWorkspaces()
   const [searchOpen, setSearchOpen] = useState(false)
-  const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const { selectDirectory } = useDirectoryPicker()
 
@@ -366,7 +383,8 @@ export function HomeDashboard() {
                   kind="workspace"
                   title={item.ws.name}
                   meta="项目"
-                  onClick={() => openTab('workspace-detail', { workspaceId: item.ws.id })}
+                  to="workspace-detail"
+                  params={{ workspaceId: item.ws.id }}
                 />
               )
             }
@@ -377,7 +395,8 @@ export function HomeDashboard() {
                   kind="session"
                   title={item.session.title}
                   meta={item.workspaceName}
-                  onClick={() => openTab('chat', { sessionId: item.session.id })}
+                  to="chat"
+                  params={{ sessionId: item.session.id }}
                 />
               )
             }
@@ -419,7 +438,6 @@ export function HomeDashboard() {
                       key={session.id}
                       session={session}
                       workspaceName={workspaceName}
-                      onSelect={sessionId => openTab('chat', { sessionId })}
                     />
                   ))}
                 </div>

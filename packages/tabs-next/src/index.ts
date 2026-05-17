@@ -4,6 +4,8 @@
 
 export type { TabBarProps, TabPresentation } from './components/tab-bar'
 export { TabBar } from './components/tab-bar'
+export type { LinkProps } from './components/tab-link'
+export { Link } from './components/tab-link'
 export type { TabRendererProps } from './components/tab-renderer'
 export { chooseMountedTabIds, TabRenderer } from './components/tab-renderer'
 export { TabsContext, useTabsContext } from './context'
@@ -30,3 +32,5 @@ export type {
   TabRouteCapabilities,
   TabRouteDefinition,
 } from './types'
+export type { UrlSyncHandle, UrlSyncOptions } from './url-sync'
+export { buildHash, createUrlSync, parseHash } from './url-sync'

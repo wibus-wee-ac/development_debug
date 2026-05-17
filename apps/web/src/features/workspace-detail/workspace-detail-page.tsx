@@ -24,6 +24,7 @@ import { SkillManager } from '~/features/skills/skill-manager'
 import { sessionsQueryKey, type WorkspaceSession } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
+import { Link } from '@cradle/tabs-next'
 import { cn } from '~/lib/cn'
 import type { Workspace } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
@@ -717,10 +718,10 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
           : (
             <div className="flex flex-col gap-0.5 pb-3">
               {recentSessions.map(session => (
-                <button
+                <Link
                   key={session.id}
-                  type="button"
-                  onClick={() => openTab('chat', { sessionId: session.id })}
+                  to="chat"
+                  params={{ sessionId: session.id }}
                   className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-colors hover:bg-accent/50"
                 >
                   <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
@@ -728,7 +729,7 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
                   <time className="shrink-0 tabular-nums text-[10px] text-muted-foreground" suppressHydrationWarning>
                     {timeAgo(session.updatedAt, now)}
                   </time>
-                </button>
+                </Link>
               ))}
             </div>
           )}

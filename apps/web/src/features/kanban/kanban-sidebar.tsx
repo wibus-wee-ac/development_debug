@@ -17,6 +17,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { Link } from '@cradle/tabs-next'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './use-kanban'
@@ -169,7 +170,6 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean; o
 // ── Board Item ────────────────────────────────────────────────────────────────
 
 function BoardItem({ board }: { board: { id: string; name: string } }) {
-  const { openTab } = useCradleNavigation()
   const isActive = useIsActiveTab('kanban-board', { boardId: board.id })
   const deleteBoard = useDeleteBoard()
   const updateBoard = useUpdateBoard()
@@ -228,14 +228,15 @@ function BoardItem({ board }: { board: { id: string; name: string } }) {
           />
         </div>
       ) : (
-        <button
-          onClick={() => openTab('kanban-board', { boardId: board.id })}
+        <Link
+          to="kanban-board"
+          params={{ boardId: board.id }}
           onDoubleClick={handleRenameStart}
           className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs text-sidebar-foreground/80"
         >
           <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
           <span className="truncate">{board.name}</span>
-        </button>
+        </Link>
       )}
 
       <Menu>

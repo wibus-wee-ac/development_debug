@@ -37,6 +37,8 @@ import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
+import { Link } from '@cradle/tabs-next'
+
 import type { Workspace } from '~/lib/types'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -141,10 +143,6 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
     ])
   }, [queryClient, session.id, workspaceId])
 
-  const openSessionTab = useCallback(() => {
-    openTab('chat', { sessionId: session.id })
-  }, [openTab, session.id])
-
   const handleDelete = useCallback(async () => {
     await deleteSessionsById({ path: { id: session.id } })
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
@@ -232,9 +230,9 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
         )
         : (
           <>
-            <button
-              type="button"
-              onClick={openSessionTab}
+            <Link
+              to="chat"
+              params={{ sessionId: session.id }}
               data-testid={`session-open-${session.id}`}
               className="flex flex-1 items-center gap-2 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
             >
@@ -250,7 +248,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
               <span className="shrink-0 text-[11px] text-muted-foreground">
                 {formatRelativeTime(session.updatedAt)}
               </span>
-            </button>
+            </Link>
             <Menu>
               <MenuTrigger
                 render={(
@@ -302,14 +300,10 @@ function WorkspaceGroup({
 }) {
   const [expanded, setExpanded] = useState(true)
   const [packOpen, setPackOpen] = useState(false)
-  const { openTab } = useCradleNavigation()
   const { sessions } = useSessions(expanded ? workspace.id : null)
   const toggleExpanded = useCallback(() => {
     setExpanded(prev => !prev)
   }, [])
-  const openWorkspaceHome = useCallback(() => {
-    openTab('workspace-detail', { workspaceId: workspace.id })
-  }, [openTab, workspace.id])
 
   return (
     <div className="flex flex-col" data-testid={`workspace-group-${workspace.id}`}>
@@ -325,16 +319,16 @@ function WorkspaceGroup({
             : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
         </button>
 
-        <button
-          type="button"
-          onClick={openWorkspaceHome}
+        <Link
+          to="workspace-detail"
+          params={{ workspaceId: workspace.id }}
           data-testid={`workspace-open-${workspace.id}`}
           className="flex min-w-0 flex-1 items-center text-left"
         >
           <span className="truncate text-xs font-medium text-sidebar-foreground/80">
             {workspace.name}
           </span>
-        </button>
+        </Link>
 
         <Menu>
           <MenuTrigger
@@ -419,17 +413,16 @@ interface NavItemProps {
   shortcut?: string
   collapsed?: boolean
   onClick?: () => void
+  to?: string
+  params?: Record<string, string>
   dataTestId?: string
 }
 
-function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: NavItemProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={dataTestId}
-      className="group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
-    >
+function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dataTestId }: NavItemProps) {
+  const className = "group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
+
+  const content = (
+    <>
       {collapsed
         ? (
           <Tooltip>
@@ -478,6 +471,25 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, dataTestId }: N
           )}
         </AnimatePresence>
       )}
+    </>
+  )
+
+  if (to) {
+    return (
+      <Link to={to} params={params} onClick={onClick} className={className} data-testid={dataTestId}>
+        {content}
+      </Link>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={dataTestId}
+      className={className}
+    >
+      {content}
     </button>
   )
 }
@@ -488,7 +500,6 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
-  const { openTab } = useCradleNavigation()
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const handleOpenSettings = useCallback(() => {
     const activeTabId = useCradleTabStore.getState().activeTabId
@@ -516,14 +527,14 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             icon={<HomeIcon className="size-3.5" />}
             label="首页"
             collapsed={collapsed}
-            onClick={() => openTab('home')}
+            to="home"
             dataTestId="nav-home"
           />
           <TopNavItem
             icon={<MessageSquarePlusIcon className="size-3.5" />}
             label="新建聊天"
             collapsed={collapsed}
-            onClick={() => openTab('new-chat')}
+            to="new-chat"
             dataTestId="nav-new-chat"
           />
           <TopNavItem
@@ -537,7 +548,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             icon={<BarChart3Icon className="size-3.5" />}
             label="用量"
             collapsed={collapsed}
-            onClick={() => openTab('usage')}
+            to="usage"
             dataTestId="nav-usage"
           />
           <TopNavItem

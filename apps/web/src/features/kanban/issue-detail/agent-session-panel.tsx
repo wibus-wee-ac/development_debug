@@ -1,8 +1,8 @@
 import { ExternalLinkIcon, SquareIcon } from 'lucide-react'
 import { useMemo } from 'react'
 
+import { Link } from '@cradle/tabs-next'
 import { cn } from '~/lib/utils'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { useAgentActivities, useAgentSessions, useStartAgentSession, useStopAgentSession } from '../use-kanban'
 import { AgentActivityItem } from './agent-activity-item'
@@ -25,7 +25,6 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
   const { data: sessions = [] } = useAgentSessions(issueId)
   const stopSession = useStopAgentSession()
   const startSession = useStartAgentSession()
-  const { openTab } = useCradleNavigation()
 
   const activeSession = useMemo(() => {
     // Prefer active/created, else take latest
@@ -85,15 +84,15 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
             </button>
           )}
           {activeSession.chatSessionId && (
-            <button
-              type="button"
+            <Link
+              to="chat"
+              params={{ sessionId: activeSession.chatSessionId! }}
               className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               data-testid="issue-agent-session-open-chat"
-              onClick={() => openTab('chat', { sessionId: activeSession.chatSessionId! })}
             >
               <ExternalLinkIcon className="size-3" />
               Open Chat
-            </button>
+            </Link>
           )}
         </div>
       </div>

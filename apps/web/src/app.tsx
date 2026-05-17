@@ -5,7 +5,7 @@
 import './styles.css'
 
 import type { TabRenderPolicy } from '@cradle/tabs-next'
-import { TabRenderer, TabsProvider } from '@cradle/tabs-next'
+import { createUrlSync, TabRenderer, TabsProvider } from '@cradle/tabs-next'
 import { domAnimation, LazyMotion } from 'motion/react'
 import { useEffect } from 'react'
 
@@ -84,6 +84,13 @@ function AppRuntime() {
         }))
       }
     }
+  }, [])
+
+  // Initialize URL ↔ Tab Store sync (hash-based routing)
+  useEffect(() => {
+    const urlSync = createUrlSync({ store: useCradleTabStore, registry: cradleRegistry })
+    urlSync.init()
+    return () => urlSync.destroy()
   }, [])
 
   useEffect(() => {

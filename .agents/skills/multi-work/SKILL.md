@@ -1,6 +1,8 @@
 ---
 name: multi-work
 description: Multi-agent collaboration patterns. Use when a task benefits from multiple independent agents working in parallel (DAG) or serial adversarial refinement (Critique-Chain).
+metadata:
+  author: wibus
 ---
 
 # Multi-Work
@@ -36,8 +38,10 @@ Each agent must verify before writing the handoff file:
 
 Prerequisite: activate `exec-plan` skill first. If unavailable, abort and report to user — do not proceed without it.
 
-- **Plan Files** must follow the `exec-plan` skill format.
+- **Plan Files** must follow the `exec-plan` skill format. Please do not store Plan Files in the handoff directory. They should be stored in a separate directory, `exec-plan` skill has its own convention for Plan File naming and storage. 
 - **Agent outputs** (findings, implementations, reviews, fixes) must follow the [Handoff File Convention](#handoff-file-convention-applies-to-both-strategies) above.
+
+**PLAN FILES IS NOT HANDOFF FILE. DO NOT MIX THEM.**
 
 ## Workflow
 
