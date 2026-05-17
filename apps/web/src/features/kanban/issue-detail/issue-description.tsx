@@ -1,5 +1,4 @@
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
-
 import type { KanbanIssue } from '~/lib/types'
 
 interface IssueDescriptionProps {

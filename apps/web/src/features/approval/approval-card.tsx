@@ -2,9 +2,9 @@
 // Output: Inline approval card rendered inside chat message area
 // Position: Renderer approval feature — user-facing approval interaction component
 
-import type { ApprovalRequestedPayload } from '~/lib/contracts/approval-events'
 import { CheckIcon, XIcon } from 'lucide-react'
 
+import type { ApprovalRequestedPayload } from '~/lib/contracts/approval-events'
 import { cn } from '~/lib/utils'
 
 import { useSessionApprovalRequests } from './use-approval'

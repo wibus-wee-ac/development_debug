@@ -2,6 +2,7 @@
 // Output: Horizontal scrollable board with DnD columns
 // Position: Board layout component for kanban view
 
+import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import {
   DndContext,
   DragOverlay,
@@ -9,15 +10,14 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
-import type { ViewConfig } from './use-view-config'
 import { KanbanCard } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
+import type { ViewConfig } from './use-view-config'
 
 interface BoardProps {
   workspaceId: string
@@ -85,20 +85,27 @@ export function KanbanBoard({
 
   const groupedIssues = useMemo(() => {
     const map: Record<string, KanbanIssue[]> = {}
-    for (const g of groups) map[g.id] = []
+    for (const g of groups) {
+      map[g.id] = []
+    }
 
     for (const issue of issues) {
       let groupId: string
       if (config.groupBy === 'status') {
         groupId = issue.statusId ?? ''
-      } else if (config.groupBy === 'priority') {
+      }
+ else if (config.groupBy === 'priority') {
         groupId = issue.priority
-      } else if (config.groupBy === 'milestone') {
+      }
+ else if (config.groupBy === 'milestone') {
         groupId = issue.milestoneId ?? '__none__'
-      } else {
+      }
+ else {
         groupId = issue.statusId ?? ''
       }
-      if (!map[groupId]) map[groupId] = []
+      if (!map[groupId]) {
+        map[groupId] = []
+      }
       map[groupId].push(issue)
     }
     return map
@@ -106,13 +113,17 @@ export function KanbanBoard({
 
   const handleDragStart = (event: DragStartEvent) => {
     const issue = event.active.data.current?.issue as KanbanIssue | undefined
-    if (issue) setActiveIssue(issue)
+    if (issue) {
+      setActiveIssue(issue)
+    }
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
     setActiveIssue(null)
     const { active, over } = event
-    if (!over) return
+    if (!over) {
+      return
+    }
     const issueId = active.id as string
     const targetGroupId = over.id as string
     if (targetGroupId && issueId) {

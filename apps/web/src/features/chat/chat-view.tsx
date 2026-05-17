@@ -3,6 +3,9 @@
 // Position: Primary chat feature view — does NOT own message sending lifecycle
 
 import { useQuery } from '@tanstack/react-query'
+// Per-message wrapper that subscribes to generating state from the store.
+// This ensures only truly-generating messages get streaming=true — not passive/stale state.
+import type { UIMessage } from 'ai'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -290,7 +293,7 @@ export function ChatView({
     const model = sessionModels.find(candidate => candidate.id === sessionBinding.modelId)
     const contextWindow = model?.capabilities.contextWindow
     return contextWindow != null && contextWindow > 0 ? contextWindow : null
-  }, [sessionBinding?.modelId, sessionModels])
+  }, [sessionBinding, sessionModels])
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
@@ -320,10 +323,14 @@ export function ChatView({
   // Keep the streaming message mounted to prevent re-animation on scroll recycle
   const generatingIds = useChatStore(s => s.generatingMessageIds)
   const keepMountedIndices = useMemo(() => {
-    if (generatingIds.size === 0) return undefined
+    if (generatingIds.size === 0) {
+      return undefined
+    }
     const indices: number[] = []
     for (let i = 0; i < messages.length; i++) {
-      if (generatingIds.has(messages[i].id)) indices.push(i)
+      if (generatingIds.has(messages[i].id)) {
+        indices.push(i)
+      }
     }
     return indices.length > 0 ? indices : undefined
   }, [generatingIds, messages])
@@ -491,10 +498,6 @@ export function ChatView({
     </div>
   )
 }
-
-// Per-message wrapper that subscribes to generating state from the store.
-// This ensures only truly-generating messages get streaming=true — not passive/stale state.
-import type { UIMessage } from 'ai'
 
 function MessageBubbleWithStreamState({ message }: { message: UIMessage }) {
   const isGenerating = useChatStore(chatSelectors.isGenerating(message.id))

@@ -23,12 +23,20 @@ import { startShell, stopShell } from './shell-api'
 const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
 const MAX_TRANSCRIPT_CHARS = 8_000
 
+// eslint-disable-next-line no-control-regex
+const RE_OSC = /\u001B\][^\u0007]*(\u0007|\u001B\\)/g
+// eslint-disable-next-line no-control-regex, regexp/no-obscure-range
+const RE_CSI = /\u001B\[[0-?]*[ -/]*[@-~]/g
+const RE_CR = /\r/g
+// eslint-disable-next-line no-control-regex
+const RE_BS = /\u0008/g
+
 function toPlainTerminalText(value: string): string {
   return value
-    .replace(/\u001B\][^\u0007]*(\u0007|\u001B\\)/g, '')
-    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/\r/g, '')
-    .replace(/\u0008/g, '')
+    .replace(RE_OSC, '')
+    .replace(RE_CSI, '')
+    .replace(RE_CR, '')
+    .replace(RE_BS, '')
 }
 
 interface ShellViewProps {

@@ -82,6 +82,7 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useLayoutGeometry(): LayoutGeometryContextValue {
   const value = React.useContext(LayoutGeometryContext)
   if (!value) {

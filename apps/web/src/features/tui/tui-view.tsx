@@ -66,6 +66,9 @@ export function TuiView({ sessionId }: TuiViewProps) {
     let pendingCols = 0
     let pendingRows = 0
 
+    // Declared here so applyResize can reference it; assigned after createPtyChannel below.
+    let channel: ReturnType<typeof createPtyChannel>
+
     function applyResize(cols: number, rows: number) {
       if (cols <= 0 || rows <= 0) {
         return
@@ -100,7 +103,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
       }
     }
 
-    const channel = createPtyChannel({
+    channel = createPtyChannel({
       socketPath: `/terminal-sessions/${encodeURIComponent(sessionId)}/socket`,
       onSnapshot(event) {
         writeSnapshot(event.buffer, event.running)

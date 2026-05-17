@@ -1,7 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { SendIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
-
-import { useQueryClient } from '@tanstack/react-query'
 
 import { getServerUrl } from '~/lib/electron'
 
@@ -20,11 +19,13 @@ async function sendPrompt(agentSessionId: string, text: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   })
-  if (!res.ok) throw new Error(`Failed to send prompt: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(`Failed to send prompt: ${res.status}`)
+  }
   return res.json()
 }
 
-export function AgentPromptInput({ agentSessionId, sessionStatus, issueId }: AgentPromptInputProps) {
+export function AgentPromptInput({ agentSessionId, sessionStatus, issueId: _issueId }: AgentPromptInputProps) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
@@ -33,7 +34,9 @@ export function AgentPromptInput({ agentSessionId, sessionStatus, issueId }: Age
 
   const handleSubmit = useCallback(async () => {
     const trimmed = text.trim()
-    if (!trimmed || isAgentBusy || isSending) return
+    if (!trimmed || isAgentBusy || isSending) {
+      return
+    }
     setError(null)
     setIsSending(true)
     setText('')

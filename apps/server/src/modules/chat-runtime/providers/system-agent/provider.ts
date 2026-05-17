@@ -14,7 +14,7 @@ import * as Preferences from '../../../preferences/service'
 import {
   BaseProviderConfig,
   parseConfigWith,
-  SystemAgentConfigSchema
+  SystemAgentConfigSchema,
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type {
@@ -23,7 +23,7 @@ import type {
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
-  StreamTurnInput
+  StreamTurnInput,
 } from '../../runtime-provider-types'
 
 interface SystemAgentProviderDeps {
@@ -47,8 +47,8 @@ export class SystemAgentProvider implements ChatRuntime {
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
-        models: { currentModelId: input.modelId ?? null }
-      })
+        models: { currentModelId: input.modelId ?? null },
+      }),
     }
   }
 
@@ -61,12 +61,12 @@ export class SystemAgentProvider implements ChatRuntime {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
         ...snapshot,
-        models: { currentModelId: input.modelId }
-      })
+        models: { currentModelId: input.modelId },
+      }),
     }
   }
 
-  async *streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
     const config = parseConfigWith(input.profile.configJson, SystemAgentConfigSchema)
     const baseConfig = parseConfigWith(input.profile.configJson, BaseProviderConfig)
@@ -98,7 +98,7 @@ export class SystemAgentProvider implements ChatRuntime {
       systemPrompt,
       thinkingLevel: thinkingLevel as DefaultRuntimeConfigOptions['thinkingLevel'],
       sessionsRootDir,
-      workspaceRoot: input.workspacePath ?? process.cwd()
+      workspaceRoot: input.workspacePath ?? process.cwd(),
     }
     if (apiKey) {
       runtimeConfigOptions.apiKey = apiKey
@@ -123,7 +123,7 @@ export class SystemAgentProvider implements ChatRuntime {
       source: { platform: 'cli' },
       routing: {
         platform: 'cli',
-        scope: { kind: 'local_thread', threadId: sessionId }
+        scope: { kind: 'local_thread', threadId: sessionId },
       },
       message: { text: input.message },
       prompt: input.message,
@@ -138,21 +138,22 @@ export class SystemAgentProvider implements ChatRuntime {
             const ame = event.assistantMessageEvent
             const newChunks = bridgeEvent(ame, textItemId, assistantStarted)
             if (newChunks.length > 0) {
-              if (!assistantStarted && newChunks.some((c) => c.type === 'text-start')) {
+              if (!assistantStarted && newChunks.some(c => c.type === 'text-start')) {
                 assistantStarted = true
               }
               chunks.push(...newChunks)
               resolveNext?.()
             }
-          } else if (event.type === 'agent_end') {
+          }
+ else if (event.type === 'agent_end') {
             if (assistantStarted) {
               chunks.push({ type: 'text-end', id: textItemId })
             }
             done = true
             resolveNext?.()
           }
-        }
-      }
+        },
+      },
     }
 
     executeIngressCommand({ config: jarConfig, command }).catch((err) => {
@@ -171,14 +172,16 @@ export class SystemAgentProvider implements ChatRuntime {
         }
         if (chunks.length > 0) {
           yield chunks.shift()!
-        } else if (!done) {
+        }
+ else if (!done) {
           await new Promise<void>((resolve) => {
             resolveNext = resolve
           })
           resolveNext = null
         }
       }
-    } finally {
+    }
+ finally {
       this.activeTurns.delete(sessionId)
     }
 
@@ -205,7 +208,8 @@ function parseSnapshot(raw: string | null): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw)
     return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  } catch {
+  }
+ catch {
     return {}
   }
 }
@@ -220,7 +224,7 @@ type AssistantMessageEvent = {
 function bridgeEvent(
   ame: AssistantMessageEvent,
   textItemId: string,
-  assistantStarted: boolean
+  assistantStarted: boolean,
 ): UIMessageChunk[] {
   const out: UIMessageChunk[] = []
 

@@ -134,7 +134,6 @@ export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
         return
       case 'error':
         options.onError?.(event)
-        return
     }
   }
 

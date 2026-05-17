@@ -2,7 +2,8 @@
 // Output: cn utility for stable static class composition
 // Position: Internal styling helper for tabs-next components
 
-import { clsx, type ClassValue } from 'clsx'
+import type { ClassValue } from 'clsx'
+import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 export function cn(...inputs: ClassValue[]): string {

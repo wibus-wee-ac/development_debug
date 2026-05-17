@@ -9,7 +9,7 @@ export const git = new Elysia({
 })
   .get('/:id/git/status', ({ params }) => Git.getStatus(params.id), {
     detail: {
-      summary: 'Get git status',
+      'summary': 'Get git status',
       'x-cradle-cli': {
         command: ['workspace', 'git', 'status'],
       },
@@ -19,7 +19,7 @@ export const git = new Elysia({
   })
   .get('/:id/git/branches', ({ params }) => Git.getBranches(params.id), {
     detail: {
-      summary: 'Get git branches',
+      'summary': 'Get git branches',
       'x-cradle-cli': {
         command: ['workspace', 'git', 'branches'],
       },
@@ -29,7 +29,7 @@ export const git = new Elysia({
   })
   .get('/:id/git/graph', ({ params, query }) => Git.getGraph(params.id, query.limit ?? 100), {
     detail: {
-      summary: 'Get git graph',
+      'summary': 'Get git graph',
       'x-cradle-cli': {
         command: ['workspace', 'git', 'graph'],
       },
@@ -43,7 +43,7 @@ export const git = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Checkout branch',
+      'summary': 'Checkout branch',
       'x-cradle-cli': {
         command: ['workspace', 'git', 'checkout'],
       },
@@ -57,7 +57,7 @@ export const git = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Create branch',
+      'summary': 'Create branch',
       'x-cradle-cli': {
         command: ['workspace', 'git', 'branch', 'create'],
       },
@@ -71,7 +71,7 @@ export const git = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Fetch remote',
+      'summary': 'Fetch remote',
       'x-cradle-cli': {
         command: ['workspace', 'git', 'fetch'],
       },

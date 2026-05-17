@@ -5,12 +5,12 @@
 import { ChevronDownIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { PROVIDER_ICONS } from '~/features/agent-management/provider-icons'
-import type { RuntimeKind } from '~/lib/types'
 import { cn } from '~/lib/cn'
+import type { RuntimeKind } from '~/lib/types'
 
 import { RUNTIME_KIND_OPTIONS } from './constants'
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 
 const RUNTIME_ICON_KEYS: Record<RuntimeKind, string> = {
   'standard': 'custom',
@@ -42,7 +42,7 @@ export function RuntimeSelector({ value, onChange }: RuntimeSelectorProps) {
         <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/50" />
       </MenuTrigger>
       <MenuPopup align="start" side="top" sideOffset={4}>
-        {RUNTIME_KIND_OPTIONS.map(opt => {
+        {RUNTIME_KIND_OPTIONS.map((opt) => {
           const OptIcon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[opt.value]] ?? PROVIDER_ICONS.custom!
           return (
             <MenuItem

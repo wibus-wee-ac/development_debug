@@ -7,10 +7,10 @@ import { unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { LangfuseGeneration } from '@langfuse/tracing'
+import { startObservation } from '@langfuse/tracing'
 import type { Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
-import { startObservation } from '@langfuse/tracing'
-import type { LangfuseGeneration } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../../langfuse'
@@ -270,7 +270,9 @@ export class CodexProvider implements ChatRuntime {
       this.activeThreads.delete(input.runtimeSession.chatSessionId)
       // Clean up temp system prompt file
       if (systemPromptFile) {
-        try { unlinkSync(systemPromptFile) }
+        try {
+          unlinkSync(systemPromptFile)
+        }
         catch { /* ignore */ }
       }
     }

@@ -44,7 +44,7 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutDefiniti
  * Serializes a shortcut definition to a human-readable string.
  * Useful for display in tooltips, menus, etc.
  */
-function formatShortcut(shortcut: ShortcutDefinition): string {
+function _formatShortcut(shortcut: ShortcutDefinition): string {
   const parts: string[] = []
   if (shortcut.ctrl) {
     parts.push('Ctrl')

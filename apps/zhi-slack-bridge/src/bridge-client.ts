@@ -6,7 +6,7 @@ import { createConnection } from 'node:net'
 
 export interface BridgeResponse {
   success: boolean
-  result?: { user_input: string; selected_options: string[] }
+  result?: { user_input: string, selected_options: string[] }
   error?: string
 }
 
@@ -30,7 +30,8 @@ export async function callBridge(message: string, options: BridgeClientOptions):
   while (true) {
     try {
       return await callBridgeOnce(message, options.socketPath)
-    } catch (error) {
+    }
+ catch (error) {
       if (!(error instanceof BridgeConnectionError)) {
         throw error
       }
@@ -56,7 +57,7 @@ function callBridgeOnce(message: string, socketPath: string): Promise<BridgeResp
           message,
         },
       })
-      socket.write(request + '\n')
+      socket.write(`${request}\n`)
     })
 
     socket.on('data', (chunk) => {
@@ -70,9 +71,11 @@ function callBridgeOnce(message: string, socketPath: string): Promise<BridgeResp
       settled = true
       try {
         resolve(JSON.parse(line))
-      } catch {
+      }
+ catch {
         reject(new Error(`Invalid bridge response: ${line}`))
-      } finally {
+      }
+ finally {
         socket.end()
       }
     })
@@ -97,5 +100,5 @@ function callBridgeOnce(message: string, socketPath: string): Promise<BridgeResp
 }
 
 function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 
 /**
  * Manages pending zhi calls waiting for user replies from Slack.
- * 
+ *
  * When a zhi tool is called, we create a pending call and block.
  * When a Slack reply comes in, we resolve the pending call.
  */
@@ -36,7 +36,9 @@ export class PendingCallManager extends EventEmitter {
 
   private cleanup(callId: string): void {
     const pending = this.pending.get(callId)
-    if (!pending) return
+    if (!pending) {
+      return
+    }
     this.threadToCallId.delete(pending.threadTs)
     this.pending.delete(callId)
   }
@@ -46,7 +48,9 @@ export class PendingCallManager extends EventEmitter {
    */
   resolveCall(callId: string, response: string): boolean {
     const pending = this.pending.get(callId)
-    if (!pending) return false
+    if (!pending) {
+      return false
+    }
     if (pending.timeout) {
       clearTimeout(pending.timeout)
     }
@@ -61,7 +65,9 @@ export class PendingCallManager extends EventEmitter {
    */
   resolveByThreadTs(threadTs: string, response: string): string | null {
     const callId = this.threadToCallId.get(threadTs)
-    if (!callId) return null
+    if (!callId) {
+      return null
+    }
     const resolved = this.resolveCall(callId, response)
     return resolved ? callId : null
   }
@@ -77,7 +83,7 @@ export class PendingCallManager extends EventEmitter {
    * Cancel all pending calls
    */
   cancelAll(): void {
-    for (const [callId, pending] of this.pending) {
+    for (const [_callId, pending] of this.pending) {
       if (pending.timeout) {
         clearTimeout(pending.timeout)
       }

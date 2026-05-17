@@ -9,8 +9,8 @@ export const preferences = new Elysia({
 })
   .get('/chat', () => Preferences.getChatPreferences(), {
     detail: {
-      summary: 'Get chat preferences',
-      description: 'Read the server-owned default chat preferences.',
+      'summary': 'Get chat preferences',
+      'description': 'Read the server-owned default chat preferences.',
       'x-cradle-cli': {
         command: ['preferences', 'chat', 'get'],
       },
@@ -24,8 +24,8 @@ export const preferences = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Set chat preferences',
-      description: 'Persist the server-owned default chat preferences.',
+      'summary': 'Set chat preferences',
+      'description': 'Persist the server-owned default chat preferences.',
       'x-cradle-cli': {
         command: ['preferences', 'chat', 'set'],
       },
@@ -37,8 +37,8 @@ export const preferences = new Elysia({
   })
   .get('/jarvis', () => Preferences.getJarvisPreferences(), {
     detail: {
-      summary: 'Get Jarvis preferences',
-      description: 'Read the system agent (Jarvis) configuration.',
+      'summary': 'Get Jarvis preferences',
+      'description': 'Read the system agent (Jarvis) configuration.',
       'x-cradle-cli': {
         command: ['preferences', 'jarvis', 'get'],
       },
@@ -52,8 +52,8 @@ export const preferences = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Set Jarvis preferences',
-      description: 'Persist the system agent (Jarvis) provider and model config.',
+      'summary': 'Set Jarvis preferences',
+      'description': 'Persist the system agent (Jarvis) provider and model config.',
       'x-cradle-cli': {
         command: ['preferences', 'jarvis', 'set'],
       },

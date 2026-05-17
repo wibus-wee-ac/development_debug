@@ -4,6 +4,8 @@
 
 import type { CliHttpMethod } from './types'
 
+const PATH_PARAM_RE = /\{([^}]+)\}/g
+
 interface RequestInput {
   body?: unknown
   method: CliHttpMethod
@@ -14,7 +16,7 @@ interface RequestInput {
 }
 
 function serializePath(template: string, values: Record<string, unknown>): string {
-  return template.replace(/\{([^}]+)\}/g, (_, key: string) => {
+  return template.replace(PATH_PARAM_RE, (_, key: string) => {
     const value = values[key]
     if (value === undefined || value === null || value === '') {
       throw new Error(`Missing path parameter: ${key}`)

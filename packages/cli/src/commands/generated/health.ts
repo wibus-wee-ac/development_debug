@@ -2,19 +2,20 @@
 // Output: health command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../runtime/operation-command'
-import type { CliOperationSpec } from '../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../runtime/operation-command'
+import type { CliOperationSpec } from '../../runtime/types'
+
 const spec = {
-  "arguments": [],
-  "command": [
-    "health"
+  arguments: [],
+  command: [
+    'health',
   ],
-  "description": "Health check",
-  "flags": [],
-  "method": "get",
-  "path": "/health"
+  description: 'Health check',
+  flags: [],
+  method: 'get',
+  path: '/health',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

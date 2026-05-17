@@ -169,7 +169,9 @@ export class CradleWorld extends World {
     const listRes = await fetch(`${this.params.serverUrl}/workspaces`)
     if (listRes.ok) {
       const workspaces = await listRes.json() as unknown[]
-      if (workspaces.length > 0) return
+      if (workspaces.length > 0) {
+        return
+      }
     }
     const dir = this.createTempWorkspaceDir('cradle-e2e-ws-')
     const res = await fetch(`${this.params.serverUrl}/workspaces/from-directory`, {

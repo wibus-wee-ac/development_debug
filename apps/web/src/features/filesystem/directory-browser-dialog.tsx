@@ -13,8 +13,6 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const LAST_PATH_KEY = 'directory-browser-last-path'
-
 import { getFilesystemBrowse, getFilesystemFavorites } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import {
@@ -24,6 +22,8 @@ import {
 } from '~/components/ui/dialog'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { cn } from '~/lib/cn'
+
+const LAST_PATH_KEY = 'directory-browser-last-path'
 
 interface FilesystemFavoriteEntry {
   name: string

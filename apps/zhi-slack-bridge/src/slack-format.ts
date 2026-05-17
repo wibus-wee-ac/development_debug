@@ -1,3 +1,11 @@
+const HEADER_RE = /^#{1,6}\s+(\S.*)$/gm
+const BOLD_ASTERISK_RE = /\*\*(.+?)\*\*/g
+const BOLD_UNDERSCORE_RE = /__(.+?)__/g
+const IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g
+const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g
+const STRIKETHROUGH_RE = /~~(.+?)~~/g
+const HORIZONTAL_RULE_RE = /^(-{3,}|_{3,}|\*{3,})$/gm
+
 /**
  * Convert Markdown to Slack mrkdwn format.
  *
@@ -14,27 +22,27 @@ export function markdownToSlackMrkdwn(md: string): string {
   let result = md
 
   // Headers → bold
-  result = result.replace(/^#{1,6}\s+(.+)$/gm, '*$1*')
+  result = result.replace(HEADER_RE, '*$1*')
 
   // Bold: **text** or __text__ → *text*
-  result = result.replace(/\*\*(.+?)\*\*/g, '*$1*')
-  result = result.replace(/__(.+?)__/g, '*$1*')
+  result = result.replace(BOLD_ASTERISK_RE, '*$1*')
+  result = result.replace(BOLD_UNDERSCORE_RE, '*$1*')
 
   // Italic: *text* (single) or _text_ → _text_ (Slack italic)
   // Be careful not to break bold we just converted
   // Slack uses _text_ for italic, which is same as markdown
 
   // Images: ![alt](url) → stripped or just show url (must be before links)
-  result = result.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<$2|📎 $1>')
+  result = result.replace(IMAGE_RE, '<$2|📎 $1>')
 
   // Links: [text](url) → <url|text>
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<$2|$1>')
+  result = result.replace(LINK_RE, '<$2|$1>')
 
   // Strikethrough: ~~text~~ → ~text~
-  result = result.replace(/~~(.+?)~~/g, '~$1~')
+  result = result.replace(STRIKETHROUGH_RE, '~$1~')
 
   // Horizontal rule
-  result = result.replace(/^(-{3,}|_{3,}|\*{3,})$/gm, '───────────────')
+  result = result.replace(HORIZONTAL_RULE_RE, '───────────────')
 
   return result
 }
@@ -69,9 +77,9 @@ export function formatForSlack(message: string): SlackMessage {
   return { type: 'split', summary, full: formatted, continuation }
 }
 
-export type SlackMessage =
-  | { type: 'inline'; text: string }
-  | { type: 'split'; summary: string; full: string; continuation: string[] }
+export type SlackMessage
+  = | { type: 'inline', text: string }
+    | { type: 'split', summary: string, full: string, continuation: string[] }
 
 function chunkSlackMarkdown(text: string): string[] {
   const chunks: string[] = []
@@ -83,23 +91,31 @@ function chunkSlackMarkdown(text: string): string[] {
     remaining = remaining.slice(chunk.length)
   }
 
-  return chunks.filter((chunk) => chunk.length > 0)
+  return chunks.filter(chunk => chunk.length > 0)
 }
 
 function truncateAtBreak(text: string, maxLen: number): string {
-  if (text.length <= maxLen) return text
+  if (text.length <= maxLen) {
+    return text
+  }
 
   // Try to break at paragraph
   const paragraphBreak = text.lastIndexOf('\n\n', maxLen)
-  if (paragraphBreak > maxLen * 0.5) return text.slice(0, paragraphBreak)
+  if (paragraphBreak > maxLen * 0.5) {
+    return text.slice(0, paragraphBreak)
+  }
 
   // Try to break at line
   const lineBreak = text.lastIndexOf('\n', maxLen)
-  if (lineBreak > maxLen * 0.5) return text.slice(0, lineBreak)
+  if (lineBreak > maxLen * 0.5) {
+    return text.slice(0, lineBreak)
+  }
 
   // Hard cut at word boundary
   const spaceBreak = text.lastIndexOf(' ', maxLen)
-  if (spaceBreak > maxLen * 0.7) return text.slice(0, spaceBreak)
+  if (spaceBreak > maxLen * 0.7) {
+    return text.slice(0, spaceBreak)
+  }
 
   return text.slice(0, maxLen)
 }

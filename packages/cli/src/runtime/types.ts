@@ -35,11 +35,11 @@ export interface CliOperationSpec {
 
 export interface CommandContext {
   serverUrl: string
-  request<T = unknown>(operation: {
+  request: <T = unknown>(operation: {
     body?: unknown
     method: CliHttpMethod
     path: Record<string, unknown>
     query: Record<string, unknown>
     template: string
-  }): Promise<T>
+  }) => Promise<T>
 }

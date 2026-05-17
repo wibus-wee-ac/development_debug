@@ -12,44 +12,46 @@ function findSubcommand(parent: Command, name: string): Command | undefined {
   return parent.commands.find(command => command.name() === name)
 }
 
+const UPPER_CASE_RE = /[A-Z]/g
+
 function toKebabCase(value: string): string {
-  return value.replace(/[A-Z]/g, char => `-${char.toLowerCase()}`)
+  return value.replace(UPPER_CASE_RE, char => `-${char.toLowerCase()}`)
 }
 
 function describeGroup(name: string): string | undefined {
   const descriptions: Record<string, string> = {
-    acp: 'Manage ACP agents',
-    agent: 'Manage Cradle agents',
-    approval: 'Manage pending approvals',
-    board: 'Manage kanban boards',
-    branch: 'Manage git branches',
-    chat: 'Manage chat runtime commands',
-    comment: 'Manage issue comments',
-    context: 'Manage context references',
+    'acp': 'Manage ACP agents',
+    'agent': 'Manage Cradle agents',
+    'approval': 'Manage pending approvals',
+    'board': 'Manage kanban boards',
+    'branch': 'Manage git branches',
+    'chat': 'Manage chat runtime commands',
+    'comment': 'Manage issue comments',
+    'context': 'Manage context references',
     'context-ref': 'Manage issue context references',
-    cost: 'Inspect usage costs',
-    document: 'Manage documents',
-    export: 'Export resources',
-    file: 'Manage workspace files',
-    git: 'Manage workspace git state',
-    issue: 'Manage kanban issues',
+    'cost': 'Inspect usage costs',
+    'document': 'Manage documents',
+    'export': 'Export resources',
+    'file': 'Manage workspace files',
+    'git': 'Manage workspace git state',
+    'issue': 'Manage kanban issues',
     'issue-agent-session': 'Manage issue agent sessions',
     'linked-issue': 'Manage session issue links',
-    milestone: 'Manage kanban milestones',
-    observability: 'Inspect observability data',
-    preferences: 'Manage server preferences',
-    profile: 'Manage agent profiles',
-    provider: 'Inspect providers',
-    search: 'Search Cradle data',
-    secret: 'Manage secret metadata',
-    session: 'Manage chat sessions',
-    skill: 'Manage skills',
-    source: 'Manage external sources',
-    status: 'Manage kanban statuses',
-    usage: 'Inspect usage data',
-    workflow: 'Manage workflow rules',
+    'milestone': 'Manage kanban milestones',
+    'observability': 'Inspect observability data',
+    'preferences': 'Manage server preferences',
+    'profile': 'Manage agent profiles',
+    'provider': 'Inspect providers',
+    'search': 'Search Cradle data',
+    'secret': 'Manage secret metadata',
+    'session': 'Manage chat sessions',
+    'skill': 'Manage skills',
+    'source': 'Manage external sources',
+    'status': 'Manage kanban statuses',
+    'usage': 'Inspect usage data',
+    'workflow': 'Manage workflow rules',
     'workflow-rule': 'Manage workflow rules',
-    workspace: 'Manage workspaces',
+    'workspace': 'Manage workspaces',
   }
   return descriptions[name]
 }
@@ -92,7 +94,7 @@ function parseValue(value: unknown, type: CliValueType | undefined): unknown {
   if (type === 'number') {
     const parsed = Number(value)
     if (Number.isNaN(parsed)) {
-      throw new Error(`Expected a number, received ${String(value)}`)
+      throw new TypeError(`Expected a number, received ${String(value)}`)
     }
     return parsed
   }

@@ -1,6 +1,7 @@
 // Input: agent profile query owner, providers SDK, coss UI primitives, motion
 // Output: AgentRuntimeSettings — Vercel / Linear / Craft style master-detail provider manager
 // Position: Settings → Providers — the only entry point for managing agent runtime profiles
+/* eslint-disable react-refresh/only-export-components */
 
 import {
   ChevronRightIcon,
@@ -32,8 +33,8 @@ import type { AgentProfile, ProviderKind } from '~/lib/types'
 import { DraftSetupPanel } from './draft-setup-panel'
 import { ProfileDetailPanel } from './profile-detail-panel'
 import { PROVIDER_ICONS } from './provider-icons'
-import { PROVIDER_PRESETS } from './provider-templates'
 import type { ProviderPreset } from './provider-templates'
+import { PROVIDER_PRESETS } from './provider-templates'
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 

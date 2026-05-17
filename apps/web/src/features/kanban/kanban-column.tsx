@@ -10,10 +10,10 @@ import { useCallback, useRef, useState } from 'react'
 import { cn } from '~/lib/cn'
 import type { KanbanIssue } from '~/lib/types'
 
-import type { StatusCategory, ViewConfig } from './use-view-config'
 import { KanbanCard } from './kanban-card'
 import { StatusIcon } from './shared/status-icon'
 import { useCreateIssue } from './use-kanban'
+import type { StatusCategory, ViewConfig } from './use-view-config'
 
 interface ColumnProps {
   workspaceId: string
@@ -36,7 +36,7 @@ export function KanbanColumn({
   displayProperties,
   onIssueClick,
   onIssueHover,
-  onCreateIssue,
+  onCreateIssue: _onCreateIssue,
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId })
   const [showInlineInput, setShowInlineInput] = useState(false)
@@ -121,7 +121,8 @@ export function KanbanColumn({
                     if (e.key === 'Enter') {
                       e.preventDefault()
                       handleConfirmInlineCreate()
-                    } else if (e.key === 'Escape') {
+                    }
+ else if (e.key === 'Escape') {
                       setShowInlineInput(false)
                     }
                   }}

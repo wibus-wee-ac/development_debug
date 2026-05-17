@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entry: {
-    main: 'src/main.ts',
+    'main': 'src/main.ts',
     'mcp-server': 'src/mcp-server.ts',
   },
   format: ['esm'],

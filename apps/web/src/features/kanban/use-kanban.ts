@@ -129,12 +129,12 @@ type DeleteCommentInput = { id: string, issueId: string }
 type AddRelationInput = { sourceIssueId: string, targetIssueId: string, type: 'blocks' | 'duplicates' | 'relates_to' }
 type DeleteRelationInput = { id: string, issueId: string }
 
-type ApiKanbanIssue =
-  | GetKanbanIssuesResponse[number]
-  | GetKanbanIssuesSearchResponse[number]
-  | GetKanbanIssuesByIdResponse
-  | PostKanbanIssuesResponse
-  | PatchKanbanIssuesByIdResponse
+type ApiKanbanIssue
+  = | GetKanbanIssuesResponse[number]
+    | GetKanbanIssuesSearchResponse[number]
+    | GetKanbanIssuesByIdResponse
+    | PostKanbanIssuesResponse
+    | PatchKanbanIssuesByIdResponse
 
 function nullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
@@ -190,7 +190,9 @@ export function useCreateBoard() {
   return useMutation({
     mutationFn: async (input: CreateBoardInput) => {
       const { data, error } = await postKanbanBoards({ body: input })
-      if (error || !data) throw new Error('Failed to create board')
+      if (error || !data) {
+        throw new Error('Failed to create board')
+      }
       return data as KanbanBoard
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'boards'] }),
@@ -287,6 +289,7 @@ export function useMilestones(workspaceId: string) {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useCreateMilestone() {
   const qc = useQueryClient()
   return useMutation({
@@ -298,6 +301,7 @@ function useCreateMilestone() {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useUpdateMilestone() {
   const qc = useQueryClient()
   return useMutation({
@@ -309,6 +313,7 @@ function useUpdateMilestone() {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useDeleteMilestone() {
   const qc = useQueryClient()
   return useMutation({
@@ -341,6 +346,7 @@ export function useIssues(params: IssueFilterParams) {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useSearchIssues(query: string, limit = 20, enabled = true) {
   const trimmed = query.trim()
 
@@ -373,7 +379,9 @@ export function useCreateIssue() {
   return useMutation({
     mutationFn: async (input: CreateIssueInput) => {
       const { data, error } = await postKanbanIssues({ body: input })
-      if (error || !data) throw new Error('Failed to create issue')
+      if (error || !data) {
+        throw new Error('Failed to create issue')
+      }
       return readKanbanIssue(data, 'create')
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
@@ -440,6 +448,7 @@ export function useAddComment() {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useDeleteComment() {
   const qc = useQueryClient()
   return useMutation({
@@ -461,6 +470,7 @@ export function useRelations(issueId: string) {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useAddRelation() {
   const qc = useQueryClient()
   return useMutation({
@@ -592,6 +602,7 @@ export function useAgentActivities(agentSessionId: string | null, opts?: { refet
 
 // ── Context Refs ──────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useAddContextRef() {
   const qc = useQueryClient()
   return useMutation({
@@ -604,6 +615,7 @@ function useAddContextRef() {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useRemoveContextRef() {
   const qc = useQueryClient()
   return useMutation({
@@ -624,6 +636,7 @@ type LinkedIssueView = {
   agentSession?: AgentSession | null
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useLinkedIssue(chatSessionId: string | null) {
   return useQuery({
     queryKey: ['kanban', 'linkedIssue', chatSessionId] as const,
@@ -638,6 +651,7 @@ function useLinkedIssue(chatSessionId: string | null) {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useLinkIssue() {
   const qc = useQueryClient()
   return useMutation({
@@ -650,6 +664,7 @@ function useLinkIssue() {
   })
 }
 
+// eslint-disable-next-line unused-imports/no-unused-vars
 function useUnlinkIssue() {
   const qc = useQueryClient()
   return useMutation({

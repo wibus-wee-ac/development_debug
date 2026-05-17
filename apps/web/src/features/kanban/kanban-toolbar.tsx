@@ -198,7 +198,7 @@ function GroupByDropdown({ config, setConfig }: { config: ViewConfig, setConfig:
         </ToolbarPill>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuRadioGroup value={config.groupBy} onValueChange={(v) => setConfig({ groupBy: v as ViewConfig['groupBy'] })}>
+        <DropdownMenuRadioGroup value={config.groupBy} onValueChange={v => setConfig({ groupBy: v as ViewConfig['groupBy'] })}>
           {options.map(opt => (
             <DropdownMenuRadioItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -227,7 +227,7 @@ function SortDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p
         </ToolbarPill>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
-        <DropdownMenuRadioGroup value={config.orderBy} onValueChange={(v) => setConfig({ orderBy: v as ViewConfig['orderBy'] })}>
+        <DropdownMenuRadioGroup value={config.orderBy} onValueChange={v => setConfig({ orderBy: v as ViewConfig['orderBy'] })}>
           {options.map(opt => (
             <DropdownMenuRadioItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -280,7 +280,7 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
             <label className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted">
               <Checkbox
                 checked={config.showEmptyGroups}
-                onCheckedChange={(checked) => setConfig({ showEmptyGroups: !!checked })}
+                onCheckedChange={checked => setConfig({ showEmptyGroups: !!checked })}
               />
               显示空分组
             </label>

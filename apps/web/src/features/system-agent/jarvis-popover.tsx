@@ -141,7 +141,7 @@ export function JarvisPopover({
         sessionId = session.id
         setJarvisSessionId(sessionId)
         setPendingInitialText(fullText)
-        return  // useEffect will send once sessionId state propagates
+        return // useEffect will send once sessionId state propagates
       }
       catch (e) {
         setSendError(e instanceof Error ? e.message : 'Failed to create session')

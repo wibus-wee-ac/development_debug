@@ -2,27 +2,28 @@
 // Output: issue-agent-session stop command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
+
 const spec = {
-  "arguments": [
+  arguments: [
     {
-      "name": "agentSessionId",
-      "required": true,
-      "target": "path.agentSessionId",
-      "type": "string"
-    }
+      name: 'agentSessionId',
+      required: true,
+      target: 'path.agentSessionId',
+      type: 'string',
+    },
   ],
-  "command": [
-    "issue-agent-session",
-    "stop"
+  command: [
+    'issue-agent-session',
+    'stop',
   ],
-  "description": "Stop agent session",
-  "flags": [],
-  "method": "delete",
-  "path": "/issue-agent-sessions/{agentSessionId}"
+  description: 'Stop agent session',
+  flags: [],
+  method: 'delete',
+  path: '/issue-agent-sessions/{agentSessionId}',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

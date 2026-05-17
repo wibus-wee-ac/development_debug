@@ -7,7 +7,7 @@ import type { CliHttpMethod, CommandContext } from './types'
 
 interface CommanderNode {
   parent: CommanderNode | null
-  getOptionValue(name: string): unknown
+  getOptionValue: (name: string) => unknown
 }
 
 interface CreateCommandContextInput {

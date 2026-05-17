@@ -2,56 +2,57 @@
 // Output: milestone update command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
+
 const spec = {
-  "arguments": [
+  arguments: [
     {
-      "name": "id",
-      "required": true,
-      "target": "path.id",
-      "type": "string"
-    }
+      name: 'id',
+      required: true,
+      target: 'path.id',
+      type: 'string',
+    },
   ],
-  "command": [
-    "milestone",
-    "update"
+  command: [
+    'milestone',
+    'update',
   ],
-  "description": "Update milestone",
-  "flags": [
+  description: 'Update milestone',
+  flags: [
     {
-      "name": "title",
-      "required": false,
-      "target": "body.title",
-      "type": "string"
+      name: 'title',
+      required: false,
+      target: 'body.title',
+      type: 'string',
     },
     {
-      "name": "description",
-      "required": false,
-      "target": "body.description",
-      "type": "string"
+      name: 'description',
+      required: false,
+      target: 'body.description',
+      type: 'string',
     },
     {
-      "name": "dueDate",
-      "required": false,
-      "target": "body.dueDate",
-      "type": "number"
+      name: 'dueDate',
+      required: false,
+      target: 'body.dueDate',
+      type: 'number',
     },
     {
-      "name": "status",
-      "required": false,
-      "target": "body.status",
-      "type": "string",
-      "values": [
-        "open",
-        "closed"
-      ]
-    }
+      name: 'status',
+      required: false,
+      target: 'body.status',
+      type: 'string',
+      values: [
+        'open',
+        'closed',
+      ],
+    },
   ],
-  "method": "patch",
-  "path": "/kanban/milestones/{id}"
+  method: 'patch',
+  path: '/kanban/milestones/{id}',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

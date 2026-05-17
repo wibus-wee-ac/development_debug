@@ -112,13 +112,10 @@ export async function updateCustomModels(
     }
   })
 
-  db().update(agentProfiles)
-    .set({
+  db().update(agentProfiles).set({
       customModels: JSON.stringify(entries),
       updatedAt: Math.floor(Date.now() / 1000),
-    })
-    .where(eq(agentProfiles.id, profileId))
-    .run()
+    }).where(eq(agentProfiles.id, profileId)).run()
 
   return entries
 }

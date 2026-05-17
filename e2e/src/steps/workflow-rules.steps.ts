@@ -104,7 +104,7 @@ async function startWorkflowMockProvider(world: CradleWorld): Promise<string> {
   return world.mockLlmBaseUrl
 }
 
-async function selectOption(world: CradleWorld, triggerSelector: string, value: string): Promise<void> {
+async function _selectOption(world: CradleWorld, triggerSelector: string, value: string): Promise<void> {
   const trigger = world.page.locator(triggerSelector)
   await expect(trigger).toBeVisible({ timeout: 10_000 })
   await trigger.click()

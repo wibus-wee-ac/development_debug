@@ -8,6 +8,7 @@ import { expect } from '@playwright/test'
 import type { CradleWorld } from '../support/world'
 
 const DASHBOARD_TIMEOUT = 15_000
+const MOCK_RE = /mock/i
 
 Given('存在至少一个会话', async function (this: CradleWorld) {
   // Reload to pick up fresh profile/workspace data after mock setup
@@ -25,7 +26,7 @@ Given('存在至少一个会话', async function (this: CradleWorld) {
   await agentSelector.click()
   const menuPopup = this.page.locator('[role="menu"]')
   await expect(menuPopup).toBeVisible({ timeout: 10_000 })
-  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: /mock/i })
+  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE })
   await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
   await mockItem.first().click()
 

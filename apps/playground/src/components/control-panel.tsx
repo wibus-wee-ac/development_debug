@@ -1,8 +1,8 @@
 import type { AnimationPresetName, SmoothPreset } from '@cradle/streamdown'
 import { PRESETS } from '@cradle/streamdown'
+import * as EssentialsPlugin from '@tweakpane/plugin-essentials'
 import { useEffect, useRef } from 'react'
 import { Pane } from 'tweakpane'
-import * as EssentialsPlugin from '@tweakpane/plugin-essentials'
 
 import type { SampleSource } from '../data/samples'
 import { SAMPLES } from '../data/samples'
@@ -43,7 +43,7 @@ export function ControlPanel({
   onCpsChange,
   sampleId,
   onSampleChange,
-  streaming,
+  streaming: _streaming,
   onStart,
   onStop,
   onReset,
@@ -67,12 +67,30 @@ export function ControlPanel({
 
   // Use refs for callbacks to avoid stale closures in Tweakpane
   const callbacksRef = useRef({
-    onStart, onStop, onReset, onPresetChange, onAnimateModeChange,
-    onAnimationPresetChange, onShowCursorChange, onCpsChange, onSampleChange, onProfilerChange, onDarkChange,
+    onStart,
+onStop,
+onReset,
+onPresetChange,
+onAnimateModeChange,
+    onAnimationPresetChange,
+onShowCursorChange,
+onCpsChange,
+onSampleChange,
+onProfilerChange,
+onDarkChange,
   })
   callbacksRef.current = {
-    onStart, onStop, onReset, onPresetChange, onAnimateModeChange,
-    onAnimationPresetChange, onShowCursorChange, onCpsChange, onSampleChange, onProfilerChange, onDarkChange,
+    onStart,
+onStop,
+onReset,
+onPresetChange,
+onAnimateModeChange,
+    onAnimationPresetChange,
+onShowCursorChange,
+onCpsChange,
+onSampleChange,
+onProfilerChange,
+onDarkChange,
   }
 
   // Keep params ref in sync
@@ -88,7 +106,9 @@ export function ControlPanel({
   }
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current) {
+      return
+    }
 
     const pane = new Pane({
       container: containerRef.current,
@@ -100,7 +120,9 @@ export function ControlPanel({
     // --- Source ---
     const sourceFolder = pane.addFolder({ title: 'Source' })
     const sampleOptions: Record<string, string> = {}
-    SAMPLES.forEach((s: SampleSource) => { sampleOptions[s.label] = s.id })
+    SAMPLES.forEach((s: SampleSource) => {
+      sampleOptions[s.label] = s.id
+    })
     sourceFolder.addBinding(paramsRef.current, 'sampleId', {
       label: 'Sample',
       options: sampleOptions,
@@ -158,9 +180,15 @@ export function ControlPanel({
 
     // --- Controls ---
     const controlFolder = pane.addFolder({ title: 'Actions' })
-    controlFolder.addButton({ title: 'Stream / Continue' }).on('click', () => { callbacksRef.current.onStart() })
-    controlFolder.addButton({ title: 'Stop' }).on('click', () => { callbacksRef.current.onStop() })
-    controlFolder.addButton({ title: 'Reset' }).on('click', () => { callbacksRef.current.onReset() })
+    controlFolder.addButton({ title: 'Stream / Continue' }).on('click', () => {
+      callbacksRef.current.onStart()
+    })
+    controlFolder.addButton({ title: 'Stop' }).on('click', () => {
+      callbacksRef.current.onStop()
+    })
+    controlFolder.addButton({ title: 'Reset' }).on('click', () => {
+      callbacksRef.current.onReset()
+    })
 
     // --- Display ---
     const displayFolder = pane.addFolder({ title: 'Display' })

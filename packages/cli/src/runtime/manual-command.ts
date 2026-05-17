@@ -2,7 +2,7 @@
 // Output: local manual command for generated and runtime commands
 // Position: packages/cli runtime documentation command
 
-import { Command } from 'commander'
+import type { Command } from 'commander'
 
 interface ManualTarget {
   command: Command

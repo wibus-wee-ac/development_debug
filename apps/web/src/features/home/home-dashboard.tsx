@@ -2,6 +2,7 @@
 // Output: HomeDashboard — scenario-driven dashboard hub
 // Position: Main content for the home tab; no composer, no chat entry point
 
+import { Link } from '@cradle/tabs-next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import {
   BotIcon,
@@ -24,7 +25,6 @@ import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provi
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import type { Session, Workspace } from '~/lib/types'
-import { Link } from '@cradle/tabs-next'
 
 // ── Mock data for backend-unsupported features ────────────────────────────────
 
@@ -162,7 +162,7 @@ interface ActivityCardProps {
 
 function ActivityCard({ kind, title, meta, onClick, to, params }: ActivityCardProps) {
   const theme = CARD_THEMES[kind]
-  const className = "flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border not-disabled:inset-shadow-[0_1px_--theme(--color-white/10%)]"
+  const className = 'flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border not-disabled:inset-shadow-[0_1px_--theme(--color-white/10%)]'
 
   const content = (
     <>

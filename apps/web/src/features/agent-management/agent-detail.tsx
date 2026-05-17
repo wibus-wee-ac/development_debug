@@ -34,10 +34,12 @@ import { PROVIDER_ICONS } from './provider-icons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+const WHITESPACE_RE = /\s+/
+
 // ── Runtime options ───────────────────────────────────────────────────────────
 
 const ClaudeIcon = PROVIDER_ICONS['claude-agent']!
-const ClaudeCodeIcon = PROVIDER_ICONS['claude-cli']!
+const _ClaudeCodeIcon = PROVIDER_ICONS['claude-cli']!
 // eslint-disable-next-line dot-notation
 const CodexIcon = PROVIDER_ICONS['codex']!
 
@@ -214,7 +216,7 @@ function stringifyConfigJson(input: {
     config.cliTui = {
       preset: input.cliTuiPreset,
       executable: input.cliTuiExecutable.trim(),
-      args: input.cliTuiArguments.trim() ? input.cliTuiArguments.split(/\s+/).filter(Boolean) : [],
+      args: input.cliTuiArguments.trim() ? input.cliTuiArguments.split(WHITESPACE_RE).filter(Boolean) : [],
       ...(stringifyEnvText(input.cliTuiEnvText) ? { env: stringifyEnvText(input.cliTuiEnvText) } : {}),
     }
   }

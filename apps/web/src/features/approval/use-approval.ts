@@ -26,7 +26,7 @@ function notify(): void {
   }
 }
 
-function mergeApprovals(items: ApprovalRequestedPayload[]): void {
+function _mergeApprovals(items: ApprovalRequestedPayload[]): void {
   const existingIds = new Set(pendingApprovals.map(a => a.id))
   let changed = false
   for (const item of items) {

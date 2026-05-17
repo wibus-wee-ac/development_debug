@@ -10,9 +10,9 @@ import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { MentionItem } from '~/features/chat'
 import { MentionPanel } from '~/features/chat/mention-panel'
+import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 
@@ -41,7 +41,9 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
   )
 
   useEffect(() => {
-    if (!expanded) return
+    if (!expanded) {
+      return
+    }
     const handlePointerDown = (e: PointerEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setExpanded(false)
@@ -53,7 +55,9 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 
   const autoResize = useCallback(() => {
     const el = textareaRef.current
-    if (!el) return
+    if (!el) {
+      return
+    }
     if (expanded) {
       el.style.height = '0'
       const height = Math.min(el.scrollHeight, 240)
@@ -87,7 +91,9 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 
   const handleMentionSelect = useCallback((item: MentionItem) => {
     const start = mentionStartRef.current
-    if (start < 0) return
+    if (start < 0) {
+      return
+    }
     const before = input.slice(0, start)
     const cursor = textareaRef.current?.selectionStart ?? input.length
     const after = input.slice(cursor)
@@ -120,7 +126,9 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
   const handleSend = useCallback(async () => {
     const text = input.trim()
     if (selection.runtimeKind === 'cli-tui') {
-      if (!effectiveAgent) return
+      if (!effectiveAgent) {
+        return
+      }
     }
     else if (!text || !effectiveProfile) {
       return
@@ -147,8 +155,12 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
   }, [onSend, effectiveAgent, effectiveProfile, effectiveModel, selection.runtimeKind, selection.thinkingEffort, input])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return
-    if (mentionActive && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) return
+    if (e.nativeEvent.isComposing) {
+      return
+    }
+    if (mentionActive && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       void handleSend()
@@ -168,9 +180,14 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     ? !!effectiveAgent && !sending
     : !!input.trim() && !!effectiveProfile && !sending
 
+  const closeMention = useCallback(() => {
+    setMentionActive(false)
+  }, [])
+
   return {
     availableFiles,
     canSend,
+    closeMention,
     composerState,
     containerRef,
     expand,
@@ -190,6 +207,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
   const owner = useCapsuleComposerOwner({ workspaceId, onSend })
 
+  /* eslint-disable react-hooks/refs */
   return (
     <div ref={owner.containerRef} className="relative">
       {owner.expanded && (
@@ -197,7 +215,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
           items={owner.availableFiles}
           query={owner.mentionQuery}
           onSelect={owner.handleMentionSelect}
-          onClose={() => { owner.mentionActive = false }}
+          onClose={owner.closeMention}
           visible={owner.mentionActive}
         />
       )}
@@ -258,4 +276,5 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
       </div>
     </div>
   )
+  /* eslint-enable react-hooks/refs */
 }

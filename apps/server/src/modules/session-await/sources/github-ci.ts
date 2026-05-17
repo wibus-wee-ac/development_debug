@@ -7,7 +7,9 @@ import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
 let cachedToken: string | null | undefined
 
 function resolveGitHubToken(): string | null {
-  if (cachedToken !== undefined) return cachedToken
+  if (cachedToken !== undefined) {
+    return cachedToken
+  }
 
   // P0: environment variables
   const envToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
@@ -47,7 +49,9 @@ let rateLimitRemaining = 5000
 let rateLimitReset = 0
 
 function isRateLimited(): boolean {
-  if (rateLimitRemaining > 100) return false
+  if (rateLimitRemaining > 100) {
+    return false
+  }
   const now = Math.floor(Date.now() / 1000)
   return now < rateLimitReset
 }
@@ -67,7 +71,9 @@ interface CheckRunsResponse {
 
 async function fetchCheckRuns(owner: string, repo: string, ref: string): Promise<CheckRunsResponse | null> {
   const token = resolveGitHubToken()
-  if (!token) return null
+  if (!token) {
+    return null
+  }
 
   const url = `https://api.github.com/repos/${owner}/${repo}/commits/${ref}/check-runs`
   const headers: Record<string, string> = {
@@ -87,14 +93,20 @@ async function fetchCheckRuns(owner: string, repo: string, ref: string): Promise
   // Track rate limit
   const remaining = res.headers.get('X-RateLimit-Remaining')
   const reset = res.headers.get('X-RateLimit-Reset')
-  if (remaining) rateLimitRemaining = Number.parseInt(remaining, 10)
-  if (reset) rateLimitReset = Number.parseInt(reset, 10)
+  if (remaining) {
+    rateLimitRemaining = Number.parseInt(remaining, 10)
+  }
+  if (reset) {
+    rateLimitReset = Number.parseInt(reset, 10)
+  }
 
   if (res.status === 304) {
     return cached?.data as CheckRunsResponse
   }
 
-  if (!res.ok) return null
+  if (!res.ok) {
+    return null
+  }
 
   const data = await res.json() as CheckRunsResponse
   const etag = res.headers.get('ETag')
@@ -115,10 +127,14 @@ interface GitHubCIFilter {
 function parseFilter(filterJson: string): GitHubCIFilter | null {
   try {
     const f = JSON.parse(filterJson) as GitHubCIFilter
-    if (!f.repo || (!f.pr && !f.sha)) return null
+    if (!f.repo || (!f.pr && !f.sha)) {
+      return null
+    }
     return f
   }
-  catch { return null }
+  catch {
+    return null
+  }
 }
 
 // ── Source Adapter ──
@@ -215,8 +231,7 @@ export const githubCISource: SessionAwaitSource = {
 
       // All completed — check conclusions
       const allSuccess = checkRuns.check_runs.every(r =>
-        r.conclusion === 'success' || r.conclusion === 'neutral' || r.conclusion === 'skipped',
-      )
+        r.conclusion === 'success' || r.conclusion === 'neutral' || r.conclusion === 'skipped')
       const summary = checkRuns.check_runs.map(r => `${r.name}: ${r.conclusion}`).join(', ')
 
       results.push({
@@ -260,13 +275,19 @@ export interface LiveCIStatus {
 
 export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatus | null> {
   const filter = parseFilter(filterJson)
-  if (!filter) return null
+  if (!filter) {
+    return null
+  }
 
   const [owner, repo] = filter.repo.split('/')
-  if (!owner || !repo) return null
+  if (!owner || !repo) {
+    return null
+  }
 
   const token = resolveGitHubToken()
-  if (!token) return { owner, repo, prNumber: filter.pr ?? null, prTitle: null, ref: '', runs: [], allCompleted: false, allPassed: false, hasToken: false }
+  if (!token) {
+    return { owner, repo, prNumber: filter.pr ?? null, prTitle: null, ref: '', runs: [], allCompleted: false, allPassed: false, hasToken: false }
+  }
 
   let ref = filter.sha ?? ''
   let prTitle: string | null = null
@@ -289,13 +310,17 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
     catch { /* ignore */ }
   }
 
-  if (!ref) return { owner, repo, prNumber: filter.pr ?? null, prTitle, ref: '', runs: [], allCompleted: false, allPassed: false, hasToken: true }
+  if (!ref) {
+    return { owner, repo, prNumber: filter.pr ?? null, prTitle, ref: '', runs: [], allCompleted: false, allPassed: false, hasToken: true }
+  }
 
   const checkRuns = await fetchCheckRuns(owner, repo, ref)
-  if (!checkRuns) return { owner, repo, prNumber: filter.pr ?? null, prTitle, ref, runs: [], allCompleted: false, allPassed: false, hasToken: true }
+  if (!checkRuns) {
+    return { owner, repo, prNumber: filter.pr ?? null, prTitle, ref, runs: [], allCompleted: false, allPassed: false, hasToken: true }
+  }
 
   // Fetch branch protection required checks (best effort)
-  let requiredChecks = new Set<string>()
+  const requiredChecks = new Set<string>()
   try {
     // Try to get required status checks — this is a rough heuristic
     // GitHub doesn't have a simple API for "which checks are required for this PR"
@@ -312,8 +337,7 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
 
   const allCompleted = runs.every(r => r.status === 'completed')
   const allPassed = allCompleted && runs.every(r =>
-    r.conclusion === 'success' || r.conclusion === 'neutral' || r.conclusion === 'skipped',
-  )
+    r.conclusion === 'success' || r.conclusion === 'neutral' || r.conclusion === 'skipped')
 
   return { owner, repo, prNumber: filter.pr ?? null, prTitle, ref, runs, allCompleted, allPassed, hasToken: true }
 }

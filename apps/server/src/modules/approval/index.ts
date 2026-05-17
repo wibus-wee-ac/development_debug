@@ -12,7 +12,7 @@ export const approval = new Elysia({
     return result
   }, {
     detail: {
-      summary: 'List pending approvals',
+      'summary': 'List pending approvals',
       'x-cradle-cli': {
         command: ['approval', 'list'],
       },
@@ -83,7 +83,7 @@ export const approval = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Respond to a pending approval',
+      'summary': 'Respond to a pending approval',
       'x-cradle-cli': {
         command: ['approval', 'respond'],
       },

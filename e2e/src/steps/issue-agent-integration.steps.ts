@@ -86,7 +86,9 @@ When('我取消当前 Issue 的 Agent 委派', async function (this: CradleWorld
       return
     }
     catch {
-      if (attempt === maxRetries - 1) throw new Error('Failed to click unassigned option after retries')
+      if (attempt === maxRetries - 1) {
+        throw new Error('Failed to click unassigned option after retries')
+      }
       await this.page.waitForTimeout(500)
     }
   }

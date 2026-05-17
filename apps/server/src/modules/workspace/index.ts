@@ -20,7 +20,7 @@ export const workspace = new Elysia({
 })
   .get('', () => Workspace.list(), {
     detail: {
-      summary: 'List workspaces',
+      'summary': 'List workspaces',
       'x-cradle-cli': {
         command: ['workspace', 'list'],
       },
@@ -29,7 +29,7 @@ export const workspace = new Elysia({
   })
   .post('', ({ body }) => Workspace.create({ name: trimValue(body.name), path: trimValue(body.path) }), {
     detail: {
-      summary: 'Create workspace',
+      'summary': 'Create workspace',
       'x-cradle-cli': {
         command: ['workspace', 'create'],
       },
@@ -39,7 +39,7 @@ export const workspace = new Elysia({
   })
   .post('/from-directory', ({ body }) => Workspace.addFromDirectory(trimValue(body.path)), {
     detail: {
-      summary: 'Import workspace from directory',
+      'summary': 'Import workspace from directory',
       'x-cradle-cli': {
         command: ['workspace', 'import'],
       },
@@ -49,7 +49,7 @@ export const workspace = new Elysia({
   })
   .get('/resolve', ({ query }) => nullableJsonResponse(Workspace.resolveByPath(trimValue(query.path))), {
     detail: {
-      summary: 'Resolve workspace by path',
+      'summary': 'Resolve workspace by path',
       'x-cradle-cli': {
         command: ['workspace', 'resolve'],
       },
@@ -59,7 +59,7 @@ export const workspace = new Elysia({
   })
   .get('/:id/files', ({ params }) => Workspace.getFiles(params.id), {
     detail: {
-      summary: 'List workspace files',
+      'summary': 'List workspace files',
       'x-cradle-cli': {
         command: ['workspace', 'files'],
       },
@@ -72,7 +72,7 @@ export const workspace = new Elysia({
     return { content }
   }, {
     detail: {
-      summary: 'Read workspace file content',
+      'summary': 'Read workspace file content',
       'x-cradle-cli': {
         command: ['workspace', 'file', 'read'],
       },
@@ -86,7 +86,7 @@ export const workspace = new Elysia({
     return { success }
   }, {
     detail: {
-      summary: 'Write workspace file content',
+      'summary': 'Write workspace file content',
       'x-cradle-cli': {
         command: ['workspace', 'file', 'write'],
       },
@@ -97,7 +97,7 @@ export const workspace = new Elysia({
   })
   .get('/:id', ({ params }) => nullableJsonResponse(Workspace.get(params.id)), {
     detail: {
-      summary: 'Get workspace',
+      'summary': 'Get workspace',
       'x-cradle-cli': {
         command: ['workspace', 'get'],
       },
@@ -107,7 +107,7 @@ export const workspace = new Elysia({
   })
   .patch('/:id', ({ params, body }) => nullableJsonResponse(Workspace.update({ id: params.id, name: trimValue(body.name) })), {
     detail: {
-      summary: 'Update workspace',
+      'summary': 'Update workspace',
       'x-cradle-cli': {
         command: ['workspace', 'update'],
       },
@@ -121,7 +121,7 @@ export const workspace = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete workspace',
+      'summary': 'Delete workspace',
       'x-cradle-cli': {
         command: ['workspace', 'delete'],
       },

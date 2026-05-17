@@ -35,7 +35,9 @@ const TOOL_ICON_RE = /read_file|write_file|edit_file|search|grep|bash|shell|term
 
 function getToolIconKind(toolName: string): ToolIconKind {
   const match = toolName.toLowerCase().match(TOOL_ICON_RE)
-  if (!match) return 'wrench'
+  if (!match) {
+    return 'wrench'
+  }
   return TOOL_ICON_MAP.get(match[0]) ?? 'wrench'
 }
 

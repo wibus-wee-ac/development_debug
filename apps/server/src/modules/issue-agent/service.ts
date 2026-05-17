@@ -245,7 +245,6 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
         signal: 'run.aborted',
       })
     }
-    return
   }
   catch (error) {
     activeRuns.delete(agentSessionId)

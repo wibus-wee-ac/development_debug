@@ -1,8 +1,7 @@
 import { WrenchIcon } from 'lucide-react'
 
-import { cn } from '~/lib/utils'
-
 import type { AgentActivity } from '~/lib/types'
+import { cn } from '~/lib/utils'
 
 interface AgentActivityItemProps {
   activity: AgentActivity
@@ -39,8 +38,11 @@ export function AgentActivityItem({ activity }: AgentActivityItemProps) {
       if (activity.signal === 'select' && activity.signalMetadata) {
         try {
           const meta = JSON.parse(activity.signalMetadata)
-          if (Array.isArray(meta.options)) options = meta.options
-        } catch { /* ignore */ }
+          if (Array.isArray(meta.options)) {
+            options = meta.options
+          }
+        }
+ catch { /* ignore */ }
       }
       return (
         <div className={cn(base, 'border-l-2 border-yellow-500/50')}>

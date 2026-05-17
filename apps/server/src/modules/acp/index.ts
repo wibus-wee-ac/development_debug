@@ -22,7 +22,7 @@ export const acp = new Elysia({
 })
   .get('/registry', () => Acp.fetchRegistry(), {
     detail: {
-      summary: 'List registry agents',
+      'summary': 'List registry agents',
       'x-cradle-cli': {
         command: ['acp', 'registry', 'list'],
       },
@@ -33,7 +33,7 @@ export const acp = new Elysia({
     return Acp.getDistributionTypes(requireNonBlankString(params.agentId, 'agentId'))
   }, {
     detail: {
-      summary: 'Get distribution types for a registry agent',
+      'summary': 'Get distribution types for a registry agent',
       'x-cradle-cli': {
         command: ['acp', 'registry', 'distribution-types'],
       },
@@ -43,7 +43,7 @@ export const acp = new Elysia({
   })
   .get('/agents', () => Acp.listInstalled(), {
     detail: {
-      summary: 'List installed agents',
+      'summary': 'List installed agents',
       'x-cradle-cli': {
         command: ['acp', 'agent', 'list'],
       },
@@ -58,7 +58,7 @@ export const acp = new Elysia({
     return agent
   }, {
     detail: {
-      summary: 'Get installed agent',
+      'summary': 'Get installed agent',
       'x-cradle-cli': {
         command: ['acp', 'agent', 'get'],
       },
@@ -73,7 +73,7 @@ export const acp = new Elysia({
     )
   }, {
     detail: {
-      summary: 'Install an agent',
+      'summary': 'Install an agent',
       'x-cradle-cli': {
         command: ['acp', 'agent', 'install'],
       },
@@ -87,7 +87,7 @@ export const acp = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Cancel agent installation',
+      'summary': 'Cancel agent installation',
       'x-cradle-cli': {
         command: ['acp', 'agent', 'cancel-install'],
       },
@@ -100,7 +100,7 @@ export const acp = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Uninstall an agent',
+      'summary': 'Uninstall an agent',
       'x-cradle-cli': {
         command: ['acp', 'agent', 'uninstall'],
       },
@@ -113,7 +113,7 @@ export const acp = new Elysia({
     return Acp.getAuditLog(agentId)
   }, {
     detail: {
-      summary: 'Get ACP audit log',
+      'summary': 'Get ACP audit log',
       'x-cradle-cli': {
         command: ['acp', 'audit'],
       },
@@ -125,7 +125,7 @@ export const acp = new Elysia({
     return { path: Acp.getAgentInstallPath(requireNonBlankString(params.agentId, 'agentId')) }
   }, {
     detail: {
-      summary: 'Get agent install path',
+      'summary': 'Get agent install path',
       'x-cradle-cli': {
         command: ['acp', 'agent', 'install-path'],
       },

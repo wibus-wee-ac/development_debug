@@ -12,9 +12,12 @@ export function DocsPage() {
         {/* 基本用法 */}
         <Section title="基本用法">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            <code className="text-sm">Streamdown</code> 组件接收 markdown 字符串，在流式输入时自动启用动画渲染，停止后切换为静态渲染。
+            <code className="text-sm">Streamdown</code>
+{' '}
+组件接收 markdown 字符串，在流式输入时自动启用动画渲染，停止后切换为静态渲染。
           </p>
-          <CodeBlock>{`import { Streamdown } from '@cradle/streamdown'
+          <CodeBlock>
+{`import { Streamdown } from '@cradle/streamdown'
 
 function Chat({ message, isStreaming }) {
   return (
@@ -23,13 +26,18 @@ function Chat({ message, isStreaming }) {
       streaming={isStreaming}
     />
   )
-}`}</CodeBlock>
+}`}
+          </CodeBlock>
         </Section>
 
         {/* 动画预设 */}
         <Section title="动画预设 (Animation Presets)">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            三种内置动画预设控制视觉效果强度。通过 <code className="text-sm">animationPreset</code> 属性选择。
+            三种内置动画预设控制视觉效果强度。通过
+{' '}
+<code className="text-sm">animationPreset</code>
+{' '}
+属性选择。
           </p>
           <div className="mb-4 space-y-3">
             <PresetCard
@@ -48,17 +56,23 @@ function Chat({ message, isStreaming }) {
               details="fadeDuration: 350ms, blur: 2px, translateY: 4px, all effects on"
             />
           </div>
-          <CodeBlock>{`<Streamdown
+          <CodeBlock>
+{`<Streamdown
   content={text}
   streaming={true}
   animationPreset="dramatic"
-/>`}</CodeBlock>
+/>`}
+          </CodeBlock>
         </Section>
 
         {/* 平滑预设 */}
         <Section title="平滑预设 (Smooth Presets)">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            控制字符输出速率的平滑器。通过 <code className="text-sm">preset</code> 属性选择，影响流式输出的节奏感。
+            控制字符输出速率的平滑器。通过
+{' '}
+<code className="text-sm">preset</code>
+{' '}
+属性选择，影响流式输出的节奏感。
           </p>
           <div className="mb-4 overflow-x-auto">
             <table className="w-full text-sm">
@@ -92,43 +106,60 @@ function Chat({ message, isStreaming }) {
               </tbody>
             </table>
           </div>
-          <CodeBlock>{`<Streamdown
+          <CodeBlock>
+{`<Streamdown
   content={text}
   streaming={true}
   preset="silky"
-/>`}</CodeBlock>
+/>`}
+          </CodeBlock>
         </Section>
 
         {/* 动画粒度 */}
         <Section title="动画粒度 (Animate Mode)">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            <code className="text-sm">animateMode</code> 控制动画的最小单位：按词或按字符逐步显示。
+            <code className="text-sm">animateMode</code>
+{' '}
+控制动画的最小单位：按词或按字符逐步显示。
           </p>
-          <CodeBlock>{`// 按词显示（默认，更自然）
+          <CodeBlock>
+{`// 按词显示（默认，更自然）
 <Streamdown animateMode="word" ... />
 
 // 按字符显示（更细腻，适合代码）
-<Streamdown animateMode="char" ... />`}</CodeBlock>
+<Streamdown animateMode="char" ... />`}
+          </CodeBlock>
         </Section>
 
         {/* 光标 */}
         <Section title="光标显示 (Show Cursor)">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            流式输出时默认在末尾显示闪烁光标。设置 <code className="text-sm">showCursor=false</code> 可隐藏。
+            流式输出时默认在末尾显示闪烁光标。设置
+{' '}
+<code className="text-sm">showCursor=false</code>
+{' '}
+可隐藏。
           </p>
-          <CodeBlock>{`<Streamdown
+          <CodeBlock>
+{`<Streamdown
   content={text}
   streaming={true}
   showCursor={false}
-/>`}</CodeBlock>
+/>`}
+          </CodeBlock>
         </Section>
 
         {/* 自定义组件 */}
         <Section title="自定义组件 (Custom Components)">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            通过 <code className="text-sm">components</code> 属性传入自定义 React 组件，替换默认的 markdown 元素渲染。
+            通过
+{' '}
+<code className="text-sm">components</code>
+{' '}
+属性传入自定义 React 组件，替换默认的 markdown 元素渲染。
           </p>
-          <CodeBlock>{`import { Streamdown } from '@cradle/streamdown'
+          <CodeBlock>
+{`import { Streamdown } from '@cradle/streamdown'
 
 const customComponents = {
   code: ({ children, className }) => (
@@ -147,7 +178,8 @@ const customComponents = {
   content={text}
   streaming={true}
   components={customComponents}
-/>`}</CodeBlock>
+/>`}
+          </CodeBlock>
         </Section>
 
         {/* 自定义插件 */}
@@ -155,7 +187,8 @@ const customComponents = {
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
             支持传入额外的 remark/rehype 插件，在内置插件之后执行。
           </p>
-          <CodeBlock>{`import remarkGfm from 'remark-gfm'
+          <CodeBlock>
+{`import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 
 <Streamdown
@@ -163,15 +196,21 @@ import rehypeHighlight from 'rehype-highlight'
   streaming={true}
   remarkPlugins={[remarkGfm]}
   rehypePlugins={[rehypeHighlight]}
-/>`}</CodeBlock>
+/>`}
+          </CodeBlock>
         </Section>
 
         {/* AnimationPreset 对象 */}
         <Section title="自定义动画预设对象">
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            除了使用内置预设名称，还可以传入完整的 <code className="text-sm">AnimationPreset</code> 对象实现精细控制。
+            除了使用内置预设名称，还可以传入完整的
+{' '}
+<code className="text-sm">AnimationPreset</code>
+{' '}
+对象实现精细控制。
           </p>
-          <CodeBlock>{`import type { AnimationPreset } from '@cradle/streamdown'
+          <CodeBlock>
+{`import type { AnimationPreset } from '@cradle/streamdown'
 
 const myPreset: AnimationPreset = {
   name: 'custom',
@@ -189,7 +228,8 @@ const myPreset: AnimationPreset = {
   content={text}
   streaming={true}
   animationPreset={myPreset}
-/>`}</CodeBlock>
+/>`}
+          </CodeBlock>
         </Section>
 
         {/* Props 表 */}
@@ -300,7 +340,7 @@ const myPreset: AnimationPreset = {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string, children: React.ReactNode }) {
   return (
     <section className="mb-14">
       <h2 className="mb-4 text-xl font-semibold tracking-tight">{title}</h2>
@@ -317,19 +357,22 @@ function CodeBlock({ children }: { children: string }) {
   )
 }
 
-function PresetCard({ name, description, details }: { name: string; description: string; details: string }) {
+function PresetCard({ name, description, details }: { name: string, description: string, details: string }) {
   return (
     <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
       <div className="flex items-baseline gap-2">
         <span className="font-mono text-sm font-medium">{name}</span>
-        <span className="text-sm text-neutral-500 dark:text-neutral-500">— {description}</span>
+        <span className="text-sm text-neutral-500 dark:text-neutral-500">
+—
+{description}
+        </span>
       </div>
       <p className="mt-1 font-mono text-xs text-neutral-400 dark:text-neutral-600">{details}</p>
     </div>
   )
 }
 
-function PropRow({ prop, type, defaultVal, desc }: { prop: string; type: string; defaultVal: string; desc: string }) {
+function PropRow({ prop, type, defaultVal, desc }: { prop: string, type: string, defaultVal: string, desc: string }) {
   return (
     <tr className="border-b border-neutral-100 dark:border-neutral-800/50">
       <td className="py-2 pr-4 font-mono text-xs">{prop}</td>
@@ -340,7 +383,7 @@ function PropRow({ prop, type, defaultVal, desc }: { prop: string; type: string;
   )
 }
 
-function InterfaceRow({ field, type, desc }: { field: string; type: string; desc: string }) {
+function InterfaceRow({ field, type, desc }: { field: string, type: string, desc: string }) {
   return (
     <tr className="border-b border-neutral-100 dark:border-neutral-800/50">
       <td className="py-2 pr-4 font-mono text-xs">{field}</td>

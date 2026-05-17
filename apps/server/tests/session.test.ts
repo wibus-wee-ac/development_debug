@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
-  agents,
   agentProfiles,
+  agents,
   backendRuns,
   backendSessionBindings,
   messages,
@@ -19,11 +19,10 @@ import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-import { createPending, listPending } from '../src/modules/approval/service'
-import { startOrAttach } from '../src/modules/pty/service'
+import { createPending, generatePolicyKeys, isPreviouslyAllowed, listPending, markAllowed } from '../src/modules/approval/service'
 import { ptyTimeline } from '../src/modules/pty/pty.timeline'
+import { startOrAttach } from '../src/modules/pty/service'
 import { indexMessage, searchThreads } from '../src/modules/search/service'
-import { generatePolicyKeys, isPreviouslyAllowed, markAllowed } from '../src/modules/approval/service'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))

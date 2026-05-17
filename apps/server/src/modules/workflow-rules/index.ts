@@ -9,7 +9,7 @@ export const workflowRules = new Elysia({
 })
   .get('/:workspaceId/list', ({ params }) => WorkflowRules.list(params.workspaceId), {
     detail: {
-      summary: 'List workflow rules',
+      'summary': 'List workflow rules',
       'x-cradle-cli': {
         command: ['workflow-rule', 'list'],
       },
@@ -19,7 +19,7 @@ export const workflowRules = new Elysia({
   })
   .get('/:workspaceId', ({ params, query }) => WorkflowRules.get(params.workspaceId, query.agentProfileId), {
     detail: {
-      summary: 'Get workflow rules',
+      'summary': 'Get workflow rules',
       'x-cradle-cli': {
         command: ['workflow-rule', 'get'],
       },
@@ -33,7 +33,7 @@ export const workflowRules = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Save workflow rule',
+      'summary': 'Save workflow rule',
       'x-cradle-cli': {
         command: ['workflow-rule', 'save'],
       },
@@ -47,7 +47,7 @@ export const workflowRules = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete workflow rule',
+      'summary': 'Delete workflow rule',
       'x-cradle-cli': {
         command: ['workflow-rule', 'delete'],
       },

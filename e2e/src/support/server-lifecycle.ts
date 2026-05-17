@@ -4,19 +4,22 @@
 
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
-
-function killProcessGroup(proc: ChildProcess, signal: NodeJS.Signals) {
-  try {
-    if (proc.pid) process.kill(-proc.pid, signal)
-  } catch {
-    // Process may already be dead
-  }
-}
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { AfterAll, BeforeAll } from '@cucumber/cucumber'
+
+function killProcessGroup(proc: ChildProcess, signal: NodeJS.Signals) {
+  try {
+    if (proc.pid) {
+      process.kill(-proc.pid, signal)
+    }
+  }
+ catch {
+    // Process may already be dead
+  }
+}
 
 const ROOT = resolve(__dirname, '..', '..', '..')
 
@@ -79,7 +82,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
       CRADLE_PORT: String(serverPort),
       CRADLE_HOST: '127.0.0.1',
       CRADLE_CREDENTIAL_SECRET: 'e2e-test-secret',
-      CRADLE_MOCK_LLM_URL: 'http://127.0.0.1:1',  // Placeholder — actual URL set per-profile config.baseUrl
+      CRADLE_MOCK_LLM_URL: 'http://127.0.0.1:1', // Placeholder — actual URL set per-profile config.baseUrl
       NODE_ENV: 'test',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

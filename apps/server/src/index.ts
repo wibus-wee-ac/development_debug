@@ -1,4 +1,5 @@
 import './langfuse'
+
 import { createServerApp } from './app'
 import { loadServerConfig } from './config/server-config'
 import { getLogger } from './logging/logger'

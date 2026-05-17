@@ -2,9 +2,9 @@
 // Output: ReasoningBlock — collapsible inline thinking chain display with Markdown
 // Position: Sub-component of message bubble for rendering reasoning/thinking parts
 
+import { Streamdown } from '@cradle/streamdown'
 import { BrainIcon, ChevronRightIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Streamdown } from '@cradle/streamdown'
 
 import { cn } from '~/lib/cn'
 import { useStreamdownStore } from '~/store/streamdown'

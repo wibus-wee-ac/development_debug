@@ -2,35 +2,36 @@
 // Output: session linked-issue link command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../../runtime/types'
+
 const spec = {
-  "arguments": [
+  arguments: [
     {
-      "name": "id",
-      "required": true,
-      "target": "path.id",
-      "type": "string"
-    }
+      name: 'id',
+      required: true,
+      target: 'path.id',
+      type: 'string',
+    },
   ],
-  "command": [
-    "session",
-    "linked-issue",
-    "link"
+  command: [
+    'session',
+    'linked-issue',
+    'link',
   ],
-  "description": "Link issue to session",
-  "flags": [
+  description: 'Link issue to session',
+  flags: [
     {
-      "name": "issueId",
-      "required": true,
-      "target": "body.issueId",
-      "type": "string"
-    }
+      name: 'issueId',
+      required: true,
+      target: 'body.issueId',
+      type: 'string',
+    },
   ],
-  "method": "post",
-  "path": "/sessions/{id}/linked-issue"
+  method: 'post',
+  path: '/sessions/{id}/linked-issue',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -1,7 +1,7 @@
+import { Link } from '@cradle/tabs-next'
 import { ExternalLinkIcon, SquareIcon } from 'lucide-react'
 import { useMemo } from 'react'
 
-import { Link } from '@cradle/tabs-next'
 import { cn } from '~/lib/utils'
 
 import { useAgentActivities, useAgentSessions, useStartAgentSession, useStopAgentSession } from '../use-kanban'
@@ -29,8 +29,10 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
   const activeSession = useMemo(() => {
     // Prefer active/created, else take latest
     const running = sessions.find(s => s.status === 'active' || s.status === 'created')
-    if (running) return running
-    return sessions.length > 0 ? sessions[sessions.length - 1] : null
+    if (running) {
+      return running
+    }
+    return sessions.length > 0 ? sessions.at(-1) : null
   }, [sessions])
 
   const isPolling = activeSession?.status === 'active' || activeSession?.status === 'created'
@@ -39,7 +41,9 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
     { refetchInterval: isPolling ? 500 : false },
   )
 
-  if (!activeSession) return null
+  if (!activeSession) {
+    return null
+  }
 
   const status = activeSession.status ?? 'created'
   const config = statusConfig[status] ?? statusConfig.created

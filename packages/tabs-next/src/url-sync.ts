@@ -20,6 +20,8 @@ import type { StoreApi, UseBoundStore } from 'zustand'
 import type { TabStoreState } from './store'
 import type { TabParams, TabRegistry } from './types'
 
+const HASH_PREFIX_RE = /^#\/?/
+
 // ── Public types ──
 
 export interface UrlSyncOptions {
@@ -68,8 +70,10 @@ export function parseHash(
   hash: string,
 ): { type: string, params: TabParams } | null {
   // Strip leading # and /
-  const raw = hash.replace(/^#\/?/, '')
-  if (!raw || raw === 'devtool') { return null }
+  const raw = hash.replace(HASH_PREFIX_RE, '')
+  if (!raw || raw === 'devtool') {
+    return null
+  }
 
   // Split: first segment is type, rest is serialized params
   const slashIndex = raw.indexOf('/')
@@ -77,11 +81,15 @@ export function parseHash(
   const rest = slashIndex === -1 ? '' : raw.slice(slashIndex + 1)
 
   const route = registry[type]
-  if (!route) { return null }
+  if (!route) {
+    return null
+  }
 
   if (route.deserialize && rest) {
     const params = route.deserialize(rest)
-    if (params) { return { type, params } }
+    if (params) {
+      return { type, params }
+    }
   }
 
   // No params or no deserializer — return empty params
@@ -126,15 +134,23 @@ export function createUrlSync({ store, registry }: UrlSyncOptions): UrlSyncHandl
   }
 
   function inferAction(state: TabStoreState): 'push' | 'replace' | 'skip' {
-    if (updatingFromPopstate) { return 'skip' }
-    if (!state.activeTabId) { return 'skip' }
+    if (updatingFromPopstate) {
+      return 'skip'
+    }
+    if (!state.activeTabId) {
+      return 'skip'
+    }
 
     // Tab switch → pushState
-    if (state.activeTabId !== prevActiveTabId) { return 'push' }
+    if (state.activeTabId !== prevActiveTabId) {
+      return 'push'
+    }
 
     // Same tab — check if new history entry was added
     const ctx = state.contexts.find(c => c.id === state.activeTabId)
-    if (!ctx || !prevSnapshot) { return 'replace' }
+    if (!ctx || !prevSnapshot) {
+      return 'replace'
+    }
 
     // Identity check: if history[index] is a new reference, it's a push navigation
     if (ctx.history[ctx.index] !== prevSnapshot.historyHeadRef) {
@@ -157,16 +173,22 @@ export function createUrlSync({ store, registry }: UrlSyncOptions): UrlSyncHandl
     }
 
     const state = store.getState()
-    if (!state.activeTabId) { return }
+    if (!state.activeTabId) {
+      return
+    }
 
     const action = inferAction(state)
     captureSnapshot()
 
-    if (action === 'skip') { return }
+    if (action === 'skip') {
+      return
+    }
 
     const tab = state.tabs.find(t => t.id === state.activeTabId)
     const ctx = state.contexts.find(c => c.id === state.activeTabId)
-    if (!tab || !ctx) { return }
+    if (!tab || !ctx) {
+      return
+    }
 
     const hash = buildHash(registry, tab.type, tab.params)
     const historyState: TabHistoryState = {
@@ -257,13 +279,17 @@ export function createUrlSync({ store, registry }: UrlSyncOptions): UrlSyncHandl
   function handleColdUrl(): void {
     const hash = window.location.hash
     const parsed = parseHash(registry, hash)
-    if (!parsed) { return } // No valid route in URL, keep persist-restored state
+    if (!parsed) {
+      return
+    } // No valid route in URL, keep persist-restored state
 
     const s = store.getState()
 
     // Try to find existing tab matching this route + params
     const existing = s.tabs.find((tab) => {
-      if (tab.type !== parsed.type) { return false }
+      if (tab.type !== parsed.type) {
+        return false
+      }
       // For tabs with serialize/deserialize, match on serialized form
       const route = registry[parsed.type]
       if (route?.serialize) {

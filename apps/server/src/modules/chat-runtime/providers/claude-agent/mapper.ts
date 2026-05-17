@@ -32,7 +32,9 @@ export interface ClaudeAgentChunkMapperResult {
  * Attach parentToolUseId metadata to a chunk when inside a subagent context.
  */
 function withParentMeta(chunk: UIMessageChunk, parentToolUseId: string | null): UIMessageChunk {
-  if (!parentToolUseId) return chunk
+  if (!parentToolUseId) {
+    return chunk
+  }
   const providerMetadata = (chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata ?? {}
   const cradleMetadata = typeof providerMetadata.cradle === 'object' && providerMetadata.cradle !== null
     ? providerMetadata.cradle as Record<string, unknown>

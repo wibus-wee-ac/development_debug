@@ -4,6 +4,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ChatStreamingHandler } from './chat-streaming-handler'
+
 const mockedStore = vi.hoisted(() => {
   const state = {
     messagesMap: new Map<string, Array<{ id: string, role: 'assistant' | 'user', parts: Array<Record<string, unknown>> }>>(),
@@ -78,9 +80,7 @@ vi.mock('~/store/chat', () => ({
   },
 }))
 
-import { ChatStreamingHandler } from './chat-streaming-handler'
-
-describe('ChatStreamingHandler', () => {
+describe('chatStreamingHandler', () => {
   beforeEach(() => {
     mockedStore.reset()
   })

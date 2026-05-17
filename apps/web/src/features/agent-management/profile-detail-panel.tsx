@@ -430,6 +430,7 @@ export function ProfileDetailPanel({
         />
 
         {supportsModels && (
+          // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileModelsSection
             loading={modelsLoading}
             models={availableModels}
@@ -439,6 +440,7 @@ export function ProfileDetailPanel({
         )}
 
         {supportsModels && (
+          // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileCustomModelsSection profileId={profile.id} customModelsJson={profile.customModels} onSaved={onSaved} />
         )}
       </div>

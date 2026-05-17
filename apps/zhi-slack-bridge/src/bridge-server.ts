@@ -1,8 +1,10 @@
-import { createServer, type Server, type Socket } from 'node:net'
 import { existsSync, unlinkSync } from 'node:fs'
-import type { BridgeStore } from './store.js'
+import type { Server, Socket } from 'node:net'
+import { createServer } from 'node:net'
+
 import type { PendingCallManager } from './pending-calls.js'
 import type { SlackBot } from './slack-bot.js'
+import type { BridgeStore } from './store.js'
 
 export interface BridgeServerConfig {
   socketPath: string
@@ -53,11 +55,11 @@ export class BridgeServer {
       unlinkSync(this.socketPath)
     }
 
-    this.server = createServer((socket) => this.handleConnection(socket))
+    this.server = createServer(socket => this.handleConnection(socket))
 
     return new Promise((resolve, reject) => {
       this.server!.listen(this.socketPath, () => {
-        console.log(`[bridge] Listening on ${this.socketPath}`)
+        console.warn(`[bridge] Listening on ${this.socketPath}`)
         resolve()
       })
       this.server!.on('error', reject)
@@ -71,14 +73,15 @@ export class BridgeServer {
       buffer += chunk.toString()
 
       // Protocol: newline-delimited JSON
-      let newlineIdx: number
-      while ((newlineIdx = buffer.indexOf('\n')) !== -1) {
+      let newlineIdx: number = buffer.indexOf('\n')
+      while (newlineIdx !== -1) {
         const line = buffer.slice(0, newlineIdx)
         buffer = buffer.slice(newlineIdx + 1)
 
         if (line.trim()) {
           this.handleMessage(line, socket)
         }
+        newlineIdx = buffer.indexOf('\n')
       }
     })
 
@@ -95,14 +98,16 @@ export class BridgeServer {
 
       if (request.method !== 'zhi') {
         response = { success: false, error: `Unknown method: ${request.method}` }
-      } else {
+      }
+ else {
         response = await this.handleZhi(request.params)
       }
-    } catch (err) {
+    }
+ catch (err) {
       response = { success: false, error: (err as Error).message }
     }
 
-    socket.write(JSON.stringify(response) + '\n')
+    socket.write(`${JSON.stringify(response)}\n`)
   }
 
   private async handleZhi(params: { message: string }): Promise<BridgeResponse> {
@@ -114,7 +119,7 @@ export class BridgeServer {
     // Create pending call and wait for reply
     const callId = crypto.randomUUID()
 
-    console.log(`[bridge] Waiting for reply on thread ${threadTs} (call ${callId.slice(0, 8)}...)`)
+    console.warn(`[bridge] Waiting for reply on thread ${threadTs} (call ${callId.slice(0, 8)}...)`)
 
     try {
       const userResponse = await this.pendingCalls.waitForResponse(callId, threadTs)
@@ -125,7 +130,8 @@ export class BridgeServer {
           selected_options: [],
         },
       }
-    } catch (err) {
+    }
+ catch (err) {
       return { success: false, error: (err as Error).message }
     }
   }
@@ -136,7 +142,7 @@ export class BridgeServer {
       if (existsSync(this.socketPath)) {
         unlinkSync(this.socketPath)
       }
-      console.log('[bridge] Stopped')
+      console.warn('[bridge] Stopped')
     }
   }
 }

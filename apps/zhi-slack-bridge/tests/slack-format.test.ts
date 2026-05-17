@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { markdownToSlackMrkdwn, formatForSlack } from '../src/slack-format.js'
+import { describe, expect, it } from 'vitest'
+
+import { formatForSlack, markdownToSlackMrkdwn } from '../src/slack-format.js'
 
 describe('markdownToSlackMrkdwn', () => {
   it('converts headers to bold', () => {

@@ -1,7 +1,8 @@
-import { useState } from 'react'
 import { LinkIcon, PlusIcon, XIcon } from 'lucide-react'
+import { useState } from 'react'
 
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
+
 import { useDeleteRelation, useRelations } from '../use-kanban'
 
 interface RelationManagerProps {
@@ -35,7 +36,7 @@ export function RelationManager({ issueId }: RelationManagerProps) {
 
       {relations.length > 0 && (
         <div className="mt-2 flex flex-col gap-1">
-          {relations.map(rel => {
+          {relations.map((rel) => {
             const isSource = rel.sourceIssueId === issueId
             const targetId = isSource ? rel.targetIssueId : rel.sourceIssueId
             const typeLabel = isSource

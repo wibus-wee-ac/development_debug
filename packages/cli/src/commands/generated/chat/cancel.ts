@@ -2,27 +2,28 @@
 // Output: chat cancel command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
+
 const spec = {
-  "arguments": [
+  arguments: [
     {
-      "name": "sessionId",
-      "required": true,
-      "target": "path.sessionId",
-      "type": "string"
-    }
+      name: 'sessionId',
+      required: true,
+      target: 'path.sessionId',
+      type: 'string',
+    },
   ],
-  "command": [
-    "chat",
-    "cancel"
+  command: [
+    'chat',
+    'cancel',
   ],
-  "description": "Cancel active run for session",
-  "flags": [],
-  "method": "post",
-  "path": "/chat/sessions/{sessionId}/cancel"
+  description: 'Cancel active run for session',
+  flags: [],
+  method: 'post',
+  path: '/chat/sessions/{sessionId}/cancel',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

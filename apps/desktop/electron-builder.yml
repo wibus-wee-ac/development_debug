@@ -5,16 +5,16 @@ directories:
   output: release
 files:
   - dist/**/*
-  - "!node_modules/**/*"
+  - '!node_modules/**/*'
 extraResources:
   - from: ../../packages/db/drizzle
     to: drizzle
     filter:
-      - "**/*"
+      - '**/*'
 asar: true
 asarUnpack:
-  - "**/*.node"
-  - "**/*.wasm"
+  - '**/*.node'
+  - '**/*.wasm'
 mac:
   category: public.app-category.developer-tools
   target:

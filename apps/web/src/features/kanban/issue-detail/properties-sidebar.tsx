@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { BotIcon, PlusIcon } from 'lucide-react'
-
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   DropdownMenu,
@@ -14,8 +12,10 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import { LabelChip } from '../shared/label-chip'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+
 import { parseIssueLabels, priorityOptions } from '../shared/issue-metadata'
+import { LabelChip } from '../shared/label-chip'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
 import type { IssuePriority } from '../use-kanban'
@@ -59,7 +59,7 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
               <span>{currentStatus?.name ?? 'None'}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              <DropdownMenuRadioGroup value={issue.statusId ?? ''} onValueChange={(v) => onUpdate({ statusId: v })}>
+              <DropdownMenuRadioGroup value={issue.statusId ?? ''} onValueChange={v => onUpdate({ statusId: v })}>
                 {statuses.map(s => (
                   <DropdownMenuRadioItem key={s.id} value={s.id}>
                     <StatusIcon category={s.category as StatusCategory} size={14} />
@@ -82,7 +82,7 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
               <span>{priorityOptions.find(p => p.value === issue.priority)?.label ?? 'No priority'}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-40">
-              <DropdownMenuRadioGroup value={issue.priority} onValueChange={(v) => onUpdate({ priority: v as IssuePriority })}>
+              <DropdownMenuRadioGroup value={issue.priority} onValueChange={v => onUpdate({ priority: v as IssuePriority })}>
                 {priorityOptions.map(p => (
                   <DropdownMenuRadioItem key={p.value} value={p.value} data-testid={`issue-priority-option-${p.value}`}>
                     <PriorityIcon priority={p.value} size={14} />
@@ -104,7 +104,7 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
 
         {/* Labels */}
         <PropertyRow label="Labels">
-          <LabelsEditor labels={labels} onUpdate={(newLabels) => onUpdate({ labels: newLabels })} />
+          <LabelsEditor labels={labels} onUpdate={newLabels => onUpdate({ labels: newLabels })} />
         </PropertyRow>
 
         {/* Milestone */}
@@ -114,7 +114,7 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
               <span>{currentMilestone?.title ?? 'None'}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
-              <DropdownMenuRadioGroup value={issue.milestoneId ?? ''} onValueChange={(v) => onUpdate({ milestoneId: v || null })}>
+              <DropdownMenuRadioGroup value={issue.milestoneId ?? ''} onValueChange={v => onUpdate({ milestoneId: v || null })}>
                 <DropdownMenuRadioItem value="">
                   No milestone
                 </DropdownMenuRadioItem>
@@ -154,7 +154,9 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      return
+    }
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
 
@@ -187,7 +189,10 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
             value={inputValue}
             onChange={e => setInputValue(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                handleAdd()
+              }
             }}
             placeholder="Add label..."
             className="w-full border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
@@ -240,8 +245,7 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
                 <BotIcon className="size-3 text-muted-foreground" />
                 {a.name}
               </DropdownMenuItem>
-            ))
-          }
+            ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </PropertyRow>

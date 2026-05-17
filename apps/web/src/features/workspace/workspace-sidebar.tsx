@@ -2,6 +2,7 @@
 // Output: WorkspaceSidebar component with top nav, workspace groups and session items
 // Position: Main sidebar feature component for workspace navigation (uses tab system)
 
+import { Link } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3Icon,
@@ -10,7 +11,6 @@ import {
   FolderOpenIcon,
   GitBranchIcon,
   HomeIcon,
-  LayoutDashboardIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PackageIcon,
@@ -37,14 +37,13 @@ import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
-import { Link } from '@cradle/tabs-next'
-
 import type { Workspace } from '~/lib/types'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
-import { sessionsQueryKey, type WorkspaceSession, useSessions } from './use-session'
+import type { WorkspaceSession } from './use-session'
+import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
 
 function SessionRenameInput({
@@ -419,7 +418,7 @@ interface NavItemProps {
 }
 
 function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dataTestId }: NavItemProps) {
-  const className = "group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden"
+  const className = 'group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
 
   const content = (
     <>

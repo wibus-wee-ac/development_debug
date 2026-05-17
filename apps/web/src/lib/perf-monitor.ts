@@ -29,17 +29,23 @@ function hasPerformanceMemory(): boolean {
 }
 
 function pushSnapshot(buf: MemorySnapshot[], entry: MemorySnapshot) {
-  if (buf.length >= BUFFER_CAP) buf.shift()
+  if (buf.length >= BUFFER_CAP) {
+    buf.shift()
+  }
   buf.push(entry)
 }
 
 function pushVital(buf: VitalEntry[], entry: VitalEntry) {
-  if (buf.length >= BUFFER_CAP) buf.shift()
+  if (buf.length >= BUFFER_CAP) {
+    buf.shift()
+  }
   buf.push(entry)
 }
 
 function sampleMemory() {
-  if (!hasPerformanceMemory()) return
+  if (!hasPerformanceMemory()) {
+    return
+  }
   const mem = (performance as any).memory
   const snap: MemorySnapshot = {
     timestamp: Date.now(),
@@ -54,14 +60,15 @@ function sampleMemory() {
     if (consecutiveIncreases >= LEAK_THRESHOLD) {
       console.warn('[perf] possible memory leak detected')
     }
-  } else {
+  }
+ else {
     consecutiveIncreases = 0
   }
   lastHeapUsed = snap.heapUsed
 }
 
 function collectWebVitals() {
-  const record = (name: string) => (metric: { value: number; rating: 'good' | 'needs-improvement' | 'poor' }) => {
+  const record = (name: string) => (metric: { value: number, rating: 'good' | 'needs-improvement' | 'poor' }) => {
     pushVital(vitals, {
       name,
       value: metric.value,
@@ -83,7 +90,7 @@ export function getWebVitals(): VitalEntry[] {
   return [...vitals]
 }
 
-function stopPerfMonitor() {
+function _stopPerfMonitor() {
   if (intervalId !== null) {
     clearInterval(intervalId)
     intervalId = null
@@ -91,7 +98,9 @@ function stopPerfMonitor() {
 }
 
 export function initPerfMonitor() {
-  if (intervalId !== null) return
+  if (intervalId !== null) {
+    return
+  }
 
   sampleMemory()
   intervalId = setInterval(sampleMemory, SAMPLE_INTERVAL_MS)

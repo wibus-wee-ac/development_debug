@@ -4,6 +4,7 @@
 
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
+
 import pino from 'pino'
 
 import type { LogLevel } from '../config/server-config'
@@ -14,9 +15,13 @@ export interface LoggerFields {
 
 function resolveLogFile(): string | null {
   const file = process.env.CRADLE_LOG_FILE?.trim()
-  if (file) return file
+  if (file) {
+    return file
+  }
   const dataDir = process.env.CRADLE_DATA_DIR?.trim()
-  if (dataDir) return `${dataDir}/server.log`
+  if (dataDir) {
+    return `${dataDir}/server.log`
+  }
   return null
 }
 

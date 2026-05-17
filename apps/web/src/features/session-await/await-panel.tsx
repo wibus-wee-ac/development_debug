@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { AnimatePresence, m } from 'motion/react'
 
-import { getSessionAwaitsOptions, getSessionAwaitsByIdLiveStatusOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getSessionAwaitsByIdLiveStatusOptions, getSessionAwaitsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
 import { cn } from '~/lib/cn'
 
@@ -196,7 +196,9 @@ function countRows(node: TreeNode): number {
  * - Single node: trunk comes from top, curves to the right (no straight horizontal)
  */
 function buildConnectorPath(offsets: number[]): string {
-  if (offsets.length === 0) return ''
+  if (offsets.length === 0) {
+    return ''
+  }
 
   const d: string[] = []
   const lastIdx = offsets.length - 1
@@ -325,7 +327,12 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
         <GitHubIcon className="shrink-0 text-foreground/70" />
         <div className="min-w-0 flex-1">
           <span className="text-[11px] font-medium text-foreground/90 truncate block">
-            {ci.prNumber && <span className="text-muted-foreground/60">#{ci.prNumber}</span>}
+            {ci.prNumber && (
+<span className="text-muted-foreground/60">
+#
+{ci.prNumber}
+</span>
+)}
             {ci.prNumber && ' '}
             {ci.prTitle ?? `${ci.owner}/${ci.repo}`}
           </span>

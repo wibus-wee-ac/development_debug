@@ -2,12 +2,11 @@
 // Output: ComposerToolbar — composes all selector pills based on context
 // Position: Root component rendering the appropriate selectors for each composer context
 
-import type { ComposerStateResult } from './use-composer-state'
-
 import { CliTuiAgentSelector } from './cli-tui-agent-selector'
-import type { ComposerContext } from './types'
 import { ProviderModelSelector } from './provider-model-selector'
 import { RuntimeSelector } from './runtime-selector'
+import type { ComposerContext } from './types'
+import type { ComposerStateResult } from './use-composer-state'
 
 interface ComposerToolbarProps {
   context: ComposerContext

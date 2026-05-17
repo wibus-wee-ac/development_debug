@@ -39,7 +39,9 @@ export function ModelsPanel({
     return filtered.toSorted((a, b) => {
       const aEnabled = modelIsVisible(visibility, a.id)
       const bEnabled = modelIsVisible(visibility, b.id)
-      if (aEnabled !== bEnabled) return aEnabled ? -1 : 1
+      if (aEnabled !== bEnabled) {
+        return aEnabled ? -1 : 1
+      }
       return (a.label || a.id).localeCompare(b.label || b.id)
     })
   }, [models, filter, visibility])
@@ -64,7 +66,7 @@ export function ModelsPanel({
       else if (visibility.kind === 'all') {
         // "All enabled" state — shouldn't normally check an already-checked item,
         // but just in case, keep all enabled (no-op)
-        return
+
       }
       else {
         // Explicit selection — add this model

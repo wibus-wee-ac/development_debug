@@ -122,7 +122,9 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
     const enriched = await enrichModelsFromRegistry(needsEnrich)
     const enrichedMap = new Map(enriched.map(e => [e.id, e]))
     models = models.map((m): ModelDescriptor => {
-      if (m.capabilities?.contextWindow) return m
+      if (m.capabilities?.contextWindow) {
+        return m
+      }
       return enrichedMap.get(m.id) ?? m
     })
   }

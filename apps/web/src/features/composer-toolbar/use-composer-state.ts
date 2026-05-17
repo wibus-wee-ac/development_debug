@@ -4,9 +4,9 @@
 
 import { useMemo, useState } from 'react'
 
-import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { Agent, AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
@@ -74,8 +74,12 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   // Resolve effective profile
   const profileId = useMemo(() => {
-    if (runtimeKind === 'cli-tui') return null
-    if (context === 'chat') return boundProfileId ?? null
+    if (runtimeKind === 'cli-tui') {
+      return null
+    }
+    if (context === 'chat') {
+      return boundProfileId ?? null
+    }
     const persisted = lastProfileId && profiles.some(p => p.id === lastProfileId) ? lastProfileId : null
     return persisted ?? profiles[0]?.id ?? null
   }, [runtimeKind, context, boundProfileId, lastProfileId, profiles])
@@ -86,10 +90,16 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   // Resolve effective model
   const modelId = useMemo(() => {
-    if (runtimeKind === 'cli-tui') return null
-    if (manualModelId && models.some(m => m.id === manualModelId)) return manualModelId
+    if (runtimeKind === 'cli-tui') {
+      return null
+    }
+    if (manualModelId && models.some(m => m.id === manualModelId)) {
+      return manualModelId
+    }
     const persisted = profileId ? lastModelByProfile[profileId] : undefined
-    if (persisted && models.some(m => m.id === persisted)) return persisted
+    if (persisted && models.some(m => m.id === persisted)) {
+      return persisted
+    }
     return models[0]?.id ?? null
   }, [runtimeKind, manualModelId, models, profileId, lastModelByProfile])
 
@@ -121,7 +131,9 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   }
 
   const setProfileId = (id: string) => {
-    if (context === 'chat') return // bound, immutable
+    if (context === 'chat') {
+      return
+    } // bound, immutable
     setLastProfileId(id)
     setManualModelId(null) // reset manual model when profile changes
   }

@@ -1,7 +1,10 @@
 import { App, LogLevel } from '@slack/bolt'
-import type { BridgeStore } from './store.js'
+
 import type { PendingCallManager } from './pending-calls.js'
 import { formatForSlack, markdownToSlackMrkdwn } from './slack-format.js'
+import type { BridgeStore } from './store.js'
+
+const WHITESPACE_RE = /\s+/
 
 export interface SlackBotConfig {
   botToken: string
@@ -35,7 +38,7 @@ export class SlackBot {
     this.app.command('/zhi', async ({ command, ack, respond }) => {
       await ack()
 
-      const args = command.text.trim().split(/\s+/)
+      const args = command.text.trim().split(WHITESPACE_RE)
       const subcommand = args[0]
 
       switch (subcommand) {
@@ -61,11 +64,17 @@ export class SlackBot {
     // Listen for replies in threads where we have pending calls
     this.app.event('message', async ({ event, client }) => {
       // Only care about threaded replies
-      if (!('thread_ts' in event) || !event.thread_ts) return
+      if (!('thread_ts' in event) || !event.thread_ts) {
+        return
+      }
       // Ignore bot messages
-      if ('bot_id' in event && event.bot_id) return
+      if ('bot_id' in event && event.bot_id) {
+        return
+      }
       // Ignore subtypes like message_changed
-      if ('subtype' in event && event.subtype) return
+      if ('subtype' in event && event.subtype) {
+        return
+      }
 
       const threadTs = event.thread_ts
       const text = ('text' in event && event.text) || ''
@@ -80,7 +89,8 @@ export class SlackBot {
             timestamp: ('ts' in event && event.ts) || '',
             name: 'white_check_mark',
           })
-        } catch {
+        }
+ catch {
           // Reaction failed, not critical
         }
       }
@@ -219,11 +229,11 @@ export class SlackBot {
 
   async start(): Promise<void> {
     await this.app.start()
-    console.log('[slack-bot] Started in Socket Mode')
+    console.warn('[slack-bot] Started in Socket Mode')
   }
 
   async stop(): Promise<void> {
     await this.app.stop()
-    console.log('[slack-bot] Stopped')
+    console.warn('[slack-bot] Stopped')
   }
 }

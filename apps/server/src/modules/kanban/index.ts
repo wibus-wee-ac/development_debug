@@ -10,7 +10,7 @@ export const kanban = new Elysia({
   // ── boards ──
   .get('/boards', ({ query }) => Kanban.listBoards(query.workspaceId), {
     detail: {
-      summary: 'List boards',
+      'summary': 'List boards',
       'x-cradle-cli': {
         command: ['board', 'list'],
       },
@@ -20,7 +20,7 @@ export const kanban = new Elysia({
   })
   .post('/boards', ({ body }) => Kanban.createBoard(body), {
     detail: {
-      summary: 'Create board',
+      'summary': 'Create board',
       'x-cradle-cli': {
         command: ['board', 'create'],
       },
@@ -33,7 +33,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete board',
+      'summary': 'Delete board',
       'x-cradle-cli': {
         command: ['board', 'delete'],
       },
@@ -43,7 +43,7 @@ export const kanban = new Elysia({
   })
   .patch('/boards/:id', ({ params, body }) => Kanban.updateBoard(params.id, body), {
     detail: {
-      summary: 'Update board',
+      'summary': 'Update board',
       'x-cradle-cli': {
         command: ['board', 'update'],
       },
@@ -56,7 +56,7 @@ export const kanban = new Elysia({
   // ── statuses ──
   .get('/statuses', ({ query }) => Kanban.listStatuses(query.workspaceId), {
     detail: {
-      summary: 'List statuses',
+      'summary': 'List statuses',
       'x-cradle-cli': {
         command: ['status', 'list'],
       },
@@ -66,7 +66,7 @@ export const kanban = new Elysia({
   })
   .post('/statuses', ({ body }) => Kanban.createStatus(body), {
     detail: {
-      summary: 'Create status',
+      'summary': 'Create status',
       'x-cradle-cli': {
         command: ['status', 'create'],
       },
@@ -79,7 +79,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Reorder statuses',
+      'summary': 'Reorder statuses',
       'x-cradle-cli': {
         command: ['status', 'reorder'],
       },
@@ -89,7 +89,7 @@ export const kanban = new Elysia({
   })
   .patch('/statuses/:id', ({ params, body }) => Kanban.updateStatus(params.id, body), {
     detail: {
-      summary: 'Update status',
+      'summary': 'Update status',
       'x-cradle-cli': {
         command: ['status', 'update'],
       },
@@ -103,7 +103,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete status',
+      'summary': 'Delete status',
       'x-cradle-cli': {
         command: ['status', 'delete'],
       },
@@ -115,7 +115,7 @@ export const kanban = new Elysia({
   // ── milestones ──
   .get('/milestones', ({ query }) => Kanban.listMilestones(query.workspaceId), {
     detail: {
-      summary: 'List milestones',
+      'summary': 'List milestones',
       'x-cradle-cli': {
         command: ['milestone', 'list'],
       },
@@ -125,7 +125,7 @@ export const kanban = new Elysia({
   })
   .post('/milestones', ({ body }) => Kanban.createMilestone(body), {
     detail: {
-      summary: 'Create milestone',
+      'summary': 'Create milestone',
       'x-cradle-cli': {
         command: ['milestone', 'create'],
       },
@@ -135,7 +135,7 @@ export const kanban = new Elysia({
   })
   .patch('/milestones/:id', ({ params, body }) => Kanban.updateMilestone(params.id, body), {
     detail: {
-      summary: 'Update milestone',
+      'summary': 'Update milestone',
       'x-cradle-cli': {
         command: ['milestone', 'update'],
       },
@@ -149,7 +149,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete milestone',
+      'summary': 'Delete milestone',
       'x-cradle-cli': {
         command: ['milestone', 'delete'],
       },
@@ -161,7 +161,7 @@ export const kanban = new Elysia({
   // ── issues ──
   .get('/issues/search', ({ query }) => Kanban.searchIssues(query.q, Number(query.limit) || 20), {
     detail: {
-      summary: 'Search issues',
+      'summary': 'Search issues',
       'x-cradle-cli': {
         command: ['issue', 'search'],
       },
@@ -178,7 +178,7 @@ export const kanban = new Elysia({
     statusId: query.statusId,
   }), {
     detail: {
-      summary: 'List issues',
+      'summary': 'List issues',
       'x-cradle-cli': {
         command: ['issue', 'list'],
       },
@@ -188,7 +188,7 @@ export const kanban = new Elysia({
   })
   .get('/issues/:id', ({ params }) => Kanban.getIssue(params.id), {
     detail: {
-      summary: 'Get issue',
+      'summary': 'Get issue',
       'x-cradle-cli': {
         command: ['issue', 'get'],
       },
@@ -198,7 +198,7 @@ export const kanban = new Elysia({
   })
   .post('/issues', ({ body }) => Kanban.createIssue(body), {
     detail: {
-      summary: 'Create issue',
+      'summary': 'Create issue',
       'x-cradle-cli': {
         command: ['issue', 'create'],
       },
@@ -216,7 +216,7 @@ export const kanban = new Elysia({
   })
   .patch('/issues/:id', ({ params, body }) => Kanban.updateIssue(params.id, body), {
     detail: {
-      summary: 'Update issue',
+      'summary': 'Update issue',
       'x-cradle-cli': {
         command: ['issue', 'update'],
       },
@@ -230,7 +230,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete issue',
+      'summary': 'Delete issue',
       'x-cradle-cli': {
         command: ['issue', 'delete'],
       },
@@ -242,7 +242,7 @@ export const kanban = new Elysia({
   // ── comments ──
   .get('/issues/:id/comments', ({ params }) => Kanban.listComments(params.id), {
     detail: {
-      summary: 'List comments',
+      'summary': 'List comments',
       'x-cradle-cli': {
         command: ['issue', 'comment', 'list'],
       },
@@ -252,7 +252,7 @@ export const kanban = new Elysia({
   })
   .post('/issues/:id/comments', ({ params, body }) => Kanban.addComment({ issueId: params.id, content: body.content }), {
     detail: {
-      summary: 'Add comment',
+      'summary': 'Add comment',
       'x-cradle-cli': {
         command: ['issue', 'comment', 'add'],
       },
@@ -266,7 +266,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete comment',
+      'summary': 'Delete comment',
       'x-cradle-cli': {
         command: ['issue', 'comment', 'delete'],
       },
@@ -278,7 +278,7 @@ export const kanban = new Elysia({
   // ── relations ──
   .get('/issues/:id/relations', ({ params }) => Kanban.listRelations(params.id), {
     detail: {
-      summary: 'List issue relations',
+      'summary': 'List issue relations',
       'x-cradle-cli': {
         command: ['issue', 'relation', 'list'],
       },
@@ -288,7 +288,7 @@ export const kanban = new Elysia({
   })
   .post('/relations', ({ body }) => Kanban.createRelation(body), {
     detail: {
-      summary: 'Create relation',
+      'summary': 'Create relation',
       'x-cradle-cli': {
         command: ['issue', 'relation', 'create'],
       },
@@ -301,7 +301,7 @@ export const kanban = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete relation',
+      'summary': 'Delete relation',
       'x-cradle-cli': {
         command: ['issue', 'relation', 'delete'],
       },
@@ -313,7 +313,7 @@ export const kanban = new Elysia({
   // ── context refs ──
   .post('/issues/:id/context-refs', ({ params, body }) => Kanban.addContextRef(params.id, body.ref), {
     detail: {
-      summary: 'Add context ref',
+      'summary': 'Add context ref',
       'x-cradle-cli': {
         command: ['issue', 'context-ref', 'add'],
       },
@@ -324,7 +324,7 @@ export const kanban = new Elysia({
   })
   .delete('/issues/:id/context-refs/:index', ({ params }) => Kanban.removeContextRef(params.id, Number(params.index)), {
     detail: {
-      summary: 'Remove context ref',
+      'summary': 'Remove context ref',
       'x-cradle-cli': {
         command: ['issue', 'context-ref', 'remove'],
       },

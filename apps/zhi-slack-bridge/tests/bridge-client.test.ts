@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { createServer, type Server } from 'node:net'
 import { existsSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import type { Server } from 'node:net'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import { afterEach, describe, expect, it } from 'vitest'
+
 import { callBridge } from '../src/bridge-client.js'
 
 const TEST_SOCKET = join(tmpdir(), `zhi-bridge-client-test-${process.pid}.sock`)
@@ -33,18 +36,18 @@ describe('bridge-client', () => {
       logger: { error: () => {} },
     })
 
-    await new Promise((resolve) => setTimeout(resolve, 30))
+    await new Promise(resolve => setTimeout(resolve, 30))
 
     server = createServer((socket) => {
       socket.on('data', () => {
-        socket.write(JSON.stringify({
+        socket.write(`${JSON.stringify({
           success: true,
           result: { user_input: 'bridge recovered', selected_options: [] },
-        }) + '\n')
+        })}\n`)
       })
     })
 
-    await new Promise<void>((resolve) => server!.listen(TEST_SOCKET, resolve))
+    await new Promise<void>(resolve => server!.listen(TEST_SOCKET, resolve))
 
     await expect(responsePromise).resolves.toEqual({
       success: true,

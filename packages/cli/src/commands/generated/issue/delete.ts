@@ -2,27 +2,28 @@
 // Output: issue delete command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
+
 const spec = {
-  "arguments": [
+  arguments: [
     {
-      "name": "id",
-      "required": true,
-      "target": "path.id",
-      "type": "string"
-    }
+      name: 'id',
+      required: true,
+      target: 'path.id',
+      type: 'string',
+    },
   ],
-  "command": [
-    "issue",
-    "delete"
+  command: [
+    'issue',
+    'delete',
   ],
-  "description": "Delete issue",
-  "flags": [],
-  "method": "delete",
-  "path": "/kanban/issues/{id}"
+  description: 'Delete issue',
+  flags: [],
+  method: 'delete',
+  path: '/kanban/issues/{id}',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

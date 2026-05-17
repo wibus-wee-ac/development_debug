@@ -360,10 +360,7 @@ export function updateIssue(id: string, patch: Partial<{
 }
 
 export function updateIssueDelegation(id: string, agentProfileId: string | null): KanbanIssue {
-  db().update(kanbanIssues)
-    .set({ delegateAgentProfileId: agentProfileId, updatedAt: currentUnixSeconds() })
-    .where(eq(kanbanIssues.id, id))
-    .run()
+  db().update(kanbanIssues).set({ delegateAgentProfileId: agentProfileId, updatedAt: currentUnixSeconds() }).where(eq(kanbanIssues.id, id)).run()
   return getIssue(id)
 }
 
@@ -376,19 +373,30 @@ export function deleteIssue(id: string): void {
 }
 
 export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string | null, priority?: string, labels?: string, milestoneId?: string | null, assigneeKind?: string | null, assigneeId?: string | null }): number {
-  if (issueIds.length === 0) return 0
+  if (issueIds.length === 0) {
+    return 0
+  }
   const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
-  if ('statusId' in update) updates.statusId = update.statusId ?? null
-  if (update.priority !== undefined) updates.priority = update.priority
-  if (update.labels !== undefined) updates.labels = update.labels
-  if ('milestoneId' in update) updates.milestoneId = update.milestoneId ?? null
-  if ('assigneeKind' in update) updates.assigneeKind = update.assigneeKind ?? null
-  if ('assigneeId' in update) updates.assigneeId = update.assigneeId ?? null
+  if ('statusId' in update) {
+    updates.statusId = update.statusId ?? null
+  }
+  if (update.priority !== undefined) {
+    updates.priority = update.priority
+  }
+  if (update.labels !== undefined) {
+    updates.labels = update.labels
+  }
+  if ('milestoneId' in update) {
+    updates.milestoneId = update.milestoneId ?? null
+  }
+  if ('assigneeKind' in update) {
+    updates.assigneeKind = update.assigneeKind ?? null
+  }
+  if ('assigneeId' in update) {
+    updates.assigneeId = update.assigneeId ?? null
+  }
 
-  const result = db().update(kanbanIssues)
-    .set(updates)
-    .where(sql`${kanbanIssues.id} IN (${sql.join(issueIds.map(id => sql`${id}`), sql`, `)})`)
-    .run()
+  const result = db().update(kanbanIssues).set(updates).where(sql`${kanbanIssues.id} IN (${sql.join(issueIds.map(id => sql`${id}`), sql`, `)})`).run()
   return result.changes
 }
 

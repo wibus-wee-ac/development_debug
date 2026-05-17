@@ -8,7 +8,9 @@ import { resolve } from 'node:path'
 let _cache: string | null | undefined
 
 export function getSystemWorkflow(): string | null {
-  if (_cache !== undefined) return _cache
+  if (_cache !== undefined) {
+    return _cache
+  }
   const candidates = [
     resolve(process.cwd(), '../../../resources/system-workflow.md'),
     resolve(process.cwd(), '../../resources/system-workflow.md'),

@@ -207,13 +207,13 @@ async function nextOrAbort<T>(iterator: AsyncIterator<T>, signal: AbortSignal | 
   throwIfAborted(signal)
 
   return await new Promise<IteratorResult<T>>((resolve, reject) => {
-    const cleanup = () => {
+    const onAbort = () => {
       signal.removeEventListener('abort', onAbort)
+      reject(createAbortError())
     }
 
-    const onAbort = () => {
-      cleanup()
-      reject(createAbortError())
+    const cleanup = () => {
+      signal.removeEventListener('abort', onAbort)
     }
 
     signal.addEventListener('abort', onAbort, { once: true })

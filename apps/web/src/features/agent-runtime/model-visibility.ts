@@ -6,10 +6,10 @@ import type { ModelDescriptor } from '~/lib/types'
 
 export const ALL_MODELS_DISABLED_SENTINEL = '__all_disabled__'
 
-export type ModelVisibility =
-  | { kind: 'all' }
-  | { kind: 'none' }
-  | { kind: 'list', ids: Set<string> }
+export type ModelVisibility
+  = | { kind: 'all' }
+    | { kind: 'none' }
+    | { kind: 'list', ids: Set<string> }
 
 export function readModelVisibility(value: unknown): ModelVisibility {
   if (!Array.isArray(value) || value.length === 0) {

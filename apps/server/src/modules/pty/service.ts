@@ -12,8 +12,9 @@ import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
 import * as SessionService from '../session/service'
 import type { PtyClientEvent } from './protocol'
-import { PtySocketHub, type PtyLiveSocket } from './pty.socket'
 import { PtyRuntimeRegistry } from './pty.runtime'
+import type { PtyLiveSocket } from './pty.socket'
+import { PtySocketHub } from './pty.socket'
 import { ptyTimeline } from './pty.timeline'
 
 const shellLeaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -161,10 +162,7 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
   })
 
   if (!context.session.ptyStartedAt) {
-    db().update(sessions)
-      .set({ ptyStartedAt: Math.floor(Date.now() / 1000) })
-      .where(eq(sessions.id, input.sessionId))
-      .run()
+    db().update(sessions).set({ ptyStartedAt: Math.floor(Date.now() / 1000) }).where(eq(sessions.id, input.sessionId)).run()
   }
 
   return { sessionId: input.sessionId, running: ptyRuntime.isRunning(input.sessionId) }

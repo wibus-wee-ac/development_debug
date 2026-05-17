@@ -124,7 +124,9 @@ export function computeGraphLayout(commits: GitGraphCommit[]): LayoutCommit[] {
 
     const afterIndex = new Map<string, number>()
     for (let k = 0; k < snapshotAfter.length; k++) {
-      if (snapshotAfter[k] !== null) afterIndex.set(snapshotAfter[k]!, k)
+      if (snapshotAfter[k] !== null) {
+        afterIndex.set(snapshotAfter[k]!, k)
+      }
     }
 
     for (const parent of commit.parents) {

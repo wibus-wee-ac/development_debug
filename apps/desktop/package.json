@@ -1,8 +1,8 @@
 {
   "name": "@cradle/desktop",
+  "type": "module",
   "version": "1.0.0",
   "private": true,
-  "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

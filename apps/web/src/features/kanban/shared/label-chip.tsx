@@ -10,7 +10,8 @@ export function LabelChip({ label, className }: { label: string, className?: str
       'inline-flex items-center px-1.5 h-4 rounded text-[11px]',
       'bg-muted text-muted-foreground border border-border',
       className,
-    )}>
+    )}
+    >
       {label}
     </span>
   )

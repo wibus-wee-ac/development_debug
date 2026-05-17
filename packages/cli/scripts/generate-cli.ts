@@ -12,6 +12,10 @@ import type { CliArgumentSpec, CliFlagSpec, CliOperationSpec, CliValueType } fro
 
 type HttpMethod = 'delete' | 'get' | 'patch' | 'post' | 'put'
 
+const KEBAB_TO_PASCAL_RE = /(^|-)([a-z])/g
+const TS_EXTENSION_RE = /\.ts$/
+const PIPE_RE = /\|/g
+
 interface OpenApiSchema {
   anyOf?: OpenApiSchema[]
   description?: string
@@ -31,13 +35,13 @@ interface OpenApiParameter {
 }
 
 interface OpenApiOperation {
-  parameters?: OpenApiParameter[]
-  requestBody?: {
+  'parameters'?: OpenApiParameter[]
+  'requestBody'?: {
     content?: Record<string, { schema?: OpenApiSchema }>
     required?: boolean
   }
-  summary?: string
-  tags?: string[]
+  'summary'?: string
+  'tags'?: string[]
   'x-cradle-cli'?: {
     command: string[]
     hidden?: boolean
@@ -57,27 +61,27 @@ const generatedSkillStart = '<!-- CRADLE_CLI_MODULES_START -->'
 const generatedSkillEnd = '<!-- CRADLE_CLI_MODULES_END -->'
 
 const moduleDescriptions: Record<string, string> = {
-  acp: 'Manage ACP agent installation and registry state.',
-  agent: 'Manage Cradle agent identities.',
-  approval: 'Inspect and respond to pending approvals.',
-  board: 'Manage Kanban boards.',
-  chat: 'Control chat runtime commands.',
-  health: 'Check server health.',
-  issue: 'Manage Kanban issues, comments, relations, delegation, and context refs.',
+  'acp': 'Manage ACP agent installation and registry state.',
+  'agent': 'Manage Cradle agent identities.',
+  'approval': 'Inspect and respond to pending approvals.',
+  'board': 'Manage Kanban boards.',
+  'chat': 'Control chat runtime commands.',
+  'health': 'Check server health.',
+  'issue': 'Manage Kanban issues, comments, relations, delegation, and context refs.',
   'issue-agent-session': 'Inspect and control issue agent sessions.',
-  milestone: 'Manage Kanban milestones.',
-  observability: 'Inspect local observability events, incidents, and exports.',
-  preferences: 'Read and update server preferences.',
-  profile: 'Manage agent profiles.',
-  provider: 'Inspect provider health and model availability.',
-  search: 'Search Cradle data.',
-  secret: 'Manage secret metadata.',
-  session: 'Manage chat sessions and session links.',
-  skill: 'Manage skills and skill sources.',
-  status: 'Manage Kanban statuses.',
-  usage: 'Inspect usage and cost data.',
+  'milestone': 'Manage Kanban milestones.',
+  'observability': 'Inspect local observability events, incidents, and exports.',
+  'preferences': 'Read and update server preferences.',
+  'profile': 'Manage agent profiles.',
+  'provider': 'Inspect provider health and model availability.',
+  'search': 'Search Cradle data.',
+  'secret': 'Manage secret metadata.',
+  'session': 'Manage chat sessions and session links.',
+  'skill': 'Manage skills and skill sources.',
+  'status': 'Manage Kanban statuses.',
+  'usage': 'Inspect usage and cost data.',
   'workflow-rule': 'Manage workflow rules.',
-  workspace: 'Manage workspaces, files, git helpers, and codebase packing.',
+  'workspace': 'Manage workspaces, files, git helpers, and codebase packing.',
 }
 
 function toGeneratedPath(command: string[]): string {
@@ -222,7 +226,7 @@ ${callLines || '  void program'}
 }
 
 function createImportName(command: string[]): string {
-  return `register${command.map(segment => segment.replace(/(^|-)([a-z])/g, (_, __, char: string) => char.toUpperCase())).join('')}`
+  return `register${command.map(segment => segment.replace(KEBAB_TO_PASCAL_RE, (_, __, char: string) => char.toUpperCase())).join('')}`
 }
 
 async function loadOpenApiDocument(): Promise<OpenApiDocument> {
@@ -290,7 +294,7 @@ through server route \`x-cradle-cli\` metadata and rerun the generator.
     await writeFile(filePath, renderCommandModule(operation))
     indexImports.push({
       importName: createImportName(operation.command),
-      relativePath: path.relative(generatedRoot, filePath).replace(/\.ts$/, '').split(path.sep).join('/'),
+      relativePath: path.relative(generatedRoot, filePath).replace(TS_EXTENSION_RE, '').split(path.sep).join('/'),
     })
   }
 
@@ -298,7 +302,7 @@ through server route \`x-cradle-cli\` metadata and rerun the generator.
 }
 
 function escapeMarkdownCell(value: string): string {
-  return value.replace(/\|/g, '\\|')
+  return value.replace(PIPE_RE, '\\|')
 }
 
 function renderSkillModulesBlock(operations: CliOperationSpec[]): string {

@@ -275,7 +275,7 @@ describe('chat runtime capability', () => {
       })
       expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, index) => index))
 
-      const messageIds = new Set(deltaEvents.map((event) => (event.data as { messageId: string }).messageId))
+      const messageIds = new Set(deltaEvents.map(event => (event.data as { messageId: string }).messageId))
       expect(messageIds.size).toBe(1)
     }
     finally {

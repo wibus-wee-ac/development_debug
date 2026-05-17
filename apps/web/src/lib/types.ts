@@ -66,13 +66,13 @@ export interface ModelDescriptor {
   capabilities: ModelCapabilities
 }
 
-interface ProviderHealthCheckResult {
+interface _ProviderHealthCheckResult {
   ok: boolean
   latencyMs: number
   error?: string
 }
 
-interface CredentialMetadata {
+interface _CredentialMetadata {
   id: string
   providerKind: ProviderKind
   label: string
@@ -181,7 +181,7 @@ export interface ThreadSearchHit {
   updatedAt: number
 }
 
-interface ThreadSearchParams {
+interface _ThreadSearchParams {
   query: string
   workspaceId?: string
   limit?: number
@@ -222,7 +222,7 @@ export interface SkillDocument {
   skillDir: string
 }
 
-interface CreateSkillInput {
+interface _CreateSkillInput {
   name: string
   description: string
   content: string
@@ -230,7 +230,7 @@ interface CreateSkillInput {
   context?: SkillContext
 }
 
-interface UpdateSkillInput {
+interface _UpdateSkillInput {
   name?: string
   description?: string
   content?: string
@@ -240,7 +240,7 @@ interface UpdateSkillInput {
 
 // ── ACP / registry types ────────────────────────────────────────────────────
 
-interface RegistryAgent {
+interface _RegistryAgent {
   id: string
   name: string
   version: string
@@ -276,7 +276,7 @@ export interface DiscoveredSkill {
 
 // ── ACP session / process types ─────────────────────────────────────────────
 
-interface AcpSessionState {
+interface _AcpSessionState {
   agentId: string
   status: 'connecting' | 'connected' | 'disconnected' | 'error'
   error?: string
@@ -286,7 +286,7 @@ interface AcpSessionState {
 
 type PackStyle = 'xml' | 'markdown' | 'plain'
 
-interface PackCodebaseOptions {
+interface _PackCodebaseOptions {
   style: PackStyle
   compress: boolean
   include?: string
@@ -295,7 +295,7 @@ interface PackCodebaseOptions {
   removeEmptyLines?: boolean
 }
 
-interface PackCodebaseResult {
+interface _PackCodebaseResult {
   content: string
   totalFiles: number
   totalTokens: number
@@ -303,14 +303,14 @@ interface PackCodebaseResult {
 
 // ── Usage types ─────────────────────────────────────────────────────────────
 
-interface DailyUsage {
+interface _DailyUsage {
   date: string
   inputTokens: number
   outputTokens: number
   cost: number
 }
 
-interface UsageSummary {
+interface _UsageSummary {
   totalInputTokens: number
   totalOutputTokens: number
   totalCost: number

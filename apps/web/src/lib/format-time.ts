@@ -1,23 +1,37 @@
-const rtf = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' })
-
-function timeAgo(timestamp: number, now: number): string {
+function _timeAgo(timestamp: number, now: number): string {
   const seconds = Math.floor((now - timestamp) / 1000)
-  if (seconds < 60) return '刚刚'
+  if (seconds < 60) {
+    return '刚刚'
+  }
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}分钟前`
+  if (minutes < 60) {
+    return `${minutes}分钟前`
+  }
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时前`
+  if (hours < 24) {
+    return `${hours}小时前`
+  }
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}天前`
+  if (days < 30) {
+    return `${days}天前`
+  }
   return `${Math.floor(days / 30)}个月前`
 }
 
-function timeAgoShort(tsSeconds: number, nowMs: number): string {
+function _timeAgoShort(tsSeconds: number, nowMs: number): string {
   const diff = Math.floor(nowMs / 1000) - tsSeconds
-  if (diff < 60) return '刚刚'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h`
-  if (diff < 2592000) return `${Math.floor(diff / 86400)}d`
+  if (diff < 60) {
+    return '刚刚'
+  }
+  if (diff < 3600) {
+    return `${Math.floor(diff / 60)}m`
+  }
+  if (diff < 86400) {
+    return `${Math.floor(diff / 3600)}h`
+  }
+  if (diff < 2592000) {
+    return `${Math.floor(diff / 86400)}d`
+  }
   return `${Math.floor(diff / 2592000)}mo`
 }
 
@@ -33,7 +47,7 @@ const timeOnlyFmt = new Intl.DateTimeFormat('en-US', {
   hour12: false,
 })
 
-function formatTimestamp(tsSeconds: number): string {
+function _formatTimestamp(tsSeconds: number): string {
   return timestampFmt.format(tsSeconds * 1000)
 }
 

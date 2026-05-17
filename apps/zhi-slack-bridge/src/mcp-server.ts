@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+
 import { callBridge } from './bridge-client.js'
 
 const SOCKET_PATH = process.env.ZHI_SOCKET_PATH || '/tmp/zhi-bridge.sock'
@@ -47,13 +48,15 @@ server.tool(
             },
           ],
         }
-      } else {
+      }
+ else {
         return {
           content: [{ type: 'text' as const, text: `Error: ${response.error}` }],
           isError: true,
         }
       }
-    } catch (err) {
+    }
+ catch (err) {
       return {
         content: [{ type: 'text' as const, text: `Bridge connection error: ${(err as Error).message}` }],
         isError: true,
@@ -62,9 +65,9 @@ server.tool(
   },
 )
 
-interface BridgeResponse {
+interface _BridgeResponse {
   success: boolean
-  result?: { user_input: string; selected_options: string[] }
+  result?: { user_input: string, selected_options: string[] }
   error?: string
 }
 

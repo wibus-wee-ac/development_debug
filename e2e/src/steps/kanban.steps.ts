@@ -9,6 +9,8 @@ import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world'
 
+const COLUMN_RE = /column/
+
 const KANBAN_SIDEBAR = '[data-testid="kanban-sidebar"]'
 const KANBAN_BOARD = '[data-testid="kanban-board"]'
 const KANBAN_BOARD_INPUT = '[data-testid="kanban-new-board-input"]'
@@ -16,7 +18,7 @@ const KANBAN_COLUMN = '[data-kanban-column-id]'
 const KANBAN_COLUMN_ADD = '[data-testid^="kanban-column-add-"]'
 const KANBAN_ISSUE_CARD = '[data-testid^="issue-card-"]'
 const KANBAN_ISSUE_INPUT = '[data-testid="kanban-new-issue-input"]'
-const KANBAN_CREATE_ISSUE_BUTTON = '[data-testid="kanban-create-issue-btn"]'
+const _KANBAN_CREATE_ISSUE_BUTTON = '[data-testid="kanban-create-issue-btn"]'
 const KANBAN_SEARCH_INPUT = '[data-testid="kanban-search-input"]'
 const ISSUE_DETAIL_PANEL = '[data-testid="issue-detail-panel"]'
 const ISSUE_DETAIL_HEADER = '[data-testid="issue-detail-header"]'
@@ -53,7 +55,7 @@ function issueCardByTitle(world: CradleWorld, title: string): Locator {
   return visibleKanbanBoard(world).locator(KANBAN_ISSUE_CARD).filter({ hasText: title }).first()
 }
 
-function sortableIssueByTitle(world: CradleWorld, title: string): Locator {
+function _sortableIssueByTitle(world: CradleWorld, title: string): Locator {
   return visibleKanbanBoard(world).locator('[data-testid^="issue-sortable-"]').filter({ hasText: title }).first()
 }
 
@@ -283,7 +285,7 @@ async function dragStatusRowBefore(world: CradleWorld, sourceName: string, targe
   await world.page.mouse.up()
 }
 
-async function dragIssueCardToColumn(world: CradleWorld, title: string, columnName: string): Promise<void> {
+async function _dragIssueCardToColumn(world: CradleWorld, title: string, columnName: string): Promise<void> {
   const source = issueCardByTitle(world, title)
   await expect(source).toBeVisible({ timeout: 10_000 })
   const targetDropzone = await getColumnDropzoneByName(world, columnName)
@@ -465,7 +467,7 @@ When('我将名为{string}的 Issue 卡片移动到名为{string}的列', async 
 
   // Select the target status from the popover
   const option = this.page.getByRole('button', { name: columnName, exact: false })
-    .filter({ hasNotText: /column/ })
+    .filter({ hasNotText: COLUMN_RE })
   await expect(option.first()).toBeVisible({ timeout: 5000 })
   await option.first().click()
 
@@ -609,7 +611,9 @@ Then('看板列顺序应为:', async function (this: CradleWorld, table: DataTab
     const visible = await getVisibleColumnNames(this)
     // Check that expected columns appear in the correct relative order within visible columns
     const indices = expected.map(name => visible.indexOf(name))
-    if (indices.some(i => i === -1)) return visible // will fail - return full list for debugging
+    if (indices.includes(-1)) {
+      return visible
+    } // will fail - return full list for debugging
     // Check monotonically increasing (correct order)
     const sorted = [...indices].sort((a, b) => a - b)
     if (indices.every((val, i) => val === sorted[i])) {

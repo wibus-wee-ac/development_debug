@@ -8,14 +8,14 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import { cn } from '~/lib/utils'
 import type { KanbanStatus } from '~/lib/types'
+import { cn } from '~/lib/utils'
 
 import { priorityOptions } from '../shared/issue-metadata'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
-import { useCreateIssue, useIssues } from '../use-kanban'
 import type { IssuePriority } from '../use-kanban'
+import { useCreateIssue, useIssues } from '../use-kanban'
 import type { StatusCategory } from '../use-view-config'
 
 interface SubIssuesListProps {
@@ -34,13 +34,17 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (!creating) return
+    if (!creating) {
+      return
+    }
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [creating])
 
   const handleCreate = useCallback(() => {
     const trimmed = newTitle.trim()
-    if (!trimmed) return
+    if (!trimmed) {
+      return
+    }
     createIssue.mutate({
       workspaceId,
       title: trimmed,
@@ -86,8 +90,13 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleCreate() }
-                  if (e.key === 'Escape') handleCancel()
+                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    handleCreate()
+                  }
+                  if (e.key === 'Escape') {
+                    handleCancel()
+                  }
                 }}
                 placeholder="Sub-issue title"
                 className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none placeholder:text-muted-foreground/60"
@@ -103,10 +112,12 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                     >
                       {currentStatus
-                        ? <>
+                        ? (
+<>
                             <StatusIcon category={currentStatus.category as StatusCategory} size={11} />
                             <span>{currentStatus.name}</span>
-                          </>
+</>
+)
                         : <span>Status</span>}
                     </button>
                   </DropdownMenuTrigger>

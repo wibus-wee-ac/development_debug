@@ -2,9 +2,10 @@
 // Output: stdout rendering for JSON, tables, and acknowledgements
 // Position: packages/cli runtime presentation helper
 
-import type { CliOutputFormat } from './types'
-import { getBorderCharacters, table } from 'table'
 import type { TableUserConfig } from 'table'
+import { getBorderCharacters, table } from 'table'
+
+import type { CliOutputFormat } from './types'
 
 export interface PrintResultOptions {
   format: CliOutputFormat

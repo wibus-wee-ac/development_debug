@@ -38,7 +38,7 @@ describe('profiles capability', () => {
       if (url === MODELS_DEV_URL) {
         return new Response(JSON.stringify({}), {
           status: 200,
-          headers: { 'content-type': 'application/json' }
+          headers: { 'content-type': 'application/json' },
         })
       }
 
@@ -46,7 +46,7 @@ describe('profiles capability', () => {
       expect(init?.headers).toMatchObject({ Authorization: 'Bearer sk-test-abcdef' })
       return new Response(JSON.stringify({ data: [{ id: 'gpt-4o-mini' }, { id: 'gpt-4o' }] }), {
         status: 200,
-        headers: { 'content-type': 'application/json' }
+        headers: { 'content-type': 'application/json' },
       })
     })
 
@@ -61,9 +61,9 @@ describe('profiles capability', () => {
           body: JSON.stringify({
             kind: 'openai-compatible',
             label: 'Primary OpenAI Key',
-            secret: 'sk-test-abcdef'
-          })
-        })
+            secret: 'sk-test-abcdef',
+          }),
+        }),
       )
       expect(saveSecret.status).toBe(200)
       const secret = await saveSecret.json()
@@ -78,9 +78,9 @@ describe('profiles capability', () => {
             providerKind: 'openai-compatible',
             enabled: true,
             config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
-            credentialRef: secret.id
-          })
-        })
+            credentialRef: secret.id,
+          }),
+        }),
       )
       expect(createProfile.status).toBe(200)
       const profile = await createProfile.json()
@@ -89,8 +89,8 @@ describe('profiles capability', () => {
           id: 'profile-1',
           name: 'Primary Profile',
           providerKind: 'openai-compatible',
-          credentialRef: secret.id
-        })
+          credentialRef: secret.id,
+        }),
       )
 
       const listProfiles = await app.handle(new Request('http://localhost/profiles'))
@@ -110,9 +110,9 @@ describe('profiles capability', () => {
             providerKind: 'openai-compatible',
             label: 'Primary Profile',
             config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
-            secretRef: secret.id
-          })
-        })
+            secretRef: secret.id,
+          }),
+        }),
       )
       expect(healthCheckRes.status).toBe(200)
       expect(await healthCheckRes.json()).toEqual({
@@ -120,7 +120,7 @@ describe('profiles capability', () => {
         label: 'Primary Profile',
         version: null,
         details: { baseUrl: 'https://example.com/v1' },
-        errorText: null
+        errorText: null,
       })
 
       const modelsRes = await app.handle(
@@ -132,17 +132,17 @@ describe('profiles capability', () => {
             providerKind: 'openai-compatible',
             label: 'Primary Profile',
             config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
-            secretRef: secret.id
-          })
-        })
+            secretRef: secret.id,
+          }),
+        }),
       )
       expect(modelsRes.status).toBe(200)
       expect(await modelsRes.json()).toEqual([
         expect.objectContaining({ id: 'gpt-4o-mini', providerKind: 'openai-compatible' }),
-        expect.objectContaining({ id: 'gpt-4o', providerKind: 'openai-compatible' })
+        expect.objectContaining({ id: 'gpt-4o', providerKind: 'openai-compatible' }),
       ])
       const providerFetchCount = fetchSpy.mock.calls.filter(
-        ([callInput]) => getRequestUrl(callInput) === 'https://example.com/v1/models'
+        ([callInput]) => getRequestUrl(callInput) === 'https://example.com/v1/models',
       ).length
       expect(providerFetchCount).toBe(1)
 
@@ -150,12 +150,12 @@ describe('profiles capability', () => {
       expect(listSecrets.status).toBe(200)
       const secrets = await listSecrets.json()
       expect(secrets).toEqual([
-        expect.objectContaining({ id: secret.id, maskedSecret: 'sk-...cdef' })
+        expect.objectContaining({ id: secret.id, maskedSecret: 'sk-...cdef' }),
       ])
       expect(JSON.stringify(secrets)).not.toContain('sk-test-abcdef')
 
       const deleteProfile = await app.handle(
-        new Request('http://localhost/profiles/profile-1', { method: 'DELETE' })
+        new Request('http://localhost/profiles/profile-1', { method: 'DELETE' }),
       )
       expect(deleteProfile.status).toBe(200)
       expect(await deleteProfile.json()).toEqual({ ok: true })
@@ -165,22 +165,25 @@ describe('profiles capability', () => {
 
       const removeSecret = await app.handle(
         new Request(`http://localhost/secrets/${secret.id}`, {
-          method: 'DELETE'
-        })
+          method: 'DELETE',
+        }),
       )
       expect(removeSecret.status).toBe(200)
       expect(await removeSecret.json()).toEqual({ ok: true })
-    } finally {
+    }
+ finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      } else {
+      }
+ else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
       if (previousSecret === undefined) {
         delete process.env.CRADLE_CREDENTIAL_SECRET
-      } else {
+      }
+ else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
     }
@@ -201,8 +204,8 @@ describe('profiles capability', () => {
         new Request('http://localhost/profiles/profile-bad', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ providerKind: 'openai-compatible' })
-        })
+          body: JSON.stringify({ providerKind: 'openai-compatible' }),
+        }),
       )
       expect(invalidProfile.status).toBe(400)
       expect((await invalidProfile.json()).code).toBe('validation_error')
@@ -214,9 +217,9 @@ describe('profiles capability', () => {
           body: JSON.stringify({
             kind: 'openai-compatible',
             label: 'Missing Secret Config',
-            secret: 'sk-test-abcdef'
-          })
-        })
+            secret: 'sk-test-abcdef',
+          }),
+        }),
       )
       expect(saveSecret.status).toBe(500)
       expect((await saveSecret.json()).code).toBe('secret_not_configured')
@@ -231,9 +234,9 @@ describe('profiles capability', () => {
             name: 'Unsupported Profile',
             providerKind: 'cli-tui',
             enabled: true,
-            config: {}
-          })
-        })
+            config: {},
+          }),
+        }),
       )
       expect(invalidProviderKind.status).toBe(400)
 
@@ -241,8 +244,8 @@ describe('profiles capability', () => {
         new Request('http://localhost/providers/health-check', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ providerKind: 'openai-compatible' })
-        })
+          body: JSON.stringify({ providerKind: 'openai-compatible' }),
+        }),
       )
       expect(invalidProviderBody.status).toBe(400)
       expect((await invalidProviderBody.json()).code).toBe('validation_error')
@@ -255,22 +258,25 @@ describe('profiles capability', () => {
             providerKind: 'not-a-real-provider',
             label: 'Unsupported Profile',
             config: {},
-            secretRef: null
-          })
-        })
+            secretRef: null,
+          }),
+        }),
       )
       expect(unavailableProvider.status).toBe(400)
-    } finally {
+    }
+ finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      } else {
+      }
+ else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
       if (previousSecret === undefined) {
         delete process.env.CRADLE_CREDENTIAL_SECRET
-      } else {
+      }
+ else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
     }
@@ -288,7 +294,7 @@ describe('profiles capability', () => {
       if (url === MODELS_DEV_URL) {
         return new Response(JSON.stringify({}), {
           status: 200,
-          headers: { 'content-type': 'application/json' }
+          headers: { 'content-type': 'application/json' },
         })
       }
 
@@ -296,12 +302,12 @@ describe('profiles capability', () => {
       expect(init?.headers).toMatchObject({ 'x-api-key': 'sk-ant-test' })
       return new Response(
         JSON.stringify({
-          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }]
+          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
         }),
         {
           status: 200,
-          headers: { 'content-type': 'application/json' }
-        }
+          headers: { 'content-type': 'application/json' },
+        },
       )
     })
 
@@ -316,9 +322,9 @@ describe('profiles capability', () => {
           body: JSON.stringify({
             kind: 'anthropic',
             label: 'Anthropic Key',
-            secret: 'sk-ant-test'
-          })
-        })
+            secret: 'sk-ant-test',
+          }),
+        }),
       )
       expect(saveSecret.status).toBe(200)
       const secret = (await saveSecret.json()) as { id: string }
@@ -331,9 +337,9 @@ describe('profiles capability', () => {
             providerKind: 'anthropic',
             label: 'Anthropic',
             config: {},
-            secretRef: secret.id
-          })
-        })
+            secretRef: secret.id,
+          }),
+        }),
       )
 
       expect(modelsRes.status).toBe(200)
@@ -341,24 +347,27 @@ describe('profiles capability', () => {
         expect.objectContaining({
           id: 'claude-sonnet-4-20250514',
           label: 'Claude Sonnet 4',
-          providerKind: 'anthropic'
-        })
+          providerKind: 'anthropic',
+        }),
       ])
       const providerFetchCount = fetchSpy.mock.calls.filter(
-        ([callInput]) => getRequestUrl(callInput) === 'https://api.anthropic.com/v1/models'
+        ([callInput]) => getRequestUrl(callInput) === 'https://api.anthropic.com/v1/models',
       ).length
       expect(providerFetchCount).toBe(1)
-    } finally {
+    }
+ finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      } else {
+      }
+ else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
       if (previousSecret === undefined) {
         delete process.env.CRADLE_CREDENTIAL_SECRET
-      } else {
+      }
+ else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
     }

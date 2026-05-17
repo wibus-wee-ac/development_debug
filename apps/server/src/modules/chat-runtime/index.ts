@@ -47,7 +47,7 @@ export const chatRuntime = new Elysia({
     return ChatRuntime.getMessageGroups(params.sessionId)
   }, {
     detail: {
-      summary: 'Get chat message snapshot rows',
+      'summary': 'Get chat message snapshot rows',
       'x-cradle-cli': {
         command: ['chat', 'messages'],
       },
@@ -61,7 +61,7 @@ export const chatRuntime = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Cancel active run for session',
+      'summary': 'Cancel active run for session',
       'x-cradle-cli': {
         command: ['chat', 'cancel'],
       },

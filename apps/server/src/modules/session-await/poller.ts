@@ -1,5 +1,5 @@
-import type { SessionAwaitSource } from './types'
 import * as service from './service'
+import type { SessionAwaitSource } from './types'
 
 // ── Simple concurrency limiter ──
 
@@ -12,11 +12,17 @@ function pLimit(concurrency: number) {
         active++
         fn().then(resolve, reject).finally(() => {
           active--
-          if (queue.length > 0) queue.shift()!()
+          if (queue.length > 0) {
+            queue.shift()!()
+          }
         })
       }
-      if (active < concurrency) run()
-      else queue.push(run)
+      if (active < concurrency) {
+        run()
+      }
+      else {
+        queue.push(run)
+      }
     })
 }
 
@@ -42,7 +48,9 @@ let timer: ReturnType<typeof setInterval> | null = null
 let running = false
 
 export function start() {
-  if (timer) return
+  if (timer) {
+    return
+  }
   timer = setInterval(() => void tick(), DEFAULT_INTERVAL_MS)
 }
 
@@ -54,7 +62,9 @@ export function stop() {
 }
 
 async function tick() {
-  if (running) return
+  if (running) {
+    return
+  }
   running = true
   try {
     const now = Math.floor(Date.now() / 1000)
@@ -79,14 +89,15 @@ async function tick() {
     const timerAwaits = service.listAllPending().filter(r => r.fireAt && r.fireAt <= now)
     await Promise.all(
       timerAwaits.map(row => limit(() =>
-        service.trigger({ awaitId: row.id, resumeText: 'Timer fired' }),
-      )),
+        service.trigger({ awaitId: row.id, resumeText: 'Timer fired' }))),
     )
 
     // 3. Source-based checks
     for (const [sourceName, adapter] of sourceAdapters) {
       const pending = service.listPendingBySource(sourceName).slice(0, MAX_CHECKS_PER_SOURCE)
-      if (pending.length === 0) continue
+      if (pending.length === 0) {
+        continue
+      }
 
       let results: Awaited<ReturnType<SessionAwaitSource['checkPending']>>
       try {

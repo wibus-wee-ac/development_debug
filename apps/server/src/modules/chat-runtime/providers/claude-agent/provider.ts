@@ -5,12 +5,12 @@
 import { randomUUID } from 'node:crypto'
 
 import type { CanUseTool, Options, Query } from '@anthropic-ai/claude-agent-sdk'
-import { startObservation } from '@langfuse/tracing'
 import type { LangfuseGeneration } from '@langfuse/tracing'
+import { startObservation } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
-import * as Approval from '../../../approval/service'
 import { langfuseEnabled } from '../../../../langfuse'
+import * as Approval from '../../../approval/service'
 import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'

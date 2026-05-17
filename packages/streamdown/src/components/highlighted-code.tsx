@@ -13,18 +13,40 @@ function getHighlighter(): Promise<Highlighter> {
     highlighterPromise = createHighlighter({
       themes: ['github-dark', 'github-light'],
       langs: [
-        'typescript', 'javascript', 'tsx', 'jsx',
-        'python', 'rust', 'go', 'bash', 'shell',
-        'json', 'html', 'css', 'scss',
-        'markdown', 'sql', 'yaml', 'toml',
-        'java', 'c', 'cpp', 'ruby', 'php',
-        'swift', 'kotlin', 'dockerfile',
+        'typescript',
+        'javascript',
+        'tsx',
+        'jsx',
+        'python',
+        'rust',
+        'go',
+        'bash',
+        'shell',
+        'json',
+        'html',
+        'css',
+        'scss',
+        'markdown',
+        'sql',
+        'yaml',
+        'toml',
+        'java',
+        'c',
+        'cpp',
+        'ruby',
+        'php',
+        'swift',
+        'kotlin',
+        'dockerfile',
         'plaintext',
       ],
     })
   }
   return highlighterPromise
 }
+
+const LANGUAGE_CLASS_RE = /language-(\w+)/
+const TRAILING_NEWLINE_RE = /\n$/
 
 // Language alias map
 const LANG_ALIASES: Record<string, string> = {
@@ -41,7 +63,9 @@ const LANG_ALIASES: Record<string, string> = {
 }
 
 function normalizeLang(lang: string | undefined): string | undefined {
-  if (!lang) return undefined
+  if (!lang) {
+    return undefined
+  }
   const lower = lang.toLowerCase()
   return LANG_ALIASES[lower] ?? lower
 }
@@ -77,7 +101,9 @@ const LANG_DISPLAY: Record<string, string> = {
 }
 
 function getDisplayName(lang: string | undefined): string | undefined {
-  if (!lang) return undefined
+  if (!lang) {
+    return undefined
+  }
   return LANG_DISPLAY[lang] ?? lang
 }
 
@@ -112,7 +138,7 @@ interface HighlightedCodeProps {
  */
 export const HighlightedCode = memo<HighlightedCodeProps>(({ children, className, ...rest }) => {
   const insidePre = useContext(PreContext)
-  const langMatch = className?.match(/language-(\w+)/)
+  const langMatch = className?.match(LANGUAGE_CLASS_RE)
   // It's a block if we're inside a <pre> wrapper OR if there's a language class
   const isBlock = insidePre || !!langMatch
 
@@ -128,6 +154,7 @@ export const HighlightedCode = memo<HighlightedCodeProps>(({ children, className
   const lang = normalizeLang(rawLang)
   const code = extractText(children)
 
+  // eslint-disable-next-line ts/no-use-before-define
   return <FencedCodeBlock code={code} language={lang} className={className} />
 })
 
@@ -135,8 +162,12 @@ HighlightedCode.displayName = 'HighlightedCode'
 
 // Extract text content from React children
 function extractText(children: React.ReactNode): string {
-  if (typeof children === 'string') return children
-  if (Array.isArray(children)) return children.map(extractText).join('')
+  if (typeof children === 'string') {
+    return children
+  }
+  if (Array.isArray(children)) {
+    return children.map(extractText).join('')
+  }
   if (children && typeof children === 'object' && 'props' in children) {
     return extractText((children as { props: { children?: React.ReactNode } }).props.children)
   }
@@ -156,12 +187,14 @@ const FencedCodeBlock = memo<FencedCodeBlockProps>(({ code, language }) => {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    if (code === lastCodeRef.current) return
+    if (code === lastCodeRef.current) {
+      return
+    }
     lastCodeRef.current = code
 
     getHighlighter().then((highlighter) => {
       const resolved = language && highlighter.getLoadedLanguages().includes(language) ? language : 'plaintext'
-      const result = highlighter.codeToHtml(code.replace(/\n$/, ''), {
+      const result = highlighter.codeToHtml(code.replace(TRAILING_NEWLINE_RE, ''), {
         lang: resolved,
         themes: { dark: 'github-dark', light: 'github-light' },
       })
@@ -171,14 +204,18 @@ const FencedCodeBlock = memo<FencedCodeBlockProps>(({ code, language }) => {
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
     }
   }, [])
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true)
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
       timerRef.current = setTimeout(() => {
         setCopied(false)
         timerRef.current = null
@@ -215,11 +252,13 @@ const FencedCodeBlock = memo<FencedCodeBlockProps>(({ code, language }) => {
         </button>
       )}
       <div className="sd-code-body">
-        {html ? (
-          <div dangerouslySetInnerHTML={{ __html: html }} />
-        ) : (
-          <pre><code>{code}</code></pre>
-        )}
+        {html
+          ? (
+            <div dangerouslySetInnerHTML={{ __html: html }} />
+          )
+          : (
+            <pre><code>{code}</code></pre>
+          )}
       </div>
     </div>
   )

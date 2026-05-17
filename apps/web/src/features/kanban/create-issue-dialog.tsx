@@ -2,7 +2,7 @@
 // Output: Floating modal-style create issue panel (Linear-inspired)
 // Position: Panel for creating new kanban issues
 
-import { ChevronRightIcon, EllipsisIcon, MaximizeIcon, PaperclipIcon, XIcon } from 'lucide-react'
+import { ChevronRightIcon, MaximizeIcon, PaperclipIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -21,8 +21,8 @@ import type { KanbanStatus } from '~/lib/types'
 import { priorityOptions } from './shared/issue-metadata'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
-import { useCreateIssue, useStatuses } from './use-kanban'
 import type { IssuePriority } from './use-kanban'
+import { useCreateIssue, useStatuses } from './use-kanban'
 
 interface CreateIssueDialogProps {
   workspaceId: string
@@ -45,14 +45,20 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
   const currentStatus = statuses.find((s: KanbanStatus) => s.id === statusId)
 
   useEffect(() => {
-    if (!open) return
-    if (defaultStatusId) setStatusId(defaultStatusId)
+    if (!open) {
+      return
+    }
+    if (defaultStatusId) {
+      setStatusId(defaultStatusId)
+    }
     const timer = setTimeout(() => titleInputRef.current?.focus(), 80)
     return () => clearTimeout(timer)
   }, [open, defaultStatusId])
 
   const handleSubmit = () => {
-    if (!title.trim()) return
+    if (!title.trim()) {
+      return
+    }
     createIssue.mutate({
       workspaceId,
       title: title.trim(),
@@ -74,7 +80,8 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       handleSubmit()
-    } else if (e.key === 'Escape') {
+    }
+ else if (e.key === 'Escape') {
       e.preventDefault()
       e.stopPropagation()
       onClose()
@@ -225,12 +232,13 @@ function StatusPicker({ statuses, value, onChange, currentStatus }: {
           className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
         >
           {currentStatus
-            ? <>
+            ? (
+<>
                 <StatusIcon category={currentStatus.category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={13} />
                 <span>{currentStatus.name}</span>
-              </>
-            : <span>Status</span>
-          }
+</>
+)
+            : <span>Status</span>}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">

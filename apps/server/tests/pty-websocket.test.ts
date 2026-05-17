@@ -8,8 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { sessions, workspaces } from '@cradle/db'
-import { eq } from 'drizzle-orm'
-import { sql } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
@@ -181,10 +180,7 @@ function createSocketClient(url: string) {
       }
 
       return await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          listeners.delete(onMessage)
-          reject(new Error(`Timed out waiting for WebSocket event at ${url}`))
-        }, timeoutMs)
+        let timer: ReturnType<typeof setTimeout>
 
         const onMessage = (message: PtyServerEvent) => {
           if (!predicate(message)) {
@@ -194,6 +190,11 @@ function createSocketClient(url: string) {
           listeners.delete(onMessage)
           resolve(message)
         }
+
+        timer = setTimeout(() => {
+          listeners.delete(onMessage)
+          reject(new Error(`Timed out waiting for WebSocket event at ${url}`))
+        }, timeoutMs)
 
         listeners.add(onMessage)
       })
@@ -254,7 +255,7 @@ describe('pty websocket live channels', () => {
       const socket2 = createSocketClient(toWebSocketUrl(started.baseUrl, `/terminal-sessions/session-cli-tui/socket?fromSeq=${snapshot.seq}`))
       await socket2.open
       socket2.send({ type: 'ping' })
-      await socket2.waitFor((message) => message.type === 'pong')
+      await socket2.waitFor(message => message.type === 'pong')
 
       socket2.send({ type: 'resize', cols: 100, rows: 30 })
       socket2.send({ type: 'input', data: 'hello from websocket\n' })
@@ -307,7 +308,7 @@ describe('pty websocket live channels', () => {
 
       const socket = createSocketClient(toWebSocketUrl(started.baseUrl, '/terminal-sessions/session-cli-tui/socket'))
       await socket.open
-      await socket.waitFor((message) => message.type === 'snapshot')
+      await socket.waitFor(message => message.type === 'snapshot')
       await socket.waitFor((message): message is Extract<PtyServerEvent, { type: 'output' }> => message.type === 'output' && message.data.includes('READY'))
 
       const deleteAgentRes = await fetch(`${started.baseUrl}/agents/agent-cli-tui`, { method: 'DELETE' })
@@ -366,7 +367,7 @@ describe('pty websocket live channels', () => {
 
       const socket = createSocketClient(toWebSocketUrl(started.baseUrl, '/terminal-sessions/shell/shell-explicit-delete/socket'))
       await socket.open
-      await socket.waitFor((message) => message.type === 'snapshot')
+      await socket.waitFor(message => message.type === 'snapshot')
 
       socket.send({ type: 'input', data: 'echo SHELL_DELETE_TEST\n' })
       const output = await socket.waitFor((message): message is Extract<PtyServerEvent, { type: 'output' }> => message.type === 'output' && message.data.includes('SHELL_DELETE_TEST'))

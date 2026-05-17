@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia'
 
-import { lookupModel, searchModels } from './model-info-registry'
 import { ProvidersModel } from './model'
+import { lookupModel, searchModels } from './model-info-registry'
 import * as Providers from './service'
 
 export const providers = new Elysia({
@@ -10,7 +10,7 @@ export const providers = new Elysia({
 })
   .post('/models', ({ body }) => Providers.listModels(Providers.parseProviderBody(body)), {
     detail: {
-      summary: 'List models for a provider',
+      'summary': 'List models for a provider',
       'x-cradle-cli': {
         command: ['provider', 'models'],
       },
@@ -20,7 +20,7 @@ export const providers = new Elysia({
   })
   .post('/health-check', ({ body }) => Providers.healthCheck(Providers.parseProviderBody(body)), {
     detail: {
-      summary: 'Health check a provider',
+      'summary': 'Health check a provider',
       'x-cradle-cli': {
         command: ['provider', 'health-check'],
       },

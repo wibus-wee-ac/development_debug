@@ -12,7 +12,7 @@ import {
   workspaces,
 } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
@@ -25,19 +25,16 @@ import * as Profiles from '../profiles/service'
 import type { RuntimeKind } from '../providers/types'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry } from './chat-runtime-provider-registry'
+import type { ChatStreamEvent, MessageProjection, ProjectionApplyResult, SubagentMessageContext } from './delta-events'
 import {
   applyChunkToProjection,
   applySnapshotToProjection,
-  type ChatStreamEvent,
   createAssistantMessage,
   createMessageProjection,
   createUserMessage,
   extractMessageText,
-  type MessageProjection,
-  type ProjectionApplyResult,
   parseMessageJson,
   readChunkRouteContext,
-  type SubagentMessageContext,
 } from './delta-events'
 import type { ChatRuntime, RuntimeSession, TokenUsage } from './runtime-provider-types'
 
@@ -144,7 +141,8 @@ function getSessionRunContext(sessionId: string): SessionRunContext | null {
       const sessionConfig = JSON.parse(session.configJson)
       const profileConfig = JSON.parse(profile.configJson || '{}')
       effectiveProfile = { ...profile, configJson: JSON.stringify({ ...profileConfig, ...sessionConfig }) }
-    } catch {
+    }
+ catch {
       // Ignore invalid JSON
     }
   }
@@ -953,10 +951,7 @@ function getSubagentProjection(activeRun: ActiveRun, parentToolCallId: string, t
   if (existing) {
     if (!existing.context.taskId && taskId) {
       existing.context.taskId = taskId
-      db().update(messages)
-        .set({ taskId, updatedAt: currentUnixSeconds() })
-        .where(eq(messages.id, existing.context.messageId))
-        .run()
+      db().update(messages).set({ taskId, updatedAt: currentUnixSeconds() }).where(eq(messages.id, existing.context.messageId)).run()
     }
     return existing
   }
@@ -1001,15 +996,12 @@ function finalizeRun(activeRun: ActiveRun, status: ChatMessageStatus, errorText:
   if (!stopReason || status === 'streaming') {
     return
   }
-  db().update(backendRuns)
-    .set({
+  db().update(backendRuns).set({
       status,
       stopReason,
       errorText,
       finishedAt: currentUnixSeconds(),
-    })
-    .where(eq(backendRuns.id, activeRun.runId))
-    .run()
+    }).where(eq(backendRuns.id, activeRun.runId)).run()
 }
 
 function finalizeSubagentSnapshots(activeRun: ActiveRun, status: ChatMessageStatus, errorText: string | null): void {

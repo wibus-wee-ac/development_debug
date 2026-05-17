@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
-import { sessions, sessionAwaits, workspaces } from '@cradle/db'
+import { sessionAwaits, sessions, workspaces } from '@cradle/db'
 import { and, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
-
 import { db } from '../../infra'
 import { createRun } from '../chat-runtime/service'
 import type {
@@ -85,10 +84,16 @@ export async function trigger(input: TriggerAwaitInput): Promise<SessionAwait | 
     .where(eq(sessionAwaits.id, input.awaitId))
     .get()
 
-  if (!row) return null
-  if (row.status === 'triggered') return row // idempotent
+  if (!row) {
+    return null
+  }
+  if (row.status === 'triggered') {
+    return row
+  } // idempotent
 
-  if (row.status !== 'pending') return null
+  if (row.status !== 'pending') {
+    return null
+  }
 
   const now = Math.floor(Date.now() / 1000)
 
@@ -107,7 +112,9 @@ export async function trigger(input: TriggerAwaitInput): Promise<SessionAwait | 
     .returning()
     .get()
 
-  if (!updated) return row // another trigger won the race
+  if (!updated) {
+    return row
+  } // another trigger won the race
 
   // Resume the chat session — rollback status on failure
   try {

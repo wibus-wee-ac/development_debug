@@ -78,19 +78,19 @@ interface PackCodebaseDialogState {
   errorMsg: string
 }
 
-type PackCodebaseDialogAction =
-  | { type: 'set-style', style: PackStyle }
-  | { type: 'set-compress', compress: boolean }
-  | { type: 'set-remove-comments', removeComments: boolean }
-  | { type: 'set-path-input', pathInput: string }
-  | { type: 'add-path', path: string }
-  | { type: 'remove-path', path: string }
-  | { type: 'set-ignore', ignore: string }
-  | { type: 'pack/start' }
-  | { type: 'pack/success', result: { totalFiles: number, totalTokens: number } }
-  | { type: 'pack/error', errorMsg: string }
-  | { type: 'reset-status' }
-  | { type: 'pop-last-path' }
+type PackCodebaseDialogAction
+  = | { type: 'set-style', style: PackStyle }
+    | { type: 'set-compress', compress: boolean }
+    | { type: 'set-remove-comments', removeComments: boolean }
+    | { type: 'set-path-input', pathInput: string }
+    | { type: 'add-path', path: string }
+    | { type: 'remove-path', path: string }
+    | { type: 'set-ignore', ignore: string }
+    | { type: 'pack/start' }
+    | { type: 'pack/success', result: { totalFiles: number, totalTokens: number } }
+    | { type: 'pack/error', errorMsg: string }
+    | { type: 'reset-status' }
+    | { type: 'pop-last-path' }
 
 function createInitialPackCodebaseDialogState(initialPaths: string[]): PackCodebaseDialogState {
   return {
@@ -289,7 +289,11 @@ function PackCodebaseDialogContent({
             state.scopePaths.length === 0 && 'items-center',
           )}
           onClick={() => pathInputRef.current?.focus()}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') pathInputRef.current?.focus() }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              pathInputRef.current?.focus()
+            }
+          }}
           tabIndex={0}
         >
           {state.scopePaths.map(path => (

@@ -1,4 +1,4 @@
-import { BotIcon, GitBranchIcon, SparklesIcon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
+import { GitBranchIcon, SparklesIcon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -18,7 +18,9 @@ export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
 
   const handleSubmit = useCallback(() => {
     const trimmed = commentText.trim()
-    if (!trimmed) return
+    if (!trimmed) {
+      return
+    }
     addComment.mutate({ issueId, content: trimmed })
     setCommentText('')
   }, [commentText, issueId, addComment])
@@ -78,7 +80,7 @@ function CommentItem({ comment }: { comment: KanbanIssueComment }) {
   const isSystem = kind.startsWith('system')
 
   if (isSystem) {
-    const cfg = systemEventConfig[kind] ?? systemEventConfig['system']
+    const cfg = systemEventConfig[kind] ?? systemEventConfig.system
     const Icon = cfg.icon
     return (
       <div className="flex items-center gap-2.5 py-0.5" data-testid={`comment-${comment.id}`}>
@@ -120,13 +122,21 @@ function CommentItem({ comment }: { comment: KanbanIssueComment }) {
 }
 
 function formatRelativeTime(ts: number | null | undefined): string {
-  if (!ts) return ''
+  if (!ts) {
+    return ''
+  }
   const diff = Date.now() - ts * 1000
   const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 1) {
+    return 'just now'
+  }
+  if (minutes < 60) {
+    return `${minutes}m ago`
+  }
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) {
+    return `${hours}h ago`
+  }
   const days = Math.floor(hours / 24)
   return `${days}d ago`
 }

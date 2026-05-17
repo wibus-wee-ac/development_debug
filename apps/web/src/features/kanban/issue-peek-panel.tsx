@@ -2,10 +2,10 @@
 // Output: Compact floating peek card for quick issue preview
 // Position: Upper-right floating card triggered by Space key in kanban views
 
+import { StaticRender } from '@cradle/streamdown'
 import { XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 
-import { StaticRender } from '@cradle/streamdown'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import { formatIssueId } from './shared/format-issue-id'
@@ -67,6 +67,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
       transition={{ duration: 0.15, ease: [0.25, 0.46, 0.45, 0.94] }}
       className="absolute top-2 right-3 z-40 w-120 max-h-180 rounded-xl border border-border bg-card overflow-hidden shadow-xs"
     >
+      {/* eslint-disable-next-line style/multiline-ternary */}
       {isLoading || !issue ? (
         <div className="flex items-center justify-center h-24 text-[13px] text-muted-foreground">
           Loading…

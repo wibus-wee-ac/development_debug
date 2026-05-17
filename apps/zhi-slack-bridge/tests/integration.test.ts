@@ -1,24 +1,33 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { createConnection, createServer, type Server } from 'node:net'
-import { existsSync, unlinkSync, rmSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, rmSync, unlinkSync } from 'node:fs'
+import { createConnection, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-const TEST_DIR = join(tmpdir(), 'zhi-bridge-e2e-' + process.pid)
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+const TEST_DIR = join(tmpdir(), `zhi-bridge-e2e-${process.pid}`)
 const TEST_SOCKET = join(tmpdir(), `zhi-bridge-test-${process.pid}.sock`)
 
 // Integration test: MCP server -> bridge -> mock Slack reply -> MCP response
-describe('Bridge Server Integration', () => {
+describe('bridge Server Integration', () => {
   beforeEach(() => {
     process.env.ZHI_DATA_DIR = TEST_DIR
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true })
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true })
+    }
     mkdirSync(TEST_DIR, { recursive: true })
-    if (existsSync(TEST_SOCKET)) unlinkSync(TEST_SOCKET)
+    if (existsSync(TEST_SOCKET)) {
+      unlinkSync(TEST_SOCKET)
+    }
   })
 
   afterEach(() => {
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true })
-    if (existsSync(TEST_SOCKET)) unlinkSync(TEST_SOCKET)
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true })
+    }
+    if (existsSync(TEST_SOCKET)) {
+      unlinkSync(TEST_SOCKET)
+    }
     delete process.env.ZHI_DATA_DIR
   })
 
@@ -47,16 +56,16 @@ describe('Bridge Server Integration', () => {
 
           // Wait for resolution then respond
           pendingCalls.waitForResponse(callId, threadTs).then((reply) => {
-            socket.write(JSON.stringify({
+            socket.write(`${JSON.stringify({
               success: true,
               result: { user_input: reply, selected_options: [] },
-            }) + '\n')
+            })}\n`)
           })
         }
       })
     })
 
-    await new Promise<void>((resolve) => server.listen(TEST_SOCKET, resolve))
+    await new Promise<void>(resolve => server.listen(TEST_SOCKET, resolve))
 
     // Client connects and sends zhi request
     const response = await new Promise<any>((resolve, reject) => {
@@ -64,10 +73,10 @@ describe('Bridge Server Integration', () => {
       let buf = ''
 
       client.on('connect', () => {
-        client.write(JSON.stringify({
+        client.write(`${JSON.stringify({
           method: 'zhi',
           params: { message: 'Review this code' },
-        }) + '\n')
+        })}\n`)
       })
 
       client.on('data', (chunk) => {

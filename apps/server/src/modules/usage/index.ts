@@ -9,7 +9,7 @@ export const usage = new Elysia({
 })
   .get('/daily', ({ query }) => Usage.getDailyUsage(query.days), {
     detail: {
-      summary: 'Get daily usage',
+      'summary': 'Get daily usage',
       'x-cradle-cli': {
         command: ['usage', 'daily'],
       },
@@ -19,7 +19,7 @@ export const usage = new Elysia({
   })
   .get('/summary', () => Usage.getUsageSummary(), {
     detail: {
-      summary: 'Get usage summary',
+      'summary': 'Get usage summary',
       'x-cradle-cli': {
         command: ['usage', 'summary'],
       },
@@ -28,7 +28,7 @@ export const usage = new Elysia({
   })
   .get('/stats', () => Usage.getUsageStats(), {
     detail: {
-      summary: 'Get usage stats',
+      'summary': 'Get usage stats',
       'x-cradle-cli': {
         command: ['usage', 'stats'],
       },
@@ -37,7 +37,7 @@ export const usage = new Elysia({
   })
   .get('/sessions/:sessionId', ({ params }) => Usage.getSessionUsage(params.sessionId), {
     detail: {
-      summary: 'Get session usage',
+      'summary': 'Get session usage',
       'x-cradle-cli': {
         command: ['usage', 'session'],
       },
@@ -47,7 +47,7 @@ export const usage = new Elysia({
   })
   .get('/cost/summary', ({ query }) => Usage.getCostSummary(query.from, query.to), {
     detail: {
-      summary: 'Get cost summary with model breakdown',
+      'summary': 'Get cost summary with model breakdown',
       'x-cradle-cli': {
         command: ['usage', 'cost', 'summary'],
       },
@@ -57,7 +57,7 @@ export const usage = new Elysia({
   })
   .get('/cost/sessions', ({ query }) => Usage.getSessionsCost(query.from, query.to), {
     detail: {
-      summary: 'Get per-session cost breakdown',
+      'summary': 'Get per-session cost breakdown',
       'x-cradle-cli': {
         command: ['usage', 'cost', 'sessions'],
       },
@@ -67,7 +67,7 @@ export const usage = new Elysia({
   })
   .get('/cost/daily', ({ query }) => Usage.getDailyCost(query.from, query.to), {
     detail: {
-      summary: 'Get daily cost trend',
+      'summary': 'Get daily cost trend',
       'x-cradle-cli': {
         command: ['usage', 'cost', 'daily'],
       },

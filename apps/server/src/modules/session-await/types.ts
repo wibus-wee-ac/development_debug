@@ -38,5 +38,5 @@ export interface CheckResult {
 export interface SessionAwaitSource {
   source: string
   pollIntervalMs?: number
-  checkPending(awaits: SessionAwait[]): Promise<CheckResult[]>
+  checkPending: (awaits: SessionAwait[]) => Promise<CheckResult[]>
 }

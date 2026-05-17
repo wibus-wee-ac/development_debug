@@ -9,7 +9,7 @@ export const packCodebase = new Elysia({
 })
   .post('/:id/pack', ({ params, body }) => PackCodebase.packWorkspace(params.id, body), {
     detail: {
-      summary: 'Pack codebase',
+      'summary': 'Pack codebase',
       'x-cradle-cli': {
         command: ['workspace', 'pack'],
       },

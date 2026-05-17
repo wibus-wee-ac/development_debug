@@ -3,11 +3,11 @@
   "type": "module",
   "version": "0.0.1",
   "private": true,
-  "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./app": "./src/app.ts"
   },
+  "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon",
     "build": "vite build",
@@ -21,9 +21,9 @@
     "@ai-sdk/google": "^3.0.72",
     "@ai-sdk/openai": "^3.0.53",
     "@cradle/db": "workspace:*",
-    "@hijarvis/jar-core": "link:/Users/wibus/dev/HiJarvis/packages/jar-core",
     "@elysia/openapi": "^1.4.15",
     "@elysiajs/node": "^1.4.5",
+    "@hijarvis/jar-core": "link:/Users/wibus/dev/HiJarvis/packages/jar-core",
     "@hono/node-server": "^1.19.9",
     "@langfuse/otel": "^5.3.0",
     "@langfuse/tracing": "^5.3.0",

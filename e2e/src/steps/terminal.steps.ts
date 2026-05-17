@@ -10,6 +10,7 @@ import { expect } from '@playwright/test'
 import type { CradleWorld } from '../support/world'
 
 const TERMINAL_TIMEOUT = 30_000
+const WHITESPACE_DOTS_RE = /[·\s]+/g
 
 function getBottomPanel(world: CradleWorld) {
   return world.page.locator('[data-testid="app-layout-bottom-panel"]')
@@ -24,7 +25,7 @@ async function readShellVisibleText(world: CradleWorld): Promise<string> {
 }
 
 function normalizeTerminalAssertionText(value: string): string {
-  return value.replace(/[·\s]+/g, '')
+  return value.replace(WHITESPACE_DOTS_RE, '')
 }
 
 async function getActiveChatWorkspacePath(world: CradleWorld): Promise<string> {

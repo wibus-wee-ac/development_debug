@@ -716,7 +716,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
       const events = await collectSseEvents(runRes)
       const subagentEvents = events.filter(event => event.type === 'subagent_message_delta')
-      expect(subagentEvents.some((event) => (event.data as { context: { taskId?: string | null } }).context.taskId === 'task_sub_late')).toBe(true)
+      expect(subagentEvents.some(event => (event.data as { context: { taskId?: string | null } }).context.taskId === 'task_sub_late')).toBe(true)
 
       const timeline = await waitForMessageStatus(app, 'session-claude-subagent-late-task', 'complete')
       const subagentMessage = timeline.find(message => message.parentToolCallId === 'toolu_parent_late')

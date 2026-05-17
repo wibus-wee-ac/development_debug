@@ -1,7 +1,8 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import { type JarvisPreferences, useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
+import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
+import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -18,7 +19,9 @@ export function JarvisSettings() {
   const { profiles } = useAgentProfiles()
   const { models, isLoading: isLoadingModels } = useAgentModels(prefs?.profileId ?? null)
 
-  if (!prefs) return null
+  if (!prefs) {
+    return null
+  }
 
   return (
     <div className="flex flex-col gap-0">

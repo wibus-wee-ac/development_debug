@@ -80,7 +80,9 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     return fzfIndex.find(query)
   }, [fzfIndex, query, items])
 
+  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref read during render for perf
   const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
+  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render
   previousQueryRef.current = query
 
   // Scroll active item into view
@@ -93,6 +95,7 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     active?.scrollIntoView({ block: 'nearest' })
   }, [effectiveActiveIndex])
 
+  // eslint-disable-next-line react-hooks/refs -- intentional: key handler ref assigned during render
   keyHandlerRef.current = (e: KeyboardEvent) => {
     if (!visible) {
       return

@@ -40,9 +40,13 @@ function resolveSkillPaths(workspacePath: string): string[] {
   ]
   const paths: string[] = []
   for (const root of roots) {
-    if (!fs.existsSync(root)) continue
+    if (!fs.existsSync(root)) {
+      continue
+    }
     for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
+      if (!entry.isDirectory()) {
+        continue
+      }
       const skillDir = path.join(root, entry.name)
       if (fs.existsSync(path.join(skillDir, 'SKILL.md'))) {
         paths.push(skillDir)

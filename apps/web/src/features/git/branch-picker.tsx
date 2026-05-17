@@ -42,16 +42,16 @@ interface BranchPickerState {
   createLoading: boolean
 }
 
-type BranchPickerAction =
-  | { type: 'set-open', open: boolean }
-  | { type: 'set-search', search: string }
-  | { type: 'set-fetching', fetching: boolean }
-  | { type: 'start-creating' }
-  | { type: 'cancel-creating' }
-  | { type: 'set-new-name', newName: string }
-  | { type: 'set-create-error', error: string | null }
-  | { type: 'set-create-loading', loading: boolean }
-  | { type: 'complete-create' }
+type BranchPickerAction
+  = | { type: 'set-open', open: boolean }
+    | { type: 'set-search', search: string }
+    | { type: 'set-fetching', fetching: boolean }
+    | { type: 'start-creating' }
+    | { type: 'cancel-creating' }
+    | { type: 'set-new-name', newName: string }
+    | { type: 'set-create-error', error: string | null }
+    | { type: 'set-create-loading', loading: boolean }
+    | { type: 'complete-create' }
 
 const INITIAL_BRANCH_PICKER_STATE: BranchPickerState = {
   open: false,
@@ -445,7 +445,7 @@ export function BranchPicker({
               searchInputRef={searchInputRef}
               onCheckout={handleCheckout}
               onFetch={handleFetch}
-              onSearchChange={(value) => dispatch({ type: 'set-search', search: value })}
+              onSearchChange={value => dispatch({ type: 'set-search', search: value })}
               onStartCreating={startCreating}
             />
           )}

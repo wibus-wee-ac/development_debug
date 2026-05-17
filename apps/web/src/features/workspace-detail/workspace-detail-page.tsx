@@ -2,6 +2,7 @@
 // Output: WorkspaceDetailPage — Linear-style scrollable tab project view with Overview and Workflow Rules
 // Position: Feature component for the workspace-detail tab
 
+import { Link } from '@cradle/tabs-next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ExternalLinkIcon,
@@ -21,10 +22,10 @@ import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import { SkillManager } from '~/features/skills/skill-manager'
-import { sessionsQueryKey, type WorkspaceSession } from '~/features/workspace/use-session'
+import type { WorkspaceSession } from '~/features/workspace/use-session'
+import { sessionsQueryKey } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
-import { Link } from '@cradle/tabs-next'
 import { cn } from '~/lib/cn'
 import type { Workspace } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
@@ -653,7 +654,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
 }
 
 function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
-  const { gitStatus, handleNewChat, handleOpenInApp, handleOpenInFinder, now, openTab, recentSessions, sessions, workspace } = owner
+  const { gitStatus, handleNewChat, handleOpenInApp, handleOpenInFinder, now, openTab: _openTab, recentSessions, sessions, workspace } = owner
 
   if (!workspace) {
     return null

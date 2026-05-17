@@ -3,7 +3,7 @@
 // Position: Toggled panel inside kanban board view
 
 import type { DragEndEvent } from '@dnd-kit/core'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { closestCenter, DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -36,7 +36,9 @@ export function StatusManager({ boardId }: StatusManagerProps) {
 
   const handleAdd = useCallback(() => {
     const name = newName.trim()
-    if (!name) return
+    if (!name) {
+      return
+    }
     createStatus.mutate(
       { workspaceId: boardId, name },
       { onSuccess: () => setNewName('') },
@@ -53,11 +55,15 @@ export function StatusManager({ boardId }: StatusManagerProps) {
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
-    if (!over || active.id === over.id) return
+    if (!over || active.id === over.id) {
+      return
+    }
     const items = statuses.data ?? []
     const oldIdx = items.findIndex(s => s.id === active.id)
     const newIdx = items.findIndex(s => s.id === over.id)
-    if (oldIdx === -1 || newIdx === -1) return
+    if (oldIdx === -1 || newIdx === -1) {
+      return
+    }
     const reordered = arrayMove(items, oldIdx, newIdx)
     reorderStatuses.mutate({ workspaceId: boardId, orderedIds: reordered.map(s => s.id) })
   }, [statuses.data, boardId, reorderStatuses])
@@ -110,7 +116,7 @@ export function StatusManager({ boardId }: StatusManagerProps) {
                 id={status.id}
                 name={status.name}
                 category={(status.category ?? 'unstarted') as StatusCategory}
-                onRename={(name) => handleRename(status.id, name)}
+                onRename={name => handleRename(status.id, name)}
                 onDelete={() => handleDelete(status.id)}
               />
             ))}
@@ -180,19 +186,25 @@ function SortableStatusRow({
 
       <StatusIcon category={category} size={12} />
 
-      {editing ? (
+      {editing
+? (
         <input
           ref={inputRef}
           data-testid={`status-input-${id}`}
           defaultValue={name}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') handleConfirm()
-            else if (e.key === 'Escape') setEditing(false)
+            if (e.key === 'Enter') {
+              handleConfirm()
+            }
+            else if (e.key === 'Escape') {
+              setEditing(false)
+            }
           }}
           onBlur={handleConfirm}
           className="flex-1 bg-transparent text-[13px] outline-none"
         />
-      ) : (
+      )
+: (
         <span
           role="button"
           tabIndex={0}

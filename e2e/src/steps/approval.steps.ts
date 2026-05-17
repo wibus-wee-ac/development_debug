@@ -8,6 +8,7 @@ import { expect } from '@playwright/test'
 import type { CradleWorld } from '../support/world'
 
 const APPROVAL_TIMEOUT = 20_000
+const MOCK_CLAUDE_AGENT_RE = /Mock Claude Agent/i
 
 Given('已创建一个需要审批的会话', async function (this: CradleWorld) {
   // Configure a claude-agent provider that points to our mock server's /v1/messages
@@ -76,7 +77,7 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
   await agentSelector.click()
   const menuPopup = this.page.locator('[role="menu"]')
   await expect(menuPopup).toBeVisible({ timeout: 10_000 })
-  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: /Mock Claude Agent/i })
+  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_CLAUDE_AGENT_RE })
   await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
   await mockItem.first().click()
 

@@ -12,7 +12,7 @@ export const issueAgent = new Elysia({
   .get('/kanban/issues/:id/delegation', ({ params }) =>
     IssueAgent.getDelegation(params.id), {
     detail: {
-      summary: 'Get delegation state',
+      'summary': 'Get delegation state',
       'x-cradle-cli': {
         command: ['issue', 'delegation'],
       },
@@ -28,7 +28,7 @@ export const issueAgent = new Elysia({
       agentId: body.agentId,
     }), {
     detail: {
-      summary: 'Delegate issue',
+      'summary': 'Delegate issue',
       'x-cradle-cli': {
         command: ['issue', 'delegate'],
       },
@@ -43,7 +43,7 @@ export const issueAgent = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Undelegate issue',
+      'summary': 'Undelegate issue',
       'x-cradle-cli': {
         command: ['issue', 'undelegate'],
       },
@@ -55,7 +55,7 @@ export const issueAgent = new Elysia({
   .get('/kanban/issues/:id/agent-sessions', ({ params }) =>
     IssueAgent.listSessions(params.id), {
     detail: {
-      summary: 'List agent sessions',
+      'summary': 'List agent sessions',
       'x-cradle-cli': {
         command: ['issue', 'sessions'],
       },
@@ -69,7 +69,7 @@ export const issueAgent = new Elysia({
   .get('/issue-agent-sessions/:agentSessionId/activities', ({ params }) =>
     IssueAgent.listActivities(params.agentSessionId), {
     detail: {
-      summary: 'List activities',
+      'summary': 'List activities',
       'x-cradle-cli': {
         command: ['issue-agent-session', 'activities'],
       },
@@ -84,7 +84,7 @@ export const issueAgent = new Elysia({
       agentId: body?.agentId,
     }), {
     detail: {
-      summary: 'Rerun session',
+      'summary': 'Rerun session',
       'x-cradle-cli': {
         command: ['issue-agent-session', 'rerun'],
       },
@@ -99,7 +99,7 @@ export const issueAgent = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Stop agent session',
+      'summary': 'Stop agent session',
       'x-cradle-cli': {
         command: ['issue-agent-session', 'stop'],
       },

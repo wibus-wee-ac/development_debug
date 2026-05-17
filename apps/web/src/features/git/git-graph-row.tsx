@@ -157,7 +157,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
   const isTag = commit.refs.some(r => r.startsWith('tag:'))
 
   const refBadges = commit.refs
-    .flatMap(r => {
+    .flatMap((r) => {
       const cleaned = r.replace(RE_HEAD_ARROW, '').replace(RE_TAG_PREFIX, '')
       return !cleaned.startsWith('origin/') || commit.refs.length === 1 ? [cleaned] : []
     })

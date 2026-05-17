@@ -15,7 +15,7 @@ export interface SystemAgentContext {
   } | null
 
   /** All open tabs (just type + label for awareness) */
-  openTabs: Array<{ type: string; label: string }>
+  openTabs: Array<{ type: string, label: string }>
 
   /** If user is in a chat tab, the session context */
   chatContext: {
@@ -23,7 +23,7 @@ export interface SystemAgentContext {
     status: 'idle' | 'streaming' | 'error'
     messageCount: number
     /** last few message roles/summaries for awareness */
-    recentMessages: Array<{ role: string; contentPreview: string }>
+    recentMessages: Array<{ role: string, contentPreview: string }>
   } | null
 
   /** Layout awareness */

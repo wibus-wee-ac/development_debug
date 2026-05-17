@@ -1,20 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { BridgeStore } from '../src/store.js'
-import { existsSync, rmSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-const TEST_DIR = join(tmpdir(), 'zhi-bridge-test-' + process.pid)
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-describe('BridgeStore', () => {
+import { BridgeStore } from '../src/store.js'
+
+const TEST_DIR = join(tmpdir(), `zhi-bridge-test-${process.pid}`)
+
+describe('bridgeStore', () => {
   beforeEach(() => {
     process.env.ZHI_DATA_DIR = TEST_DIR
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true })
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true })
+    }
     mkdirSync(TEST_DIR, { recursive: true })
   })
 
   afterEach(() => {
-    if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true })
+    if (existsSync(TEST_DIR)) {
+      rmSync(TEST_DIR, { recursive: true })
+    }
     delete process.env.ZHI_DATA_DIR
   })
 

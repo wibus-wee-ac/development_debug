@@ -7,15 +7,15 @@ import type { UIMessage } from 'ai'
 type MessagePart = UIMessage['parts'][number]
 type TextPartKind = 'text' | 'reasoning'
 
-export type ChatPartDelta =
-  | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
-  | { seq: number, type: 'text_append', partIndex: number, partType: TextPartKind, text: string }
-  | { seq: number, type: 'text_done', partIndex: number, partType: TextPartKind }
-  | { seq: number, type: 'tool_input_append', partIndex: number, inputKey: string, text: string }
-  | { seq: number, type: 'tool_input_set', partIndex: number, input: unknown }
-  | { seq: number, type: 'tool_output_streaming', partIndex: number, stream: 'stdout' | 'stderr', text: string }
-  | { seq: number, type: 'tool_output_set', partIndex: number, output?: unknown, state: 'output-available' | 'output-error' | 'output-denied', errorText?: string }
-  | { seq: number, type: 'metadata_update', metadata: unknown }
+export type ChatPartDelta
+  = | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
+    | { seq: number, type: 'text_append', partIndex: number, partType: TextPartKind, text: string }
+    | { seq: number, type: 'text_done', partIndex: number, partType: TextPartKind }
+    | { seq: number, type: 'tool_input_append', partIndex: number, inputKey: string, text: string }
+    | { seq: number, type: 'tool_input_set', partIndex: number, input: unknown }
+    | { seq: number, type: 'tool_output_streaming', partIndex: number, stream: 'stdout' | 'stderr', text: string }
+    | { seq: number, type: 'tool_output_set', partIndex: number, output?: unknown, state: 'output-available' | 'output-error' | 'output-denied', errorText?: string }
+    | { seq: number, type: 'metadata_update', metadata: unknown }
 
 export interface SubagentMessageContext {
   messageId: string
@@ -24,12 +24,12 @@ export interface SubagentMessageContext {
   taskId?: string | null
 }
 
-export type ChatStreamEvent =
-  | { type: 'message_delta', data: { messageId: string, deltas: ChatPartDelta[] } }
-  | { type: 'subagent_message_delta', data: { context: SubagentMessageContext, deltas: ChatPartDelta[] } }
-  | { type: 'run_completed', data: { messageId: string } }
-  | { type: 'run_aborted', data: { messageId: string } }
-  | { type: 'run_failed', data: { messageId: string, errorText: string } }
+export type ChatStreamEvent
+  = | { type: 'message_delta', data: { messageId: string, deltas: ChatPartDelta[] } }
+    | { type: 'subagent_message_delta', data: { context: SubagentMessageContext, deltas: ChatPartDelta[] } }
+    | { type: 'run_completed', data: { messageId: string } }
+    | { type: 'run_aborted', data: { messageId: string } }
+    | { type: 'run_failed', data: { messageId: string, errorText: string } }
 
 export interface ChatMessageSnapshotRow {
   messageId: string

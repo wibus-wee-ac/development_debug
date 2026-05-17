@@ -2,6 +2,7 @@
 // Output: Flat kanban boards section with Linear-style popover creation
 // Position: Section component used inside WorkspaceSidebar
 
+import { Link } from '@cradle/tabs-next'
 import {
   LayoutDashboardIcon,
   MoreHorizontalIcon,
@@ -10,14 +11,13 @@ import {
   TrashIcon,
   XIcon,
 } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, m } from 'motion/react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import { Link } from '@cradle/tabs-next'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './use-kanban'
@@ -26,7 +26,7 @@ import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './
 
 // ── Create Board Dialog ───────────────────────────────────────────────────────
 
-function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean; onOpenChange: (v: boolean) => void; onCreated: (board: { id: string }) => void }) {
+function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, onOpenChange: (v: boolean) => void, onCreated: (board: { id: string }) => void }) {
   const [name, setName] = useState('')
   const [workspaceId, setWorkspaceId] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -40,7 +40,8 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean; o
       setName('')
       if (workspaces.length === 1) {
         setWorkspaceId(workspaces[0].id)
-      } else if (!workspaceId && workspaces.length > 0) {
+      }
+ else if (!workspaceId && workspaces.length > 0) {
         setWorkspaceId(workspaces[0].id)
       }
       requestAnimationFrame(() => inputRef.current?.focus())
@@ -49,7 +50,9 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean; o
 
   const handleSubmit = useCallback(() => {
     const trimmed = name.trim()
-    if (!trimmed || !workspaceId) return
+    if (!trimmed || !workspaceId) {
+      return
+    }
     createBoard.mutate(
       { workspaceId, name: trimmed },
       {
@@ -65,7 +68,8 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean; o
     if (e.key === 'Enter') {
       e.preventDefault()
       handleSubmit()
-    } else if (e.key === 'Escape') {
+    }
+ else if (e.key === 'Escape') {
       onOpenChange(false)
     }
   }, [handleSubmit, onOpenChange])
@@ -169,7 +173,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean; o
 
 // ── Board Item ────────────────────────────────────────────────────────────────
 
-function BoardItem({ board }: { board: { id: string; name: string } }) {
+function BoardItem({ board }: { board: { id: string, name: string } }) {
   const isActive = useIsActiveTab('kanban-board', { boardId: board.id })
   const deleteBoard = useDeleteBoard()
   const updateBoard = useUpdateBoard()
@@ -202,7 +206,8 @@ function BoardItem({ board }: { board: { id: string; name: string } }) {
     if (e.key === 'Enter') {
       e.preventDefault()
       handleRenameSubmit()
-    } else if (e.key === 'Escape') {
+    }
+ else if (e.key === 'Escape') {
       setIsRenaming(false)
     }
   }, [handleRenameSubmit])
@@ -215,7 +220,8 @@ function BoardItem({ board }: { board: { id: string; name: string } }) {
       )}
       data-testid={`kanban-board-${board.id}`}
     >
-      {isRenaming ? (
+      {isRenaming
+? (
         <div className="flex-1 flex items-center gap-2 px-2.5 py-1">
           <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
           <input
@@ -227,7 +233,8 @@ function BoardItem({ board }: { board: { id: string; name: string } }) {
             className="flex-1 bg-transparent text-xs text-foreground outline-none border-b border-primary/40"
           />
         </div>
-      ) : (
+      )
+: (
         <Link
           to="kanban-board"
           params={{ boardId: board.id }}
@@ -304,7 +311,7 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
       <CreateBoardDialog
         open={isCreating}
         onOpenChange={setIsCreating}
-        onCreated={(board) => openTab('kanban-board', { boardId: board.id })}
+        onCreated={board => openTab('kanban-board', { boardId: board.id })}
       />
     </div>
   )

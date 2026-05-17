@@ -15,13 +15,19 @@ import { listFiles, readTextFile, writeTextFile } from './files'
 
 // ── helpers ──
 
+const NON_ALPHA_RE = /[^A-Z]/g
+
 function generateIdentifier(name: string): string {
-  const base = name.slice(0, 3).toUpperCase().replace(/[^A-Z]/g, 'X').padEnd(3, 'X')
+  const base = name.slice(0, 3).toUpperCase().replace(NON_ALPHA_RE, 'X').padEnd(3, 'X')
   const existing = db().select({ identifier: workspaces.identifier }).from(workspaces).all().map(w => w.identifier)
-  if (!existing.includes(base)) return base
+  if (!existing.includes(base)) {
+    return base
+  }
   for (let i = 1; i <= 99; i++) {
     const candidate = `${base.slice(0, 2)}${i}`
-    if (!existing.includes(candidate)) return candidate
+    if (!existing.includes(candidate)) {
+      return candidate
+    }
   }
   return base
 }

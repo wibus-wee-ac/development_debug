@@ -2,7 +2,7 @@
 // Output: Elysia PTY capability routes for chat and shell terminals
 // Position: apps/server/src/modules/pty route surface for PTY ownership semantics
 
-import { Elysia } from 'elysia'
+import type { Elysia } from 'elysia'
 
 import { PtyModel } from './model'
 import * as Pty from './service'

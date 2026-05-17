@@ -1,8 +1,8 @@
 import { ArrowLeftIcon, ChevronRightIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react'
 
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { StatusIcon } from '../shared/status-icon'
 import type { StatusCategory } from '../use-view-config'
 

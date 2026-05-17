@@ -2,11 +2,11 @@
 // Output: MessageBubble — animated message with parts rendering and action bar
 // Position: Core display component in chat feature for rendering individual messages
 
+import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Streamdown } from '@cradle/streamdown'
 
 import { cn } from '~/lib/cn'
 import { useChatStore } from '~/store/chat'

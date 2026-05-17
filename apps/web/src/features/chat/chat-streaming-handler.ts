@@ -4,13 +4,12 @@
 
 import type { UIMessage } from 'ai'
 
+import { useChatStore } from '~/store/chat'
+
+import type { ChatPartDelta, ChatStreamEvent, SubagentMessageContext } from './chat-delta-events'
 import {
   applyChatPartDeltas,
-  type ChatPartDelta,
-  type ChatStreamEvent,
-  type SubagentMessageContext,
 } from './chat-delta-events'
-import { useChatStore } from '~/store/chat'
 
 // ── Handler ─────────────────────────────────────────────────
 
@@ -67,7 +66,9 @@ export class ChatStreamingHandler {
    * Mark generation as complete. Call after the stream ends normally.
    */
   finish(): void {
-    if (this.terminated) return
+    if (this.terminated) {
+      return
+    }
     this.terminated = true
     useChatStore.getState().finishGeneration(this.activeMessageId ?? this.messageId)
   }
@@ -76,7 +77,9 @@ export class ChatStreamingHandler {
    * Mark generation as failed with an error message.
    */
   fail(error: string): void {
-    if (this.terminated) return
+    if (this.terminated) {
+      return
+    }
     this.terminated = true
     useChatStore.getState().failGeneration(this.activeMessageId ?? this.messageId, error)
   }

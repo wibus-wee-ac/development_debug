@@ -2,89 +2,90 @@
 // Output: issue update command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
+
 const spec = {
-  "arguments": [
+  arguments: [
     {
-      "name": "id",
-      "required": true,
-      "target": "path.id",
-      "type": "string"
-    }
+      name: 'id',
+      required: true,
+      target: 'path.id',
+      type: 'string',
+    },
   ],
-  "command": [
-    "issue",
-    "update"
+  command: [
+    'issue',
+    'update',
   ],
-  "description": "Update issue",
-  "flags": [
+  description: 'Update issue',
+  flags: [
     {
-      "name": "title",
-      "required": false,
-      "target": "body.title",
-      "type": "string"
+      name: 'title',
+      required: false,
+      target: 'body.title',
+      type: 'string',
     },
     {
-      "name": "description",
-      "required": false,
-      "target": "body.description",
-      "type": "string"
+      name: 'description',
+      required: false,
+      target: 'body.description',
+      type: 'string',
     },
     {
-      "name": "priority",
-      "required": false,
-      "target": "body.priority",
-      "type": "string",
-      "values": [
-        "none",
-        "low",
-        "medium",
-        "high",
-        "urgent"
-      ]
+      name: 'priority',
+      required: false,
+      target: 'body.priority',
+      type: 'string',
+      values: [
+        'none',
+        'low',
+        'medium',
+        'high',
+        'urgent',
+      ],
     },
     {
-      "name": "labels",
-      "required": false,
-      "target": "body.labels",
-      "type": "string[]"
+      name: 'labels',
+      required: false,
+      target: 'body.labels',
+      type: 'string[]',
     },
     {
-      "name": "milestoneId",
-      "required": false,
-      "target": "body.milestoneId",
-      "type": "string"
+      name: 'milestoneId',
+      required: false,
+      target: 'body.milestoneId',
+      type: 'string',
     },
     {
-      "name": "parentIssueId",
-      "required": false,
-      "target": "body.parentIssueId",
-      "type": "string"
+      name: 'parentIssueId',
+      required: false,
+      target: 'body.parentIssueId',
+      type: 'string',
     },
     {
-      "name": "statusId",
-      "required": false,
-      "target": "body.statusId",
-      "type": "string"
+      name: 'statusId',
+      required: false,
+      target: 'body.statusId',
+      type: 'string',
     },
     {
-      "name": "assigneeKind",
-      "required": false,
-      "target": "body.assigneeKind",
-      "type": "string"
+      name: 'assigneeKind',
+      required: false,
+      target: 'body.assigneeKind',
+      type: 'string',
     },
     {
-      "name": "assigneeId",
-      "required": false,
-      "target": "body.assigneeId",
-      "type": "string"
-    }
+      name: 'assigneeId',
+      required: false,
+      target: 'body.assigneeId',
+      type: 'string',
+    },
   ],
-  "method": "patch",
-  "path": "/kanban/issues/{id}"
+  method: 'patch',
+  path: '/kanban/issues/{id}',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

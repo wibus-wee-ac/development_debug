@@ -2,70 +2,71 @@
 // Output: skill create command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
+
 const spec = {
-  "arguments": [],
-  "command": [
-    "skill",
-    "create"
+  arguments: [],
+  command: [
+    'skill',
+    'create',
   ],
-  "description": "Create skill",
-  "flags": [
+  description: 'Create skill',
+  flags: [
     {
-      "name": "scope",
-      "required": true,
-      "target": "body.scope",
-      "type": "string",
-      "values": [
-        "builtin",
-        "legacy",
-        "global",
-        "workspace",
-        "agent"
-      ]
+      name: 'scope',
+      required: true,
+      target: 'body.scope',
+      type: 'string',
+      values: [
+        'builtin',
+        'legacy',
+        'global',
+        'workspace',
+        'agent',
+      ],
     },
     {
-      "name": "name",
-      "required": true,
-      "target": "body.name",
-      "type": "string"
+      name: 'name',
+      required: true,
+      target: 'body.name',
+      type: 'string',
     },
     {
-      "name": "description",
-      "required": true,
-      "target": "body.description",
-      "type": "string"
+      name: 'description',
+      required: true,
+      target: 'body.description',
+      type: 'string',
     },
     {
-      "name": "body",
-      "required": true,
-      "target": "body.body",
-      "type": "string"
+      name: 'body',
+      required: true,
+      target: 'body.body',
+      type: 'string',
     },
     {
-      "name": "workspaceId",
-      "required": false,
-      "target": "body.workspaceId",
-      "type": "string"
+      name: 'workspaceId',
+      required: false,
+      target: 'body.workspaceId',
+      type: 'string',
     },
     {
-      "name": "agentId",
-      "required": false,
-      "target": "body.agentId",
-      "type": "string"
+      name: 'agentId',
+      required: false,
+      target: 'body.agentId',
+      type: 'string',
     },
     {
-      "name": "frontmatter",
-      "required": false,
-      "target": "body.frontmatter",
-      "type": "json"
-    }
+      name: 'frontmatter',
+      required: false,
+      target: 'body.frontmatter',
+      type: 'json',
+    },
   ],
-  "method": "post",
-  "path": "/skills"
+  method: 'post',
+  path: '/skills',
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -49,14 +49,14 @@ interface SkillImportDialogState {
 
 type SkillImportDialogAction
   = { type: 'reset' }
-  | { type: 'fetch-start', source: string }
-  | { type: 'fetch-success', source: string, result: FetchResult }
-  | { type: 'fetch-error', error: string }
-  | { type: 'toggle-skill', skillDir: string }
-  | { type: 'toggle-all', skillDirs: string[] }
-  | { type: 'install-start' }
-  | { type: 'install-success', result: ImportResult }
-  | { type: 'install-error', error: string }
+    | { type: 'fetch-start', source: string }
+    | { type: 'fetch-success', source: string, result: FetchResult }
+    | { type: 'fetch-error', error: string }
+    | { type: 'toggle-skill', skillDir: string }
+    | { type: 'toggle-all', skillDirs: string[] }
+    | { type: 'install-start' }
+    | { type: 'install-success', result: ImportResult }
+    | { type: 'install-error', error: string }
 
 const initialSkillImportDialogState: SkillImportDialogState = {
   step: 'input',

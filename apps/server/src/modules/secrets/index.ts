@@ -9,7 +9,7 @@ export const secrets = new Elysia({
 })
   .get('/', () => Secrets.listSecrets(), {
     detail: {
-      summary: 'List secrets',
+      'summary': 'List secrets',
       'x-cradle-cli': {
         command: ['secret', 'list'],
       },
@@ -26,7 +26,7 @@ export const secrets = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete a secret',
+      'summary': 'Delete a secret',
       'x-cradle-cli': {
         command: ['secret', 'delete'],
       },

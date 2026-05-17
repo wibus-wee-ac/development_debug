@@ -84,7 +84,7 @@ function model(input: Pick<ModelDescriptor, 'id' | 'label' | 'providerKind'>): M
   }
 }
 
-describe('ProviderModelSelector', () => {
+describe('providerModelSelector', () => {
   it('renders model lists by provider instead of reusing only the selected provider models', () => {
     const openaiProfile = profile({
       id: 'profile-openai',

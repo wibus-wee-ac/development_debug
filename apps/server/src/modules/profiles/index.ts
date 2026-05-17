@@ -10,7 +10,7 @@ export const profiles = new Elysia({
 })
   .get('/', () => Profiles.listProfiles(), {
     detail: {
-      summary: 'List profiles',
+      'summary': 'List profiles',
       'x-cradle-cli': {
         command: ['profile', 'list'],
       },
@@ -25,7 +25,7 @@ export const profiles = new Elysia({
     return p
   }, {
     detail: {
-      summary: 'Get profile by ID',
+      'summary': 'Get profile by ID',
       'x-cradle-cli': {
         command: ['profile', 'get'],
       },
@@ -44,7 +44,7 @@ export const profiles = new Elysia({
     })
   }, {
     detail: {
-      summary: 'Create or update profile',
+      'summary': 'Create or update profile',
       'x-cradle-cli': {
         command: ['profile', 'set'],
       },
@@ -58,7 +58,7 @@ export const profiles = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete profile',
+      'summary': 'Delete profile',
       'x-cradle-cli': {
         command: ['profile', 'delete'],
       },
@@ -74,7 +74,7 @@ export const profiles = new Elysia({
     return Profiles.updateCustomModels(params.id, body.models)
   }, {
     detail: {
-      summary: 'Update custom models for a profile',
+      'summary': 'Update custom models for a profile',
       'x-cradle-cli': {
         command: ['profile', 'custom-models'],
       },

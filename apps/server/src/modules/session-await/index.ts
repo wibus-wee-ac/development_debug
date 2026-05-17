@@ -17,7 +17,7 @@ export const sessionAwait = new Elysia({
   .onStop(() => { Poller.stop() })
   .post('/', ({ body }) => SessionAwait.register(body), {
     detail: {
-      summary: 'Register a new session await',
+      'summary': 'Register a new session await',
       'x-cradle-cli': {
         command: ['session', 'await-create'],
       },
@@ -33,7 +33,7 @@ export const sessionAwait = new Elysia({
     return row
   }, {
     detail: {
-      summary: 'Get session await by ID',
+      'summary': 'Get session await by ID',
       'x-cradle-cli': {
         command: ['session', 'await-get'],
       },
@@ -43,7 +43,7 @@ export const sessionAwait = new Elysia({
   })
   .get('/', ({ query }) => SessionAwait.listBySession(query.sessionId), {
     detail: {
-      summary: 'List session awaits',
+      'summary': 'List session awaits',
       'x-cradle-cli': {
         command: ['session', 'await-list'],
       },
@@ -59,7 +59,7 @@ export const sessionAwait = new Elysia({
     return row
   }, {
     detail: {
-      summary: 'Cancel a pending session await',
+      'summary': 'Cancel a pending session await',
       'x-cradle-cli': {
         command: ['session', 'await-cancel'],
       },
@@ -79,7 +79,7 @@ export const sessionAwait = new Elysia({
     return row
   }, {
     detail: {
-      summary: 'Manually trigger a session await',
+      'summary': 'Manually trigger a session await',
       'x-cradle-cli': {
         command: ['session', 'await-trigger'],
       },
@@ -90,7 +90,7 @@ export const sessionAwait = new Elysia({
   })
   .get('/summary', ({ query }) => SessionAwait.getSessionSummary(query.sessionId), {
     detail: {
-      summary: 'Get await summary for a session',
+      'summary': 'Get await summary for a session',
       'x-cradle-cli': {
         command: ['session', 'await-summary'],
       },

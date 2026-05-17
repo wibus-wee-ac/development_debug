@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { PendingCallManager } from '../src/pending-calls.js'
 
-describe('PendingCallManager', () => {
+describe('pendingCallManager', () => {
   let manager: PendingCallManager
 
   beforeEach(() => {

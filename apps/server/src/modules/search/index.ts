@@ -14,7 +14,7 @@ export const search = new Elysia({
     snippetsPerHit: query.snippetsPerHit,
   }), {
     detail: {
-      summary: 'Search threads',
+      'summary': 'Search threads',
       'x-cradle-cli': {
         command: ['search', 'threads'],
       },

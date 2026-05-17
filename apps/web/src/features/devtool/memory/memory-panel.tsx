@@ -17,7 +17,7 @@ export function MemoryPanel() {
 
   const snapshots = getPerfSnapshots()
   const vitals = getWebVitals()
-  const latest = snapshots[snapshots.length - 1]
+  const latest = snapshots.at(-1)
   const recentSnapshots = snapshots.slice(-10)
 
   return (
@@ -30,15 +30,27 @@ export function MemoryPanel() {
                 <tbody>
                   <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">Heap Used</td>
-                    <td className="py-1.5 text-foreground">{toMB(latest.heapUsed)} MB</td>
+                    <td className="py-1.5 text-foreground">
+{toMB(latest.heapUsed)}
+{' '}
+MB
+                    </td>
                   </tr>
                   <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">Heap Total</td>
-                    <td className="py-1.5 text-foreground">{toMB(latest.heapTotal)} MB</td>
+                    <td className="py-1.5 text-foreground">
+{toMB(latest.heapTotal)}
+{' '}
+MB
+                    </td>
                   </tr>
                   <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">Heap Limit</td>
-                    <td className="py-1.5 text-foreground">{toMB(latest.heapLimit)} MB</td>
+                    <td className="py-1.5 text-foreground">
+{toMB(latest.heapLimit)}
+{' '}
+MB
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -48,7 +60,12 @@ export function MemoryPanel() {
 
       {recentSnapshots.length > 0 && (
         <div className="mb-4">
-          <div className="mb-2 text-xs text-muted-foreground">Recent Trend (last {recentSnapshots.length} samples)</div>
+          <div className="mb-2 text-xs text-muted-foreground">
+Recent Trend (last
+{recentSnapshots.length}
+{' '}
+samples)
+          </div>
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
@@ -58,13 +75,21 @@ export function MemoryPanel() {
               </tr>
             </thead>
             <tbody>
-              {recentSnapshots.map((snap) => (
+              {recentSnapshots.map(snap => (
                 <tr key={snap.timestamp} className="border-b border-border">
                   <td className="py-1 pr-3 text-muted-foreground">
                     {formatTimeOnly(snap.timestamp)}
                   </td>
-                  <td className="py-1 pr-3">{toMB(snap.heapUsed)} MB</td>
-                  <td className="py-1">{toMB(snap.heapTotal)} MB</td>
+                  <td className="py-1 pr-3">
+{toMB(snap.heapUsed)}
+{' '}
+MB
+                  </td>
+                  <td className="py-1">
+{toMB(snap.heapTotal)}
+{' '}
+MB
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -84,7 +109,7 @@ export function MemoryPanel() {
               </tr>
             </thead>
             <tbody>
-              {vitals.map((v) => (
+              {vitals.map(v => (
                 <tr key={v.name} className="border-b border-border">
                   <td className="py-1 pr-3 text-muted-foreground">{v.name}</td>
                   <td className="py-1 pr-3">{v.value.toFixed(2)}</td>

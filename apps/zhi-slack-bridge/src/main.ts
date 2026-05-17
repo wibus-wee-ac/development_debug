@@ -1,8 +1,9 @@
 import 'dotenv/config'
-import { BridgeStore } from './store.js'
+
+import { BridgeServer } from './bridge-server.js'
 import { PendingCallManager } from './pending-calls.js'
 import { SlackBot } from './slack-bot.js'
-import { BridgeServer } from './bridge-server.js'
+import { BridgeStore } from './store.js'
 
 function requireEnv(name: string): string {
   const val = process.env[name]
@@ -40,13 +41,13 @@ async function main() {
   await slackBot.start()
   await bridgeServer.start()
 
-  console.log('[main] Zhi Slack Bridge running')
-  console.log(`[main] Socket: ${socketPath}`)
-  console.log('[main] Waiting for zhi calls...')
+  console.warn('[main] Zhi Slack Bridge running')
+  console.warn(`[main] Socket: ${socketPath}`)
+  console.warn('[main] Waiting for zhi calls...')
 
   // Graceful shutdown
   const shutdown = async () => {
-    console.log('\n[main] Shutting down...')
+    console.warn('\n[main] Shutting down...')
     pendingCalls.cancelAll()
     await bridgeServer.stop()
     await slackBot.stop()

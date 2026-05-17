@@ -6,14 +6,13 @@
  * attached to the message payload.
  */
 
-import { useChatStore, chatSelectors } from '~/store/chat'
+import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 
 import { useSettingsOverlayStore } from '../settings/settings-overlay-store'
-
 import type { SystemAgentContext } from './context-schema'
 
 const MAX_RECENT_MESSAGES = 5

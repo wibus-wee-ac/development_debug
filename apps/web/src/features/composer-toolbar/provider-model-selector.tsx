@@ -2,18 +2,17 @@
 // Output: ProviderModelSelector — cascading menu: Provider > Model > Thinking with icons
 // Position: The core selector UI replacing 3 separate pill buttons
 
-import { useEffect, useState } from 'react'
 import { BrainIcon, CheckIcon, CpuIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { providerVisuals } from '~/features/agent-management/agent-runtime-settings'
-import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
-import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+import { Menu, MenuItem, MenuPopup, MenuSub, MenuSubPopup, MenuSubTrigger, MenuTrigger } from '~/components/ui/menu'
+import { presetForProfile, providerVisuals } from '~/features/agent-management/agent-runtime-settings'
 import { cn } from '~/lib/cn'
+import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import { THINKING_EFFORTS } from './constants'
 import type { ModelsByProfileId, ThinkingEffort } from './types'
-import { Menu, MenuItem, MenuPopup, MenuTrigger, MenuSub, MenuSubTrigger, MenuSubPopup } from '~/components/ui/menu'
 
 interface ProviderModelSelectorProps {
   profiles: AgentProfile[]
@@ -55,8 +54,7 @@ function ProviderGroup({
   const profileModels = models
   const [modelSearch, setModelSearch] = useState('')
   const filteredModels = profileModels.filter(m =>
-    !modelSearch || m.label.toLowerCase().includes(modelSearch.toLowerCase()) || m.id.toLowerCase().includes(modelSearch.toLowerCase()),
-  )
+    !modelSearch || m.label.toLowerCase().includes(modelSearch.toLowerCase()) || m.id.toLowerCase().includes(modelSearch.toLowerCase()))
 
   // Progressive rendering: show first batch immediately, rest after idle
   const INITIAL_BATCH = 20

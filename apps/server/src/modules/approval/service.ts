@@ -164,8 +164,10 @@ function extractToolName(prompt: string): string {
   return match?.[1] ?? prompt.slice(0, 100)
 }
 
+const DENY_REJECT_RE = /deny|reject/i
+
 function resolveRejectedOptionId(options: ApprovalOption[]): string {
-  const denyOption = options.find(option => /deny|reject/i.test(option.optionId) || /deny|reject/i.test(option.label))
+  const denyOption = options.find(option => DENY_REJECT_RE.test(option.optionId) || DENY_REJECT_RE.test(option.label))
   return denyOption?.optionId ?? options[0]?.optionId ?? 'rejected'
 }
 

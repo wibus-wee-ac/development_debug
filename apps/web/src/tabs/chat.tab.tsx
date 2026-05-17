@@ -12,8 +12,8 @@ import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
 import { RightAside } from '~/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { ChatSessionMessageRow } from '~/features/chat/use-chat-session'
+import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
 import { getServerUrl } from '~/lib/electron'
@@ -116,6 +116,7 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
 
   // Ref to communicate per-message overrides to ChatView's internal sendMessage
   const sendOverridesRef = useRef({ modelId: undefined as string | undefined, thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined })
+  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
   sendOverridesRef.current = {
     modelId: composerState.selection.modelId ?? undefined,
     thinkingEffort: composerState.selection.thinkingEffort ?? undefined,

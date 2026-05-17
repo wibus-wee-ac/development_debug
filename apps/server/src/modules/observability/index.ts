@@ -24,7 +24,7 @@ export const observability = new Elysia({
     })
   }, {
     detail: {
-      summary: 'List observability events',
+      'summary': 'List observability events',
       'x-cradle-cli': {
         command: ['observability', 'events'],
       },
@@ -43,7 +43,7 @@ export const observability = new Elysia({
     })
   }, {
     detail: {
-      summary: 'List observability incidents',
+      'summary': 'List observability incidents',
       'x-cradle-cli': {
         command: ['observability', 'incidents'],
       },
@@ -66,7 +66,7 @@ export const observability = new Elysia({
     })
   }, {
     detail: {
-      summary: 'Export observability bundle',
+      'summary': 'Export observability bundle',
       'x-cradle-cli': {
         command: ['observability', 'export'],
       },

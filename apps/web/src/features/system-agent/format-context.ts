@@ -45,8 +45,10 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
     const { sessionId, status, messageCount, recentMessages } = ctx.chatContext
     lines.push(`chat: session=${sessionId} status=${status} messages=${messageCount}`)
     if (recentMessages.length > 0) {
-      const last = recentMessages[recentMessages.length - 1]
-      lines.push(`  last msg: [${last.role}] ${last.contentPreview}`)
+      const last = recentMessages.at(-1)
+      if (last) {
+        lines.push(`  last msg: [${last.role}] ${last.contentPreview}`)
+      }
     }
   }
 

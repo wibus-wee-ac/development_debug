@@ -21,6 +21,7 @@ import type { ClaudeAgentChunkMapperState } from '../claude-agent/mapper'
 import { mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
 
 const RUNTIME_KIND = 'claude-agent' as RuntimeKind
+const TRAILING_SLASH_RE = /\/$/
 
 export class MockClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
@@ -90,7 +91,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
     }
 
     try {
-      const queryUrl = `${baseUrl.replace(/\/$/, '')}/v1/claude-agent/query`
+      const queryUrl = `${baseUrl.replace(TRAILING_SLASH_RE, '')}/v1/claude-agent/query`
       const response = await fetch(queryUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -112,7 +113,9 @@ export class MockClaudeAgentProvider implements ChatRuntime {
 
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        if (done) {
+          break
+        }
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -120,10 +123,14 @@ export class MockClaudeAgentProvider implements ChatRuntime {
 
         for (const line of lines) {
           const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data: ')) continue
+          if (!trimmed || !trimmed.startsWith('data: ')) {
+            continue
+          }
 
           const jsonStr = trimmed.slice(6)
-          if (jsonStr === '[DONE]') continue
+          if (jsonStr === '[DONE]') {
+            continue
+          }
 
           try {
             const msg = JSON.parse(jsonStr) as Record<string, unknown>
@@ -145,7 +152,9 @@ export class MockClaudeAgentProvider implements ChatRuntime {
           }
         }
 
-        if (abortController.signal.aborted) break
+        if (abortController.signal.aborted) {
+          break
+        }
       }
 
       if (mapperState.assistantStarted) {
@@ -162,15 +171,23 @@ export class MockClaudeAgentProvider implements ChatRuntime {
    * Returns true if the tool was DENIED (caller should skip), false to proceed.
    */
   private async shouldGateToolUse(msg: Record<string, unknown>, chatSessionId: string, signal: AbortSignal): Promise<boolean> {
-    if (msg.type !== 'stream_event') return false
+    if (msg.type !== 'stream_event') {
+      return false
+    }
     const event = msg.event as Record<string, unknown> | undefined
-    if (!event || event.type !== 'content_block_start') return false
+    if (!event || event.type !== 'content_block_start') {
+      return false
+    }
     const block = event.content_block as Record<string, unknown> | undefined
-    if (!block || block.type !== 'tool_use') return false
+    if (!block || block.type !== 'tool_use') {
+      return false
+    }
 
     const toolName = block.name as string
     // Skip Agent tool — subagent spawning doesn't need approval
-    if (toolName === 'Agent') return false
+    if (toolName === 'Agent') {
+      return false
+    }
 
     // Check if previously allowed
     const policyKeys = Approval.generatePolicyKeys({
@@ -178,9 +195,13 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       chatSessionId,
       toolName,
     })
-    if (Approval.isPreviouslyAllowed(chatSessionId, policyKeys)) return false
+    if (Approval.isPreviouslyAllowed(chatSessionId, policyKeys)) {
+      return false
+    }
 
-    if (signal.aborted) return true
+    if (signal.aborted) {
+      return true
+    }
 
     const prompt = `Allow "${toolName}"?`
     const response = await Approval.requestApproval({
@@ -217,10 +238,14 @@ function parseSnapshot(state: string | null): {
   workspacePath?: string
   models?: { currentModelId?: string | null }
 } {
-  if (!state) return {}
+  if (!state) {
+    return {}
+  }
   try {
-    const parsed = JSON.parse(state) as { workspacePath?: string; models?: { currentModelId?: string | null } }
+    const parsed = JSON.parse(state) as { workspacePath?: string, models?: { currentModelId?: string | null } }
     return typeof parsed === 'object' && parsed !== null ? parsed : {}
   }
-  catch { return {} }
+  catch {
+    return {}
+  }
 }

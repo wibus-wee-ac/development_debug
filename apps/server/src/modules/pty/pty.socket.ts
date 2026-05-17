@@ -95,7 +95,6 @@ export class PtySocketHub {
         return
       case 'ping':
         ws.send({ type: 'pong' })
-        return
     }
   }
 

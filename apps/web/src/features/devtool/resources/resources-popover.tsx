@@ -41,11 +41,13 @@ function toMB(bytes: number, decimals = 0): string {
 }
 
 function formatMemoryLabel(mb: number): string {
-  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`
+  if (mb >= 1024) {
+    return `${(mb / 1024).toFixed(2)} GB`
+  }
   return `${Math.round(mb)} MB`
 }
 
-function MemoryBar({ used, total, className }: { used: number; total: number; className?: string }) {
+function MemoryBar({ used, total, className }: { used: number, total: number, className?: string }) {
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
   return (
     <div className={className}>
@@ -95,7 +97,7 @@ function useResourceSnapshot() {
       ])
 
       const perfSnaps = getPerfSnapshots()
-      const latest = perfSnaps[perfSnaps.length - 1]
+      const latest = perfSnaps.at(-1)
 
       // /health returns memory already in MB
       const server = healthRes.status === 'fulfilled' ? healthRes.value : null
@@ -132,7 +134,9 @@ export function ResourcesPopover() {
       intervalRef.current = setInterval(() => void refresh(), 3000)
     }
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current)
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
     }
   }, [open, refresh])
 
@@ -265,7 +269,9 @@ export function ResourcesPopover() {
 
         {snap && (
           <div className="border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground/60 tabular-nums">
-            Updated {new Date(snap.timestamp).toLocaleTimeString('en-US', { hour12: false })}
+            Updated
+{' '}
+{new Date(snap.timestamp).toLocaleTimeString('en-US', { hour12: false })}
           </div>
         )}
       </PopoverContent>
@@ -276,6 +282,8 @@ export function ResourcesPopover() {
 function formatUptime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) return `${h}h ${m}m`
+  if (h > 0) {
+    return `${h}h ${m}m`
+  }
   return `${m}m`
 }

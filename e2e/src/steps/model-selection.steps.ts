@@ -8,6 +8,7 @@ import { expect } from '@playwright/test'
 import type { CradleWorld } from '../support/world'
 
 const SELECTOR_TIMEOUT = 15_000
+const MOCK_RE = /mock/i
 
 When('我进入新会话页面', async function (this: CradleWorld) {
   const navItem = this.page.locator('[data-testid="nav-new-chat"]')
@@ -43,7 +44,7 @@ When('我选择 Mock LLM Agent', async function (this: CradleWorld) {
   }
 
   // Click the mock LLM profile item (contains "Mock" or the mock profile name)
-  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: /mock/i })
+  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE })
   await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
   await mockItem.first().click()
 })
@@ -75,7 +76,7 @@ When('我发送消息{string}', async function (this: CradleWorld, text: string)
       await selector.click()
       const menuPopup = this.page.locator('[role="menu"]')
       await expect(menuPopup).toBeVisible({ timeout: 10_000 })
-      const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: /mock/i })
+      const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE })
       await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
       await mockItem.first().click()
 

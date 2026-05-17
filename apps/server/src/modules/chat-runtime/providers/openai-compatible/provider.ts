@@ -10,9 +10,9 @@ import {
   parseConfigWith,
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
+import { createAssistantMessage } from '../../delta-events'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import { buildModelMessages, executeAiSdkTurn, executeAiSdkTurnSnapshots } from '../../engine/ai-sdk-engine'
-import { createAssistantMessage } from '../../delta-events'
 import { createLanguageModel, detectApiFormat } from '../../engine/providers'
 import type {
   CancelTurnInput,

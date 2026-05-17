@@ -35,12 +35,12 @@ export interface MockToolDefinition {
 /**
  * Predefined Claude Agent SDK message scenarios for subagent/team testing.
  */
-export type MockClaudeAgentScenario =
-  | 'basic-chat'
-  | 'agent-subagent'          // Parent spawns Agent tool → subagent does work with parent_tool_use_id
-  | 'agent-subagent-deep'     // Subagent spawns its own Agent (nested depth 2)
-  | 'agent-parallel'          // Parent spawns 2 Agents at once
-  | 'approval-tool'           // Streams a Bash tool_use to trigger canUseTool/approval
+export type MockClaudeAgentScenario
+  = | 'basic-chat'
+    | 'agent-subagent' // Parent spawns Agent tool → subagent does work with parent_tool_use_id
+    | 'agent-subagent-deep' // Subagent spawns its own Agent (nested depth 2)
+    | 'agent-parallel' // Parent spawns 2 Agents at once
+    | 'approval-tool' // Streams a Bash tool_use to trigger canUseTool/approval
 
 export interface MockLlmServerOptions {
   /** Fixed response text the "assistant" will stream back. Default: 'Hello from mock LLM!' */
@@ -614,12 +614,14 @@ export class MockLlmServer {
       this.turnCount++
 
       let parsedBody: { messages?: Array<{ role: string, content?: unknown[] }>, stream?: boolean } | null = null
-      try { parsedBody = JSON.parse(body) } catch { /* ignore */ }
+      try {
+        parsedBody = JSON.parse(body)
+      }
+ catch { /* ignore */ }
 
       // Check if this is a turn after tool_result (continuation)
       const hasToolResult = parsedBody?.messages?.some(m =>
-        m.role === 'user' && Array.isArray(m.content) && (m.content as Array<{ type?: string }>).some(c => c.type === 'tool_result'),
-      ) ?? false
+        m.role === 'user' && Array.isArray(m.content) && (m.content as Array<{ type?: string }>).some(c => c.type === 'tool_result')) ?? false
 
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',

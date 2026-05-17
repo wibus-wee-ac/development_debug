@@ -6,19 +6,18 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { sessions, sessionAwaits, workspaces, agentProfiles } from '@cradle/db'
+import { agentProfiles, sessionAwaits, sessions, workspaces } from '@cradle/db'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppError } from '../src/errors/app-error'
 import { db, shutdownInfra } from '../src/infra'
+import { createRun } from '../src/modules/chat-runtime/service'
+import { trigger } from '../src/modules/session-await/service'
 
 // Mock createRun to simulate 409 without needing full chat runtime setup
 vi.mock('../src/modules/chat-runtime/service', () => ({
   createRun: vi.fn(),
 }))
-
-import { createRun } from '../src/modules/chat-runtime/service'
-import { trigger } from '../src/modules/session-await/service'
 
 const mockedCreateRun = vi.mocked(createRun)
 

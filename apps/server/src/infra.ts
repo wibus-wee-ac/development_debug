@@ -10,7 +10,8 @@ import { ServerConfig } from './config/server-config'
 import { DatabaseConfig } from './database/database.config'
 import { DbProvider } from './database/database.provider'
 import { MigrationRunner } from './database/migration-runner'
-import { getLogger as getLoggerFromModule, Logger } from './logging/logger'
+import type { Logger } from './logging/logger'
+import { getLogger as getLoggerFromModule } from './logging/logger'
 
 let _serverConfig: ServerConfig | undefined
 let _logger: Logger | undefined

@@ -1,17 +1,13 @@
 import { randomUUID } from 'node:crypto'
 
 import type { Message, Session } from '@cradle/db'
-import { agents,
-  backendRuns,
-  backendSessionBindings,
-  messages,
-  sessions } from '@cradle/db'
-import type { RuntimeKind } from '../providers/types'
+import { agents, backendRuns, backendSessionBindings, messages, sessions } from '@cradle/db'
 import { desc, eq, inArray } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { buildSessionRuntimeConfigJson, readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
+import type { RuntimeKind } from '../providers/types'
 
 // ── session CRUD ──
 
@@ -63,7 +59,8 @@ export function get(id: string): SessionView | null {
     .select({ requestedModelId: backendSessionBindings.requestedModelId })
     .from(backendSessionBindings)
     .where(eq(backendSessionBindings.chatSessionId, id))
-    .get()?.requestedModelId ?? null
+    .get()
+?.requestedModelId ?? null
 
   return toSessionView(row, modelId)
 }

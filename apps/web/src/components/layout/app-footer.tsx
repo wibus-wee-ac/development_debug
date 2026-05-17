@@ -2,8 +2,8 @@
 // Output: AppFooter — slim global status footer bar mirroring the AppHeader chrome pattern
 // Position: Bottom chrome of AppLayout's center column; always rendered, no slot props
 
-import * as React from 'react'
 import { MousePointer2Icon } from 'lucide-react'
+import * as React from 'react'
 
 import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { Button } from '~/components/ui/button'

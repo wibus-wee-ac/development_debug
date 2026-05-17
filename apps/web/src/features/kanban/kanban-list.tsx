@@ -5,12 +5,12 @@
 import { AnimatePresence, m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
+import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
-import type { ViewConfig } from './use-view-config'
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
-import { cn } from '~/lib/cn'
+import type { ViewConfig } from './use-view-config'
 
 interface ListProps {
   issues: KanbanIssue[]
@@ -72,20 +72,27 @@ export function KanbanList({
 
   const groupedIssues = useMemo(() => {
     const map: Record<string, KanbanIssue[]> = {}
-    for (const g of groups) map[g.id] = []
+    for (const g of groups) {
+      map[g.id] = []
+    }
 
     for (const issue of issues) {
       let groupId: string
       if (config.groupBy === 'status') {
         groupId = issue.statusId ?? ''
-      } else if (config.groupBy === 'priority') {
+      }
+ else if (config.groupBy === 'priority') {
         groupId = issue.priority
-      } else if (config.groupBy === 'milestone') {
+      }
+ else if (config.groupBy === 'milestone') {
         groupId = issue.milestoneId ?? '__none__'
-      } else {
+      }
+ else {
         groupId = issue.statusId ?? ''
       }
-      if (!map[groupId]) map[groupId] = []
+      if (!map[groupId]) {
+        map[groupId] = []
+      }
       map[groupId].push(issue)
     }
     return map
@@ -101,7 +108,7 @@ export function KanbanList({
 
   return (
     <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-1">
-      {visibleGroups.map(group => {
+      {visibleGroups.map((group) => {
         const groupIssues = groupedIssues[group.id] ?? []
         const isCollapsed = collapsed[group.id] ?? false
 

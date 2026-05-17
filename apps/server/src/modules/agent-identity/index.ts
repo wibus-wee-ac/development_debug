@@ -13,7 +13,7 @@ export const agentIdentity = new Elysia({
     return AgentIdentity.list({ enabled, agentProfileId: query.agentProfileId })
   }, {
     detail: {
-      summary: 'List agents',
+      'summary': 'List agents',
       'x-cradle-cli': {
         command: ['agent', 'list'],
       },
@@ -29,7 +29,7 @@ export const agentIdentity = new Elysia({
     return agent
   }, {
     detail: {
-      summary: 'Get agent by ID',
+      'summary': 'Get agent by ID',
       'x-cradle-cli': {
         command: ['agent', 'get'],
       },
@@ -39,7 +39,7 @@ export const agentIdentity = new Elysia({
   })
   .post('/', ({ body }) => AgentIdentity.create(body), {
     detail: {
-      summary: 'Create agent',
+      'summary': 'Create agent',
       'x-cradle-cli': {
         command: ['agent', 'create'],
       },
@@ -55,7 +55,7 @@ export const agentIdentity = new Elysia({
     return agent
   }, {
     detail: {
-      summary: 'Update agent',
+      'summary': 'Update agent',
       'x-cradle-cli': {
         command: ['agent', 'update'],
       },
@@ -69,7 +69,7 @@ export const agentIdentity = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete agent',
+      'summary': 'Delete agent',
       'x-cradle-cli': {
         command: ['agent', 'delete'],
       },

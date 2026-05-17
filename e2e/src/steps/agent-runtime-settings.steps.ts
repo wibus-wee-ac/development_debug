@@ -4,9 +4,6 @@ import { expect } from '@playwright/test'
 import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
-const EMPTY_STATE_RE = /还没有 Agent Profile|No agent profiles|No providers configured yet\./
-const ADD_PROVIDER_RE = /Add Provider|Add/i
-
 function parseEnabledState(enabledText: string): boolean {
   if (enabledText === '启用') {
     return true

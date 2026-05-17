@@ -30,9 +30,9 @@ interface ChatMinimapUiState {
 
 type ChatMinimapUiAction
   = { type: 'pointer-start', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
-  | { type: 'pointer-move', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
-  | { type: 'pointer-end' }
-  | { type: 'pointer-leave' }
+    | { type: 'pointer-move', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
+    | { type: 'pointer-end' }
+    | { type: 'pointer-leave' }
 
 const initialChatMinimapUiState: ChatMinimapUiState = {
   hoverIdx: null,
@@ -225,7 +225,11 @@ function ChatMinimapInner({
         ref={containerRef}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') scrollToHoveredMessage() }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            scrollToHoveredMessage()
+          }
+        }}
         className="relative flex w-full cursor-pointer flex-col items-center gap-1"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

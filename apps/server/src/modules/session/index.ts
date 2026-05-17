@@ -11,7 +11,7 @@ export const session = new Elysia({
 })
   .get('/', ({ query }) => Session.list(query.workspaceId), {
     detail: {
-      summary: 'List sessions',
+      'summary': 'List sessions',
       'x-cradle-cli': {
         command: ['session', 'list'],
       },
@@ -27,7 +27,7 @@ export const session = new Elysia({
     return s
   }, {
     detail: {
-      summary: 'Get session by ID',
+      'summary': 'Get session by ID',
       'x-cradle-cli': {
         command: ['session', 'get'],
       },
@@ -37,7 +37,7 @@ export const session = new Elysia({
   })
   .post('/', ({ body }) => Session.create(body), {
     detail: {
-      summary: 'Create session',
+      'summary': 'Create session',
       'x-cradle-cli': {
         command: ['session', 'create'],
       },
@@ -60,7 +60,7 @@ export const session = new Elysia({
     return result
   }, {
     detail: {
-      summary: 'Update session',
+      'summary': 'Update session',
       'x-cradle-cli': {
         command: ['session', 'update'],
       },
@@ -74,7 +74,7 @@ export const session = new Elysia({
     return { ok: true as const }
   }, {
     detail: {
-      summary: 'Delete session',
+      'summary': 'Delete session',
       'x-cradle-cli': {
         command: ['session', 'delete'],
       },
@@ -84,7 +84,7 @@ export const session = new Elysia({
   })
   .get('/:id/messages', ({ params }) => Session.getMessages(params.id), {
     detail: {
-      summary: 'Get session messages',
+      'summary': 'Get session messages',
       'x-cradle-cli': {
         command: ['session', 'messages'],
       },
@@ -94,7 +94,7 @@ export const session = new Elysia({
   })
   .get('/:id/export/markdown', ({ params }) => ({ markdown: Session.exportMarkdown(params.id) }), {
     detail: {
-      summary: 'Export session as markdown',
+      'summary': 'Export session as markdown',
       'x-cradle-cli': {
         command: ['session', 'export', 'markdown'],
       },
@@ -106,7 +106,7 @@ export const session = new Elysia({
   // ── linked issue ──
   .get('/:id/linked-issue', ({ params }) => Kanban.getLinkedIssue(params.id), {
     detail: {
-      summary: 'Get linked issue',
+      'summary': 'Get linked issue',
       'x-cradle-cli': {
         command: ['session', 'linked-issue', 'get'],
       },
@@ -116,7 +116,7 @@ export const session = new Elysia({
   })
   .post('/:id/linked-issue', ({ params, body }) => Kanban.linkIssue(params.id, body.issueId), {
     detail: {
-      summary: 'Link issue to session',
+      'summary': 'Link issue to session',
       'x-cradle-cli': {
         command: ['session', 'linked-issue', 'link'],
       },
@@ -127,7 +127,7 @@ export const session = new Elysia({
   })
   .delete('/:id/linked-issue', ({ params }) => Kanban.unlinkIssue(params.id), {
     detail: {
-      summary: 'Unlink issue from session',
+      'summary': 'Unlink issue from session',
       'x-cradle-cli': {
         command: ['session', 'linked-issue', 'unlink'],
       },
