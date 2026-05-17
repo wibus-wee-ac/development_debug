@@ -90,7 +90,7 @@ const SortableTabPill = memo(({
       data-tab-active={isActive ? 'true' : 'false'}
       data-tab-pinned={tab.pinned ? 'true' : 'false'}
       className={cn(
-        'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium',
+        'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium mx-0.5',
         tab.pinned ? 'px-3' : 'pl-3 pr-7',
         'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden bg-background ',
         isActive
@@ -224,7 +224,7 @@ export const TabBar = memo(({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div
-        className={cn('flex items-center gap-1 overflow-hidden px-0.5', className)}
+        className={cn('flex items-center overflow-hidden px-0.5', className)}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         data-testid="tab-bar"
       >

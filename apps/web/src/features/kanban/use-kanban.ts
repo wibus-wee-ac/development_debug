@@ -173,6 +173,10 @@ export function useBoards(workspaceId?: string) {
   })
 }
 
+export function useAllBoards() {
+  return useBoards()
+}
+
 export function useBoard(boardId: string) {
   const all = useBoards()
   return {

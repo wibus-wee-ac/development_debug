@@ -2,7 +2,7 @@
 // Output: ProviderModelSelector — cascading menu: Provider > Model > Thinking with icons
 // Position: The core selector UI replacing 3 separate pill buttons
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrainIcon, CheckIcon, CpuIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
@@ -58,6 +58,25 @@ function ProviderGroup({
     !modelSearch || m.label.toLowerCase().includes(modelSearch.toLowerCase()) || m.id.toLowerCase().includes(modelSearch.toLowerCase()),
   )
 
+  // Progressive rendering: show first batch immediately, rest after idle
+  const INITIAL_BATCH = 20
+  const [renderCount, setRenderCount] = useState(INITIAL_BATCH)
+  useEffect(() => {
+    if (filteredModels.length <= INITIAL_BATCH) {
+      return
+    }
+    const id = requestAnimationFrame(() => {
+      setRenderCount(filteredModels.length)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [filteredModels.length])
+  // Reset when search changes
+  useEffect(() => {
+    setRenderCount(INITIAL_BATCH)
+  }, [modelSearch])
+
+  const visibleModels = filteredModels.slice(0, renderCount)
+
   return (
     <MenuSub>
       <MenuSubTrigger
@@ -68,9 +87,9 @@ function ProviderGroup({
         <Icon className="size-3.5 shrink-0" />
         <span>{profile.name}</span>
       </MenuSubTrigger>
-      <MenuSubPopup  className="max-h-80">
+      <MenuSubPopup>
         {profileModels.length > 0 && (
-          <div className="-mx-1 -mt-1 px-1 pt-1 pb-1.5 sticky top-0 z-10 bg-popover border-b border-border/30">
+          <div className="px-1 pt-1 pb-1.5">
             <input
               value={modelSearch}
               onChange={e => setModelSearch(e.target.value)}
@@ -84,7 +103,8 @@ function ProviderGroup({
         {isLoadingModels && profileModels.length === 0 && (
           <MenuItem disabled>Loading models…</MenuItem>
         )}
-        {filteredModels.map((model) => {
+        <div className="max-h-80 overflow-y-auto">
+        {visibleModels.map((model) => {
           const isModelSelected = model.id === selectedModelId
           return (
             <ModelSubmenu
@@ -97,6 +117,10 @@ function ProviderGroup({
             />
           )
         })}
+        </div>
+        {renderCount < filteredModels.length && (
+          <MenuItem disabled>Loading more…</MenuItem>
+        )}
         {filteredModels.length === 0 && profileModels.length > 0 && (
           <MenuItem disabled>No matching models</MenuItem>
         )}
@@ -140,7 +164,7 @@ function ModelSubmenu({
           <div className="flex items-center gap-1.5">
             <span className="truncate font-medium">{model.label}</span>
             {registryMatch === 'fuzzy' && (
-              <span className="shrink-0 text-[9px] text-muted-foreground/50">≈</span>
+              <span className="shrink-0 text-[9px] text-muted-foreground/50" title="模糊匹配 models.dev">≈</span>
             )}
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 leading-tight">
