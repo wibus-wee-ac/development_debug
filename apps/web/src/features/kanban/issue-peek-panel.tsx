@@ -5,7 +5,10 @@
 import { XIcon } from 'lucide-react'
 import { useCallback } from 'react'
 
+import { useWorkspaces } from '~/features/workspace/use-workspace'
+
 import { useIssue, useMilestones, useStatuses, useUpdateIssue } from './use-kanban'
+import { formatIssueId } from './shared/format-issue-id'
 import { IssueDescription } from './issue-detail/issue-description'
 import { IssueTitle } from './issue-detail/issue-title'
 import { PropertiesSidebar } from './issue-detail/properties-sidebar'
@@ -17,6 +20,7 @@ interface IssuePeekPanelProps {
 }
 
 export function IssuePeekPanel({ issueId, workspaceId, onClose }: IssuePeekPanelProps) {
+  const { workspaces } = useWorkspaces()
   const { data: issue, isLoading, isError } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -47,7 +51,7 @@ export function IssuePeekPanel({ issueId, workspaceId, onClose }: IssuePeekPanel
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
-          {issue.id.slice(0, 8).toUpperCase()}
+          {formatIssueId(issue, workspaces)}
         </span>
         <button
           type="button"

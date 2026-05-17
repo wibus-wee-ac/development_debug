@@ -281,6 +281,8 @@ export function createIssue(input: {
   const now = currentUnixSeconds()
   const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${kanbanIssues.order}), 0)` }).from(kanbanIssues).where(eq(kanbanIssues.workspaceId, input.workspaceId)).get()
   const order = (maxOrderRow?.maxOrder ?? 0) + 1024
+  const maxNumberRow = db().select({ maxNum: sql<number>`coalesce(max(${kanbanIssues.number}), 0)` }).from(kanbanIssues).where(eq(kanbanIssues.workspaceId, input.workspaceId)).get()
+  const number = (maxNumberRow?.maxNum ?? 0) + 1
   const statusId = input.statusId
     ?? db().select({ id: kanbanStatuses.id }).from(kanbanStatuses).where(eq(kanbanStatuses.workspaceId, input.workspaceId)).orderBy(kanbanStatuses.order).get()?.id
     ?? null
@@ -294,6 +296,7 @@ export function createIssue(input: {
     milestoneId: input.milestoneId ?? null,
     parentIssueId: input.parentIssueId ?? null,
     statusId,
+    number,
     assigneeKind: null,
     assigneeId: null,
     delegateAgentProfileId: null,

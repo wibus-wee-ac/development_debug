@@ -7,9 +7,11 @@ import { BotIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
 import type { KanbanIssue } from '~/lib/types'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import type { ViewConfig } from './use-view-config'
 import { AssigneeAvatar } from './shared/assignee-avatar'
+import { formatIssueId } from './shared/format-issue-id'
 import { parseIssueLabels } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
@@ -30,6 +32,7 @@ const priorityLabel: Record<string, string> = {
 }
 
 export function KanbanCard({ issue, displayProperties, onClick, category }: CardProps) {
+  const { workspaces } = useWorkspaces()
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: issue.id,
     data: { issue },
@@ -69,7 +72,7 @@ export function KanbanCard({ issue, displayProperties, onClick, category }: Card
         <div className="flex justify-between">
         {displayProperties.id && (
           <span className="text-[10.5px] text-muted-foreground tabular-nums">
-            {issue.id.slice(0, 6).toUpperCase()}
+            {formatIssueId(issue, workspaces)}
           </span>
         )}
 

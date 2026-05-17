@@ -20,6 +20,7 @@ export const workspaces = sqliteTable('workspaces', {
   id: textPk(),
   name: text('name').notNull(),
   path: text('path').notNull().unique(),
+  identifier: text('identifier').notNull().default(''),
   ...timestamps(),
 })
 

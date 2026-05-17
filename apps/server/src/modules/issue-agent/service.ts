@@ -271,6 +271,7 @@ async function runSession(agentSessionId: string, agentId?: string): Promise<voi
     agentProfileId: session.agentProfileId,
     agentId: agentId ?? null,
     linkedIssueId: issue.id,
+    configJson: JSON.stringify({ permissionMode: 'bypassPermissions' }),
   })
 
   attachChatSession({ agentSessionId, chatSessionId: chatSession.id })

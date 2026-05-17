@@ -6,8 +6,10 @@ import { BotIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import type { StatusCategory, ViewConfig } from './use-view-config'
+import { formatIssueId } from './shared/format-issue-id'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { parseIssueLabels } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
@@ -33,6 +35,7 @@ function formatRelativeTime(ts: number): string {
 }
 
 export function KanbanListRow({ issue, statuses, displayProperties, onClick, selected }: ListRowProps) {
+  const { workspaces } = useWorkspaces()
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const labels = parseIssueLabels(issue.labels)
@@ -67,8 +70,8 @@ export function KanbanListRow({ issue, statuses, displayProperties, onClick, sel
 
       {/* ID — mono, fixed width */}
       {displayProperties.id && (
-        <span className="text-[11px] font-mono text-muted-foreground w-12 shrink-0 tabular-nums">
-          {issue.id.slice(0, 6).toUpperCase()}
+        <span className="text-[11px] font-mono text-muted-foreground shrink-0 tabular-nums">
+          {formatIssueId(issue, workspaces)}
         </span>
       )}
 

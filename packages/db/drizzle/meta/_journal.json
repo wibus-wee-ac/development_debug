@@ -120,6 +120,13 @@
       "when": 1778942303759,
       "tag": "0016_hot_path_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1778992815256,
+      "tag": "0017_nosy_synch",
+      "breakpoints": true
     }
   ]
 }

@@ -136,7 +136,20 @@ function getSessionRunContext(sessionId: string): SessionRunContext | null {
   if (session.workspaceId && !workspace) {
     return null
   }
-  return { session, workspacePath: workspace?.path ?? '', profile }
+
+  // Merge session-level config overrides into profile config
+  let effectiveProfile = profile
+  if (session.configJson && session.configJson !== '{}') {
+    try {
+      const sessionConfig = JSON.parse(session.configJson)
+      const profileConfig = JSON.parse(profile.configJson || '{}')
+      effectiveProfile = { ...profile, configJson: JSON.stringify({ ...profileConfig, ...sessionConfig }) }
+    } catch {
+      // Ignore invalid JSON
+    }
+  }
+
+  return { session, workspacePath: workspace?.path ?? '', profile: effectiveProfile }
 }
 
 function getBinding(sessionId: string): BackendSessionBinding | undefined {

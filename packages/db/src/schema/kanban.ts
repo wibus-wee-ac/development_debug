@@ -51,6 +51,7 @@ export const kanbanIssues = sqliteTable('kanban_issues', {
   workspaceId: text('workspace_id')
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
+  number: int('number').notNull().default(0),
   statusId: text('status_id').references(() => kanbanStatuses.id, { onDelete: 'set null' }),
   milestoneId: text('milestone_id').references(() => kanbanMilestones.id, { onDelete: 'set null' }),
   parentIssueId: text('parent_issue_id'),

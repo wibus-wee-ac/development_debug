@@ -76,9 +76,11 @@ export function create(input: {
   runtimeKind?: RuntimeKind
   agentId?: string | null
   linkedIssueId?: string | null
+  configJson?: string
 }): SessionView {
   const id = input.id ?? randomUUID()
   const resolved = resolveSessionCreateInput(input)
+  const finalConfigJson = input.configJson ?? resolved.configJson
   const created = db()
     .insert(sessions)
     .values({
@@ -88,7 +90,7 @@ export function create(input: {
       agentProfileId: resolved.agentProfileId,
       runtimeKind: resolved.runtimeKind,
       agentId: resolved.agentId,
-      configJson: resolved.configJson,
+      configJson: finalConfigJson,
       linkedIssueId: input.linkedIssueId ?? null,
     })
     .returning()
