@@ -1,0 +1,14 @@
+[package]
+name = "cradle-chronicle"
+version = "0.1.0"
+edition = "2024"
+description = "Cradle-owned passive context and memory pipeline"
+license = "UNLICENSED"
+
+[lib]
+name = "cradle_chronicle"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cradle-chronicle"
+path = "src/main.rs"
