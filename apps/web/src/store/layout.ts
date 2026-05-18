@@ -15,6 +15,8 @@ interface LayoutState {
   asideOpen: boolean
   asideActiveTab: string
   bottomPanelOpen: boolean
+  browserPanelOpen: boolean
+  browserPanelRatio: number
   setSidebarWidth: (w: number) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   toggleSidebar: () => void
@@ -25,6 +27,9 @@ interface LayoutState {
   openAsideTab: (tab: string) => void
   toggleBottomPanel: () => void
   setBottomPanelOpen: (open: boolean) => void
+  toggleBrowserPanel: () => void
+  setBrowserPanelOpen: (open: boolean) => void
+  setBrowserPanelRatio: (r: number) => void
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -37,6 +42,8 @@ export const useLayoutStore = create<LayoutState>()(
       asideOpen: false,
       asideActiveTab: 'files',
       bottomPanelOpen: false,
+      browserPanelOpen: false,
+      browserPanelRatio: 0.4,
       setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
       setSidebarCollapsed: sidebarCollapsed => set({ sidebarCollapsed }),
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -47,6 +54,9 @@ export const useLayoutStore = create<LayoutState>()(
       openAsideTab: (tab: string) => set({ asideOpen: true, asideActiveTab: tab }),
       toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
       setBottomPanelOpen: (open: boolean) => set({ bottomPanelOpen: open }),
+      toggleBrowserPanel: () => set(s => ({ browserPanelOpen: !s.browserPanelOpen })),
+      setBrowserPanelOpen: (open: boolean) => set({ browserPanelOpen: open }),
+      setBrowserPanelRatio: (r: number) => set({ browserPanelRatio: Math.max(0.2, Math.min(0.7, r)) }),
     }),
     {
       name: 'cradle:layout:v1',
@@ -59,6 +69,7 @@ export const useLayoutStore = create<LayoutState>()(
         bottomPanelHeight: state.bottomPanelHeight,
         asideOpen: state.asideOpen,
         bottomPanelOpen: state.bottomPanelOpen,
+        browserPanelRatio: state.browserPanelRatio,
       }),
     },
   ),

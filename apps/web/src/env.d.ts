@@ -18,6 +18,7 @@ interface Window {
   cradle?: {
     ipc: {
       invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
+      on: (channel: string, handler: (...args: unknown[]) => void) => () => void
     }
     env: {
       serverUrl: string

@@ -28,10 +28,11 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
-      preload: join(__dirname, '../preload/index.mjs'),
+      preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      webviewTag: true,
       additionalArguments: [`--server-url=${serverUrl}`],
     },
     show: false,
@@ -65,6 +66,13 @@ app.whenReady().then(async () => {
   // Create main window
   mainWindow = await createMainWindow(serverUrl)
   windowManager.setMainWindow(mainWindow)
+
+  // Security: validate webview creation — strip dangerous preferences
+  mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, _params) => {
+    delete webPreferences.preload
+    webPreferences.nodeIntegration = false
+    webPreferences.contextIsolation = true
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null

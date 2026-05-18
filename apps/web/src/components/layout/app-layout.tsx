@@ -4,7 +4,7 @@
 
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
@@ -13,9 +13,11 @@ import { LayoutGeometryProvider, useLayoutGeometry } from '~/components/layout/l
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
+import { BrowserPanel } from '~/features/browser'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
+import { isElectron } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 import { useCradleTabStore } from '~/tabs/registry'
 
@@ -45,6 +47,16 @@ export function AppLayout({ children, hasPanel, panel }: AppLayoutProps) {
 
 function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
+  const [mainWidth, setMainWidth] = useState(800)
+  const mainRef = useCallback((el: HTMLElement | null) => {
+    if (!el) {
+      return
+    }
+    setMainWidth(el.clientWidth)
+    const ro = new ResizeObserver(([entry]) => setMainWidth(entry.contentRect.width))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   useGlobalEventListeners()
   const { registerCenterColumn } = useLayoutGeometry()
@@ -68,6 +80,9 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
     bottomPanelHeight,
     setBottomPanelHeight,
     bottomPanelOpen,
+    browserPanelOpen,
+    browserPanelRatio,
+    setBrowserPanelRatio,
   } = useLayoutStore()
   const isSettings = settingsTabId !== null && settingsTabId === activeTabId
 
@@ -89,8 +104,40 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
           animate={jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }}
           transition={SPRING}
         >
-          <main className="flex flex-col flex-1 bg-background overflow-hidden rounded-xl">
-            {children}
+          <main ref={mainRef} className="flex flex-row flex-1 bg-background overflow-hidden rounded-xl">
+            <div className="flex flex-col flex-1 overflow-hidden min-w-0">
+              {children}
+            </div>
+
+            {/* Browser panel split — reveal animation */}
+            {isElectron && activeTab?.type === 'chat' && (
+              <>
+                {browserPanelOpen && (
+                  <ResizeHandle
+                    direction="horizontal"
+                    value={browserPanelRatio * mainWidth}
+                    onChange={(px) => {
+                      setBrowserPanelRatio(Math.max(0.2, Math.min(0.7, px / mainWidth)))
+                    }}
+                    onDragStart={() => setDragging('browser')}
+                    onDragEnd={() => setDragging(null)}
+                    min={mainWidth * 0.2}
+                    max={mainWidth * 0.7}
+                    inverted
+                    className="bg-background"
+                  />
+                )}
+                <m.div
+                  initial={false}
+                  animate={{ flexBasis: browserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
+                  transition={dragging === 'browser' ? INSTANT : SPRING}
+                  className="overflow-hidden shrink-0 border-l border-border/50 flex flex-col"
+                  data-testid="app-layout-browser-panel"
+                >
+                  <BrowserPanel />
+                </m.div>
+              </>
+            )}
           </main>
 
           {/* Bottom panel resize handle */}

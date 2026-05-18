@@ -4,13 +4,14 @@
 
 import type { TabInstance } from '@cradle/tabs-next'
 import { TabBar } from '@cradle/tabs-next'
-import { PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
+import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
+import { isElectron } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
@@ -24,9 +25,10 @@ const renderNewTabIcon = () => <PlusIcon className="size-3" />
 
 export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
-  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar } = useLayoutStore()
+  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, browserPanelOpen, toggleBrowserPanel } = useLayoutStore()
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const isActiveTabChat = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type === 'chat')
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
   const isDrillIn = isSettingsActive
@@ -107,6 +109,18 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
       <ResourcesPopover />
+        {isElectron && isActiveTabChat && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={cn('text-muted-foreground', browserPanelOpen && 'text-foreground')}
+            onClick={toggleBrowserPanel}
+            title="切换浏览器"
+            data-testid="app-header-browser-toggle"
+          >
+            <GlobeIcon />
+          </Button>
+        )}
         {hasPanel && (
           <Button
             variant="ghost"

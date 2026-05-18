@@ -20,6 +20,13 @@ const cradleElectron = {
   /** IPC invoke — matches the InvokableIpc interface from @cradle/ipc/client */
   ipc: {
     invoke: (channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args),
+    on: (channel: string, handler: (...args: unknown[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, ...args: unknown[]) => handler(...args)
+      ipcRenderer.on(channel, listener)
+      return () => {
+        ipcRenderer.removeListener(channel, listener)
+      }
+    },
   },
 
   /** Environment info */
