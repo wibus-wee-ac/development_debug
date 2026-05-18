@@ -1,0 +1,51 @@
+// Input: session runtime config JSON helpers
+// Output: coverage for cli-tui launch config plus captured Codex session binding persistence
+// Position: apps/server/tests coverage for cross-module runtime config helpers
+
+import { describe, expect, it } from 'vitest'
+
+import {
+  readCliTuiLaunchSpecFromSessionConfig,
+  readCodexCliSessionBindingFromSessionConfig,
+  writeCodexCliSessionBindingToSessionConfig,
+} from '../src/helpers/agent-runtime-config'
+
+const CODEX_SESSION_ID = '019e3c07-d7df-73d2-a3dc-dfaf5f883050'
+
+describe('agent runtime config helpers', () => {
+  it('stores a captured Codex CLI session without dropping the cli-tui launch config', () => {
+    const initial = JSON.stringify({
+      cliTuiLaunch: {
+        preset: 'codex',
+        executable: 'codex',
+        args: ['--model', 'gpt-5.1-codex'],
+      },
+      unrelated: { value: true },
+    })
+
+    const next = writeCodexCliSessionBindingToSessionConfig({
+      configJson: initial,
+      binding: {
+        sessionId: CODEX_SESSION_ID,
+        capturedAt: 1_779_123_000,
+        startedAt: 1_779_122_900,
+        workspacePath: '/tmp/workspace',
+        sourcePath: '/tmp/codex/sessions/rollout.jsonl',
+      },
+    })
+
+    expect(readCliTuiLaunchSpecFromSessionConfig(next)).toEqual({
+      preset: 'codex',
+      executable: 'codex',
+      args: ['--model', 'gpt-5.1-codex'],
+    })
+    expect(readCodexCliSessionBindingFromSessionConfig(next)).toEqual({
+      sessionId: CODEX_SESSION_ID,
+      capturedAt: 1_779_123_000,
+      startedAt: 1_779_122_900,
+      workspacePath: '/tmp/workspace',
+      sourcePath: '/tmp/codex/sessions/rollout.jsonl',
+    })
+    expect(JSON.parse(next).unrelated).toEqual({ value: true })
+  })
+})

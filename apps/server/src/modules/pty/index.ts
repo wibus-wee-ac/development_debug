@@ -14,22 +14,35 @@ function parseSocketMessage(_ws: unknown, message: unknown) {
 
   try {
     return JSON.parse(message)
-  }
-  catch {
+  } catch {
     return undefined
   }
 }
 
 export function registerPtyRoutes(app: Elysia): Elysia {
   app
-    .post('/terminal-sessions/:sessionId/start-or-attach', ({ params, body }) => {
-      return Pty.startOrAttach({ sessionId: params.sessionId, cols: body.cols, rows: body.rows })
-    }, {
-      detail: { summary: 'Start or attach terminal session', tags: ['pty'] },
-      params: PtyModel.sessionIdParams,
-      body: PtyModel.startOrAttachBody,
-      response: { 200: PtyModel.startOrAttachResponse },
-    })
+    .get(
+      '/terminal-sessions/resources',
+      () => {
+        return Pty.listResources()
+      },
+      {
+        detail: { summary: 'List terminal resource usage', tags: ['pty'] },
+        response: { 200: PtyModel.resourcesResponse }
+      }
+    )
+    .post(
+      '/terminal-sessions/:sessionId/start-or-attach',
+      ({ params, body }) => {
+        return Pty.startOrAttach({ sessionId: params.sessionId, cols: body.cols, rows: body.rows })
+      },
+      {
+        detail: { summary: 'Start or attach terminal session', tags: ['pty'] },
+        params: PtyModel.sessionIdParams,
+        body: PtyModel.startOrAttachBody,
+        response: { 200: PtyModel.startOrAttachResponse }
+      }
+    )
     .ws('/terminal-sessions/:sessionId/socket', {
       detail: { summary: 'Open chat terminal live channel via WebSocket', tags: ['pty'] },
       params: PtyModel.sessionIdParams,
@@ -42,10 +55,9 @@ export function registerPtyRoutes(app: Elysia): Elysia {
           Pty.openChatSocket({
             sessionId: ws.data.params.sessionId,
             fromSeq: ws.data.query.fromSeq,
-            ws,
+            ws
           })
-        }
-        catch (error) {
+        } catch (error) {
           Pty.rejectSocket(ws, error)
         }
       },
@@ -54,23 +66,36 @@ export function registerPtyRoutes(app: Elysia): Elysia {
       },
       close(ws) {
         Pty.closeSocket(ws)
+      }
+    })
+    .delete(
+      '/terminal-sessions/:sessionId',
+      ({ params }) => {
+        Pty.stop(params.sessionId)
+        return { ok: true as const }
       },
-    })
-    .delete('/terminal-sessions/:sessionId', ({ params }) => {
-      Pty.stop(params.sessionId)
-      return { ok: true as const }
-    }, {
-      detail: { summary: 'Stop terminal session', tags: ['pty'] },
-      params: PtyModel.sessionIdParams,
-      response: { 200: PtyModel.okResponse },
-    })
-    .post('/terminal-sessions/shell/start', ({ body }) => {
-      return Pty.startShell({ ptyId: body.ptyId, cwd: body.cwd, cols: body.cols, rows: body.rows })
-    }, {
-      detail: { summary: 'Start or attach a generic shell', tags: ['pty'] },
-      body: PtyModel.startShellBody,
-      response: { 200: PtyModel.startShellResponse },
-    })
+      {
+        detail: { summary: 'Stop terminal session', tags: ['pty'] },
+        params: PtyModel.sessionIdParams,
+        response: { 200: PtyModel.okResponse }
+      }
+    )
+    .post(
+      '/terminal-sessions/shell/start',
+      ({ body }) => {
+        return Pty.startShell({
+          ptyId: body.ptyId,
+          cwd: body.cwd,
+          cols: body.cols,
+          rows: body.rows
+        })
+      },
+      {
+        detail: { summary: 'Start or attach a generic shell', tags: ['pty'] },
+        body: PtyModel.startShellBody,
+        response: { 200: PtyModel.startShellResponse }
+      }
+    )
     .ws('/terminal-sessions/shell/:ptyId/socket', {
       detail: { summary: 'Open shell PTY live channel via WebSocket', tags: ['pty'] },
       params: PtyModel.ptyIdParams,
@@ -83,10 +108,9 @@ export function registerPtyRoutes(app: Elysia): Elysia {
           Pty.openShellSocket({
             ptyId: ws.data.params.ptyId,
             fromSeq: ws.data.query.fromSeq,
-            ws,
+            ws
           })
-        }
-        catch (error) {
+        } catch (error) {
           Pty.rejectSocket(ws, error)
         }
       },
@@ -95,16 +119,20 @@ export function registerPtyRoutes(app: Elysia): Elysia {
       },
       close(ws) {
         Pty.closeSocket(ws)
+      }
+    })
+    .delete(
+      '/terminal-sessions/shell/:ptyId',
+      ({ params }) => {
+        Pty.shellStop(params.ptyId)
+        return { ok: true as const }
       },
-    })
-    .delete('/terminal-sessions/shell/:ptyId', ({ params }) => {
-      Pty.shellStop(params.ptyId)
-      return { ok: true as const }
-    }, {
-      detail: { summary: 'Stop shell session', tags: ['pty'] },
-      params: PtyModel.ptyIdParams,
-      response: { 200: PtyModel.okResponse },
-    })
+      {
+        detail: { summary: 'Stop shell session', tags: ['pty'] },
+        params: PtyModel.ptyIdParams,
+        response: { 200: PtyModel.okResponse }
+      }
+    )
 
   app.onStop(() => {
     Pty.shutdownPtyModule()

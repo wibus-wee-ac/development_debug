@@ -11,6 +11,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 ## Files
 
 - **config.test.ts**: server config parsing and validation.
+- **agent-runtime-config.test.ts**: runtime config JSON helper preservation for cli-tui launch and Codex session bindings.
 - **elysia-skeleton.test.ts**: parallel Elysia migration coverage for `/health`, `/preferences/chat`, structured validation normalization, `/openapi.json`, and `/docs/openapi.json` compatibility.
 - **request-id.test.ts**: request-id middleware behavior.
 - **openapi.test.ts**: generated OpenAPI JSON exposure, Scalar docs UI route, DTO-backed request schema coverage, and `ApiDoc.responses` response-schema coverage.
@@ -30,6 +31,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **fetch-retry.test.ts**: retry/backoff helpers for outbound HTTP integrations.
 - **pty.test.ts**: session-owned cli-tui terminal runtime, SSE stream, input, replay, and cleanup.
 - **pty-websocket.test.ts**: PTY WebSocket live channel, reconnect, delete-session teardown, and cli-tui session ownership semantics.
+- **codex-session-capture.test.ts**: Codex CLI JSONL metadata capture rules for cli-tui resume bindings.
 - **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.
 - **workflow-rules.test.ts**: workflow-rules HTTP CRUD + filesystem ownership.
 - **profiles.test.ts**: profile CRUD, secret masking, and provider metadata endpoints.

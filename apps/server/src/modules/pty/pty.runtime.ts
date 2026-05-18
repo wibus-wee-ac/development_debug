@@ -1,16 +1,27 @@
-// Input: node-pty pseudo-terminal spawn configuration and lifecycle actions
-// Output: transport-neutral PTY runtime registry with output/exit hooks
+// Input: node-pty pseudo-terminal spawn configuration, lifecycle actions, and process table sampling
+// Output: transport-neutral PTY runtime registry with output/exit hooks and resource snapshots
 // Position: apps/server/src/modules/pty runtime owner for session/shell PTYs
+
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 
 import * as pty from 'node-pty'
 
 import type { PtyExitState } from './protocol'
+
+const execFileAsync = promisify(execFile)
+
+export type PtyRuntimeRole = 'cli-tui' | 'bottom-panel'
 
 interface RuntimeRecord {
   process: pty.IPty | null
   cols: number
   rows: number
   destroyed: boolean
+  role: PtyRuntimeRole
+  executable: string
+  cwd: string
+  startedAt: number
 }
 
 interface RuntimeHooks {
@@ -21,12 +32,33 @@ interface RuntimeHooks {
 
 export interface EnsurePtyRuntimeInput {
   sessionId: string
+  role: PtyRuntimeRole
   executable: string
   args: string[]
   cwd: string
   cols: number
   rows: number
   env?: Record<string, string>
+}
+
+export interface PtyRuntimeResourceSnapshot {
+  id: string
+  role: PtyRuntimeRole
+  pid: number
+  executable: string
+  cwd: string
+  running: boolean
+  startedAt: number
+  cols: number
+  rows: number
+  rssMB: number | null
+  descendantCount: number | null
+}
+
+interface ProcessTableRow {
+  pid: number
+  ppid: number
+  rssKB: number
 }
 
 export class PtyRuntimeRegistry {
@@ -40,6 +72,9 @@ export class PtyRuntimeRegistry {
       existing.cols = input.cols
       existing.rows = input.rows
       existing.destroyed = false
+      existing.role = input.role
+      existing.executable = input.executable
+      existing.cwd = input.cwd
       existing.process.resize(input.cols, input.rows)
       return
     }
@@ -49,11 +84,19 @@ export class PtyRuntimeRegistry {
       cols: input.cols,
       rows: input.rows,
       destroyed: false,
+      role: input.role,
+      executable: input.executable,
+      cwd: input.cwd,
+      startedAt: Date.now()
     }
 
     record.cols = input.cols
     record.rows = input.rows
     record.destroyed = false
+    record.role = input.role
+    record.executable = input.executable
+    record.cwd = input.cwd
+    record.startedAt = Date.now()
     this.sessions.set(input.sessionId, record)
 
     const child = pty.spawn(input.executable, input.args, {
@@ -61,7 +104,9 @@ export class PtyRuntimeRegistry {
       cols: input.cols,
       rows: input.rows,
       cwd: input.cwd,
-      env: input.env ? { ...process.env, ...input.env } as Record<string, string> : process.env as Record<string, string>,
+      env: input.env
+        ? ({ ...process.env, ...input.env } as Record<string, string>)
+        : (process.env as Record<string, string>)
     })
 
     record.process = child
@@ -74,7 +119,7 @@ export class PtyRuntimeRegistry {
       record.process = null
       const exit: PtyExitState = {
         exitCode,
-        signal: signal !== undefined ? String(signal) : null,
+        signal: signal !== undefined ? String(signal) : null
       }
       this.hooks.onExit(input.sessionId, exit)
 
@@ -135,4 +180,88 @@ export class PtyRuntimeRegistry {
   isRunning(sessionId: string): boolean {
     return !!this.sessions.get(sessionId)?.process
   }
+
+  async snapshotResources(): Promise<PtyRuntimeResourceSnapshot[]> {
+    const entries = Array.from(this.sessions.entries()).filter(([, record]) => !!record.process)
+
+    if (entries.length === 0) {
+      return []
+    }
+
+    const processTable = await readProcessTable()
+
+    return entries.map(([id, record]) => {
+      const pid = record.process?.pid ?? 0
+      const tree = processTable ? collectProcessTree(pid, processTable) : null
+      const rssKB = tree?.reduce((total, row) => total + row.rssKB, 0) ?? null
+
+      return {
+        id,
+        role: record.role,
+        pid,
+        executable: record.executable,
+        cwd: record.cwd,
+        running: !!record.process,
+        startedAt: record.startedAt,
+        cols: record.cols,
+        rows: record.rows,
+        rssMB: rssKB === null ? null : Math.round((rssKB / 1024) * 100) / 100,
+        descendantCount: tree === null ? null : Math.max(0, tree.length - 1)
+      }
+    })
+  }
+}
+
+async function readProcessTable(): Promise<Map<number, ProcessTableRow> | null> {
+  try {
+    const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,ppid=,rss='])
+    const rows = new Map<number, ProcessTableRow>()
+
+    for (const line of stdout.split('\n')) {
+      const [pidRaw, ppidRaw, rssRaw] = line.trim().split(/\s+/)
+      const pid = Number.parseInt(pidRaw ?? '', 10)
+      const ppid = Number.parseInt(ppidRaw ?? '', 10)
+      const rssKB = Number.parseInt(rssRaw ?? '', 10)
+
+      if (!Number.isFinite(pid) || !Number.isFinite(ppid) || !Number.isFinite(rssKB)) {
+        continue
+      }
+
+      rows.set(pid, { pid, ppid, rssKB })
+    }
+
+    return rows
+  } catch {
+    return null
+  }
+}
+
+function collectProcessTree(
+  rootPid: number,
+  rows: Map<number, ProcessTableRow>
+): ProcessTableRow[] {
+  const root = rows.get(rootPid)
+  if (!root) {
+    return []
+  }
+
+  const result: ProcessTableRow[] = [root]
+  const queue = [rootPid]
+
+  while (queue.length > 0) {
+    const parentPid = queue.shift()
+    if (parentPid === undefined) {
+      break
+    }
+
+    for (const row of rows.values()) {
+      if (row.ppid !== parentPid) {
+        continue
+      }
+      result.push(row)
+      queue.push(row.pid)
+    }
+  }
+
+  return result
 }
