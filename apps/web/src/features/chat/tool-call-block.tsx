@@ -1,63 +1,46 @@
-// Input: UIMessage tool parts, cn utility, lucide icons
-// Output: ToolCallBlock — collapsible inline tool invocation display
+// Input: UIMessage tool parts, cn utility
+// Output: ToolCallBlock — ambient inline tool step, status via left-rail color
 // Position: Sub-component of message bubble for rendering tool call/result parts
 
-import {
-  AlertCircleIcon,
-  CheckCircle2Icon,
-  ChevronRightIcon,
-  FileEditIcon,
-  FileSearchIcon,
-  LoaderCircleIcon,
-  SearchIcon,
-  TerminalIcon,
-  WrenchIcon,
-} from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
-type ToolIconKind = 'file-search' | 'file-edit' | 'search' | 'terminal' | 'wrench'
-
-const TOOL_ICON_MAP = new Map<string, ToolIconKind>([
-  ['read_file', 'file-search'],
-  ['write_file', 'file-edit'],
-  ['edit_file', 'file-edit'],
-  ['search', 'search'],
-  ['grep', 'search'],
-  ['bash', 'terminal'],
-  ['shell', 'terminal'],
-  ['terminal', 'terminal'],
-])
-
-const TOOL_ICON_RE = /read_file|write_file|edit_file|search|grep|bash|shell|terminal/
-
-function getToolIconKind(toolName: string): ToolIconKind {
-  const match = toolName.toLowerCase().match(TOOL_ICON_RE)
-  if (!match) {
-    return 'wrench'
-  }
-  return TOOL_ICON_MAP.get(match[0]) ?? 'wrench'
+const TOOL_LABEL_MAP: Record<string, string> = {
+  read_file: 'Reading',
+  write_file: 'Writing',
+  edit_file: 'Editing',
+  search: 'Searching',
+  grep: 'Grepping',
+  bash: 'Running',
+  shell: 'Running',
+  terminal: 'Running',
 }
 
-function ToolIcon({ toolName, className }: { toolName: string, className?: string }) {
-  switch (getToolIconKind(toolName)) {
-    case 'file-search':
-      return <FileSearchIcon className={className} aria-hidden="true" />
-    case 'file-edit':
-      return <FileEditIcon className={className} aria-hidden="true" />
-    case 'search':
-      return <SearchIcon className={className} aria-hidden="true" />
-    case 'terminal':
-      return <TerminalIcon className={className} aria-hidden="true" />
-    default:
-      return <WrenchIcon className={className} aria-hidden="true" />
+function getToolLabel(toolName: string): string {
+  const lower = toolName.toLowerCase()
+  for (const [key, label] of Object.entries(TOOL_LABEL_MAP)) {
+    if (lower.includes(key)) return label
   }
+  return 'Using'
 }
 
-type ToolState = 'input-streaming'
+function getToolTarget(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null
+  const obj = input as Record<string, unknown>
+  const candidate = obj.path ?? obj.file ?? obj.filename ?? obj.command ?? obj.query
+  if (typeof candidate === 'string' && candidate.length > 0) {
+    // Trim long paths to last segment
+    const parts = candidate.split('/')
+    return parts.at(-1) ?? candidate
+  }
+  return null
+}
+
+type ToolState =
+  | 'input-streaming'
   | 'input-available'
   | 'approval-requested'
   | 'approval-responded'
@@ -72,19 +55,12 @@ interface ToolCallBlockProps {
   input?: unknown
   output?: unknown
   errorText?: string
-  /** Nested content rendered inline when expanded (e.g. subagent parts). */
   children?: ReactNode
 }
 
-function formatToolPanelValue(value: unknown, fallback: string): string {
-  if (typeof value === 'string') {
-    return value.length > 0 ? value : fallback
-  }
-
-  if (typeof value === 'undefined') {
-    return fallback
-  }
-
+function formatValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'undefined') return ''
   return JSON.stringify(value, null, 2)
 }
 
@@ -100,43 +76,68 @@ export function ToolCallBlock({
   const [expanded, setExpanded] = useState(false)
 
   const isRunning = state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
-  const isDone = state === 'output-available'
+  const isDone = state === 'output-available' || state === 'approval-responded'
   const isError = state === 'output-error' || state === 'output-denied'
 
-  const StatusIcon = isRunning
-    ? LoaderCircleIcon
-    : isDone
-      ? CheckCircle2Icon
-      : isError
-        ? AlertCircleIcon
-        : LoaderCircleIcon
+  const label = getToolLabel(toolName)
+  const target = getToolTarget(input)
 
   return (
-    <div className="my-0.5" data-testid={`chat-tool-call-${toolCallId}`} data-tool-name={toolName}>
+    <div
+      className="my-0.5"
+      data-testid={`chat-tool-call-${toolCallId}`}
+      data-tool-name={toolName}
+    >
       <button
         type="button"
         onClick={() => setExpanded(v => !v)}
         data-testid={`chat-tool-call-toggle-${toolCallId}`}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors w-full text-left',
-          'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+          'group/tool relative flex items-center gap-2 pl-3 pr-2 py-1 rounded-sm w-full text-left',
+          'transition-colors duration-200',
+          'hover:bg-muted/40',
+          // State-driven opacity — done steps recede
+          isDone && 'opacity-50 hover:opacity-100',
         )}
       >
-        <ToolIcon toolName={toolName} className="size-3.5" />
-        <span className="font-medium flex-1 w-full truncate">{toolName}</span>
-        <StatusIcon
+        {/* Status rail — the sole visual indicator of state */}
+        <span
           className={cn(
-            'size-3',
-            isRunning && 'animate-spin text-primary/70',
-            isDone && 'text-emerald-500',
-            isError && 'text-destructive',
+            'absolute left-0 top-1 bottom-1 w-[2px] rounded-full',
+            'transition-colors duration-500',
+            isRunning && 'bg-amber-400/70',
+            isDone && 'bg-emerald-500/40',
+            isError && 'bg-destructive/60',
+            // Shimmer sweep on the rail while running
+            isRunning && 'animate-[shimmer_1.4s_linear_infinite]',
           )}
           aria-hidden="true"
+          style={isRunning ? {
+            maskImage: 'linear-gradient(90deg, transparent 0%, black 40%, black 60%, transparent 100%)',
+            maskSize: '200% 100%',
+          } : undefined}
         />
-        <ChevronRightIcon
-          className={cn('size-3 transition-transform duration-150', expanded && 'rotate-90')}
-          aria-hidden="true"
-        />
+
+        <span className={cn(
+          'font-mono text-[11px] leading-none',
+          isRunning && 'text-foreground/70',
+          isDone && 'text-muted-foreground',
+          isError && 'text-destructive/80',
+        )}>
+          {label}
+          {target && (
+            <span className="text-muted-foreground/60 ml-1">{target}</span>
+          )}
+        </span>
+
+        {/* Expand hint — only visible on hover once there's something to show */}
+        {(input !== undefined || output !== undefined || errorText || children) && (
+          <span className={cn(
+            'ml-auto text-[10px] text-muted-foreground/40 opacity-0 group-hover/tool:opacity-100 transition-opacity',
+          )}>
+            {expanded ? 'hide' : 'details'}
+          </span>
+        )}
       </button>
 
       <AnimatePresence initial={false}>
@@ -146,48 +147,43 @@ export function ToolCallBlock({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             className="overflow-hidden"
           >
+            {/* Gradient mask so content fades in from the top */}
             <div
-              className="mt-1 ml-2 space-y-1.5 border-l-2 border-muted pl-3 text-xs"
+              className="ml-3 pl-3 border-l border-border/40 py-1.5 space-y-1.5"
               data-testid={`chat-tool-call-content-${toolCallId}`}
+              style={{
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 12px)',
+              }}
             >
               {input !== undefined && (
-                <div>
-                  <span className="text-[10px] text-muted-foreground/60">Input</span>
-                  <pre
-                    className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-wrap break-all"
-                    data-testid={`chat-tool-call-input-${toolCallId}`}
-                  >
-                    {formatToolPanelValue(input, 'No input captured')}
-                  </pre>
-                </div>
+                <pre
+                  className="text-[10px] leading-relaxed text-muted-foreground/60 whitespace-pre-wrap break-all max-h-32 overflow-auto"
+                  data-testid={`chat-tool-call-input-${toolCallId}`}
+                >
+                  {formatValue(input)}
+                </pre>
               )}
               {(output !== undefined || isDone) && (
-                <div>
-                  <span className="text-[10px] text-muted-foreground/60">Output</span>
-                  <pre
-                    className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all"
-                    data-testid={`chat-tool-call-output-${toolCallId}`}
-                  >
-                    {formatToolPanelValue(output, 'No output captured')}
-                  </pre>
-                </div>
+                <pre
+                  className="text-[10px] leading-relaxed text-muted-foreground/40 whitespace-pre-wrap break-all max-h-32 overflow-auto"
+                  data-testid={`chat-tool-call-output-${toolCallId}`}
+                >
+                  {formatValue(output)}
+                </pre>
               )}
               {errorText && (
-                <div>
-                  <span className="text-[10px] text-destructive/70">Error</span>
-                  <pre
-                    className="mt-0.5 rounded bg-destructive/5 p-2 text-destructive/80 whitespace-pre-wrap break-all"
-                    data-testid={`chat-tool-call-error-${toolCallId}`}
-                  >
-                    {errorText}
-                  </pre>
-                </div>
+                <pre
+                  className="text-[10px] leading-relaxed text-destructive/60 whitespace-pre-wrap break-all"
+                  data-testid={`chat-tool-call-error-${toolCallId}`}
+                >
+                  {errorText}
+                </pre>
               )}
               {children && (
-                <div className="mt-1.5 space-y-1">
+                <div className="mt-1 space-y-0.5">
                   {children}
                 </div>
               )}

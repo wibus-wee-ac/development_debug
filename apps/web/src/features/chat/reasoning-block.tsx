@@ -1,9 +1,8 @@
-// Input: UIMessage parts (reasoning), Streamdown, cn utility, lucide icons
-// Output: ReasoningBlock — collapsible inline thinking chain display with Markdown
+// Input: UIMessage reasoning parts, Streamdown renderer
+// Output: ReasoningBlock — ambient thinking trace, minimal chrome
 // Position: Sub-component of message bubble for rendering reasoning/thinking parts
 
 import { Streamdown } from '@cradle/streamdown'
-import { BrainIcon, ChevronRightIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
 
@@ -27,16 +26,30 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
         onClick={() => setExpanded(v => !v)}
         data-testid="chat-reasoning-toggle"
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs transition-colors',
-          'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+          'group/reason flex items-center gap-1.5 rounded-sm px-0 py-0.5 text-[11px]',
+          'text-muted-foreground/50 hover:text-muted-foreground transition-colors duration-150',
+          'italic leading-none',
         )}
       >
-        <BrainIcon className={cn('size-3.5', isStreaming && 'animate-pulse text-primary/70')} aria-hidden="true" />
-        <span>{isStreaming ? '思考中...' : '思考过程'}</span>
-        <ChevronRightIcon
-          className={cn('size-3 transition-transform duration-150', expanded && 'rotate-90')}
+        {/* Pulse dot while streaming — only indicator */}
+        <span
+          className={cn(
+            'inline-block size-1 rounded-full flex-shrink-0',
+            'transition-colors duration-300',
+            isStreaming
+              ? 'bg-primary/50 animate-pulse'
+              : 'bg-muted-foreground/25',
+          )}
           aria-hidden="true"
         />
+        <span>
+          {isStreaming ? 'thinking' : 'thought'}
+        </span>
+        <span className={cn(
+          'text-[10px] not-italic opacity-0 group-hover/reason:opacity-100 transition-opacity ml-0.5',
+        )}>
+          {expanded ? '↑' : '↓'}
+        </span>
       </button>
 
       <AnimatePresence initial={false}>
@@ -46,12 +59,15 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+            transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
             className="overflow-hidden"
           >
             <div
               data-testid="chat-reasoning-content"
-              className="mt-1 ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed"
+              className="mt-1 pl-3 border-l border-border/30 text-[11px] text-muted-foreground/45 leading-relaxed italic"
+              style={{
+                maskImage: 'linear-gradient(to bottom, transparent 0%, black 10px)',
+              }}
             >
               <Streamdown
                 content={text}

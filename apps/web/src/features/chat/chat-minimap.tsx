@@ -3,7 +3,8 @@
 // Position: Overlay component pinned to the right edge of the chat scroll area
 
 import type { UIMessage } from 'ai'
-import { memo, useCallback, useMemo, useReducer, useRef } from 'react'
+import type { ForwardedRef } from 'react'
+import { forwardRef, memo, useCallback, useImperativeHandle, useMemo, useReducer, useRef } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -11,13 +12,14 @@ import { cn } from '~/lib/cn'
 
 interface ChatMinimapProps {
   messages: UIMessage[]
-  scrollOffset: number
   scrollHeight: number
   viewportHeight: number
-  /** Per-message reading progress (0–1), computed from real virtualizer item positions. */
-  barProgress: number[]
   onScrollToIndex: (index: number) => void
   onScrollTo: (offset: number) => void
+}
+
+export interface ChatMinimapHandle {
+  setScrollProgress: (progress: number) => void
 }
 
 interface ChatMinimapUiState {
@@ -95,18 +97,22 @@ function barWidth(text: string): number {
   return 50 + normalized * 50
 }
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 function ChatMinimapInner({
   messages,
-  scrollOffset: _scrollOffset,
   scrollHeight,
   viewportHeight,
-  barProgress,
   onScrollToIndex,
   onScrollTo,
-}: ChatMinimapProps) {
+}: ChatMinimapProps, ref: ForwardedRef<ChatMinimapHandle>) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const barProgressRef = useRef<Array<HTMLDivElement | null>>([])
+  const barProgressValuesRef = useRef<number[]>([])
   const [uiState, dispatch] = useReducer(chatMinimapUiReducer, initialChatMinimapUiState)
 
   // Precompute bar data
@@ -123,9 +129,36 @@ function ChatMinimapInner({
   )
 
   const hoveredBar = uiState.hoverIdx !== null ? bars[uiState.hoverIdx] : null
+  const scrollable = Math.max(scrollHeight - viewportHeight, 1)
 
-  // Viewport position (for future use)
-  const scrollable = (scrollHeight - viewportHeight) || 1
+  const setScrollProgress = useCallback((progress: number) => {
+    const nextProgress = clamp01(progress)
+    const visualPosition = nextProgress * bars.length
+    const activeIndex = nextProgress >= 1 ? bars.length - 1 : Math.floor(visualPosition)
+    const activeProgress = nextProgress >= 1 ? 1 : visualPosition - activeIndex
+
+    for (let index = 0; index < bars.length; index++) {
+      const fill = barProgressRef.current[index]
+      if (!fill) {
+        continue
+      }
+
+      const scale = index < activeIndex
+        ? 1
+        : index === activeIndex
+          ? activeProgress
+          : 0
+
+      if (barProgressValuesRef.current[index] === scale) {
+        continue
+      }
+
+      barProgressValuesRef.current[index] = scale
+      fill.style.transform = `scaleX(${scale})`
+    }
+  }, [bars.length])
+
+  useImperativeHandle(ref, () => ({ setScrollProgress }), [setScrollProgress])
 
   // Map mouse Y → message index
   const yToIndex = useCallback(
@@ -136,7 +169,7 @@ function ChatMinimapInner({
       const ratio = Math.max(0, Math.min(1, y / height))
       return Math.min(Math.floor(ratio * bars.length), bars.length - 1)
     },
-    [bars],
+    [bars.length],
   )
 
   // Map mouse Y → scroll offset
@@ -200,6 +233,19 @@ function ChatMinimapInner({
     dispatch({ type: 'pointer-leave' })
   }, [])
 
+  const scrollToEventMessage = useCallback(
+    (clientY: number) => {
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (!rect) {
+        return
+      }
+
+      const y = Math.max(0, Math.min(clientY - rect.top, rect.height))
+      onScrollToIndex(yToIndex(y, rect.height))
+    },
+    [onScrollToIndex, yToIndex],
+  )
+
   const scrollToHoveredMessage = useCallback(() => {
     if (uiState.hoverIdx !== null) {
       onScrollToIndex(uiState.hoverIdx)
@@ -220,7 +266,6 @@ function ChatMinimapInner({
       className="absolute -right-2 top-0 bottom-0 z-10 flex w-8 items-center justify-center"
       aria-hidden="true"
     >
-      {/* Bar group — pointer events only on the actual bars */}
       <div
         ref={containerRef}
         role="button"
@@ -230,15 +275,14 @@ function ChatMinimapInner({
             scrollToHoveredMessage()
           }
         }}
-        className="relative flex w-full cursor-pointer flex-col items-center gap-1"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        onClick={scrollToHoveredMessage}
+        onClick={e => scrollToEventMessage(e.clientY)}
+        className="relative flex w-full cursor-pointer flex-col items-center gap-1"
       >
         {bars.map((bar, i) => {
-          const progress = barProgress[i] ?? 0
           return (
             <div
               key={messages[i].id}
@@ -251,17 +295,19 @@ function ChatMinimapInner({
               )}
               style={{ width: `${bar.width}%` }}
             >
-              {/* Reading progress fill */}
               <div
+                ref={(node) => {
+                  barProgressRef.current[i] = node
+                }}
                 className={cn(
-                  'absolute inset-y-0 left-0 rounded-full',
+                  'absolute inset-y-0 left-0 w-full origin-left rounded-full transform-gpu',
                   uiState.hoverIdx === i
                     ? 'bg-accent'
                     : bar.role === 'user'
                       ? 'bg-foreground/30'
                       : 'bg-foreground/15',
                 )}
-                style={{ width: `${progress * 100}%` }}
+                style={{ transform: 'scaleX(0)' }}
               />
             </div>
           )
@@ -297,4 +343,7 @@ function ChatMinimapInner({
   )
 }
 
-export const ChatMinimap = memo(ChatMinimapInner)
+const ChatMinimapWithRef = memo(forwardRef(ChatMinimapInner))
+ChatMinimapWithRef.displayName = 'ChatMinimap'
+
+export { ChatMinimapWithRef as ChatMinimap }
