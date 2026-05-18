@@ -7,6 +7,7 @@ import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
 
 import {
   buildDocumentReadyExpression,
+  buildElementClickExpression,
   buildEditableSelectionExpression,
   buildElementCenterExpression,
   buildFocusedEditableStateExpression,
@@ -198,27 +199,13 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: box } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: buildElementCenterExpression(cmd.selector),
+        const { result: { value: click } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildElementClickExpression(cmd.selector),
           returnByValue: true,
         })
-        if (!box) {
+        if (!click?.found) {
           throw new Error(`Element not found: ${cmd.selector}`)
         }
-        await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
-          type: 'mousePressed',
-          x: box.x,
-          y: box.y,
-          button: 'left',
-          clickCount: 1,
-        })
-        await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
-          type: 'mouseReleased',
-          x: box.x,
-          y: box.y,
-          button: 'left',
-          clickCount: 1,
-        })
         const data: ClickResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }

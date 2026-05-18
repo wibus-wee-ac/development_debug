@@ -169,6 +169,34 @@ export function buildElementCenterExpression(selector: string): string {
   })()`
 }
 
+export function buildElementClickExpression(selector: string): string {
+  return `(() => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return { found: false, clicked: false };
+    el.scrollIntoView?.({ block: 'center', inline: 'center' });
+    const r = el.getBoundingClientRect();
+    const eventInit = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: r.x + r.width / 2,
+      clientY: r.y + r.height / 2,
+      button: 0,
+    };
+    el.dispatchEvent(new MouseEvent('mouseover', eventInit));
+    el.dispatchEvent(new MouseEvent('mousemove', eventInit));
+    el.dispatchEvent(new MouseEvent('mousedown', eventInit));
+    el.dispatchEvent(new MouseEvent('mouseup', eventInit));
+    if (typeof el.click === 'function') {
+      el.click();
+    }
+    else {
+      el.dispatchEvent(new MouseEvent('click', eventInit));
+    }
+    return { found: true, clicked: true };
+  })()`
+}
+
 export function buildEditableSelectionExpression(selector: string): string {
   return `(() => {
     const el = document.querySelector(${JSON.stringify(selector)});
