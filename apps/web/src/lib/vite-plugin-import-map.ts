@@ -12,10 +12,11 @@ import type { Plugin, ViteDevServer } from 'vite'
 export function pluginImportMap(): Plugin {
   let devServer: ViteDevServer | undefined
 
-  // Wrapper module templates — re-export named props from default
+  // Wrapper module templates — expose host's React instance to plugins
+  // Uses window.__CRADLE_SHARED__ set in main.tsx to ensure same React instance
   const wrapperModules: Record<string, string> = {
     'react.mjs': `
-import __mod from '/node_modules/.vite/deps/react.js';
+const __mod = window.__CRADLE_SHARED__['react'];
 export default __mod;
 export const {
   Children, Component, Fragment, Profiler, PureComponent, StrictMode, Suspense,
@@ -27,17 +28,17 @@ export const {
 } = __mod;
 `,
     'react-dom.mjs': `
-import __mod from '/node_modules/.vite/deps/react-dom.js';
+const __mod = window.__CRADLE_SHARED__['react-dom'];
 export default __mod;
 export const { createPortal, flushSync, unstable_batchedUpdates, version } = __mod;
 `,
     'react-jsx-runtime.mjs': `
-import __mod from '/node_modules/.vite/deps/react_jsx-runtime.js';
+const __mod = window.__CRADLE_SHARED__['react/jsx-runtime'];
 export default __mod;
 export const { jsx, jsxs, jsxDEV, Fragment } = __mod;
 `,
     'react-dom-client.mjs': `
-import __mod from '/node_modules/.vite/deps/react-dom_client.js';
+const __mod = window.__CRADLE_SHARED__['react-dom/client'];
 export default __mod;
 export const { createRoot, hydrateRoot } = __mod;
 `,

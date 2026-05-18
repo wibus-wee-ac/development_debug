@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
-
-import { cn } from '~/lib/cn'
+import { useMemo } from 'react'
+import { Handle, Position, ReactFlow, type Edge, type Node } from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
 
 interface PluginGraphProps {
   plugins: Array<{
@@ -14,221 +14,210 @@ interface PluginGraphProps {
   commands: Array<{ id: string; title: string }>
 }
 
-interface NodePos {
-  x: number
-  y: number
-  label: string
-  color: string
+// --- Custom Node Components ---
+
+const PLATFORM_COLORS: Record<string, string> = {
+  server: '#3b82f6',
+  web: '#a855f7',
+  desktop: '#f59e0b',
 }
 
-const PLATFORMS = [
-  { id: 'server', label: 'Server', color: '#3b82f6' },
-  { id: 'web', label: 'Web', color: '#a855f7' },
-  { id: 'desktop', label: 'Desktop', color: '#f59e0b' },
-] as const
+function PlatformNode({ data }: { data: { label: string; color: string } }) {
+  return (
+    <div
+      className="flex items-center justify-center rounded-full px-3 py-1"
+      style={{
+        border: `1.5px solid ${data.color}`,
+        background: `${data.color}15`,
+      }}
+    >
+      <span
+        className="font-mono text-[11px] font-medium"
+        style={{ color: data.color }}
+      >
+        {data.label}
+      </span>
+      <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1 }} />
+    </div>
+  )
+}
+
+function PluginNode({ data }: { data: { label: string; active: boolean; version?: string } }) {
+  return (
+    <div
+      className="flex items-center gap-2 rounded-md px-3 py-1.5"
+      style={{
+        background: 'var(--color-fill)',
+        border: '1px solid var(--color-border)',
+      }}
+    >
+      <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1 }} />
+      <span
+        className="inline-block size-1.5 rounded-full"
+        style={{ background: data.active ? '#22c55e' : '#6b7280' }}
+      />
+      <span className="font-mono text-[11px]" style={{ color: 'var(--color-foreground)' }}>
+        {data.label}
+      </span>
+      {data.version && (
+        <span className="font-mono text-[9px]" style={{ color: 'var(--color-foreground)', opacity: 0.4 }}>
+          {data.version}
+        </span>
+      )}
+      <Handle type="source" position={Position.Right} style={{ opacity: 0, width: 1, height: 1 }} />
+    </div>
+  )
+}
+
+function CapabilityNode({ data }: { data: { label: string } }) {
+  return (
+    <div
+      className="flex items-center justify-center rounded-full px-3 py-1"
+      style={{
+        border: '1.5px solid #22c55e',
+        background: '#22c55e15',
+      }}
+    >
+      <Handle type="target" position={Position.Left} style={{ opacity: 0, width: 1, height: 1 }} />
+      <span className="font-mono text-[11px] font-medium" style={{ color: '#22c55e' }}>
+        {data.label}
+      </span>
+    </div>
+  )
+}
+
+const nodeTypes = {
+  platform: PlatformNode,
+  plugin: PluginNode,
+  capability: CapabilityNode,
+}
+
+// --- Main Component ---
 
 export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
-  const [hovered, setHovered] = useState<string | null>(null)
-  const [mounted, setMounted] = useState(false)
-  const svgRef = useRef<SVGSVGElement>(null)
+  const { nodes, edges } = useMemo(() => {
+    if (plugins.length === 0) return { nodes: [], edges: [] }
 
-  useEffect(() => {
-    const t = setTimeout(() => setMounted(true), 50)
-    return () => clearTimeout(t)
-  }, [])
+    const flowNodes: Node[] = []
+    const flowEdges: Edge[] = []
+
+    // Platform nodes (left column)
+    const platforms = [
+      { id: 'platform-server', label: 'Server', color: PLATFORM_COLORS.server },
+      { id: 'platform-web', label: 'Web', color: PLATFORM_COLORS.web },
+      { id: 'platform-desktop', label: 'Desktop', color: PLATFORM_COLORS.desktop },
+    ]
+    const platformSpacing = 300 / (platforms.length + 1)
+    for (let i = 0; i < platforms.length; i++) {
+      flowNodes.push({
+        id: platforms[i].id,
+        type: 'platform',
+        position: { x: 0, y: platformSpacing * (i + 1) - 15 },
+        data: { label: platforms[i].label, color: platforms[i].color },
+      })
+    }
+
+    // Plugin nodes (center column)
+    const pluginSpacing = 300 / (plugins.length + 1)
+    for (let i = 0; i < plugins.length; i++) {
+      const p = plugins[i]
+      flowNodes.push({
+        id: `plugin-${p.name}`,
+        type: 'plugin',
+        position: { x: 220, y: pluginSpacing * (i + 1) - 15 },
+        data: {
+          label: p.displayName || p.name,
+          active: p.hasServer || p.hasWeb || p.hasDesktop,
+        },
+      })
+
+      // Edges from platform → plugin
+      if (p.hasServer) {
+        flowEdges.push({
+          id: `e-server-${p.name}`,
+          source: 'platform-server',
+          target: `plugin-${p.name}`,
+          type: 'smoothstep',
+          style: { stroke: `${PLATFORM_COLORS.server}66`, strokeWidth: 1.5 },
+          animated: true,
+        })
+      }
+      if (p.hasWeb) {
+        flowEdges.push({
+          id: `e-web-${p.name}`,
+          source: 'platform-web',
+          target: `plugin-${p.name}`,
+          type: 'smoothstep',
+          style: { stroke: `${PLATFORM_COLORS.web}66`, strokeWidth: 1.5 },
+          animated: true,
+        })
+      }
+      if (p.hasDesktop) {
+        flowEdges.push({
+          id: `e-desktop-${p.name}`,
+          source: 'platform-desktop',
+          target: `plugin-${p.name}`,
+          type: 'smoothstep',
+          style: { stroke: `${PLATFORM_COLORS.desktop}66`, strokeWidth: 1.5 },
+          animated: true,
+        })
+      }
+    }
+
+    // Capability nodes (right column)
+    const capabilities: Array<{ id: string; label: string }> = []
+    capabilities.push({ id: 'cap-panels', label: `${panels.length} Panels` })
+    capabilities.push({ id: 'cap-commands', label: `${commands.length} Commands` })
+
+    const capSpacing = 300 / (capabilities.length + 1)
+    for (let i = 0; i < capabilities.length; i++) {
+      flowNodes.push({
+        id: capabilities[i].id,
+        type: 'capability',
+        position: { x: 460, y: capSpacing * (i + 1) - 15 },
+        data: { label: capabilities[i].label },
+      })
+    }
+
+    // Edges from plugin → capability (if plugin has web entry)
+    for (const p of plugins) {
+      if (p.hasWeb) {
+        for (const cap of capabilities) {
+          flowEdges.push({
+            id: `e-${p.name}-${cap.id}`,
+            source: `plugin-${p.name}`,
+            target: cap.id,
+            type: 'smoothstep',
+            style: { stroke: '#22c55e66', strokeWidth: 1.5 },
+          })
+        }
+      }
+    }
+
+    return { nodes: flowNodes, edges: flowEdges }
+  }, [plugins, panels, commands])
 
   if (plugins.length === 0) return null
 
-  // Layout constants
-  const W = 600
-  const H = Math.max(200, plugins.length * 50 + 40)
-  const leftX = 70
-  const midX = W / 2
-  const rightX = W - 70
-
-  // Capabilities derived from data
-  const capabilities: Array<{ id: string; label: string; count: number }> = []
-  if (panels.length > 0) capabilities.push({ id: 'panels', label: `Panels (${panels.length})`, count: panels.length })
-  if (commands.length > 0) capabilities.push({ id: 'commands', label: `Commands (${commands.length})`, count: commands.length })
-  // Always show at least placeholder capabilities
-  if (capabilities.length === 0) {
-    capabilities.push({ id: 'panels', label: 'Panels (0)', count: 0 })
-    capabilities.push({ id: 'commands', label: 'Commands (0)', count: 0 })
-  }
-
-  // Platform positions (left)
-  const platformNodes: NodePos[] = PLATFORMS.map((p, i) => ({
-    x: leftX,
-    y: (H / (PLATFORMS.length + 1)) * (i + 1),
-    label: p.label,
-    color: p.color,
-  }))
-
-  // Plugin positions (center)
-  const pluginNodes = plugins.map((p, i) => ({
-    x: midX,
-    y: (H / (plugins.length + 1)) * (i + 1),
-    name: p.name,
-    label: p.displayName || p.name,
-  }))
-
-  // Capability positions (right)
-  const capNodes: NodePos[] = capabilities.map((c, i) => ({
-    x: rightX,
-    y: (H / (capabilities.length + 1)) * (i + 1),
-    label: c.label,
-    color: '#22c55e',
-  }))
-
-  // Build edges
-  type Edge = { from: { x: number; y: number }; to: { x: number; y: number }; color: string; pluginName: string }
-  const edges: Edge[] = []
-
-  for (const pNode of pluginNodes) {
-    const plugin = plugins.find(p => p.name === pNode.name)!
-    // Edges to platforms
-    if (plugin.hasServer) {
-      edges.push({ from: pNode, to: platformNodes[0], color: PLATFORMS[0].color, pluginName: pNode.name })
-    }
-    if (plugin.hasWeb) {
-      edges.push({ from: pNode, to: platformNodes[1], color: PLATFORMS[1].color, pluginName: pNode.name })
-    }
-    if (plugin.hasDesktop) {
-      edges.push({ from: pNode, to: platformNodes[2], color: PLATFORMS[2].color, pluginName: pNode.name })
-    }
-    // Edges to capabilities only for plugins that have web (they provide panels/commands)
-    if (plugin.hasWeb) {
-      for (const cap of capNodes) {
-        edges.push({ from: pNode, to: cap, color: '#22c55e', pluginName: pNode.name })
-      }
-    }
-  }
-
-  function bezierPath(from: { x: number; y: number }, to: { x: number; y: number }) {
-    const dx = (to.x - from.x) / 3
-    return `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`
-  }
-
-  function edgeOpacity(edge: Edge) {
-    if (!hovered) return mounted ? 0.3 : 0
-    return edge.pluginName === hovered ? 0.7 : 0.08
-  }
-
   return (
-    <div className="mb-4 w-full overflow-hidden rounded border border-border">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full"
-        style={{ height: `${Math.min(H, 250)}px` }}
-      >
-        {/* Edges */}
-        {edges.map((edge, i) => (
-          <path
-            key={i}
-            d={bezierPath(edge.from, edge.to)}
-            fill="none"
-            stroke={edge.color}
-            strokeWidth={1.5}
-            opacity={edgeOpacity(edge)}
-            className="transition-opacity duration-300"
-          />
-        ))}
-
-        {/* Platform nodes (left) */}
-        {platformNodes.map((node, i) => (
-          <g key={`platform-${i}`}>
-            <rect
-              x={node.x - 40}
-              y={node.y - 12}
-              width={80}
-              height={24}
-              rx={4}
-              fill="currentColor"
-              className="text-fill"
-              stroke={node.color}
-              strokeWidth={1}
-              opacity={0.9}
-            />
-            <text
-              x={node.x}
-              y={node.y + 4}
-              textAnchor="middle"
-              fill={node.color}
-              fontSize={10}
-              fontFamily="monospace"
-            >
-              {node.label}
-            </text>
-          </g>
-        ))}
-
-        {/* Plugin nodes (center) */}
-        {pluginNodes.map((node, i) => (
-          <g
-            key={`plugin-${i}`}
-            onMouseEnter={() => setHovered(node.name)}
-            onMouseLeave={() => setHovered(null)}
-            className="cursor-pointer"
-          >
-            <rect
-              x={node.x - 55}
-              y={node.y - 14}
-              width={110}
-              height={28}
-              rx={4}
-              fill="currentColor"
-              className={cn(
-                'transition-all duration-150',
-                hovered === node.name ? 'text-foreground/10' : 'text-fill',
-              )}
-              stroke="currentColor"
-              strokeWidth={1}
-              style={{ stroke: hovered === node.name ? 'var(--color-foreground)' : 'var(--color-border)' }}
-            />
-            <text
-              x={node.x}
-              y={node.y + 4}
-              textAnchor="middle"
-              fill="currentColor"
-              className="text-foreground"
-              fontSize={11}
-              fontFamily="monospace"
-              fontWeight={hovered === node.name ? 600 : 400}
-            >
-              {node.label.length > 14 ? `${node.label.slice(0, 13)}…` : node.label}
-            </text>
-          </g>
-        ))}
-
-        {/* Capability nodes (right) */}
-        {capNodes.map((node, i) => (
-          <g key={`cap-${i}`}>
-            <rect
-              x={node.x - 50}
-              y={node.y - 12}
-              width={100}
-              height={24}
-              rx={4}
-              fill="currentColor"
-              className="text-fill"
-              stroke={node.color}
-              strokeWidth={1}
-              opacity={0.9}
-            />
-            <text
-              x={node.x}
-              y={node.y + 4}
-              textAnchor="middle"
-              fill={node.color}
-              fontSize={10}
-              fontFamily="monospace"
-            >
-              {node.label}
-            </text>
-          </g>
-        ))}
-      </svg>
+    <div className="mb-4 w-full overflow-hidden rounded border border-border" style={{ height: 300 }}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        proOptions={{ hideAttribution: true }}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        preventScrolling={false}
+        style={{ background: 'transparent' }}
+      />
     </div>
   )
 }

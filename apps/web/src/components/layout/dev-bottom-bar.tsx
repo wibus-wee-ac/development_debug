@@ -17,20 +17,23 @@ export function DevBottomBar() {
       </span>
 
       <div className="flex items-center gap-0.5">
-        {isElectron && (
-          <button
-            type="button"
-            title="Open DevTools window"
-            aria-label="Open DevTools"
-            onClick={() => {
-              window.cradle?.ipc.invoke('window.openDevtool')
+        <button
+          type="button"
+          title="Open DevTools window"
+          aria-label="Open DevTools"
+          onClick={() => {
+              if (isElectron) {
+                window.cradle?.ipc.invoke('window.openDevtool')
+              }
+              else {
+                window.open('/#/devtool', '_blank')
+              }
             }}
-            className="flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-          >
+          className="flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+        >
             <MonitorIcon className="inline-block size-3.5" aria-hidden="true" />
             DevTools
-          </button>
-        )}
+        </button>
         <button
           type="button"
           title="Hard reload (ignore cache)"
