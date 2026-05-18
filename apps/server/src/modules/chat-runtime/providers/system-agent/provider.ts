@@ -11,6 +11,7 @@ import type { UIMessageChunk } from 'ai'
 
 import { getServerConfig } from '../../../../infra'
 import * as Preferences from '../../../preferences/service'
+import { lookupModelRaw } from '../../../providers/model-info-registry'
 import {
   BaseProviderConfig,
   parseConfigWith,
@@ -28,9 +29,28 @@ import type {
 
 interface SystemAgentProviderDeps {
   readSecret: (credentialRef: string) => string
+  resolveSkillPaths: (workspacePath: string) => string[]
 }
 
 const RUNTIME_KIND: RuntimeKind = 'jar-core'
+
+/** Map Cradle's providerKind to jar-core's provider identifier */
+function inferProviderFromKind(providerKind: string): string {
+  switch (providerKind) {
+    case 'anthropic': return 'anthropic'
+    case 'openai-compatible': return 'openai'
+    default: return 'openai'
+  }
+}
+
+/** Infer jar-core API protocol from Cradle's providerKind */
+function inferApiFromKind(providerKind: string): string {
+  switch (providerKind) {
+    case 'anthropic': return 'anthropic-messages'
+    case 'openai-compatible': return 'openai-completions'
+    default: return 'openai-completions'
+  }
+}
 
 export class SystemAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
@@ -71,7 +91,7 @@ export class SystemAgentProvider implements ChatRuntime {
     const config = parseConfigWith(input.profile.configJson, SystemAgentConfigSchema)
     const baseConfig = parseConfigWith(input.profile.configJson, BaseProviderConfig)
 
-    const provider = config.provider ?? 'openai'
+    const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
     const model = jarvisPrefs.model ?? config.model ?? baseConfig.model ?? input.modelId
     const baseUrl = config.baseUrl ?? baseConfig.baseUrl
     if (!model) {
@@ -88,9 +108,10 @@ export class SystemAgentProvider implements ChatRuntime {
     const sessionId = input.runtimeSession.chatSessionId
 
     const serverCfg = getServerConfig()
-    const sessionsRootDir = serverCfg.dataDir
-      ? path.join(serverCfg.dataDir, 'jar-sessions')
-      : path.join(process.cwd(), 'data', 'jar-sessions')
+    const dataDir = serverCfg.dataDir ?? path.join(process.cwd(), 'data')
+    const sessionsRootDir = path.join(dataDir, 'jar-sessions')
+    // Jarvis operates from its own workspace within the data dir (independent of user workspaces)
+    const jarvisWorkspaceRoot = path.join(dataDir, 'jarvis-workspace')
 
     const runtimeConfigOptions: DefaultRuntimeConfigOptions = {
       provider,
@@ -98,7 +119,7 @@ export class SystemAgentProvider implements ChatRuntime {
       systemPrompt,
       thinkingLevel: thinkingLevel as DefaultRuntimeConfigOptions['thinkingLevel'],
       sessionsRootDir,
-      workspaceRoot: input.workspacePath ?? process.cwd(),
+      workspaceRoot: jarvisWorkspaceRoot,
     }
     if (apiKey) {
       runtimeConfigOptions.apiKey = apiKey
@@ -106,6 +127,75 @@ export class SystemAgentProvider implements ChatRuntime {
     if (baseUrl) {
       runtimeConfigOptions.baseUrl = baseUrl
     }
+    if (config.api) {
+      runtimeConfigOptions.api = config.api as DefaultRuntimeConfigOptions['api']
+    }
+    else {
+      // Always provide api protocol — jar-core requires it for non-builtin models
+      runtimeConfigOptions.api = inferApiFromKind(input.profile.providerKind) as DefaultRuntimeConfigOptions['api']
+    }
+
+    // Build per-model metadata from models.dev registry for non-builtin providers
+    const registryModel = await lookupModelRaw(model)
+    if (registryModel) {
+      const modelConfig: NonNullable<DefaultRuntimeConfigOptions['models']>[string] = {}
+      if (registryModel.limit?.context != null) {
+        modelConfig.contextWindow = registryModel.limit.context
+      }
+      if (registryModel.limit?.output != null) {
+        modelConfig.maxTokens = registryModel.limit.output
+      }
+      if (registryModel.reasoning != null) {
+        modelConfig.reasoning = registryModel.reasoning
+      }
+      if (registryModel.tool_call != null) {
+        modelConfig.toolCall = registryModel.tool_call
+      }
+      if (registryModel.modalities?.input) {
+        modelConfig.input = registryModel.modalities.input.filter(
+          (m): m is 'text' | 'image' => m === 'text' || m === 'image',
+        )
+      }
+      if (registryModel.cost) {
+        const cost: NonNullable<typeof modelConfig.cost> = {}
+        if (registryModel.cost.input != null) {
+          cost.input = registryModel.cost.input
+        }
+        if (registryModel.cost.output != null) {
+          cost.output = registryModel.cost.output
+        }
+        if (registryModel.cost.cache_read != null) {
+          cost.cacheRead = registryModel.cost.cache_read
+        }
+        if (registryModel.cost.cache_write != null) {
+          cost.cacheWrite = registryModel.cost.cache_write
+        }
+        if (Object.keys(cost).length > 0) {
+          modelConfig.cost = cost
+        }
+      }
+      if (config.headers) {
+        modelConfig.headers = config.headers
+      }
+      if (config.compat) {
+        modelConfig.compat = config.compat
+      }
+      if (Object.keys(modelConfig).length > 0) {
+        runtimeConfigOptions.models = { [model]: modelConfig }
+      }
+    }
+    else if (config.headers || config.compat) {
+      // Even without registry data, pass headers/compat if configured
+      const modelConfig: NonNullable<DefaultRuntimeConfigOptions['models']>[string] = {}
+      if (config.headers) {
+        modelConfig.headers = config.headers
+      }
+      if (config.compat) {
+        modelConfig.compat = config.compat
+      }
+      runtimeConfigOptions.models = { [model]: modelConfig }
+    }
+
     const jarConfig = await defaultRuntimeConfig(runtimeConfigOptions)
 
     const abortController = new AbortController()
@@ -156,7 +246,10 @@ export class SystemAgentProvider implements ChatRuntime {
       },
     }
 
-    executeIngressCommand({ config: jarConfig, command }).catch((err) => {
+    // Resolve skill roots — use jarvis workspace root (always has a valid path)
+    const skillRoots = this.deps.resolveSkillPaths(jarvisWorkspaceRoot)
+
+    executeIngressCommand({ config: jarConfig, command, pluginOverrides: { skillRoots } }).catch((err) => {
       streamError = err instanceof Error ? err : new Error(String(err))
       if (!done) {
         done = true

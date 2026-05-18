@@ -31,6 +31,7 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { IconPicker } from '~/components/ui/icon-picker'
 import { Input } from '~/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
@@ -47,13 +48,14 @@ import { ProviderIcon } from './provider-icons'
 
 type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-type ProfileTextField = 'name' | 'apiKey' | 'baseUrl'
+type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
 
 interface ProfileDetailFormValues {
   name: string
   apiKey: string
   baseUrl: string
   model: string
+  api: string
   enabledModels: string[]
 }
 
@@ -122,6 +124,7 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     apiKey: '',
     baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
     model: typeof parsed.model === 'string' ? parsed.model : '',
+    api: typeof parsed.api === 'string' ? parsed.api : '',
     enabledModels: getInitialEnabledModels(parsed),
   }
 }
@@ -142,6 +145,7 @@ function buildProfileConfig(values: ProfileDetailFormValues): Record<string, unk
   return {
     baseUrl: values.baseUrl,
     model: values.model || undefined,
+    api: values.api || undefined,
     enabledModels: cleanEnabled.length > 0
       ? cleanEnabled
       : allDisabledNow
@@ -156,6 +160,7 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     apiKey: values.apiKey,
     baseUrl: values.baseUrl,
     model: values.model,
+    api: values.api,
     enabledModels: values.enabledModels,
   })
 }
@@ -191,6 +196,7 @@ export function ProfileDetailPanel({
   const apiKey = useWatch({ control: form.control, name: 'apiKey' }) ?? ''
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
+  const api = useWatch({ control: form.control, name: 'api' }) ?? ''
   const enabledModels = useWatch({ control: form.control, name: 'enabledModels' }) ?? []
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
@@ -442,8 +448,9 @@ export function ProfileDetailPanel({
     apiKey,
     baseUrl,
     model,
+    api,
     enabledModels,
-  }), [name, apiKey, baseUrl, model, enabledModels])
+  }), [name, apiKey, baseUrl, model, api, enabledModels])
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
@@ -503,7 +510,7 @@ export function ProfileDetailPanel({
       <div className="flex flex-col">
         <ProfileGeneralSettings
           profile={profile}
-          values={{ name, apiKey, baseUrl }}
+          values={{ name, apiKey, baseUrl, api }}
           onTextFieldChange={setTextField}
           supportsModels={supportsModels}
         />
@@ -643,6 +650,24 @@ function ProfileGeneralSettings({
               className="h-9 w-56 text-[12.5px] font-mono"
               placeholder="https://api.openai.com/v1"
             />
+          </SettingsRow>
+
+          <SettingsDivider />
+          <SettingsRow label="API protocol" description="Communication protocol for this endpoint">
+            <Select value={values.api || 'auto'} onValueChange={v => onTextFieldChange('api', v === 'auto' ? '' : v)}>
+              <SelectTrigger className="h-9 w-56 text-[12.5px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto-detect</SelectItem>
+                <SelectItem value="openai-completions">OpenAI Completions</SelectItem>
+                <SelectItem value="openai-responses">OpenAI Responses</SelectItem>
+                <SelectItem value="anthropic-messages">Anthropic Messages</SelectItem>
+                <SelectItem value="google-generative-ai">Google Generative AI</SelectItem>
+                <SelectItem value="bedrock-converse-stream">AWS Bedrock</SelectItem>
+                <SelectItem value="mistral-conversations">Mistral</SelectItem>
+              </SelectContent>
+            </Select>
           </SettingsRow>
 
           <SettingsDivider />

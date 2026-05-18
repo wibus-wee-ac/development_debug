@@ -470,7 +470,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       return
     }
     const { data: sessionData } = await postSessions({
-      body: { workspaceId, agentProfileId: opts.agentProfileId!, title: text.slice(0, 80) || opts.agentProfileId || 'New Chat' },
+      body: { workspaceId, agentProfileId: opts.agentProfileId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.agentProfileId || 'New Chat' },
     })
     const session = sessionData as { id: string } | null
     if (!session?.id) {

@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia'
 
 import { ProvidersModel } from './model'
+import { getCachedModels, isCacheStale, setCachedModels } from './model-cache'
 import { lookupModel, searchModels } from './model-info-registry'
 import * as Providers from './service'
 
@@ -8,7 +9,13 @@ export const providers = new Elysia({
   prefix: '/providers',
   detail: { tags: ['providers'] },
 })
-  .post('/models', ({ body }) => Providers.listModels(Providers.parseProviderBody(body)), {
+  .post('/models', async ({ body }) => {
+    const models = await Providers.listModels(Providers.parseProviderBody(body))
+    if (body.profileId) {
+      setCachedModels(body.profileId, models)
+    }
+    return models
+  }, {
     detail: {
       'summary': 'List models for a provider',
       'x-cradle-cli': {
@@ -17,6 +24,28 @@ export const providers = new Elysia({
     },
     body: ProvidersModel.providerBody,
     response: { 200: t.Array(ProvidersModel.modelDescriptor) },
+  })
+  .get('/:profileId/models-cache', ({ params }) => {
+    const cached = getCachedModels(params.profileId)
+    if (!cached) {
+      return { models: [], cached: false, stale: false }
+    }
+    const stale = isCacheStale(cached.fetchedAt)
+    return { models: cached.models, cached: true, stale }
+  }, {
+    detail: {
+      summary: 'Get cached models for a provider profile',
+    },
+    params: t.Object({
+      profileId: t.String({ minLength: 1 }),
+    }),
+    response: {
+      200: t.Object({
+        models: t.Array(ProvidersModel.modelDescriptor),
+        cached: t.Boolean(),
+        stale: t.Boolean(),
+      }),
+    },
   })
   .post('/health-check', ({ body }) => Providers.healthCheck(Providers.parseProviderBody(body)), {
     detail: {

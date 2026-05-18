@@ -41,6 +41,7 @@ export const profiles = new Elysia({
       enabled: body.enabled,
       configJson: JSON.stringify(body.config),
       credentialRef: body.credentialRef ?? null,
+      iconSlug: body.iconSlug !== undefined ? (body.iconSlug ?? null) : undefined,
     })
   }, {
     detail: {
@@ -65,6 +66,20 @@ export const profiles = new Elysia({
     },
     params: ProfilesModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
+  })
+  .patch('/:id/icon', ({ params, body }) => {
+    const profile = Profiles.getProfile(params.id)
+    if (!profile) {
+      throw new AppError({ code: 'profile_not_found', status: 404, message: 'Profile not found' })
+    }
+    return Profiles.updateIcon(params.id, body.iconSlug)
+  }, {
+    detail: {
+      summary: 'Update profile icon',
+    },
+    params: ProfilesModel.idParams,
+    body: t.Object({ iconSlug: t.Nullable(t.String()) }),
+    response: { 200: ProfilesModel.agentProfile },
   })
   .patch('/:id/custom-models', async ({ params, body }) => {
     const profile = Profiles.getProfile(params.id)

@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm'
 import { db } from '../../infra'
 import type { ModelCapabilities, ModelDescriptor } from './types'
 
-interface ModelsDevModel {
+export interface ModelsDevModel {
   id: string
   name?: string
   limit?: { context?: number, output?: number }
@@ -285,6 +285,19 @@ export async function lookupModel(modelId: string): Promise<{ id: string, label:
     label: info.name ?? modelId,
     capabilities: extractCapabilities(info),
   }
+}
+
+/**
+ * Look up a model with fuzzy matching (strips date/version suffixes, prefix matching).
+ * Returns the raw ModelsDevModel data for direct use in runtime config bridging.
+ */
+export async function lookupModelRaw(modelId: string): Promise<ModelsDevModel | null> {
+  const data = await fetchModelsDevData()
+  if (!data) {
+    return null
+  }
+  const result = findModelFuzzy(data, modelId)
+  return result?.model ?? null
 }
 
 /**

@@ -83,6 +83,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     }))
     registry.register(new SystemAgentProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
+      resolveSkillPaths,
     }))
   }
   return registry

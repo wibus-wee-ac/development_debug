@@ -23,6 +23,7 @@ export interface UpsertProfileInput {
   enabled: boolean
   configJson: string
   credentialRef: string | null
+  iconSlug?: string | null
 }
 
 // ── public API ──
@@ -45,6 +46,7 @@ export function upsertProfile(input: UpsertProfileInput): AgentProfile {
       enabled: input.enabled,
       configJson,
       credentialRef: input.credentialRef,
+      iconSlug: input.iconSlug ?? null,
       createdAt: now,
       updatedAt: now,
     }).onConflictDoUpdate({
@@ -55,11 +57,18 @@ export function upsertProfile(input: UpsertProfileInput): AgentProfile {
         enabled: input.enabled,
         configJson,
         credentialRef: input.credentialRef,
+        ...(input.iconSlug !== undefined ? { iconSlug: input.iconSlug } : {}),
         updatedAt: now,
       },
     }).run()
 
   return db().select().from(agentProfiles).where(eq(agentProfiles.id, input.id)).get()!
+}
+
+export function updateIcon(profileId: string, iconSlug: string | null): AgentProfile {
+  const now = Math.floor(Date.now() / 1000)
+  db().update(agentProfiles).set({ iconSlug, updatedAt: now }).where(eq(agentProfiles.id, profileId)).run()
+  return db().select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()!
 }
 
 export function removeProfile(id: string): void {

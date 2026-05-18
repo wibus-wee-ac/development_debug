@@ -11,6 +11,7 @@ export const ProfilesModel = {
     configJson: t.String(),
     credentialRef: t.Nullable(t.String()),
     customModels: t.String(),
+    iconSlug: t.Nullable(t.String()),
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -25,6 +26,7 @@ export const ProfilesModel = {
     enabled: t.Boolean(),
     config: t.Record(t.String(), t.Any()),
     credentialRef: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+    iconSlug: t.Optional(t.Nullable(t.String())),
   }),
 
   customModelsBody: t.Object({

@@ -593,6 +593,9 @@ importers:
       '@hey-api/client-fetch':
         specifier: ^0.13.1
         version: 0.13.1(@hey-api/openapi-ts@0.97.1(typescript@5.8.3))
+      '@lobehub/icons-static-png':
+        specifier: ^1.90.0
+        version: 1.90.0
       '@mingcute/react':
         specifier: ^1.4.1
         version: 1.4.1(react@19.2.5)
@@ -2425,6 +2428,9 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       '@opentelemetry/api': ^1.9.0
+
+  '@lobehub/icons-static-png@1.90.0':
+    resolution: {integrity: sha512-J9xrcoukKi1h1HMhWdx/SY5OvvsXi+PrEA+o/brbM5MZolbo/PiI7p/Pw/Sv02xNXcxdMTZAbZopDsfkqZuZqA==}
 
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
@@ -11888,6 +11894,8 @@ snapshots:
     dependencies:
       '@langfuse/core': 5.3.0(@opentelemetry/api@1.9.1)
       '@opentelemetry/api': 1.9.1
+
+  '@lobehub/icons-static-png@1.90.0': {}
 
   '@lukeed/ms@2.0.2': {}
 

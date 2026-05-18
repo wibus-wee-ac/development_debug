@@ -47,6 +47,12 @@ export const SystemAgentConfigSchema = z.object({
   baseUrl: z.string().optional(),
   /** API key (inline, or resolved from secretRef/credentialRef) */
   apiKey: z.string().optional(),
+  /** API protocol type (e.g. "openai-completions", "anthropic-messages", "google-generative-ai") */
+  api: z.string().optional(),
+  /** Custom HTTP headers to pass to the upstream provider */
+  headers: z.record(z.string(), z.string()).optional(),
+  /** Provider-specific compatibility options */
+  compat: z.record(z.string(), z.unknown()).optional(),
   /** Thinking level: how much reasoning budget to give */
   thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('medium'),
   /** Max turns before the agent stops */
