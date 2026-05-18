@@ -1,0 +1,288 @@
+// Input: Menu primitives, provider icons, agent profiles, model descriptors
+// Output: ProviderModelMenu — reusable Provider > Model > Thinking cascading menu content
+// Position: Shared selector core used by composer toolbar and settings surfaces
+
+import { BrainIcon, CheckIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
+import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
+import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
+import { ProviderIcon } from '~/features/agent-management/provider-icons'
+import { cn } from '~/lib/cn'
+import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+
+export interface ThinkingOption<TThinking extends string | null> {
+  value: TThinking
+  label: string
+  description: string
+}
+
+export type ModelsByProfileId = Record<string, ModelDescriptor[]>
+
+interface ProviderModelMenuProps<TThinking extends string | null> {
+  profiles: AgentProfile[]
+  selectedProfileId: string | null
+  selectedModelId: string | null
+  modelsByProfileId: ModelsByProfileId
+  loadingProfileIds: Set<string>
+  thinkingValue: TThinking
+  thinkingOptions: Array<ThinkingOption<TThinking>>
+  getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
+  emptyProfilesLabel?: string
+  isProfileSelectionDisabled?: boolean
+  onSelectProfile: (id: string) => void
+  onSelectModel: (id: string | null, profileId: string) => void
+  onSelectThinking: (value: TThinking) => void
+}
+
+interface ProviderGroupProps<TThinking extends string | null> {
+  profile: AgentProfile
+  isActive: boolean
+  models: ModelDescriptor[]
+  selectedModelId: string | null
+  thinkingValue: TThinking
+  getThinkingOptionsForModel: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
+  isLoadingModels: boolean
+  isProfileSelectionDisabled: boolean
+  onSelectProfile: (id: string) => void
+  onSelectModel: (id: string | null, profileId: string) => void
+  onSelectThinking: (value: TThinking) => void
+}
+
+const INITIAL_BATCH = 20
+
+function ProviderGroup<TThinking extends string | null>({
+  profile,
+  isActive,
+  models,
+  selectedModelId,
+  thinkingValue,
+  getThinkingOptionsForModel,
+  isLoadingModels,
+  isProfileSelectionDisabled,
+  onSelectProfile,
+  onSelectModel,
+  onSelectThinking,
+}: ProviderGroupProps<TThinking>) {
+  const preset = presetForProfile(profile)
+  const [modelSearch, setModelSearch] = useState('')
+  const filteredModels = models.filter(model =>
+    !modelSearch
+    || model.label.toLowerCase().includes(modelSearch.toLowerCase())
+    || model.id.toLowerCase().includes(modelSearch.toLowerCase()))
+
+  const [renderCount, setRenderCount] = useState(INITIAL_BATCH)
+
+  useEffect(() => {
+    if (filteredModels.length <= INITIAL_BATCH) {
+      return
+    }
+    const id = requestAnimationFrame(() => {
+      setRenderCount(filteredModels.length)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [filteredModels.length])
+
+  useEffect(() => {
+    setRenderCount(INITIAL_BATCH)
+  }, [modelSearch])
+
+  const visibleModels = filteredModels.slice(0, renderCount)
+
+  return (
+    <MenuSub>
+      <MenuSubTrigger
+        onClick={() => {
+          if (!isProfileSelectionDisabled) {
+            onSelectProfile(profile.id)
+          }
+        }}
+        className={cn(isActive && 'font-medium')}
+      >
+        <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
+        <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-3.5 shrink-0" />
+        <span>{profile.name}</span>
+      </MenuSubTrigger>
+      <MenuSubPopup>
+        {models.length > 0 && (
+          <div className="px-1 pt-1 pb-1.5">
+            <input
+              value={modelSearch}
+              onChange={event => setModelSearch(event.target.value)}
+              placeholder="Search models..."
+              className="w-full rounded-md border border-border/50 bg-input/30 px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
+              onClick={event => event.stopPropagation()}
+              onKeyDown={event => event.stopPropagation()}
+            />
+          </div>
+        )}
+        {isLoadingModels && models.length === 0 && (
+          <MenuItem disabled>Loading models…</MenuItem>
+        )}
+        <div className="max-h-80 overflow-y-auto">
+          {visibleModels.map((model) => {
+            const isModelSelected = model.id === selectedModelId
+            return (
+              <ModelSubmenu
+                key={model.id}
+                model={model}
+                isModelSelected={isModelSelected}
+                thinkingValue={thinkingValue}
+                thinkingOptions={getThinkingOptionsForModel(model)}
+                onSelectModel={() => onSelectModel(model.id, profile.id)}
+                onSelectThinking={onSelectThinking}
+              />
+            )
+          })}
+        </div>
+        {renderCount < filteredModels.length && (
+          <MenuItem disabled>Loading more…</MenuItem>
+        )}
+        {filteredModels.length === 0 && models.length > 0 && (
+          <MenuItem disabled>No matching models</MenuItem>
+        )}
+        {models.length === 0 && !isLoadingModels && (
+          <MenuItem disabled>No models available</MenuItem>
+        )}
+      </MenuSubPopup>
+    </MenuSub>
+  )
+}
+
+function ModelSubmenu<TThinking extends string | null>({
+  model,
+  description,
+  isModelSelected,
+  thinkingValue,
+  thinkingOptions,
+  onSelectModel,
+  onSelectThinking,
+}: {
+  model: ModelDescriptor
+  description?: string
+  isModelSelected: boolean
+  thinkingValue: TThinking
+  thinkingOptions: Array<ThinkingOption<TThinking>>
+  onSelectModel: () => void
+  onSelectThinking: (value: TThinking) => void
+}) {
+  const caps = model.capabilities
+  const registryMatch = caps?.registryMatch
+  const ctxK = caps?.contextWindow
+    ? caps.contextWindow >= 1000000
+      ? `${Math.round(caps.contextWindow / 1000000)}M`
+      : `${Math.round(caps.contextWindow / 1000)}K`
+    : null
+  const hasAdjustableThinking = thinkingOptions.some(option => option.value !== null && option.value !== 'auto')
+  const content = (
+    <>
+      <CheckIcon className={cn('size-3.5 shrink-0 self-start mt-0.5', isModelSelected ? 'text-primary' : 'text-transparent')} />
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium">{model.label}</span>
+          {registryMatch === 'fuzzy' && (
+            <span className="shrink-0 text-[9px] text-muted-foreground/50" title="Fuzzy models.dev match">≈</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 leading-tight">
+          <span className="max-w-35 truncate">{description ?? model.id}</span>
+          {ctxK && (
+            <>
+              <span className="shrink-0">·</span>
+              <span className="shrink-0">{ctxK}</span>
+            </>
+          )}
+          {(caps?.reasoning || caps?.inputModalities?.includes('image') || caps?.toolCall) && (
+            <>
+              <span className="shrink-0">·</span>
+              <span className="flex items-center gap-1 shrink-0">
+                {caps?.reasoning && <BrainIcon className="size-2.5" />}
+                {caps?.inputModalities?.includes('image') && <ScanEyeIcon className="size-2.5" />}
+                {caps?.toolCall && <HammerIcon className="size-2.5" />}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  )
+
+  if (!hasAdjustableThinking) {
+    return (
+      <MenuItem
+        onClick={onSelectModel}
+        className={cn('items-start', isModelSelected && 'text-primary font-medium')}
+      >
+        {content}
+      </MenuItem>
+    )
+  }
+
+  return (
+    <MenuSub>
+      <MenuSubTrigger
+        onClick={onSelectModel}
+        className={cn(isModelSelected && 'text-primary font-medium')}
+      >
+        {content}
+      </MenuSubTrigger>
+      <MenuSubPopup>
+        {thinkingOptions.map(option => (
+          <MenuItem
+            key={option.value ?? 'auto'}
+            onClick={() => onSelectThinking(option.value)}
+            className={cn('flex-col items-start', thinkingValue === option.value && 'text-primary font-medium')}
+          >
+            <div className="flex w-full items-center gap-2">
+              <span className="font-medium">{option.label}</span>
+              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', thinkingValue === option.value ? 'text-primary' : 'text-transparent')} />
+            </div>
+            <span className="text-[11px] text-muted-foreground/60">{option.description}</span>
+          </MenuItem>
+        ))}
+      </MenuSubPopup>
+    </MenuSub>
+  )
+}
+
+export function ProviderModelMenu<TThinking extends string | null>({
+  profiles,
+  selectedProfileId,
+  selectedModelId,
+  modelsByProfileId,
+  loadingProfileIds,
+  thinkingValue,
+  thinkingOptions,
+  getThinkingOptionsForModel,
+  emptyProfilesLabel = 'No providers available',
+  isProfileSelectionDisabled = false,
+  onSelectProfile,
+  onSelectModel,
+  onSelectThinking,
+}: ProviderModelMenuProps<TThinking>) {
+  const resolveThinkingOptions = getThinkingOptionsForModel ?? (() => thinkingOptions)
+
+  return (
+    <>
+      {profiles.map(profile => (
+        <ProviderGroup
+          key={profile.id}
+          profile={profile}
+          isActive={profile.id === selectedProfileId}
+          models={modelsByProfileId[profile.id] ?? []}
+          selectedModelId={profile.id === selectedProfileId ? selectedModelId : null}
+          thinkingValue={thinkingValue}
+          getThinkingOptionsForModel={resolveThinkingOptions}
+          isLoadingModels={loadingProfileIds.has(profile.id)}
+          isProfileSelectionDisabled={isProfileSelectionDisabled}
+          onSelectProfile={onSelectProfile}
+          onSelectModel={onSelectModel}
+          onSelectThinking={onSelectThinking}
+        />
+      ))}
+      {profiles.length === 0 && (
+        <MenuItem disabled>{emptyProfilesLabel}</MenuItem>
+      )}
+    </>
+  )
+}

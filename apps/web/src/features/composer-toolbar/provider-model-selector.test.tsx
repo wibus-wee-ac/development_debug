@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
 import { ProviderModelSelector } from './provider-model-selector'
 
 vi.mock('~/components/ui/button', () => ({
@@ -77,10 +78,12 @@ function profile(input: Pick<AgentProfile, 'id' | 'name' | 'providerKind'>): Age
   } as AgentProfile
 }
 
-function model(input: Pick<ModelDescriptor, 'id' | 'label' | 'providerKind'>): ModelDescriptor {
+function model(input: Pick<ModelDescriptor, 'id' | 'label' | 'providerKind'> & { capabilities?: ModelDescriptor['capabilities'] }): ModelDescriptor {
   return {
-    ...input,
-    capabilities: {},
+    id: input.id,
+    label: input.label,
+    providerKind: input.providerKind,
+    capabilities: input.capabilities ?? {},
   }
 }
 
@@ -125,5 +128,53 @@ describe('providerModelSelector', () => {
     expect(screen.getAllByText('GPT 5.1').length).toBeGreaterThan(0)
     expect(screen.getByText('Claude Opus 4.5')).toBeTruthy()
     expect(screen.queryByText('No models available')).toBeNull()
+  })
+
+  it('filters thinking choices by selected model reasoning capability', () => {
+    const plainModel = model({ id: 'gpt-4o-mini', label: 'GPT 4o mini', providerKind: 'openai-compatible' })
+    const reasoningModel = model({
+      id: 'claude-3-7-sonnet',
+      label: 'Claude 3.7 Sonnet',
+      providerKind: 'anthropic',
+      capabilities: { reasoning: true },
+    })
+
+    expect(filterThinkingOptionsForModel(plainModel, THINKING_EFFORTS).map(option => option.value)).toEqual([null])
+    expect(filterThinkingOptionsForModel(reasoningModel, THINKING_EFFORTS).map(option => option.value)).toEqual([null, 'low', 'medium', 'high'])
+    expect(selectSupportedThinkingValue(plainModel, THINKING_EFFORTS, 'high', null)).toBeNull()
+  })
+
+  it('does not render a thinking submenu for models without reasoning support', () => {
+    const openaiProfile = profile({
+      id: 'profile-openai',
+      name: 'OpenAI',
+      providerKind: 'openai-compatible',
+    })
+
+    render(
+      <ProviderModelSelector
+        profiles={[openaiProfile]}
+        selectedProfileId={openaiProfile.id}
+        selectedModelId="gpt-4o-mini"
+        models={[
+          model({ id: 'gpt-4o-mini', label: 'GPT 4o mini', providerKind: 'openai-compatible' }),
+        ]}
+        modelsByProfileId={{
+          [openaiProfile.id]: [
+            model({ id: 'gpt-4o-mini', label: 'GPT 4o mini', providerKind: 'openai-compatible' }),
+          ],
+        }}
+        loadingProfileIds={new Set()}
+        thinkingEffort={null}
+        isLoadingModels={false}
+        onSelectProfile={vi.fn()}
+        onSelectModel={vi.fn()}
+        onSelectThinkingEffort={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByText('GPT 4o mini').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Auto')).toBeNull()
+    expect(screen.queryByText('快速')).toBeNull()
   })
 })

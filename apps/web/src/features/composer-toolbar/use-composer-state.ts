@@ -10,6 +10,7 @@ import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { Agent, AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
+import { filterThinkingOptionsForModel, THINKING_EFFORTS } from './constants'
 import type { ComposerContext, ComposerSelection, ModelsByProfileId, ThinkingEffort } from './types'
 
 interface ComposerStateConfig {
@@ -117,14 +118,18 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     () => models.find(m => m.id === modelId) ?? null,
     [models, modelId],
   )
+  const effectiveThinkingEffort = useMemo((): ThinkingEffort => {
+    const options = filterThinkingOptionsForModel(effectiveModel, THINKING_EFFORTS)
+    return options.some(option => option.value === thinkingEffort) ? thinkingEffort : null
+  }, [effectiveModel, thinkingEffort])
 
   const selection = useMemo((): ComposerSelection => ({
     agentId,
     profileId,
     modelId,
-    thinkingEffort: runtimeKind === 'cli-tui' ? null : thinkingEffort,
+    thinkingEffort: runtimeKind === 'cli-tui' ? null : effectiveThinkingEffort,
     runtimeKind,
-  }), [agentId, profileId, modelId, thinkingEffort, runtimeKind])
+  }), [agentId, profileId, modelId, effectiveThinkingEffort, runtimeKind])
 
   const setAgentId = (id: string) => {
     setManualAgentId(id)
