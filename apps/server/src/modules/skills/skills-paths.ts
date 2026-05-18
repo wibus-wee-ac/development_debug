@@ -1,5 +1,5 @@
 // Input: process cwd and OS home directory
-// Output: skills root resolution across builtin/global/workspace/agent scopes
+// Output: skills root resolution across builtin, standard .agents, Cradle-only, workspace, and agent scopes
 // Position: apps/server/src/modules/skills/skills-paths.ts
 
 import fs from 'node:fs'

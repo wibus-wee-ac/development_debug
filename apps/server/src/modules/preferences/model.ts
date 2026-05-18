@@ -9,7 +9,7 @@ export const PreferencesModel = {
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     profileId: t.Nullable(t.String({ description: 'ID of the agent profile to use for Jarvis' })),
-    model: t.Optional(t.String({ description: 'Model ID override for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)' })),
+    model: t.Optional(t.String({ description: 'Explicit model ID for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)' })),
     thinkingLevel: t.Union([
       t.Literal('minimal'),
       t.Literal('low'),

@@ -53,7 +53,7 @@ export const preferences = new Elysia({
   }, {
     detail: {
       'summary': 'Set Jarvis preferences',
-      'description': 'Persist the system agent (Jarvis) provider and model config.',
+      'description': 'Persist the system agent (Jarvis) provider and explicit model config.',
       'x-cradle-cli': {
         command: ['preferences', 'jarvis', 'set'],
       },

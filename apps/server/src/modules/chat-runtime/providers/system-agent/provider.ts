@@ -33,6 +33,9 @@ interface SystemAgentProviderDeps {
 }
 
 const RUNTIME_KIND: RuntimeKind = 'jar-core'
+type JarvisThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+
+const EXTENDED_REASONING_MODEL_RE = /(?:^|[\s/:_-])(?:gpt-5(?:\.\d+)?|o1|o3|o4|claude-(?:opus|sonnet)-4|gemini-2\.5-pro|grok-4|deepseek-r1)(?:$|[\s:._-])/
 
 /** Map Cradle's providerKind to jar-core's provider identifier */
 function inferProviderFromKind(providerKind: string): string {
@@ -50,6 +53,27 @@ function inferApiFromKind(providerKind: string): string {
     case 'openai-compatible': return 'openai-completions'
     default: return 'openai-completions'
   }
+}
+
+function supportsExtendedThinking(modelId: string, family?: string): boolean {
+  return EXTENDED_REASONING_MODEL_RE.test(`${modelId} ${family ?? ''}`.toLowerCase())
+}
+
+function normalizeThinkingLevel(
+  modelId: string,
+  requested: JarvisThinkingLevel,
+  registryModel: Awaited<ReturnType<typeof lookupModelRaw>>,
+): JarvisThinkingLevel | undefined {
+  if (registryModel?.reasoning !== true) {
+    return undefined
+  }
+  if (requested === 'minimal') {
+    return supportsExtendedThinking(modelId, registryModel.family) ? 'minimal' : 'low'
+  }
+  if (requested === 'xhigh') {
+    return supportsExtendedThinking(modelId, registryModel.family) ? 'xhigh' : 'high'
+  }
+  return requested
 }
 
 export class SystemAgentProvider implements ChatRuntime {
@@ -92,7 +116,7 @@ export class SystemAgentProvider implements ChatRuntime {
     const baseConfig = parseConfigWith(input.profile.configJson, BaseProviderConfig)
 
     const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
-    const model = jarvisPrefs.model ?? config.model ?? baseConfig.model ?? input.modelId
+    const model = jarvisPrefs.model
     const baseUrl = config.baseUrl ?? baseConfig.baseUrl
     if (!model) {
       throw new Error('No model configured for Jarvis. Set a model in Settings → Jarvis.')
@@ -103,7 +127,12 @@ export class SystemAgentProvider implements ChatRuntime {
       ? this.deps.readSecret(secretRef)
       : (config.apiKey ?? baseConfig.apiKey ?? null)
 
-    const thinkingLevel = jarvisPrefs.thinkingLevel ?? config.thinkingLevel ?? 'medium'
+    const registryModel = await lookupModelRaw(model)
+    const thinkingLevel = normalizeThinkingLevel(
+      model,
+      (jarvisPrefs.thinkingLevel ?? config.thinkingLevel ?? 'medium') as JarvisThinkingLevel,
+      registryModel,
+    )
     const systemPrompt = input.systemPrompt ?? 'You are Jarvis, a helpful system assistant.'
     const sessionId = input.runtimeSession.chatSessionId
 
@@ -117,9 +146,11 @@ export class SystemAgentProvider implements ChatRuntime {
       provider,
       model,
       systemPrompt,
-      thinkingLevel: thinkingLevel as DefaultRuntimeConfigOptions['thinkingLevel'],
       sessionsRootDir,
       workspaceRoot: jarvisWorkspaceRoot,
+    }
+    if (thinkingLevel) {
+      runtimeConfigOptions.thinkingLevel = thinkingLevel as DefaultRuntimeConfigOptions['thinkingLevel']
     }
     if (apiKey) {
       runtimeConfigOptions.apiKey = apiKey
@@ -136,7 +167,6 @@ export class SystemAgentProvider implements ChatRuntime {
     }
 
     // Build per-model metadata from models.dev registry for non-builtin providers
-    const registryModel = await lookupModelRaw(model)
     if (registryModel) {
       const modelConfig: NonNullable<DefaultRuntimeConfigOptions['models']>[string] = {}
       if (registryModel.limit?.context != null) {

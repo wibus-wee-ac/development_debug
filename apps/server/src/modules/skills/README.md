@@ -1,6 +1,6 @@
 # Skills Module
 
-Provides filesystem-backed skill inventory, CRUD, import/export, and source-fetch flows across builtin, legacy, global, workspace, and agent scopes.
+Provides filesystem-backed skill inventory, CRUD, import/export, and source-fetch flows across builtin, standard `.agents`, Cradle-only, workspace, and agent scopes.
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files
