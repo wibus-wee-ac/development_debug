@@ -314,10 +314,10 @@ The palette is built entirely from **opacity-modulated neutrals** plus a **categ
 **Categorical accents** (used in pairs: `bg-[color]-500/10` fill + `text-[color]-500/70` icon):
 - Workspace: blue-500
 - Session / Builtin skill: violet-500
-- Global scope: sky-500
+- Cradle-only scope: sky-500
 - Workspace scope / Doc: emerald-500
 - Agent scope: rose-500
-- Legacy / Warning: amber-500
+- Standard `.agents` scope / Warning: amber-500
 - Diff / Code: orange-500
 - Summary: pink-500
 
@@ -492,7 +492,7 @@ Active tab uses a **Framer Motion sliding pill** (`layoutId="tab-pill"`, `bg-acc
 
 ### Scope Icon Badges
 
-`size-7 rounded-lg flex items-center justify-center` with category color at `bg-[color]-500/10 text-[color]-600`. Category scopes: builtin → violet, legacy → amber, global → sky, workspace → emerald, agent → rose. Dark mode text uses `/400` variants.
+`size-7 rounded-lg flex items-center justify-center` with category color at `bg-[color]-500/10 text-[color]-600`. Category scopes: builtin → violet, standard `.agents` → amber, Cradle-only → sky, workspace → emerald, agent → rose. Dark mode text uses `/400` variants.
 
 ### Reasoning / Tool Call Toggles
 

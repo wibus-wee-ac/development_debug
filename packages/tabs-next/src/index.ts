@@ -2,7 +2,7 @@
 // Output: @cradle/tabs-next public API
 // Position: Package entry point
 
-export type { TabBarProps, TabPresentation } from './components/tab-bar'
+export type { TabBarCustomization, TabBarProps, TabPresentation } from './components/tab-bar'
 export { TabBar } from './components/tab-bar'
 export type { LinkProps } from './components/tab-link'
 export { Link } from './components/tab-link'

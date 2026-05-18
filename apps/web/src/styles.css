@@ -35,6 +35,18 @@ body {
   display: none;
 }
 
+/* Dot grid shimmer sweep */
+@keyframes shimmer {
+  0% { mask-position: 200% 0; -webkit-mask-position: 200% 0; }
+  100% { mask-position: -100% 0; -webkit-mask-position: -100% 0; }
+}
+
+/* Individual cell breathing */
+@keyframes cell-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* Agent session glow animation */
 @keyframes agentGlow {
 

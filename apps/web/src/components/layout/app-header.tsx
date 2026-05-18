@@ -2,7 +2,7 @@
 // Output: AppHeader — slim header with capsule tabs and panel toggles
 // Position: Top chrome of AppLayout's center column; doubles as a macOS window-drag region
 
-import type { TabInstance } from '@cradle/tabs-next'
+import type { TabBarCustomization, TabInstance } from '@cradle/tabs-next'
 import { TabBar } from '@cradle/tabs-next'
 import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
@@ -19,9 +19,6 @@ interface AppHeaderProps {
   hasAside?: boolean
   hasPanel?: boolean
 }
-
-const renderCloseIcon = () => <XIcon className="size-3" />
-const renderNewTabIcon = () => <PlusIcon className="size-3" />
 
 export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
@@ -64,18 +61,22 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
     }
   }, [settingsTabId])
 
-  const renderTabIcon = useCallback((tab: TabInstance) => {
-    const route = cradleRegistry[tab.type as keyof typeof cradleRegistry]
-    if (!route?.icon) {
-      return null
-    }
-    const Icon = route.icon as React.ComponentType<{ className?: string }>
-    return <Icon className="size-3 shrink-0" />
-  }, [])
+  const tabBarCustomization = useMemo<TabBarCustomization>(() => ({
+    closeIcon: <XIcon className="size-3" />,
+    newTabIcon: <PlusIcon className="size-3" />,
+    tabIcon: (tab: TabInstance) => {
+      const route = cradleRegistry[tab.type as keyof typeof cradleRegistry]
+      if (!route?.icon) {
+        return null
+      }
+      const Icon = route.icon as React.ComponentType<{ className?: string }>
+      return <Icon className="size-3 shrink-0" />
+    },
+  }), [])
 
   return (
     <div
-      className="relative flex h-8 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
+      className="relative flex h-10 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       {/* Left: sidebar toggle (hidden in drill-in modes where sidebar is forced open) */}
@@ -99,9 +100,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
           onNewTab={handleNewTab}
           onTabActivated={handleTabActivated}
           onTabTearOff={handleTabTearOff}
-          renderCloseIcon={renderCloseIcon}
-          renderNewTabIcon={renderNewTabIcon}
-          renderTabIcon={renderTabIcon}
+          customization={tabBarCustomization}
           tabPresentation={tabPresentation}
         />
       </div>

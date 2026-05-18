@@ -19,15 +19,19 @@ export interface TabPresentation {
   label?: React.ReactNode
 }
 
+export interface TabBarCustomization {
+  closeIcon?: React.ReactNode | (() => React.ReactNode)
+  newTabIcon?: React.ReactNode | (() => React.ReactNode)
+  tabIcon?: (tab: TabInstance) => React.ReactNode
+  tooltip?: (tab: TabInstance, children: React.ReactElement) => React.ReactNode
+}
+
 export interface TabBarProps {
   className?: string
   tabClassName?: string
   activeTabClassName?: string
   tabPresentation?: Record<string, TabPresentation>
-  renderCloseIcon?: () => React.ReactNode
-  renderNewTabIcon?: () => React.ReactNode
-  renderTabIcon?: (tab: TabInstance) => React.ReactNode
-  renderTooltip?: (tab: TabInstance, children: React.ReactElement) => React.ReactNode
+  customization?: TabBarCustomization
   onNewTab?: () => void
   onTabActivated?: (tab: TabInstance) => void
   onTabClosed?: (tabId: string) => void
@@ -38,24 +42,24 @@ interface TabPillProps {
   tab: TabInstance
   isActive: boolean
   presentation?: TabPresentation
+  customization?: TabBarCustomization
   tabClassName?: string
   activeTabClassName?: string
-  renderCloseIcon?: () => React.ReactNode
-  renderTabIcon?: (tab: TabInstance) => React.ReactNode
-  renderTooltip?: (tab: TabInstance, children: React.ReactElement) => React.ReactNode
   onActivate: (id: string) => void
   onClose: (event: React.MouseEvent, id: string) => void
+}
+
+function renderIconSlot(slot: React.ReactNode | (() => React.ReactNode) | undefined) {
+  return typeof slot === 'function' ? slot() : slot
 }
 
 const SortableTabPill = memo(({
   tab,
   isActive,
   presentation,
+  customization,
   tabClassName,
   activeTabClassName,
-  renderCloseIcon,
-  renderTabIcon,
-  renderTooltip,
   onActivate,
   onClose,
 }: TabPillProps) => {
@@ -67,7 +71,7 @@ const SortableTabPill = memo(({
     opacity: isDragging ? 0.5 : undefined,
     zIndex: isDragging ? 10 : undefined,
   }
-  const tabIcon = presentation?.icon ?? (renderTabIcon ? renderTabIcon(tab) : null)
+  const tabIcon = presentation?.icon ?? customization?.tabIcon?.(tab) ?? null
 
   const pill = (
     <div
@@ -85,7 +89,7 @@ const SortableTabPill = memo(({
       role="tab"
       tabIndex={0}
       aria-selected={isActive}
-      title={renderTooltip ? undefined : tab.label}
+      title={customization?.tooltip ? undefined : tab.label}
       data-testid={`tab-pill-${tab.id}`}
       data-tab-active={isActive ? 'true' : 'false'}
       data-tab-pinned={tab.pinned ? 'true' : 'false'}
@@ -116,13 +120,13 @@ const SortableTabPill = memo(({
             'group-hover:opacity-80 group-data-[tab-active=true]:opacity-100',
           )}
         >
-          {renderCloseIcon ? renderCloseIcon() : '×'}
+          {renderIconSlot(customization?.closeIcon) ?? '×'}
         </button>
       )}
     </div>
   )
 
-  return renderTooltip ? renderTooltip(tab, pill) as React.ReactElement : pill
+  return customization?.tooltip ? customization.tooltip(tab, pill) as React.ReactElement : pill
 })
 
 export const TabBar = memo(({
@@ -130,10 +134,7 @@ export const TabBar = memo(({
   tabClassName,
   activeTabClassName,
   tabPresentation,
-  renderCloseIcon,
-  renderNewTabIcon,
-  renderTabIcon,
-  renderTooltip,
+  customization,
   onNewTab,
   onTabActivated,
   onTabClosed,
@@ -246,11 +247,9 @@ export const TabBar = memo(({
               tab={tab}
               isActive={tab.id === activeTabId}
               presentation={tabPresentation?.[tab.id]}
+              customization={customization}
               tabClassName={tabClassName}
               activeTabClassName={activeTabClassName}
-              renderCloseIcon={renderCloseIcon}
-              renderTabIcon={renderTabIcon}
-              renderTooltip={renderTooltip}
               onActivate={handleActivate}
               onClose={handleClose}
             />
@@ -268,7 +267,7 @@ export const TabBar = memo(({
               'text-muted-foreground/30 hover:text-foreground/60 hover:bg-foreground/4 transition-colors',
             )}
           >
-            {renderNewTabIcon ? renderNewTabIcon() : '+'}
+            {renderIconSlot(customization?.newTabIcon) ?? '+'}
           </button>
         )}
       </div>

@@ -87,6 +87,28 @@ describe('TabBar', () => {
     expect(screen.getByRole('button', { name: 'New tab' })).toBeTruthy()
   })
 
+  it('accepts a single customization object for tab chrome slots', () => {
+    const store = createTabStore(registry, { persistKey: `tabs-next-tab-bar-customization-test-${Math.random()}` })
+    store.getState().openTab('chat', { sessionId: 'one' })
+
+    render(
+      <TabsProvider store={store} registry={registry}>
+        <TabBar
+          onNewTab={vi.fn()}
+          customization={{
+            closeIcon: <span data-testid="custom-close-icon">close</span>,
+            newTabIcon: <span data-testid="custom-new-icon">new</span>,
+            tabIcon: () => <span data-testid="custom-tab-icon">tab</span>,
+          }}
+        />
+      </TabsProvider>,
+    )
+
+    expect(screen.getByTestId('custom-close-icon')).toBeTruthy()
+    expect(screen.getByTestId('custom-new-icon')).toBeTruthy()
+    expect(screen.getByTestId('custom-tab-icon')).toBeTruthy()
+  })
+
   it('removes the global drag listener when unmounted during a drag', () => {
     const addListener = vi.spyOn(window, 'addEventListener')
     const removeListener = vi.spyOn(window, 'removeEventListener')
