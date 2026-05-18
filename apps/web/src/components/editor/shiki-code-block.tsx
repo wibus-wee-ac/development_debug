@@ -48,11 +48,31 @@ const POPULAR_LANGS: string[] = [
 
 const LIGHT_THEME = 'github-light'
 const DARK_THEME = 'github-dark'
+const LANGUAGE_ALIASES: Record<string, string> = {
+  js: 'javascript',
+  kt: 'kotlin',
+  py: 'python',
+  rb: 'ruby',
+  rs: 'rust',
+  sh: 'bash',
+  text: 'plaintext',
+  ts: 'typescript',
+  yml: 'yaml',
+  zsh: 'bash',
+}
 
 type Highlighter = HighlighterGeneric<BundledLanguage, BundledTheme>
 
 let highlighterPromise: Promise<Highlighter> | null = null
 let highlighterInstance: Highlighter | null = null
+
+function normalizeLanguage(language: string | null | undefined): string {
+  if (!language) {
+    return 'plaintext'
+  }
+  const lower = language.toLowerCase()
+  return LANGUAGE_ALIASES[lower] ?? lower
+}
 
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
@@ -69,16 +89,14 @@ function getHighlighter(): Promise<Highlighter> {
 
 // Lazy-load a language if not yet loaded
 export async function ensureLanguage(lang: string): Promise<boolean> {
-  const h = highlighterInstance
-  if (!h) {
-    return false
-  }
+  const language = normalizeLanguage(lang)
+  const h = highlighterInstance ?? await getHighlighter()
   const loaded = h.getLoadedLanguages()
-  if (loaded.includes(lang)) {
+  if (loaded.includes(language)) {
     return true
   }
-  if (lang in bundledLanguages) {
-    await h.loadLanguage(lang as keyof typeof bundledLanguages)
+  if (language in bundledLanguages) {
+    await h.loadLanguage(language as keyof typeof bundledLanguages)
     return true
   }
   return false
@@ -92,6 +110,17 @@ function isDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
+function hasCodeBlock(doc: ProseMirrorNode): boolean {
+  let found = false
+  doc.descendants((node) => {
+    if (node.type.name === 'codeBlock') {
+      found = true
+      return false
+    }
+  })
+  return found
+}
+
 function buildDecorations(doc: ProseMirrorNode, highlighter: Highlighter): DecorationSet {
   const decorations: Decoration[] = []
   const theme = isDark() ? DARK_THEME : LIGHT_THEME
@@ -100,7 +129,7 @@ function buildDecorations(doc: ProseMirrorNode, highlighter: Highlighter): Decor
     if (node.type.name !== 'codeBlock') {
       return
     }
-    const language = (node.attrs.language as string) || 'plaintext'
+    const language = normalizeLanguage(node.attrs.language as string | null)
     const code = node.textContent
 
     if (!code) {
@@ -174,8 +203,6 @@ export const ShikiCodeBlock = CodeBlock.extend({
   addProseMirrorPlugins() {
     const parentPlugins = this.parent?.() ?? []
 
-    void getHighlighter()
-
     const shikiPlugin = new Plugin({
       key: pluginKey,
       state: {
@@ -206,12 +233,26 @@ export const ShikiCodeBlock = CodeBlock.extend({
         },
       },
       view(editorView) {
-        void getHighlighter().then(() => {
-          const { state } = editorView
-          const tr = state.tr.setMeta(pluginKey, 'loaded')
-          editorView.dispatch(tr)
-        })
-        return {}
+        let requested = false
+        const requestHighlightLoad = () => {
+          if (requested || highlighterInstance || !hasCodeBlock(editorView.state.doc)) {
+            return
+          }
+          requested = true
+          void getHighlighter().then(() => {
+            const { state } = editorView
+            const tr = state.tr.setMeta(pluginKey, 'loaded')
+            editorView.dispatch(tr)
+          })
+        }
+
+        requestHighlightLoad()
+
+        return {
+          update() {
+            requestHighlightLoad()
+          },
+        }
       },
     })
 

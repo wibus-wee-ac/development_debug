@@ -13,6 +13,8 @@ import {
 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 
+import { cn } from '~/lib/cn'
+
 interface EditorBubbleMenuProps {
   editor: Editor
 }
@@ -130,10 +132,12 @@ function ToolbarButton({
   return (
     <button
       type="button"
-      className={`rounded-md p-1.5 transition-colors ${active
-        ? 'bg-accent text-accent-foreground'
-        : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-        }`}
+      className={cn(
+        'rounded-md p-1.5 transition-colors',
+        active
+          ? 'bg-accent text-accent-foreground'
+          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+      )}
       {...props}
     >
       {children}
