@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow } from 'electron'
 
 import { createNativeServices } from './native-services'
+import { registerWebview, startBrowserBackend, stopBrowserBackend } from './browser-backend'
 import { startServer, stopServer } from './server-process'
 import { WindowManager } from './window-manager'
 
@@ -54,6 +55,9 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
 }
 
 app.whenReady().then(async () => {
+  // Start the browser backend socket server
+  startBrowserBackend()
+
   // Start the Elysia server on a free port
   const serverUrl = await startServer()
 
@@ -72,6 +76,11 @@ app.whenReady().then(async () => {
     delete webPreferences.preload
     webPreferences.nodeIntegration = false
     webPreferences.contextIsolation = true
+  })
+
+  // Register webview with browser backend for agent control
+  mainWindow.webContents.on('did-attach-webview', (_event, webviewContents) => {
+    registerWebview(webviewContents)
   })
 
   mainWindow.on('closed', () => {
@@ -95,6 +104,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopBrowserBackend()
   stopServer()
 })
 

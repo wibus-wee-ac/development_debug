@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
+    "@cradle/browser-use": "workspace:*",
     "@cradle/ipc": "workspace:*",
     "get-port": "^7.1.0"
   },

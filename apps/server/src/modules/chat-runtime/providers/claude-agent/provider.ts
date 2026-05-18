@@ -117,6 +117,18 @@ export class ClaudeAgentProvider implements ChatRuntime {
       queryOptions.resume = input.runtimeSession.providerSessionId
     }
 
+    // Browser Use MCP server — auto-register if socket exists
+    if (process.env.BROWSER_BACKEND_SOCKET) {
+      queryOptions.mcpServers = {
+        ...queryOptions.mcpServers,
+        'browser-use': {
+          command: 'node',
+          args: [new URL('../../../../../../plugins/browser-use/dist/mcp-server.mjs', import.meta.url).pathname],
+          env: { BROWSER_BACKEND_SOCKET: process.env.BROWSER_BACKEND_SOCKET },
+        },
+      }
+    }
+
     queryOptions.env = {
       ...process.env,
       ANTHROPIC_API_KEY: apiKey,

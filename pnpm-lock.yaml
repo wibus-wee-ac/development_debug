@@ -347,6 +347,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@cradle/browser-use':
+        specifier: workspace:*
+        version: link:../../plugins/browser-use
       '@cradle/ipc':
         specifier: workspace:*
         version: link:../../packages/ipc
@@ -408,7 +411,7 @@ importers:
     devDependencies:
       '@tailwindcss/vite':
         specifier: ^4.1.0
-        version: 4.2.2(vite@7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 4.2.2(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
       '@tweakpane/core':
         specifier: ^2.0.5
         version: 2.0.5
@@ -420,13 +423,13 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: ^4.5.0
-        version: 4.7.0(vite@7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 4.7.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
       tailwindcss:
         specifier: ^4.1.0
         version: 4.2.2
       vite:
         specifier: ^7.0.0
-        version: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+        version: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
 
   apps/server:
     dependencies:
@@ -755,10 +758,10 @@ importers:
         version: 0.97.1(typescript@5.8.3)
       '@tailwindcss/vite':
         specifier: ^4.2.2
-        version: 4.2.2(vite@7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 4.2.2(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
       '@tanstack/devtools-vite':
         specifier: ^0.6.0
-        version: 0.6.0(vite@7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 0.6.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
       '@tanstack/react-devtools':
         specifier: ^0.10.2
         version: 0.10.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(csstype@3.2.3)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(solid-js@1.9.12)
@@ -770,7 +773,7 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: ^5.1.1
-        version: 5.2.0(vite@7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
+        version: 5.2.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
       babel-plugin-react-compiler:
         specifier: ^1.0.0
         version: 1.0.0
@@ -785,7 +788,7 @@ importers:
         version: 5.8.3
       vite:
         specifier: ^7.2.6
-        version: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+        version: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
 
   apps/zhi-slack-bridge:
     dependencies:
@@ -898,6 +901,19 @@ importers:
       zustand:
         specifier: '>=5.0.0'
         version: 5.0.12(@types/react@19.2.14)(immer@11.1.4)(react@19.2.5)(use-sync-external-store@1.6.0(react@19.2.5))
+
+  plugins/browser-use:
+    dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.12.1
+        version: 1.29.0(zod@4.4.3)
+    devDependencies:
+      '@types/node':
+        specifier: ^25.8.0
+        version: 25.8.0
+      vite:
+        specifier: ^7.2.6
+        version: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
 
 packages:
 
@@ -4953,6 +4969,9 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
+
+  '@types/node@25.8.0':
+    resolution: {integrity: sha512-TCFSk8IZh+iLX1xtksoBVtdmgL+1IX0fC9BeU4QqFSuNdN/K+HUlhqOzEmSYYpZUVsLYcPqc9KX+60iDuninSQ==}
 
   '@types/normalize-package-data@2.4.4':
     resolution: {integrity: sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA==}
@@ -9843,6 +9862,9 @@ packages:
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
+  undici-types@7.24.6:
+    resolution: {integrity: sha512-WRNW+sJgj5OBN4/0JpHFqtqzhpbnV0GuB+OozA9gCL7a993SmU+1JBZCzLNxYsbMfIeDL+lTsphD5jN5N+n0zg==}
+
   undici@6.25.0:
     resolution: {integrity: sha512-ZgpWDC5gmNiuY9CnLVXEH8rl50xhRCuLNA97fAUnKi8RRuV4E6KG31pDTsLVUKnohJE0I3XDrTeEydAXRw47xg==}
     engines: {node: '>=18.17'}
@@ -13730,6 +13752,13 @@ snapshots:
       tailwindcss: 4.2.2
       vite: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  '@tailwindcss/vite@4.2.2(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))':
+    dependencies:
+      '@tailwindcss/node': 4.2.2
+      '@tailwindcss/oxide': 4.2.2
+      tailwindcss: 4.2.2
+      vite: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+
   '@tanstack/devtools-client@0.0.6':
     dependencies:
       '@tanstack/devtools-event-client': 0.4.3
@@ -13765,6 +13794,24 @@ snapshots:
       launch-editor: 2.13.2
       picomatch: 4.0.4
       vite: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@tanstack/devtools-vite@0.6.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))':
+    dependencies:
+      '@babel/core': 7.29.0
+      '@babel/generator': 7.29.1
+      '@babel/parser': 7.29.2
+      '@babel/traverse': 7.29.0
+      '@babel/types': 7.29.0
+      '@tanstack/devtools-client': 0.0.6
+      '@tanstack/devtools-event-bus': 0.4.1
+      chalk: 5.6.2
+      launch-editor: 2.13.2
+      picomatch: 4.0.4
+      vite: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -14241,6 +14288,10 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
+  '@types/node@25.8.0':
+    dependencies:
+      undici-types: 7.24.6
+
   '@types/normalize-package-data@2.4.4': {}
 
   '@types/parse-json@4.0.2':
@@ -14429,7 +14480,7 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
-  '@vitejs/plugin-react@4.7.0(vite@7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))':
+  '@vitejs/plugin-react@4.7.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
@@ -14437,7 +14488,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.27
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+      vite: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -14450,6 +14501,18 @@ snapshots:
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
       vite: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@vitejs/plugin-react@5.2.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))':
+    dependencies:
+      '@babel/core': 7.29.0
+      '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.29.0)
+      '@babel/plugin-transform-react-jsx-source': 7.27.1(@babel/core@7.29.0)
+      '@rolldown/pluginutils': 1.0.0-rc.3
+      '@types/babel__core': 7.20.5
+      react-refresh: 0.18.0
+      vite: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -19989,6 +20052,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
+  undici-types@7.24.6: {}
+
   undici@6.25.0: {}
 
   undici@7.25.0: {}
@@ -20239,6 +20304,22 @@ snapshots:
       tinyglobby: 0.2.16
     optionalDependencies:
       '@types/node': 22.19.17
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      lightningcss: 1.32.0
+      tsx: 4.21.0
+      yaml: 2.9.0
+
+  vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0):
+    dependencies:
+      esbuild: 0.27.7
+      fdir: 6.5.0(picomatch@4.0.4)
+      picomatch: 4.0.4
+      postcss: 8.5.9
+      rollup: 4.60.1
+      tinyglobby: 0.2.16
+    optionalDependencies:
+      '@types/node': 25.8.0
       fsevents: 2.3.3
       jiti: 2.7.0
       lightningcss: 1.32.0

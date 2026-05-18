@@ -11,6 +11,8 @@ import { join } from 'node:path'
 import { app, dialog, safeStorage } from 'electron'
 import getPort from 'get-port'
 
+import { getBrowserBackendSocketPath } from './browser-backend'
+
 let serverProcess: ChildProcess | null = null
 let restartCount = 0
 const MAX_RESTARTS = 3
@@ -60,6 +62,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       CRADLE_PORT: String(port),
       CRADLE_DATA_DIR: dataDir,
       CRADLE_CREDENTIAL_SECRET: credentialSecret,
+      BROWSER_BACKEND_SOCKET: getBrowserBackendSocketPath(),
       NODE_ENV: isDev ? 'development' : 'production',
     },
     execPath,

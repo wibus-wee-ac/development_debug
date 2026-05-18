@@ -11,7 +11,7 @@ const webRoot = resolve(__dirname, '../web')
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({
-      exclude: ['get-port', '@cradle/ipc'],
+      exclude: ['get-port', '@cradle/ipc', '@cradle/browser-use'],
     })],
     build: {
       outDir: resolve(__dirname, 'dist/main'),

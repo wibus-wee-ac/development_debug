@@ -1,0 +1,23 @@
+{
+  "name": "@cradle/browser-use",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": "./dist/mcp-server.mjs",
+    "./protocol": "./src/protocol.ts"
+  },
+  "main": "dist/mcp-server.mjs",
+  "types": "src/mcp-server.ts",
+  "scripts": {
+    "build": "vite build && cp SKILL.md dist/SKILL.md",
+    "dev": "vite build --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "vite": "^7.2.6"
+  }
+}
