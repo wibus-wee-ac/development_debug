@@ -139,6 +139,7 @@ export function KanbanList({
                       key={issue.id}
                       issue={issue}
                       statuses={statuses}
+                      milestones={milestones}
                       displayProperties={config.displayProperties}
                       onClick={() => onIssueClick(issue.id)}
                       onHover={onIssueHover ? (id: string | null) => onIssueHover(id) : undefined}

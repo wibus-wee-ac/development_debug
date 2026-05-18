@@ -146,6 +146,8 @@ export function KanbanBoard({
             groupName={group.name}
             category={group.category}
             issues={groupedIssues[group.id] ?? []}
+            statuses={statuses}
+            milestones={milestones}
             displayProperties={config.displayProperties}
             onIssueClick={onIssueClick}
             onIssueHover={onIssueHover}
@@ -167,6 +169,8 @@ export function KanbanBoard({
           >
             <KanbanCard
               issue={activeIssue}
+              statuses={statuses}
+              milestones={milestones}
               displayProperties={config.displayProperties}
               onClick={() => {}}
             />

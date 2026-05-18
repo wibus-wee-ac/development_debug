@@ -1,4 +1,4 @@
-// Input: Group metadata, issues array, display properties
+// Input: Group metadata, issues array, related metadata, display properties
 // Output: Single droppable column for the board view
 // Position: Column component used inside kanban board layout
 
@@ -8,7 +8,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
-import type { KanbanIssue } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanCard } from './kanban-card'
 import { StatusIcon } from './shared/status-icon'
@@ -21,6 +21,8 @@ interface ColumnProps {
   groupName: string
   category?: StatusCategory
   issues: KanbanIssue[]
+  statuses: KanbanStatus[]
+  milestones: KanbanMilestone[]
   displayProperties: ViewConfig['displayProperties']
   onIssueClick: (id: string) => void
   onIssueHover?: (id: string | null) => void
@@ -33,6 +35,8 @@ export function KanbanColumn({
   groupName,
   category,
   issues,
+  statuses,
+  milestones,
   displayProperties,
   onIssueClick,
   onIssueHover,
@@ -75,7 +79,7 @@ export function KanbanColumn({
   return (
     <div className="flex flex-col w-80 shrink-0 bg-muted/20 rounded-xl h-full" data-kanban-column-id={groupId}>
       {/* Column header */}
-      <div className="flex items-center gap-2 px-3 py-3">
+      <div className="flex items-center gap-2 p-3">
         {category && <StatusIcon category={category} size={14} />}
         <span className="text-[12px] font-medium text-foreground" data-testid={`kanban-column-title-${groupId}`}>{groupName}</span>
         <span className="text-[11px] text-muted-foreground tabular-nums">{issues.length}</span>
@@ -95,6 +99,8 @@ export function KanbanColumn({
           <KanbanCard
             key={issue.id}
             issue={issue}
+            statuses={statuses}
+            milestones={milestones}
             displayProperties={displayProperties}
             category={category}
             onClick={() => onIssueClick(issue.id)}
@@ -112,7 +118,7 @@ export function KanbanColumn({
               transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
               className="overflow-hidden"
             >
-              <div className="px-0.5 py-0.5">
+              <div className="p-0.5">
                 <input
                   ref={inputRef}
                   value={inlineTitle}

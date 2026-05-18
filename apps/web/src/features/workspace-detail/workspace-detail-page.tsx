@@ -1,5 +1,5 @@
-// Input: useWorkspaceFile, MarkdownEditor, workspace data, git status, sessions, CSS tab switching
-// Output: WorkspaceDetailPage — Linear-style scrollable tab project view with Overview and Workflow Rules
+// Input: useWorkspaceFile, MarkdownEditor, lazy panels, workspace data, git status, sessions
+// Output: WorkspaceDetailPage — Linear-style scrollable tab project view with directly editable editor
 // Position: Feature component for the workspace-detail tab
 
 import { Link } from '@cradle/tabs-next'
@@ -15,13 +15,13 @@ import {
   ScrollTextIcon,
 } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { getSessions, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
+import { getSessions, getWorkflowRulesByWorkspaceId, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { startChatResponse } from '~/features/chat/chat-response-command'
-import { SkillManager } from '~/features/skills/skill-manager'
 import type { WorkspaceSession } from '~/features/workspace/use-session'
 import { sessionsQueryKey } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
@@ -32,7 +32,9 @@ import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { CapsuleComposer } from './capsule-composer'
 import { useWorkspaceFile } from './use-workspace-file'
-import { useWorkspaceWorkflowRuleContent, WorkspaceWorkflowRules } from './workspace-workflow-rules'
+
+const LazySkillManager = lazy(() => import('~/features/skills/skill-manager').then(module => ({ default: module.SkillManager })))
+const LazyWorkspaceWorkflowRules = lazy(() => import('./workspace-workflow-rules').then(module => ({ default: module.WorkspaceWorkflowRules })))
 
 /* ─── Types ──────────────────────────────────────────────── */
 
@@ -45,6 +47,19 @@ interface TocHeading {
   text: string
   slug: string
   file: string
+}
+
+interface TocHeadingLayout extends TocHeading {
+  top: number
+  height: number
+  visible: boolean
+  intensity: number
+}
+
+interface TocLayout {
+  height: number
+  activeSlug: string | null
+  items: TocHeadingLayout[]
 }
 
 /* ─── Helpers ────────────────────────────────────────────── */
@@ -78,6 +93,11 @@ const HEADING_RE = /^(#{1,6})\s+(\S.*)$/gm
 const RE_NON_WORD = /[^\w\u4E00-\u9FFF]+/g
 const RE_BOUNDARY_DASH = /(^-|-$)/g
 const RE_FENCED_CODE = /```[\s\S]*?```/g
+const ACTIVE_HEADING_TOP_OFFSET = 80
+const HEADING_SELECTOR = 'h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]'
+const TOC_ITEM_HEIGHT = 22
+const EMPTY_TOC_LAYOUT: TocLayout = { height: 0, activeSlug: null, items: [] }
+const TOC_PROXIMITY_FADE_RATIO = 0.72
 
 function slugify(text: string): string {
   return text
@@ -107,6 +127,51 @@ function parseHeadings(markdown: string | null, file: string): TocHeading[] {
     match = HEADING_RE.exec(stripped)
   }
   return result
+}
+
+function collectVisibleHeadings(container: HTMLElement): HTMLElement[] {
+  return Array
+    .from(container.querySelectorAll<HTMLElement>(HEADING_SELECTOR))
+    .filter(el => el.offsetParent !== null)
+}
+
+function buildTocLayout(container: HTMLElement, headings: TocHeading[]): TocLayout {
+  const headingEls = collectVisibleHeadings(container)
+  if (headingEls.length === 0 || headings.length === 0) {
+    return EMPTY_TOC_LAYOUT
+  }
+
+  const visibleCount = Math.min(headingEls.length, headings.length)
+  const trackHeight = visibleCount * TOC_ITEM_HEIGHT
+  const containerTop = container.getBoundingClientRect().top
+  const activeScrollTop = container.scrollTop + ACTIVE_HEADING_TOP_OFFSET
+  const fadeDistance = Math.max(container.clientHeight * TOC_PROXIMITY_FADE_RATIO, 1)
+  let activeSlug = headingEls[0]?.id ?? null
+
+  const items = headingEls.slice(0, visibleCount).map((el, index) => {
+    const heading = headings[index]!
+    const headingTop = el.getBoundingClientRect().top - containerTop + container.scrollTop
+    const headingBottom = headingTop + el.offsetHeight
+    const visible = headingBottom >= container.scrollTop && headingTop <= container.scrollTop + container.clientHeight
+    const intensity = 1 - Math.min(1, Math.abs(headingTop - activeScrollTop) / fadeDistance)
+    if (headingTop <= activeScrollTop) {
+      activeSlug = el.id
+    }
+
+    return {
+      ...heading,
+      top: index * TOC_ITEM_HEIGHT,
+      height: TOC_ITEM_HEIGHT,
+      visible,
+      intensity,
+    }
+  })
+
+  return {
+    height: trackHeight,
+    activeSlug,
+    items,
+  }
 }
 
 /* ─── Inline editable title ──────────────────────────────── */
@@ -204,6 +269,10 @@ function DocumentSection({
   file: { content: string | null, loading: boolean, saving: boolean, save: (md: string) => Promise<unknown> }
   placeholder: string
 }) {
+  const saveDraft = useCallback((nextDraft: string) => {
+    void file.save(nextDraft)
+  }, [file])
+
   if (file.loading) {
     return (
       <div id={id} className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
@@ -219,7 +288,7 @@ function DocumentSection({
 
   return (
     <section id={id} data-testid={testId}>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="mb-3 flex items-center gap-2">
         <span className="text-[12px] font-mono text-muted-foreground">{filename}</span>
         {file.saving && (
           <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -230,7 +299,7 @@ function DocumentSection({
       </div>
       <MarkdownEditor
         content={file.content}
-        onSave={md => void file.save(md)}
+        onSave={saveDraft}
         placeholder={placeholder}
       />
     </section>
@@ -242,122 +311,125 @@ function DocumentSection({
 function FloatingToc({
   headings,
   activeSlug,
+  layout,
   onNavigate,
 }: {
   headings: TocHeading[]
   activeSlug: string | null
+  layout: TocLayout
   onNavigate: (slug: string) => void
 }) {
   if (headings.length === 0) {
     return null
   }
 
-  // Group by file
-  const grouped: { file: string, items: TocHeading[] }[] = []
-  let currentGroup: { file: string, items: TocHeading[] } | null = null
-  for (const h of headings) {
-    if (!currentGroup || currentGroup.file !== h.file) {
-      currentGroup = { file: h.file, items: [] }
-      grouped.push(currentGroup)
-    }
-    currentGroup.items.push(h)
-  }
+  const layoutItems = layout.items.length > 0
+    ? layout.items
+    : headings.map((heading, index) => ({
+      ...heading,
+      top: index * TOC_ITEM_HEIGHT,
+      height: TOC_ITEM_HEIGHT,
+      visible: false,
+      intensity: 0,
+    }))
+  const trackHeight = layout.height > 0
+    ? layout.height
+    : layoutItems.length * TOC_ITEM_HEIGHT
 
   const minLevel = Math.min(...headings.map(h => h.level))
   const xPerLevel = 10
   const trunkBase = 7
-  const itemH = 22
+  const tocLabel = layoutItems[0]?.file ?? headings[0]?.file ?? 'Outline'
+  const currentActiveSlug = layout.activeSlug ?? activeSlug
+  const points: string[] = []
+  for (let i = 0; i < layoutItems.length; i++) {
+    const x = trunkBase + (layoutItems[i]!.level - minLevel) * xPerLevel
+    const y = layoutItems[i]!.top + layoutItems[i]!.height / 2
+
+    if (i === 0) {
+      points.push(`M ${x} ${y}`)
+    }
+    else {
+      const prevX = trunkBase + (layoutItems[i - 1]!.level - minLevel) * xPerLevel
+      points.push(`L ${prevX} ${y}`)
+      if (prevX !== x) {
+        points.push(`L ${x} ${y}`)
+      }
+    }
+  }
+  const pathD = points.join(' ')
 
   return (
     <nav className="sticky top-6 w-58 shrink-0 pt-6 pr-4 select-none">
-      {grouped.map((group) => {
-        const totalH = group.items.length * itemH
+      <span className="block text-[10px] font-mono text-muted-foreground font-medium mb-1.5 px-2">
+        {tocLabel}
+      </span>
+      <div className="relative" style={{ height: trackHeight }}>
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width="100%"
+          height={trackHeight}
+          aria-hidden="true"
+        >
+          <path
+            d={pathD}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1"
+            className="text-border/50"
+          />
+        </svg>
 
-        // Build a single continuous folding polyline path
-        // The line runs vertically then bends horizontally when indent changes
-        const points: string[] = []
-        for (let i = 0; i < group.items.length; i++) {
-          const x = trunkBase + (group.items[i]!.level - minLevel) * xPerLevel
-          const y = i * itemH + itemH / 2
+        {layoutItems.map((h) => {
+          const indent = (h.level - minLevel) * xPerLevel
+          const x = trunkBase + indent
+          const isActive = currentActiveSlug === h.slug
+          const isVisible = h.visible && !isActive
+          const proximityOpacity = 0.42 + h.intensity * 0.42
+          const tocItemStyle = {
+            'top': h.top,
+            'height': h.height,
+            'paddingLeft': x + 10,
+            '--toc-item-opacity': isActive ? 1 : proximityOpacity,
+            '--toc-dot-opacity': isActive ? 1 : Math.max(proximityOpacity, isVisible ? 0.78 : 0.5),
+          } as CSSProperties
 
-          if (i === 0) {
-            // Start at first item
-            points.push(`M ${x} ${y}`)
-          }
-          else {
-            const prevX = trunkBase + (group.items[i - 1]!.level - minLevel) * xPerLevel
-            // Vertical down at previous x, then horizontal to new x
-            points.push(`L ${prevX} ${y}`)
-            if (prevX !== x) {
-              points.push(`L ${x} ${y}`)
-            }
-          }
-        }
-        const pathD = points.join(' ')
-
-        return (
-          <div key={group.file} className="mb-4">
-            <span className="block text-[10px] font-mono text-muted-foreground font-medium mb-1.5 px-2">
-              {group.file}
-            </span>
-            <div className="relative" style={{ height: totalH }}>
-              {/* Single folding path line */}
-              <svg
-                className="absolute inset-0 pointer-events-none"
-                width="100%"
-                height={totalH}
-                aria-hidden="true"
-              >
-                <path
-                  d={pathD}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1"
-                  className="text-border/50"
-                />
-              </svg>
-
-              {/* Heading items */}
-              {group.items.map((h, i) => {
-                const indent = (h.level - minLevel) * xPerLevel
-                const x = trunkBase + indent
-                const isActive = activeSlug === h.slug
-
-                return (
-                  <button
-                    key={`${h.file}-${h.slug}`}
-                    type="button"
-                    onClick={() => onNavigate(h.slug)}
-                    className={cn(
-                      'absolute flex items-center w-full text-left transition-colors',
-                      isActive
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-muted-foreground/70',
-                    )}
-                    style={{
-                      top: i * itemH,
-                      height: itemH,
-                      paddingLeft: x + 10,
-                    }}
-                  >
-                    {/* Dot on the path */}
-                    <span
-                      className={cn(
-                        'absolute size-1.5 rounded-full border transition-colors',
-                        isActive
-                          ? 'bg-foreground border-foreground'
-                          : 'bg-background border-muted-foreground/30',
-                      )}
-                      style={{ left: x - 3 }}
-                    />
-                    <span className="truncate text-[11px]">{h.text}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
+          return (
+            <button
+              key={`${h.file}-${h.slug}`}
+              type="button"
+              onClick={() => onNavigate(h.slug)}
+              className={cn(
+                'group/toc-item absolute flex items-center w-full text-left transition-[color,opacity,text-shadow]',
+                'opacity-[var(--toc-item-opacity)] hover:opacity-100 focus-visible:opacity-100',
+                'focus-visible:outline-none',
+                isActive
+                  ? 'text-foreground'
+                  : isVisible
+                    ? 'text-foreground/70 hover:text-foreground focus-visible:text-foreground'
+                  : 'text-muted-foreground hover:text-foreground focus-visible:text-foreground',
+              )}
+              style={tocItemStyle}
+            >
+              <span
+                className={cn(
+                  'absolute size-1.5 rounded-full border transition-[background-color,border-color,box-shadow,opacity]',
+                  'opacity-[var(--toc-dot-opacity)] group-hover/toc-item:opacity-100 group-focus-visible/toc-item:opacity-100',
+                  isActive
+                    ? 'bg-foreground border-foreground shadow-[0_0_10px_color-mix(in_oklab,currentColor_60%,transparent)]'
+                    : isVisible
+                      ? 'bg-foreground/35 border-foreground/35 group-hover/toc-item:bg-foreground/75 group-hover/toc-item:border-foreground/75 group-hover/toc-item:shadow-[0_0_10px_color-mix(in_oklab,currentColor_45%,transparent)] group-focus-visible/toc-item:bg-foreground/75 group-focus-visible/toc-item:border-foreground/75 group-focus-visible/toc-item:shadow-[0_0_10px_color-mix(in_oklab,currentColor_45%,transparent)]'
+                    : 'bg-background border-muted-foreground/30 group-hover/toc-item:bg-foreground/70 group-hover/toc-item:border-foreground/70 group-hover/toc-item:shadow-[0_0_10px_color-mix(in_oklab,currentColor_40%,transparent)] group-focus-visible/toc-item:bg-foreground/70 group-focus-visible/toc-item:border-foreground/70 group-focus-visible/toc-item:shadow-[0_0_10px_color-mix(in_oklab,currentColor_40%,transparent)]',
+                )}
+                style={{
+                  left: x - 3,
+                }}
+              />
+              <span className="truncate text-[11px] transition-[text-shadow] group-hover/toc-item:[text-shadow:0_0_12px_color-mix(in_oklab,currentColor_45%,transparent)] group-focus-visible/toc-item:[text-shadow:0_0_12px_color-mix(in_oklab,currentColor_45%,transparent)]">{h.text}</span>
+            </button>
+          )
+        })}
+      </div>
     </nav>
   )
 }
@@ -370,6 +442,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules' | 'skills'>('overview')
   const [selectedWorkflowAgentId, setSelectedWorkflowAgentId] = useState<string | null>(null)
+  const [tocLayout, setTocLayout] = useState<TocLayout>(EMPTY_TOC_LAYOUT)
 
   const { data: workspace } = useQuery({
     queryKey: ['workspace', workspaceId],
@@ -400,7 +473,20 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   })
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
-  const workflowContent = useWorkspaceWorkflowRuleContent(workspaceId, selectedWorkflowAgentId)
+  const { data: workflowRule } = useQuery({
+    queryKey: ['workflow-rules', workspaceId, selectedWorkflowAgentId],
+    queryFn: async () => {
+      const { data } = await getWorkflowRulesByWorkspaceId({
+        path: { workspaceId },
+        query: selectedWorkflowAgentId ? { agentProfileId: selectedWorkflowAgentId } : {},
+      })
+      return data as { global: string | null, profileSpecific: string | null }
+    },
+    enabled: activeTab === 'workflow-rules' && !!workspaceId,
+  })
+  const workflowContent = selectedWorkflowAgentId
+    ? (workflowRule?.profileSpecific ?? null)
+    : (workflowRule?.global ?? null)
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
@@ -498,37 +584,52 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       return
     }
 
+    let animationFrameId: number | null = null
+
+    const updateTocState = () => {
+      const nextLayout = buildTocLayout(container, headings)
+      setActiveSlug(nextLayout.activeSlug)
+      setTocLayout(nextLayout)
+    }
+
+    const queueTocStateUpdate = () => {
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId)
+      }
+      animationFrameId = requestAnimationFrame(() => {
+        animationFrameId = null
+        updateTocState()
+      })
+    }
+
     const handleScroll = () => {
-      const headingEls = container.querySelectorAll('h1[id], h2[id], h3[id], h4[id], h5[id], h6[id]')
-      if (headingEls.length === 0) {
-        return
-      }
+      queueTocStateUpdate()
+    }
 
-      const containerRect = container.getBoundingClientRect()
-      let active: string | null = null
+    const mutationObserver = new MutationObserver(queueTocStateUpdate)
+    const resizeObserver = new ResizeObserver(queueTocStateUpdate)
 
-      for (const el of headingEls) {
-        // Skip elements inside hidden tab content
-        if ((el as HTMLElement).offsetParent === null) {
-          continue
-        }
-        const elTop = el.getBoundingClientRect().top - containerRect.top
-        if (elTop <= 80) {
-          active = el.id
-        }
-      }
-
-      setActiveSlug(active)
+    mutationObserver.observe(container, {
+      childList: true,
+      subtree: true,
+    })
+    resizeObserver.observe(container)
+    if (container.firstElementChild instanceof HTMLElement) {
+      resizeObserver.observe(container.firstElementChild)
     }
 
     container.addEventListener('scroll', handleScroll, { passive: true })
-    // Run once after content renders
-    const timer = setTimeout(handleScroll, 200)
+    queueTocStateUpdate()
+
     return () => {
       container.removeEventListener('scroll', handleScroll)
-      clearTimeout(timer)
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId)
+      }
     }
-  }, [activeTab])
+  }, [activeTab, headings])
 
   return {
     activeSlug,
@@ -551,6 +652,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     sessions,
     setActiveTab,
     setSelectedWorkflowAgentId,
+    tocLayout,
     workspace,
     workspaceId,
   }
@@ -622,23 +724,39 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
             )}
           </div>
 
-          <div className={activeTab === 'workflow-rules' ? undefined : 'hidden'}>
-            <WorkspaceWorkflowRules
-              workspaceId={workspaceId}
-              selectedAgentId={selectedWorkflowAgentId}
-              onSelectedAgentId={setSelectedWorkflowAgentId}
-            />
-          </div>
+          {activeTab === 'workflow-rules' && (
+            <Suspense fallback={(
+              <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+                <Loader2Icon className="mr-2 size-3.5 animate-spin" />
+                Loading workflow...
+              </div>
+            )}
+            >
+              <LazyWorkspaceWorkflowRules
+                workspaceId={workspaceId}
+                selectedAgentId={selectedWorkflowAgentId}
+                onSelectedAgentId={setSelectedWorkflowAgentId}
+              />
+            </Suspense>
+          )}
 
-          <div className={activeTab === 'skills' ? undefined : 'hidden'}>
-            <SkillManager
-              workspaceId={workspaceId}
-              editableScope="workspace"
-              pageTestId="workspace-skills-page"
-              title="Workspace Skills"
-              description="Manage repository-specific skills under .agents/skills while reviewing inherited global and built-in skills."
-            />
-          </div>
+          {activeTab === 'skills' && (
+            <Suspense fallback={(
+              <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
+                <Loader2Icon className="mr-2 size-3.5 animate-spin" />
+                Loading skills...
+              </div>
+            )}
+            >
+              <LazySkillManager
+                workspaceId={workspaceId}
+                editableScope="workspace"
+                pageTestId="workspace-skills-page"
+                title="Workspace Skills"
+                description="Manage repository-standard skills under .agents/skills while reviewing inherited Cradle-only and built-in skills."
+              />
+            </Suspense>
+          )}
 
           <div className="h-28" />
         </m.div>
@@ -761,6 +879,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
           <FloatingToc
             headings={owner.headings}
             activeSlug={owner.activeSlug}
+            layout={owner.tocLayout}
             onNavigate={owner.handleTocNavigate}
           />
         )}
