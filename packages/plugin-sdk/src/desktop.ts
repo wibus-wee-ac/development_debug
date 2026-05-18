@@ -10,6 +10,9 @@ export interface DesktopPluginContext {
   /** Listen for webview creation — receives raw WebContents */
   onWebviewCreated(handler: (wc: unknown, tabId: string) => void): Disposable
 
+  /** Ask the active renderer to create a visible browser panel tab */
+  requestBrowserTab(url?: string): Promise<void>
+
   /** Write to shared config bus — values propagated to server via env vars */
   setSharedConfig(key: string, value: string): void
 

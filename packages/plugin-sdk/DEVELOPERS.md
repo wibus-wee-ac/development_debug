@@ -150,17 +150,18 @@ plugins/
 
 \* At least one of `server`, `web`, or `desktop` must be present.
 
-### Plugin Short Name Derivation
+### Plugin Identity And Route Segment
 
-The short name is used for URL routing and identification:
+`package.json#name` is the canonical plugin identity. The route segment is derived from that identity and is used only for URL routing:
 
 ```
-@cradle/plugin-foo  →  foo        (strip "@cradle/plugin-" prefix)
-@cradle/system-info →  system-info (strip "@cradle/" prefix)
+@cradle/plugin-foo  →  foo
+@cradle/system-info →  system-info
 @cradle/my-tool     →  my-tool
+@external/tool      →  scope-external--tool
 ```
 
-Logic: strip `@cradle/plugin-` first, then `@cradle/`.
+Current `@cradle/*` route segments remain legacy-compatible. External scoped packages use an encoded route segment to avoid collisions. Do not use the route segment as plugin ownership identity; use the package name.
 
 ---
 
@@ -184,7 +185,7 @@ export function deactivate(): void | Promise<void> {
 
 ### `ctx.app` — Scoped Elysia Instance
 
-A pre-configured Elysia sub-app with prefix `/api/plugins/{shortName}/`. Register routes using the standard Elysia API:
+A pre-configured Elysia sub-app with prefix `/api/plugins/{routeSegment}/`. Register routes using the standard Elysia API:
 
 ```ts
 export function activate(ctx: ServerPluginContext): void {
@@ -723,7 +724,7 @@ The **Plugins** tab shows:
 | `Invalid hook call` | React not externalized | Add `react` to `rollupOptions.external` |
 | `Plugin does not export 'activate'` | Missing/wrong export | Ensure `export function activate(ctx)` |
 | Panel renders but hooks fail | Bundled React copy | Check `dist/web.mjs` has no React code, only `from 'react'` imports |
-| Route 404 | Wrong short name | Check URL matches derived short name |
+| Route 404 | Wrong route segment | Check `GET /api/plugins` for the plugin `routeSegment` |
 | `sharedConfig` is empty | Desktop plugin not loaded first | Ensure `cradle.desktop` entry exists and runs before server |
 
 ---

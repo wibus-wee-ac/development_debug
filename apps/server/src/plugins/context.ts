@@ -1,9 +1,9 @@
 import type { PluginManifest } from '@cradle/plugin-sdk'
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 import { createPluginEventBus } from './event-bus'
-import { registerAfterResponseHook, registerBeforeQueryHook } from './hooks'
-import { registerMcpServer } from './mcp-registry'
-import { registerPluginSkill } from './skill-registry'
+import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
+import { registerPluginMcpServer } from './mcp-registry'
+import { registerOwnedPluginSkill } from './skill-registry'
 import { createPluginStorage } from './storage'
 
 export function createServerPluginContext(
@@ -34,16 +34,22 @@ export function createServerPluginContext(
         logger.debug(`MCP server ${config.name} skipped — when() returned false`)
         return
       }
-      registerMcpServer(config)
+      registerPluginMcpServer(manifest.name, config)
     },
-    registerSkill: registerPluginSkill,
+    registerSkill(skill) {
+      registerOwnedPluginSkill(manifest.name, skill)
+    },
     storage: createPluginStorage(manifest.name),
     logger,
     sharedConfig,
     manifest,
     hooks: {
-      onBeforeQuery: registerBeforeQueryHook,
-      onAfterResponse: registerAfterResponseHook,
+      onBeforeQuery(handler) {
+        return registerOwnedBeforeQueryHook(manifest.name, handler)
+      },
+      onAfterResponse(handler) {
+        return registerOwnedAfterResponseHook(manifest.name, handler)
+      },
     },
     events: eventBus,
   }

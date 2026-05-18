@@ -15,6 +15,7 @@ The registry exports the store instance consumed by the rest of the app.
 - **home.tab.tsx**: Home/dashboard tab (pinned, no params)
 - **chat.tab.tsx**: Chat session tab (params: `sessionId`)
 - **new-chat.tab.tsx**: New chat creation tab (no params)
+- **plugin-panel.tab.tsx**: Plugin panel tab，按 owner-scoped panel id 渲染 web plugin 注册的 panel，并兼容旧 local id 的单匹配恢复
 - **kanban-board.tab.tsx**: Kanban board tab (params: `boardId`, optional `issue`)
 - **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel
 - **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name

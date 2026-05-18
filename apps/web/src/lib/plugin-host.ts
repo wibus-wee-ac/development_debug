@@ -1,13 +1,10 @@
 import type { WebPlugin, WebPluginContext, WebPluginStorage } from '@cradle/plugin-sdk/web'
+import { derivePluginRouteSegment, type PluginDescriptor } from '@cradle/plugin-sdk'
 import { getServerUrl } from './electron'
 import { usePluginStore } from './plugin-store'
 
-interface PluginInfo {
-  name: string
-  version: string
-  displayName: string
-  hasWeb: boolean
-}
+type WebPluginDescriptor = Pick<PluginDescriptor, 'name' | 'version' | 'displayName' | 'hasWeb'>
+  & Partial<Pick<PluginDescriptor, 'identity' | 'routeSegment'>>
 
 function createWebPluginStorage(pluginName: string): WebPluginStorage {
   const prefix = `cradle-plugin:${pluginName}:`
@@ -35,16 +32,20 @@ function createWebPluginContext(pluginName: string): WebPluginContext {
 
   return {
     registerPanel(panel) {
-      const dispose = store.registerPanel(panel)
+      const dispose = store.registerPanel(pluginName, panel)
       return { dispose }
     },
     registerCommand(cmd) {
-      const dispose = store.registerCommand(cmd)
+      const dispose = store.registerCommand(pluginName, cmd)
       return { dispose }
     },
     storage: createWebPluginStorage(pluginName),
     logger,
   }
+}
+
+function getWebBundleRouteSegment(plugin: WebPluginDescriptor): string {
+  return plugin.routeSegment ?? derivePluginRouteSegment(plugin.identity ?? plugin.name)
 }
 
 /**
@@ -61,7 +62,7 @@ export async function loadWebPlugins(): Promise<void> {
       return
     }
 
-    const plugins: PluginInfo[] = await response.json()
+    const plugins: WebPluginDescriptor[] = await response.json()
     const webPlugins = plugins.filter((p) => p.hasWeb)
 
     if (webPlugins.length === 0) return
@@ -69,18 +70,18 @@ export async function loadWebPlugins(): Promise<void> {
     // Load each web plugin
     const results = await Promise.allSettled(
       webPlugins.map(async (plugin) => {
-        const shortName = plugin.name.replace(/^@cradle\/plugin-/, '').replace(/^@cradle\//, '')
-        const moduleUrl = `${baseUrl}/api/plugins/${shortName}/web.mjs`
+        const owner = plugin.identity ?? plugin.name
+        const moduleUrl = `${baseUrl}/api/plugins/${getWebBundleRouteSegment(plugin)}/web.mjs`
         const mod = await import(/* @vite-ignore */ moduleUrl)
 
         const activateFn = mod.activate ?? mod.default?.activate
         if (typeof activateFn !== 'function') {
-          throw new Error(`Plugin ${plugin.name} web entry does not export 'activate'`)
+          throw new Error(`Plugin ${owner} web entry does not export 'activate'`)
         }
 
-        const ctx = createWebPluginContext(plugin.name)
+        const ctx = createWebPluginContext(owner)
         await activateFn(ctx)
-        console.log(`[plugin-host] activated: ${plugin.name}`)
+        console.log(`[plugin-host] activated: ${owner}`)
       }),
     )
 

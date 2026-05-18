@@ -15,6 +15,20 @@ function formatTimeSince(ts: number | undefined): string {
   return `${Math.floor(diff / 3600)}h ago`
 }
 
+function getPluginOwner(plugin: PluginInfo): string {
+  return plugin.identity ?? plugin.name
+}
+
+function getLayerStatus(plugin: PluginInfo, layer: 'server' | 'web' | 'desktop'): string {
+  const hasLayer = layer === 'server'
+    ? plugin.hasServer
+    : layer === 'web'
+      ? plugin.hasWeb
+      : plugin.hasDesktop
+
+  return plugin.layers?.[layer]?.status ?? (hasLayer ? 'discovered' : 'skipped')
+}
+
 export function PluginsPanel() {
   const { plugins, loading, error, refresh, getActivatedAt } = usePluginData()
   const panels = usePluginStore(s => s.panels)
@@ -63,7 +77,7 @@ export function PluginsPanel() {
       </div>
 
       {/* Loading / Error */}
-      {loading && <div className="text-muted-foreground">Loading...</div>}
+      {loading && <div className="text-muted-foreground">Loading&hellip;</div>}
       {error && <div className="text-red-400">Error: {error}</div>}
 
       {/* Plugin list */}
@@ -71,13 +85,16 @@ export function PluginsPanel() {
         <div className="space-y-2">
           {plugins.map(p => (
             <PluginListItem
-              key={p.name}
+              key={getPluginOwner(p)}
               plugin={p}
-              expanded={expandedPlugin === p.name}
-              onToggle={() => setExpandedPlugin(expandedPlugin === p.name ? null : p.name)}
-              activatedAt={getActivatedAt(p.name)}
-              hasRegistrations={panels.length > 0 || commands.length > 0}
-              commands={commands}
+              expanded={expandedPlugin === getPluginOwner(p)}
+              onToggle={() => {
+                const owner = getPluginOwner(p)
+                setExpandedPlugin(expandedPlugin === owner ? null : owner)
+              }}
+              activatedAt={getActivatedAt(p)}
+              panels={panels.filter(panel => panel.owner === getPluginOwner(p))}
+              commands={commands.filter(command => command.owner === getPluginOwner(p))}
             />
           ))}
           {plugins.length === 0 && (
@@ -99,7 +116,8 @@ export function PluginsPanel() {
           {panels.map(panel => (
             <div key={panel.id} className="flex items-center gap-2 py-0.5">
               <span className="text-foreground">{panel.title}</span>
-              <span className="text-muted-foreground">{panel.id}</span>
+              <span className="text-muted-foreground">{panel.localId}</span>
+              <span className="rounded bg-fill px-1 text-muted-foreground">{panel.owner}</span>
               {panel.location && (
                 <span className="rounded bg-fill px-1 text-muted-foreground">
                   {panel.location}
@@ -126,7 +144,8 @@ export function PluginsPanel() {
                 ▶
               </button>
               <span className="text-foreground">{cmd.title}</span>
-              <span className="text-muted-foreground">{cmd.id}</span>
+              <span className="text-muted-foreground">{cmd.localId}</span>
+              <span className="rounded bg-fill px-1 text-muted-foreground">{cmd.owner}</span>
               {cmd.keybinding && (
                 <span className="rounded bg-fill px-1 text-muted-foreground">
                   {cmd.keybinding}
@@ -145,17 +164,19 @@ function PluginListItem({
   expanded,
   onToggle,
   activatedAt,
-  hasRegistrations,
+  panels,
   commands,
 }: {
   plugin: PluginInfo
   expanded: boolean
   onToggle: () => void
   activatedAt: number | undefined
-  hasRegistrations: boolean
-  commands: Array<{ id: string; title: string; execute(): void | Promise<void> }>
+  panels: Array<{ id: string; localId: string; title: string; owner: string }>
+  commands: Array<{ id: string; localId: string; title: string; owner: string; execute(): void | Promise<void> }>
 }) {
-  const isActive = hasRegistrations && plugin.hasWeb
+  const owner = getPluginOwner(plugin)
+  const webStatus = getLayerStatus(plugin, 'web')
+  const isActive = webStatus === 'active' || panels.length > 0 || commands.length > 0
 
   return (
     <div className="rounded border border-border">
@@ -173,10 +194,13 @@ function PluginListItem({
         />
         <span className="text-foreground">{plugin.displayName || plugin.name}</span>
         <span className="text-muted-foreground">{plugin.version}</span>
+        {plugin.routeSegment && (
+          <span className="text-muted-foreground">{plugin.routeSegment}</span>
+        )}
         <div className="ml-auto flex gap-1">
-          {plugin.hasServer && <PlatformBadge label="server" variant="blue" />}
-          {plugin.hasWeb && <PlatformBadge label="web" variant="purple" />}
-          {plugin.hasDesktop && <PlatformBadge label="desktop" variant="amber" />}
+          {plugin.hasServer && <PlatformBadge label={getLayerStatus(plugin, 'server')} variant="blue" />}
+          {plugin.hasWeb && <PlatformBadge label={getLayerStatus(plugin, 'web')} variant="purple" />}
+          {plugin.hasDesktop && <PlatformBadge label={getLayerStatus(plugin, 'desktop')} variant="amber" />}
         </div>
         <span className="text-muted-foreground">{expanded ? '▾' : '▸'}</span>
       </button>
@@ -190,6 +214,19 @@ function PluginListItem({
           {plugin.description && (
             <div className="text-muted-foreground">{plugin.description}</div>
           )}
+
+          <div className="space-y-0.5">
+            <div className="text-muted-foreground font-medium">Descriptor</div>
+            <InfoRow label="identity" value={owner} />
+            <InfoRow label="route" value={plugin.routeSegment ?? 'legacy'} />
+            {plugin.source && (
+              <>
+                <InfoRow label="source" value={plugin.source.kind} />
+                <InfoRow label="trusted" value={String(plugin.source.trusted)} />
+                <InfoRow label="path" value={plugin.source.packageDir} />
+              </>
+            )}
+          </div>
 
           {/* Entry points */}
           <div className="space-y-0.5">
@@ -220,10 +257,52 @@ function PluginListItem({
             <span className="text-foreground">{formatTimeSince(activatedAt)}</span>
           </div>
 
-          {/* Commands belonging to this plugin */}
-          {commands.length > 0 && plugin.hasWeb && (
+          {plugin.layers && (
             <div className="space-y-0.5">
-              <div className="text-muted-foreground font-medium">Commands</div>
+              <div className="text-muted-foreground font-medium">Layers</div>
+              {(['server', 'web', 'desktop'] as const).map(layer => (
+                <InfoRow
+                  key={layer}
+                  label={layer}
+                  value={`${plugin.layers?.[layer]?.status ?? 'skipped'}${plugin.layers?.[layer]?.error ? `: ${plugin.layers[layer]?.error}` : ''}`}
+                />
+              ))}
+            </div>
+          )}
+
+          {plugin.capabilities && plugin.capabilities.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-muted-foreground font-medium">Capabilities</div>
+              {plugin.capabilities.map(capability => (
+                <div key={capability.id} className="flex items-center gap-2">
+                  <span className="text-foreground">{capability.label ?? capability.type}</span>
+                  <span className="text-muted-foreground">{capability.id}</span>
+                  <span className="rounded bg-fill px-1 text-muted-foreground">{capability.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {plugin.warnings && plugin.warnings.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-muted-foreground font-medium">Warnings</div>
+              {plugin.warnings.map(warning => (
+                <div key={warning} className="text-amber-400">{warning}</div>
+              ))}
+            </div>
+          )}
+
+          {/* Commands belonging to this plugin */}
+          {(panels.length > 0 || commands.length > 0) && plugin.hasWeb && (
+            <div className="space-y-0.5">
+              <div className="text-muted-foreground font-medium">Web Contributions</div>
+              {panels.map(panel => (
+                <div key={panel.id} className="flex items-center gap-2">
+                  <span className="text-foreground">{panel.title}</span>
+                  <span className="text-muted-foreground">{panel.localId}</span>
+                  <span className="rounded bg-fill px-1 text-muted-foreground">panel</span>
+                </div>
+              ))}
               {commands.map(cmd => (
                 <div key={cmd.id} className="flex items-center gap-2">
                   <button
@@ -235,13 +314,23 @@ function PluginListItem({
                     ▶
                   </button>
                   <span className="text-foreground">{cmd.title}</span>
-                  <span className="text-muted-foreground">{cmd.id}</span>
+                  <span className="text-muted-foreground">{cmd.localId}</span>
+                  <span className="rounded bg-fill px-1 text-muted-foreground">command</span>
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-2">
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="text-foreground break-all">{value}</span>
     </div>
   )
 }

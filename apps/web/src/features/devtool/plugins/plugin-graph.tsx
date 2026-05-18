@@ -4,14 +4,16 @@ import '@xyflow/react/dist/style.css'
 
 interface PluginGraphProps {
   plugins: Array<{
+    identity?: string
     name: string
     displayName: string
     hasServer: boolean
     hasWeb: boolean
     hasDesktop: boolean
+    capabilities?: Array<{ id: string; type: string; label?: string; status: string }>
   }>
-  panels: Array<{ id: string; title: string }>
-  commands: Array<{ id: string; title: string }>
+  panels: Array<{ id: string; title: string; owner: string }>
+  commands: Array<{ id: string; title: string; owner: string }>
 }
 
 // --- Custom Node Components ---
@@ -121,8 +123,9 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
     const pluginSpacing = 300 / (plugins.length + 1)
     for (let i = 0; i < plugins.length; i++) {
       const p = plugins[i]
+      const owner = p.identity ?? p.name
       flowNodes.push({
-        id: `plugin-${p.name}`,
+        id: `plugin-${owner}`,
         type: 'plugin',
         position: { x: 220, y: pluginSpacing * (i + 1) - 15 },
         data: {
@@ -136,7 +139,7 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
         flowEdges.push({
           id: `e-server-${p.name}`,
           source: 'platform-server',
-          target: `plugin-${p.name}`,
+          target: `plugin-${owner}`,
           type: 'smoothstep',
           style: { stroke: `${PLATFORM_COLORS.server}66`, strokeWidth: 1.5 },
           animated: true,
@@ -146,7 +149,7 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
         flowEdges.push({
           id: `e-web-${p.name}`,
           source: 'platform-web',
-          target: `plugin-${p.name}`,
+          target: `plugin-${owner}`,
           type: 'smoothstep',
           style: { stroke: `${PLATFORM_COLORS.web}66`, strokeWidth: 1.5 },
           animated: true,
@@ -156,7 +159,7 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
         flowEdges.push({
           id: `e-desktop-${p.name}`,
           source: 'platform-desktop',
-          target: `plugin-${p.name}`,
+          target: `plugin-${owner}`,
           type: 'smoothstep',
           style: { stroke: `${PLATFORM_COLORS.desktop}66`, strokeWidth: 1.5 },
           animated: true,
@@ -165,9 +168,27 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
     }
 
     // Capability nodes (right column)
-    const capabilities: Array<{ id: string; label: string }> = []
-    capabilities.push({ id: 'cap-panels', label: `${panels.length} Panels` })
-    capabilities.push({ id: 'cap-commands', label: `${commands.length} Commands` })
+    const capabilities: Array<{ id: string; label: string; owner?: string }> = []
+    capabilities.push(...panels.map(panel => ({
+      id: `cap-panel-${panel.id}`,
+      label: panel.title,
+      owner: panel.owner,
+    })))
+    capabilities.push(...commands.map(command => ({
+      id: `cap-command-${command.id}`,
+      label: command.title,
+      owner: command.owner,
+    })))
+    for (const plugin of plugins) {
+      const owner = plugin.identity ?? plugin.name
+      for (const capability of plugin.capabilities ?? []) {
+        capabilities.push({
+          id: `cap-runtime-${capability.id}`,
+          label: capability.label ?? capability.type,
+          owner,
+        })
+      }
+    }
 
     const capSpacing = 300 / (capabilities.length + 1)
     for (let i = 0; i < capabilities.length; i++) {
@@ -179,18 +200,18 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
       })
     }
 
-    // Edges from plugin → capability (if plugin has web entry)
+    // Edges from plugin → capability.
     for (const p of plugins) {
-      if (p.hasWeb) {
-        for (const cap of capabilities) {
-          flowEdges.push({
-            id: `e-${p.name}-${cap.id}`,
-            source: `plugin-${p.name}`,
-            target: cap.id,
-            type: 'smoothstep',
-            style: { stroke: '#22c55e66', strokeWidth: 1.5 },
-          })
-        }
+      const owner = p.identity ?? p.name
+      for (const cap of capabilities) {
+        if (cap.owner !== owner) continue
+        flowEdges.push({
+          id: `e-${owner}-${cap.id}`,
+          source: `plugin-${owner}`,
+          target: cap.id,
+          type: 'smoothstep',
+          style: { stroke: '#22c55e66', strokeWidth: 1.5 },
+        })
       }
     }
 

@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type {
+  PluginCapabilityRecord,
+  PluginLayer,
+  PluginLayerState,
+  PluginSourceDescriptor,
+} from '@cradle/plugin-sdk'
 
 import { getServerUrl } from '~/lib/electron'
 
 export interface PluginInfo {
+  identity?: string
+  routeSegment?: string
   name: string
   version: string
   displayName: string
   description?: string
+  source?: PluginSourceDescriptor
+  layers?: Partial<Record<PluginLayer, PluginLayerState>>
+  capabilities?: PluginCapabilityRecord[]
+  warnings?: string[]
   hasWeb: boolean
   hasServer: boolean
   hasDesktop: boolean
@@ -33,8 +45,12 @@ export function usePluginData() {
       setPlugins(data)
       const now = Date.now()
       for (const p of data) {
-        if (!activatedAtRef.current.has(p.name)) {
-          activatedAtRef.current.set(p.name, now)
+        const key = p.identity ?? p.name
+        const activatedAt = p.layers?.web?.activatedAt ?? p.layers?.server?.activatedAt ?? p.layers?.desktop?.activatedAt
+        if (activatedAt) {
+          activatedAtRef.current.set(key, Date.parse(activatedAt))
+        } else if (!activatedAtRef.current.has(key)) {
+          activatedAtRef.current.set(key, now)
         }
       }
     } catch (e) {
@@ -59,8 +75,8 @@ export function usePluginData() {
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [refresh])
 
-  function getActivatedAt(name: string): number | undefined {
-    return activatedAtRef.current.get(name)
+  function getActivatedAt(plugin: PluginInfo): number | undefined {
+    return activatedAtRef.current.get(plugin.identity ?? plugin.name)
   }
 
   return { plugins, loading, error, refresh, getActivatedAt }

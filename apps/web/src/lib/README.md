@@ -12,6 +12,8 @@ Used across features and components in the renderer.
 - **electron.ts**: Electron environment helpers, typed IPC proxy, server HTTP base URL resolution, and server WebSocket URL derivation
 - **ipc.ts**: Typed IPC proxy for renderer-to-main communication; 默认只在 devtool route 上启用昂贵的 caller stack 捕获
 - **ipc-options.ts**: IPC instrumentation policy helper，决定何时允许捕获调用栈
+- **plugin-host.ts**: Web plugin host，读取 server 返回的 governed plugin descriptors，并按 `routeSegment` 加载 web bundle
+- **plugin-store.ts**: Plugin panel / command 的 Zustand store，记录 owner-scoped contribution ids
 - **shortcut-context.ts**: React context for keyboard shortcut management
 - **shortcut-provider.tsx**: Provider component for shortcut context
 - **shortcut-utils.ts**: Keyboard shortcut parsing and matching utilities

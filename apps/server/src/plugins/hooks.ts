@@ -1,4 +1,5 @@
 import type { AfterResponseHandler, BeforeQueryHandler, Disposable, QueryHookContext, ResponseHookContext } from '@cradle/plugin-sdk/server'
+import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
 const beforeQueryHandlers: BeforeQueryHandler[] = []
 const afterResponseHandlers: AfterResponseHandler[] = []
@@ -19,6 +20,28 @@ export function registerAfterResponseHook(handler: AfterResponseHandler): Dispos
     dispose() {
       const idx = afterResponseHandlers.indexOf(handler)
       if (idx >= 0) afterResponseHandlers.splice(idx, 1)
+    },
+  }
+}
+
+export function registerOwnedBeforeQueryHook(owner: string, handler: BeforeQueryHandler): Disposable {
+  const disposable = registerBeforeQueryHook(handler)
+  const record = registerPluginCapability(owner, 'hook', 'server', 'before-query', 'Before query hook')
+  return {
+    dispose() {
+      disposable.dispose()
+      unregisterPluginCapability(owner, record.id)
+    },
+  }
+}
+
+export function registerOwnedAfterResponseHook(owner: string, handler: AfterResponseHandler): Disposable {
+  const disposable = registerAfterResponseHook(handler)
+  const record = registerPluginCapability(owner, 'hook', 'server', 'after-response', 'After response hook')
+  return {
+    dispose() {
+      disposable.dispose()
+      unregisterPluginCapability(owner, record.id)
     },
   }
 }

@@ -12,8 +12,10 @@ import { usePluginStore } from '~/lib/plugin-store'
 function PluginPanelContent({ params }: { params: { panelId: string } }) {
   const panels = usePluginStore((s) => s.panels)
   const panel = panels.find((p) => p.id === params.panelId)
+  const legacyMatches = panel ? [] : panels.filter((p) => p.localId === params.panelId)
+  const resolvedPanel = panel ?? (legacyMatches.length === 1 ? legacyMatches[0] : undefined)
 
-  if (!panel) {
+  if (!resolvedPanel) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
         Panel not found: {params.panelId}
@@ -21,7 +23,7 @@ function PluginPanelContent({ params }: { params: { panelId: string } }) {
     )
   }
 
-  return createElement(panel.component, { isActive: true })
+  return createElement(resolvedPanel.component, { isActive: true })
 }
 
 export const pluginPanelTab = defineTab({
