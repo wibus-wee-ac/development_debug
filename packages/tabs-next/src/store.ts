@@ -36,6 +36,7 @@ export interface TabStoreState {
   updateTabViewState: (id: string, key: string, value: unknown) => void
   reorderTabs: (orderedIds: string[]) => void
   restoreTabs: (input: RestoreTabsInput) => void
+  restoreTabHistoryIndex: (id: string, historyIndex: number) => void
   goBack: (id: string) => void
   goForward: (id: string) => void
   getActiveTab: () => TabInstance | undefined
@@ -91,6 +92,11 @@ function contextLocation(context: TabContextState): TabLocation | null {
   return context.history[context.index]?.location ?? null
 }
 
+function resolveHistoryEntryLabel(registry: TabRegistry, entry: TabHistoryEntry): string {
+  const route = registry[entry.location.routeId]
+  return entry.title ?? (route ? resolveRouteTitle(route, entry.location.params) : entry.location.routeId)
+}
+
 function validateTab(value: unknown): value is TabInstance {
   if (!value || typeof value !== 'object') {
     return false
@@ -120,7 +126,7 @@ function sanitizeTabs(tabs: unknown, registry: TabRegistry): TabInstance[] {
   return validTabs
 }
 
-function sanitizeContexts(contexts: unknown, tabs: TabInstance[]): TabContextState[] {
+function sanitizeContexts(contexts: unknown, tabs: TabInstance[], registry: TabRegistry): TabContextState[] {
   if (!Array.isArray(contexts)) {
     return []
   }
@@ -142,12 +148,29 @@ function sanitizeContexts(contexts: unknown, tabs: TabInstance[]): TabContextSta
     ) {
       continue
     }
-    const history = context.history.filter((entry): entry is TabHistoryEntry => {
+    const originalIndex = Math.max(0, Math.min(context.index, context.history.length - 1))
+    let nextIndex = 0
+    let originalEntryWasKept = false
+    const history: TabHistoryEntry[] = []
+    context.history.forEach((entry, entryIndex) => {
       if (!entry || typeof entry !== 'object') {
-        return false
+        return
       }
       const candidate = entry as Partial<TabHistoryEntry>
-      return !!candidate.location && typeof candidate.location.routeId === 'string'
+      if (
+        !!candidate.location
+        && typeof candidate.location.routeId === 'string'
+        && !!registry[candidate.location.routeId]
+      ) {
+        history.push(candidate as TabHistoryEntry)
+        if (entryIndex === originalIndex) {
+          nextIndex = history.length - 1
+          originalEntryWasKept = true
+        }
+        else if (entryIndex < originalIndex && !originalEntryWasKept) {
+          nextIndex = history.length - 1
+        }
+      }
     })
     if (history.length === 0) {
       continue
@@ -155,7 +178,7 @@ function sanitizeContexts(contexts: unknown, tabs: TabInstance[]): TabContextSta
     valid.push({
       id: context.id,
       history,
-      index: Math.max(0, Math.min(context.index, history.length - 1)),
+      index: Math.max(0, Math.min(nextIndex, history.length - 1)),
       pinned: context.pinned === true,
       keepAlive: context.keepAlive ?? 'default',
       createdAt: typeof context.createdAt === 'number' ? context.createdAt : now(),
@@ -164,6 +187,28 @@ function sanitizeContexts(contexts: unknown, tabs: TabInstance[]): TabContextSta
     })
   }
   return valid
+}
+
+function syncTabsToContextLocations(
+  tabs: TabInstance[],
+  contexts: TabContextState[],
+  registry: TabRegistry,
+): TabInstance[] {
+  const contextsById = new Map(contexts.map(context => [context.id, context]))
+  return tabs.map((tab) => {
+    const context = contextsById.get(tab.id)
+    const entry = context?.history[context.index]
+    const routeId = entry?.location.routeId
+    if (!entry || !routeId || !registry[routeId]) {
+      return tab
+    }
+    return {
+      ...tab,
+      type: routeId,
+      params: entry.location.params,
+      label: resolveHistoryEntryLabel(registry, entry),
+    }
+  })
 }
 
 function contextsFromTabs(tabs: TabInstance[], registry: TabRegistry): TabContextState[] {
@@ -182,15 +227,31 @@ function contextsFromTabs(tabs: TabInstance[], registry: TabRegistry): TabContex
   })
 }
 
+function fillMissingContexts(
+  tabs: TabInstance[],
+  contexts: TabContextState[],
+  registry: TabRegistry,
+): TabContextState[] {
+  const contextIds = new Set(contexts.map(context => context.id))
+  const missingTabs = tabs.filter(tab => !contextIds.has(tab.id))
+  if (missingTabs.length === 0) {
+    return contexts
+  }
+  return [...contexts, ...contextsFromTabs(missingTabs, registry)]
+}
+
 function sanitizePersisted(value: unknown, registry: TabRegistry): Pick<TabStoreState, 'tabs' | 'contexts' | 'activeTabId'> {
   const persisted = value as Partial<PersistedTabsNextState> | undefined
   const tabs = sanitizeTabs(persisted?.tabs, registry)
-  const contexts = sanitizeContexts(persisted?.contexts, tabs)
-  const normalizedContexts = contexts.length > 0 ? contexts : contextsFromTabs(tabs, registry)
+  const contexts = sanitizeContexts(persisted?.contexts, tabs, registry)
+  const normalizedContexts = contexts.length > 0
+    ? fillMissingContexts(tabs, contexts, registry)
+    : contextsFromTabs(tabs, registry)
+  const normalizedTabs = syncTabsToContextLocations(tabs, normalizedContexts, registry)
   const activeTabId = typeof persisted?.activeTabId === 'string' && tabs.some(tab => tab.id === persisted.activeTabId)
     ? persisted.activeTabId
-    : tabs.at(-1)?.id ?? null
-  return { tabs, contexts: normalizedContexts, activeTabId }
+    : normalizedTabs.at(-1)?.id ?? null
+  return { tabs: normalizedTabs, contexts: normalizedContexts, activeTabId }
 }
 
 const persistStorage = createJSONStorage(() => {
@@ -383,6 +444,42 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
             ? input.activeTabId
             : tabs.at(-1)?.id ?? null
           set({ tabs, contexts: contextsFromTabs(tabs, registry), activeTabId })
+        },
+
+        restoreTabHistoryIndex: (tabId, historyIndex) => {
+          set((s) => {
+            const context = s.contexts.find(item => item.id === tabId)
+            if (!context || context.history.length === 0) {
+              return s
+            }
+            const safeIndex = Math.max(0, Math.min(historyIndex, context.history.length - 1))
+            const entry = context.history[safeIndex]
+            if (!entry) {
+              return s
+            }
+            const label = resolveHistoryEntryLabel(registry, entry)
+            const timestamp = now()
+            return {
+              tabs: s.tabs.map(tab => tab.id === tabId
+                ? {
+                    ...tab,
+                    type: entry.location.routeId,
+                    params: entry.location.params,
+                    label,
+                  }
+                : tab),
+              contexts: s.contexts.map(item => item.id === tabId
+                ? {
+                    ...item,
+                    index: safeIndex,
+                    lastActiveAt: timestamp,
+                    history: item.history.map((candidate, index) => index === safeIndex
+                      ? { ...candidate, title: label }
+                      : candidate),
+                  }
+                : item),
+            }
+          })
         },
 
         goBack: (tabId) => {

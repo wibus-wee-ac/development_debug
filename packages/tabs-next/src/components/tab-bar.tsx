@@ -6,7 +6,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { closestCenter, DndContext, MouseSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { memo, useCallback, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef } from 'react'
 
 import { cn } from '../cn'
 import { useTabsContext } from '../context'
@@ -92,7 +92,7 @@ const SortableTabPill = memo(({
       className={cn(
         'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium mx-0.5',
         tab.pinned ? 'px-3' : 'pl-3 pr-7',
-        'flex-1 rounded-md transition-all duration-100 min-w-8 max-w-44 cursor-default overflow-hidden bg-background ',
+        'flex-1 rounded-md transition-[opacity,background-color,color,box-shadow] duration-100 min-w-8 max-w-44 cursor-default overflow-hidden bg-background ',
         isActive
           ? cn('text-foreground shadow-xs', activeTabClassName)
           : cn('opacity-70 hover:opacity-100! text-muted-foreground hover:text-foreground/70', tabClassName),
@@ -107,11 +107,13 @@ const SortableTabPill = memo(({
       {!tab.pinned && (
         <button
           type="button"
+          aria-label={`Close ${tab.label}`}
           onClick={event => onClose(event, tab.id)}
           data-testid={`tab-close-${tab.id}`}
           className={cn(
-            'absolute right-1 top-1/2 z-10 inline-flex size-3.5 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-transparent p-0',
-              'group-hover:opacity-80 group-data-[tab-active=true]:opacity-100',
+            'absolute right-0 top-1/2 z-10 inline-flex size-6 -translate-y-1/2 items-center justify-center rounded-full border-0 bg-transparent p-0',
+            'opacity-0 text-muted-foreground transition-[opacity,color,background-color] hover:bg-foreground/6 hover:text-foreground',
+            'group-hover:opacity-80 group-data-[tab-active=true]:opacity-100',
           )}
         >
           {renderCloseIcon ? renderCloseIcon() : '×'}
@@ -164,12 +166,21 @@ export const TabBar = memo(({
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     pointerRef.current = getEventScreenCoordinates(event.activatorEvent)
+    dragCleanupRef.current?.()
     const onMove = (moveEvent: PointerEvent) => {
       pointerRef.current = { screenX: moveEvent.screenX, screenY: moveEvent.screenY }
     }
     window.addEventListener('pointermove', onMove, true)
     dragCleanupRef.current = () => {
       window.removeEventListener('pointermove', onMove, true)
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.()
+      dragCleanupRef.current = null
+      pointerRef.current = null
     }
   }, [])
 
@@ -248,10 +259,12 @@ export const TabBar = memo(({
 
         {onNewTab && (
           <button
+            type="button"
+            aria-label="New tab"
             onClick={onNewTab}
             data-testid="tab-new-btn"
             className={cn(
-              'flex shrink-0 items-center justify-center rounded-md size-5',
+              'flex shrink-0 items-center justify-center rounded-md size-7',
               'text-muted-foreground/30 hover:text-foreground/60 hover:bg-foreground/4 transition-colors',
             )}
           >

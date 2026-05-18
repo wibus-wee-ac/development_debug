@@ -236,22 +236,7 @@ export function createUrlSync({ store, registry }: UrlSyncOptions): UrlSyncHandl
       // Restore context.index if needed
       const context = store.getState().contexts.find(c => c.id === state.tabId)
       if (context && context.index !== state.historyIndex) {
-        const safeIndex = Math.max(0, Math.min(state.historyIndex, context.history.length - 1))
-        if (safeIndex !== context.index) {
-          const loc = context.history[safeIndex]?.location
-          if (loc) {
-            store.setState(prev => ({
-              contexts: prev.contexts.map(c =>
-                c.id === state.tabId
-                  ? { ...c, index: safeIndex, lastActiveAt: Date.now() }
-                  : c),
-              tabs: prev.tabs.map(t =>
-                t.id === state.tabId
-                  ? { ...t, type: loc.routeId, params: loc.params }
-                  : t),
-            }))
-          }
-        }
+        store.getState().restoreTabHistoryIndex(state.tabId, state.historyIndex)
       }
     }
  finally {

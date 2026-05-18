@@ -1,36 +1,27 @@
-// Input: UIMessage from ai, subagent message store, Streamdown renderer, ReasoningBlock, ToolCallBlock, motion
-// Output: MessageBubble — animated message with parts rendering and action bar
+// Input: UIMessage from ai, subagent message store, Streamdown renderer, block components, motion
+// Output: MessageBubble — animated message with parts rendering, grouping, and execution-phase folding
 // Position: Core display component in chat feature for rendering individual messages
 
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
-import { m } from 'motion/react'
+import { AnimatePresence, m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
-import { ReasoningBlock } from './reasoning-block'
-import { ToolCallBlock } from './tool-call-block'
+import { ReasoningBlock, ToolCallBlock } from './blocks'
+import type { ChatRenderItem, MessagePart } from './chat-render-plan'
+import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
+import type { RenderableToolPart } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 
-type MessagePart = UIMessage['parts'][number]
-type RenderableToolPart = {
-  type: string
-  toolName?: string
-  toolCallId: string
-  state: 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'
-  input?: unknown
-  output?: unknown
-  errorText?: string
-}
+/* ─── Subagent part render ──────────────────────────────────────── */
 
-/**
- * Render a single subagent part inside the fold.
- */
 function renderSubagentPart(part: MessagePart, key: string, isStreaming: boolean, streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean }) {
   if (part.type === 'text') {
     return (
@@ -64,12 +55,44 @@ function renderSubagentPart(part: MessagePart, key: string, isStreaming: boolean
   return null
 }
 
-/**
- * Module-level set of message IDs that have already been rendered at least once.
- * Used to suppress Framer Motion entrance animation when a virtualizer remounts
- * an item that scrolled out of view — we only want the animation on the true
- * first appearance of each message.
- */
+/* ─── Execution Phase Fold ──────────────────────────────────────── */
+
+function ExecutionPhaseFold({ children }: { children: React.ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="my-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        onClick={() => setExpanded(v => !v)}
+        className="h-6 px-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground"
+      >
+        {expanded ? 'Hide execution details' : 'Show execution details'}
+      </Button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            key="exec-fold"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-1 space-y-1">
+              {children}
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/* ─── Main Component ────────────────────────────────────────────── */
+
 const seenMessageIds = new Set<string>()
 
 interface MessageBubbleProps {
@@ -85,19 +108,26 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   const subagentMap = useChatStore(s => s.subagentMessagesMap.get(message.id))
 
-  // Only animate on the true first appearance — skip if the virtualizer is
-  // remounting an item that simply scrolled out of view.
   const isFirstAppearance = !seenMessageIds.has(message.id)
   if (isFirstAppearance) {
     seenMessageIds.add(message.id)
   }
 
-  // Extract plain text only (no reasoning/thinking) for copy
   const plainText = useMemo(() => {
     return message.parts
       .flatMap(p => p.type === 'text' ? [(p as { text: string }).text] : [])
       .join('\n')
   }, [message.parts])
+
+  const groupedItems = useMemo(
+    () => groupMessageParts(message.parts, message.id, subagentMap),
+    [message.parts, message.id, subagentMap],
+  )
+
+  const executionPhaseSplit = useMemo(
+    () => isStreaming ? null : splitExecutionPhase(groupedItems),
+    [groupedItems, isStreaming],
+  )
 
   useEffect(() => {
     return () => {
@@ -120,6 +150,77 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
       copyFeedbackTimerRef.current = null
     }, 1500)
   }, [plainText])
+
+  /* ─── Render items ─── */
+  function renderItem(item: ChatRenderItem) {
+    switch (item.kind) {
+      case 'text':
+        if (isUser) {
+          return (
+            <span key={item.key} className="whitespace-pre-wrap wrap-break-word">
+              {item.text}
+            </span>
+          )
+        }
+        return (
+          <Streamdown
+            key={item.key}
+            content={item.text}
+            streaming={isStreaming}
+            animationPreset={animationPreset}
+            animateMode={animateMode}
+            showCursor={showCursor}
+          />
+        )
+
+      case 'reasoning':
+        return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
+
+      case 'tool-call':
+        return (
+          <ToolCallBlock
+            key={item.key}
+            toolName={item.part.toolName ?? item.part.type.replace('tool-', '')}
+            toolCallId={item.part.toolCallId}
+            state={item.part.state}
+            input={item.part.input}
+            output={item.part.output}
+            errorText={item.part.errorText}
+          >
+            {item.subagentMessages.flatMap(subMsg =>
+              subMsg.parts.map((sp, si) =>
+                renderSubagentPart(sp, `${subMsg.id}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor })))}
+          </ToolCallBlock>
+        )
+
+      case 'file-attachment':
+        return (
+          <div key={item.key} className="my-1 flex items-center gap-1.5 text-xs text-muted-foreground/60">
+            <UserIcon className="size-3" aria-hidden="true" />
+            <span>File attachment</span>
+          </div>
+        )
+
+      default:
+        return null
+    }
+  }
+
+  /* ─── Separate execution-phase items from final reply ─── */
+  function renderContent() {
+    if (!executionPhaseSplit) {
+      return groupedItems.map(renderItem)
+    }
+
+    return (
+      <>
+        <ExecutionPhaseFold>
+          {executionPhaseSplit.executionItems.map(renderItem)}
+        </ExecutionPhaseFold>
+        {executionPhaseSplit.finalItems.map(renderItem)}
+      </>
+    )
+  }
 
   return (
     <m.div
@@ -150,84 +251,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
             isAssistant && 'text-foreground',
           )}
         >
-          {message.parts.map((part, i) => {
-            const key = 'toolCallId' in part
-              ? (part as { toolCallId: string }).toolCallId
-              : `${message.id}-${part.type}-${i}`
-
-            if (part.type === 'text') {
-              if (isUser) {
-                return (
-                  <span key={key} className="whitespace-pre-wrap wrap-break-word">
-                    {part.text}
-                  </span>
-                )
-              }
-              return (
-                <Streamdown
-                  key={key}
-                  content={part.text}
-                  streaming={isStreaming}
-                  animationPreset={animationPreset}
-                  animateMode={animateMode}
-                  showCursor={showCursor}
-                />
-              )
-            }
-
-            if (part.type === 'reasoning') {
-              return (
-                <ReasoningBlock
-                  key={key}
-                  text={part.text}
-                  state={part.state}
-                />
-              )
-            }
-
-            // Tool calls: dynamic-tool or typed tool-{name}
-            if (
-              part.type === 'dynamic-tool'
-              || (part.type.startsWith('tool-') && 'toolCallId' in part)
-            ) {
-              const toolPart = part as {
-                type: string
-                toolName: string
-                toolCallId: string
-                state: string
-                input?: unknown
-                output?: unknown
-                errorText?: string
-              }
-
-              const subagentMessages = subagentMap?.get(toolPart.toolCallId) ?? []
-
-              return (
-                <ToolCallBlock
-                  key={key}
-                  toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
-                  toolCallId={toolPart.toolCallId}
-                  state={toolPart.state as 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied' | 'approval-requested' | 'approval-responded'}
-                  input={toolPart.input}
-                  output={toolPart.output}
-                  errorText={toolPart.errorText}
-                >
-                  {subagentMessages.flatMap(subagentMessage => subagentMessage.parts.map((sp, si) => renderSubagentPart(sp, `${subagentMessage.id}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor })))}
-                </ToolCallBlock>
-              )
-            }
-
-            if (part.type === 'file') {
-              return (
-                <div key={key} className="my-1 flex items-center gap-1.5 text-xs text-muted-foreground/60">
-                  <UserIcon className="size-3" aria-hidden="true" />
-                  <span>File attachment</span>
-                </div>
-              )
-            }
-
-            return null
-          })}
+          {renderContent()}
         </div>
 
         {/* Action bar — appears on hover for all messages */}
@@ -237,16 +261,18 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
             isUser && 'justify-end',
           )}
           >
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={handleCopy}
-              className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors"
+              className="text-muted-foreground/50 hover:text-foreground"
               aria-label="Copy message"
             >
               {copied
                 ? <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
                 : <CopyIcon className="size-3.5" aria-hidden="true" />}
-            </button>
+            </Button>
           </div>
         )}
       </div>

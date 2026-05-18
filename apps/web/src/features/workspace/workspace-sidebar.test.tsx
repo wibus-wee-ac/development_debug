@@ -6,6 +6,9 @@
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createTabStore, defineTab, TabsProvider } from '@cradle/tabs-next'
+import type { TabStoreState } from '@cradle/tabs-next'
+import type { StoreApi, UseBoundStore } from 'zustand'
 
 import { WorkspaceSidebar } from './workspace-sidebar'
 
@@ -169,6 +172,43 @@ vi.mock('motion/react', () => ({
   },
 }))
 
+function DummyTab() {
+  return null
+}
+
+const testRegistry = {
+  home: defineTab({
+    type: 'home' as const,
+    label: 'Home',
+    component: DummyTab,
+  }),
+  chat: defineTab({
+    type: 'chat' as const,
+    label: 'Chat',
+    component: DummyTab,
+  }),
+  'workspace-detail': defineTab({
+    type: 'workspace-detail' as const,
+    label: 'Workspace',
+    component: DummyTab,
+  }),
+}
+
+function renderWorkspaceSidebar(): {
+  store: UseBoundStore<StoreApi<TabStoreState>>
+  view: ReturnType<typeof render>
+} {
+  const store = createTabStore(testRegistry, { persistKey: `workspace-sidebar-test-${Math.random()}` })
+
+  const view = render(
+    <TabsProvider store={store} registry={testRegistry}>
+      <WorkspaceSidebar />
+    </TabsProvider>,
+  )
+
+  return { store, view }
+}
+
 vi.mock('./use-session', () => ({
   sessionsQueryKey: (workspaceId: string) => ['sessions', workspaceId],
   useSessions: () => ({
@@ -208,21 +248,21 @@ describe('workspaceSidebar', () => {
   })
 
   it('opens workspace-detail tab when workspace name is clicked without collapsing sessions', () => {
-    render(<WorkspaceSidebar />)
+    const { store } = renderWorkspaceSidebar()
 
     expect(screen.queryByText('Session One')).not.toBeNull()
 
     fireEvent.click(screen.getByText('Workspace One'))
 
-    expect(mockedDeps.navigate).toHaveBeenCalledWith(
-      'workspace-detail',
-      { workspaceId: 'workspace-1' },
-    )
+    expect(store.getState().getActiveTab()).toMatchObject({
+      type: 'workspace-detail',
+      params: { workspaceId: 'workspace-1' },
+    })
     expect(screen.queryByText('Session One')).not.toBeNull()
   })
 
   it('collapses the session list only when the folder toggle is clicked', () => {
-    render(<WorkspaceSidebar />)
+    renderWorkspaceSidebar()
 
     for (const toggle of screen.getAllByLabelText('切换工作区折叠状态')) {
       fireEvent.click(toggle)
@@ -233,7 +273,7 @@ describe('workspaceSidebar', () => {
   })
 
   it('does not infer unread activity from background session updatedAt changes', () => {
-    const view = render(<WorkspaceSidebar />)
+    const { store, view } = renderWorkspaceSidebar()
 
     expect(mockedDeps.recordActivity).not.toHaveBeenCalled()
 
@@ -245,7 +285,11 @@ describe('workspaceSidebar', () => {
       },
     ]
 
-    view.rerender(<WorkspaceSidebar />)
+    view.rerender(
+      <TabsProvider store={store} registry={testRegistry}>
+        <WorkspaceSidebar />
+      </TabsProvider>,
+    )
 
     expect(mockedDeps.recordActivity).not.toHaveBeenCalled()
   })

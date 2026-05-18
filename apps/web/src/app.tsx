@@ -64,9 +64,16 @@ function AppRuntime() {
   const tabs = useCradleTabStore(s => s.tabs)
   const activeTab = tabs.find(t => t.id === activeTabId)
   const activeSlotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+  const settingsTabExists = settingsTabId !== null && tabs.some(tab => tab.id === settingsTabId)
 
   // Settings overlay is visible when the settings tab is the currently active tab
-  const isSettingsVisible = settingsTabId !== null && settingsTabId === activeTabId
+  const isSettingsVisible = settingsTabExists && settingsTabId === activeTabId
+
+  useEffect(() => {
+    if (settingsTabId !== null && !settingsTabExists) {
+      closeSettings()
+    }
+  }, [closeSettings, settingsTabExists, settingsTabId])
 
   // Ensure at least one home tab exists on startup (fresh or cleared state)
   useEffect(() => {

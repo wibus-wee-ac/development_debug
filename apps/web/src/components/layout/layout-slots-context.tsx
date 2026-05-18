@@ -4,7 +4,7 @@
 // Position: Context layer between app.tsx and AppLayout; allows tab content to inject aside/panel into the parent layout
 
 import type { ReactNode } from 'react'
-import { createContext, useCallback, useState } from 'react'
+import { createContext, useCallback, useMemo, useState } from 'react'
 
 export interface LayoutSlots {
   aside?: ReactNode
@@ -34,11 +34,6 @@ export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
 
 export function LayoutSlotsProvider({ children, activeSlotId }: { children: ReactNode, activeSlotId?: string | null }) {
   const [state, setState] = useState<RegistrationState>({ map: {}, activeId: null })
-
-  // Sync active slot from prop during render (avoids useEffect chain)
-  if (activeSlotId && state.activeId !== activeSlotId && activeSlotId in state.map) {
-    setState(prev => prev.activeId === activeSlotId ? prev : { ...prev, activeId: activeSlotId })
-  }
 
   const register = useCallback((id: string, newSlots: LayoutSlots) => {
     setState((prev) => {
@@ -79,7 +74,17 @@ export function LayoutSlotsProvider({ children, activeSlotId }: { children: Reac
     })
   }, [])
 
-  const slots = (state.activeId && state.map[state.activeId]) || {}
+  const slots = useMemo(() => {
+    if (activeSlotId === undefined) {
+      return (state.activeId && state.map[state.activeId]) || {}
+    }
+
+    if (activeSlotId === null) {
+      return {}
+    }
+
+    return state.map[activeSlotId] ?? {}
+  }, [activeSlotId, state.activeId, state.map])
 
   return (
     <LayoutSlotsContext.Provider value={{ slots, register, unregister, activate }}>

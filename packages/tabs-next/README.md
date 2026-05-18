@@ -9,9 +9,10 @@
 - `TabLocation` describes the route currently shown in a tab.
 - `TabContextState` stores tab-local history, current history index, keep-alive policy, timestamps, and view snapshots.
 - `createTabStore(registry)` owns runtime tab contexts and exposes a compatibility surface for the current Cradle app.
+- `createUrlSync({ store, registry })` projects the active tab context into browser history and restores tab-local history on `popstate`.
 - `<TabRenderer>` renders active contexts through a render policy:
   - `single`: only the active tab is mounted.
-  - `activity-pool`: active tab plus recent retained tabs are mounted through React `<Activity>`.
+  - `activity-pool`: active tab plus recent retained tabs are mounted through React `<Activity>`. Pinned tabs and `keepAlive: 'always'` tabs may exceed `maxMountedTabs`; the limit only constrains default retained tabs.
 - `defineTab()` is kept as a migration helper. Long term, route owners should provide route metadata/capabilities directly.
 
 ## Ownership
@@ -33,14 +34,22 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/types.ts**: Runtime contracts for locations, contexts, route definitions, render policy, and persistence.
 - **src/route-definition.ts**: `defineTab()` migration helper plus route-title/location utilities.
 - **src/store.ts**: Zustand runtime store for tab contexts, history, restore validation, and compatibility actions.
+- **src/url-sync.ts**: Hash-mode browser history projection and `popstate` restore coordination.
 - **src/context.ts**: React context and `useTabsContext()`.
 - **src/provider.tsx**: Provider component for store and registry injection.
 - **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
+- **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next.
 - **src/components/tab-renderer.tsx**: Policy-driven renderer with React Activity pool support.
 - **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, tear-off hooks, and optional per-tab presentation overrides.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
+- **src/debug.ts**: Debug channel, storage keys, metrics, and snapshot utilities.
+- **src/cn.ts**: Package-local class name merge helper.
 - **src/__tests__/store.test.ts**: Store lifecycle and history tests.
 - **src/__tests__/renderer-policy.test.ts**: Render policy tests.
+- **src/__tests__/use-tab-navigation.test.tsx**: Hook tests for current-tab and new-tab navigation helpers.
+- **src/__tests__/url-sync.test.ts**: Browser history and `popstate` URL sync tests.
+- **src/__tests__/persisted-contexts.test.ts**: Persisted context repair tests.
+- **src/__tests__/tab-bar.test.tsx**: Tab bar accessibility and drag cleanup tests.
 
 ## Migration Notes
 
@@ -52,5 +61,7 @@ The prototype intentionally ships with a compatibility layer:
 - `navigateTab()` pushes a new location into the tab-local history.
 - `useTabNavigation().navigateInTab()` pushes into the active tab history by default, while pinned active tabs fall back to `openTab()`.
 - `goBack()` and `goForward()` move within the tab-local history.
+- Browser `popstate` restoration updates both tab content location and tab label through the store-owned history restore path.
+- Persisted contexts are repaired during store hydration: unknown routes are pruned from tab-local history, indices are clamped to the remaining history, and missing contexts are rebuilt from valid tabs.
 
 This lets Cradle migrate first while keeping existing tab definitions readable. The next migration step is to move `defineTab()` metadata into route-owned capability objects.

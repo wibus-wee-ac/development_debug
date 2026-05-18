@@ -4,6 +4,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Multi-route tab runtime prototype for React desktop apps",
+  "scripts": {
+    "test": "vitest run src/__tests__",
+    "test:watch": "vitest src/__tests__",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
