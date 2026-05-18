@@ -692,6 +692,9 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.2.5)
+      es-module-shims:
+        specifier: ^2.8.1
+        version: 2.8.1
       fast-glob:
         specifier: ^3.3.3
         version: 3.3.3
@@ -3915,8 +3918,8 @@ packages:
     resolution: {integrity: sha512-UOc3PwN11Osw0NzaxRLK8trP4X+5iW1Dst3gvHRCafe3wXHyadzHYH8H1hdkcXdlIx3gsoD9ASJ+G/JH+A/jqA==}
     hasBin: true
 
-  '@react-grab/cli@0.1.35':
-    resolution: {integrity: sha512-kFjiFpb0kVtZtaugWSxC16u7F7YbpVHmkPyfBd6T/3tZs7V7+i+JiKwIlubhaq6CYEEtilT66Q97hml5pq5dJg==}
+  '@react-grab/cli@0.1.36':
+    resolution: {integrity: sha512-7hIyFLe20nuxleGAcwLRXHqnZLttwBNA1e5nPCWPNmE6rDxPaz5FFtejv4hIvGpgfJKzYejGu8DYEvms8laAkA==}
     hasBin: true
 
   '@reduxjs/toolkit@2.11.2':
@@ -5512,6 +5515,11 @@ packages:
     peerDependencies:
       react: '>=17.0.1'
 
+  bippy@0.5.41:
+    resolution: {integrity: sha512-jCP2pXXLhXqPrAN+iSEFZmLI4uUM4fjSqajh0K+TmM062VehfDT3ZJNkrTGyN701Z5XMejs9qAudSqkMGhSMKg==}
+    peerDependencies:
+      react: '>=17.0.1'
+
   birecord@0.1.1:
     resolution: {integrity: sha512-VUpsf/qykW0heRlC8LooCq28Kxn3mAqKohhDG/49rrsQ1dT1CXyj/pgXS+5BSRzFTR/3DyIBOqQOrGyZOh71Aw==}
 
@@ -6383,6 +6391,9 @@ packages:
 
   es-module-lexer@2.0.0:
     resolution: {integrity: sha512-5POEcUuZybH7IdmGsD8wlf0AI55wMecM9rVBTI/qEAy2c1kTOm3DjFYjrBdI2K3BaJjJYfYFeRtM0t9ssnRuxw==}
+
+  es-module-shims@2.8.1:
+    resolution: {integrity: sha512-Ztg5TxFCT/ffzmSf/ginHIvSbsneH60X9tpaMBD/jWXHQZT1JJNj8tOO3mRmUT3ar7Qn3YK4EbM1SjJpN5dPBA==}
 
   es-object-atoms@1.1.1:
     resolution: {integrity: sha512-FGgH2h8zKNim9ljj7dankFPcICIK9Cp5bm+c2gQSYePhpaG5+esrLODihIorn+Pe6FGJzWhXQotPv73jTaldXA==}
@@ -8924,8 +8935,8 @@ packages:
       react:
         optional: true
 
-  react-grab@0.1.35:
-    resolution: {integrity: sha512-Sm16fg3ezABaMlLA7TIaGI9oQNrR8LhxuddDnLD+kjzMJLEwLZmTbQL1HU1sUlsq+k9ePMGnUhG+B+TQfLwPDQ==}
+  react-grab@0.1.36:
+    resolution: {integrity: sha512-oUjtGG3S45WlxwTlp1kdwAgNG7pzHiZbgnGfmNoc3SmTznbP0J+AG3Z50SrgxtddfDOtWHKgs6RmNCjz4+HJwg==}
     hasBin: true
     peerDependencies:
       react: '>=17.0.0'
@@ -13298,7 +13309,7 @@ snapshots:
       prompts: 2.4.2
       smol-toml: 1.6.1
 
-  '@react-grab/cli@0.1.35':
+  '@react-grab/cli@0.1.36':
     dependencies:
       commander: 14.0.3
       ignore: 7.0.5
@@ -15024,6 +15035,10 @@ snapshots:
     dependencies:
       react: 19.2.5
 
+  bippy@0.5.41(react@19.2.5):
+    dependencies:
+      react: 19.2.5
+
   birecord@0.1.1: {}
 
   bl@4.1.0:
@@ -15823,6 +15838,8 @@ snapshots:
   es-module-lexer@1.7.0: {}
 
   es-module-lexer@2.0.0: {}
+
+  es-module-shims@2.8.1: {}
 
   es-object-atoms@1.1.1:
     dependencies:
@@ -19034,10 +19051,10 @@ snapshots:
     optionalDependencies:
       react: 19.2.5
 
-  react-grab@0.1.35(react@19.2.5):
+  react-grab@0.1.36(react@19.2.5):
     dependencies:
-      '@react-grab/cli': 0.1.35
-      bippy: 0.5.40(react@19.2.5)
+      '@react-grab/cli': 0.1.36
+      bippy: 0.5.41(react@19.2.5)
     optionalDependencies:
       react: 19.2.5
 
@@ -19117,7 +19134,7 @@ snapshots:
       prompts: 2.4.2
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
-      react-grab: 0.1.35(react@19.2.5)
+      react-grab: 0.1.36(react@19.2.5)
     optionalDependencies:
       esbuild: 0.27.7
       unplugin: 2.1.0

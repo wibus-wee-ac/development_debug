@@ -47,37 +47,13 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
 
   const pluginRoutes = new Elysia({ prefix: '/api/plugins' })
     .get('/', () => staticServer.getPluginList())
-    .get('/:name/web.mjs', async ({ params, set, headers }) => {
+    .get('/:name/web.mjs', async ({ params, set }) => {
       const entryPath = staticServer.getWebEntry(params.name)
       if (!entryPath) {
         set.status = 404
         return 'Not found'
       }
-      let content = await readFile(entryPath, 'utf-8')
-
-      // Rewrite bare React specifiers to absolute URLs on the web host.
-      // The web app serves wrapper modules at /__plugin-deps/ that provide
-      // named exports from Vite's pre-bundled React.
-      const referer = headers['referer'] || headers['origin'] || ''
-      let webOrigin = 'http://localhost:5174'
-      try {
-        if (referer) {
-          const url = new URL(referer)
-          webOrigin = url.origin
-        }
-      } catch { /* use default */ }
-      const depMap: Record<string, string> = {
-        'react/jsx-runtime': `${webOrigin}/__plugin-deps/react-jsx-runtime.mjs`,
-        'react-dom/client': `${webOrigin}/__plugin-deps/react-dom-client.mjs`,
-        'react': `${webOrigin}/__plugin-deps/react.mjs`,
-        'react-dom': `${webOrigin}/__plugin-deps/react-dom.mjs`,
-      }
-      // Replace `from 'react/jsx-runtime'` etc. — must do longer paths first
-      for (const [bare, url] of Object.entries(depMap)) {
-        content = content.replaceAll(`from '${bare}'`, `from '${url}'`)
-        content = content.replaceAll(`from "${bare}"`, `from "${url}"`)
-      }
-
+      const content = await readFile(entryPath, 'utf-8')
       return new Response(content, {
         headers: { 'content-type': 'application/javascript; charset=utf-8' },
       })

@@ -11,7 +11,7 @@ import { loadWebPlugins } from './lib/plugin-host'
 
 // Expose shared React modules for plugin runtime
 // Plugins loaded via dynamic import() need access to the SAME React instance
-;(window as any).__CRADLE_SHARED__ = {
+;(window as any)[Symbol.for('cradle:modules')] = {
   react: React,
   'react-dom': ReactDOM,
   'react-dom/client': ReactDOMClient,
