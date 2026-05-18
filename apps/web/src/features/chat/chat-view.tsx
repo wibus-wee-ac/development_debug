@@ -24,14 +24,11 @@ import { ChatMinimap } from './chat-minimap'
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
-import type { ChatSessionMessageRow } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import { useSessionAwaitSummary } from './use-session-await'
 
 interface ChatViewProps {
   sessionId: string | null
-  /** Pre-loaded snapshot rows from a route loader; eliminates empty-state flash on first visit. */
-  initialSnapshotRows?: ChatSessionMessageRow[]
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
   /** Custom toolbar rendered in the composer left slot */
@@ -95,7 +92,7 @@ function ChatMessageListPane({
 }) {
   return (
     <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
-      <ScrollArea className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
+      <ScrollArea viewportRef={viewportRef} className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
         <div className="mx-auto max-w-208 px-4 pt-4">
           {messages.length === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
@@ -260,14 +257,13 @@ function ChatComposerSection({
 
 export function ChatView({
   sessionId,
-  initialSnapshotRows,
   availableFiles = EMPTY_FILES,
   composerToolbar,
   composerContextBar,
   sendOverridesRef,
   placeholder,
 }: ChatViewProps) {
-  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId, { initialSnapshotRows })
+  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const isAwaiting = awaitSummary?.awaiting ?? false
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
@@ -310,16 +306,6 @@ export function ChatView({
 
   const isStreaming = status === 'streaming'
 
-  useEffect(() => {
-    viewportRef.current = scrollContainerRef.current?.querySelector(
-      '[data-slot="scroll-area-viewport"]',
-    ) as HTMLDivElement | null
-
-    return () => {
-      viewportRef.current = null
-    }
-  }, [])
-
   // Keep the streaming message mounted to prevent re-animation on scroll recycle
   const generatingIds = useChatStore(s => s.generatingMessageIds)
   const keepMountedIndices = useMemo(() => {
@@ -350,30 +336,21 @@ export function ChatView({
     }
   }, [])
 
-  // When the session changes, jump to the bottom after virtua has had a chance
-  // to render its first batch of items.  requestAnimationFrame delays the scroll
-  // until after the browser has painted, at which point scrollHeight reflects the
-  // actual rendered content and vp.scrollTop = vp.scrollHeight works correctly.
-  const prevSessionIdRef = useRef<string | null | undefined>(undefined)
+  // Scroll to bottom on initial data load (once per mount, since key={sessionId} remounts)
+  const initialScrollDoneRef = useRef(false)
   useEffect(() => {
-    if (prevSessionIdRef.current === sessionId) {
+    if (initialScrollDoneRef.current || messages.length === 0) {
       return
     }
-    prevSessionIdRef.current = sessionId
-    isAtBottomRef.current = true
-    if (messages.length > 0) {
-      // First: tell virtua which index to anchor to so it renders the bottom items
-      virtualizerRef.current?.scrollToIndex(messages.length - 1, { align: 'end' })
-      // Then: after the browser paints, force the viewport all the way down
-      // (handles any remaining offset gap from unresolved item heights)
-      requestAnimationFrame(() => {
-        const vp = viewportRef.current
-        if (vp) {
-          vp.scrollTop = vp.scrollHeight
-        }
-      })
-    }
-  }, [messages.length, sessionId])
+    initialScrollDoneRef.current = true
+    virtualizerRef.current?.scrollToIndex(messages.length - 1, { align: 'end' })
+    requestAnimationFrame(() => {
+      const vp = viewportRef.current
+      if (vp) {
+        vp.scrollTop = vp.scrollHeight
+      }
+    })
+  }, [messages.length])
 
   // Ongoing auto-scroll during streaming and after new messages are appended —
   // but only when the user was already near the bottom (respect manual scroll-up).

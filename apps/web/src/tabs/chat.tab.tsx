@@ -5,18 +5,15 @@
 
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
-import { LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
+import { MessageCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useReducer, useRef } from 'react'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
-import { RightAside } from '~/components/layout/right-aside'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import type { ChatSessionMessageRow } from '~/features/chat/use-chat-session'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
-import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, Workspace } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 
@@ -35,17 +32,6 @@ function ChatTabLayoutSlots({
   const hasWorkspace = !!(workspaceId && workspacePath)
   const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
   const closeBottomPanel = useLayoutStore(s => s.setBottomPanelOpen)
-
-  const aside = useMemo(
-    () => (
-      <RightAside
-        workspaceId={workspaceId}
-        workspacePath={workspacePath}
-        sessionId={sessionId}
-      />
-    ),
-    [workspaceId, workspacePath, sessionId],
-  )
 
   const panel = useMemo(
     () => hasWorkspace
@@ -66,16 +52,14 @@ function ChatTabLayoutSlots({
   )
 
   useRegisterLayoutSlots(sessionId, useMemo(() => ({
-    hasAside: true,
     hasPanel: hasWorkspace,
-    aside,
     panel,
-  }), [hasWorkspace, aside, panel]))
+  }), [hasWorkspace, panel]))
 
   return null
 }
 
-function ChatTabContent({ params, loaderData }: { params: { sessionId: string }, loaderData?: ChatSessionMessageRow[] }) {
+function ChatTabContent({ params }: { params: { sessionId: string } }) {
   const { sessionId } = params
   const { store } = useTabsContext()
 
@@ -172,7 +156,6 @@ function ChatTabContent({ params, loaderData }: { params: { sessionId: string },
         <ChatView
           key={sessionId}
           sessionId={sessionId}
-          initialSnapshotRows={loaderData}
           composerToolbar={composerToolbar}
           sendOverridesRef={sendOverridesRef}
         />
@@ -186,23 +169,6 @@ export const chatTab = defineTab({
   icon: MessageCircleIcon,
   label: (params: { sessionId: string }) => `Chat: ${params.sessionId.slice(0, 6)}`,
   component: ChatTabContent,
-  loader: async (params: { sessionId: string }) => {
-    try {
-      const res = await fetch(`${getServerUrl()}/chat/sessions/${params.sessionId}/messages`)
-      if (!res.ok) {
-        return []
-      }
-      return (await res.json()) as ChatSessionMessageRow[]
-    }
-    catch {
-      return []
-    }
-  },
-  loaderFallback: (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-      <LoaderCircleIcon style={{ width: 16, height: 16, animation: 'spin 1s linear infinite', opacity: 0.4 }} />
-    </div>
-  ),
   serialize: params => params.sessionId,
   deserialize: path => path ? { sessionId: path } : null,
 })

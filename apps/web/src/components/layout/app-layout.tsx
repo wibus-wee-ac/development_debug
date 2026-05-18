@@ -11,6 +11,7 @@ import { AppHeader } from '~/components/layout/app-header'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
 import { LayoutGeometryProvider, useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { ResizeHandle } from '~/components/layout/resize-handle'
+import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
@@ -26,27 +27,23 @@ const INSTANT = { duration: 0 } as const
 
 interface AppLayoutProps {
   children?: ReactNode
-  /** Show aside toggle in header */
-  hasAside?: boolean
   /** Show bottom panel toggle in header */
   hasPanel?: boolean
-  /** Right aside content */
-  aside?: ReactNode
   /** Bottom panel content */
   panel?: ReactNode
 }
 
-export function AppLayout({ children, hasAside, hasPanel, aside, panel }: AppLayoutProps) {
+export function AppLayout({ children, hasPanel, panel }: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
-      <AppLayoutContent hasAside={hasAside} hasPanel={hasPanel} aside={aside} panel={panel}>
+      <AppLayoutContent hasPanel={hasPanel} panel={panel}>
         {children}
       </AppLayoutContent>
     </LayoutGeometryProvider>
   )
 }
 
-function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLayoutProps) {
+function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
 
   useGlobalEventListeners()
@@ -56,11 +53,11 @@ function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLay
   const { slots } = useLayoutSlotsCtx()
 
   // Slot props override explicit props so per-tab content wins
-  const resolvedAside = slots.aside ?? aside
   const resolvedPanel = slots.panel ?? panel
-  const resolvedHasAside = slots.hasAside ?? hasAside
   const resolvedHasPanel = slots.hasPanel ?? hasPanel
   const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const activeTab = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId))
+  const activeSessionId = activeTab?.type === 'chat' ? activeTab.params.sessionId ?? null : null
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
@@ -78,7 +75,7 @@ function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLay
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
       <AppHeader
-        hasAside={resolvedHasAside}
+        hasAside={!!activeSessionId}
         hasPanel={resolvedHasPanel}
       />
 
@@ -131,8 +128,8 @@ function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLay
           )}
         </m.div>
 
-        {/* Right Aside */}
-        {!isSettings && resolvedAside !== undefined && (
+        {/* Right Aside — layout-owned, independent of tab lifecycle */}
+        {!isSettings && activeSessionId && (
           <>
             {asideOpen && (
               <ResizeHandle
@@ -165,7 +162,7 @@ function AppLayoutContent({ children, hasAside, hasPanel, aside, panel }: AppLay
                 className="flex flex-col flex-1 overflow-hidden"
                 style={{ width: asideWidth }}
               >
-                {resolvedAside}
+                <RightAside sessionId={activeSessionId} />
               </div>
             </m.aside>
           </>

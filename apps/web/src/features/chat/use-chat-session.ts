@@ -112,10 +112,7 @@ function selectSnapshotRows(data: unknown): ChatSessionMessageRow[] {
   return Array.isArray(data) ? data as ChatSessionMessageRow[] : EMPTY_SNAPSHOT_ROWS
 }
 
-export function useChatSession(chatSessionId: string | null, options?: {
-  initialSnapshotRows?: ChatSessionMessageRow[]
-}) {
-  const { initialSnapshotRows } = options ?? {}
+export function useChatSession(chatSessionId: string | null) {
   const queryClient = useQueryClient()
 
   // Active handler ref (for the currently streaming response)
@@ -170,7 +167,6 @@ export function useChatSession(chatSessionId: string | null, options?: {
     queryKey: generatedSnapshotRowsOptions.queryKey,
     queryFn: generatedSnapshotRowsOptions.queryFn,
     enabled: !!chatSessionId,
-    initialData: initialSnapshotRows as unknown,
     refetchInterval: () => {
       if (!chatSessionId) {
         return false
@@ -373,7 +369,7 @@ export function useChatSession(chatSessionId: string | null, options?: {
 
   // ── isReady (always true once hydrated) ──
 
-  const isReady = messages.length > 0 || !!initialSnapshotRows || chatSessionId === null
+  const isReady = messages.length > 0 || snapshotRowsQuery.isFetched || chatSessionId === null
 
   return {
     messages,

@@ -7,6 +7,7 @@ import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-re
 import { m } from 'motion/react'
 import { useCallback, useState } from 'react'
 
+import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
 import { GitPanel } from '~/features/git'
@@ -37,29 +38,38 @@ const TAB_SPRING = {
 } as const
 
 interface RightAsideProps {
-  workspaceId: string | null
-  workspacePath?: string | null
-  sessionId?: string | null
+  sessionId: string
 }
 
-export function RightAside({ workspaceId, workspacePath, sessionId }: RightAsideProps) {
+export function RightAside({ sessionId }: RightAsideProps) {
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [packOpen, setPackOpen] = useState(false)
   const [packInitialPaths, setPackInitialPaths] = useState<string[]>([])
 
-  // Badge: pending awaits for Feed tab
-  const { data: awaitSummary } = useSessionAwaitSummary(sessionId ?? null)
-  const hasPendingAwaits = awaitSummary?.awaiting ?? false
+  // Derive workspaceId from session
+  const { data: sessionMeta } = useQuery({
+    ...getSessionsByIdOptions({ path: { id: sessionId } }),
+    select: s => ({ workspaceId: s?.workspaceId as string | null }),
+    staleTime: 60_000,
+  })
+  const workspaceId = sessionMeta?.workspaceId ?? null
 
+  // Derive workspace details from workspaceId
   const { data: workspace } = useQuery({
-    queryKey: ['workspace', workspaceId],
+    queryKey: ['workspace-detail', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesById({ path: { id: workspaceId! } })
       return data as import('~/lib/types').Workspace | undefined
     },
     enabled: !!workspaceId,
+    staleTime: 60_000,
   })
+  const workspacePath = workspace?.path ?? null
+
+  // Badge: pending awaits for Feed tab
+  const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  const hasPendingAwaits = awaitSummary?.awaiting ?? false
 
   const handlePackRequested = useCallback((paths: string[]) => {
     setPackInitialPaths(paths)
