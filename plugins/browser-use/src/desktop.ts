@@ -5,6 +5,18 @@ import { join } from 'node:path'
 
 import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
 
+import {
+  buildDocumentReadyExpression,
+  buildEditableSelectionExpression,
+  buildElementCenterExpression,
+  buildFocusedEditableStateExpression,
+  buildKeyboardTextFallbackExpression,
+  buildScrollStateExpression,
+  buildScrollWaitExpression,
+  buildTextReplacementExpression,
+  createKeyEventPayload,
+  isRecoverableNavigationAbort,
+} from './browser-commands.js'
 import type {
   AXNode,
   BrowserCommand,
@@ -39,7 +51,19 @@ interface WebviewEntry {
 }
 
 const webviewRegistry = new Map<string, WebviewEntry>()
+const pendingWebviewResolvers: Array<(tabId: string) => void> = []
 let tabCounter = 0
+
+let desktopContext: DesktopPluginContext | null = null
+
+async function waitForDocumentReady(entry: WebviewEntry): Promise<void> {
+  ensureDebugger(entry)
+  await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+    expression: buildDocumentReadyExpression(),
+    awaitPromise: true,
+    returnByValue: true,
+  })
+}
 
 function ensureDebugger(entry: WebviewEntry): void {
   if (!entry.attached && !entry.wc.isDestroyed()) {
@@ -96,7 +120,40 @@ function registerWebview(wc: WebContents): string {
     webviewRegistry.delete(id)
   })
 
+  pendingWebviewResolvers.shift()?.(id)
+
   return id
+}
+
+async function requestRendererBrowserTab(url?: string): Promise<string> {
+  if (!desktopContext) {
+    throw new Error('Desktop plugin context is not available')
+  }
+
+  const before = new Set(webviewRegistry.keys())
+  const created = new Promise<string>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      const index = pendingWebviewResolvers.indexOf(resolve)
+      if (index >= 0) {
+        pendingWebviewResolvers.splice(index, 1)
+      }
+      reject(new Error('Timed out waiting for renderer browser tab'))
+    }, 5000)
+
+    pendingWebviewResolvers.push((tabId) => {
+      clearTimeout(timeout)
+      resolve(tabId)
+    })
+  })
+
+  await desktopContext.requestBrowserTab(url)
+
+  for (const tabId of webviewRegistry.keys()) {
+    if (!before.has(tabId)) {
+      return tabId
+    }
+  }
+  return created
 }
 
 async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
@@ -107,7 +164,16 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
-        await entry.wc.loadURL(cmd.url)
+        try {
+          await entry.wc.loadURL(cmd.url)
+        }
+        catch (err) {
+          const finalUrl = entry.wc.getURL()
+          if (!isRecoverableNavigationAbort(err, cmd.url, finalUrl)) {
+            throw err
+          }
+        }
+        await waitForDocumentReady(entry)
         const data: NavigateResult = { url: entry.wc.getURL(), title: entry.wc.getTitle() }
         return { id: cmd.id, ok: true, data }
       }
@@ -133,7 +199,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         }
         ensureDebugger(entry)
         const { result: { value: box } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: `(() => { const el = document.querySelector(${JSON.stringify(cmd.selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`,
+          expression: buildElementCenterExpression(cmd.selector),
           returnByValue: true,
         })
         if (!box) {
@@ -163,40 +229,16 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        // Focus element
-        await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: `document.querySelector(${JSON.stringify(cmd.selector)})?.focus()`,
+        const { result: { value: replacement } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildTextReplacementExpression(cmd.selector, cmd.text),
+          returnByValue: true,
         })
-        // Select all (Ctrl/Cmd+A)
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-          type: 'keyDown',
-          key: 'a',
-          code: 'KeyA',
-          windowsVirtualKeyCode: 65,
-          modifiers: 2,
-        })
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key: 'a',
-          code: 'KeyA',
-          windowsVirtualKeyCode: 65,
-          modifiers: 2,
-        })
-        // Delete selected
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-          type: 'keyDown',
-          key: 'Backspace',
-          code: 'Backspace',
-          windowsVirtualKeyCode: 8,
-        })
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key: 'Backspace',
-          code: 'Backspace',
-          windowsVirtualKeyCode: 8,
-        })
-        // Insert text
-        await entry.wc.debugger.sendCommand('Input.insertText', { text: cmd.text })
+        if (!replacement?.found) {
+          throw new Error(`Element not found: ${cmd.selector}`)
+        }
+        if (!replacement.editable) {
+          throw new Error(`Element is not editable: ${cmd.selector}`)
+        }
         const data: TypeResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
@@ -223,36 +265,31 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        let x = 0
-        let y = 0
-        if (cmd.selector) {
-          const { result: { value: box } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-            expression: `(() => { const el = document.querySelector(${JSON.stringify(cmd.selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width/2, y: r.y + r.height/2 }; })()`,
-            returnByValue: true,
-          })
-          if (box) {
-            x = box.x
-            y = box.y
-          }
-        }
-        else {
-          const { result: { value: vp } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-            expression: `({ x: window.innerWidth / 2, y: window.innerHeight / 2 })`,
-            returnByValue: true,
-          })
-          x = vp.x
-          y = vp.y
+        const { result: { value: before } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildScrollStateExpression(cmd.selector),
+          returnByValue: true,
+        })
+        if (!before?.found) {
+          throw new Error(`Element not found: ${cmd.selector}`)
         }
         const amount = cmd.amount ?? 300
         const deltaX = cmd.direction === 'left' ? -amount : cmd.direction === 'right' ? amount : 0
         const deltaY = cmd.direction === 'up' ? -amount : cmd.direction === 'down' ? amount : 0
         await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
           type: 'mouseWheel',
-          x,
-          y,
+          x: before.x,
+          y: before.y,
           deltaX,
           deltaY,
         })
+        const { result: { value: after } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildScrollWaitExpression(cmd.selector, cmd.direction, before),
+          awaitPromise: true,
+          returnByValue: true,
+        })
+        if (after?.canMove && !after.moved) {
+          throw new Error(`Scroll did not move: ${cmd.direction}`)
+        }
         const data: ScrollResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
@@ -264,7 +301,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         }
         ensureDebugger(entry)
         const { result: { value: box } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: `(() => { const el = document.querySelector(${JSON.stringify(cmd.selector)}); if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.x + r.width/2, y: r.y + r.height/2 }; })()`,
+          expression: buildElementCenterExpression(cmd.selector),
           returnByValue: true,
         })
         if (!box) {
@@ -335,29 +372,22 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        let modifiers = 0
-        if (cmd.modifiers?.includes('alt')) {
-          modifiers |= 1
-        }
-        if (cmd.modifiers?.includes('ctrl')) {
-          modifiers |= 2
-        }
-        if (cmd.modifiers?.includes('meta')) {
-          modifiers |= 4
-        }
-        if (cmd.modifiers?.includes('shift')) {
-          modifiers |= 8
-        }
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-          type: 'keyDown',
-          key: cmd.key,
-          modifiers,
+        const { result: { value: before } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildFocusedEditableStateExpression(),
+          returnByValue: true,
         })
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key: cmd.key,
-          modifiers,
+        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyDown', cmd.key, cmd.modifiers))
+        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyUp', cmd.key, cmd.modifiers))
+        const { result: { value: after } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildFocusedEditableStateExpression(),
+          returnByValue: true,
         })
+        if (before?.editable && after?.editable && before.value === after.value) {
+          await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+            expression: buildKeyboardTextFallbackExpression(cmd.key, cmd.modifiers),
+            returnByValue: true,
+          })
+        }
         const data: KeyboardResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
@@ -376,15 +406,18 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'tabs_new': {
-        const entry = getActiveWebview()
+        const newTabId = await requestRendererBrowserTab(cmd.url)
+        const entry = getWebview(newTabId)
         if (!entry) {
-          return { id: cmd.id, ok: false, error: 'No webview available. Browser panel must be open.' }
+          return { id: cmd.id, ok: false, error: 'New browser tab was not registered' }
         }
-        if (cmd.url) {
+        if (cmd.url && entry.wc.getURL() !== cmd.url) {
           await entry.wc.loadURL(cmd.url)
         }
-        const id = [...webviewRegistry.entries()].find(([, e]) => e.wc === entry.wc)?.[0] ?? 'unknown'
-        const data: TabsNewResult = { tab: { id, url: entry.wc.getURL(), title: entry.wc.getTitle() } }
+        if (cmd.url) {
+          await waitForDocumentReady(entry)
+        }
+        const data: TabsNewResult = { tab: { id: newTabId, url: entry.wc.getURL(), title: entry.wc.getTitle() } }
         return { id: cmd.id, ok: true, data }
       }
 
@@ -441,6 +474,7 @@ function handleConnection(socket: Socket): void {
 }
 
 export function activate(ctx: DesktopPluginContext): void {
+  desktopContext = ctx
   socketPath = join(ctx.userDataPath, 'browser-backend.sock')
 
   // Clean up stale socket
@@ -467,6 +501,8 @@ export function activate(ctx: DesktopPluginContext): void {
 }
 
 export function deactivate(): void {
+  desktopContext = null
+  pendingWebviewResolvers.splice(0)
   // Detach all debuggers
   for (const [, entry] of webviewRegistry) {
     if (entry.attached && !entry.wc.isDestroyed()) {

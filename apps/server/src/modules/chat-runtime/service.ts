@@ -36,7 +36,7 @@ import {
   parseMessageJson,
   readChunkRouteContext,
 } from './delta-events'
-import type { ChatRuntime, RuntimeSession, TokenUsage } from './runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, RuntimeSession, TokenUsage } from './runtime-provider-types'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
 
@@ -311,9 +311,7 @@ interface ChatTurnContext {
   history?: Array<{ role: 'user' | 'assistant', content: string }>
 }
 
-function resolveTurnContext(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
-  const session = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
-
+function resolveSessionSystemPrompt(session: import('@cradle/db').Session | null | undefined): string | undefined {
   let systemPrompt: string | undefined
   if (session?.agentId) {
     const agent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
@@ -327,6 +325,14 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
       ? `${workflow}\n\n---\n\n${systemPrompt}`
       : workflow
   }
+
+  return systemPrompt
+}
+
+function resolveTurnContext(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
+  const session = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
+
+  const systemPrompt = resolveSessionSystemPrompt(session)
 
   const historyRows = db()
     .select()
@@ -389,6 +395,54 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
       taskId: row.taskId,
       depth: row.depth,
     }
+  })
+}
+
+export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCapabilities> {
+  const context = getSessionRunContext(sessionId)
+  if (!context) {
+    throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId } })
+  }
+
+  const registry = getRuntimeRegistry()
+  const runtimeKind = context.session.runtimeKind ?? 'standard'
+  const runtime = registry.get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({ code: 'chat_runtime_not_available', status: 501, message: `Runtime is not available: ${runtimeKind}` })
+  }
+
+  if (!runtime.getCapabilities) {
+    return { runtimeKind, slashCommands: [], skills: [] }
+  }
+
+  const binding = getBinding(sessionId)
+  const runtimeSession = binding
+    ? await runtime.resumeChatSession({
+        runtimeSession: {
+          id: sessionId,
+          chatSessionId: sessionId,
+          agentProfileId: context.profile.id,
+          runtimeKind,
+          providerSessionId: binding.backendSessionId,
+          providerStateSnapshot: binding.backendStateSnapshot,
+        },
+        profile: context.profile,
+        workspacePath: context.workspacePath,
+        modelId: extractModelId(binding.backendStateSnapshot) ?? undefined,
+      })
+    : await runtime.startChatSession({
+        chatSessionId: sessionId,
+        profile: context.profile,
+        workspacePath: context.workspacePath,
+      })
+
+  return runtime.getCapabilities({
+    runtimeSession,
+    profile: context.profile,
+    workspaceId: context.session.workspaceId,
+    workspacePath: context.workspacePath,
+    modelId: extractModelId(runtimeSession.providerStateSnapshot) ?? undefined,
+    systemPrompt: resolveSessionSystemPrompt(context.session),
   })
 }
 

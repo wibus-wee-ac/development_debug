@@ -16,12 +16,15 @@ import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
-import { cn } from '~/lib/cn'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
+import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
 import { SessionApprovalList } from '../approval/approval-card'
+import type { ChatSlashCommand } from './chat-capabilities'
+import { getChatRuntimeCapabilities } from './chat-capabilities'
+import type { ChatMinimapHandle } from './chat-minimap'
 import { ChatMinimap } from './chat-minimap'
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
@@ -47,11 +50,10 @@ interface ChatScrollMetrics {
   offset: number
   scrollHeight: number
   viewportHeight: number
-  barProgress: number[]
 }
 
 const EMPTY_FILES: MentionItem[] = []
-const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0, barProgress: [] }
+const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
 
 function formatTokenCount(tokens: number): string {
   if (tokens >= 1_000_000) {
@@ -75,6 +77,7 @@ function ChatMessageListPane({
   keepMountedIndices,
   onVirtualScroll,
   scrollMetrics,
+  minimapRef,
   onScrollToIndex,
   onScrollTo,
 }: {
@@ -89,6 +92,7 @@ function ChatMessageListPane({
   keepMountedIndices?: number[]
   onVirtualScroll: (offset: number) => void
   scrollMetrics: ChatScrollMetrics
+  minimapRef: React.RefObject<ChatMinimapHandle | null>
   onScrollToIndex: (index: number) => void
   onScrollTo: (offset: number) => void
 }) {
@@ -167,11 +171,10 @@ function ChatMessageListPane({
       </ScrollArea>
 
       <ChatMinimap
+        ref={minimapRef}
         messages={messages}
-        scrollOffset={scrollMetrics.offset}
         scrollHeight={scrollMetrics.scrollHeight}
         viewportHeight={scrollMetrics.viewportHeight}
-        barProgress={scrollMetrics.barProgress}
         onScrollToIndex={onScrollToIndex}
         onScrollTo={onScrollTo}
       />
@@ -210,6 +213,7 @@ function ChatComposerSection({
   disabled,
   placeholder,
   availableFiles,
+  slashCommands,
   toolbar,
   contextBar,
   droppedPath,
@@ -223,6 +227,7 @@ function ChatComposerSection({
   disabled: boolean
   placeholder?: string
   availableFiles: MentionItem[]
+  slashCommands: ChatSlashCommand[]
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
@@ -240,6 +245,7 @@ function ChatComposerSection({
           disabled={disabled}
           placeholder={placeholder}
           availableFiles={availableFiles}
+          slashCommands={slashCommands}
           toolbar={toolbar}
           contextBar={contextBar}
           appendText={droppedPath ? `${droppedPath.text}` : undefined}
@@ -280,6 +286,13 @@ export function ChatView({
 }: ChatViewProps) {
   const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  const { data: runtimeCapabilities } = useQuery({
+    queryKey: ['chat', 'runtime-capabilities', sessionId ?? 'no-session'] as const,
+    queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
+    enabled: !!sessionId,
+    staleTime: 60_000,
+    retry: false,
+  })
   const isAwaiting = awaitSummary?.awaiting ?? false
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
@@ -312,6 +325,7 @@ export function ChatView({
    */
   const viewportRef = useRef<HTMLDivElement>(null)
   const virtualizerRef = useRef<VirtualizerHandle>(null)
+  const minimapRef = useRef<ChatMinimapHandle>(null)
 
   /** True when the user is near the bottom (<= 200 px away). Auto-scroll only fires when true. */
   const isAtBottomRef = useRef(true)
@@ -351,6 +365,41 @@ export function ChatView({
     }
   }, [])
 
+  const readScrollMetrics = useCallback((): ChatScrollMetrics | null => {
+    const vp = viewportRef.current
+    if (!vp) {
+      return null
+    }
+
+    return {
+      offset: vp.scrollTop,
+      scrollHeight: vp.scrollHeight,
+      viewportHeight: vp.offsetHeight,
+    }
+  }, [])
+
+  const writeMinimapProgress = useCallback(() => {
+    const vp = viewportRef.current
+    if (!vp || messages.length === 0) {
+      return
+    }
+
+    const offset = vp.scrollTop
+    const scrollHeight = vp.scrollHeight
+    const viewportHeight = vp.offsetHeight
+    const scrollable = Math.max(scrollHeight - viewportHeight, 0)
+    const scrollRatio = scrollable > 0 ? Math.max(0, Math.min(1, offset / scrollable)) : 1
+    minimapRef.current?.setScrollProgress(scrollRatio)
+  }, [messages.length])
+
+  const refreshScrollMetrics = useCallback(() => {
+    const metrics = readScrollMetrics()
+    if (metrics) {
+      setScrollMetrics(metrics)
+    }
+    writeMinimapProgress()
+  }, [readScrollMetrics, writeMinimapProgress])
+
   // Scroll to bottom on initial data load (once per mount, since key={sessionId} remounts)
   const initialScrollDoneRef = useRef(false)
   useEffect(() => {
@@ -364,8 +413,9 @@ export function ChatView({
       if (vp) {
         vp.scrollTop = vp.scrollHeight
       }
+      refreshScrollMetrics()
     })
-  }, [messages.length])
+  }, [messages.length, refreshScrollMetrics])
 
   // Ongoing auto-scroll during streaming and after new messages are appended —
   // but only when the user was already near the bottom (respect manual scroll-up).
@@ -374,7 +424,8 @@ export function ChatView({
       return
     }
     scrollToBottom()
-  }, [messages, status, scrollToBottom])
+    requestAnimationFrame(refreshScrollMetrics)
+  }, [messages, status, refreshScrollMetrics, scrollToBottom])
 
   // Track whether the user is near the bottom. Fires on every scroll offset from virtua.
   const handleVirtScroll = useCallback((offset: number) => {
@@ -383,13 +434,47 @@ export function ChatView({
       return
     }
     isAtBottomRef.current = offset + vp.offsetHeight >= vp.scrollHeight - 200
-    setScrollMetrics(prev => ({
-      ...prev,
-      offset,
-      scrollHeight: vp.scrollHeight,
-      viewportHeight: vp.offsetHeight,
-    }))
   }, [])
+
+  useEffect(() => {
+    let frame = 0
+    let lastScrollTop = -1
+    let lastScrollHeight = -1
+    let lastViewportHeight = -1
+
+    const syncMinimapProgress = () => {
+      const vp = viewportRef.current
+      if (vp) {
+        const scrollTop = vp.scrollTop
+        const scrollHeight = vp.scrollHeight
+        const viewportHeight = vp.offsetHeight
+
+        if (
+          scrollTop !== lastScrollTop
+          || scrollHeight !== lastScrollHeight
+          || viewportHeight !== lastViewportHeight
+        ) {
+          lastScrollTop = scrollTop
+          lastScrollHeight = scrollHeight
+          lastViewportHeight = viewportHeight
+          isAtBottomRef.current = scrollTop + viewportHeight >= scrollHeight - 200
+          writeMinimapProgress()
+        }
+      }
+
+      frame = requestAnimationFrame(syncMinimapProgress)
+    }
+
+    frame = requestAnimationFrame(syncMinimapProgress)
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [writeMinimapProgress])
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(refreshScrollMetrics)
+    return () => cancelAnimationFrame(frame)
+  }, [messages.length, refreshScrollMetrics])
 
   // Fetch session token count after each turn completes
   useEffect(() => {
@@ -420,9 +505,7 @@ export function ChatView({
       if (!virt || !vp) {
         return
       }
-      // Use real item offset for accurate positioning, then native smooth scroll
-      const targetOffset = virt.getItemOffset(index)
-      vp.scrollTo({ top: targetOffset, behavior: 'smooth' })
+      virt.scrollToIndex(index, { align: 'start', smooth: true })
     },
     [],
   )
@@ -466,6 +549,7 @@ export function ChatView({
         keepMountedIndices={keepMountedIndices}
         onVirtualScroll={handleVirtScroll}
         scrollMetrics={scrollMetrics}
+        minimapRef={minimapRef}
         onScrollToIndex={handleMinimapScrollToIndex}
         onScrollTo={handleMinimapScrollTo}
       />
@@ -481,6 +565,7 @@ export function ChatView({
         disabled={!isReady || isAwaiting}
         placeholder={placeholder}
         availableFiles={availableFiles}
+        slashCommands={runtimeCapabilities?.slashCommands ?? []}
         toolbar={composerToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}

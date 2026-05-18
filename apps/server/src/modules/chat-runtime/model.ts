@@ -21,6 +21,13 @@ const chatMessageSnapshotSchema = t.Object({
   depth: t.Number(),
 })
 
+const slashCommandSchema = t.Object({
+  name: t.String(),
+  description: t.String(),
+  argumentHint: t.String(),
+  aliases: t.Optional(t.Array(t.String())),
+})
+
 export const ChatRuntimeModel = {
   sessionIdParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
@@ -34,6 +41,12 @@ export const ChatRuntimeModel = {
 
   cancelResponse: t.Object({
     ok: t.Literal(true),
+  }),
+
+  capabilities: t.Object({
+    runtimeKind: t.String(),
+    slashCommands: t.Array(slashCommandSchema),
+    skills: t.Array(t.String()),
   }),
 
   chatMessages: t.Array(chatMessageSnapshotSchema),

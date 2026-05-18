@@ -7,6 +7,19 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import type { RuntimeKind } from '../providers/types'
 
+export interface RuntimeSlashCommand {
+  name: string
+  description: string
+  argumentHint: string
+  aliases?: string[]
+}
+
+export interface ChatRuntimeCapabilities {
+  runtimeKind: RuntimeKind
+  slashCommands: RuntimeSlashCommand[]
+  skills: string[]
+}
+
 export interface RuntimeSession {
   id: string
   chatSessionId: string
@@ -50,6 +63,15 @@ export interface CancelTurnInput {
   profile: AgentProfile
 }
 
+export interface GetCapabilitiesInput {
+  runtimeSession: RuntimeSession
+  profile: AgentProfile
+  workspaceId?: string | null
+  workspacePath: string
+  modelId?: string
+  systemPrompt?: string
+}
+
 export interface TokenUsage {
   promptTokens: number
   completionTokens: number
@@ -61,6 +83,7 @@ export interface ChatRuntime {
   readonly lastUsage?: TokenUsage | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
+  getCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   streamTurnSnapshots?: (input: StreamTurnInput) => AsyncGenerator<UIMessage, void, void>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.

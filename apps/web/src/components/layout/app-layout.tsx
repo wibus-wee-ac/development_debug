@@ -4,7 +4,7 @@
 
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
@@ -18,6 +18,7 @@ import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-st
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { isElectron } from '~/lib/electron'
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useCradleTabStore } from '~/tabs/registry'
 
@@ -82,9 +83,33 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
     bottomPanelOpen,
     browserPanelOpen,
     browserPanelRatio,
+    setBrowserPanelOpen,
     setBrowserPanelRatio,
   } = useLayoutStore()
   const isSettings = settingsTabId !== null && settingsTabId === activeTabId
+
+  useEffect(() => {
+    if (!isElectron) {
+      return
+    }
+    const requestBrowserTab = (payload: unknown) => {
+      const url = typeof payload === 'object' && payload !== null && 'url' in payload && typeof payload.url === 'string'
+        ? payload.url
+        : undefined
+      setBrowserPanelOpen(true)
+      useBrowserPanelStore.getState().requestTab(url)
+    }
+
+    window.__cradleBrowserUseCreateTab = (url?: string) => requestBrowserTab({ url })
+    const unsubscribe = window.cradle?.ipc.on('browser-use:create-tab', requestBrowserTab)
+
+    return () => {
+      if (window.__cradleBrowserUseCreateTab) {
+        delete window.__cradleBrowserUseCreateTab
+      }
+      unsubscribe?.()
+    }
+  }, [setBrowserPanelOpen])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
@@ -134,7 +159,7 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
                   className="overflow-hidden shrink-0 border-l border-border/50 flex flex-col"
                   data-testid="app-layout-browser-panel"
                 >
-                  <BrowserPanel />
+                  {browserPanelOpen && <BrowserPanel />}
                 </m.div>
               </>
             )}

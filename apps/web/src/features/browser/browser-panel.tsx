@@ -52,10 +52,17 @@ const INJECT_PRESETS = [
 const MAX_TABS = 5
 
 export function BrowserPanel() {
-  const { tabs, activeTabId, createTab, closeTab, setActiveTab, updateTab, navigateTo } = useBrowserPanelStore()
+  const { tabs, activeTabId, requestedTab, createTab, fulfillRequestedTab, closeTab, setActiveTab, updateTab, navigateTo } = useBrowserPanelStore()
   const activeTab = tabs.find(t => t.id === activeTabId)
   const [urlInput, setUrlInput] = useState('')
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
+
+  useEffect(() => {
+    if (!requestedTab) {
+      return
+    }
+    fulfillRequestedTab(requestedTab.id)
+  }, [fulfillRequestedTab, requestedTab])
 
   // Sync URL input with active tab
   const activeTabUrl = activeTab?.url
@@ -245,6 +252,7 @@ export function BrowserPanel() {
           type="button"
           onClick={handleNewTab}
           disabled={tabs.length >= MAX_TABS}
+          aria-label="New browser tab"
           className="p-0.5 text-muted-foreground/40 hover:text-foreground rounded-full hover:bg-foreground/4 transition-colors active:scale-95 ml-0.5 disabled:opacity-20"
         >
           <PlusIcon className="size-3" />
@@ -254,13 +262,13 @@ export function BrowserPanel() {
       {/* Navigation bar */}
       <div className="flex items-center gap-2 px-2 py-1.5 shrink-0 border-b border-border/50 bg-card">
         <div className="flex items-center gap-0.5 shrink-0">
-          <button type="button" onClick={handleGoBack} disabled={!activeTab?.canGoBack} className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 disabled:opacity-20 disabled:hover:bg-transparent transition-colors active:scale-95">
+          <button type="button" onClick={handleGoBack} disabled={!activeTab?.canGoBack} aria-label="Go back" className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 disabled:opacity-20 disabled:hover:bg-transparent transition-colors active:scale-95">
             <ArrowLeftIcon className="size-3.5" />
           </button>
-          <button type="button" onClick={handleGoForward} disabled={!activeTab?.canGoForward} className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 disabled:opacity-20 disabled:hover:bg-transparent transition-colors active:scale-95">
+          <button type="button" onClick={handleGoForward} disabled={!activeTab?.canGoForward} aria-label="Go forward" className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 disabled:opacity-20 disabled:hover:bg-transparent transition-colors active:scale-95">
             <ArrowRightIcon className="size-3.5" />
           </button>
-          <button type="button" onClick={handleReload} className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 transition-colors active:scale-95">
+          <button type="button" onClick={handleReload} aria-label="Reload page" className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 transition-colors active:scale-95">
             <RefreshCwIcon className="size-3.5" />
           </button>
         </div>

@@ -11,6 +11,7 @@
   },
   "exports": {
     ".": "./dist/mcp-server.mjs",
+    "./browser-commands": "./src/browser-commands.ts",
     "./protocol": "./src/protocol.ts"
   },
   "main": "dist/mcp-server.mjs",

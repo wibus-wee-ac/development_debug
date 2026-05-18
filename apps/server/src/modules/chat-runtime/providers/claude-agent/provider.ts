@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import type { CanUseTool, Options, Query } from '@anthropic-ai/claude-agent-sdk'
+import type { CanUseTool, Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
@@ -17,8 +17,11 @@ import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
+  ChatRuntimeCapabilities,
   ChatRuntime,
+  GetCapabilitiesInput,
   ResumeChatSessionInput,
+  RuntimeSlashCommand,
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
@@ -73,70 +76,44 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
   }
 
-  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
-    const config = parseConfigWith(input.profile.configJson, ClaudeAgentConfigSchema)
-    const apiKey = resolveApiKey(input.profile, config.apiKey, 'ANTHROPIC_API_KEY', this.deps)
-    const effectiveModel = input.modelId ?? config.model
+  async getCapabilities(input: GetCapabilitiesInput): Promise<ChatRuntimeCapabilities> {
+    const { query } = await import('@anthropic-ai/claude-agent-sdk')
+    const abortController = new AbortController()
+    const queryOptions = buildClaudeQueryOptions({
+      deps: this.deps,
+      input,
+      abortController,
+      attachPermissionHandler: false,
+    })
+    const activeQuery = query({ prompt: emptyUserInput(), options: queryOptions })
 
-    if (!apiKey) {
-      throw new Error('Claude Agent provider requires an API key')
+    try {
+      const slashCommands = await activeQuery.supportedCommands()
+
+      return {
+        runtimeKind: RUNTIME_KIND,
+        slashCommands: slashCommands.map(toRuntimeSlashCommand),
+        skills: [],
+      }
     }
+    finally {
+      activeQuery.close()
+    }
+  }
 
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const { query } = await import('@anthropic-ai/claude-agent-sdk')
 
     const abortController = new AbortController()
     const textItemId = randomUUID()
-    const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
-    const queryOptions: Options = {
+    const config = parseConfigWith(input.profile.configJson, ClaudeAgentConfigSchema)
+    const effectiveModel = input.modelId ?? config.model
+    const queryOptions = buildClaudeQueryOptions({
+      deps: this.deps,
+      input,
       abortController,
-      model: effectiveModel,
-      cwd: snapshot.workspacePath ?? process.cwd(),
-      permissionMode: config.permissionMode ?? 'acceptEdits',
-      allowDangerouslySkipPermissions: config.permissionMode === 'bypassPermissions'
-        ? true
-        : config.allowDangerouslySkipPermissions,
-      maxTurns: config.maxTurns ?? 100,
-      additionalDirectories: config.additionalDirectories,
-      forwardSubagentText: true,
-      agentProgressSummaries: true,
-      // Inject system prompt: use Claude Code default + append our workflow/agent instructions
-      systemPrompt: input.systemPrompt
-        ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.systemPrompt }
-        : undefined,
-      // TODO: skills option expects names (e.g. ['pdf', 'docx']), not directory paths.
-      // resolveSkillPaths() returns filesystem directories, which is incompatible.
-      // Revisit to convert paths -> skill names, then restore per-profile filtering.
-      skills: 'all',
-    }
-    if (config.tools) {
-      queryOptions.tools = config.tools
-    }
-    if (config.disallowedTools) {
-      queryOptions.disallowedTools = config.disallowedTools
-    }
-    if (input.runtimeSession.providerSessionId) {
-      queryOptions.resume = input.runtimeSession.providerSessionId
-    }
-
-    // Plugin-registered MCP servers
-    const registeredServers = getRegisteredMcpServers()
-    if (Object.keys(registeredServers).length > 0) {
-      queryOptions.mcpServers = { ...queryOptions.mcpServers, ...registeredServers }
-    }
-
-    queryOptions.env = {
-      ...process.env,
-      ANTHROPIC_API_KEY: apiKey,
-      CRADLE_CHAT_SESSION_ID: input.runtimeSession.chatSessionId,
-      CRADLE_WORKSPACE_ID: input.workspaceId ?? undefined,
-      ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
-    }
-
-    // Wire permission prompts through the approval system so the web UI can respond
-    if (config.permissionMode !== 'bypassPermissions') {
-      const chatSessionId = input.runtimeSession.chatSessionId
-      queryOptions.canUseTool = buildCanUseTool(chatSessionId, abortController.signal)
-    }
+      attachPermissionHandler: true,
+    })
 
     const activeQuery = query({ prompt: input.message, options: queryOptions })
     this.activeQueries.set(input.runtimeSession.chatSessionId, { query: activeQuery, abortController })
@@ -230,6 +207,81 @@ export class ClaudeAgentProvider implements ChatRuntime {
     entry.abortController.abort()
     entry.query.close()
     this.activeQueries.delete(input.runtimeSession.chatSessionId)
+  }
+}
+
+function buildClaudeQueryOptions(input: {
+  deps: ClaudeAgentProviderDeps
+  input: StreamTurnInput | GetCapabilitiesInput
+  abortController: AbortController
+  attachPermissionHandler: boolean
+}): Options {
+  const config = parseConfigWith(input.input.profile.configJson, ClaudeAgentConfigSchema)
+  const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
+  const effectiveModel = input.input.modelId ?? config.model
+
+  if (!apiKey) {
+    throw new Error('Claude Agent provider requires an API key')
+  }
+
+  const snapshot = parseProviderStateSnapshot(input.input.runtimeSession.providerStateSnapshot)
+  const queryOptions: Options = {
+    abortController: input.abortController,
+    model: effectiveModel,
+    cwd: snapshot.workspacePath ?? input.input.workspacePath ?? process.cwd(),
+    permissionMode: config.permissionMode ?? 'acceptEdits',
+    allowDangerouslySkipPermissions: config.permissionMode === 'bypassPermissions'
+      ? true
+      : config.allowDangerouslySkipPermissions,
+    maxTurns: config.maxTurns ?? 100,
+    additionalDirectories: config.additionalDirectories,
+    forwardSubagentText: true,
+    agentProgressSummaries: true,
+    systemPrompt: input.input.systemPrompt
+      ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.input.systemPrompt }
+      : undefined,
+    // Native Claude SDK support: discover and invoke all SDK-visible skills/commands.
+    // Cradle-specific skill projection is intentionally out of scope for this pass.
+    skills: 'all',
+  }
+  if (config.tools) {
+    queryOptions.tools = config.tools
+  }
+  if (config.disallowedTools) {
+    queryOptions.disallowedTools = config.disallowedTools
+  }
+  if (input.input.runtimeSession.providerSessionId) {
+    queryOptions.resume = input.input.runtimeSession.providerSessionId
+  }
+
+  const registeredServers = getRegisteredMcpServers()
+  if (Object.keys(registeredServers).length > 0) {
+    queryOptions.mcpServers = { ...queryOptions.mcpServers, ...registeredServers }
+  }
+
+  queryOptions.env = {
+    ...process.env,
+    ANTHROPIC_API_KEY: apiKey,
+    CRADLE_CHAT_SESSION_ID: input.input.runtimeSession.chatSessionId,
+    CRADLE_WORKSPACE_ID: input.input.workspaceId ?? undefined,
+    ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
+  }
+
+  if (input.attachPermissionHandler && config.permissionMode !== 'bypassPermissions') {
+    queryOptions.canUseTool = buildCanUseTool(input.input.runtimeSession.chatSessionId, input.abortController.signal)
+  }
+
+  return queryOptions
+}
+
+async function* emptyUserInput(): AsyncGenerator<SDKUserMessage, void, void> {}
+
+function toRuntimeSlashCommand(command: SlashCommand): RuntimeSlashCommand {
+  return {
+    name: command.name,
+    description: command.description,
+    argumentHint: command.argumentHint,
+    aliases: command.aliases,
   }
 }
 

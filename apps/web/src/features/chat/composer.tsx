@@ -4,13 +4,15 @@
 
 import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 
+import type { ChatSlashCommand } from './chat-capabilities'
 import type { MentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
+import { SlashCommandPanel } from './slash-command-panel'
 
 /** Shrinks the textarea to content height, capped at 240 px. */
 function autoResize(el: HTMLTextAreaElement) {
@@ -26,6 +28,7 @@ interface ComposerProps {
   disabled?: boolean
   placeholder?: string
   availableFiles?: MentionItem[]
+  slashCommands?: ChatSlashCommand[]
   className?: string
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
@@ -36,6 +39,108 @@ interface ComposerProps {
 }
 
 const EMPTY_FILES: MentionItem[] = []
+const EMPTY_SLASH_COMMANDS: ChatSlashCommand[] = []
+
+interface ComposerState {
+  inputValue: string
+  mentionActive: boolean
+  mentionQuery: string
+  slashActive: boolean
+  slashQuery: string
+  selectedSlashCommand: ChatSlashCommand | null
+}
+
+type ComposerAction =
+  | { type: 'input/changed', state: ComposerState }
+  | { type: 'input/cleared' }
+  | { type: 'mention/closed' }
+  | { type: 'mention/selected', inputValue: string, query: string, keepOpen: boolean }
+  | { type: 'slash/closed' }
+  | { type: 'slash/selected', inputValue: string, command: ChatSlashCommand }
+  | { type: 'pickers/closed' }
+  | { type: 'external/appended', text: string }
+  | { type: 'drop/inserted', inputValue: string }
+
+const INITIAL_COMPOSER_STATE: ComposerState = {
+  inputValue: '',
+  mentionActive: false,
+  mentionQuery: '',
+  slashActive: false,
+  slashQuery: '',
+  selectedSlashCommand: null,
+}
+
+function composerReducer(state: ComposerState, action: ComposerAction): ComposerState {
+  switch (action.type) {
+    case 'input/changed':
+      return action.state
+    case 'input/cleared':
+      return { ...INITIAL_COMPOSER_STATE }
+    case 'mention/closed':
+      return { ...state, mentionActive: false }
+    case 'mention/selected':
+      return {
+        ...state,
+        inputValue: action.inputValue,
+        mentionActive: action.keepOpen,
+        mentionQuery: action.keepOpen ? action.query : '',
+        slashActive: false,
+        slashQuery: '',
+      }
+    case 'slash/closed':
+      return { ...state, slashActive: false }
+    case 'slash/selected':
+      return {
+        ...state,
+        inputValue: action.inputValue,
+        slashActive: false,
+        slashQuery: '',
+        mentionActive: false,
+        mentionQuery: '',
+        selectedSlashCommand: action.command,
+      }
+    case 'pickers/closed':
+      return {
+        ...state,
+        mentionActive: false,
+        slashActive: false,
+      }
+    case 'external/appended':
+      return {
+        ...state,
+        inputValue: state.inputValue ? `${state.inputValue} ${action.text}` : action.text,
+        mentionActive: false,
+        mentionQuery: '',
+        slashActive: false,
+        slashQuery: '',
+        selectedSlashCommand: null,
+      }
+    case 'drop/inserted':
+      return {
+        ...state,
+        inputValue: action.inputValue,
+        mentionActive: false,
+        mentionQuery: '',
+        slashActive: false,
+        slashQuery: '',
+        selectedSlashCommand: null,
+      }
+    default:
+      return state
+  }
+}
+
+function getSlashCommandPrefix(command: ChatSlashCommand): string {
+  return `/${command.name} `
+}
+
+function getActiveSlashCommand(inputValue: string, selectedCommand: ChatSlashCommand | null, commands: ChatSlashCommand[]): ChatSlashCommand | null {
+  if (selectedCommand && inputValue.startsWith(getSlashCommandPrefix(selectedCommand))) {
+    return selectedCommand
+  }
+
+  return commands.find(command => inputValue.startsWith(getSlashCommandPrefix(command))) ?? null
+}
 
 export function Composer({
   onSend,
@@ -44,43 +149,83 @@ export function Composer({
   disabled,
   placeholder = '输入消息...',
   availableFiles = EMPTY_FILES,
+  slashCommands = EMPTY_SLASH_COMMANDS,
   className,
   toolbar,
   contextBar,
   appendText,
   appendTextKey,
 }: ComposerProps) {
-  const [inputValue, setInputValue] = useState('')
-  const [mentionActive, setMentionActive] = useState(false)
-  const [mentionQuery, setMentionQuery] = useState('')
+  const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Track @ trigger position for path completion
   const mentionStartRef = useRef<number>(-1)
+  const activeSlashCommand = getActiveSlashCommand(state.inputValue, state.selectedSlashCommand, slashCommands)
+  const slashCommandPrefix = activeSlashCommand ? getSlashCommandPrefix(activeSlashCommand) : ''
+  const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue === slashCommandPrefix
+    ? activeSlashCommand.argumentHint
+    : ''
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
-    setInputValue(value)
     autoResize(e.target)
+    const selectedSlashCommand = getActiveSlashCommand(value, state.selectedSlashCommand, slashCommands)
 
-    // Check for @ trigger
     const cursor = e.target.selectionStart ?? value.length
     const textBefore = value.slice(0, cursor)
+
+    // Check for slash command trigger at the start of a message.
+    if (slashCommands.length > 0 && textBefore.startsWith('/') && !textBefore.includes('\n') && !/\s/.test(textBefore)) {
+      mentionStartRef.current = -1
+      dispatch({
+        type: 'input/changed',
+        state: {
+          inputValue: value,
+          mentionActive: false,
+          mentionQuery: '',
+          slashActive: true,
+          slashQuery: textBefore.slice(1),
+          selectedSlashCommand,
+        },
+      })
+      return
+    }
+
+    // Check for @ trigger
     const atIdx = textBefore.lastIndexOf('@')
 
     if (atIdx >= 0) {
       const afterAt = textBefore.slice(atIdx + 1)
       // Show panel if typing after @ without newline
       if (!afterAt.includes('\n')) {
-        setMentionActive(true)
-        setMentionQuery(afterAt)
         mentionStartRef.current = atIdx
+        dispatch({
+          type: 'input/changed',
+          state: {
+            inputValue: value,
+            mentionActive: true,
+            mentionQuery: afterAt,
+            slashActive: false,
+            slashQuery: '',
+            selectedSlashCommand,
+          },
+        })
         return
       }
     }
-    setMentionActive(false)
-    setMentionQuery('')
-  }, [])
+    dispatch({
+      type: 'input/changed',
+      state: {
+        inputValue: value,
+        mentionActive: false,
+        mentionQuery: '',
+        slashActive: false,
+        slashQuery: '',
+        selectedSlashCommand,
+      },
+    })
+  }, [slashCommands, state.selectedSlashCommand])
 
   const handleMentionSelect = useCallback((item: MentionItem) => {
     // Replace @query with @path (inline text completion)
@@ -89,25 +234,23 @@ export function Composer({
       return
     }
 
-    const before = inputValue.slice(0, start)
-    const cursor = textareaRef.current?.selectionStart ?? inputValue.length
-    const after = inputValue.slice(cursor)
+    const before = state.inputValue.slice(0, start)
+    const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
+    const after = state.inputValue.slice(cursor)
     // Directories: no trailing space (user may continue typing sub-path)
     // Files: add trailing space for convenience
     const suffix = item.type === 'directory' ? '/' : ' '
     const insertText = `@${item.path}${suffix}`
 
     const newValue = `${before}${insertText}${after}`
-    setInputValue(newValue)
     // Keep mention active for directories so user can keep navigating
     if (item.type === 'directory') {
-      setMentionQuery(`${item.path}/`)
       mentionStartRef.current = start
+      dispatch({ type: 'mention/selected', inputValue: newValue, query: `${item.path}/`, keepOpen: true })
     }
     else {
-      setMentionActive(false)
-      setMentionQuery('')
       mentionStartRef.current = -1
+      dispatch({ type: 'mention/selected', inputValue: newValue, query: '', keepOpen: false })
     }
 
     // Refocus and position cursor after the inserted path
@@ -120,22 +263,39 @@ export function Composer({
         autoResize(el)
       }
     })
-  }, [inputValue])
+  }, [state.inputValue])
+
+  const handleSlashCommandSelect = useCallback((command: ChatSlashCommand) => {
+    const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
+    const after = state.inputValue.slice(cursor)
+    const insertText = `/${command.name} `
+    const newValue = `${insertText}${after}`
+    dispatch({ type: 'slash/selected', inputValue: newValue, command })
+
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.focus()
+        el.setSelectionRange(insertText.length, insertText.length)
+        autoResize(el)
+      }
+    })
+  }, [state.inputValue])
 
   const handleSend = useCallback(() => {
-    const text = inputValue.trim()
+    const text = state.inputValue.trim()
     if (!text) {
       return
     }
     onSend(text)
-    setInputValue('')
+    dispatch({ type: 'input/cleared' })
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (el) {
         el.style.height = 'auto'
       }
     })
-  }, [inputValue, onSend])
+  }, [onSend, state.inputValue])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Don't interfere with IME composition (e.g. Chinese input)
@@ -143,10 +303,10 @@ export function Composer({
       return
     }
 
-    // If mention panel is active, let it handle Enter/Escape/arrows
-    if (mentionActive) {
+    // If a picker is active, let it handle Enter/Escape/arrows
+    if (state.mentionActive || state.slashActive) {
       if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-        return // MentionPanel handles these via document keydown
+        return
       }
     }
 
@@ -154,14 +314,14 @@ export function Composer({
       e.preventDefault()
       handleSend()
     }
-  }, [mentionActive, handleSend])
+  }, [handleSend, state.mentionActive, state.slashActive])
 
   // Append externally-provided text (e.g. from DnD drop on parent container)
   useEffect(() => {
     if (!appendText) {
       return
     }
-    setInputValue(v => v ? `${v} ${appendText}` : appendText)
+    dispatch({ type: 'external/appended', text: appendText })
     textareaRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendTextKey])
@@ -174,7 +334,9 @@ export function Composer({
     }
     let timer: ReturnType<typeof setTimeout> | null = null
     const handleBlur = () => {
-      timer = setTimeout(setMentionActive, 150, false)
+      timer = setTimeout(() => {
+        dispatch({ type: 'pickers/closed' })
+      }, 150)
     }
     const handleFocus = () => {
       if (timer) {
@@ -198,34 +360,53 @@ export function Composer({
       {/* Mention panel — pops up above the composer */}
       <MentionPanel
         items={availableFiles}
-        query={mentionQuery}
+        query={state.mentionQuery}
         onSelect={handleMentionSelect}
-        onClose={() => setMentionActive(false)}
-        visible={mentionActive}
+        onClose={() => dispatch({ type: 'mention/closed' })}
+        visible={state.mentionActive}
+      />
+      <SlashCommandPanel
+        commands={slashCommands}
+        query={state.slashQuery}
+        onSelect={handleSlashCommandSelect}
+        onClose={() => dispatch({ type: 'slash/closed' })}
+        visible={state.slashActive}
       />
 
       {/* Input card — modern clean style, no border-t separator */}
       <div className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-all">
         {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={inputValue}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          onDrop={(e) => {
-            e.preventDefault()
-            const path = e.dataTransfer.getData('text/plain')
-            if (path) {
-              setInputValue(v => v ? `${v} ${path}` : path)
-            }
-          }}
-          onDragOver={e => e.preventDefault()}
-          placeholder={placeholder}
-          disabled={disabled}
-          data-testid="chat-composer-textarea"
-          rows={2}
-          className="block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
-        />
+        <div className="relative">
+          {slashArgumentHint && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 min-h-16 max-h-60 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3.5 pb-2 text-sm text-transparent"
+              data-testid="slash-argument-hint"
+            >
+              <span>{state.inputValue}</span>
+              <span className="text-muted-foreground/45">{slashArgumentHint}</span>
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={state.inputValue}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            onDrop={(e) => {
+              e.preventDefault()
+              const path = e.dataTransfer.getData('text/plain')
+              if (path) {
+                dispatch({ type: 'drop/inserted', inputValue: state.inputValue ? `${state.inputValue} ${path}` : path })
+              }
+            }}
+            onDragOver={e => e.preventDefault()}
+            placeholder={placeholder}
+            disabled={disabled}
+            data-testid="chat-composer-textarea"
+            rows={2}
+            className="relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
+          />
+        </div>
 
         {/* Action bar — subtle, blends with the card */}
         <div className="flex items-center justify-between gap-2 px-3 py-2">
@@ -253,7 +434,7 @@ export function Composer({
                 <Button
                   variant="default"
                   size="icon-xs"
-                  disabled={disabled || !inputValue.trim()}
+                  disabled={disabled || !state.inputValue.trim()}
                   onClick={handleSend}
                   aria-label="发送"
                   data-testid="chat-send-btn"

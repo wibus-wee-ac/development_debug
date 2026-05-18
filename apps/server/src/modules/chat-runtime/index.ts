@@ -42,6 +42,16 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.responseBody,
   })
+  // GET /chat/sessions/:sessionId/capabilities → runtime-native command/skill discovery
+  .get('/sessions/:sessionId/capabilities', ({ params }) => {
+    return ChatRuntime.getCapabilities(params.sessionId)
+  }, {
+    detail: {
+      summary: 'Get chat runtime capabilities',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.capabilities },
+  })
   // GET /chat/sessions/:sessionId/messages → historical message snapshot rows
   .get('/sessions/:sessionId/messages', ({ params }) => {
     return ChatRuntime.getMessageGroups(params.sessionId)

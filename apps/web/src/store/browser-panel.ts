@@ -19,33 +19,58 @@ let tabCounter = 0
 interface BrowserPanelState {
   tabs: BrowserTab[]
   activeTabId: string | null
+  requestedTab: { id: number, url?: string } | null
   createTab: (url?: string) => string
+  requestTab: (url?: string) => void
+  fulfillRequestedTab: (id: number) => void
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
   updateTab: (id: string, updates: Partial<BrowserTab>) => void
   navigateTo: (id: string, url: string) => void
 }
 
+function createBrowserTab(url?: string): BrowserTab {
+  return {
+    id: `bt-${tabCounter++}`,
+    url: url ?? 'about:blank',
+    title: '',
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    favicon: null,
+  }
+}
+
 export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => ({
   tabs: [],
   activeTabId: null,
+  requestedTab: null,
 
   createTab: (url) => {
-    const id = `bt-${tabCounter++}`
-    const tab: BrowserTab = {
-      id,
-      url: url ?? 'about:blank',
-      title: '',
-      loading: false,
-      canGoBack: false,
-      canGoForward: false,
-      favicon: null,
-    }
+    const tab = createBrowserTab(url)
     set(s => ({
       tabs: [...s.tabs, tab],
-      activeTabId: id,
+      activeTabId: tab.id,
     }))
-    return id
+    return tab.id
+  },
+
+  requestTab: (url) => {
+    set({ requestedTab: { id: Date.now(), url } })
+  },
+
+  fulfillRequestedTab: (id) => {
+    set((s) => {
+      if (s.requestedTab?.id !== id) {
+        return s
+      }
+      const tab = createBrowserTab(s.requestedTab.url)
+      return {
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+        requestedTab: null,
+      }
+    })
   },
 
   closeTab: (id) => {
