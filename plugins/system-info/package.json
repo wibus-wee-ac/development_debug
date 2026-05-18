@@ -1,0 +1,22 @@
+{
+  "name": "@cradle/system-info",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "cradle": {
+    "displayName": "System Info",
+    "description": "Exposes system information via API and web command",
+    "server": "src/server.ts",
+    "web": "dist/web.mjs"
+  },
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@cradle/plugin-sdk": "workspace:*",
+    "@types/react": "^19.2.1",
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.2.1",
+    "vite": "^7.2.6"
+  }
+}

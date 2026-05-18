@@ -5,6 +5,7 @@ import ReactDOM from 'react-dom/client'
 import { App } from './app'
 import { DevtoolPage } from './features/devtool'
 import { initPerfMonitor } from './lib/perf-monitor'
+import { loadWebPlugins } from './lib/plugin-host'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -17,6 +18,9 @@ const queryClient = new QueryClient({
 
 // Hash-based routing: #devtool renders the devtool page (Electron second window)
 const isDevtoolWindow = window.location.hash === '#devtool' || window.location.hash === '#/devtool'
+
+// Load web plugins before rendering
+await loadWebPlugins()
 
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>

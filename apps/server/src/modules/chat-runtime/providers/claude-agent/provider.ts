@@ -10,6 +10,7 @@ import { startObservation } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../../langfuse'
+import { getRegisteredMcpServers } from '../../../../plugins'
 import * as Approval from '../../../approval/service'
 import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
@@ -117,16 +118,10 @@ export class ClaudeAgentProvider implements ChatRuntime {
       queryOptions.resume = input.runtimeSession.providerSessionId
     }
 
-    // Browser Use MCP server — auto-register if socket exists
-    if (process.env.BROWSER_BACKEND_SOCKET) {
-      queryOptions.mcpServers = {
-        ...queryOptions.mcpServers,
-        'browser-use': {
-          command: 'node',
-          args: [new URL('../../../../../../plugins/browser-use/dist/mcp-server.mjs', import.meta.url).pathname],
-          env: { BROWSER_BACKEND_SOCKET: process.env.BROWSER_BACKEND_SOCKET },
-        },
-      }
+    // Plugin-registered MCP servers
+    const registeredServers = getRegisteredMcpServers()
+    if (Object.keys(registeredServers).length > 0) {
+      queryOptions.mcpServers = { ...queryOptions.mcpServers, ...registeredServers }
     }
 
     queryOptions.env = {

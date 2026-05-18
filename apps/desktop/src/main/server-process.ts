@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { app, dialog, safeStorage } from 'electron'
 import getPort from 'get-port'
 
-import { getBrowserBackendSocketPath } from './browser-backend'
+import { getPluginEnvVars } from './plugin-loader'
 
 let serverProcess: ChildProcess | null = null
 let restartCount = 0
@@ -58,11 +58,11 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   serverProcess = fork(serverEntry, [], {
     env: {
       ...process.env,
+      ...getPluginEnvVars(),
       CRADLE_HOST: host,
       CRADLE_PORT: String(port),
       CRADLE_DATA_DIR: dataDir,
       CRADLE_CREDENTIAL_SECRET: credentialSecret,
-      BROWSER_BACKEND_SOCKET: getBrowserBackendSocketPath(),
       NODE_ENV: isDev ? 'development' : 'production',
     },
     execPath,

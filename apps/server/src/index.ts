@@ -9,7 +9,7 @@ async function bootstrap() {
   const config = loadServerConfig()
   const logger = getLogger()
 
-  const app = createServerApp()
+  const app = await createServerApp()
 
   app.listen({
     port: config.port,

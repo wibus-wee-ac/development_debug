@@ -848,6 +848,12 @@ importers:
         specifier: ^39.2.6
         version: 39.8.10
 
+  packages/plugin-sdk:
+    dependencies:
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
   packages/streamdown:
     dependencies:
       marked:
@@ -908,9 +914,30 @@ importers:
         specifier: ^1.12.1
         version: 1.29.0(zod@4.4.3)
     devDependencies:
+      '@cradle/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@types/node':
         specifier: ^25.8.0
         version: 25.8.0
+      vite:
+        specifier: ^7.2.6
+        version: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+
+  plugins/system-info:
+    devDependencies:
+      '@cradle/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@types/react':
+        specifier: ^19.2.1
+        version: 19.2.14
+      '@vitejs/plugin-react':
+        specifier: ^5.1.1
+        version: 5.2.0(vite@7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
+      react:
+        specifier: ^19.2.1
+        version: 19.2.5
       vite:
         specifier: ^7.2.6
         version: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)

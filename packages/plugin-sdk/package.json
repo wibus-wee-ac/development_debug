@@ -1,0 +1,19 @@
+{
+  "name": "@cradle/plugin-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./web": "./src/web.ts",
+    "./desktop": "./src/desktop.ts"
+  },
+  "files": ["src"],
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true }
+  }
+}

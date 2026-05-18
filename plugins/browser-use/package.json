@@ -3,6 +3,12 @@
   "type": "module",
   "version": "0.0.1",
   "private": true,
+  "cradle": {
+    "displayName": "Browser Use",
+    "server": "dist/server.mjs",
+    "desktop": "dist/desktop.mjs",
+    "deployments": ["desktop"]
+  },
   "exports": {
     ".": "./dist/mcp-server.mjs",
     "./protocol": "./src/protocol.ts"
@@ -17,6 +23,7 @@
     "@modelcontextprotocol/sdk": "^1.12.1"
   },
   "devDependencies": {
+    "@cradle/plugin-sdk": "workspace:*",
     "@types/node": "^25.8.0",
     "vite": "^7.2.6"
   }

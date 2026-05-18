@@ -32,6 +32,7 @@ import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
+import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
@@ -563,6 +564,9 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
 
       {/* ── Kanban section ── */}
       <KanbanSidebar collapsed={collapsed} />
+
+      {/* ── Plugins section ── */}
+      <PluginsSidebar collapsed={collapsed} />
 
       {/* ── Projects section — always rendered, opacity fades on collapse ── */}
       <div

@@ -5,12 +5,17 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/mcp-server.ts'),
+      entry: {
+        'mcp-server': resolve(__dirname, 'src/mcp-server.ts'),
+        'server': resolve(__dirname, 'src/server.ts'),
+        'desktop': resolve(__dirname, 'src/desktop.ts'),
+      },
       formats: ['es'],
-      fileName: () => 'mcp-server.mjs',
+      fileName: (_format, entryName) => `${entryName}.mjs`,
     },
     rollupOptions: {
       external: [
+        /^node:/,
         'net',
         'path',
         'os',
@@ -19,16 +24,11 @@ export default defineConfig({
         'stream',
         'events',
         'util',
-        'node:net',
-        'node:path',
-        'node:os',
-        'node:fs',
-        'node:crypto',
-        'node:stream',
-        'node:events',
-        'node:util',
         '@modelcontextprotocol/sdk/server/stdio.js',
         '@modelcontextprotocol/sdk/server/index.js',
+        '@modelcontextprotocol/sdk/server/mcp.js',
+        '@cradle/plugin-sdk/server',
+        '@cradle/plugin-sdk/desktop',
       ],
     },
     target: 'node20',

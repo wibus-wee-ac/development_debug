@@ -6,6 +6,8 @@ import { cors } from '@elysiajs/cors'
 import { node } from '@elysiajs/node'
 import { Elysia } from 'elysia'
 
+import { activateServerPlugins } from './plugins'
+
 import { createErrorHandler } from './http/error-mapping'
 import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
@@ -52,7 +54,7 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   }
 }
 
-export function createServerApp() {
+export async function createServerApp() {
   const app = new Elysia({
     name: 'cradle.server.elysia',
     adapter: node(),
@@ -90,6 +92,9 @@ export function createServerApp() {
   if (process.env.NODE_ENV === 'test') {
     app.use(testReset)
   }
+  // Plugin system — discover and activate server plugins
+  await activateServerPlugins(app)
+
   app.onStop([() => shutdownInfra()])
   registerOpenApiAlias(app)
 

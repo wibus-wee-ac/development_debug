@@ -5,6 +5,8 @@ import { devtools } from '@tanstack/devtools-vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
+import { pluginImportMap } from './src/lib/vite-plugin-import-map'
+
 export default defineConfig({
   plugins: [
     devtools(),
@@ -14,6 +16,7 @@ export default defineConfig({
         plugins: ['babel-plugin-react-compiler'],
       },
     }),
+    pluginImportMap(),
   ],
   resolve: {
     alias: {
@@ -22,5 +25,18 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react/jsx-runtime'],
+        },
+        chunkFileNames(chunkInfo) {
+          if (chunkInfo.name === 'react-vendor') return 'assets/react-vendor.js'
+          return 'assets/[name]-[hash].js'
+        },
+      },
+    },
   },
 })
