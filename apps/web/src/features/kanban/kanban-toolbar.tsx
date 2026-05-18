@@ -49,7 +49,7 @@ function ToolbarPill({ children, active, className, ...props }: {
       className={cn(
         'flex items-center justify-center size-8 rounded-full border border-border shadow-sm',
         'transition-[background-color,transform] duration-150 ease-out',
-        'hover:bg-muted active:scale-[0.92]',
+        'hover:bg-muted active:scale-[0.95]',
         active && 'bg-muted',
         className,
       )}

@@ -27,7 +27,7 @@ export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
 
   return (
     <div data-testid="issue-activity-timeline">
-      <h3 className="text-sm font-semibold text-foreground">Activity</h3>
+      <h3 className="text-sm font-semibold text-foreground text-balance">Activity</h3>
 
       <div className="mt-3 flex flex-col gap-3">
         {comments.map(comment => (

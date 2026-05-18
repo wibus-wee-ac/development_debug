@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 
+import { Skeleton } from '~/components/ui/skeleton'
 import { useDeleteIssue, useIssue, useMilestones, useStatuses, useUpdateIssue } from '../use-kanban'
 import { ActivityTimeline } from './activity-timeline'
 import { AgentSessionPanel } from './agent-session-panel'
@@ -52,8 +53,25 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-[13px] text-muted-foreground">
-        Loading…
+      <div className="flex flex-1 flex-col overflow-hidden" data-testid="issue-detail-skeleton">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+          <Skeleton className="size-7 rounded" />
+          <Skeleton className="h-4 w-14 rounded" />
+          <Skeleton className="h-4 w-48 rounded" />
+        </div>
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex-1 px-10 py-6 space-y-4">
+            <Skeleton className="h-8 w-3/4 rounded-md" />
+            <div className="space-y-2 mt-6">
+              <Skeleton className="h-4 w-full rounded" />
+              <Skeleton className="h-4 w-5/6 rounded" />
+              <Skeleton className="h-4 w-4/6 rounded" />
+            </div>
+          </div>
+          <div className="w-70 shrink-0 px-3 py-6">
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </div>
+        </div>
       </div>
     )
   }

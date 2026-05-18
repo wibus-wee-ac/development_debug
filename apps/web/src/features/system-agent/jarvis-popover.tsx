@@ -258,7 +258,7 @@ export function JarvisPopover({
         'rounded-xl bg-popover text-popover-foreground',
         'border border-border',
         'overflow-hidden',
-        jarvisExpanded && 'shadow-[0_1px_10px_rgba(0,0,0,0.08)]',
+        jarvisExpanded && 'shadow-[var(--shadow-xs)]',
       )}
     >
       {/* Main content */}

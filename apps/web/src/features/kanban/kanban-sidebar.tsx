@@ -93,7 +93,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
               'relative w-full max-w-md rounded-2xl border border-border bg-card',
-              'shadow-[0_8px_40px_-8px_rgba(0,0,0,0.15),0_2px_8px_-2px_rgba(0,0,0,0.06)]',
+              'shadow-[var(--shadow-lg)]',
             )}
             onKeyDown={handleKeyDown}
           >

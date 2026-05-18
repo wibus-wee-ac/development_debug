@@ -296,8 +296,8 @@ function InputForm({
   return (
     <div className="flex h-full flex-col gap-8 p-8">
       <div className="flex flex-col gap-1.5">
-        <h2 className="text-[18px] font-semibold tracking-tight text-foreground">Import Skills</h2>
-        <p className="text-[13px] leading-relaxed text-muted-foreground/60" style={{ textWrap: 'pretty' }}>
+        <h2 className="text-[18px] font-semibold tracking-tight text-foreground text-balance">Import Skills</h2>
+        <p className="text-[13px] leading-relaxed text-muted-foreground/60 text-pretty">
           Enter a source to discover and install skills into this scope.
         </p>
       </div>
@@ -403,7 +403,7 @@ function SelectBody({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-baseline justify-between px-8 pb-3 pt-7">
-        <h2 className="text-[16px] font-semibold text-foreground">
+        <h2 className="text-[16px] font-semibold text-foreground text-balance">
           {result.skills.length}
           {' '}
           skill

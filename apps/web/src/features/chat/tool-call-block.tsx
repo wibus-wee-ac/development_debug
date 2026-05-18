@@ -13,6 +13,7 @@ import {
   TerminalIcon,
   WrenchIcon,
 } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -138,51 +139,62 @@ export function ToolCallBlock({
         />
       </button>
 
-      {expanded && (
-        <div
-          className="mt-1 ml-2 space-y-1.5 border-l-2 border-muted pl-3 text-xs"
-          data-testid={`chat-tool-call-content-${toolCallId}`}
-        >
-          {input !== undefined && (
-            <div>
-              <span className="text-[10px] text-muted-foreground/60">Input</span>
-              <pre
-                className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-wrap break-all"
-                data-testid={`chat-tool-call-input-${toolCallId}`}
-              >
-                {formatToolPanelValue(input, 'No input captured')}
-              </pre>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            key="content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+            className="overflow-hidden"
+          >
+            <div
+              className="mt-1 ml-2 space-y-1.5 border-l-2 border-muted pl-3 text-xs"
+              data-testid={`chat-tool-call-content-${toolCallId}`}
+            >
+              {input !== undefined && (
+                <div>
+                  <span className="text-[10px] text-muted-foreground/60">Input</span>
+                  <pre
+                    className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground whitespace-pre-wrap break-all"
+                    data-testid={`chat-tool-call-input-${toolCallId}`}
+                  >
+                    {formatToolPanelValue(input, 'No input captured')}
+                  </pre>
+                </div>
+              )}
+              {(output !== undefined || isDone) && (
+                <div>
+                  <span className="text-[10px] text-muted-foreground/60">Output</span>
+                  <pre
+                    className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all"
+                    data-testid={`chat-tool-call-output-${toolCallId}`}
+                  >
+                    {formatToolPanelValue(output, 'No output captured')}
+                  </pre>
+                </div>
+              )}
+              {errorText && (
+                <div>
+                  <span className="text-[10px] text-destructive/70">Error</span>
+                  <pre
+                    className="mt-0.5 rounded bg-destructive/5 p-2 text-destructive/80 whitespace-pre-wrap break-all"
+                    data-testid={`chat-tool-call-error-${toolCallId}`}
+                  >
+                    {errorText}
+                  </pre>
+                </div>
+              )}
+              {children && (
+                <div className="mt-1.5 space-y-1">
+                  {children}
+                </div>
+              )}
             </div>
-          )}
-          {(output !== undefined || isDone) && (
-            <div>
-              <span className="text-[10px] text-muted-foreground/60">Output</span>
-              <pre
-                className="mt-0.5 max-h-40 overflow-auto rounded bg-muted/30 p-2 text-muted-foreground/70 whitespace-pre-wrap break-all"
-                data-testid={`chat-tool-call-output-${toolCallId}`}
-              >
-                {formatToolPanelValue(output, 'No output captured')}
-              </pre>
-            </div>
-          )}
-          {errorText && (
-            <div>
-              <span className="text-[10px] text-destructive/70">Error</span>
-              <pre
-                className="mt-0.5 rounded bg-destructive/5 p-2 text-destructive/80 whitespace-pre-wrap break-all"
-                data-testid={`chat-tool-call-error-${toolCallId}`}
-              >
-                {errorText}
-              </pre>
-            </div>
-          )}
-          {children && (
-            <div className="mt-1.5 space-y-1">
-              {children}
-            </div>
-          )}
-        </div>
-      )}
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -581,7 +581,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             <Button
               variant="ghost"
               size="icon-xs"
-              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
               title="排列"
             >
               <SlidersHorizontalIcon className="size-3" />
@@ -589,7 +589,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             <Button
               variant="ghost"
               size="icon-xs"
-              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
               title="筛选"
             >
               <GitBranchIcon className="size-3" />
@@ -597,7 +597,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             <Button
               variant="ghost"
               size="icon-xs"
-              className="size-5 text-muted-foreground/60 hover:text-foreground"
+              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
               onClick={addFromPicker}
               disabled={adding}
               title="添加项目"

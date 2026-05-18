@@ -111,7 +111,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18, ease: [0.25, 0.46, 0.45, 0.94] }}
             onKeyDown={handleKeyDown}
-            className="relative w-full max-w-xl rounded-2xl border border-border bg-card shadow-[0_8px_40px_-8px_rgba(0,0,0,0.15),0_2px_8px_-2px_rgba(0,0,0,0.06),0_0_0_1px_rgba(0,0,0,0.04)]"
+            className="relative w-full max-w-xl rounded-2xl border border-border bg-card shadow-[var(--shadow-lg)]"
           >
             {/* ── Header ── */}
             <div className="flex items-center gap-1.5 px-4 pt-3 pb-0">
@@ -188,7 +188,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
                   'bg-primary text-primary-foreground',
                   'hover:bg-primary/90 transition-colors',
                   'disabled:opacity-40 disabled:cursor-not-allowed',
-                  'shadow-[0_1px_3px_rgba(0,0,0,0.15),0_1px_2px_-1px_rgba(0,0,0,0.1)]',
+                  'shadow-[var(--shadow-sm)]',
                 )}
               >
                 Create issue

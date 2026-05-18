@@ -233,19 +233,19 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
         {/* Action bar — appears on hover for all messages */}
         {!isStreaming && plainText.length > 0 && (
           <div className={cn(
-            'mt-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+            'mt-1 flex items-center gap-0.5 opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-150',
             isUser && 'justify-end',
           )}
           >
             <button
               type="button"
               onClick={handleCopy}
-              className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/60 transition-colors"
               aria-label="Copy message"
             >
               {copied
-                ? <CheckIcon className="size-3 text-emerald-500" aria-hidden="true" />
-                : <CopyIcon className="size-3" aria-hidden="true" />}
+                ? <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
+                : <CopyIcon className="size-3.5" aria-hidden="true" />}
             </button>
           </div>
         )}

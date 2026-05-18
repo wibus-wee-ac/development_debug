@@ -69,13 +69,11 @@ export function KanbanCard({ issue, displayProperties, onClick, onHover, categor
         }}
         data-testid={`issue-card-${issue.id}`}
         className={cn(
-          'bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border shadow-xs dark:border-muted',
+          'bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border/80',
           'flex flex-col gap-1',
-          // 'shadow-[0_1px_2px_rgba(0,0,0,0.04),0_0_0_1px_rgba(0,0,0,0.05)]',
-          'transition-[transform,box-shadow,border] duration-150 ease-out',
-          // 'hover:shadow-[0_3px_10px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.07)]',
-          'hover:bg-background/50',
-          'transition-colors duration-150 ease-out',
+          'shadow-[var(--shadow-xs)]',
+          'transition-[transform,box-shadow,border-color,background-color] duration-150 ease-out',
+          'hover:shadow-[var(--shadow-sm)] hover:border-border hover:bg-card',
           'active:scale-[0.97]',
           isDragging && 'opacity-50',
         )}
@@ -102,7 +100,7 @@ export function KanbanCard({ issue, displayProperties, onClick, onHover, categor
               <StatusIcon category={category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={16} />
             </span>
           )}
-          <p className="text-[13px] font-medium text-foreground leading-relaxed text-pretty">
+          <p className="text-[13px] font-medium text-foreground leading-snug tracking-tight text-balance">
             {issue.title}
           </p>
         </div>

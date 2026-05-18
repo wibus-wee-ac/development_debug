@@ -156,7 +156,7 @@ export function UsageDashboard() {
         {/* Header row with streak */}
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground" data-testid="usage-dashboard-title">Usage</h1>
+            <h1 className="text-lg font-semibold text-foreground text-balance" data-testid="usage-dashboard-title">Usage</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">Token consumption over the past year</p>
           </div>
           {stats && stats.currentStreak > 0 && (

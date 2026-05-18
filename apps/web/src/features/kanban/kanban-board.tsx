@@ -162,7 +162,7 @@ export function KanbanBoard({
             transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
             className="w-72"
             style={{
-              boxShadow: '0 4px 12px -2px rgba(0,0,0,0.08), 0 8px 24px -4px rgba(0,0,0,0.06)',
+              boxShadow: 'var(--shadow-md)',
             }}
           >
             <KanbanCard

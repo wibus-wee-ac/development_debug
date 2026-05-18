@@ -100,7 +100,7 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
         <m.div
           ref={registerCenterColumn}
           data-slot="app-center-column"
-          className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-sm z-10 m-1 mr-2"
+          className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-[var(--shadow-sm)] z-10 m-1 mr-2"
           animate={jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }}
           transition={SPRING}
         >

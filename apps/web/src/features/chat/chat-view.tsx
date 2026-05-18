@@ -15,6 +15,8 @@ import { Virtualizer } from 'virtua'
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { Skeleton } from '~/components/ui/skeleton'
+import { cn } from '~/lib/cn'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
@@ -94,6 +96,19 @@ function ChatMessageListPane({
     <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea viewportRef={viewportRef} className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
         <div className="mx-auto max-w-208 px-4 pt-4">
+          {messages.length === 0 && !isReady && (
+            <div className="space-y-6 py-4">
+              {[0, 1, 2].map(i => (
+                <div key={i} className={cn('flex gap-3', i % 2 !== 0 && 'justify-end')}>
+                  {i % 2 === 0 && <Skeleton className="size-7 rounded-full shrink-0 mt-0.5" />}
+                  <div className="space-y-1.5 max-w-[60%]">
+                    <Skeleton className="h-4 w-full rounded-xl" />
+                    <Skeleton className={cn('h-4 rounded-xl', i === 0 ? 'w-3/4' : 'w-2/3')} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {messages.length === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
               <p className="select-none text-sm text-muted-foreground">

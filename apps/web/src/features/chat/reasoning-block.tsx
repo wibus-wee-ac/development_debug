@@ -4,6 +4,7 @@
 
 import { Streamdown } from '@cradle/streamdown'
 import { BrainIcon, ChevronRightIcon } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -38,20 +39,31 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
         />
       </button>
 
-      {expanded && (
-        <div
-          data-testid="chat-reasoning-content"
-          className="mt-1 ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed"
-        >
-          <Streamdown
-            content={text}
-            streaming={isStreaming}
-            animationPreset={animationPreset}
-            animateMode={animateMode}
-            showCursor={false}
-          />
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <m.div
+            key="content"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+            className="overflow-hidden"
+          >
+            <div
+              data-testid="chat-reasoning-content"
+              className="mt-1 ml-2 border-l-2 border-muted pl-3 text-xs text-muted-foreground leading-relaxed"
+            >
+              <Streamdown
+                content={text}
+                streaming={isStreaming}
+                animationPreset={animationPreset}
+                animateMode={animateMode}
+                showCursor={false}
+              />
+            </div>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

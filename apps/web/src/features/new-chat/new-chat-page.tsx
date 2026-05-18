@@ -269,9 +269,10 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
     <div
       className={cn(
         'relative overflow-hidden rounded-2xl',
-        'border border-border bg-muted/50',
-        'transition-[border-color] duration-200',
-        'focus-within:border-ring/60',
+        'border border-border/60 bg-muted/30',
+        'ring-1 ring-inset ring-white/[0.02] dark:ring-white/[0.04]',
+        'transition-[border-color,box-shadow] duration-200',
+        'focus-within:border-ring/50 focus-within:shadow-[var(--shadow-xs)]',
       )}
     >
       <div className="relative bg-background">
@@ -298,11 +299,10 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
             <AnimatePresence mode="wait">
               <m.span
                 key={placeholder}
-                className="font-light text-[15px] leading-[1.75] tracking-[-0.01em] text-muted-foreground/40"
+                className="font-light text-[15px] leading-[1.75] tracking-[-0.01em] text-muted-foreground/30"
                 initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.3 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: 0.15, ease: [0.0, 0.0, 0.2, 1] } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: 0.1, ease: [0.4, 0.0, 1.0, 1.0] } }}
               >
                 {placeholder}
               </m.span>
@@ -383,7 +383,7 @@ function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPag
       className="mt-3 flex flex-wrap gap-1.5 px-1"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ delay: 0.2, duration: 0.3 }}
+      transition={{ delay: 0.15, duration: 0.22 }}
     >
       {QUICK_ACTIONS.map((action, index) => (
         <m.button
@@ -419,7 +419,7 @@ function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatP
       className="relative"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ delay: 0.35, duration: 0.4 }}
+      transition={{ delay: 0.2, duration: 0.25 }}
     >
       <div className="mx-auto max-w-160 px-6 py-4">
         <div className="mb-2.5 flex items-center gap-1.5">
@@ -439,7 +439,7 @@ function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatP
               )}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 + index * 0.05, duration: 0.25 }}
+              transition={{ delay: 0.3 + index * 0.04, duration: 0.22 }}
             >
               <div className="flex w-full items-center gap-2">
                 <MessageSquareIcon className="size-3 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70" />
@@ -470,7 +470,7 @@ export function NewChatPage() {
           className="w-full max-w-160"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+          transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <NewChatComposerCard owner={owner} />
           <NewChatQuickActions owner={owner} />

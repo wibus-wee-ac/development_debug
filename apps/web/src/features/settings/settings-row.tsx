@@ -97,7 +97,7 @@ export function SettingsSectionHeader({ title, description, action, className }:
   return (
     <div className={cn('flex items-start justify-between gap-4 pb-3', className)}>
       <div>
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
+        <h3 className="text-base font-semibold text-foreground text-balance">{title}</h3>
         {description && (
           <p className="mt-1 text-[12px] text-muted-foreground">{description}</p>
         )}

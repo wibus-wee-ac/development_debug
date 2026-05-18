@@ -158,7 +158,7 @@ export function AgentRuntimeSettings() {
       {/* Header */}
       <header className="flex items-end justify-between gap-6 pb-5">
         <div className="space-y-1">
-          <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground">
+          <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground text-balance">
             Providers
           </h3>
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">
