@@ -35,6 +35,7 @@ interface Window {
     /** @deprecated Legacy subscribe API — prefer ipc */
     subscribe?: (topic: string, listener: (...args: unknown[]) => void) => () => void
   }
+  __cradleBrowserUseCreateTab?: (url?: string) => void
   // eslint-disable-next-line ts/no-explicit-any
   ipc: any
 }

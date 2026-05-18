@@ -12,6 +12,7 @@ Rendered at the `/devtool` route in a separate Electron window.
 - **acp/**: ACP event inspection — real-time view of ACP agent protocol events
 - **agent-context/**: Agent context snapshots captured before provider stream execution
 - **observability/**: Canonical observability event/incident inspection and local export controls
+- **resources/**: AppHeader resources popover with renderer, server, CLI TUI, and bottom-panel process memory breakdown
 - **tabs/**: Tabs-next runtime state, render policy, mounted IDs, and metrics
 
 ## Files

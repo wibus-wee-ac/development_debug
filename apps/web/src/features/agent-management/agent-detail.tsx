@@ -1,4 +1,4 @@
-// Input: useAgents, useAgentProfiles, useAgentModels hooks; Agent/AgentProfile/CreateAgentInput types; SkillManager; AlertDialog; motion/react
+// Input: useAgents, useAgentProfiles, useAgentModelMap hooks; Agent/AgentProfile/CreateAgentInput types; SkillManager; AlertDialog; motion/react
 // Output: AgentDetailPage — profile-card identity zone + auto-saving config + private skills. Create and edit unified.
 // Position: Rendered by AgentList in both create and edit modes
 
@@ -22,8 +22,11 @@ import {
 import { Button } from '~/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
-import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
+import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
+import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
+import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
 import type { Agent, AgentProfile, AgentRuntimeConfig, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
@@ -87,6 +90,13 @@ const AVATAR_STYLES = [
 
 type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+
+const AGENT_THINKING_OPTIONS: Array<ThinkingOption<ThinkingEffort>> = [
+  { value: 'auto', label: 'Auto', description: 'Let the runtime choose an appropriate reasoning budget' },
+  { value: 'low', label: 'Low', description: 'Fast responses with light reasoning' },
+  { value: 'medium', label: 'Medium', description: 'Balanced reasoning for everyday work' },
+  { value: 'high', label: 'High', description: 'Deeper reasoning for complex work' },
+]
 
 interface AgentDetailFormValues {
   name: string
@@ -244,77 +254,73 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
   }
 }
 
-// ── Model Select ──────────────────────────────────────────────────────────────
+// ── Provider / Model Picker ───────────────────────────────────────────────────
 
-interface ModelSelectChangeOptions {
-  shouldDirty?: boolean
-}
-
-function ModelSelect({
+function AgentProviderModelPicker({
+  profiles,
   profileId,
   modelId,
-  onModelChange,
+  thinkingEffort,
 }: {
+  profiles: AgentProfile[]
   profileId: string | null
   modelId: string | null
-  onModelChange: (id: string | null, options?: ModelSelectChangeOptions) => void
+  thinkingEffort: ThinkingEffort
 }) {
-  const { models, isLoading } = useAgentModels(profileId)
-  const applyDefaultModel = useEffectEvent((nextModelId: string) => {
-    onModelChange(nextModelId, { shouldDirty: false })
+  const form = useFormContext<AgentDetailFormValues>()
+  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
+  const models = profileId ? modelsByProfileId[profileId] ?? [] : []
+  const selectedModel = models.find(model => model.id === modelId) ?? null
+  const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
+
+  const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
+    selectSupportedThinkingValue(model, AGENT_THINKING_OPTIONS, thinkingEffort, 'auto')
+
+  const applyDefaultModel = useEffectEvent((nextModel: ModelDescriptor) => {
+    form.setValue('modelId', nextModel.id, { shouldDirty: false })
+    form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: false })
   })
 
   useEffect(() => {
     if (!profileId || modelId !== null || models.length === 0) {
       return
     }
-    applyDefaultModel(models[0]!.id)
+    applyDefaultModel(models[0]!)
   }, [profileId, modelId, models])
 
-  if (!profileId) {
-    return (
-      <Select disabled>
-        <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-model-empty">
-          <SelectValue placeholder="Select a profile first" />
-        </SelectTrigger>
-        <SelectContent />
-      </Select>
-    )
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex h-8 w-48 items-center gap-2 rounded-md border border-border px-3">
-        <Spinner className="size-3 text-muted-foreground" data-testid="agent-model-loading" />
-        <span className="text-[12.5px] text-muted-foreground">Loading…</span>
-      </div>
-    )
-  }
-
-  if (models.length === 0) {
-    return (
-      <Select disabled>
-        <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-model-empty">
-          <SelectValue placeholder="No models" />
-        </SelectTrigger>
-        <SelectContent />
-      </Select>
-    )
-  }
-
   return (
-    <Select value={modelId ?? models[0]?.id ?? undefined} onValueChange={value => onModelChange(value, { shouldDirty: true })}>
-      <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-model-select">
-        <SelectValue placeholder="Model" />
-      </SelectTrigger>
-      <SelectContent>
-        {models.map((m: ModelDescriptor) => (
-          <SelectItem key={m.id} value={m.id} className="text-xs">
-            {m.label ?? m.id}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <ProviderModelPicker
+      profiles={profiles}
+      selectedProfileId={profileId}
+      selectedModelId={modelId}
+      selectedModel={selectedModel}
+      modelsByProfileId={modelsByProfileId}
+      loadingProfileIds={loadingProfileIds}
+      thinkingValue={thinkingEffort}
+      thinkingOptions={AGENT_THINKING_OPTIONS}
+      isLoadingSelectedModels={isLoadingModels}
+      emptyProfilesLabel="No provider profiles configured"
+      emptySelectionLabel="Select a profile"
+      menuSide="bottom"
+      menuAlign="end"
+      triggerTestId="agent-provider-model-selector"
+      getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, AGENT_THINKING_OPTIONS)}
+      onSelectProfile={(nextProfileId) => {
+        const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
+        form.setValue('agentProfileId', nextProfileId, { shouldDirty: true })
+        form.setValue('modelId', nextModel?.id ?? null, { shouldDirty: true })
+        form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
+      }}
+      onSelectModel={(nextModelId, nextProfileId) => {
+        const nextModel = nextModelId
+          ? (modelsByProfileId[nextProfileId] ?? []).find(model => model.id === nextModelId) ?? null
+          : null
+        form.setValue('agentProfileId', nextProfileId, { shouldDirty: true })
+        form.setValue('modelId', nextModelId, { shouldDirty: true })
+        form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
+      }}
+      onSelectThinking={nextThinking => form.setValue('thinkingEffort', nextThinking, { shouldDirty: true })}
+    />
   )
 }
 
@@ -433,52 +439,6 @@ function AgentDetailHeader({
           </AlertDialog>
         )}
       </div>
-    </div>
-  )
-}
-
-function ThinkingEffortControl({ thinkingEffort }: { thinkingEffort: ThinkingEffort }) {
-  const form = useFormContext<AgentDetailFormValues>()
-  const isAuto = thinkingEffort === 'auto'
-
-  return (
-    <div className="flex items-center gap-1">
-      <div
-        className={cn(
-          'flex gap-px rounded-md bg-foreground/6 p-px',
-          isAuto && 'opacity-30',
-        )}
-      >
-        {(['low', 'medium', 'high'] as const).map(level => (
-          <button
-            key={level}
-            type="button"
-            onClick={() => form.setValue('thinkingEffort', level, { shouldDirty: true })}
-            data-testid={`agent-thinking-${level}`}
-            className={cn(
-              'h-6.5 rounded-[5px] px-2.5 text-[11px] font-medium capitalize transition-colors',
-              thinkingEffort === level
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {level}
-          </button>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => form.setValue('thinkingEffort', isAuto ? 'medium' : 'auto', { shouldDirty: true })}
-        data-testid="agent-thinking-auto"
-        className={cn(
-          'h-6.5 rounded-md px-2.5 text-[11px] transition-colors',
-          isAuto
-            ? 'bg-foreground font-medium text-background'
-            : 'text-muted-foreground hover:text-foreground',
-        )}
-      >
-        Auto
-      </button>
     </div>
   )
 }
@@ -684,41 +644,13 @@ function AgentIdentitySection({
         : (
             <>
               <SettingsDivider />
-              <SettingsRow label="Provider profile" description="Which provider profile this agent uses">
-                <Select
-                  value={draft.agentProfileId ?? undefined}
-                  onValueChange={(value) => {
-                    form.setValue('agentProfileId', value, { shouldDirty: true })
-                    form.setValue('modelId', null, { shouldDirty: true })
-                  }}
-                >
-                  <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-provider-select">
-                    <SelectValue placeholder="Select a profile…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {enabledProfiles.map(profile => (
-                      <SelectItem key={profile.id} value={profile.id} className="text-xs">
-                        {profile.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </SettingsRow>
-
-              <SettingsDivider />
-              <SettingsRow label="Model" description="Which model the agent uses from the selected profile">
-                <ModelSelect
+              <SettingsRow label="Model" description="Choose provider profile, model, and thinking effort">
+                <AgentProviderModelPicker
+                  profiles={enabledProfiles}
                   profileId={draft.agentProfileId}
                   modelId={draft.modelId}
-                  onModelChange={(id, options) => {
-                    form.setValue('modelId', id, { shouldDirty: options?.shouldDirty ?? true })
-                  }}
+                  thinkingEffort={draft.thinkingEffort}
                 />
-              </SettingsRow>
-
-              <SettingsDivider />
-              <SettingsRow label="Thinking effort" description="How much reasoning budget to allocate for this agent">
-                <ThinkingEffortControl thinkingEffort={draft.thinkingEffort} />
               </SettingsRow>
             </>
           )}

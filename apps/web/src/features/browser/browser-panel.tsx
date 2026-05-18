@@ -3,6 +3,7 @@
 // Position: apps/web/src/features/browser/browser-panel.tsx
 
 import { ArrowLeftIcon, ArrowRightIcon, GlobeIcon, PlusIcon, RefreshCwIcon, XIcon } from 'lucide-react'
+import { createElement } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -12,6 +13,7 @@ import { useBrowserPanelStore } from '~/store/browser-panel'
 // Electron webview element — not in React's JSX types
 type WebviewElement = HTMLElement & {
   src: string
+  __cleanup?: () => void
   loadURL: (url: string) => Promise<void>
   goBack: () => void
   goForward: () => void
@@ -26,20 +28,6 @@ type WebviewElement = HTMLElement & {
   removeEventListener: (event: string, handler: (...args: unknown[]) => void) => void
 }
 
-declare global {
-  // eslint-disable-next-line ts/no-namespace
-  namespace JSX {
-    interface IntrinsicElements {
-      webview: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
-        src?: string
-        partition?: string
-        allowpopups?: string
-        webpreferences?: string
-      }
-    }
-  }
-}
-
 // Script injection presets
 const INJECT_PRESETS = [
   {
@@ -50,6 +38,30 @@ const INJECT_PRESETS = [
 ] as const
 
 const MAX_TABS = 5
+const WEBVIEW_PARTITION = 'persist:browser'
+const WEBVIEW_PREFERENCES = 'contextIsolation=yes'
+
+interface ElectronWebviewProps {
+  url: string
+  active: boolean
+  webviewRef: (el: WebviewElement | null) => void
+}
+
+function ElectronWebview({ url, active, webviewRef }: ElectronWebviewProps) {
+  return createElement('webview', {
+    ref: webviewRef,
+    src: url,
+    partition: WEBVIEW_PARTITION,
+    webpreferences: WEBVIEW_PREFERENCES,
+    className: 'absolute inset-0 w-full h-full',
+    style: { display: active ? 'flex' : 'none' },
+  } as React.HTMLAttributes<HTMLElement> & {
+    ref: (el: WebviewElement | null) => void
+    src: string
+    partition: string
+    webpreferences: string
+  })
+}
 
 export function BrowserPanel() {
   const { tabs, activeTabId, requestedTab, createTab, fulfillRequestedTab, closeTab, setActiveTab, updateTab, navigateTo } = useBrowserPanelStore()
@@ -122,15 +134,12 @@ export function BrowserPanel() {
   const webviewRef = useCallback((tabId: string) => (el: WebviewElement | null) => {
     if (el && !webviewMapRef.current.has(tabId)) {
       webviewMapRef.current.set(tabId, el)
-      const cleanup = attachWebviewListeners(tabId, el)
-      // eslint-disable-next-line ts/no-explicit-any
-      ;(el as any).__cleanup = cleanup
+      el.__cleanup = attachWebviewListeners(tabId, el)
     }
     else if (!el) {
       const prev = webviewMapRef.current.get(tabId)
       if (prev) {
-        // eslint-disable-next-line ts/no-explicit-any
-        ;(prev as any).__cleanup?.()
+        prev.__cleanup?.()
         webviewMapRef.current.delete(tabId)
       }
     }
@@ -299,14 +308,11 @@ export function BrowserPanel() {
       {/* Webview container — all webviews rendered, only active visible */}
       <div className="flex-1 relative">
         {tabs.map(tab => (
-          <webview
+          <ElectronWebview
             key={tab.id}
-            ref={webviewRef(tab.id) as React.LegacyRef<HTMLElement>}
-            src={tab.url}
-            partition="persist:browser"
-            webpreferences="contextIsolation=yes"
-            className="absolute inset-0 w-full h-full"
-            style={{ display: tab.id === activeTabId ? 'flex' : 'none' }}
+            url={tab.url}
+            active={tab.id === activeTabId}
+            webviewRef={webviewRef(tab.id)}
           />
         ))}
       </div>

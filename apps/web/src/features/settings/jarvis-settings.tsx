@@ -1,23 +1,40 @@
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
-import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
+// Input: Jarvis preferences, agent profiles, provider-owned model map
+// Output: JarvisSettings — settings page for the workspace-aware system assistant
+// Position: Settings section rendered for the Jarvis navigation item
+
+import { useMemo } from 'react'
+
+import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
+import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
+import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
-const THINKING_LEVELS = [
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'xhigh', label: 'Extra High' },
-] as const
+const JARVIS_THINKING_OPTIONS: Array<ThinkingOption<JarvisPreferences['thinkingLevel']>> = [
+  { value: 'minimal', label: 'Minimal', description: 'Lowest reasoning budget for direct tasks' },
+  { value: 'low', label: 'Low', description: 'Fast responses with light reasoning' },
+  { value: 'medium', label: 'Medium', description: 'Balanced reasoning for everyday work' },
+  { value: 'high', label: 'High', description: 'Deeper reasoning for complex work' },
+  { value: 'xhigh', label: 'Extra High', description: 'Maximum reasoning budget for hard tasks' },
+]
 
 export function JarvisSettings() {
   const { prefs, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { profiles } = useAgentProfiles()
-  const { models, isLoading: isLoadingModels } = useAgentModels(prefs?.profileId ?? null)
+  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
+
+  const selectedProfile = useMemo(
+    () => profiles.find(profile => profile.id === prefs?.profileId) ?? null,
+    [prefs?.profileId, profiles],
+  )
+  const selectedModels = selectedProfile ? modelsByProfileId[selectedProfile.id] ?? [] : []
+  const selectedModel = selectedModels.find(model => model.id === prefs?.model) ?? null
+  const selectThinkingForModel = (model: typeof selectedModel): JarvisPreferences['thinkingLevel'] =>
+    selectSupportedThinkingValue(model, JARVIS_THINKING_OPTIONS, prefs?.thinkingLevel ?? 'medium', 'medium')
 
   if (!prefs) {
     return null
@@ -31,57 +48,36 @@ export function JarvisSettings() {
       />
       <SettingsDivider />
 
-      <SettingsRow label="Agent Profile" description="Which configured agent profile Jarvis should use">
-        <Select
-          value={prefs.profileId ?? '__none__'}
-          onValueChange={v => void save({ profileId: v === '__none__' ? null : v })}
+      <SettingsRow label="Model" description="Choose Jarvis provider profile, model, and thinking level">
+        <ProviderModelPicker
+          profiles={profiles}
+          selectedProfileId={prefs.profileId}
+          selectedModelId={prefs.model ?? null}
+          selectedModel={selectedModel}
+          modelsByProfileId={modelsByProfileId}
+          loadingProfileIds={loadingProfileIds}
+          thinkingValue={prefs.thinkingLevel}
+          thinkingOptions={JARVIS_THINKING_OPTIONS}
+          emptyProfilesLabel="No agent profiles configured"
+          emptySelectionLabel="Select a model"
+          menuSide="bottom"
+          menuAlign="end"
+          triggerTestId="jarvis-provider-model-selector"
           disabled={saving}
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder="Select a profile..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Not configured</SelectItem>
-            {profiles.map(p => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-
-      <SettingsRow label="Model" description="Which model Jarvis should use from the selected profile">
-        <Select
-          value={prefs.model ?? '__none__'}
-          onValueChange={v => void save({ model: v === '__none__' ? undefined : v })}
-          disabled={saving || isLoadingModels || !prefs.profileId}
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue placeholder={isLoadingModels ? 'Loading…' : 'Select a model…'} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Auto (profile default)</SelectItem>
-            {models.map(m => (
-              <SelectItem key={m.id} value={m.id}>{m.label ?? m.id}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </SettingsRow>
-
-      <SettingsRow label="Thinking Level" description="How much reasoning budget to allocate">
-        <Select
-          value={prefs.thinkingLevel}
-          onValueChange={v => void save({ thinkingLevel: v as JarvisPreferences['thinkingLevel'] })}
-          disabled={saving}
-        >
-          <SelectTrigger className="w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {THINKING_LEVELS.map(t => (
-              <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, JARVIS_THINKING_OPTIONS)}
+          onSelectProfile={(profileId) => {
+            const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
+            void save({ profileId, model: nextModel?.id, thinkingLevel: selectThinkingForModel(nextModel) })
+          }}
+          onSelectModel={(model, profileId) => {
+            if (!model) {
+              return
+            }
+            const nextModel = (modelsByProfileId[profileId] ?? []).find(item => item.id === model) ?? null
+            void save({ profileId, model, thinkingLevel: selectThinkingForModel(nextModel) })
+          }}
+          onSelectThinking={thinkingLevel => void save({ thinkingLevel })}
+        />
       </SettingsRow>
     </div>
   )

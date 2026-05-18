@@ -460,11 +460,169 @@ function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatP
 
 /* ─── Main Component ──────────────────────────────────────────────────── */
 
+/**
+ * GitHub-style contribution graph decoration — Canvas-based, monochrome with individual breathing + mouse glow.
+ */
+function DitheredGradientDecoration() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const mouseRef = useRef({ x: -9999, y: -9999 })
+  const rafRef = useRef<number>(0)
+
+  const cellSize = 10
+  const gap = 3
+  const step = cellSize + gap
+  const rows = 16
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      return
+    }
+
+    // Resize canvas to fill container
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1
+      const rect = canvas.getBoundingClientRect()
+      canvas.width = rect.width * dpr
+      canvas.height = rect.height * dpr
+      ctx.scale(dpr, dpr)
+    }
+    resize()
+    window.addEventListener('resize', resize)
+
+    const cols = Math.ceil(canvas.getBoundingClientRect().width / step)
+    const totalCells = cols * rows
+
+    // Pre-compute per-cell: intensity, breath phase offset, breath speed
+    function hash(i: number): number {
+      const x = Math.sin(i * 127.1 + 311.7) * 43758.5453
+      return x - Math.floor(x)
+    }
+
+    const cells = Array.from({ length: totalCells }, (_, i) => {
+      const v = hash(i)
+      let level = 0
+      if (v >= 0.4 && v < 0.6) {
+        level = 1
+      }
+      else if (v >= 0.6 && v < 0.8) {
+        level = 2
+      }
+      else if (v >= 0.8 && v < 0.92) {
+        level = 3
+      }
+      else if (v >= 0.92) {
+        level = 4
+      }
+      return {
+        level,
+        phase: hash(i * 3 + 7) * Math.PI * 2,
+        speed: 0.3 + hash(i * 5 + 13) * 0.4, // 0.3-0.7 rad/s
+      }
+    })
+
+    // Base lightness per level (very light grays)
+    const baseLightness = [0, 0.92, 0.88, 0.84, 0.78]
+
+    function draw(time: number) {
+      const w = canvas!.getBoundingClientRect().width
+      const h = canvas!.getBoundingClientRect().height
+      ctx!.clearRect(0, 0, w, h)
+
+      const t = time / 1000
+      const mx = mouseRef.current.x
+      const my = mouseRef.current.y
+      const currentCols = Math.ceil(w / step)
+
+      for (let i = 0; i < cells.length && i < currentCols * rows; i++) {
+        const cell = cells[i]
+        if (cell.level === 0) {
+          continue
+        }
+
+        const col = i % currentCols
+        const row = Math.floor(i / currentCols)
+        const x = col * step
+        const y = row * step
+
+        // Breathing: oscillate opacity between 0.3 and 1.0
+        const breath = 0.65 + 0.35 * Math.sin(t * cell.speed + cell.phase)
+
+        // Mouse glow: brighten cells near cursor
+        const cx = x + cellSize / 2
+        const cy = y + cellSize / 2
+        const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2)
+        const glow = Math.max(0, 1 - dist / 100)
+
+        // Compute final lightness
+        const l = baseLightness[cell.level]
+        // Darken slightly for glow (lower lightness = darker = more visible)
+        const finalL = l - glow * 0.15
+
+        ctx!.globalAlpha = breath
+        ctx!.fillStyle = `oklch(${finalL} 0 0)`
+        ctx!.beginPath()
+        ctx!.roundRect(x, y, cellSize, cellSize, 2)
+        ctx!.fill()
+      }
+
+      // Vertical fade mask (top solid, bottom transparent)
+      const grad = ctx!.createLinearGradient(0, 0, 0, h)
+      grad.addColorStop(0, 'rgba(255,255,255,0)')
+      grad.addColorStop(0.6, 'rgba(255,255,255,0)')
+      grad.addColorStop(1, 'rgba(255,255,255,1)')
+      ctx!.globalAlpha = 1
+      ctx!.globalCompositeOperation = 'destination-out'
+      ctx!.fillStyle = grad
+      ctx!.fillRect(0, 0, w, h)
+      ctx!.globalCompositeOperation = 'source-over'
+
+      rafRef.current = requestAnimationFrame(draw)
+    }
+
+    rafRef.current = requestAnimationFrame(draw)
+
+    return () => {
+      cancelAnimationFrame(rafRef.current)
+      window.removeEventListener('resize', resize)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleMouseMove = useCallback((e: { clientX: number, clientY: number }) => {
+    const rect = canvasRef.current?.getBoundingClientRect()
+    if (!rect) {
+      return
+    }
+    mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }, [])
+
+  const handleMouseLeave = useCallback(() => {
+    mouseRef.current = { x: -9999, y: -9999 }
+  }, [])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-hidden
+      className="pointer-events-auto absolute inset-x-0 top-0"
+      style={{ height: rows * step + gap, width: '100%' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    />
+  )
+}
+
 export function NewChatPage() {
   const owner = useNewChatPageOwner()
 
   return (
     <div className="relative flex h-full flex-col bg-background" data-testid="new-chat-page">
+      <DitheredGradientDecoration />
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-4">
         <m.div
           className="w-full max-w-160"

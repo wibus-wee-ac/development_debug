@@ -60,8 +60,8 @@ const GROUP_ORDER: Record<'global' | 'workspace' | 'agent', SkillScope[]> = {
 
 const GROUP_LABELS: Record<SkillScope, string> = {
   builtin: 'Built-in',
-  legacy: 'Legacy',
-  global: 'Global',
+  legacy: 'Standard',
+  global: 'Cradle only',
   workspace: 'Workspace',
   agent: 'Agent',
 }

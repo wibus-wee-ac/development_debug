@@ -9,7 +9,7 @@
 ## Files
 
 - **appearance-settings.tsx**: 外观设置页，负责主题切换
-- **index.ts**: Settings 模块的 barrel export
+- **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型
 - **settings-overlay-store.ts**: Settings feature-owned overlay state — records which tab currently hosts the settings overlay plus the active section selection; replaces layout-store ownership for settings UI state
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面
 - **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件

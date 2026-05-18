@@ -1,6 +1,6 @@
 // Input: SkillManager shared UI
-// Output: Settings page wrapper for globally managed skills under ~/.cradle/skills
-// Position: Settings section for shared skills management with legacy and built-in layers shown as inherited read-only context
+// Output: Settings page wrapper for Cradle-managed skills under ~/.cradle/skills
+// Position: Settings section for Cradle-only skills with standard and built-in layers shown as inherited read-only context
 
 import { SkillManager } from './skill-manager'
 
@@ -10,7 +10,7 @@ export function GlobalSkillsSettings() {
       editableScope="global"
       pageTestId="global-skills-page"
       title="Skills"
-      description="Manage shared skills under ~/.cradle/skills while reviewing inherited legacy and built-in skills."
+      description="Manage Cradle-only skills under ~/.cradle/skills while reviewing inherited standard .agents and built-in skills."
     />
   )
 }
