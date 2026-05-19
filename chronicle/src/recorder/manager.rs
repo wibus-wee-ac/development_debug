@@ -92,14 +92,26 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&root);
         let frames = vec![
-            frame(1, "same", BrowserWindowObservation::new(1, "Cradle", "app.cradle")),
-            frame(2, "same", BrowserWindowObservation::new(1, "Cradle", "app.cradle")),
+            frame(
+                1,
+                "same",
+                BrowserWindowObservation::new(1, "Cradle", "app.cradle"),
+            ),
+            frame(
+                2,
+                "same",
+                BrowserWindowObservation::new(1, "Cradle", "app.cradle"),
+            ),
             frame(
                 3,
                 "private",
                 BrowserWindowObservation::new(2, "Search Incognito", "com.google.Chrome"),
             ),
-            frame(4, "different", BrowserWindowObservation::new(1, "Cradle", "app.cradle")),
+            frame(
+                4,
+                "different",
+                BrowserWindowObservation::new(1, "Cradle", "app.cradle"),
+            ),
         ];
         let source = SyntheticCaptureSource::from_frames(frames);
         let store = ArtifactStore::new(&root, Timestamp::from_seconds(1_779_125_791));
@@ -121,6 +133,7 @@ mod tests {
             frame_index: index,
             captured_at: Timestamp::from_seconds(1_779_125_791 + index),
             bytes: text.as_bytes().to_vec(),
+            frame_extension: "jpg".to_string(),
             observed_text: text.to_string(),
             windows: vec![window],
         }

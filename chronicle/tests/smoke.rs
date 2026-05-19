@@ -47,7 +47,9 @@ fn binary_smoke_writes_artifacts_and_memory() {
         .expect("segment should exist")
         .expect("segment entry should read")
         .path();
-    assert!(segment.join("frame-00001.bin").exists());
+    assert!(segment.join("frame-00001.jpg").exists());
+    assert!(segment.join("capture-00001.json").exists());
+    assert!(segment.join("ocr-00001.json").exists());
     assert!(segment.join("ocr.json").exists());
     assert!(segment.join("capture.json").exists());
     assert!(segment.join("snapshot.json").exists());

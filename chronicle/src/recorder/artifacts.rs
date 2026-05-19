@@ -50,21 +50,32 @@ impl ArtifactStore {
         fs::create_dir_all(&segment_dir)
             .map_err(|source| ChronicleError::io_at(&segment_dir, source))?;
 
-        let frame_name = format!("frame-{:05}.bin", frame.frame_index);
+        let frame_name = format!(
+            "frame-{:05}.{}",
+            frame.frame_index,
+            sanitize_extension(&frame.frame_extension)
+        );
         let frame_path = segment_dir.join(&frame_name);
         fs::write(&frame_path, &frame.bytes)
             .map_err(|source| ChronicleError::io_at(&frame_path, source))?;
 
-        let capture_path = segment_dir.join("capture.json");
-        fs::write(
-            &capture_path,
-            capture_json(frame, ocr, &frame_name, self.segment_started_at),
-        )
-        .map_err(|source| ChronicleError::io_at(&capture_path, source))?;
+        let capture_name = format!("capture-{:05}.json", frame.frame_index);
+        let capture_path = segment_dir.join(&capture_name);
+        let capture_body = capture_json(frame, ocr, &frame_name, self.segment_started_at);
+        fs::write(&capture_path, &capture_body)
+            .map_err(|source| ChronicleError::io_at(&capture_path, source))?;
+        let latest_capture_path = segment_dir.join("capture.json");
+        fs::write(&latest_capture_path, &capture_body)
+            .map_err(|source| ChronicleError::io_at(&latest_capture_path, source))?;
 
-        let ocr_path = segment_dir.join("ocr.json");
-        fs::write(&ocr_path, ocr_json(ocr, &frame_name))
+        let ocr_name = format!("ocr-{:05}.json", frame.frame_index);
+        let ocr_path = segment_dir.join(&ocr_name);
+        let ocr_body = ocr_json(ocr, &frame_name);
+        fs::write(&ocr_path, &ocr_body)
             .map_err(|source| ChronicleError::io_at(&ocr_path, source))?;
+        let latest_ocr_path = segment_dir.join("ocr.json");
+        fs::write(&latest_ocr_path, &ocr_body)
+            .map_err(|source| ChronicleError::io_at(&latest_ocr_path, source))?;
 
         let snapshot_path = segment_dir.join("snapshot.json");
         fs::write(&snapshot_path, snapshot_json(frame, ocr, &frame_name))
@@ -155,6 +166,19 @@ fn snapshot_json(frame: &CapturedFrame, ocr: &OcrText, frame_name: &str) -> Stri
     )
 }
 
+fn sanitize_extension(extension: &str) -> String {
+    let cleaned = extension
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if cleaned.is_empty() {
+        "bin".to_string()
+    } else {
+        cleaned
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -178,6 +202,7 @@ mod tests {
             frame_index: 42,
             captured_at: Timestamp::from_seconds(1_779_125_792),
             bytes: b"image bytes".to_vec(),
+            frame_extension: "jpg".to_string(),
             observed_text: "visible text".to_string(),
             windows: vec![BrowserWindowObservation::new(1, "Cradle", "app.cradle")],
         };
@@ -193,6 +218,11 @@ mod tests {
         assert!(persisted.capture_path.exists());
         assert!(persisted.ocr_path.exists());
         assert!(persisted.snapshot_path.exists());
+        assert!(persisted.segment_dir.join("capture.json").exists());
+        assert!(persisted.segment_dir.join("ocr.json").exists());
+        assert!(persisted.frame_path.ends_with("frame-00042.jpg"));
+        assert!(persisted.capture_path.ends_with("capture-00042.json"));
+        assert!(persisted.ocr_path.ends_with("ocr-00042.json"));
         let capture = fs::read_to_string(persisted.capture_path).expect("capture should read");
         assert!(capture.contains("\"display_id\": 5"));
         assert!(capture.contains("\"frame_index\": 42"));

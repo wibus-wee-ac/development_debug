@@ -8,7 +8,7 @@ use std::collections::VecDeque;
 
 use crate::error::ChronicleResult;
 use crate::screen::{BrowserWindowObservation, CaptureSource, CapturedFrame};
-use crate::time::timestamp_after_seconds;
+use crate::time::{Timestamp, timestamp_after_seconds};
 
 pub struct SyntheticCaptureSource {
     frames: VecDeque<CapturedFrame>,
@@ -16,7 +16,18 @@ pub struct SyntheticCaptureSource {
 
 impl SyntheticCaptureSource {
     pub fn cradle_smoke(display_id: u32, capture_limit: usize) -> Self {
-        let base = 1_779_125_791;
+        Self::cradle_smoke_from(
+            display_id,
+            capture_limit,
+            Timestamp::from_seconds(1_779_125_791),
+        )
+    }
+
+    pub fn cradle_smoke_from(
+        display_id: u32,
+        capture_limit: usize,
+        start_timestamp: Timestamp,
+    ) -> Self {
         let seeds = [
             "Cradle Chronicle smoke frame: user is reviewing a Rust passive memory pipeline.",
             "Cradle Chronicle smoke frame: artifacts, OCR text, and summary memory are being validated.",
@@ -28,8 +39,12 @@ impl SyntheticCaptureSource {
                 CapturedFrame {
                     display_id,
                     frame_index: index as u64 + 1,
-                    captured_at: timestamp_after_seconds(base, index as u64),
+                    captured_at: timestamp_after_seconds(
+                        start_timestamp.seconds_since_epoch(),
+                        index as u64,
+                    ),
                     bytes: text.as_bytes().to_vec(),
+                    frame_extension: "jpg".to_string(),
                     observed_text: text,
                     windows: vec![BrowserWindowObservation::new(
                         100 + index as u32,

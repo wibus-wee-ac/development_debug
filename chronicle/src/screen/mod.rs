@@ -4,6 +4,8 @@
 //! Output: normalized captured frames for recorder processing.
 //! Position: input boundary; storage and memory modules do not depend on platform APIs.
 
+pub mod inbox;
+pub mod macos;
 pub mod privacy_filter;
 pub mod synthetic;
 
@@ -20,6 +22,7 @@ pub struct CapturedFrame {
     pub frame_index: u64,
     pub captured_at: Timestamp,
     pub bytes: Vec<u8>,
+    pub frame_extension: String,
     pub observed_text: String,
     pub windows: Vec<BrowserWindowObservation>,
 }
@@ -34,11 +37,7 @@ pub struct BrowserWindowObservation {
 }
 
 impl BrowserWindowObservation {
-    pub fn new(
-        id: u32,
-        name: impl Into<String>,
-        app_bundle_identifier: impl Into<String>,
-    ) -> Self {
+    pub fn new(id: u32, name: impl Into<String>, app_bundle_identifier: impl Into<String>) -> Self {
         Self {
             id,
             name: name.into(),
