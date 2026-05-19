@@ -813,8 +813,8 @@ export function DitheredGradientDecoration({
     <canvas
       ref={canvasRef}
       aria-hidden
-      className={cn(trackGlobal ? 'pointer-events-none' : 'pointer-events-auto', 'absolute inset-x-0 top-0', className)}
-      style={{ height: rows * step + gap, width: '100%', ...style }}
+      className={cn(trackGlobal ? 'pointer-events-none' : 'pointer-events-auto', 'absolute left-1/2 top-0 -translate-x-1/2', className)}
+      style={{ height: rows * step + gap, width: '100vw', ...style }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     />
