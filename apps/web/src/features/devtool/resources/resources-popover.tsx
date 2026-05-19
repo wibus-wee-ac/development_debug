@@ -186,7 +186,7 @@ function MemoryBar({
   const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0
   return (
     <div className={className}>
-      <Progress value={pct} className="h-0.5" />
+      <Progress value={pct} className="h-2" />
     </div>
   )
 }
@@ -359,7 +359,7 @@ export function ResourcesPopover() {
           {triggerLabel}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="w-80 p-0 gap-0">
+      <PopoverContent align="end" sideOffset={6} className="w-xl p-0 gap-0">
         {/* Header */}
         <div className="flex items-center justify-between px-3 pt-3 pb-2">
           <span className="text-sm font-medium">Resources</span>
@@ -377,7 +377,7 @@ export function ResourcesPopover() {
         </div>
 
         {/* Summary stat row */}
-        <div className="grid grid-cols-2 gap-px border-y border-border bg-border mx-0">
+        <div className="grid grid-cols-2 gap-px mx-1 bg-border">
           <div className="bg-popover px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
               Memory
@@ -411,7 +411,7 @@ export function ResourcesPopover() {
         )}
 
         {/* Process breakdown */}
-        <div className="px-3 py-2">
+        <div className="px-3 py-2 flex flex-row gap-2 w-full">
           {snap && snap.warnings.length > 0 && (
             <div
               role="status"
@@ -423,6 +423,7 @@ export function ResourcesPopover() {
             </div>
           )}
 
+          <div className="flex-1">
           <ResourceGroup
             icon={<MonitorIcon className="size-3.5" />}
             label="Renderer"
@@ -477,72 +478,75 @@ export function ResourcesPopover() {
               </>
             )}
           </ResourceGroup>
+          </div>
 
-          <div className="border-t border-border my-1.5" />
+          <div className="border-l border-border my-1.5" />
 
-          <ResourceGroup
-            icon={<ActivityIcon className="size-3.5" />}
-            label="Chronicle"
-            value={snap?.chronicleRunning ? formatMemoryLabel(Number(toMB(snap.chronicleRss))) : 'Off'}
-          >
-            {snap?.chronicleRunning ? (
-              <SectionRow
-                label="cradle-chronicle"
-                detail={snap.chroniclePid ? `pid ${snap.chroniclePid}` : undefined}
-                memory={snap.chronicleRss > 0 ? `${toMB(snap.chronicleRss, 1)} MB` : '—'}
-                dimLabel
-                branch="last"
-              />
-            ) : (
-              <SectionRow label="Not running" memory="0 MB" dimLabel branch="last" />
-            )}
-          </ResourceGroup>
-
-          <div className="border-t border-border my-1.5" />
-
-          <ResourceGroup
-            icon={<SquareTerminalIcon className="size-3.5" />}
-            label="CLI TUI"
-            value={snap ? formatMemoryLabel(Number(toMB(snap.cliTuiRss))) : '—'}
-          >
-            {cliTuiTerminals.length > 0 ? (
-              cliTuiTerminals.map((item, index) => (
+          <div className="flex-1">
+            <ResourceGroup
+              icon={<ActivityIcon className="size-3.5" />}
+              label="Chronicle"
+              value={snap?.chronicleRunning ? formatMemoryLabel(Number(toMB(snap.chronicleRss))) : 'Off'}
+            >
+              {snap?.chronicleRunning ? (
                 <SectionRow
-                  key={item.id}
-                  label={basename(item.executable)}
-                  detail={`pid ${item.pid}`}
-                  memory={item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)}
+                  label="cradle-chronicle"
+                  detail={snap.chroniclePid ? `pid ${snap.chroniclePid}` : undefined}
+                  memory={snap.chronicleRss > 0 ? `${toMB(snap.chronicleRss, 1)} MB` : '—'}
                   dimLabel
-                  branch={index === cliTuiTerminals.length - 1 ? 'last' : 'middle'}
+                  branch="last"
                 />
-              ))
-            ) : (
-              <SectionRow label="No running TUI sessions" memory="0 MB" dimLabel branch="last" />
-            )}
-          </ResourceGroup>
+              ) : (
+                <SectionRow label="Not running" memory="0 MB" dimLabel branch="last" />
+              )}
+            </ResourceGroup>
 
-          <div className="border-t border-border my-1.5" />
+            <div className="border-t border-border my-1.5" />
 
-          <ResourceGroup
-            icon={<PanelBottomIcon className="size-3.5" />}
-            label="Bottom Panel"
-            value={snap ? formatMemoryLabel(Number(toMB(snap.bottomPanelRss))) : '—'}
-          >
-            {bottomPanelTerminals.length > 0 ? (
-              bottomPanelTerminals.map((item, index) => (
-                <SectionRow
-                  key={item.id}
-                  label={basename(item.executable)}
-                  detail={`pid ${item.pid}`}
-                  memory={item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)}
-                  dimLabel
-                  branch={index === bottomPanelTerminals.length - 1 ? 'last' : 'middle'}
-                />
-              ))
-            ) : (
-              <SectionRow label="No running panel terminals" memory="0 MB" dimLabel branch="last" />
-            )}
-          </ResourceGroup>
+            <ResourceGroup
+              icon={<SquareTerminalIcon className="size-3.5" />}
+              label="CLI TUI"
+              value={snap ? formatMemoryLabel(Number(toMB(snap.cliTuiRss))) : '—'}
+            >
+              {cliTuiTerminals.length > 0 ? (
+                cliTuiTerminals.map((item, index) => (
+                  <SectionRow
+                    key={item.id}
+                    label={basename(item.executable)}
+                    detail={`pid ${item.pid}`}
+                    memory={item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)}
+                    dimLabel
+                    branch={index === cliTuiTerminals.length - 1 ? 'last' : 'middle'}
+                  />
+                ))
+              ) : (
+                <SectionRow label="No running TUI sessions" memory="0 MB" dimLabel branch="last" />
+              )}
+            </ResourceGroup>
+
+            <div className="border-t border-border my-1.5" />
+
+            <ResourceGroup
+              icon={<PanelBottomIcon className="size-3.5" />}
+              label="Bottom Panel"
+              value={snap ? formatMemoryLabel(Number(toMB(snap.bottomPanelRss))) : '—'}
+            >
+              {bottomPanelTerminals.length > 0 ? (
+                bottomPanelTerminals.map((item, index) => (
+                  <SectionRow
+                    key={item.id}
+                    label={basename(item.executable)}
+                    detail={`pid ${item.pid}`}
+                    memory={item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)}
+                    dimLabel
+                    branch={index === bottomPanelTerminals.length - 1 ? 'last' : 'middle'}
+                  />
+                ))
+              ) : (
+                <SectionRow label="No running panel terminals" memory="0 MB" dimLabel branch="last" />
+              )}
+            </ResourceGroup>
+          </div>
         </div>
 
         {snap && (

@@ -182,11 +182,6 @@ export function DirectoryBrowserDialog({
             <DialogTitle className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
               {title}
             </DialogTitle>
-            {description && (
-              <DialogDescription className="px-2 pb-2 text-[11px] leading-snug text-muted-foreground">
-                {description}
-              </DialogDescription>
-            )}
             {favoritesData?.map(fav => (
               <SidebarItem
                 key={fav.path}
@@ -260,24 +255,35 @@ export function DirectoryBrowserDialog({
         </div>
 
         {/* Footer — just buttons */}
-        <DialogFooter variant="bare" className="px-3 py-2 border-t gap-2 justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs"
-            onClick={() => onOpenChange(false)}
-          >
-            取消
-          </Button>
-          <Button
-            size="sm"
-            className="text-xs"
-            onClick={handleConfirm}
-            disabled={!data?.current && !selectedEntry}
-            data-testid="directory-browser-confirm"
-          >
-            选择
-          </Button>
+        <DialogFooter variant="bare" className="px-3 py-2 border-t gap-2 justify-between">
+
+          <div>
+            {description && (
+              <DialogDescription className="px-2 text-[11px] leading-snug text-muted-foreground">
+                {description}
+              </DialogDescription>
+            )}
+
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => onOpenChange(false)}
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              className="text-xs"
+              onClick={handleConfirm}
+              disabled={!data?.current && !selectedEntry}
+              data-testid="directory-browser-confirm"
+            >
+              选择
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -480,7 +486,7 @@ function PathBar({
                 >
                   {seg}
                 </button>
-                )}
+              )}
           </span>
         )
       })}

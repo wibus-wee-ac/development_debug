@@ -39,8 +39,8 @@ import { useLayoutStore } from '~/store/layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
-import { HighlightedText } from './highlighted-text'
 import { selectFileSearchResult } from './global-search-actions'
+import { HighlightedText } from './highlighted-text'
 import { groupHitsByWorkspace } from './thread-search-groups'
 import { useThreadSearch } from './use-thread-search'
 
