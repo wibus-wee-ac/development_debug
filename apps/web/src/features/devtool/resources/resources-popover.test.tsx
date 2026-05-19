@@ -55,6 +55,7 @@ describe('resources popover snapshots', () => {
       },
       server: null,
       pty: null,
+      chronicle: null,
       timestamp: 123,
     })
 

@@ -4,6 +4,7 @@
 
 import { AgentList } from '~/features/agent-management/agent-list'
 import { AgentRuntimeSettings } from '~/features/agent-management/agent-runtime-settings'
+import { ChronicleSettings } from '~/features/chronicle/chronicle-settings'
 import { GlobalSkillsSettings } from '~/features/skills/global-skills-settings'
 
 import { AppearanceSettings } from './appearance-settings'
@@ -14,6 +15,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   providers: AgentRuntimeSettings,
   agents: AgentList,
   jarvis: JarvisSettings,
+  chronicle: ChronicleSettings,
   skills: GlobalSkillsSettings,
 }
 

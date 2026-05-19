@@ -11,8 +11,9 @@ export default defineConfig(
       '**/routeTree.gen.ts',
       '**/api-gen/**',
       '.agents/**',
+      '.claude/**',
       '**/*.md',
-      'docs/design-system/tokens.json',
+      'packages/cli/**',
     ],
   },
   {

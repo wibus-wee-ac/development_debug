@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import {
+  ActivityIcon,
   CircleAlertIcon,
   CpuIcon,
   MemoryStickIcon,
@@ -57,6 +58,12 @@ export interface PtyResources {
   timestamp: number
 }
 
+interface ChronicleResources {
+  running: boolean
+  pid: number | null
+  rssMB: number | null
+}
+
 interface RendererMemory {
   heapUsed: number
   heapTotal: number
@@ -74,6 +81,9 @@ export interface ResourceSnapshot {
   serverUptime: number
   cliTuiRss: number
   bottomPanelRss: number
+  chronicleRunning: boolean
+  chroniclePid: number | null
+  chronicleRss: number
   terminals: PtyResourceItem[]
   timestamp: number
   updatedAtLabel: string
@@ -84,6 +94,7 @@ interface ResourceSnapshotInput {
   renderer: RendererMemory
   server: ServerHealth | null
   pty: PtyResources | null
+  chronicle: ChronicleResources | null
   timestamp: number
 }
 
@@ -129,6 +140,7 @@ export function createResourceSnapshot({
   renderer,
   server,
   pty,
+  chronicle,
   timestamp
 }: ResourceSnapshotInput): ResourceSnapshot {
   const mbToBytes = (mb: number) => mb * 1024 * 1024
@@ -152,6 +164,9 @@ export function createResourceSnapshot({
     serverUptime: server?.uptime ?? 0,
     cliTuiRss: pty ? mbToBytes(pty.totals.cliTuiRssMB) : 0,
     bottomPanelRss: pty ? mbToBytes(pty.totals.bottomPanelRssMB) : 0,
+    chronicleRunning: chronicle?.running ?? false,
+    chroniclePid: chronicle?.pid ?? null,
+    chronicleRss: chronicle?.rssMB ? mbToBytes(chronicle.rssMB) : 0,
     terminals: pty?.terminals ?? [],
     timestamp,
     updatedAtLabel: formatTimestampLabel(timestamp),
@@ -273,20 +288,23 @@ function useResourceSnapshot() {
     const requestId = ++requestRef.current
     setLoading(true)
     try {
-      const [healthRes, ptyRes] = await Promise.allSettled([
+      const [healthRes, ptyRes, chronicleRes] = await Promise.allSettled([
         readJson<ServerHealth>(`${SERVER_BASE}/health`),
-        readJson<PtyResources>(`${SERVER_BASE}/terminal-sessions/resources`)
+        readJson<PtyResources>(`${SERVER_BASE}/terminal-sessions/resources`),
+        readJson<ChronicleResources>(`${SERVER_BASE}/chronicle/resources`)
       ])
 
       if (requestId === requestRef.current) {
         const server = healthRes.status === 'fulfilled' ? healthRes.value : null
         const pty = ptyRes.status === 'fulfilled' ? ptyRes.value : null
+        const chronicle = chronicleRes.status === 'fulfilled' ? chronicleRes.value : null
         const renderer = readRendererMemory()
 
         setSnap(createResourceSnapshot({
           renderer,
           server,
           pty,
+          chronicle,
           timestamp: Date.now()
         }))
       }
@@ -320,7 +338,8 @@ export function ResourcesPopover() {
   const totalServerMB = snap ? Number(toMB(snap.serverRss)) : 0
   const totalCliTuiMB = snap ? Number(toMB(snap.cliTuiRss)) : 0
   const totalBottomPanelMB = snap ? Number(toMB(snap.bottomPanelRss)) : 0
-  const totalMB = totalRendererMB + totalServerMB + totalCliTuiMB + totalBottomPanelMB
+  const totalChronicleMB = snap ? Number(toMB(snap.chronicleRss)) : 0
+  const totalMB = totalRendererMB + totalServerMB + totalCliTuiMB + totalBottomPanelMB + totalChronicleMB
   const cliTuiTerminals = snap?.terminals.filter((item) => item.role === 'cli-tui') ?? []
   const bottomPanelTerminals = snap?.terminals.filter((item) => item.role === 'bottom-panel') ?? []
 
@@ -382,10 +401,10 @@ export function ResourcesPopover() {
         {snap && (
           <div className="px-3 pt-2 pb-1">
             <MemoryBar
-              used={snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss}
+              used={snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss + snap.chronicleRss}
               total={Math.max(
                 snap.rendererHeapLimit,
-                (snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss) * 2
+                (snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss + snap.chronicleRss) * 2
               )}
             />
           </div>
@@ -456,6 +475,26 @@ export function ResourcesPopover() {
                   branch="last"
                 />
               </>
+            )}
+          </ResourceGroup>
+
+          <div className="border-t border-border my-1.5" />
+
+          <ResourceGroup
+            icon={<ActivityIcon className="size-3.5" />}
+            label="Chronicle"
+            value={snap?.chronicleRunning ? formatMemoryLabel(Number(toMB(snap.chronicleRss))) : 'Off'}
+          >
+            {snap?.chronicleRunning ? (
+              <SectionRow
+                label="cradle-chronicle"
+                detail={snap.chroniclePid ? `pid ${snap.chroniclePid}` : undefined}
+                memory={snap.chronicleRss > 0 ? `${toMB(snap.chronicleRss, 1)} MB` : '—'}
+                dimLabel
+                branch="last"
+              />
+            ) : (
+              <SectionRow label="Not running" memory="0 MB" dimLabel branch="last" />
             )}
           </ResourceGroup>
 

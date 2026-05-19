@@ -18,6 +18,8 @@ import { agentIdentity } from './modules/agent-identity'
 import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
+import { cleanup as chronicleCleanup } from './modules/chronicle/daemon-manager'
+import { initDaemon as chronicleInitDaemon } from './modules/chronicle/service'
 import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
 import { health } from './modules/health'
@@ -97,7 +99,11 @@ export async function createServerApp() {
   // Plugin system — discover and activate server plugins
   await activateServerPlugins(app)
 
-  app.onStop([() => shutdownInfra()])
+  app.onStop([() => shutdownInfra(), () => chronicleCleanup()])
+
+  // Start chronicle daemon if enabled
+  void chronicleInitDaemon()
+
   registerOpenApiAlias(app)
 
   return app
