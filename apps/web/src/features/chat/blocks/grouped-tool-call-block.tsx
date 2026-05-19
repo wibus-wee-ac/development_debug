@@ -5,6 +5,7 @@
 import {
   BotIcon,
   CheckCircle2Icon,
+  ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
   Code2Icon,
@@ -19,7 +20,6 @@ import {
   PanelTopIcon,
   ServerIcon,
   SquareTerminalIcon,
-  ChevronRightIcon,
 } from 'lucide-react'
 import { m } from 'motion/react'
 import type { ComponentType } from 'react'
@@ -136,7 +136,7 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
     >
       {/* Group header card */}
       <div className={cn(
-        'overflow-hidden rounded-lg bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
+        'overflow-hidden mx-1 -px-1 rounded-lg bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
         (overallState === 'output-error' || overallState === 'output-denied') && 'ring-1 ring-destructive/30',
       )}>
         <div className="flex h-9 items-center gap-2 px-3">

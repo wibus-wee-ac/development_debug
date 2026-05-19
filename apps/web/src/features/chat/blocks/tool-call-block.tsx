@@ -907,7 +907,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
     >
       <div
         className={cn(
-          'overflow-hidden rounded-lg bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
+          'overflow-hidden rounded-lg mx-1 -px-1 bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
           errored && 'ring-1 ring-destructive/30',
           expandable && 'select-none',
         )}
@@ -1003,7 +1003,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
       </div>
 
       {hasChildren && expanded && (
-        <div className="ml-3 mt-0.5 max-h-80 overflow-y-auto space-y-0">{children}</div>
+        <div className={cn("ml-3 mt-0.5  overflow-y-auto space-y-0", !running && "max-h-80")}>{children}</div>
       )}
     </m.div>
   )

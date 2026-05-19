@@ -3,6 +3,11 @@
   "type": "module",
   "version": "1.0.0",
   "private": true,
+  "author": {
+    "email": "wibus_wee@outlook.com",
+    "name": "wibus-wee",
+    "url": "https://wibus.ren"
+  },
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

@@ -12,3 +12,4 @@ data
 .env.local
 !.env.example
 chronicle/target/
+apps/desktop/release
