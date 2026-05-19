@@ -16,8 +16,9 @@ The transport receives sequenced part-level delta events and applies them direct
 - **use-chat-session.ts**: Chat session hook — uses React Query for canonical snapshot rows, hydrates main messages plus subagent buckets keyed by `parentToolCallId`, passively observes run signals for reload/recovery, drives streaming responses, and exposes `{ messages, status, error, sendMessage, stop, isReady }`
 - **sse-chat-transport.ts**: SSE parser for sequenced chat stream events and passive run-event observation
 - **chat-view.tsx**: Read-only chat view — reads from useChatSession, renders MessageBubbles + Composer, auto-scrolls, feeds virtua-backed scroll metrics to the minimap, and only shows token-capacity progress when a real session-bound model context window can be resolved (otherwise safely degrades to token count only)
-- **chat-minimap.tsx**: Right-edge chat minimap with compact barcode-style bars, per-message reading progress, hover previews, click-to-message, and drag-to-scroll behavior
-- **composer.tsx**: Rich input with @ path autocomplete, runtime-native slash command autocomplete with inline argument hints, inline send/stop toggle, and fzf fuzzy file search
+- **chat-minimap.tsx**: Right-edge accessible chat minimap with compact barcode-style bars, per-message reading progress, hover previews, click-to-message, and drag-to-scroll behavior
+- **chat-minimap.test.tsx**: Regression coverage for the React 19 ref prop imperative handle and accessible native minimap button behavior
+- **composer.tsx**: Rich input with @ path autocomplete, runtime-native slash command autocomplete with inline argument hints, named send/stop icon actions, and fzf fuzzy file search
 - **mention-panel.tsx**: Fuzzy file picker above composer using fzf with highlighted matches
 - **slash-command-panel.tsx**: Fuzzy slash command picker above composer using runtime capabilities discovered from the active chat session, with active-row command descriptions
 - **message-bubble.tsx**: Renders a single UIMessage with Streamdown markdown, reasoning blocks, tool call blocks, copy action, and subagent message folds keyed by tool call ID
@@ -27,7 +28,7 @@ The transport receives sequenced part-level delta events and applies them direct
 - **blocks/edit-file-block.tsx**: File edit preview powered by `@pierre/diffs/react` `MultiFileDiff`, with split and stacked layout switching for chat tool output
 - **blocks/tool-call-block.test.tsx**: Regression coverage for Edit File tool IO routing, collapsed diff previews, layout switching, and `@pierre/diffs/react` option wiring
 - **tool-ui-classifier.test.ts**: Regression coverage for Claude Agent and AI SDK tool classification, including MCP precedence over URL-shaped tool inputs
-- **composer.test.tsx**: Regression coverage for slash command insertion, inline argument hints, active command descriptions, duplicate command-name rendering, and raw `/command args` send-through
+- **composer.test.tsx**: Regression coverage for named send/stop actions, slash command insertion, inline argument hints, active command descriptions, duplicate command-name rendering, and raw `/command args` send-through
 - **use-chat-session.test.ts**: Passive snapshot/reload regression tests for chat status derivation, main-message projection, subagent bucketing, and stop-action abort forwarding
 - **chat-streaming-handler.ts**: SSE-to-store bridge that applies per-message sequenced main/subagent deltas and reconciles streamed assistant messages with canonical server IDs
 - **index.ts**: Barrel file re-exporting public API

@@ -142,6 +142,52 @@ function getActiveSlashCommand(inputValue: string, selectedCommand: ChatSlashCom
   return commands.find(command => inputValue.startsWith(getSlashCommandPrefix(command))) ?? null
 }
 
+function ComposerActions({
+  contextBar,
+  disabled,
+  hasText,
+  isStreaming,
+  onSend,
+  onStop,
+}: {
+  contextBar?: React.ReactNode
+  disabled?: boolean
+  hasText: boolean
+  isStreaming?: boolean
+  onSend: () => void
+  onStop?: () => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {contextBar}
+      {isStreaming
+        ? (
+            <Button
+              variant="outline"
+              size="icon-xs"
+              onClick={onStop}
+              aria-label="Stop generation"
+              data-testid="chat-stop-btn"
+            >
+              <SquareIcon className="size-3" aria-hidden="true" />
+            </Button>
+          )
+        : (
+            <Button
+              variant="default"
+              size="icon-xs"
+              disabled={disabled || !hasText}
+              onClick={onSend}
+              aria-label="Send message"
+              data-testid="chat-send-btn"
+            >
+              <SendHorizonalIcon aria-hidden="true" />
+            </Button>
+          )}
+    </div>
+  )
+}
+
 export function Composer({
   onSend,
   onStop,
@@ -415,34 +461,14 @@ export function Composer({
             {toolbar}
           </div>
 
-          {/* Right: context bar + send/stop */}
-          <div className="flex items-center gap-1">
-            {contextBar}
-            {isStreaming
-              ? (
-                <Button
-                  variant="outline"
-                  size="icon-xs"
-                  onClick={onStop}
-                  aria-label="停止生成"
-                  data-testid="chat-stop-btn"
-                >
-                  <SquareIcon className="size-3" aria-hidden="true" />
-                </Button>
-              )
-              : (
-                <Button
-                  variant="default"
-                  size="icon-xs"
-                  disabled={disabled || !state.inputValue.trim()}
-                  onClick={handleSend}
-                  aria-label="发送"
-                  data-testid="chat-send-btn"
-                >
-                  <SendHorizonalIcon aria-hidden="true" />
-                </Button>
-              )}
-          </div>
+          <ComposerActions
+            contextBar={contextBar}
+            disabled={disabled}
+            hasText={Boolean(state.inputValue.trim())}
+            isStreaming={isStreaming}
+            onSend={handleSend}
+            onStop={onStop}
+          />
         </div>
       </div>
     </div>

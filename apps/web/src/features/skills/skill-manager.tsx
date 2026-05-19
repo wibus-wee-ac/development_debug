@@ -408,7 +408,7 @@ function SkillDetail({
               SCOPE_ACCENT[entry.scope],
             )}
           >
-            <Icon className="size-3.5" />
+            <Icon className="size-3.5" aria-hidden="true" />
           </span>
           <div className="min-w-0">
             <h3 className="text-sm font-medium text-foreground truncate">{entry.name}</h3>
@@ -417,16 +417,16 @@ function SkillDetail({
         </div>
         <div className="flex items-center gap-1">
           {isEditable && (
-            <Button variant="ghost" size="icon-xs" onClick={onEdit} className="text-muted-foreground hover:text-foreground" data-testid="skill-edit-btn">
-              <PencilIcon />
+            <Button variant="ghost" size="icon-xs" onClick={onEdit} className="text-muted-foreground hover:text-foreground" aria-label={`Edit ${entry.name}`} data-testid="skill-edit-btn">
+              <PencilIcon aria-hidden="true" />
             </Button>
           )}
-          <Button variant="ghost" size="icon-xs" onClick={onExport} className="text-muted-foreground hover:text-foreground" data-testid="skill-export-btn">
-            <DownloadIcon />
+          <Button variant="ghost" size="icon-xs" onClick={onExport} className="text-muted-foreground hover:text-foreground" aria-label={`Export ${entry.name}`} data-testid="skill-export-btn">
+            <DownloadIcon aria-hidden="true" />
           </Button>
           {isEditable && (
-            <Button variant="ghost" size="icon-xs" onClick={onDelete} className="text-muted-foreground hover:text-destructive" data-testid="skill-delete-btn">
-              <Trash2Icon />
+            <Button variant="ghost" size="icon-xs" onClick={onDelete} className="text-muted-foreground hover:text-destructive" aria-label={`Delete ${entry.name}`} data-testid="skill-delete-btn">
+              <Trash2Icon aria-hidden="true" />
             </Button>
           )}
         </div>
@@ -626,44 +626,53 @@ export function SkillManager({
                 const Icon = SCOPE_ICONS[entry.scope]
                 const isEditable = entry.scope === editableScope
                 return (
-                  <button
+                  <div
                     key={`${entry.scope}:${entry.name}`}
-                    type="button"
-                    onClick={() => {
-                      dispatch({ type: 'set-selected-skill', value: { scope: entry.scope, name: entry.name } })
-                      dispatch({ type: 'open-detail', value: true })
-                    }}
-                    className="group flex items-center gap-3 py-3 text-left transition-colors hover:bg-foreground/3 -mx-2 px-2 rounded-md"
+                    className="group flex items-center gap-2 transition-colors hover:bg-foreground/3 -mx-2 px-2 rounded-md"
                   >
-                    <span
-                      className={cn(
-                        'flex size-7 shrink-0 items-center justify-center rounded-lg',
-                        SCOPE_ACCENT[entry.scope],
-                      )}
+                    <button
+                      type="button"
+                      aria-label={`Open ${entry.name} details`}
+                      onClick={() => {
+                        dispatch({ type: 'set-selected-skill', value: { scope: entry.scope, name: entry.name } })
+                        dispatch({ type: 'open-detail', value: true })
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left"
                     >
-                      <Icon className="size-3.5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <span className="block text-[13px] font-medium text-foreground truncate">
-                        {entry.name}
+                      <span
+                        className={cn(
+                          'flex size-7 shrink-0 items-center justify-center rounded-lg',
+                          SCOPE_ACCENT[entry.scope],
+                        )}
+                      >
+                        <Icon className="size-3.5" aria-hidden="true" />
                       </span>
-                      <TruncatedText maxLines={1} className="text-[11px] text-muted-foreground/60">
-                        {entry.description}
-                      </TruncatedText>
-                    </div>
-                    <span className="text-[10px] text-muted-foreground/40">
-                      {GROUP_LABELS[entry.scope]}
-                    </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-medium text-foreground truncate">
+                          {entry.name}
+                        </span>
+                        <TruncatedText maxLines={1} className="text-[11px] text-muted-foreground/60">
+                          {entry.description}
+                        </TruncatedText>
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/40">
+                        {GROUP_LABELS[entry.scope]}
+                      </span>
+                    </button>
                     {isEditable && (
-                      <Trash2Icon
-                        className="opacity-0 size-3.5 shrink-0 text-muted-foreground/40 hover:text-destructive group-hover:opacity-100 transition-opacity"
-                        onClick={(e) => {
-                          e.stopPropagation()
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="opacity-0 shrink-0 text-muted-foreground/40 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100"
+                        aria-label={`Delete ${entry.name} from list`}
+                        onClick={() => {
                           void deleteSkill.mutateAsync({ scope: entry.scope, name: entry.name })
                         }}
-                      />
+                      >
+                        <Trash2Icon aria-hidden="true" />
+                      </Button>
                     )}
-                  </button>
+                  </div>
                 )
               })}
             </div>

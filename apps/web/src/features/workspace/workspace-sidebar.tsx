@@ -254,7 +254,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
                 render={(
                   <button
                     type="button"
-                    className="shrink-0 rounded-md p-0.5 mr-1 text-muted-foreground/50 hover:text-foreground hover:bg-accent/80 transition-all opacity-0 group-hover:opacity-100"
+                    className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-[background-color,color,opacity] hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
                     onClick={e => e.stopPropagation()}
                     aria-label="会话菜单"
                   />

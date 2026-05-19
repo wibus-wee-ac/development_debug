@@ -121,6 +121,11 @@ interface AgentDetailUiState {
   saveError: string | null
 }
 
+interface CliEnvParseResult {
+  env: Record<string, string> | undefined
+  invalidLineNumbers: number[]
+}
+
 type AgentDetailUiAction
   = | { type: 'reset' }
     | { type: 'avatar/spin' }
@@ -160,24 +165,59 @@ function parseEnvText(env?: Record<string, string>): string {
   return Object.entries(env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
 }
 
-function stringifyEnvText(text: string): Record<string, string> | undefined {
-  const entries = text
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const eqIndex = line.indexOf('=')
-      if (eqIndex <= 0) {
-        return null
-      }
-      return [line.slice(0, eqIndex).trim(), line.slice(eqIndex + 1)] as const
-    })
-    .filter((entry): entry is readonly [string, string] => !!entry && !!entry[0])
+export function parseCliEnvText(text: string): CliEnvParseResult {
+  const entries: Array<readonly [string, string]> = []
+  const invalidLineNumbers: number[] = []
 
-  if (entries.length === 0) {
-    return undefined
+  text.split('\n').forEach((rawLine, index) => {
+    const line = rawLine.trim()
+    if (!line) {
+      return
+    }
+    const eqIndex = line.indexOf('=')
+    if (eqIndex <= 0) {
+      invalidLineNumbers.push(index + 1)
+      return
+    }
+    const key = line.slice(0, eqIndex).trim()
+    if (!key) {
+      invalidLineNumbers.push(index + 1)
+      return
+    }
+    entries.push([key, line.slice(eqIndex + 1)] as const)
+  })
+
+  return {
+    env: entries.length > 0 ? Object.fromEntries(entries) : undefined,
+    invalidLineNumbers,
   }
-  return Object.fromEntries(entries)
+}
+
+function stringifyEnvText(text: string): Record<string, string> | undefined {
+  return parseCliEnvText(text).env
+}
+
+export function getAgentCreateDisabledReason(input: {
+  draft: Pick<AgentDetailDraft, 'name' | 'runtimeKind' | 'agentProfileId' | 'cliTuiExecutable'>
+  isDirty: boolean
+  createSaving: boolean
+}): string | null {
+  if (!input.draft.name.trim()) {
+    return 'Name is required.'
+  }
+  if (input.draft.runtimeKind === 'cli-tui' && !input.draft.cliTuiExecutable.trim()) {
+    return 'CLI TUI agents need an executable command.'
+  }
+  if (input.draft.runtimeKind !== 'cli-tui' && !input.draft.agentProfileId) {
+    return 'Select a provider profile before creating.'
+  }
+  if (input.createSaving) {
+    return 'Creating agent...'
+  }
+  if (!input.isDirty) {
+    return 'Make a change before creating.'
+  }
+  return null
 }
 
 function inferCliPreset(launch: CliTuiLaunchConfig | null): string {
@@ -223,11 +263,12 @@ function stringifyConfigJson(input: {
     config.systemPrompt = input.systemPrompt
   }
   if (input.runtimeKind === 'cli-tui') {
+    const cliEnv = stringifyEnvText(input.cliTuiEnvText)
     config.cliTui = {
       preset: input.cliTuiPreset,
       executable: input.cliTuiExecutable.trim(),
       args: input.cliTuiArguments.trim() ? input.cliTuiArguments.split(WHITESPACE_RE).filter(Boolean) : [],
-      ...(stringifyEnvText(input.cliTuiEnvText) ? { env: stringifyEnvText(input.cliTuiEnvText) } : {}),
+      ...(cliEnv ? { env: cliEnv } : {}),
     }
   }
   return JSON.stringify(config)
@@ -457,6 +498,8 @@ function AgentIdentitySection({
   onShuffleAvatar: () => void
 }) {
   const form = useFormContext<AgentDetailFormValues>()
+  const cliEnvParseResult = useMemo(() => parseCliEnvText(draft.cliTuiEnvText), [draft.cliTuiEnvText])
+  const invalidEnvLineSummary = cliEnvParseResult.invalidLineNumbers.join(', ')
 
   return (
     <div className="flex flex-col gap-0">
@@ -627,17 +670,31 @@ function AgentIdentitySection({
 
               <SettingsDivider />
               <SettingsRow label="Environment" description="Optional KEY=value lines injected into the launched process" vertical>
-                <textarea
-                  {...form.register('cliTuiEnvText')}
-                  rows={4}
-                  data-testid="agent-cli-env"
-                  placeholder={'ANTHROPIC_API_KEY=...\nNO_COLOR=1'}
-                  className={cn(
-                    'w-full resize-none rounded-md bg-foreground/4 px-3 py-2.5 text-[12px] outline-none',
-                    'text-foreground placeholder:text-muted-foreground/30',
-                    'transition-colors focus:bg-foreground/5',
+                <div className="flex w-full flex-col gap-1.5">
+                  <textarea
+                    {...form.register('cliTuiEnvText')}
+                    rows={4}
+                    data-testid="agent-cli-env"
+                    aria-invalid={cliEnvParseResult.invalidLineNumbers.length > 0}
+                    placeholder={'ANTHROPIC_API_KEY=...\nNO_COLOR=1'}
+                    className={cn(
+                      'w-full resize-none rounded-md bg-foreground/4 px-3 py-2.5 text-[12px] outline-none',
+                      'text-foreground placeholder:text-muted-foreground/30',
+                      'transition-colors focus:bg-foreground/5',
+                      cliEnvParseResult.invalidLineNumbers.length > 0 && 'bg-destructive/5 ring-1 ring-destructive/25 focus:bg-destructive/5',
+                    )}
+                  />
+                  {cliEnvParseResult.invalidLineNumbers.length > 0 && (
+                    <p className="text-[11px] leading-snug text-destructive/85" data-testid="agent-cli-env-warning">
+                      Ignoring invalid env
+                      {' '}
+                      {cliEnvParseResult.invalidLineNumbers.length === 1 ? 'line' : 'lines'}
+                      {' '}
+                      {invalidEnvLineSummary}
+                      . Use KEY=value.
+                    </p>
                   )}
-                />
+                </div>
               </SettingsRow>
             </>
           )
@@ -681,12 +738,14 @@ function AgentSystemPromptSection() {
 function AgentCreateActions({
   createSaving,
   createDisabled,
+  createDisabledReason,
   saveError,
   onCancel,
   onCreate,
 }: {
   createSaving: boolean
   createDisabled: boolean
+  createDisabledReason: string | null
   saveError: string | null
   onCancel?: () => void
   onCreate: () => void
@@ -694,6 +753,11 @@ function AgentCreateActions({
   return (
     <div className="flex items-center justify-end gap-2 py-4">
       {saveError && <p className="mr-auto text-[11px] text-destructive">{saveError}</p>}
+      {!saveError && createDisabledReason && (
+        <p className="mr-auto text-[11px] text-muted-foreground" data-testid="agent-create-disabled-reason">
+          {createDisabledReason}
+        </p>
+      )}
       {onCancel && (
         <Button variant="outline" size="sm" onClick={onCancel}>
           Cancel
@@ -799,6 +863,7 @@ function useAgentDetailOwner({
   }, [agent, enabledProfiles, form])
 
   const isDirty = form.formState.isDirty
+  const createDisabledReason = getAgentCreateDisabledReason({ draft, isDirty, createSaving })
   const draftSignature = useMemo(() => JSON.stringify(draft), [draft])
   const saveDraft = useEffectEvent(async () => {
     if (!agent) {
@@ -946,7 +1011,8 @@ function useAgentDetailOwner({
     saveState,
     createSaving,
     saveError,
-    createDisabled: !isDirty || createSaving || !draft.name.trim() || (draft.runtimeKind === 'cli-tui' ? !draft.cliTuiExecutable.trim() : !draft.agentProfileId),
+    createDisabled: createDisabledReason !== null,
+    createDisabledReason,
     handleCreate,
     handleDelete,
     shuffleAvatar,
@@ -999,6 +1065,7 @@ export function AgentDetailPage({
                 <AgentCreateActions
                   createSaving={owner.createSaving}
                   createDisabled={owner.createDisabled}
+                  createDisabledReason={owner.createDisabledReason}
                   saveError={owner.saveError}
                   onCancel={onBack}
                   onCreate={owner.handleCreate}

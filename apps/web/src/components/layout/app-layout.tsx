@@ -28,6 +28,53 @@ const PANEL = { min: 80, max: 480 }
 const SPRING = { type: 'spring', stiffness: 600, damping: 50 } as const
 const INSTANT = { duration: 0 } as const
 
+type BrowserBridgeCleanup = () => void
+
+function parseBrowserTabRequest(payload: unknown): string | undefined {
+  return typeof payload === 'object' && payload !== null && 'url' in payload && typeof payload.url === 'string'
+    ? payload.url
+    : undefined
+}
+
+function installBrowserUseBridge(openBrowserPanel: () => void): BrowserBridgeCleanup {
+  const requestBrowserTab = (payload: unknown) => {
+    openBrowserPanel()
+    useBrowserPanelStore.getState().requestTab(parseBrowserTabRequest(payload))
+  }
+  const createBrowserTab = (url?: string) => {
+    openBrowserPanel()
+    return useBrowserPanelStore.getState().createTab(url)
+  }
+  const activateBrowserTab = (tabId: string) => {
+    const state = useBrowserPanelStore.getState()
+    if (!state.tabs.some(tab => tab.id === tabId)) {
+      return false
+    }
+    openBrowserPanel()
+    state.setActiveTab(tabId)
+    return true
+  }
+  const getActiveBrowserTab = () => useBrowserPanelStore.getState().activeTabId ?? undefined
+
+  window.__cradleBrowserUseCreateTab = createBrowserTab
+  window.__cradleBrowserUseActivateTab = activateBrowserTab
+  window.__cradleBrowserUseGetActiveTab = getActiveBrowserTab
+  const unsubscribe = window.cradle?.ipc.on('browser-use:create-tab', requestBrowserTab)
+
+  return () => {
+    if (window.__cradleBrowserUseCreateTab) {
+      delete window.__cradleBrowserUseCreateTab
+    }
+    if (window.__cradleBrowserUseActivateTab) {
+      delete window.__cradleBrowserUseActivateTab
+    }
+    if (window.__cradleBrowserUseGetActiveTab) {
+      delete window.__cradleBrowserUseGetActiveTab
+    }
+    unsubscribe?.()
+  }
+}
+
 interface AppLayoutProps {
   children?: ReactNode
   /** Show bottom panel toggle in header */
@@ -92,23 +139,7 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
     if (!isElectron) {
       return
     }
-    const requestBrowserTab = (payload: unknown) => {
-      const url = typeof payload === 'object' && payload !== null && 'url' in payload && typeof payload.url === 'string'
-        ? payload.url
-        : undefined
-      setBrowserPanelOpen(true)
-      useBrowserPanelStore.getState().requestTab(url)
-    }
-
-    window.__cradleBrowserUseCreateTab = (url?: string) => requestBrowserTab({ url })
-    const unsubscribe = window.cradle?.ipc.on('browser-use:create-tab', requestBrowserTab)
-
-    return () => {
-      if (window.__cradleBrowserUseCreateTab) {
-        delete window.__cradleBrowserUseCreateTab
-      }
-      unsubscribe?.()
-    }
+    return installBrowserUseBridge(() => setBrowserPanelOpen(true))
   }, [setBrowserPanelOpen])
 
   return (

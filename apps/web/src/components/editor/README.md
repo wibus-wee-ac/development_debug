@@ -10,7 +10,8 @@ Extensions: StarterKit, HeadingWithId, Markdown, SlashCommand, ShikiCodeBlock, B
 
 - **index.ts**: Barrel export for the editor module
 - **markdown-editor.tsx**: Main `MarkdownEditor` component (content/onSave/readonly/placeholder/className)
-- **editor-bubble-menu.tsx**: Floating toolbar for inline formatting (bold/italic/strike/code/link)
+- **editor-bubble-menu.tsx**: Floating toolbar for inline formatting (bold/italic/strike/code/link) with named toolbar actions and decorative icons
+- **editor-bubble-menu.test.tsx**: Regression tests for BubbleMenu toolbar accessible names, decorative icons, and formatting/link callback wiring
 - **slash-command.tsx**: Tiptap extension for `/` command menu
 - **slash-command-list.tsx**: Dropdown UI for slash command suggestions
 - **heading-with-id.ts**: Heading extension with auto-slugified anchor IDs

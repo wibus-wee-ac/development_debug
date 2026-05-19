@@ -41,8 +41,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function asNullableString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
+function isNullableNumber(value: unknown): value is number | null {
+  return typeof value === 'number' || value === null
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === 'string' || value === null
 }
 
 export function parsePtyServerEvent(raw: string): PtyServerEvent | null {
@@ -81,11 +85,13 @@ export function parsePtyServerEvent(raw: string): PtyServerEvent | null {
         : null
     case 'exit':
       return typeof parsed.seq === 'number'
+        && isNullableNumber(parsed.exitCode)
+        && isNullableString(parsed.signal)
         ? {
             type: 'exit',
             seq: parsed.seq,
-            exitCode: typeof parsed.exitCode === 'number' ? parsed.exitCode : null,
-            signal: asNullableString(parsed.signal),
+            exitCode: parsed.exitCode,
+            signal: parsed.signal,
           }
         : null
     case 'pong':

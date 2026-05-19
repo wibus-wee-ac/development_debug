@@ -9,7 +9,9 @@ both titles and message snippets.
 
 ## Files
 
-- **global-search-dialog.tsx**: `GlobalSearchDialog` — 当前真实搜索入口，统一聚合线程 / 文件 / Issue / 命令结果；线程结果会渲染标题高亮与消息片段高亮，并暴露最小 E2E 锚点
+- **global-search-actions.ts**: Search result action helpers — keeps command result side effects testable; file results open the workspace detail tab and copy the relative path when possible
+- **global-search-actions.test.ts**: Unit coverage for file-result selection behavior and clipboard failure fallback
+- **global-search-dialog.tsx**: `GlobalSearchDialog` — 当前真实搜索入口，统一聚合线程 / 文件 / Issue / 命令结果；线程结果会渲染标题高亮与消息片段高亮，文件结果会打开 Workspace 并复制相对路径，并暴露最小 E2E 锚点
 - **index.ts**: Barrel re-exports for the search feature
 - **highlighted-text.tsx**: HighlightedText — renders a string with main-provided MatchRange spans wrapped in styled `<mark>`
 - **thread-search-groups.test.ts**: Regression tests for the workspace-grouping data shape consumed by Base UI autocomplete collections

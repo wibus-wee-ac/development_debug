@@ -1,4 +1,4 @@
-// Input: ipc, PackCodebaseOptions/PackCodebaseResult types, dialog/switch/button ui components
+// Input: pack-codebase HTTP endpoint, dialog/switch/button ui components
 // Output: PackCodebaseDialog — configurable dialog for packing workspace into clipboard
 // Position: Feature UI component for pack-codebase; triggered from workspace sidebar or file tree context menu
 
@@ -25,6 +25,8 @@ import { Label } from '~/components/ui/label'
 import { Switch } from '~/components/ui/switch'
 import { cn } from '~/lib/cn'
 
+import { formatTokens, mergeScopePaths, pathsToIncludeFromDraft } from './pack-codebase-utils'
+
 type PackStyle = 'xml' | 'markdown' | 'plain'
 
 interface PackCodebaseDialogProps {
@@ -41,28 +43,6 @@ const FORMAT_OPTIONS: { value: PackStyle, label: string, description: string }[]
   { value: 'markdown', label: 'Markdown', description: '通用' },
   { value: 'plain', label: 'Plain', description: '纯文本' },
 ]
-
-/** Convert a file-tree path to a repomix include glob pattern. */
-function pathToGlob(p: string): string {
-  const lastSegment = p.split('/').pop() ?? ''
-  const isFile = lastSegment.includes('.')
-  return isFile ? p : `${p}/**`
-}
-
-/** Convert array of paths to comma-separated glob include string. */
-function pathsToInclude(paths: string[]): string {
-  return paths.map(pathToGlob).join(',')
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`
-  }
-  if (n >= 1_000) {
-    return `${(n / 1_000).toFixed(1)}K`
-  }
-  return String(n)
-}
 
 const EMPTY_PATHS: string[] = []
 
@@ -83,7 +63,7 @@ type PackCodebaseDialogAction
     | { type: 'set-compress', compress: boolean }
     | { type: 'set-remove-comments', removeComments: boolean }
     | { type: 'set-path-input', pathInput: string }
-    | { type: 'add-path', path: string }
+    | { type: 'add-paths', input: string }
     | { type: 'remove-path', path: string }
     | { type: 'set-ignore', ignore: string }
     | { type: 'pack/start' }
@@ -91,6 +71,7 @@ type PackCodebaseDialogAction
     | { type: 'pack/error', errorMsg: string }
     | { type: 'reset-status' }
     | { type: 'pop-last-path' }
+    | { type: 'commit-path-input' }
 
 function createInitialPackCodebaseDialogState(initialPaths: string[]): PackCodebaseDialogState {
   return {
@@ -116,10 +97,8 @@ function packCodebaseDialogReducer(state: PackCodebaseDialogState, action: PackC
       return { ...state, removeComments: action.removeComments }
     case 'set-path-input':
       return { ...state, pathInput: action.pathInput }
-    case 'add-path':
-      return state.scopePaths.includes(action.path)
-        ? { ...state, pathInput: '' }
-        : { ...state, scopePaths: [...state.scopePaths, action.path], pathInput: '' }
+    case 'add-paths':
+      return { ...state, scopePaths: mergeScopePaths(state.scopePaths, action.input), pathInput: '' }
     case 'remove-path':
       return { ...state, scopePaths: state.scopePaths.filter(path => path !== action.path) }
     case 'set-ignore':
@@ -134,6 +113,8 @@ function packCodebaseDialogReducer(state: PackCodebaseDialogState, action: PackC
       return { ...state, status: 'idle', result: null, errorMsg: '' }
     case 'pop-last-path':
       return { ...state, scopePaths: state.scopePaths.slice(0, -1) }
+    case 'commit-path-input':
+      return { ...state, scopePaths: mergeScopePaths(state.scopePaths, state.pathInput), pathInput: '' }
     default:
       return state
   }
@@ -149,18 +130,14 @@ function PackCodebaseDialogContent({
   initialPaths: string[]
 }) {
   const [state, dispatch] = useReducer(packCodebaseDialogReducer, initialPaths, createInitialPackCodebaseDialogState)
-  const pathInputRef = useRef<HTMLInputElement>(null)
+  const pathInputRef = useRef<HTMLTextAreaElement>(null)
 
   const addPath = useCallback((raw: string) => {
-    const trimmed = raw.trim()
-    if (!trimmed) {
-      return
-    }
-    dispatch({ type: 'add-path', path: trimmed })
+    dispatch({ type: 'add-paths', input: raw })
   }, [])
 
-  const handlePathKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
+  const handlePathKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === ',') {
       e.preventDefault()
       addPath(state.pathInput)
     }
@@ -173,7 +150,10 @@ function PackCodebaseDialogContent({
     dispatch({ type: 'pack/start' })
 
     try {
-      const include = state.scopePaths.length > 0 ? pathsToInclude(state.scopePaths) : undefined
+      const include = pathsToIncludeFromDraft(state.scopePaths, state.pathInput)
+      if (state.pathInput.trim()) {
+        dispatch({ type: 'commit-path-input' })
+      }
       const res = await postWorkspacesByIdPack({
         path: { id: workspaceId },
         body: {
@@ -198,7 +178,7 @@ function PackCodebaseDialogContent({
     catch (err) {
       dispatch({ type: 'pack/error', errorMsg: err instanceof Error ? err.message : '未知错误' })
     }
-  }, [state.compress, state.ignore, state.removeComments, state.scopePaths, state.style, workspaceId])
+  }, [state.compress, state.ignore, state.pathInput, state.removeComments, state.scopePaths, state.style, workspaceId])
 
   return (
     <div className="space-y-5 py-1">
@@ -278,7 +258,7 @@ function PackCodebaseDialogContent({
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">
+        <Label className="text-xs text-muted-foreground" htmlFor="pack-scope-paths">
           打包范围
           <span className="ml-1 opacity-50">（空 = 整个工作区）</span>
         </Label>
@@ -288,13 +268,13 @@ function PackCodebaseDialogContent({
             'flex min-h-9 flex-wrap gap-1.5 rounded-md border border-input bg-transparent px-2 py-1.5 text-xs transition-colors focus-within:ring-1 focus-within:ring-ring',
             state.scopePaths.length === 0 && 'items-center',
           )}
-          onClick={() => pathInputRef.current?.focus()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              pathInputRef.current?.focus()
+          onMouseDown={(event) => {
+            const target = event.target
+            if (target instanceof HTMLElement && target.closest('button, textarea')) {
+              return
             }
+            pathInputRef.current?.focus()
           }}
-          tabIndex={0}
         >
           {state.scopePaths.map(path => (
             <span
@@ -315,14 +295,16 @@ function PackCodebaseDialogContent({
               </button>
             </span>
           ))}
-          <input
+          <textarea
+            id="pack-scope-paths"
             ref={pathInputRef}
             value={state.pathInput}
             onChange={e => dispatch({ type: 'set-path-input', pathInput: e.target.value })}
             onKeyDown={handlePathKeyDown}
             onBlur={() => addPath(state.pathInput)}
             placeholder={state.scopePaths.length === 0 ? 'src/renderer, packages/ipc …' : ''}
-            className="min-w-24 flex-1 bg-transparent font-mono text-xs outline-none placeholder:text-muted-foreground/40"
+            rows={2}
+            className="min-h-8 min-w-24 flex-1 resize-none bg-transparent font-mono text-xs leading-relaxed outline-none placeholder:text-muted-foreground/40"
           />
         </div>
         <p className="text-[11px] text-muted-foreground/50">

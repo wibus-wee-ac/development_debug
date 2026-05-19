@@ -14,16 +14,19 @@ Kanban owns issue board/list/detail UI, issue metadata editing, and issue-agent 
 - **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring while list view remains read/select/create focused.
 - **issue-aside-panel.tsx**: Side panel shell for issue detail surfaces.
 - **issue-context-menu.tsx**: Shared right-click issue actions for board cards and list rows.
-- **issue-detail/**: Issue detail subviews, including properties, activity, relations, sub-issues, and agent session controls.
+- **issue-detail/**: Issue detail subviews, including properties, activity, relations, sub-issues, and agent session controls; includes a focused README and accessibility regression coverage for prompt and property controls.
 - **kanban-board.tsx**: Board layout and drag/drop composition.
-- **kanban-card.tsx**: Board card rendering for individual issues.
+- **kanban-card.tsx**: Board card rendering for individual issues; issue cards use native named buttons for opening detail views while preserving drag wiring.
 - **kanban-column.tsx**: Board column rendering and drop targets.
-- **kanban-group-header.tsx**: Group header rendering for board/list views.
+- **kanban-group-header.tsx**: Group header rendering for board/list views with named create controls and expanded state.
+- **kanban-group-header.test.tsx**: Regression tests for group header expanded state, decorative icons, keyboard-visible create control, and callbacks.
 - **kanban-list.tsx**: List-view composition for issues.
-- **kanban-list-row.tsx**: Compact list row for individual issues.
+- **kanban-item-actions.test.tsx**: Regression tests for native issue card/list row button semantics.
+- **kanban-list-row.tsx**: Compact list row for individual issues; rows use native named buttons for opening detail views.
 - **kanban-sidebar.tsx**: Workspace/status navigation for the Kanban feature, using app-level current-tab navigation for board entries.
-- **kanban-toolbar.tsx**: View and filtering controls.
+- **kanban-toolbar.tsx**: View and filtering controls with named icon-only toolbar actions.
+- **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Shared visual and metadata helpers such as priority labels, label parsing, icons, and avatars.
-- **status-manager.tsx**: Status management UI.
+- **status-manager.tsx**: Status management UI with accessible inline rename, delete, and reorder controls.
 - **use-kanban.ts**: TanStack Query hooks for issue, status, milestone, relation, comment, and delegation operations.
 - **use-view-config.ts**: Local view configuration state for board/list display options.

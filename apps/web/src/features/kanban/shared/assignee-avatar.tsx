@@ -14,7 +14,7 @@ export function AssigneeAvatar({ name, size = 20, className }: {
   const initial = name?.charAt(0)?.toUpperCase()
 
   return (
-    <div
+    <span
       className={cn(
         'shrink-0 rounded-full bg-muted flex items-center justify-center text-muted-foreground',
         'border border-border',
@@ -24,7 +24,7 @@ export function AssigneeAvatar({ name, size = 20, className }: {
     >
       {initial
         ? <span className="text-[10px] font-medium">{initial}</span>
-        : <UserIcon className="size-3" />}
-    </div>
+        : <UserIcon className="size-3" aria-hidden="true" />}
+    </span>
   )
 }

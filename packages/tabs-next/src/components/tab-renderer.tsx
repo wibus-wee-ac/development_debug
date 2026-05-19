@@ -4,7 +4,7 @@
 // Output: TabRenderer with pluggable render policies
 // Position: Runtime renderer for active and retained tab navigation contexts
 
-import { Activity, Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Activity, Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
 
 import { useTabsContext } from '../context'
 import { recordRendererCommit, recordRendererDuration, setMountedIdsSource, setRenderPolicySource } from '../debug'
@@ -319,6 +319,31 @@ interface LoaderState {
   paramsKey: string
 }
 
+type LoaderAction =
+  | { type: 'loading', paramsKey: string }
+  | { type: 'success', data: unknown, paramsKey: string }
+  | { type: 'error', error: unknown, paramsKey: string }
+
+const INITIAL_LOADER_STATE: LoaderState = {
+  status: 'idle',
+  data: undefined,
+  error: undefined,
+  paramsKey: '',
+}
+
+function loaderReducer(state: LoaderState, action: LoaderAction): LoaderState {
+  switch (action.type) {
+    case 'loading':
+      return { status: 'loading', data: undefined, error: undefined, paramsKey: action.paramsKey }
+    case 'success':
+      return { status: 'success', data: action.data, error: undefined, paramsKey: action.paramsKey }
+    case 'error':
+      return { status: 'error', data: undefined, error: action.error, paramsKey: action.paramsKey }
+    default:
+      return state
+  }
+}
+
 function serializeParams(params: Record<string, string | undefined>): string {
   return JSON.stringify(
     Object.keys(params).sort().reduce<Record<string, string | undefined>>((acc, key) => {
@@ -338,12 +363,7 @@ function RouteLoaderBoundary({
   suspenseFallback?: React.ReactNode
 }) {
   'use no memo'
-  const [state, setState] = useState<LoaderState>({
-    status: 'idle',
-    data: undefined,
-    error: undefined,
-    paramsKey: '',
-  })
+  const [state, dispatch] = useReducer(loaderReducer, INITIAL_LOADER_STATE)
   const currentParamsKey = serializeParams(tab.params)
   const loader = route.loader
 
@@ -353,16 +373,16 @@ function RouteLoaderBoundary({
     }
 
     let cancelled = false
-    setState({ status: 'loading', data: undefined, error: undefined, paramsKey: currentParamsKey })
+    dispatch({ type: 'loading', paramsKey: currentParamsKey })
     loader(tab.params).then(
       (data) => {
         if (!cancelled) {
-          setState({ status: 'success', data, error: undefined, paramsKey: currentParamsKey })
+          dispatch({ type: 'success', data, paramsKey: currentParamsKey })
         }
       },
       (error) => {
         if (!cancelled) {
-          setState({ status: 'error', data: undefined, error, paramsKey: currentParamsKey })
+          dispatch({ type: 'error', error, paramsKey: currentParamsKey })
         }
       },
     )

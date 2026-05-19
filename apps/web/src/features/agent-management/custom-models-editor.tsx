@@ -1,6 +1,5 @@
-import { useMutation } from '@tanstack/react-query'
 import { PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import { postProvidersModelLookup, postProvidersModelSearch } from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
@@ -22,6 +21,101 @@ interface SearchResult {
   capabilities: ModelCapabilities
 }
 
+interface CustomModelsEditorState {
+  newId: string
+  enrichingId: string | null
+  searchQuery: string
+  searchResults: SearchResult[]
+  highlightIdx: number
+  lookupPending: boolean
+  searchPending: boolean
+}
+
+type CustomModelsEditorAction
+  = | { type: 'new-id/set', value: string }
+    | { type: 'lookup/start' }
+    | { type: 'lookup/end' }
+    | { type: 'enrich/start', modelId: string }
+    | { type: 'enrich/cancel' }
+    | { type: 'enrich/apply' }
+    | { type: 'search-query/set', value: string }
+    | { type: 'search/start' }
+    | { type: 'search/success', results: SearchResult[] }
+    | { type: 'search/clear' }
+    | { type: 'highlight/set', index: number }
+
+const initialCustomModelsEditorState: CustomModelsEditorState = {
+  newId: '',
+  enrichingId: null,
+  searchQuery: '',
+  searchResults: [],
+  highlightIdx: 0,
+  lookupPending: false,
+  searchPending: false,
+}
+
+function customModelsEditorReducer(state: CustomModelsEditorState, action: CustomModelsEditorAction): CustomModelsEditorState {
+  switch (action.type) {
+    case 'new-id/set':
+      return { ...state, newId: action.value }
+    case 'lookup/start':
+      return { ...state, lookupPending: true }
+    case 'lookup/end':
+      return { ...state, lookupPending: false, newId: '' }
+    case 'enrich/start':
+      return {
+        ...state,
+        enrichingId: action.modelId,
+        searchQuery: action.modelId,
+        searchResults: [],
+        highlightIdx: 0,
+        searchPending: false,
+      }
+    case 'enrich/cancel':
+    case 'enrich/apply':
+      return {
+        ...state,
+        enrichingId: null,
+        searchQuery: '',
+        searchResults: [],
+        highlightIdx: 0,
+        searchPending: false,
+      }
+    case 'search-query/set':
+      return { ...state, searchQuery: action.value }
+    case 'search/start':
+      return { ...state, searchPending: true }
+    case 'search/success':
+      return { ...state, searchResults: action.results, highlightIdx: 0, searchPending: false }
+    case 'search/clear':
+      if (state.searchResults.length === 0 && !state.searchPending && state.highlightIdx === 0) {
+        return state
+      }
+      return { ...state, searchResults: [], highlightIdx: 0, searchPending: false }
+    case 'highlight/set':
+      return { ...state, highlightIdx: action.index }
+    default:
+      return state
+  }
+}
+
+async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
+  const { data } = await postProvidersModelLookup({
+    body: { modelId },
+    throwOnError: true,
+  })
+  const result = data as { id: string, label: string, capabilities: ModelCapabilities } | null
+  return result ? { id: result.id, label: result.label, capabilities: result.capabilities ?? {} } : null
+}
+
+async function searchProviderModels(query: string): Promise<SearchResult[]> {
+  const { data } = await postProvidersModelSearch({
+    body: { query },
+    throwOnError: true,
+  })
+  return (data ?? []) as SearchResult[]
+}
+
 export function CustomModelsEditor({
   models,
   onChange,
@@ -30,40 +124,17 @@ export function CustomModelsEditor({
   models: CustomModelEntry[]
   onChange: (next: CustomModelEntry[]) => void
 }) {
-  const [newId, setNewId] = useState('')
-  const [enrichingId, setEnrichingId] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [highlightIdx, setHighlightIdx] = useState(0)
+  const [state, dispatch] = useReducer(customModelsEditorReducer, initialCustomModelsEditorState)
   const inputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchListRef = useRef<HTMLUListElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const lookupMutation = useMutation({
-    mutationFn: async (modelId: string) => {
-      const { data } = await postProvidersModelLookup({
-        body: { modelId },
-        throwOnError: true,
-      })
-      return data as { id: string, label: string, capabilities: ModelCapabilities } | null
-    },
-  })
-
-  const searchMutation = useMutation({
-    mutationFn: async (query: string) => {
-      const { data } = await postProvidersModelSearch({
-        body: { query },
-        throwOnError: true,
-      })
-      return (data ?? []) as SearchResult[]
-    },
-  })
-
   // Debounced search trigger
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([])
+    const query = state.searchQuery.trim()
+    if (!query) {
+      dispatch({ type: 'search/clear' })
       return
     }
 
@@ -72,12 +143,11 @@ export function CustomModelsEditor({
     }
 
     debounceRef.current = setTimeout(() => {
-      searchMutation.mutate(searchQuery.trim(), {
-        onSuccess: (data) => {
-          setSearchResults(data)
-          setHighlightIdx(0)
-        },
-      })
+      dispatch({ type: 'search/start' })
+      void searchProviderModels(query).then(
+        results => dispatch({ type: 'search/success', results }),
+        () => dispatch({ type: 'search/success', results: [] }),
+      )
     }, 250)
 
     return () => {
@@ -85,28 +155,33 @@ export function CustomModelsEditor({
         clearTimeout(debounceRef.current)
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery])
+  }, [state.searchQuery])
+
+  useEffect(() => {
+    if (!state.enrichingId) {
+      return
+    }
+    const frame = window.requestAnimationFrame(() => searchInputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [state.enrichingId])
 
   const addModel = useCallback(async () => {
-    const id = newId.trim()
+    const id = state.newId.trim()
     if (!id || models.some(m => m.id === id)) {
       return
     }
 
+    dispatch({ type: 'lookup/start' })
     try {
-      const result = await lookupMutation.mutateAsync(id)
-      const entry: CustomModelEntry = result
-        ? { id: result.id, label: result.label, capabilities: result.capabilities ?? {} }
-        : { id, label: id, capabilities: {} }
+      const entry = await lookupModel(id) ?? { id, label: id, capabilities: {} }
       onChange([...models, entry])
     }
     catch {
       onChange([...models, { id, label: id, capabilities: {} }])
     }
-    setNewId('')
+    dispatch({ type: 'lookup/end' })
     inputRef.current?.focus()
-  }, [newId, models, onChange, lookupMutation])
+  }, [state.newId, models, onChange])
 
   const removeModel = useCallback((id: string) => {
     onChange(models.filter(m => m.id !== id))
@@ -114,22 +189,15 @@ export function CustomModelsEditor({
 
   const applyEnrichResult = useCallback((targetModelId: string, result: SearchResult) => {
     onChange(models.map(m => m.id === targetModelId ? { ...m, label: result.label, capabilities: result.capabilities } : m))
-    setEnrichingId(null)
-    setSearchQuery('')
-    setSearchResults([])
+    dispatch({ type: 'enrich/apply' })
   }, [models, onChange])
 
   const startEnrich = useCallback((modelId: string) => {
-    setEnrichingId(modelId)
-    setSearchQuery(modelId)
-    setHighlightIdx(0)
-    setTimeout(() => searchInputRef.current?.focus(), 0)
+    dispatch({ type: 'enrich/start', modelId })
   }, [])
 
   const cancelEnrich = useCallback(() => {
-    setEnrichingId(null)
-    setSearchQuery('')
-    setSearchResults([])
+    dispatch({ type: 'enrich/cancel' })
   }, [])
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -139,27 +207,23 @@ export function CustomModelsEditor({
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setHighlightIdx((i) => {
-        const next = Math.min(i + 1, searchResults.length - 1)
-        searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
-        return next
-      })
+      const next = Math.min(state.highlightIdx + 1, state.searchResults.length - 1)
+      searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+      dispatch({ type: 'highlight/set', index: next })
       return
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setHighlightIdx((i) => {
-        const next = Math.max(i - 1, 0)
-        searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
-        return next
-      })
+      const next = Math.max(state.highlightIdx - 1, 0)
+      searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+      dispatch({ type: 'highlight/set', index: next })
       return
     }
-    if (e.key === 'Enter' && enrichingId && searchResults.length > 0) {
+    if (e.key === 'Enter' && state.enrichingId && state.searchResults.length > 0) {
       e.preventDefault()
-      applyEnrichResult(enrichingId, searchResults[highlightIdx])
+      applyEnrichResult(state.enrichingId, state.searchResults[state.highlightIdx])
     }
-  }, [cancelEnrich, enrichingId, searchResults, highlightIdx, applyEnrichResult])
+  }, [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults])
 
   return (
     <div className="flex flex-col gap-3">
@@ -174,8 +238,8 @@ export function CustomModelsEditor({
       <div className="flex items-center gap-2">
         <Input
           ref={inputRef}
-          value={newId}
-          onChange={e => setNewId(e.target.value)}
+          value={state.newId}
+          onChange={e => dispatch({ type: 'new-id/set', value: e.target.value })}
           onKeyDown={e => e.key === 'Enter' && void addModel()}
           placeholder="e.g. claude-sonnet-4-20250514"
           className="h-8 flex-1 font-mono text-[12px]"
@@ -184,10 +248,10 @@ export function CustomModelsEditor({
           size="xs"
           variant="secondary"
           onClick={() => void addModel()}
-          disabled={!newId.trim() || lookupMutation.isPending}
+          disabled={!state.newId.trim() || state.lookupPending}
           className="gap-1"
         >
-          {lookupMutation.isPending ? <Spinner className="size-3" /> : <PlusIcon className="size-3" />}
+          {state.lookupPending ? <Spinner className="size-3" /> : <PlusIcon className="size-3" />}
           Add
         </Button>
       </div>
@@ -229,49 +293,50 @@ export function CustomModelsEditor({
                     size="icon-xs"
                     variant="ghost"
                     onClick={() => startEnrich(m.id)}
+                    aria-label={`Match ${m.id} from models.dev`}
                     className="text-muted-foreground/50 hover:text-foreground"
                     title="Match from models.dev"
                   >
-                    <SparklesIcon className="size-3" />
+                    <SparklesIcon className="size-3" aria-hidden="true" />
                   </Button>
                   <Button
                     size="icon-xs"
                     variant="ghost"
                     onClick={() => removeModel(m.id)}
+                    aria-label={`Remove ${m.id}`}
                     className="text-muted-foreground/50 hover:text-destructive"
                   >
-                    <Trash2Icon className="size-3" />
+                    <Trash2Icon className="size-3" aria-hidden="true" />
                   </Button>
                 </div>
 
                 {/* Inline search autocomplete */}
-                {enrichingId === m.id && (
+                {state.enrichingId === m.id && (
                   <div className="border-t border-foreground/4 bg-muted/30 px-3 py-2">
                     <div className="relative">
                       <Input
                         ref={searchInputRef}
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
+                        value={state.searchQuery}
+                        onChange={e => dispatch({ type: 'search-query/set', value: e.target.value })}
                         onKeyDown={handleSearchKeyDown}
                         placeholder="Search models.dev..."
                         className="h-7 font-mono text-[11px]"
-                        autoFocus
                       />
-                      {searchMutation.isPending && (
+                      {state.searchPending && (
                         <Spinner className="absolute right-2 top-1/2 size-3 -translate-y-1/2" />
                       )}
                     </div>
-                    {searchResults.length > 0 && (
+                    {state.searchResults.length > 0 && (
                       <ul ref={searchListRef} className="mt-1.5 max-h-40 overflow-y-auto rounded-lg ring-1 ring-foreground/6">
-                        {searchResults.map((r, idx) => (
+                        {state.searchResults.map((r, idx) => (
                           <li key={r.id}>
                             <button
                               type="button"
                               onClick={() => applyEnrichResult(m.id, r)}
-                              onMouseEnter={() => setHighlightIdx(idx)}
+                              onMouseEnter={() => dispatch({ type: 'highlight/set', index: idx })}
                               className={cn(
                                 'flex w-full items-center gap-2 px-2.5 py-1.5 text-left',
-                                idx === highlightIdx && 'bg-accent',
+                                idx === state.highlightIdx && 'bg-accent',
                               )}
                             >
                               <div className="min-w-0 flex-1">
@@ -293,7 +358,7 @@ export function CustomModelsEditor({
                         ))}
                       </ul>
                     )}
-                    {searchQuery.trim() && !searchMutation.isPending && searchResults.length === 0 && (
+                    {state.searchQuery.trim() && !state.searchPending && state.searchResults.length === 0 && (
                       <p className="mt-1.5 text-[10.5px] text-muted-foreground">No matches found</p>
                     )}
                   </div>

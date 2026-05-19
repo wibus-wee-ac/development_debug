@@ -102,8 +102,8 @@ function ChatMessageListPane({
         <div className="mx-auto max-w-208 px-4 pt-4">
           {messages.length === 0 && !isReady && (
             <div className="space-y-6 py-4">
-              {[0, 1, 2].map(i => (
-                <div key={i} className={cn('flex gap-3', i % 2 !== 0 && 'justify-end')}>
+              {['loading-left-1', 'loading-right', 'loading-left-2'].map((skeletonId, i) => (
+                <div key={skeletonId} className={cn('flex gap-3', i % 2 !== 0 && 'justify-end')}>
                   {i % 2 === 0 && <Skeleton className="size-7 rounded-full shrink-0 mt-0.5" />}
                   <div className="space-y-1.5 max-w-[60%]">
                     <Skeleton className="h-4 w-full rounded-xl" />

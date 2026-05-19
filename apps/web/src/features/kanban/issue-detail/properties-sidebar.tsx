@@ -1,3 +1,7 @@
+// Input: Kanban issue metadata, status/milestone lists, agent hooks, and update callback
+// Output: PropertiesSidebar component for issue detail metadata editing
+// Position: Kanban issue detail subview for status, priority, labels, milestones, relations, and delegation
+
 import { BotIcon, PlusIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -180,8 +184,11 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
         </button>
       ))}
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-fill transition-colors">
-          <PlusIcon className="size-3" />
+        <PopoverTrigger
+          className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-fill transition-colors"
+          aria-label="Add label"
+        >
+          <PlusIcon className="size-3" aria-hidden="true" />
         </PopoverTrigger>
         <PopoverContent align="start" className="w-44 p-2">
           <input
@@ -207,9 +214,15 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
   const { agents } = useAgents()
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
+  const delegateCandidates = agents.reduce<typeof agents>((candidates, agent) => {
+    if (agent.agentProfileId) {
+      candidates.push(agent)
+    }
+    return candidates
+  }, [])
 
   const delegatedAgent = issue.delegateAgentProfileId
-    ? agents.find(a => a.agentProfileId === issue.delegateAgentProfileId) ?? null
+    ? delegateCandidates.find(a => a.agentProfileId === issue.delegateAgentProfileId) ?? null
     : null
 
   return (
@@ -234,9 +247,9 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
               <DropdownMenuSeparator />
             </>
           )}
-          {agents.filter(a => !!a.agentProfileId).length === 0 && !delegatedAgent
+          {delegateCandidates.length === 0 && !delegatedAgent
             ? <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
-            : agents.filter(a => !!a.agentProfileId).map(a => (
+            : delegateCandidates.map(a => (
               <DropdownMenuItem
                 key={a.id}
                 onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId!, agentId: a.id })}

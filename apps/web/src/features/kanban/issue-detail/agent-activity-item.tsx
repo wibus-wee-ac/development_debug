@@ -1,3 +1,7 @@
+// Input: Agent activity event data from issue-agent session history
+// Output: AgentActivityItem component for rendering one session activity row
+// Position: Kanban issue detail agent session activity feed item
+
 import { WrenchIcon } from 'lucide-react'
 
 import type { AgentActivity } from '~/lib/types'
@@ -21,7 +25,7 @@ export function AgentActivityItem({ activity }: AgentActivityItemProps) {
     case 'action':
       return (
         <div className={cn(base, 'flex items-start gap-2')}>
-          <WrenchIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" />
+          <WrenchIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
           <span className="font-mono text-[12px]">{activity.content}</span>
         </div>
       )

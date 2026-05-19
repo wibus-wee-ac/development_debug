@@ -293,4 +293,14 @@ describe('workspaceSidebar', () => {
 
     expect(mockedDeps.recordActivity).not.toHaveBeenCalled()
   })
+
+  it('keeps the session menu trigger keyboard-discoverable with a stable hit target', () => {
+    const { view } = renderWorkspaceSidebar()
+
+    const sessionMenuTrigger = view.container.querySelector<HTMLButtonElement>('[aria-label="会话菜单"]')
+
+    expect(sessionMenuTrigger).not.toBeNull()
+    expect(sessionMenuTrigger?.className).toContain('size-6')
+    expect(sessionMenuTrigger?.className).toContain('focus-visible:opacity-100')
+  })
 })

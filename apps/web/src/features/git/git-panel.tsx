@@ -132,6 +132,7 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
         <Button
           variant="ghost"
           size="icon-xs"
+          aria-label="Fetch git updates"
           title="Fetch all (--all --prune)"
           onClick={() => { void handleFetch() }}
           disabled={fetching}

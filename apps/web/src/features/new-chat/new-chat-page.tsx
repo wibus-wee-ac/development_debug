@@ -314,8 +314,8 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
       <div className="flex items-center gap-1 border-t border-border/60 px-2.5 py-2">
         <ComposerToolbar context="new-chat" state={composerState} />
 
-        <Button variant="ghost" size="icon-xs" className="text-muted-foreground/30" aria-label="附加文件">
-          <PaperclipIcon className="size-3" />
+        <Button variant="ghost" size="icon-xs" className="text-muted-foreground/30" aria-label="Attach file">
+          <PaperclipIcon className="size-3" aria-hidden="true" />
         </Button>
 
         <div className="flex-1" />
@@ -352,10 +352,11 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
               }}
               className="ml-0.5"
               data-testid="new-chat-send-btn"
+              aria-label="Send message"
             >
               {sending
-                ? <LoaderCircleIcon className="size-3.5 animate-spin" />
-                : <ArrowUpIcon className="size-3.5" />}
+                ? <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden="true" />
+                : <ArrowUpIcon className="size-3.5" aria-hidden="true" />}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top">

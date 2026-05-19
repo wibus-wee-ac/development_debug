@@ -1,3 +1,7 @@
+// Input: Issue id, kanban comment hooks, and comment author metadata
+// Output: ActivityTimeline component for displaying issue activity and adding comments
+// Position: Kanban issue detail subview for comment history and activity updates
+
 import { GitBranchIcon, SparklesIcon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
@@ -85,7 +89,7 @@ function CommentItem({ comment }: { comment: KanbanIssueComment }) {
     return (
       <div className="flex items-center gap-2.5 py-0.5" data-testid={`comment-${comment.id}`}>
         <div className="flex size-[22px] shrink-0 items-center justify-center">
-          <Icon className="size-3.5 text-text-tertiary" />
+          <Icon className="size-3.5 text-text-tertiary" aria-hidden="true" />
         </div>
         <span className="text-[12px] text-text-tertiary">{comment.content}</span>
         <span className="text-[11px] text-text-dim shrink-0">{formatRelativeTime(comment.createdAt)}</span>
@@ -100,7 +104,7 @@ function CommentItem({ comment }: { comment: KanbanIssueComment }) {
       {isAgent
         ? (
           <div className="flex size-[22px] shrink-0 items-center justify-center mt-0.5">
-            <SparklesIcon className="size-3.5 text-text-tertiary" />
+            <SparklesIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />
           </div>
         )
         : (

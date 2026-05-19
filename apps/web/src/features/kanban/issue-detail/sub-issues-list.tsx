@@ -1,3 +1,7 @@
+// Input: Parent issue id, workspace id, status options, and kanban issue hooks
+// Output: SubIssuesList component for listing and creating child issues
+// Position: Kanban issue detail subview for sub-issue composition
+
 import { PlusIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -175,7 +179,12 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
                   )}
                 >
                   Create
-                  <kbd className="ml-0.5 rounded border border-border/30 bg-primary-foreground/10 px-1 text-[9px] leading-4">⌘↵</kbd>
+                  <kbd
+                    className="ml-0.5 rounded border border-border/30 bg-primary-foreground/10 px-1 text-[9px] leading-4"
+                    aria-hidden="true"
+                  >
+                    ⌘↵
+                  </kbd>
                 </button>
               </div>
             </div>
@@ -187,7 +196,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
             onClick={() => setCreating(true)}
             className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] text-text-dim hover:text-foreground hover:bg-fill transition-colors w-fit"
           >
-            <PlusIcon className="size-3.5" />
+            <PlusIcon className="size-3.5" aria-hidden="true" />
             Add sub-issue
           </button>
         )}

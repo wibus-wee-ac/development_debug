@@ -71,7 +71,7 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
               className="h-6 w-40 rounded bg-transparent px-1.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/40"
             />
             <ToolbarButton active={false} onClick={applyLink} aria-label="Apply link">
-              <LinkIcon className="size-3.5" />
+              <LinkIcon className="size-3.5" aria-hidden="true" />
             </ToolbarButton>
           </div>
         )
@@ -82,28 +82,28 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
               onClick={() => editor.chain().focus().toggleBold().run()}
               aria-label="Bold"
             >
-              <BoldIcon className="size-3.5" />
+              <BoldIcon className="size-3.5" aria-hidden="true" />
             </ToolbarButton>
             <ToolbarButton
               active={editor.isActive('italic')}
               onClick={() => editor.chain().focus().toggleItalic().run()}
               aria-label="Italic"
             >
-              <ItalicIcon className="size-3.5" />
+              <ItalicIcon className="size-3.5" aria-hidden="true" />
             </ToolbarButton>
             <ToolbarButton
               active={editor.isActive('strike')}
               onClick={() => editor.chain().focus().toggleStrike().run()}
               aria-label="Strikethrough"
             >
-              <StrikethroughIcon className="size-3.5" />
+              <StrikethroughIcon className="size-3.5" aria-hidden="true" />
             </ToolbarButton>
             <ToolbarButton
               active={editor.isActive('code')}
               onClick={() => editor.chain().focus().toggleCode().run()}
               aria-label="Code"
             >
-              <CodeIcon className="size-3.5" />
+              <CodeIcon className="size-3.5" aria-hidden="true" />
             </ToolbarButton>
 
             <div className="mx-0.5 h-4 w-px bg-border" />
@@ -113,7 +113,7 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
               onClick={handleLinkClick}
               aria-label="Link"
             >
-              <LinkIcon className="size-3.5" />
+              <LinkIcon className="size-3.5" aria-hidden="true" />
             </ToolbarButton>
           </>
         )}

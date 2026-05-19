@@ -18,7 +18,9 @@ import { Button } from '~/components/ui/button'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
+  DialogTitle,
 } from '~/components/ui/dialog'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { cn } from '~/lib/cn'
@@ -56,6 +58,7 @@ export function DirectoryBrowserDialog({
   onOpenChange,
   onSelect,
   title = '选择目录',
+  description,
 }: DirectoryBrowserDialogProps) {
   const [currentPath, setCurrentPath] = useState<string | undefined>(() => {
     return localStorage.getItem(LAST_PATH_KEY) ?? undefined
@@ -114,6 +117,61 @@ export function DirectoryBrowserDialog({
   const directories = data?.entries.filter(e => e.type === 'directory') ?? []
   const files = data?.entries.filter(e => e.type === 'file') ?? []
 
+  const handleListingKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (event.target !== event.currentTarget) {
+      return
+    }
+
+    if (directories.length === 0) {
+      return
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setSelectedEntry(current => selectDirectoryByOffset(directories, current, 1))
+      return
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setSelectedEntry(current => selectDirectoryByOffset(directories, current, -1))
+      return
+    }
+
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    const target = selectedEntry ?? directories[0]?.path ?? null
+    if (!target) {
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey) {
+      onSelect(target)
+      onOpenChange(false)
+      return
+    }
+
+    navigateTo(target)
+  }, [directories, navigateTo, onOpenChange, onSelect, selectedEntry])
+
+  const handleDirectoryKeyDown = useCallback((path: string, event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter') {
+      return
+    }
+
+    event.preventDefault()
+    if (event.metaKey || event.ctrlKey) {
+      onSelect(path)
+      onOpenChange(false)
+      return
+    }
+
+    navigateTo(path)
+  }, [navigateTo, onOpenChange, onSelect])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl h-140 flex flex-col gap-0 p-0 overflow-hidden" data-testid="directory-browser-dialog">
@@ -121,9 +179,14 @@ export function DirectoryBrowserDialog({
         <div className="flex flex-1 min-h-0">
           {/* Sidebar */}
           <nav className="w-44 shrink-0 border-r py-3 px-2 flex flex-col gap-0.5">
-            <p className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+            <DialogTitle className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
               {title}
-            </p>
+            </DialogTitle>
+            {description && (
+              <DialogDescription className="px-2 pb-2 text-[11px] leading-snug text-muted-foreground">
+                {description}
+              </DialogDescription>
+            )}
             {favoritesData?.map(fav => (
               <SidebarItem
                 key={fav.path}
@@ -168,7 +231,14 @@ export function DirectoryBrowserDialog({
               )}
 
               {!isLoading && !error && (directories.length > 0 || files.length > 0) && (
-                <div className="py-0.5">
+                <div
+                  className="py-0.5 outline-none"
+                  tabIndex={0}
+                  role="group"
+                  aria-label="Directories"
+                  onKeyDown={handleListingKeyDown}
+                  data-testid="directory-browser-listing"
+                >
                   {directories.map(entry => (
                     <DirectoryRow
                       key={entry.path}
@@ -177,6 +247,7 @@ export function DirectoryBrowserDialog({
                       isSelected={selectedEntry === entry.path}
                       onSelect={() => setSelectedEntry(entry.path)}
                       onDoubleClick={() => handleDoubleClick(entry.path)}
+                      onKeyDown={event => handleDirectoryKeyDown(entry.path, event)}
                     />
                   ))}
                   {files.map(entry => (
@@ -468,23 +539,27 @@ function DirectoryRow({
   isSelected,
   onSelect,
   onDoubleClick,
+  onKeyDown,
 }: {
   name: string
   path: string
   isSelected: boolean
   onSelect: () => void
   onDoubleClick: () => void
+  onKeyDown: (event: React.KeyboardEvent) => void
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
       onDoubleClick={onDoubleClick}
+      onKeyDown={onKeyDown}
+      aria-pressed={isSelected}
       data-testid={`directory-entry-${name}`}
       data-path={path}
       className={cn(
         'flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors',
-        'hover:bg-accent/50',
+        'hover:bg-accent/50 focus-visible:bg-accent/50 focus-visible:outline-none',
         isSelected && 'bg-accent',
       )}
     >
@@ -493,6 +568,23 @@ function DirectoryRow({
       <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/30" />
     </button>
   )
+}
+
+export function selectDirectoryByOffset(
+  directories: FilesystemBrowseEntry[],
+  selectedPath: string | null,
+  offset: 1 | -1,
+): string | null {
+  if (directories.length === 0) {
+    return null
+  }
+
+  const currentIndex = directories.findIndex(entry => entry.path === selectedPath)
+  const nextIndex = currentIndex === -1
+    ? offset > 0 ? 0 : directories.length - 1
+    : Math.min(Math.max(currentIndex + offset, 0), directories.length - 1)
+
+  return directories[nextIndex]?.path ?? null
 }
 
 // ── File row (disabled) ───────────────────────────────────────────────────────

@@ -29,6 +29,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
   const isDrillIn = isSettingsActive
+  const sidebarToggleLabel = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
 
   const handleTabActivated = useCallback(() => {
     // No-op: settings is now per-tab, tab switching is handled by isSettingsVisible in app.tsx
@@ -86,10 +87,11 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
           size="icon-xs"
           className={cn('text-muted-foreground shrink-0', sidebarCollapsed && 'ml-6')}
           onClick={toggleSidebar}
+          aria-label={sidebarToggleLabel}
           title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          {sidebarCollapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+          {sidebarCollapsed ? <PanelLeftOpenIcon aria-hidden="true" /> : <PanelLeftCloseIcon aria-hidden="true" />}
         </Button>
       )}
 
@@ -114,10 +116,12 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
             size="icon-xs"
             className={cn('text-muted-foreground', browserPanelOpen && 'text-foreground')}
             onClick={toggleBrowserPanel}
+            aria-label="Toggle browser panel"
+            aria-pressed={browserPanelOpen}
             title="切换浏览器"
             data-testid="app-header-browser-toggle"
           >
-            <GlobeIcon />
+            <GlobeIcon aria-hidden="true" />
           </Button>
         )}
         {hasPanel && (
@@ -126,10 +130,12 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
             size="icon-xs"
             className={cn('text-muted-foreground', bottomPanelOpen && 'text-foreground')}
             onClick={toggleBottomPanel}
+            aria-label="Toggle bottom panel"
+            aria-pressed={bottomPanelOpen}
             title="切换底部面板"
             data-testid="app-header-panel-toggle"
           >
-            <PanelBottomIcon />
+            <PanelBottomIcon aria-hidden="true" />
           </Button>
         )}
         {hasAside && (
@@ -138,10 +144,12 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
             size="icon-xs"
             className={cn('text-muted-foreground', asideOpen && 'text-foreground')}
             onClick={toggleAside}
+            aria-label="Toggle right panel"
+            aria-pressed={asideOpen}
             title="切换右侧面板"
             data-testid="app-header-aside-toggle"
           >
-            <PanelRightIcon />
+            <PanelRightIcon aria-hidden="true" />
           </Button>
         )}
       </div>

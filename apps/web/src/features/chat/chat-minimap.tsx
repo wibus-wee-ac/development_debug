@@ -3,8 +3,8 @@
 // Position: Overlay component pinned to the right edge of the chat scroll area
 
 import type { UIMessage } from 'ai'
-import type { ForwardedRef } from 'react'
-import { forwardRef, memo, useCallback, useImperativeHandle, useMemo, useReducer, useRef } from 'react'
+import type { Ref } from 'react'
+import { memo, useCallback, useImperativeHandle, useMemo, useReducer, useRef } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -16,6 +16,7 @@ interface ChatMinimapProps {
   viewportHeight: number
   onScrollToIndex: (index: number) => void
   onScrollTo: (offset: number) => void
+  ref?: Ref<ChatMinimapHandle>
 }
 
 export interface ChatMinimapHandle {
@@ -109,10 +110,12 @@ function ChatMinimapInner({
   viewportHeight,
   onScrollToIndex,
   onScrollTo,
-}: ChatMinimapProps, ref: ForwardedRef<ChatMinimapHandle>) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const barProgressRef = useRef<Array<HTMLDivElement | null>>([])
+  ref,
+}: ChatMinimapProps) {
+  const containerRef = useRef<HTMLButtonElement>(null)
+  const barProgressRef = useRef<Array<HTMLSpanElement | null>>([])
   const barProgressValuesRef = useRef<number[]>([])
+  const activeIndexRef = useRef(0)
   const [uiState, dispatch] = useReducer(chatMinimapUiReducer, initialChatMinimapUiState)
 
   // Precompute bar data
@@ -136,6 +139,7 @@ function ChatMinimapInner({
     const visualPosition = nextProgress * bars.length
     const activeIndex = nextProgress >= 1 ? bars.length - 1 : Math.floor(visualPosition)
     const activeProgress = nextProgress >= 1 ? 1 : visualPosition - activeIndex
+    activeIndexRef.current = Math.max(0, activeIndex)
 
     for (let index = 0; index < bars.length; index++) {
       const fill = barProgressRef.current[index]
@@ -184,7 +188,7 @@ function ChatMinimapInner({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault()
-      ; (e.target as HTMLElement).setPointerCapture(e.pointerId)
+      e.currentTarget.setPointerCapture(e.pointerId)
       const rect = containerRef.current?.getBoundingClientRect()
       if (rect) {
         const y = e.clientY - rect.top
@@ -224,7 +228,7 @@ function ChatMinimapInner({
   const handlePointerUp = useCallback(
     (e: React.PointerEvent) => {
       dispatch({ type: 'pointer-end' })
-      ; (e.target as HTMLElement).releasePointerCapture(e.pointerId)
+      e.currentTarget.releasePointerCapture(e.pointerId)
     },
     [],
   )
@@ -246,11 +250,9 @@ function ChatMinimapInner({
     [onScrollToIndex, yToIndex],
   )
 
-  const scrollToHoveredMessage = useCallback(() => {
-    if (uiState.hoverIdx !== null) {
-      onScrollToIndex(uiState.hoverIdx)
-    }
-  }, [onScrollToIndex, uiState.hoverIdx])
+  const scrollToKeyboardMessage = useCallback(() => {
+    onScrollToIndex(uiState.hoverIdx ?? Math.min(activeIndexRef.current, bars.length - 1))
+  }, [bars.length, onScrollToIndex, uiState.hoverIdx])
 
   if (messages.length === 0) {
     return null
@@ -264,15 +266,15 @@ function ChatMinimapInner({
   return (
     <div
       className="absolute -right-2 top-0 bottom-0 z-10 flex w-8 items-center justify-center"
-      aria-hidden="true"
     >
-      <div
+      <button
+        type="button"
         ref={containerRef}
-        role="button"
-        tabIndex={0}
+        aria-label="Chat minimap"
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
-            scrollToHoveredMessage()
+            e.preventDefault()
+            scrollToKeyboardMessage()
           }
         }}
         onPointerDown={handlePointerDown}
@@ -280,11 +282,11 @@ function ChatMinimapInner({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         onClick={e => scrollToEventMessage(e.clientY)}
-        className="relative flex w-full cursor-pointer flex-col items-center gap-1"
+        className="relative flex w-full cursor-pointer flex-col items-center gap-1 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         {bars.map((bar, i) => {
           return (
-            <div
+            <span
               key={messages[i].id}
               className={cn(
                 'relative h-1.5 overflow-hidden rounded-full transition-colors duration-100',
@@ -295,7 +297,7 @@ function ChatMinimapInner({
               )}
               style={{ width: `${bar.width}%` }}
             >
-              <div
+              <span
                 ref={(node) => {
                   barProgressRef.current[i] = node
                 }}
@@ -309,41 +311,40 @@ function ChatMinimapInner({
                 )}
                 style={{ transform: 'scaleX(0)' }}
               />
-            </div>
+            </span>
           )
         })}
+      </button>
 
-        {/* Hover peek popover */}
-        {hoveredBar && uiState.hoverIdx !== null && (
-          <div
-            className="absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md pointer-events-none"
-            style={{
-              top: peekTop,
-              transition: 'top 80ms ease-out',
-            }}
-          >
-            <div className="mb-1 flex items-center gap-1.5">
-              <div
-                className={cn(
-                  'size-1.5 rounded-full',
-                  hoveredBar.role === 'user' ? 'bg-foreground/50' : 'bg-accent/70',
-                )}
-              />
-              <span className="text-[10px] font-medium text-muted-foreground">
-                {`${hoveredBar.role === 'user' ? '用户' : '助手'} · #${uiState.hoverIdx + 1}`}
-              </span>
-            </div>
-            <p className="text-xs/relaxed text-foreground line-clamp-4">
-              {hoveredBar.preview}
-            </p>
+      {/* Hover peek popover */}
+      {hoveredBar && uiState.hoverIdx !== null && (
+        <div
+          className="pointer-events-none absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md transition-[top] duration-75 ease-out"
+          style={{
+            top: peekTop,
+          }}
+        >
+          <div className="mb-1 flex items-center gap-1.5">
+            <div
+              className={cn(
+                'size-1.5 rounded-full',
+                hoveredBar.role === 'user' ? 'bg-foreground/50' : 'bg-accent/70',
+              )}
+            />
+            <span className="text-[10px] font-medium text-muted-foreground">
+              {`${hoveredBar.role === 'user' ? '用户' : '助手'} · #${uiState.hoverIdx + 1}`}
+            </span>
           </div>
-        )}
-      </div>
+          <p className="text-xs/relaxed text-foreground line-clamp-4">
+            {hoveredBar.preview}
+          </p>
+        </div>
+      )}
     </div>
   )
 }
 
-const ChatMinimapWithRef = memo(forwardRef(ChatMinimapInner))
+const ChatMinimapWithRef = memo(ChatMinimapInner)
 ChatMinimapWithRef.displayName = 'ChatMinimap'
 
 export { ChatMinimapWithRef as ChatMinimap }

@@ -725,12 +725,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           </div>
 
           {activeTab === 'workflow-rules' && (
-            <Suspense fallback={(
-              <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
-                <Loader2Icon className="mr-2 size-3.5 animate-spin" />
-                Loading workflow...
-              </div>
-            )}
+            <Suspense fallback={<WorkspacePaneLoading label="Loading workflow…" testId="workspace-workflow-loading" />}
             >
               <LazyWorkspaceWorkflowRules
                 workspaceId={workspaceId}
@@ -741,12 +736,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           )}
 
           {activeTab === 'skills' && (
-            <Suspense fallback={(
-              <div className="flex min-h-48 items-center justify-center text-sm text-muted-foreground">
-                <Loader2Icon className="mr-2 size-3.5 animate-spin" />
-                Loading skills...
-              </div>
-            )}
+            <Suspense fallback={<WorkspacePaneLoading label="Loading skills…" testId="workspace-skills-loading" />}
             >
               <LazySkillManager
                 workspaceId={workspaceId}
@@ -767,6 +757,21 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           <CapsuleComposer workspaceId={workspaceId} onSend={handleCapsuleSend} />
         </div>
       </div>
+    </div>
+  )
+}
+
+function WorkspacePaneLoading({ label, testId }: { label: string, testId: string }) {
+  return (
+    <div
+      role="status"
+      data-testid={testId}
+      className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
+    >
+      <span className="inline-flex items-center gap-2 rounded-md bg-foreground/4 px-3 py-2">
+        <Loader2Icon className="size-3.5 animate-spin" />
+        <span>{label}</span>
+      </span>
     </div>
   )
 }

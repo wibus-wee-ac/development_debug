@@ -14,6 +14,36 @@ afterEach(() => {
 })
 
 describe('Composer slash commands', () => {
+  it('exposes a named send control and keeps send disabled while empty', () => {
+    const onSend = vi.fn()
+
+    render(<Composer onSend={onSend} />)
+
+    const sendButton = screen.getByRole('button', { name: 'Send message' })
+    expect((sendButton as HTMLButtonElement).disabled).toBe(true)
+    expect(sendButton.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+
+    fireEvent.change(screen.getByTestId('chat-composer-textarea'), {
+      target: { value: 'Ship the patch' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(onSend).toHaveBeenCalledWith('Ship the patch')
+  })
+
+  it('exposes a named stop control while streaming', () => {
+    const onStop = vi.fn()
+
+    render(<Composer onSend={vi.fn()} onStop={onStop} isStreaming />)
+
+    const stopButton = screen.getByRole('button', { name: 'Stop generation' })
+    expect(stopButton.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+
+    fireEvent.click(stopButton)
+
+    expect(onStop).toHaveBeenCalledTimes(1)
+  })
+
   it('inserts a selected slash command and sends native slash prompt text unchanged', () => {
     const onSend = vi.fn()
 

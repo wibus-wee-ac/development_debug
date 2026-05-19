@@ -10,6 +10,7 @@ import type {
   ApprovalResolvedPayload,
 } from '~/lib/contracts/approval-events'
 import { getServerUrl } from '~/lib/electron'
+import { clearPendingApprovals, mergePendingApprovals, removePendingApproval } from './approval-state'
 
 const SERVER_BASE = getServerUrl()
 
@@ -26,16 +27,9 @@ function notify(): void {
   }
 }
 
-function _mergeApprovals(items: ApprovalRequestedPayload[]): void {
-  const existingIds = new Set(pendingApprovals.map(a => a.id))
-  let changed = false
-  for (const item of items) {
-    if (!existingIds.has(item.id)) {
-      pendingApprovals = [...pendingApprovals, item]
-      changed = true
-    }
-  }
-  if (changed) {
+function setPendingApprovals(next: ApprovalRequestedPayload[]): void {
+  if (next !== pendingApprovals) {
+    pendingApprovals = next
     notify()
   }
 }
@@ -51,16 +45,13 @@ function ensureSubscription(): void {
 
   es.addEventListener('open', () => {
     // Reset on (re)connect so the initial burst fully replaces local state
-    pendingApprovals = []
+    setPendingApprovals(clearPendingApprovals(pendingApprovals))
   })
 
   es.addEventListener('approval.requested', (ev: MessageEvent) => {
     try {
       const payload = JSON.parse(ev.data) as ApprovalRequestedPayload
-      if (!pendingApprovals.some(a => a.id === payload.id)) {
-        pendingApprovals = [...pendingApprovals, payload]
-        notify()
-      }
+      setPendingApprovals(mergePendingApprovals(pendingApprovals, [payload]))
     }
     catch { /* malformed JSON — skip */ }
   })
@@ -68,8 +59,7 @@ function ensureSubscription(): void {
   es.addEventListener('approval.resolved', (ev: MessageEvent) => {
     try {
       const payload = JSON.parse(ev.data) as ApprovalResolvedPayload
-      pendingApprovals = pendingApprovals.filter(a => a.id !== payload.approvalId)
-      notify()
+      setPendingApprovals(removePendingApproval(pendingApprovals, payload.approvalId))
     }
     catch { /* malformed JSON — skip */ }
   })
@@ -101,8 +91,7 @@ function useApprovalRequests(): {
 
   const respond = useCallback((approvalId: string, decision: 'approved' | 'rejected', selectedOptionId: string) => {
     // Optimistic removal
-    pendingApprovals = pendingApprovals.filter(a => a.id !== approvalId)
-    notify()
+    setPendingApprovals(removePendingApproval(pendingApprovals, approvalId))
     void postApprovalsByApprovalIdRespond({ path: { approvalId }, body: { decision, selectedOptionId } })
   }, [])
 

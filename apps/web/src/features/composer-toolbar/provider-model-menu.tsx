@@ -51,6 +51,17 @@ interface ProviderGroupProps<TThinking extends string | null> {
 
 const INITIAL_BATCH = 20
 
+export function filterModelsBySearch(models: ModelDescriptor[], search: string): ModelDescriptor[] {
+  const normalizedSearch = search.trim().toLowerCase()
+  if (!normalizedSearch) {
+    return models
+  }
+
+  return models.filter(model =>
+    model.label.toLowerCase().includes(normalizedSearch)
+    || model.id.toLowerCase().includes(normalizedSearch))
+}
+
 function ProviderGroup<TThinking extends string | null>({
   profile,
   isActive,
@@ -66,10 +77,7 @@ function ProviderGroup<TThinking extends string | null>({
 }: ProviderGroupProps<TThinking>) {
   const preset = presetForProfile(profile)
   const [modelSearch, setModelSearch] = useState('')
-  const filteredModels = models.filter(model =>
-    !modelSearch
-    || model.label.toLowerCase().includes(modelSearch.toLowerCase())
-    || model.id.toLowerCase().includes(modelSearch.toLowerCase()))
+  const filteredModels = filterModelsBySearch(models, modelSearch)
 
   const [renderCount, setRenderCount] = useState(INITIAL_BATCH)
 

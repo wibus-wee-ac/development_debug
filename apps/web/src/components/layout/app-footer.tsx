@@ -49,40 +49,35 @@ export function AppFooter({ className }: { className?: string }) {
       {/* Tabs (right-aligned, badge style) */}
       <div className="flex items-center gap-1 px-1 h-full shrink-0">
         {sessions.map(sess => (
-          <button
+          <div
             key={sess.id}
-            ref={sess.id === activeSessionId ? activeTabRef : undefined}
-            type="button"
-            onClick={() => {
-              setActiveSessionId(sess.id)
-              setJarvisOpen(true)
-            }}
             className={cn(
-              'group relative flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] max-w-28 transition-colors shrink-0',
+              'group relative flex max-w-28 items-center rounded-full text-[11px] transition-colors shrink-0',
               sess.id === activeSessionId && jarvisOpen
                 ? 'bg-foreground/10 text-foreground'
                 : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
             )}
           >
-            <span className="truncate">{sess.title || 'Untitled'}</span>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation()
-                removeSession(sess.id)
+            <button
+              ref={sess.id === activeSessionId ? activeTabRef : undefined}
+              type="button"
+              onClick={() => {
+                setActiveSessionId(sess.id)
+                setJarvisOpen(true)
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.stopPropagation()
-                  removeSession(sess.id)
-                }
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+              className="min-w-0 flex-1 rounded-l-full py-0.5 pl-2.5 pr-1 text-left"
             >
-              <XIcon className="size-2.5" />
-            </span>
-          </button>
+              <span className="block truncate">{sess.title || 'Untitled'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => removeSession(sess.id)}
+              aria-label={`Close Jarvis session ${sess.title || 'Untitled'}`}
+              className="flex size-5 shrink-0 items-center justify-center rounded-r-full opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+            >
+              <XIcon className="size-2.5" aria-hidden="true" />
+            </button>
+          </div>
         ))}
 
         {/* Ask Jarvis — pinned tab for new session */}
@@ -100,7 +95,7 @@ export function AppFooter({ className }: { className?: string }) {
               : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
           )}
         >
-          <MousePointer2Icon className="size-3" />
+          <MousePointer2Icon className="size-3" aria-hidden="true" />
           <span>Ask Jarvis</span>
         </button>
       </div>

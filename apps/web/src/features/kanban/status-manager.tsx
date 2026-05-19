@@ -205,26 +205,23 @@ function SortableStatusRow({
         />
       )
 : (
-        <span
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           data-testid={`status-name-${id}`}
+          aria-label={`Rename ${name}`}
           onClick={() => setEditing(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              setEditing(true)
-            }
-          }}
-          className="flex-1 cursor-text text-[13px] text-foreground"
+          className="min-w-0 flex-1 cursor-text rounded-sm bg-transparent p-0 text-left text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {name}
-        </span>
+        </button>
       )}
 
       <button
+        type="button"
         data-testid={`status-delete-${id}`}
+        aria-label={`Delete ${name}`}
         onClick={onDelete}
-        className="text-muted-foreground/40 hover:text-destructive transition-colors"
+        className="flex size-6 items-center justify-center rounded-sm text-muted-foreground/40 transition-colors hover:text-destructive focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <TrashIcon className="size-3" />
       </button>

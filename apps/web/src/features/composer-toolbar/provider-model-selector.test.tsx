@@ -4,12 +4,13 @@
 // Output: Regression tests for provider-owned model lists in composer toolbar menus
 // Position: Composer Toolbar test guarding provider hover model ownership
 
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
+import { filterModelsBySearch } from './provider-model-menu'
 import { ProviderModelSelector } from './provider-model-selector'
 
 vi.mock('~/components/ui/button', () => ({
@@ -88,6 +89,10 @@ function model(input: Pick<ModelDescriptor, 'id' | 'label' | 'providerKind'> & {
 }
 
 describe('providerModelSelector', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   it('renders model lists by provider instead of reusing only the selected provider models', () => {
     const openaiProfile = profile({
       id: 'profile-openai',
@@ -142,6 +147,53 @@ describe('providerModelSelector', () => {
     expect(filterThinkingOptionsForModel(plainModel, THINKING_EFFORTS).map(option => option.value)).toEqual([null])
     expect(filterThinkingOptionsForModel(reasoningModel, THINKING_EFFORTS).map(option => option.value)).toEqual([null, 'low', 'medium', 'high'])
     expect(selectSupportedThinkingValue(plainModel, THINKING_EFFORTS, 'high', null)).toBeNull()
+  })
+
+  it('filters model search by trimmed label and id text', () => {
+    const models = [
+      model({ id: 'gpt-5.1', label: 'GPT 5.1', providerKind: 'openai-compatible' }),
+      model({ id: 'claude-opus-4.5', label: 'Claude Opus 4.5', providerKind: 'anthropic' }),
+    ]
+
+    expect(filterModelsBySearch(models, '  opus  ').map(item => item.id)).toEqual(['claude-opus-4.5'])
+    expect(filterModelsBySearch(models, 'GPT-5').map(item => item.id)).toEqual(['gpt-5.1'])
+    expect(filterModelsBySearch(models, 'gpt-5').map(item => item.id)).toEqual(['gpt-5.1'])
+  })
+
+  it('keeps matching models visible when search text has surrounding spaces', () => {
+    const openaiProfile = profile({
+      id: 'profile-openai',
+      name: 'OpenAI',
+      providerKind: 'openai-compatible',
+    })
+
+    render(
+      <ProviderModelSelector
+        profiles={[openaiProfile]}
+        selectedProfileId={openaiProfile.id}
+        selectedModelId="gpt-5.1"
+        models={[
+          model({ id: 'gpt-5.1', label: 'GPT 5.1', providerKind: 'openai-compatible' }),
+        ]}
+        modelsByProfileId={{
+          [openaiProfile.id]: [
+            model({ id: 'gpt-5.1', label: 'GPT 5.1', providerKind: 'openai-compatible' }),
+            model({ id: 'claude-opus-4.5', label: 'Claude Opus 4.5', providerKind: 'anthropic' }),
+          ],
+        }}
+        loadingProfileIds={new Set()}
+        thinkingEffort={null}
+        isLoadingModels={false}
+        onSelectProfile={vi.fn()}
+        onSelectModel={vi.fn()}
+        onSelectThinkingEffort={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Search models...'), { target: { value: '  opus  ' } })
+
+    expect(screen.getByText('Claude Opus 4.5')).toBeTruthy()
+    expect(screen.queryByText('No matching models')).toBeNull()
   })
 
   it('does not render a thinking submenu for models without reasoning support', () => {

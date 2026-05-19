@@ -8,21 +8,19 @@ import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
-const TOOL_LABEL_MAP: Record<string, string> = {
-  read_file: 'Reading',
-  write_file: 'Writing',
-  edit_file: 'Editing',
-  search: 'Searching',
-  grep: 'Grepping',
-  bash: 'Running',
-  shell: 'Running',
-  terminal: 'Running',
-}
+const TOOL_LABEL_PATTERNS: Array<readonly [RegExp, string]> = [
+  [/read_file/, 'Reading'],
+  [/write_file/, 'Writing'],
+  [/edit_file/, 'Editing'],
+  [/search/, 'Searching'],
+  [/grep/, 'Grepping'],
+  [/bash|shell|terminal/, 'Running'],
+]
 
 function getToolLabel(toolName: string): string {
   const lower = toolName.toLowerCase()
-  for (const [key, label] of Object.entries(TOOL_LABEL_MAP)) {
-    if (lower.includes(key)) return label
+  for (const [pattern, label] of TOOL_LABEL_PATTERNS) {
+    if (pattern.test(lower)) return label
   }
   return 'Using'
 }

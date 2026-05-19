@@ -263,7 +263,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
                   size="icon-xs"
                   disabled={!owner.canSend}
                   onClick={() => void owner.handleSend()}
-                  aria-label="发送"
+                  aria-label="Send message"
                 >
                   {owner.sending
                     ? <Loader2Icon className="size-3 animate-spin" aria-hidden="true" />

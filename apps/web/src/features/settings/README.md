@@ -14,3 +14,4 @@
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面
 - **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件
 - **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口
+- **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试

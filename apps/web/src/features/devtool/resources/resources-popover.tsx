@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import {
+  CircleAlertIcon,
   CpuIcon,
   MemoryStickIcon,
   MonitorIcon,
@@ -23,7 +24,7 @@ import { getServerUrl } from '~/lib/electron'
 const SERVER_BASE = getServerUrl()
 const REFRESH_INTERVAL_MS = 3000
 
-interface ServerHealth {
+export interface ServerHealth {
   memory: {
     heapUsed: number
     heapTotal: number
@@ -33,7 +34,7 @@ interface ServerHealth {
   uptime: number
 }
 
-interface PtyResourceItem {
+export interface PtyResourceItem {
   id: string
   role: 'cli-tui' | 'bottom-panel'
   pid: number
@@ -47,7 +48,7 @@ interface PtyResourceItem {
   descendantCount: number | null
 }
 
-interface PtyResources {
+export interface PtyResources {
   terminals: PtyResourceItem[]
   totals: {
     cliTuiRssMB: number
@@ -56,7 +57,13 @@ interface PtyResources {
   timestamp: number
 }
 
-interface ResourceSnapshot {
+interface RendererMemory {
+  heapUsed: number
+  heapTotal: number
+  heapLimit: number
+}
+
+export interface ResourceSnapshot {
   rendererHeapUsed: number
   rendererHeapTotal: number
   rendererHeapLimit: number
@@ -68,6 +75,15 @@ interface ResourceSnapshot {
   cliTuiRss: number
   bottomPanelRss: number
   terminals: PtyResourceItem[]
+  timestamp: number
+  updatedAtLabel: string
+  warnings: string[]
+}
+
+interface ResourceSnapshotInput {
+  renderer: RendererMemory
+  server: ServerHealth | null
+  pty: PtyResources | null
   timestamp: number
 }
 
@@ -83,7 +99,7 @@ function formatMemoryLabel(mb: number): string {
   return `${Math.round(mb)} MB`
 }
 
-function readRendererMemory() {
+function readRendererMemory(): RendererMemory {
   if (typeof performance === 'undefined' || !('memory' in performance)) {
     return {
       heapUsed: 0,
@@ -102,6 +118,44 @@ function readRendererMemory() {
     heapUsed: memory.usedJSHeapSize ?? 0,
     heapTotal: memory.totalJSHeapSize ?? 0,
     heapLimit: memory.jsHeapSizeLimit ?? 0
+  }
+}
+
+function formatTimestampLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString('en-US', { hour12: false })
+}
+
+export function createResourceSnapshot({
+  renderer,
+  server,
+  pty,
+  timestamp
+}: ResourceSnapshotInput): ResourceSnapshot {
+  const mbToBytes = (mb: number) => mb * 1024 * 1024
+  const warnings: string[] = []
+
+  if (!server) {
+    warnings.push('Server metrics unavailable')
+  }
+  if (!pty) {
+    warnings.push('Terminal resource metrics unavailable')
+  }
+
+  return {
+    rendererHeapUsed: renderer.heapUsed,
+    rendererHeapTotal: renderer.heapTotal,
+    rendererHeapLimit: renderer.heapLimit,
+    serverRss: server ? mbToBytes(server.memory.rss) : 0,
+    serverHeapUsed: server ? mbToBytes(server.memory.heapUsed) : 0,
+    serverHeapTotal: server ? mbToBytes(server.memory.heapTotal) : 0,
+    serverExternal: server ? mbToBytes(server.memory.external) : 0,
+    serverUptime: server?.uptime ?? 0,
+    cliTuiRss: pty ? mbToBytes(pty.totals.cliTuiRssMB) : 0,
+    bottomPanelRss: pty ? mbToBytes(pty.totals.bottomPanelRssMB) : 0,
+    terminals: pty?.terminals ?? [],
+    timestamp,
+    updatedAtLabel: formatTimestampLabel(timestamp),
+    warnings
   }
 }
 
@@ -202,6 +256,14 @@ function ResourceGroup({
   )
 }
 
+async function readJson<T>(url: string): Promise<T> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`)
+  }
+  return response.json() as Promise<T>
+}
+
 function useResourceSnapshot() {
   const [snap, setSnap] = useState<ResourceSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
@@ -212,36 +274,22 @@ function useResourceSnapshot() {
     setLoading(true)
     try {
       const [healthRes, ptyRes] = await Promise.allSettled([
-        fetch(`${SERVER_BASE}/health`).then((r) => r.json() as Promise<ServerHealth>),
-        fetch(`${SERVER_BASE}/terminal-sessions/resources`).then(
-          (r) => r.json() as Promise<PtyResources>
-        )
+        readJson<ServerHealth>(`${SERVER_BASE}/health`),
+        readJson<PtyResources>(`${SERVER_BASE}/terminal-sessions/resources`)
       ])
 
-      if (requestId !== requestRef.current) {
-        return
+      if (requestId === requestRef.current) {
+        const server = healthRes.status === 'fulfilled' ? healthRes.value : null
+        const pty = ptyRes.status === 'fulfilled' ? ptyRes.value : null
+        const renderer = readRendererMemory()
+
+        setSnap(createResourceSnapshot({
+          renderer,
+          server,
+          pty,
+          timestamp: Date.now()
+        }))
       }
-
-      // /health returns memory already in MB
-      const server = healthRes.status === 'fulfilled' ? healthRes.value : null
-      const pty = ptyRes.status === 'fulfilled' ? ptyRes.value : null
-      const renderer = readRendererMemory()
-      const mbToBytes = (mb: number) => mb * 1024 * 1024
-
-      setSnap({
-        rendererHeapUsed: renderer.heapUsed,
-        rendererHeapTotal: renderer.heapTotal,
-        rendererHeapLimit: renderer.heapLimit,
-        serverRss: server ? mbToBytes(server.memory.rss) : 0,
-        serverHeapUsed: server ? mbToBytes(server.memory.heapUsed) : 0,
-        serverHeapTotal: server ? mbToBytes(server.memory.heapTotal) : 0,
-        serverExternal: server ? mbToBytes(server.memory.external) : 0,
-        serverUptime: server?.uptime ?? 0,
-        cliTuiRss: pty ? mbToBytes(pty.totals.cliTuiRssMB) : 0,
-        bottomPanelRss: pty ? mbToBytes(pty.totals.bottomPanelRssMB) : 0,
-        terminals: pty?.terminals ?? [],
-        timestamp: Date.now()
-      })
     } finally {
       if (requestId === requestRef.current) {
         setLoading(false)
@@ -285,9 +333,10 @@ export function ResourcesPopover() {
           variant="ghost"
           size="sm"
           className="h-5 gap-1 px-1.5 text-[11px] text-muted-foreground font-normal tabular-nums hover:text-foreground active:scale-[0.96] transition-transform"
+          aria-label={`Resources: ${triggerLabel}`}
           title="Resources"
         >
-          <CpuIcon />
+          <CpuIcon aria-hidden="true" />
           {triggerLabel}
         </Button>
       </PopoverTrigger>
@@ -301,9 +350,10 @@ export function ResourcesPopover() {
             className="text-muted-foreground"
             onClick={() => void refresh()}
             disabled={loading}
+            aria-label="Refresh resources"
             title="Refresh"
           >
-            <RefreshCwIcon className={loading ? 'animate-spin' : ''} />
+            <RefreshCwIcon className={cn(loading && 'animate-spin')} aria-hidden="true" />
           </Button>
         </div>
 
@@ -343,6 +393,17 @@ export function ResourcesPopover() {
 
         {/* Process breakdown */}
         <div className="px-3 py-2">
+          {snap && snap.warnings.length > 0 && (
+            <div
+              role="status"
+              data-testid="resources-warning"
+              className="mb-2 flex items-start gap-2 rounded-md bg-warning/8 px-2 py-1.5 text-[11px] leading-snug text-warning"
+            >
+              <CircleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+              <span>{snap.warnings.join('. ')}</span>
+            </div>
+          )}
+
           <ResourceGroup
             icon={<MonitorIcon className="size-3.5" />}
             label="Renderer"
@@ -450,11 +511,11 @@ export function ResourcesPopover() {
             <span
               className={cn('inline-flex items-center gap-1', loading && 'text-muted-foreground')}
             >
-              <RefreshCwIcon className={cn('size-3', loading && 'animate-spin')} />
+              <RefreshCwIcon className={cn('size-3', loading && 'animate-spin')} aria-hidden="true" />
               Live
             </span>
             <span>
-              Updated {new Date(snap.timestamp).toLocaleTimeString('en-US', { hour12: false })}
+              Updated {snap.updatedAtLabel}
             </span>
           </div>
         )}
@@ -473,5 +534,5 @@ function formatUptime(seconds: number): string {
 }
 
 function basename(path: string): string {
-  return path.split('/').pop() || path
+  return path.split(/[\\/]/).pop() || path
 }

@@ -31,6 +31,7 @@ import {
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { Spinner } from '~/components/ui/spinner'
+import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import type { ThreadSearchHit } from '~/lib/types'
@@ -39,6 +40,7 @@ import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { HighlightedText } from './highlighted-text'
+import { selectFileSearchResult } from './global-search-actions'
 import { groupHitsByWorkspace } from './thread-search-groups'
 import { useThreadSearch } from './use-thread-search'
 
@@ -165,7 +167,7 @@ function useFileSearch(query: string, enabled: boolean) {
 
   const workspaceId = session?.workspaceId ?? null
 
-  const { data: files = [] } = useQuery({
+  const { data: files = [], isFetching } = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesByIdFiles({ path: { id: workspaceId! } })
@@ -186,7 +188,11 @@ function useFileSearch(query: string, enabled: boolean) {
       .slice(0, 10)
   }, [enabled, trimmed, files])
 
-  return { files: filtered, workspaceId }
+  return {
+    files: filtered,
+    workspaceId,
+    isPending: enabled && !!trimmed && !!workspaceId && isFetching,
+  }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -209,7 +215,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
   // Search sources
   const { hits: threadHits, isPending: threadsPending } = useThreadSearch({ query, enabled: open })
   const { issues, isPending: issuesPending } = useIssueSearch(query, open)
-  const { files } = useFileSearch(query, open)
+  const { files, workspaceId: fileWorkspaceId, isPending: filesPending } = useFileSearch(query, open)
 
   const threadGroups = useMemo(() => groupHitsByWorkspace(threadHits), [threadHits])
 
@@ -223,8 +229,23 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
       c.label.toLowerCase().includes(q) || c.keywords.toLowerCase().includes(q))
   }, [commands, hasQuery, trimmed])
 
-  const isPending = threadsPending || issuesPending
+  const isPending = threadsPending || issuesPending || filesPending
   const hasResults = threadHits.length > 0 || issues.length > 0 || files.length > 0 || filteredCommands.length > 0
+
+  const handleSelectFile = useCallback((filePath: string) => {
+    if (!fileWorkspaceId) {
+      return
+    }
+
+    void selectFileSearchResult({
+      workspaceId: fileWorkspaceId,
+      filePath,
+      openTab,
+      close,
+      writeText: navigator.clipboard?.writeText?.bind(navigator.clipboard),
+      notify: notification => toastManager.add(notification),
+    })
+  }, [close, fileWorkspaceId, openTab])
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} className="max-w-2xl">
@@ -352,8 +373,9 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                     <CommandItem
                       key={file.path}
                       value={`file-${file.path}`}
-                      onSelect={close}
+                      onSelect={() => handleSelectFile(file.path)}
                       className="flex items-center gap-2.5 px-2.5 py-1.5"
+                      data-testid={`global-search-file-result-${file.path}`}
                     >
                       <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>

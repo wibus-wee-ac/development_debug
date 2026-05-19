@@ -1,3 +1,7 @@
+// Input: Current issue, optional status, and issue detail action callbacks
+// Output: IssueHeader component for navigation, breadcrumbs, and destructive issue actions
+// Position: Kanban issue detail header subview
+
 import { ArrowLeftIcon, ChevronRightIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
@@ -21,8 +25,9 @@ export function IssueHeader({ issue, status, onBack, onDelete }: IssueHeaderProp
         onClick={onBack}
         className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-fill hover:text-foreground transition-colors shrink-0"
         data-testid="issue-detail-close-btn"
+        aria-label="Back to board"
       >
-        <ArrowLeftIcon className="size-4" />
+        <ArrowLeftIcon className="size-4" aria-hidden="true" />
       </button>
 
       {/* Breadcrumb: Status → Issue title */}
@@ -45,8 +50,9 @@ export function IssueHeader({ issue, status, onBack, onDelete }: IssueHeaderProp
         <MenuTrigger
           className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-fill hover:text-foreground transition-colors shrink-0"
           data-testid="issue-detail-menu-trigger"
+          aria-label="Issue actions"
         >
-          <MoreHorizontalIcon className="size-4" />
+          <MoreHorizontalIcon className="size-4" aria-hidden="true" />
         </MenuTrigger>
         <MenuPopup>
           <MenuItem
@@ -54,7 +60,7 @@ export function IssueHeader({ issue, status, onBack, onDelete }: IssueHeaderProp
             className="text-red-500"
             data-testid="issue-detail-delete-issue"
           >
-            <TrashIcon className="size-3.5 mr-2" />
+            <TrashIcon className="size-3.5 mr-2" aria-hidden="true" />
             Delete issue
           </MenuItem>
         </MenuPopup>

@@ -139,9 +139,10 @@ export function PluginsPanel() {
                 type="button"
                 onClick={() => void cmd.execute()}
                 className="rounded border border-border px-1 py-0.5 text-muted-foreground hover:bg-fill hover:text-foreground"
+                aria-label={`Execute ${cmd.title}`}
                 title="Execute command"
               >
-                ▶
+                <span aria-hidden="true">▶</span>
               </button>
               <span className="text-foreground">{cmd.title}</span>
               <span className="text-muted-foreground">{cmd.localId}</span>
@@ -309,9 +310,10 @@ function PluginListItem({
                     type="button"
                     onClick={() => void cmd.execute()}
                     className="rounded border border-border px-1 py-0.5 text-muted-foreground hover:bg-fill hover:text-foreground"
+                    aria-label={`Execute ${cmd.title}`}
                     title="Execute command"
                   >
-                    ▶
+                    <span aria-hidden="true">▶</span>
                   </button>
                   <span className="text-foreground">{cmd.title}</span>
                   <span className="text-muted-foreground">{cmd.localId}</span>

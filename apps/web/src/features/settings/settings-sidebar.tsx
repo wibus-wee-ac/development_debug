@@ -36,8 +36,9 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
           variant="ghost"
           size="icon-xs"
           onClick={onClose}
+          aria-label="Close settings"
         >
-          <ArrowLeftIcon />
+          <ArrowLeftIcon aria-hidden="true" />
         </Button>
         <span className="text-xs font-medium text-foreground select-none">设置</span>
       </div>

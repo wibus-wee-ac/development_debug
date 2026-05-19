@@ -49,19 +49,14 @@ export function KanbanListRow({ issue, statuses, milestones, displayProperties, 
 
   return (
     <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={onClick}>
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        aria-label={`Open issue ${issue.title}`}
         onClick={onClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            onClick()
-          }
-        }}
         onMouseEnter={() => onHover?.(issue.id)}
         onMouseLeave={() => onHover?.(null)}
         className={cn(
-          'group/row relative flex items-center gap-2 px-3 h-9 text-[13px] cursor-pointer rounded-md',
+          'group/row relative flex w-full items-center gap-2 px-3 h-9 text-left text-[13px] cursor-pointer rounded-md',
           'transition-colors duration-100 ease-out',
           'first:mt-1',
           selected ? 'bg-muted' : 'hover:bg-muted',
@@ -127,7 +122,7 @@ export function KanbanListRow({ issue, statuses, milestones, displayProperties, 
             </span>
           )}
         </span>
-      </div>
+      </button>
     </IssueContextMenu>
   )
 }

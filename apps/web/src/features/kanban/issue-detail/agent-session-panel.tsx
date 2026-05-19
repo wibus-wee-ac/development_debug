@@ -1,3 +1,7 @@
+// Input: Issue id, workspace id, agent session hooks, and activity rendering components
+// Output: AgentSessionPanel component for issue-scoped agent session controls and activity
+// Position: Kanban issue detail subview for delegated agent session interaction
+
 import { Link } from '@cradle/tabs-next'
 import { ExternalLinkIcon, SquareIcon } from 'lucide-react'
 import { useMemo } from 'react'
@@ -69,7 +73,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
               className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               onClick={() => stopSession.mutate({ agentSessionId: activeSession.id, issueId })}
             >
-              <SquareIcon className="size-3" />
+              <SquareIcon className="size-3" aria-hidden="true" />
               Stop
             </button>
           )}
@@ -94,7 +98,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
               className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               data-testid="issue-agent-session-open-chat"
             >
-              <ExternalLinkIcon className="size-3" />
+              <ExternalLinkIcon className="size-3" aria-hidden="true" />
               Open Chat
             </Link>
           )}

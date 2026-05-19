@@ -24,6 +24,7 @@ export function KanbanGroupHeader({ name, count, category, collapsed, onToggle, 
     <div className="group/header flex items-center h-8 px-2 gap-1.5 bg-muted/60 rounded-lg">
       <button
         onClick={onToggle}
+        aria-expanded={!collapsed}
         className={cn(
           'flex flex-1 items-center gap-1.5 h-full text-[12px] font-medium text-muted-foreground',
           'hover:text-foreground transition-colors duration-150',
@@ -34,7 +35,7 @@ export function KanbanGroupHeader({ name, count, category, collapsed, onToggle, 
           transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
           className="flex items-center text-muted-foreground"
         >
-          <ChevronRightIcon className="size-3" />
+          <ChevronRightIcon className="size-3" aria-hidden="true" />
         </m.span>
         {category && <StatusIcon category={category} size={14} />}
         <span>{name}</span>
@@ -46,13 +47,14 @@ export function KanbanGroupHeader({ name, count, category, collapsed, onToggle, 
       {onCreateIssue && (
         <button
           onClick={onCreateIssue}
+          aria-label={`Create issue in ${name}`}
           className={cn(
             'flex size-5 items-center justify-center rounded text-muted-foreground',
-            'opacity-0 group-hover/header:opacity-100',
+            'opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100',
             'hover:bg-muted hover:text-foreground transition-all duration-150',
           )}
         >
-          <PlusIcon className="size-3" />
+          <PlusIcon className="size-3" aria-hidden="true" />
         </button>
       )}
     </div>

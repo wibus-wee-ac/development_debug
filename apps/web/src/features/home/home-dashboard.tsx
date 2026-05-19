@@ -24,6 +24,7 @@ import { postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
+import { cn } from '~/lib/cn'
 import type { Session, Workspace } from '~/lib/types'
 
 // ── Mock data for backend-unsupported features ────────────────────────────────
@@ -166,7 +167,7 @@ function ActivityCard({ kind, title, meta, onClick, to, params }: ActivityCardPr
 
   const content = (
     <>
-      <div className={`relative flex h-14 w-full items-center justify-center ${theme.bg}`}>
+      <div className={cn('relative flex h-14 w-full items-center justify-center', theme.bg)}>
         {theme.icon}
       </div>
       <div className="flex flex-col gap-0.5 px-2.5 py-2 bg-background">

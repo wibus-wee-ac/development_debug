@@ -222,47 +222,43 @@ export function BrowserPanel() {
       {/* Tab bar */}
       <div className="flex items-center gap-0.5 px-2 py-1 shrink-0 border-b border-border/30 bg-card">
         {tabs.map(tab => (
-          <button
+          <div
             key={tab.id}
-            type="button"
             className={cn(
-              'group flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] max-w-40 transition-colors active:scale-[0.96]',
+              'group flex max-w-40 items-center rounded-md text-[11px] transition-colors',
               tab.id === activeTabId
                 ? 'bg-foreground/5 text-foreground'
                 : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/4',
             )}
-            onClick={() => setActiveTab(tab.id)}
           >
-            {tab.loading && <span className="size-1.5 rounded-full bg-primary animate-pulse shrink-0" />}
-            {!tab.loading && tab.favicon && (
-              <img src={tab.favicon} alt="" className="size-3 shrink-0 rounded-sm" />
-            )}
-            <span className="truncate">{tab.title || tab.url || 'New Tab'}</span>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation()
-                closeTab(tab.id)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.stopPropagation()
-                  closeTab(tab.id)
-                }
-              }}
-              className="opacity-0 group-hover:opacity-100 hover:text-foreground shrink-0 ml-0.5"
+            <button
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-l-md py-1 pl-2.5 pr-1 text-left transition-transform active:scale-[0.96]"
+              aria-current={tab.id === activeTabId ? 'page' : undefined}
+            >
+              {tab.loading && <span className="size-1.5 rounded-full bg-primary animate-pulse shrink-0" />}
+              {!tab.loading && tab.favicon && (
+                <img src={tab.favicon} alt="" className="size-3 shrink-0 rounded-sm" />
+              )}
+              <span className="truncate">{tab.title || tab.url || 'New Tab'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => closeTab(tab.id)}
+              aria-label={`Close ${tab.title || tab.url || 'browser tab'}`}
+              className="mr-0.5 flex size-6 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
             >
               <XIcon className="size-2.5" />
-            </span>
-          </button>
+            </button>
+          </div>
         ))}
         <button
           type="button"
           onClick={handleNewTab}
           disabled={tabs.length >= MAX_TABS}
           aria-label="New browser tab"
-          className="p-0.5 text-muted-foreground/40 hover:text-foreground rounded-full hover:bg-foreground/4 transition-colors active:scale-95 ml-0.5 disabled:opacity-20"
+          className="ml-0.5 flex size-6 items-center justify-center rounded-full text-muted-foreground/40 transition-colors hover:bg-foreground/4 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20"
         >
           <PlusIcon className="size-3" />
         </button>
@@ -271,13 +267,13 @@ export function BrowserPanel() {
       {/* Navigation bar */}
       <div className="flex items-center gap-2 px-2 py-1.5 shrink-0 border-b border-border/50 bg-card">
         <div className="flex items-center gap-0.5 shrink-0">
-          <button type="button" onClick={handleGoBack} disabled={!activeTab?.canGoBack} aria-label="Go back" className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 disabled:opacity-20 disabled:hover:bg-transparent transition-colors active:scale-95">
+          <button type="button" onClick={handleGoBack} disabled={!activeTab?.canGoBack} aria-label="Go back" className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent">
             <ArrowLeftIcon className="size-3.5" />
           </button>
-          <button type="button" onClick={handleGoForward} disabled={!activeTab?.canGoForward} aria-label="Go forward" className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 disabled:opacity-20 disabled:hover:bg-transparent transition-colors active:scale-95">
+          <button type="button" onClick={handleGoForward} disabled={!activeTab?.canGoForward} aria-label="Go forward" className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent">
             <ArrowRightIcon className="size-3.5" />
           </button>
-          <button type="button" onClick={handleReload} aria-label="Reload page" className="p-1 rounded-md text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5 transition-colors active:scale-95">
+          <button type="button" onClick={handleReload} aria-label="Reload page" className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95">
             <RefreshCwIcon className="size-3.5" />
           </button>
         </div>

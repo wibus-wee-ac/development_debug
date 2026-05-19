@@ -1,3 +1,7 @@
+// Input: Agent session id/status, prompt text, query client, and server URL
+// Output: AgentPromptInput component for sending follow-up prompts to an issue agent session
+// Position: Issue detail subview used by AgentSessionPanel
+
 import { useQueryClient } from '@tanstack/react-query'
 import { SendIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -85,8 +89,9 @@ export function AgentPromptInput({ agentSessionId, sessionStatus, issueId: _issu
           className="flex size-7 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30"
           disabled={isAgentBusy || isSending || !text.trim()}
           onClick={handleSubmit}
+          aria-label="Send prompt"
         >
-          <SendIcon className="size-3.5" />
+          <SendIcon className="size-3.5" aria-hidden="true" />
         </button>
       </div>
     </div>

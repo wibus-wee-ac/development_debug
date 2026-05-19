@@ -40,6 +40,7 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
     id: issue.id,
     data: { issue },
   })
+  const { role: _draggableRole, tabIndex: _draggableTabIndex, ...draggableAttributes } = attributes
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -54,26 +55,20 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
       onMouseLeave={() => onHover?.(null)}
     >
       <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={onClick}>
-        <div
+        <button
+          type="button"
           ref={setNodeRef}
           style={style}
-          {...attributes}
+          {...draggableAttributes}
           {...listeners}
-          role="button"
-          tabIndex={0}
+          aria-label={`Open issue ${issue.title}`}
           onClick={(e) => {
             e.stopPropagation()
             onClick()
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.stopPropagation()
-              onClick()
-            }
-          }}
           data-testid={`issue-card-${issue.id}`}
           className={cn(
-            'bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border/80',
+            'w-full bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border/80 text-left',
             'flex flex-col gap-1',
             'shadow-[var(--shadow-xs)]',
             'transition-[transform,box-shadow,border-color,background-color] duration-150 ease-out',
@@ -83,7 +78,7 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
           )}
         >
 
-          <div className="flex justify-between">
+          <span className="flex justify-between">
             {displayProperties.id && (
               <span className="text-[10.5px] text-muted-foreground tabular-nums">
                 {formatIssueId(issue, workspaces)}
@@ -95,20 +90,20 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
                 ? <AssigneeAvatar name={issue.assigneeId} size={18} />
                 : <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground" />
             )}
-          </div>
+          </span>
 
-          <div className="flex items-start gap-2">
+          <span className="flex items-start gap-2">
             {displayProperties.status && category && (
               <span className="mt-1 shrink-0">
                 <StatusIcon category={category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={16} />
               </span>
             )}
-            <p className="text-[13px] font-medium text-foreground leading-snug tracking-tight text-balance">
+            <span className="text-[13px] font-medium text-foreground leading-snug tracking-tight text-balance">
               {issue.title}
-            </p>
-          </div>
+            </span>
+          </span>
 
-          <div className="flex items-center gap-2 mt-2.5 text-muted-foreground">
+          <span className="flex items-center gap-2 mt-2.5 text-muted-foreground">
             {displayProperties.priority && issue.priority !== 'none' && (
               <span className="flex items-center gap-1 text-[11px]">
                 <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
@@ -117,7 +112,7 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
             )}
 
             {displayProperties.labels && labels.length > 0 && (
-              <div className="flex items-center gap-1">
+              <span className="flex items-center gap-1">
                 {labels.slice(0, 2).map(l => <LabelChip key={l} label={l} />)}
                 {labels.length > 2 && (
                   <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -125,10 +120,10 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
                     {labels.length - 2}
                   </span>
                 )}
-              </div>
+              </span>
             )}
-          </div>
-        </div>
+          </span>
+        </button>
       </IssueContextMenu>
     </div>
   )

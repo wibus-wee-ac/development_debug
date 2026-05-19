@@ -1,5 +1,33 @@
 import type { SystemAgentContext } from './context-schema'
 
+const RE_CONTEXT_TAG = /<\/?cradle_context>/gi
+const RE_WHITESPACE = /\s+/g
+
+function contextValue(value: string): string {
+  return value
+    .replace(RE_CONTEXT_TAG, tag => tag.replaceAll('<', '[').replaceAll('>', ']'))
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replace(RE_WHITESPACE, ' ')
+    .trim()
+}
+
+function getOtherTabLabels(ctx: SystemAgentContext): string[] {
+  let activeSkipped = false
+  return ctx.openTabs.flatMap((tab) => {
+    if (
+      ctx.activeTab
+      && !activeSkipped
+      && tab.type === ctx.activeTab.type
+      && tab.label === ctx.activeTab.label
+    ) {
+      activeSkipped = true
+      return []
+    }
+    return [contextValue(tab.label || tab.type)]
+  })
+}
+
 /**
  * Formats a SystemAgentContext snapshot into a concise text block
  * that gets prepended to the user message for agent awareness.
@@ -14,12 +42,12 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
 
   // Active tab
   if (ctx.activeTab) {
-    const tabDesc = ctx.activeTab.label || ctx.activeTab.type
-    lines.push(`viewing: ${tabDesc} (${ctx.activeTab.type})`)
+    const tabDesc = contextValue(ctx.activeTab.label || ctx.activeTab.type)
+    lines.push(`viewing: ${tabDesc} (${contextValue(ctx.activeTab.type)})`)
     if (Object.keys(ctx.activeTab.params).length > 0) {
       const params = Object.entries(ctx.activeTab.params)
         .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => `${k}=${v}`)
+        .map(([k, v]) => `${contextValue(k)}=${contextValue(v!)}`)
         .join(', ')
       if (params) {
         lines.push(`  params: ${params}`)
@@ -32,9 +60,7 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
 
   // Open tabs summary
   if (ctx.openTabs.length > 1) {
-    const others = ctx.openTabs
-      .filter(t => t.label !== ctx.activeTab?.label)
-      .map(t => t.label || t.type)
+    const others = getOtherTabLabels(ctx)
     if (others.length > 0) {
       lines.push(`other tabs: ${others.join(', ')}`)
     }
@@ -43,11 +69,11 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
   // Chat context
   if (ctx.chatContext) {
     const { sessionId, status, messageCount, recentMessages } = ctx.chatContext
-    lines.push(`chat: session=${sessionId} status=${status} messages=${messageCount}`)
+    lines.push(`chat: session=${contextValue(sessionId)} status=${contextValue(status)} messages=${messageCount}`)
     if (recentMessages.length > 0) {
       const last = recentMessages.at(-1)
       if (last) {
-        lines.push(`  last msg: [${last.role}] ${last.contentPreview}`)
+        lines.push(`  last msg: [${contextValue(last.role)}] ${contextValue(last.contentPreview)}`)
       }
     }
   }
@@ -55,10 +81,13 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
   // Layout awareness (only notable states)
   const layout: string[] = []
   if (ctx.layout.settingsTabId) {
-    layout.push(`in settings (${ctx.layout.settingsSection})`)
+    layout.push(`in settings (${contextValue(ctx.layout.settingsSection)})`)
   }
   if (ctx.layout.asideOpen) {
-    layout.push(`aside open (${ctx.layout.asideActiveTab})`)
+    layout.push(`aside open (${contextValue(ctx.layout.asideActiveTab)})`)
+  }
+  if (ctx.layout.bottomPanelOpen) {
+    layout.push('bottom panel open')
   }
   if (ctx.layout.sidebarCollapsed) {
     layout.push('sidebar collapsed')
@@ -74,7 +103,7 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
 
   // Profile
   if (ctx.activeProfileId) {
-    lines.push(`profile: ${ctx.activeProfileId}`)
+    lines.push(`profile: ${contextValue(ctx.activeProfileId)}`)
   }
 
   return `<cradle_context>\n${lines.join('\n')}\n</cradle_context>`

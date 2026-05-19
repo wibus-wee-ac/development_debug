@@ -5,7 +5,9 @@
 import { useEffect, useState } from 'react'
 
 import { getUsageCostDaily, getUsageCostSummary, getUsageDaily, getUsageStats, getUsageSummary } from '~/api-gen/sdk.gen'
+import { cn } from '~/lib/cn'
 
+import { formatTokens, formatUsd } from './usage-format'
 import { UsageHeatmap } from './usage-heatmap'
 
 interface DailyUsage {
@@ -56,23 +58,6 @@ interface DailyCost {
   completionTokens: number
   totalTokens: number
   stepCount: number
-}
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`
-  }
-  if (n >= 1_000) {
-    return `${(n / 1_000).toFixed(1)}K`
-  }
-  return n.toString()
-}
-
-function formatUsd(n: number): string {
-  if (n < 0.01 && n > 0) {
-    return `$${n.toFixed(4)}`
-  }
-  return `$${n.toFixed(2)}`
 }
 
 /** Tiny SVG sparkline for the last 30 days */
@@ -200,7 +185,15 @@ export function UsageDashboard() {
                   <p className="text-[11px] text-muted-foreground mt-0.5">estimated cost</p>
                 </>
               )}
-              <p className={`${costSummary && costSummary.totalCostUsd > 0 ? 'text-lg mt-2' : 'text-3xl'} font-semibold tabular-nums text-foreground`} data-testid="usage-total-tokens">{formatTokens(summary!.totalTokens)}</p>
+              <p
+                className={cn(
+                  'font-semibold tabular-nums text-foreground',
+                  costSummary && costSummary.totalCostUsd > 0 ? 'mt-2 text-lg' : 'text-3xl',
+                )}
+                data-testid="usage-total-tokens"
+              >
+                {formatTokens(summary!.totalTokens)}
+              </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">total tokens</p>
             </div>
           </div>
@@ -273,9 +266,23 @@ export function UsageDashboard() {
 
 function Pill({ label, value, dataTestId, accent }: { label: string, value: string, dataTestId?: string, accent?: boolean }) {
   return (
-    <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 ${accent ? 'border-accent/40 bg-accent/5' : 'border-border/40'}`} data-testid={dataTestId}>
+    <div
+      className={cn(
+        'flex items-center gap-1.5 rounded-full border px-3 py-1',
+        accent ? 'border-accent/40 bg-accent/5' : 'border-border/40',
+      )}
+      data-testid={dataTestId}
+    >
       <span className="text-[10px] text-muted-foreground" data-testid={dataTestId ? `${dataTestId}-label` : undefined}>{label}</span>
-      <span className={`text-xs font-medium tabular-nums ${accent ? 'text-accent-foreground' : 'text-foreground'}`} data-testid={dataTestId ? `${dataTestId}-value` : undefined}>{value}</span>
+      <span
+        className={cn(
+          'text-xs font-medium tabular-nums',
+          accent ? 'text-accent-foreground' : 'text-foreground',
+        )}
+        data-testid={dataTestId ? `${dataTestId}-value` : undefined}
+      >
+        {value}
+      </span>
     </div>
   )
 }

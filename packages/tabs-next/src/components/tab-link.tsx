@@ -6,6 +6,8 @@ import { useTabNavigation } from '../hooks/use-tab-navigation'
 import type { TabParams } from '../types'
 import { buildHash } from '../url-sync'
 
+const EMPTY_TAB_PARAMS: TabParams = {}
+
 export interface LinkProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> {
   /** Target tab type (route id) */
   to: string
@@ -16,7 +18,7 @@ export interface LinkProps extends Omit<React.AnchorHTMLAttributes<HTMLAnchorEle
   children: ReactNode
 }
 
-export function Link({ to, params = {}, newTab, children, onClick, ...rest }: LinkProps) {
+export function Link({ to, params = EMPTY_TAB_PARAMS, newTab, children, onClick, ...rest }: LinkProps) {
   const { registry } = useTabsContext()
   const { navigateInTab, openInNewTab } = useTabNavigation()
 
@@ -25,7 +27,7 @@ export function Link({ to, params = {}, newTab, children, onClick, ...rest }: Li
     [registry, to, params],
   )
 
-  const handleClick = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
+  const navigateFromPrimaryActivation = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(e)
     if (e.defaultPrevented) {
       return
@@ -42,7 +44,7 @@ export function Link({ to, params = {}, newTab, children, onClick, ...rest }: Li
     }
   }, [onClick, newTab, to, params, openInNewTab, navigateInTab])
 
-  const handleAuxClick = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
+  const openMiddleClickInNewTab = useCallback((e: MouseEvent<HTMLAnchorElement>) => {
     if (e.button === 1) {
       e.preventDefault()
       openInNewTab(to, params)
@@ -50,7 +52,7 @@ export function Link({ to, params = {}, newTab, children, onClick, ...rest }: Li
   }, [to, params, openInNewTab])
 
   return (
-    <a href={href} onClick={handleClick} onAuxClick={handleAuxClick} {...rest}>
+    <a href={href} onClick={navigateFromPrimaryActivation} onAuxClick={openMiddleClickInNewTab} {...rest}>
       {children}
     </a>
   )

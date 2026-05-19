@@ -140,10 +140,10 @@ function BranchPickerCreatePanel({
           size="icon-xs"
           onClick={onCancel}
           className="shrink-0 text-muted-foreground"
-          aria-label="取消"
+          aria-label="Cancel branch creation"
           data-testid="git-branch-create-cancel"
         >
-          <XIcon className="size-3.5" />
+          <XIcon className="size-3.5" aria-hidden="true" />
         </Button>
       </div>
 
@@ -220,13 +220,14 @@ function BranchPickerListPanel({
         <Button
           variant="ghost"
           size="icon-xs"
+          aria-label="Fetch branches"
           title="fetch --all --prune"
           onClick={() => { void onFetch() }}
           disabled={fetching}
           className="shrink-0"
           data-testid="git-branch-fetch"
         >
-          <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} />
+          <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} aria-hidden="true" />
         </Button>
       </div>
 

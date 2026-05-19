@@ -92,29 +92,33 @@ export function KanbanToolbar({
         <DisplayPopover config={config} setConfig={setConfig} />
 
         {onCreateIssue && (
-          <ToolbarPill onClick={onCreateIssue} data-testid="kanban-create-issue-btn">
-            <PlusIcon className="size-3.5" />
+          <ToolbarPill onClick={onCreateIssue} data-testid="kanban-create-issue-btn" aria-label="Create issue">
+            <PlusIcon className="size-3.5" aria-hidden="true" />
           </ToolbarPill>
         )}
 
         <div className="flex items-center gap-0.5 ml-1 rounded-full border border-border p-0.5">
           <button
             onClick={() => setConfig({ layout: 'board' })}
+            aria-label="Board layout"
+            aria-pressed={config.layout === 'board'}
             className={cn(
               'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
               config.layout === 'board' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            <ColumnsIcon className="size-3.5" />
+            <ColumnsIcon className="size-3.5" aria-hidden="true" />
           </button>
           <button
             onClick={() => setConfig({ layout: 'list' })}
+            aria-label="List layout"
+            aria-pressed={config.layout === 'list'}
             className={cn(
               'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
               config.layout === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            <ListIcon className="size-3.5" />
+            <ListIcon className="size-3.5" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -134,8 +138,8 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <ToolbarPill active={hasFilter} data-testid="kanban-filter-btn">
-          <FilterIcon className="size-3.5" />
+        <ToolbarPill active={hasFilter} data-testid="kanban-filter-btn" aria-label="Filter issues">
+          <FilterIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-0">
@@ -144,8 +148,13 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
             <p className="text-[12px] font-medium text-muted-foreground mb-1.5">优先级</p>
             <div className="space-y-1">
               {priorities.map(p => (
-                <label key={p} className="flex items-center gap-2 text-[13px] cursor-pointer">
+                <label
+                  key={p}
+                  htmlFor={`kanban-filter-priority-${p}`}
+                  className="flex items-center gap-2 text-[13px] cursor-pointer"
+                >
                   <Checkbox
+                    id={`kanban-filter-priority-${p}`}
                     checked={selectedPriorities.includes(p)}
                     onCheckedChange={(checked) => {
                       const next = checked
@@ -160,8 +169,9 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
             </div>
           </div>
           <div>
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+            <label htmlFor="kanban-filter-delegated" className="flex items-center gap-2 text-[13px] cursor-pointer">
               <Checkbox
+                id="kanban-filter-delegated"
                 checked={filter.isDelegated === true}
                 onCheckedChange={(checked) => {
                   setFilter({ isDelegated: checked ? true : null })
@@ -193,8 +203,8 @@ function GroupByDropdown({ config, setConfig }: { config: ViewConfig, setConfig:
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ToolbarPill data-testid="kanban-group-btn">
-          <GroupIcon className="size-3.5" />
+        <ToolbarPill data-testid="kanban-group-btn" aria-label="Group issues">
+          <GroupIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
@@ -222,8 +232,8 @@ function SortDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ToolbarPill data-testid="kanban-sort-btn">
-          <SortAscIcon className="size-3.5" />
+        <ToolbarPill data-testid="kanban-sort-btn" aria-label="Sort issues">
+          <SortAscIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
@@ -259,15 +269,20 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <ToolbarPill data-testid="kanban-display-btn">
-          <SlidersHorizontalIcon className="size-3.5" />
+        <ToolbarPill data-testid="kanban-display-btn" aria-label="Display options">
+          <SlidersHorizontalIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-48 p-0">
         <div className="p-2">
           {properties.map(p => (
-            <label key={p.key} className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted">
+            <label
+              key={p.key}
+              htmlFor={`kanban-display-${p.key}`}
+              className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted"
+            >
               <Checkbox
+                id={`kanban-display-${p.key}`}
                 checked={config.displayProperties[p.key]}
                 onCheckedChange={(checked) => {
                   setConfig({ displayProperties: { ...config.displayProperties, [p.key]: !!checked } })
@@ -277,8 +292,9 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
             </label>
           ))}
           <div className="border-t border-border mt-1 pt-1">
-            <label className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted">
+            <label htmlFor="kanban-display-empty-groups" className="flex items-center gap-2 text-[13px] cursor-pointer px-1 py-0.5 rounded hover:bg-muted">
               <Checkbox
+                id="kanban-display-empty-groups"
                 checked={config.showEmptyGroups}
                 onCheckedChange={checked => setConfig({ showEmptyGroups: !!checked })}
               />
