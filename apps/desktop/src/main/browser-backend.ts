@@ -15,6 +15,7 @@ import {
   buildElementCenterExpression,
   buildFocusedEditableStateExpression,
   buildKeyboardTextFallbackExpression,
+  buildScrollActionExpression,
   buildScrollStateExpression,
   buildScrollWaitExpression,
   buildTextReplacementExpression,
@@ -132,12 +133,8 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
-        ensureDebugger(entry)
-        const result = await entry.wc.debugger.sendCommand('Page.captureScreenshot', {
-          format: 'png',
-          captureBeyondViewport: !!cmd.fullPage,
-        })
-        const data: ScreenshotResult = { base64: result.data, mimeType: 'image/png' }
+        const image = await entry.wc.capturePage()
+        const data: ScreenshotResult = { base64: image.toPNG().toString('base64'), mimeType: 'image/png' }
         return { id: cmd.id, ok: true, data }
       }
 
@@ -194,23 +191,13 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: before } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: buildScrollStateExpression(cmd.selector),
-          returnByValue: true,
-        })
-        if (!before?.found) throw new Error(`Element not found: ${cmd.selector}`)
         const amount = cmd.amount ?? 300
-        const deltaX = cmd.direction === 'left' ? -amount : cmd.direction === 'right' ? amount : 0
-        const deltaY = cmd.direction === 'up' ? -amount : cmd.direction === 'down' ? amount : 0
-        await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
-          type: 'mouseWheel', x: before.x, y: before.y, deltaX, deltaY,
-        })
-        const { result: { value: after } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: buildScrollWaitExpression(cmd.selector, cmd.direction, before),
-          awaitPromise: true,
+        const { result: { value: scroll } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildScrollActionExpression(cmd.selector, cmd.direction, amount),
           returnByValue: true,
         })
-        if (after?.canMove && !after.moved) throw new Error(`Scroll did not move: ${cmd.direction}`)
+        if (!scroll?.found) throw new Error(`Element not found: ${cmd.selector}`)
+        if (scroll.canMove && !scroll.moved) throw new Error(`Scroll did not move: ${cmd.direction}`)
         const data: ScrollResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }

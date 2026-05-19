@@ -49,6 +49,13 @@ export interface ScrollWaitResult extends ScrollState {
   moved: boolean
 }
 
+export interface ScrollActionResult extends ScrollState {
+  canMove: boolean
+  moved: boolean
+  beforeScrollX: number
+  beforeScrollY: number
+}
+
 export function buildDocumentReadyExpression(): string {
   return `(() => new Promise((resolve) => {
     const done = () => resolve({
@@ -359,6 +366,78 @@ export function buildScrollStateExpression(selector?: string): string {
       maxScrollY: Math.max(0, (el.scrollHeight ?? 0) - (el.clientHeight ?? 0)),
     };`
       : `return readPage();`}
+  })()`
+}
+
+export function buildScrollActionExpression(
+  selector: string | undefined,
+  direction: ScrollDirection,
+  amount: number,
+): string {
+  return `(() => {
+    const direction = ${JSON.stringify(direction)};
+    const amount = ${JSON.stringify(amount)};
+    const deltaX = direction === 'left' ? -amount : direction === 'right' ? amount : 0;
+    const deltaY = direction === 'up' ? -amount : direction === 'down' ? amount : 0;
+    ${selector
+      ? `const target = document.querySelector(${JSON.stringify(selector)});
+    if (!target) {
+      return { found: false, x: 0, y: 0, scrollX: 0, scrollY: 0, maxScrollX: 0, maxScrollY: 0, canMove: false, moved: false, beforeScrollX: 0, beforeScrollY: 0 };
+    }
+    target.scrollIntoView?.({ block: 'center', inline: 'center' });
+    const read = () => {
+      const r = target.getBoundingClientRect();
+      return {
+        found: true,
+        x: r.x + r.width / 2,
+        y: r.y + r.height / 2,
+        scrollX: target.scrollLeft ?? 0,
+        scrollY: target.scrollTop ?? 0,
+        maxScrollX: Math.max(0, (target.scrollWidth ?? 0) - (target.clientWidth ?? 0)),
+        maxScrollY: Math.max(0, (target.scrollHeight ?? 0) - (target.clientHeight ?? 0)),
+      };
+    };
+    const before = read();
+    const canMove = direction === 'down'
+      ? before.scrollY < before.maxScrollY
+      : direction === 'up'
+        ? before.scrollY > 0
+        : direction === 'right'
+          ? before.scrollX < before.maxScrollX
+          : before.scrollX > 0;
+    if (canMove) {
+      target.scrollLeft += deltaX;
+      target.scrollTop += deltaY;
+    }`
+      : `const scrolling = document.scrollingElement || document.documentElement;
+    const read = () => ({
+      found: true,
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      maxScrollX: Math.max(0, scrolling.scrollWidth - window.innerWidth),
+      maxScrollY: Math.max(0, scrolling.scrollHeight - window.innerHeight),
+    });
+    const before = read();
+    const canMove = direction === 'down'
+      ? before.scrollY < before.maxScrollY
+      : direction === 'up'
+        ? before.scrollY > 0
+        : direction === 'right'
+          ? before.scrollX < before.maxScrollX
+          : before.scrollX > 0;
+    if (canMove) {
+      window.scrollBy(deltaX, deltaY);
+    }`}
+    const after = read();
+    return {
+      ...after,
+      canMove,
+      moved: after.scrollX !== before.scrollX || after.scrollY !== before.scrollY,
+      beforeScrollX: before.scrollX,
+      beforeScrollY: before.scrollY,
+    };
   })()`
 }
 

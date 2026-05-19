@@ -172,24 +172,56 @@ function createDesktopPluginContext(manifest: PluginManifest): DesktopPluginCont
         },
       }
     },
-    async requestBrowserTab(url?: string): Promise<void> {
+    async requestBrowserTab(url?: string): Promise<string | undefined> {
       const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
         ?? BrowserWindow.getFocusedWindow()
         ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
       if (!window) {
         throw new Error('No renderer window available for browser tab creation')
       }
-      const handled = await window.webContents.executeJavaScript(
+      const tabId = await window.webContents.executeJavaScript(
         `(() => {
-          if (typeof globalThis.__cradleBrowserUseCreateTab !== 'function') return false;
-          globalThis.__cradleBrowserUseCreateTab(${JSON.stringify(url)});
-          return true;
+          if (typeof globalThis.__cradleBrowserUseCreateTab !== 'function') return undefined;
+          return globalThis.__cradleBrowserUseCreateTab(${JSON.stringify(url)});
         })()`,
         true,
       )
-      if (!handled) {
-        window.webContents.send('browser-use:create-tab', { url })
+      if (typeof tabId !== 'string') {
+        throw new Error('Renderer browser tab bridge is not available')
       }
+      return tabId
+    },
+    async activateBrowserTab(tabId: string): Promise<boolean> {
+      const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
+        ?? BrowserWindow.getFocusedWindow()
+        ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
+      if (!window) {
+        throw new Error('No renderer window available for browser tab activation')
+      }
+      const activated = await window.webContents.executeJavaScript(
+        `(() => {
+          if (typeof globalThis.__cradleBrowserUseActivateTab !== 'function') return false;
+          return globalThis.__cradleBrowserUseActivateTab(${JSON.stringify(tabId)});
+        })()`,
+        true,
+      )
+      return activated === true
+    },
+    async getActiveBrowserTab(): Promise<string | undefined> {
+      const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
+        ?? BrowserWindow.getFocusedWindow()
+        ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
+      if (!window) {
+        throw new Error('No renderer window available for browser tab lookup')
+      }
+      const tabId = await window.webContents.executeJavaScript(
+        `(() => {
+          if (typeof globalThis.__cradleBrowserUseGetActiveTab !== 'function') return undefined;
+          return globalThis.__cradleBrowserUseGetActiveTab();
+        })()`,
+        true,
+      )
+      return typeof tabId === 'string' ? tabId : undefined
     },
     setSharedConfig(key: string, value: string) {
       pluginSharedConfig.set(key, value)

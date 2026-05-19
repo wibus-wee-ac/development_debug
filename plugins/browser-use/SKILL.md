@@ -36,12 +36,14 @@ The Browser Use plugin gives Claude Agent direct control over Cradle's embedded 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `browser_tabs_list` | List all open tabs | (none) |
+| `browser_tabs_new` | Open a new browser tab and optionally navigate it | `url` |
+| `browser_tabs_close` | Close a browser tab by ID | `tabId` |
 | `browser_wait_for_selector` | Wait for element to appear | `selector` (required), `timeout` (ms, default 5000), `tabId` |
 
 ## Workflow Pattern
 
 ```
-1. Navigate to URL
+1. Open or navigate to URL
 2. Wait for key element (if needed)
 3. Read page structure (dom_snapshot or get_text)
 4. Interact (click, type, scroll)
@@ -53,7 +55,7 @@ The Browser Use plugin gives Claude Agent direct control over Cradle's embedded 
 ### Fill a form and submit
 
 ```
-browser_navigate → url: "https://example.com/login"
+browser_tabs_new → url: "https://example.com/login"
 browser_wait_for_selector → selector: "input[name=email]"
 browser_click → selector: "input[name=email]"
 browser_type → selector: "input[name=email]", text: "user@example.com"
@@ -85,13 +87,12 @@ browser_get_text → selector: ".target-section"
 - **Selectors**: Standard CSS selectors (e.g., `#id`, `.class`, `button[type=submit]`, `a[href*=login]`)
 - **Real events**: Click and type use CDP Input domain — they trigger all event listeners, work with CSP, and behave identically to human interaction
 - **Accessibility tree**: `browser_dom_snapshot` returns semantic nodes with `role`, `name`, `value`, `description` — great for understanding page structure without needing screenshots
-- **Tab management**: If browser panel isn't open, tools will return "No webview available" error. User must have the browser panel visible in a Chat tab.
+- **Tab management**: `browser_tabs_new` returns a tab ID. Pass that `tabId` to follow-up commands when working across multiple pages.
 - **Timeouts**: `browser_wait_for_selector` defaults to 5000ms. Increase for slow-loading pages.
 
 ## Limitations
 
 - Only works when Cradle desktop app is running with browser panel open
-- Cannot create new browser tabs from agent (tab creation is renderer-side)
 - No cookie/storage manipulation (use `browser_eval` with `document.cookie` if needed)
 - No network interception or request mocking
 - Screenshots are PNG only

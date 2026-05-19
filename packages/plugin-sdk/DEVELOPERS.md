@@ -542,6 +542,26 @@ ctx.onWebviewCreated((wc, tabId) => {
 
 Returns a `Disposable` for cleanup.
 
+### Browser Panel Tab Bridge
+
+Desktop plugins can ask the active renderer to create, activate, or inspect Cradle's visible browser panel tabs. This is useful for plugins that own a browser automation backend and need to keep backend webview IDs mapped to renderer tab IDs.
+
+```ts
+const rendererTabId = await ctx.requestBrowserTab('https://example.com')
+if (!rendererTabId) {
+  throw new Error('Browser panel tab was not created')
+}
+
+const activated = await ctx.activateBrowserTab(rendererTabId)
+const activeTabId = await ctx.getActiveBrowserTab()
+```
+
+| Method | Description |
+|--------|-------------|
+| `requestBrowserTab(url?)` | Creates a visible browser panel tab in the active renderer and returns its renderer tab ID. |
+| `activateBrowserTab(tabId)` | Opens the browser panel and activates an existing renderer tab. Returns `false` when the renderer does not know the tab. |
+| `getActiveBrowserTab()` | Returns the active renderer browser panel tab ID, if one is available. |
+
 ### `ctx.userDataPath` — Electron User Data
 
 Absolute path to Electron's userData directory. Use for persistent storage:
@@ -870,6 +890,9 @@ interface WebPluginStorage {
 interface DesktopPluginContext {
   userDataPath: string
   onWebviewCreated(handler: (wc: unknown, tabId: string) => void): Disposable
+  requestBrowserTab(url?: string): Promise<string | undefined>
+  activateBrowserTab(tabId: string): Promise<boolean>
+  getActiveBrowserTab(): Promise<string | undefined>
   setSharedConfig(key: string, value: string): void
   logger: Logger
   manifest: PluginManifest
@@ -1268,6 +1291,8 @@ The host validates plugin modules at load time. If validation fails, a `PluginLo
 
 | File | Purpose |
 |------|---------|
+| `packages/plugin-sdk/package.json` | SDK package exports and local maintenance scripts, including the package-owned `typecheck` gate |
+| `packages/plugin-sdk/tsconfig.json` | SDK typecheck/declaration compiler options for the exported context interfaces |
 | `packages/plugin-sdk/src/index.ts` | Shared types (`PluginManifest`, `Logger`, `Disposable`) |
 | `packages/plugin-sdk/src/server.ts` | Server plugin context interface |
 | `packages/plugin-sdk/src/web.ts` | Web plugin context interface |

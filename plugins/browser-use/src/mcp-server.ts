@@ -18,6 +18,13 @@ import { z } from 'zod'
 import type { BrowserCommand, BrowserResponse } from './protocol.js'
 import { encodeFrame, FrameDecoder } from './protocol.js'
 
+function formatError(resp: BrowserResponse): string {
+  if (resp.ok) {
+    return 'Unknown browser command error'
+  }
+  return (resp as { ok: false, error: string }).error
+}
+
 // ─── Socket Client ──────────────────────────────────────────────────────────
 
 class BrowserClient {
@@ -36,7 +43,7 @@ class BrowserClient {
       this.socket.on('connect', () => resolve())
       this.socket.on('error', err => reject(err))
       this.socket.on('data', (chunk) => {
-        const messages = this.decoder.push(chunk)
+        const messages = this.decoder.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
         for (const msg of messages) {
           const response = msg as BrowserResponse
           const p = this.pending.get(response.id)
@@ -121,7 +128,7 @@ server.registerTool(
   async ({ url, tabId }) => {
     const resp = await client.send({ type: 'navigate', url, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: `Navigated to ${(resp.data as { url: string }).url} — "${(resp.data as { title: string }).title}"` }] }
   },
@@ -137,7 +144,7 @@ server.registerTool(
   async ({ tabId }) => {
     const resp = await client.send({ type: 'screenshot', tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     const data = resp.data as { base64: string, mimeType: string }
     return { content: [{ type: 'image', data: data.base64, mimeType: data.mimeType }] }
@@ -154,7 +161,7 @@ server.registerTool(
   async ({ selector, tabId }) => {
     const resp = await client.send({ type: 'click', selector, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: `Clicked: ${selector}` }] }
   },
@@ -174,7 +181,7 @@ server.registerTool(
   async ({ selector, text, tabId }) => {
     const resp = await client.send({ type: 'type', selector, text, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: `Typed "${text}" into ${selector}` }] }
   },
@@ -190,7 +197,7 @@ server.registerTool(
   async ({ selector, tabId }) => {
     const resp = await client.send({ type: 'get_text', selector, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: (resp.data as { text: string }).text }] }
   },
@@ -206,11 +213,48 @@ server.registerTool(
   async () => {
     const resp = await client.send({ type: 'tabs_list' })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     const { tabs } = resp.data as { tabs: Array<{ id: string, url: string, title: string }> }
     const text = tabs.map(t => `[${t.id}] ${t.title} — ${t.url}`).join('\n') || 'No tabs open'
     return { content: [{ type: 'text', text }] }
+  },
+)
+
+// Tool: browser_tabs_new
+server.registerTool(
+  'browser_tabs_new',
+  {
+    description: 'Open a new browser tab, optionally navigating it to a URL. Returns the tab ID for follow-up commands.',
+    inputSchema: {
+      url: z.string().url().optional().describe('URL to open in the new tab'),
+    },
+  },
+  async ({ url }) => {
+    const resp = await client.send({ type: 'tabs_new', url })
+    if (!resp.ok) {
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
+    }
+    const { tab } = resp.data as { tab: { id: string, url: string, title: string } }
+    return { content: [{ type: 'text', text: `[${tab.id}] ${tab.title} — ${tab.url}` }] }
+  },
+)
+
+// Tool: browser_tabs_close
+server.registerTool(
+  'browser_tabs_close',
+  {
+    description: 'Close a browser tab by ID',
+    inputSchema: {
+      tabId: z.string().describe('Tab ID returned by browser_tabs_list or browser_tabs_new'),
+    },
+  },
+  async ({ tabId }) => {
+    const resp = await client.send({ type: 'tabs_close', tabId })
+    if (!resp.ok) {
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
+    }
+    return { content: [{ type: 'text', text: `Closed tab: ${tabId}` }] }
   },
 )
 
@@ -224,7 +268,7 @@ server.registerTool(
   async ({ expression, tabId }) => {
     const resp = await client.send({ type: 'eval', expression, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     const { result } = resp.data as { result: unknown }
     return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }] }
@@ -246,7 +290,7 @@ server.registerTool(
   async ({ direction, amount, selector, tabId }) => {
     const resp = await client.send({ type: 'scroll', direction, amount, selector, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: `Scrolled ${direction}${amount ? ` ${amount}px` : ''}${selector ? ` within ${selector}` : ''}` }] }
   },
@@ -265,7 +309,7 @@ server.registerTool(
   async ({ selector, tabId }) => {
     const resp = await client.send({ type: 'hover', selector, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: `Hovered: ${selector}` }] }
   },
@@ -283,7 +327,7 @@ server.registerTool(
   async ({ tabId }) => {
     const resp = await client.send({ type: 'dom_snapshot', tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     const { nodes } = resp.data as { nodes: unknown[] }
     return { content: [{ type: 'text', text: JSON.stringify(nodes, null, 2) }] }
@@ -304,7 +348,7 @@ server.registerTool(
   async ({ selector, timeout, tabId }) => {
     const resp = await client.send({ type: 'wait_for_selector', selector, timeout, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     return { content: [{ type: 'text', text: `Found: ${selector}` }] }
   },
@@ -324,7 +368,7 @@ server.registerTool(
   async ({ key, modifiers, tabId }) => {
     const resp = await client.send({ type: 'keyboard', key, modifiers, tabId })
     if (!resp.ok) {
-      return { content: [{ type: 'text', text: `Error: ${resp.error}` }], isError: true }
+      return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     const combo = modifiers?.length ? `${modifiers.join('+')}+${key}` : key
     return { content: [{ type: 'text', text: `Pressed: ${combo}` }] }

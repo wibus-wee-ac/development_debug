@@ -12,6 +12,7 @@ import {
   buildElementCenterExpression,
   buildFocusedEditableStateExpression,
   buildKeyboardTextFallbackExpression,
+  buildScrollActionExpression,
   buildScrollStateExpression,
   buildScrollWaitExpression,
   buildTextReplacementExpression,
@@ -45,10 +46,12 @@ let socketPath = ''
 
 // eslint-disable-next-line ts/no-explicit-any -- Electron WebContents type, can't import electron in plugin
 type WebContents = any
+type NativeImage = { toPNG: () => Buffer }
 
 interface WebviewEntry {
   wc: WebContents
   attached: boolean
+  rendererTabId?: string
 }
 
 const webviewRegistry = new Map<string, WebviewEntry>()
@@ -66,6 +69,28 @@ async function waitForDocumentReady(entry: WebviewEntry): Promise<void> {
   })
 }
 
+function withTimeout<T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  return Promise.race([work, timeout]).finally(() => {
+    if (timer) {
+      clearTimeout(timer)
+    }
+  })
+}
+
+async function activateRendererTab(entry: WebviewEntry): Promise<void> {
+  if (!desktopContext || !entry.rendererTabId) {
+    return
+  }
+  const activated = await desktopContext.activateBrowserTab(entry.rendererTabId)
+  if (activated) {
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+}
+
 function ensureDebugger(entry: WebviewEntry): void {
   if (!entry.attached && !entry.wc.isDestroyed()) {
     try {
@@ -78,7 +103,17 @@ function ensureDebugger(entry: WebviewEntry): void {
   }
 }
 
-function getActiveWebview(): WebviewEntry | undefined {
+async function getActiveWebview(): Promise<WebviewEntry | undefined> {
+  if (desktopContext) {
+    const rendererTabId = await desktopContext.getActiveBrowserTab()
+    if (rendererTabId) {
+      const activeEntry = [...webviewRegistry.values()].find(entry => entry.rendererTabId === rendererTabId && !entry.wc.isDestroyed())
+      if (activeEntry) {
+        return activeEntry
+      }
+    }
+  }
+
   const entries = [...webviewRegistry.entries()]
   if (entries.length === 0) {
     return undefined
@@ -86,7 +121,7 @@ function getActiveWebview(): WebviewEntry | undefined {
   return entries.at(-1)![1]
 }
 
-function getWebview(tabId?: string): WebviewEntry | undefined {
+async function getWebview(tabId?: string): Promise<WebviewEntry | undefined> {
   if (tabId) {
     const entry = webviewRegistry.get(tabId)
     if (entry && !entry.wc.isDestroyed()) {
@@ -147,21 +182,30 @@ async function requestRendererBrowserTab(url?: string): Promise<string> {
     })
   })
 
-  await desktopContext.requestBrowserTab(url)
+  const rendererTabId = await desktopContext.requestBrowserTab(url)
 
   for (const tabId of webviewRegistry.keys()) {
     if (!before.has(tabId)) {
+      const entry = webviewRegistry.get(tabId)
+      if (entry) {
+        entry.rendererTabId = rendererTabId
+      }
       return tabId
     }
   }
-  return created
+  const tabId = await created
+  const entry = webviewRegistry.get(tabId)
+  if (entry) {
+    entry.rendererTabId = rendererTabId
+  }
+  return tabId
 }
 
 async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
   try {
     switch (cmd.type) {
       case 'navigate': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -180,21 +224,18 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'screenshot': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
-        ensureDebugger(entry)
-        const result = await entry.wc.debugger.sendCommand('Page.captureScreenshot', {
-          format: 'png',
-          captureBeyondViewport: !!cmd.fullPage,
-        })
-        const data: ScreenshotResult = { base64: result.data, mimeType: 'image/png' }
+        await activateRendererTab(entry)
+        const image = await withTimeout<NativeImage>(entry.wc.capturePage(), 3000, 'Screenshot capture')
+        const data: ScreenshotResult = { base64: image.toPNG().toString('base64'), mimeType: 'image/png' }
         return { id: cmd.id, ok: true, data }
       }
 
       case 'click': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -211,7 +252,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'type': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -231,7 +272,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'get_text': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -247,34 +288,20 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'scroll': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: before } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: buildScrollStateExpression(cmd.selector),
+        const amount = cmd.amount ?? 300
+        const { result: { value: scroll } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          expression: buildScrollActionExpression(cmd.selector, cmd.direction, amount),
           returnByValue: true,
         })
-        if (!before?.found) {
+        if (!scroll?.found) {
           throw new Error(`Element not found: ${cmd.selector}`)
         }
-        const amount = cmd.amount ?? 300
-        const deltaX = cmd.direction === 'left' ? -amount : cmd.direction === 'right' ? amount : 0
-        const deltaY = cmd.direction === 'up' ? -amount : cmd.direction === 'down' ? amount : 0
-        await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
-          type: 'mouseWheel',
-          x: before.x,
-          y: before.y,
-          deltaX,
-          deltaY,
-        })
-        const { result: { value: after } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
-          expression: buildScrollWaitExpression(cmd.selector, cmd.direction, before),
-          awaitPromise: true,
-          returnByValue: true,
-        })
-        if (after?.canMove && !after.moved) {
+        if (scroll.canMove && !scroll.moved) {
           throw new Error(`Scroll did not move: ${cmd.direction}`)
         }
         const data: ScrollResult = { success: true }
@@ -282,7 +309,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'hover': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -304,7 +331,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'dom_snapshot': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -325,7 +352,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'wait_for_selector': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -354,7 +381,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'keyboard': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
@@ -394,7 +421,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
 
       case 'tabs_new': {
         const newTabId = await requestRendererBrowserTab(cmd.url)
-        const entry = getWebview(newTabId)
+        const entry = await getWebview(newTabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'New browser tab was not registered' }
         }
@@ -425,7 +452,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       }
 
       case 'eval': {
-        const entry = getWebview(cmd.tabId)
+        const entry = await getWebview(cmd.tabId)
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }

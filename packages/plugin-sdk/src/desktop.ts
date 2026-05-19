@@ -11,7 +11,13 @@ export interface DesktopPluginContext {
   onWebviewCreated(handler: (wc: unknown, tabId: string) => void): Disposable
 
   /** Ask the active renderer to create a visible browser panel tab */
-  requestBrowserTab(url?: string): Promise<void>
+  requestBrowserTab(url?: string): Promise<string | undefined>
+
+  /** Ask the active renderer to show a browser panel tab */
+  activateBrowserTab(tabId: string): Promise<boolean>
+
+  /** Ask the active renderer which browser panel tab is visible */
+  getActiveBrowserTab(): Promise<string | undefined>
 
   /** Write to shared config bus — values propagated to server via env vars */
   setSharedConfig(key: string, value: string): void

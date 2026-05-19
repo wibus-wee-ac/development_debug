@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildDocumentReadyExpression,
   buildEditableSelectionExpression,
+  buildScrollActionExpression,
   createKeyEventPayload,
   isRecoverableNavigationAbort,
   modifierMask,
@@ -77,5 +78,25 @@ describe('browser command helpers', () => {
     expect(expression).toContain('DOMContentLoaded')
     expect(expression).toContain('interactive')
     expect(expression).toContain('complete')
+  })
+
+  it('builds page scroll actions with movement metadata', () => {
+    const expression = buildScrollActionExpression(undefined, 'down', 240)
+
+    expect(expression).toContain('window.scrollBy(deltaX, deltaY)')
+    expect(expression).toContain('beforeScrollX: before.scrollX')
+    expect(expression).toContain('beforeScrollY: before.scrollY')
+    expect(expression).toContain('moved: after.scrollX !== before.scrollX || after.scrollY !== before.scrollY')
+    expect(expression).toContain('canMove')
+  })
+
+  it('builds selector scroll actions without relying on mouse wheel dispatch', () => {
+    const expression = buildScrollActionExpression('#panel', 'right', 120)
+
+    expect(expression).toContain('document.querySelector("#panel")')
+    expect(expression).toContain("target.scrollIntoView?.({ block: 'center', inline: 'center' })")
+    expect(expression).toContain('target.scrollLeft += deltaX')
+    expect(expression).toContain('target.scrollTop += deltaY')
+    expect(expression).not.toContain('Input.dispatchMouseEvent')
   })
 })
