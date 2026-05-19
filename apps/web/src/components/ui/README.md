@@ -23,5 +23,5 @@ Position: apps/web/src/components/ui/README.md
 
 ## Inventory Notes
 
-- `button.tsx`, `input.tsx`, `dialog.tsx`, `menu.tsx`, `tabs.tsx`, `tooltip.tsx`, `switch.tsx`, `progress.tsx`, and similar files are design-system primitives.
+- `button.tsx`, `input.tsx`, `dialog.tsx`, `command.tsx`, `menu.tsx`, `tabs.tsx`, `tooltip.tsx`, `switch.tsx`, `progress.tsx`, and similar files are design-system primitives.
 - `canvas-art.tsx`, `route-loading-fallback.tsx`, `icon-picker.tsx`, and `preview-card.tsx` should be reviewed before future expansion because they may be app-specific shared UI rather than universal primitives.

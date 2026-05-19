@@ -16,7 +16,7 @@ Store naming convention: `use<Domain>Store`.
 - **session-activity.test.ts**: Regression tests for unread ownership, background activity marking, and visible-session clearing semantics
 - **chat.ts**: Chat streaming state — stores per-session UI messages, generation flags, errors, and reconciles equivalent server snapshots without changing message references
 - **chat.test.ts**: Regression tests for chat snapshot structural sharing and unchanged message reference preservation
-- **new-chat.ts**: New chat preferences — persisted last selected agent profile / per-profile model choice, plus profile reconciliation when the available profile list changes
-- **new-chat.test.ts**: Regression tests for idempotent updates and stale-profile reconciliation
+- **new-chat.ts**: Composer preferences — persisted last selected runtime, CLI TUI agent, agent profile, per-profile model choice, and thinking effort, plus profile reconciliation when the available profile list changes
+- **new-chat.test.ts**: Regression tests for idempotent preference updates and stale-profile reconciliation
 - **persist-storage.ts**: Safe persisted storage wrapper with browser `localStorage` + in-memory fallback
 - **streamdown.ts**: Streamdown render preferences — persisted animation preset, granularity, cursor visibility

@@ -1,18 +1,28 @@
 // Input: zustand, zustand/middleware
-// Output: useNewChatStore hook for persisted new-chat preferences (last selected profile, model per profile)
+// Output: useNewChatStore hook for persisted composer preferences (runtime, agent, profile, model, thinking)
 // Position: Renderer store for cross-session new-chat page state
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import type { RuntimeKind } from '~/lib/types'
+
 import { persistStorage } from './persist-storage'
 
+type PersistedThinkingEffort = 'low' | 'medium' | 'high' | null
+
 interface NewChatState {
+  lastRuntimeKind: RuntimeKind | null
+  lastCliTuiAgentId: string | null
   lastAgentProfileId: string | null
   /** map of profileId → last selected modelId */
   lastModelByProfile: Record<string, string>
+  lastThinkingEffort: PersistedThinkingEffort
+  setLastRuntimeKind: (kind: RuntimeKind | null) => void
+  setLastCliTuiAgentId: (id: string | null) => void
   setLastAgentProfileId: (id: string | null) => void
   setLastModelForProfile: (profileId: string, modelId: string) => void
+  setLastThinkingEffort: (effort: PersistedThinkingEffort) => void
   getLastModelForProfile: (profileId: string) => string | undefined
   reconcileProfiles: (profileIds: string[]) => void
 }
@@ -20,8 +30,27 @@ interface NewChatState {
 export const useNewChatStore = create<NewChatState>()(
   persist(
     (set, get) => ({
+      lastRuntimeKind: null,
+      lastCliTuiAgentId: null,
       lastAgentProfileId: null,
       lastModelByProfile: {},
+      lastThinkingEffort: null,
+      setLastRuntimeKind: (kind) => {
+        set((state) => {
+          if (state.lastRuntimeKind === kind) {
+            return state
+          }
+          return { lastRuntimeKind: kind }
+        })
+      },
+      setLastCliTuiAgentId: (id) => {
+        set((state) => {
+          if (state.lastCliTuiAgentId === id) {
+            return state
+          }
+          return { lastCliTuiAgentId: id }
+        })
+      },
       setLastAgentProfileId: (id) => {
         set((state) => {
           if (state.lastAgentProfileId === id) {
@@ -38,6 +67,14 @@ export const useNewChatStore = create<NewChatState>()(
           return {
             lastModelByProfile: { ...state.lastModelByProfile, [profileId]: modelId },
           }
+        })
+      },
+      setLastThinkingEffort: (effort) => {
+        set((state) => {
+          if (state.lastThinkingEffort === effort) {
+            return state
+          }
+          return { lastThinkingEffort: effort }
         })
       },
       getLastModelForProfile: profileId => get().lastModelByProfile[profileId],
