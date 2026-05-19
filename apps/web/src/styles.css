@@ -245,6 +245,10 @@ body {
 
 :root {
   --radius: 0.625rem;
+  --icon-swap-dur: 200ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
   /* Layered shadow tokens — neutral oklch tints, theme-safe */
   --shadow-xs: 0 1px 2px oklch(0 0 0 / 0.04), 0 0 0 1px oklch(0 0 0 / 0.05);
   --shadow-sm: 0 1px 3px oklch(0 0 0 / 0.08), 0 0 0 1px oklch(0 0 0 / 0.06);
@@ -299,6 +303,35 @@ body {
   /* 4.54:1 AA on #fff — labels, metadata */
   --text-dim: var(--color-neutral-400);
   /* 2.43:1 — decorative / disabled only */
+}
+
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity   var(--icon-swap-dur) var(--icon-swap-ease),
+    filter    var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon { transition: none !important; }
 }
 
 .dark {
@@ -735,6 +768,38 @@ body {
 
 .dark .streamdown-root .sd-code-body .shiki span,
 .dark [data-pre-mounted] .sd-code-body .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+.tool-call-code-highlight .shiki {
+  margin: 0;
+  padding: 0.625rem;
+  overflow: visible;
+  background: transparent !important;
+}
+
+.tool-call-code-highlight[data-wrap="true"] .shiki {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-call-code-highlight[data-wrap="false"] .shiki {
+  min-width: max-content;
+  white-space: pre;
+}
+
+.tool-call-code-highlight .shiki code {
+  font-family: var(--font-mono);
+  font-size: inherit;
+  line-height: inherit;
+  tab-size: 2;
+}
+
+.tool-call-code-highlight .shiki span {
+  color: var(--shiki-light) !important;
+}
+
+.dark .tool-call-code-highlight .shiki span {
   color: var(--shiki-dark) !important;
 }
 

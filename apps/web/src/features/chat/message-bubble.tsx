@@ -13,46 +13,52 @@ import { cn } from '~/lib/cn'
 import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
-import { ReasoningBlock, ToolCallBlock } from './blocks'
-import type { ChatRenderItem, MessagePart } from './chat-render-plan'
+import { ReasoningBlock, ToolCallBlock, GroupedToolCallBlock } from './blocks'
+import type { ChatRenderItem } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
-import type { RenderableToolPart } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 
 /* ─── Subagent part render ──────────────────────────────────────── */
 
-function renderSubagentPart(part: MessagePart, key: string, isStreaming: boolean, streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean }) {
-  if (part.type === 'text') {
-    return (
-      <Streamdown
-        key={key}
-        content={part.text}
-        streaming={isStreaming}
-        animationPreset={streamdownSettings.animationPreset as 'minimal' | 'balanced' | 'dramatic'}
-        animateMode={streamdownSettings.animateMode}
-        showCursor={streamdownSettings.showCursor}
-      />
-    )
+function renderSubagentItem(
+  item: ChatRenderItem,
+  isStreaming: boolean,
+  streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean },
+) {
+  switch (item.kind) {
+    case 'text':
+      return (
+        <Streamdown
+          key={item.key}
+          content={item.text}
+          streaming={isStreaming}
+          animationPreset={streamdownSettings.animationPreset as 'minimal' | 'balanced' | 'dramatic'}
+          animateMode={streamdownSettings.animateMode}
+          showCursor={streamdownSettings.showCursor}
+        />
+      )
+    case 'reasoning':
+      return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
+    case 'tool-call': {
+      const toolPart = item.part
+      return (
+        <ToolCallBlock
+          key={item.key}
+          toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
+          toolCallId={toolPart.toolCallId}
+          state={toolPart.state}
+          input={toolPart.input}
+          output={toolPart.output}
+          errorText={toolPart.errorText}
+        />
+      )
+    }
+    case 'tool-group':
+      return <GroupedToolCallBlock key={item.key} items={item.items} uiKind={item.uiKind} />
+    default:
+      return null
   }
-  if (part.type === 'reasoning') {
-    return <ReasoningBlock key={key} text={part.text} state={(part as { state?: 'streaming' | 'done' }).state} />
-  }
-  if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
-    const toolPart = part as RenderableToolPart
-    return (
-      <ToolCallBlock
-        key={key}
-        toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
-        toolCallId={toolPart.toolCallId}
-        state={toolPart.state}
-        input={toolPart.input}
-        output={toolPart.output}
-        errorText={toolPart.errorText}
-      />
-    )
-  }
-  return null
 }
 
 /* ─── Execution Phase Fold ──────────────────────────────────────── */
@@ -79,7 +85,7 @@ function ExecutionPhaseFold({ children }: { children: React.ReactNode }) {
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className="overflow-hidden"
+            className="overflow-hidden -mx-3 px-3"
           >
             <div className="mt-1 space-y-1">
               {children}
@@ -176,6 +182,15 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
       case 'reasoning':
         return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
 
+      case 'tool-group':
+        return (
+          <GroupedToolCallBlock
+            key={item.key}
+            items={item.items}
+            uiKind={item.uiKind}
+          />
+        )
+
       case 'tool-call':
         return (
           <ToolCallBlock
@@ -187,9 +202,10 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
             output={item.part.output}
             errorText={item.part.errorText}
           >
-            {item.subagentMessages.flatMap(subMsg =>
-              subMsg.parts.map((sp, si) =>
-                renderSubagentPart(sp, `${subMsg.id}-sub-${si}`, isStreaming, { animationPreset, animateMode, showCursor })))}
+            {item.subagentMessages.flatMap(subMsg => {
+              const groupedParts = groupMessageParts(subMsg.parts, subMsg.id, undefined)
+              return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, { animationPreset, animateMode, showCursor }))
+            })}
           </ToolCallBlock>
         )
 

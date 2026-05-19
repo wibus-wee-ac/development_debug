@@ -110,7 +110,7 @@ export function SlashCommandPanel({ commands, query, onSelect, onClose, visible 
   const activeSubtitle = activeCommand ? formatCommandSubtitle(activeCommand) : ''
 
   return (
-    <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-72 overflow-hidden rounded-xl border border-border/40 bg-popover/95 shadow-xl backdrop-blur-md">
+    <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-72 overflow-hidden rounded-xl border border-border bg-popover shadow-xl backdrop-blur-md">
       <div
         className="flex max-h-72 min-h-0"
       >

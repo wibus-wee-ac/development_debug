@@ -7,6 +7,7 @@ import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import { Button } from '~/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
 import type { ChatSlashCommand } from './chat-capabilities'
@@ -36,6 +37,8 @@ interface ComposerProps {
   appendText?: string
   /** Used together with appendText — increment this key to re-trigger the append when the same path is dropped again */
   appendTextKey?: number
+  sessionTokens?: number
+  sessionContextWindow?: number | null
 }
 
 const EMPTY_FILES: MentionItem[] = []
@@ -142,6 +145,60 @@ function getActiveSlashCommand(inputValue: string, selectedCommand: ChatSlashCom
   return commands.find(command => inputValue.startsWith(getSlashCommandPrefix(command))) ?? null
 }
 
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${(tokens / 1_000_000).toFixed(1)}M`
+  }
+  if (tokens >= 1_000) {
+    return `${(tokens / 1_000).toFixed(1)}K`
+  }
+  return String(tokens)
+}
+
+const TOKEN_CIRCLE_RADIUS = 7
+const TOKEN_CIRCUMFERENCE = 2 * Math.PI * TOKEN_CIRCLE_RADIUS
+
+function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindow: number | null | undefined }) {
+  if (!tokens || tokens <= 0) {
+    return null
+  }
+  const percent = contextWindow ? Math.min(1, tokens / contextWindow) : 0
+  const offset = TOKEN_CIRCUMFERENCE * (1 - percent)
+  const isWarning = percent > 0.7
+  const isDanger = percent > 0.9
+  const label = contextWindow
+    ? `${formatTokenCount(tokens)} / ${formatTokenCount(contextWindow)} tokens`
+    : `${formatTokenCount(tokens)} tokens`
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex size-5 cursor-default items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ transform: 'rotate(-90deg)' }}>
+            <circle cx="9" cy="9" r={TOKEN_CIRCLE_RADIUS} strokeWidth="2" className="stroke-muted" fill="none" />
+            {contextWindow && (
+              <circle
+                cx="9"
+                cy="9"
+                r={TOKEN_CIRCLE_RADIUS}
+                strokeWidth="2"
+                fill="none"
+                className={cn(
+                  'transition-all',
+                  isDanger ? 'stroke-destructive/70' : isWarning ? 'stroke-amber-500/70' : 'stroke-primary/50',
+                )}
+                strokeDasharray={TOKEN_CIRCUMFERENCE}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+              />
+            )}
+          </svg>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[11px]">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function ComposerActions({
   contextBar,
   disabled,
@@ -149,6 +206,8 @@ function ComposerActions({
   isStreaming,
   onSend,
   onStop,
+  sessionTokens,
+  sessionContextWindow,
 }: {
   contextBar?: React.ReactNode
   disabled?: boolean
@@ -156,10 +215,15 @@ function ComposerActions({
   isStreaming?: boolean
   onSend: () => void
   onStop?: () => void
+  sessionTokens?: number
+  sessionContextWindow?: number | null
 }) {
   return (
     <div className="flex items-center gap-1">
       {contextBar}
+      {sessionTokens != null && sessionTokens > 0 && (
+        <TokenProgress tokens={sessionTokens} contextWindow={sessionContextWindow} />
+      )}
       {isStreaming
         ? (
             <Button
@@ -201,6 +265,8 @@ export function Composer({
   contextBar,
   appendText,
   appendTextKey,
+  sessionTokens,
+  sessionContextWindow,
 }: ComposerProps) {
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -462,6 +528,8 @@ export function Composer({
           </div>
 
           <ComposerActions
+            sessionTokens={sessionTokens}
+            sessionContextWindow={sessionContextWindow}
             contextBar={contextBar}
             disabled={disabled}
             hasText={Boolean(state.inputValue.trim())}

@@ -55,16 +55,6 @@ interface ChatScrollMetrics {
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
 
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(1)}K`
-  }
-  return String(tokens)
-}
-
 function ChatMessageListPane({
   messages,
   status,
@@ -250,27 +240,9 @@ function ChatComposerSection({
           contextBar={contextBar}
           appendText={droppedPath ? `${droppedPath.text}` : undefined}
           appendTextKey={droppedPath?.ts}
+          sessionTokens={sessionTokens}
+          sessionContextWindow={sessionContextWindow}
         />
-        {sessionTokens > 0 && (
-          <div className="mt-1.5 flex items-center justify-end gap-2">
-            <div className="flex items-center gap-1.5">
-              {sessionContextWindow != null && sessionContextWindow > 0 && (
-                <div className="h-1 w-16 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary/40 transition-all"
-                    style={{ width: `${Math.min(100, (sessionTokens / sessionContextWindow) * 100)}%` }}
-                  />
-                </div>
-              )}
-              <span className="text-[10px] tabular-nums text-muted-foreground">
-                {formatTokenCount(sessionTokens)}
-                {sessionContextWindow != null && sessionContextWindow > 0
-                  ? ` / ${formatTokenCount(sessionContextWindow)}`
-                  : ''}
-              </span>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -399,6 +371,16 @@ export function ChatView({
     }
     writeMinimapProgress()
   }, [readScrollMetrics, writeMinimapProgress])
+
+  // Disable CSS scroll anchoring on the viewport — we handle auto-scroll explicitly
+  // via scrollToBottom(). Without this, the browser follows content added at the very
+  // bottom (e.g. expanding an EditFileBlock diff), pushing the user down unintentionally.
+  useEffect(() => {
+    const vp = viewportRef.current
+    if (vp) {
+      vp.style.overflowAnchor = 'none'
+    }
+  }, [])
 
   // Scroll to bottom on initial data load (once per mount, since key={sessionId} remounts)
   const initialScrollDoneRef = useRef(false)

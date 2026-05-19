@@ -24,6 +24,17 @@ function tool(id: string, output?: unknown): TestMessagePart {
   } as TestMessagePart
 }
 
+function bashTool(id: string, output?: unknown): TestMessagePart {
+  return {
+    type: 'dynamic-tool',
+    toolName: 'Bash',
+    toolCallId: id,
+    state: output === undefined ? 'input-available' : 'output-available',
+    input: { command: `echo ${id}` },
+    output,
+  } as TestMessagePart
+}
+
 function message(id: string, parts: UIMessage['parts']): UIMessage {
   return {
     id,
@@ -78,6 +89,19 @@ describe('splitExecutionPhase', () => {
       'call-2',
     ])
     expect(split?.finalItems.map(item => item.key)).toEqual(['msg-1-text-4'])
+  })
+
+  it('splits grouped tool activity from the final reply', () => {
+    const items = groupMessageParts([
+      bashTool('call-1', { stdout: 'one' }),
+      bashTool('call-2', { stdout: 'two' }),
+      text('Final answer'),
+    ], 'msg-1', undefined)
+    const split = splitExecutionPhase(items)
+
+    expect(items.map(item => item.kind)).toEqual(['tool-group', 'text'])
+    expect(split?.executionItems.map(item => item.kind)).toEqual(['tool-group'])
+    expect(split?.finalItems.map(item => item.kind)).toEqual(['text'])
   })
 
   it('does not fold when a message has no final text after a tool', () => {

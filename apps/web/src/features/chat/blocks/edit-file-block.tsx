@@ -1,34 +1,29 @@
 // Input: File path, old content, new content for rendering a file edit diff
-// Output: A @pierre/diffs-powered diff view with split and stacked layout switching
+// Output: Flat collapsible row — file stats inline, diff only on expand
 // Position: apps/web/src/features/chat/blocks/edit-file-block.tsx
 
 import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
 import { MultiFileDiff } from '@pierre/diffs/react'
-import { Columns2Icon, FilePenLineIcon, Rows3Icon } from 'lucide-react'
-import { m } from 'motion/react'
+import { ChevronRightIcon, Columns2Icon, FilePenLineIcon, Rows3Icon } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
 interface EditFileBlockProps {
   filePath: string
   oldContent: string
   newContent: string
+  /** Whether the diff viewer is open initially. @default false */
+  defaultOpen?: boolean
 }
 
 type DiffLayout = 'split' | 'stacked'
 type DiffsDiffStyle = 'split' | 'unified'
 type DiffOptions = NonNullable<MultiFileDiffProps<undefined>['options']>
-
-const DIFF_LAYOUT_OPTIONS: Array<{
-  value: DiffLayout
-  label: string
-  icon: typeof Columns2Icon
-}> = [
-  { value: 'split', label: 'Split', icon: Columns2Icon },
-  { value: 'stacked', label: 'Stacked', icon: Rows3Icon },
-]
 
 const layoutDiffStyles: Record<DiffLayout, DiffsDiffStyle> = {
   split: 'split',
@@ -44,8 +39,27 @@ function diffCacheKey(prefix: string, filePath: string, content: string): string
   return `${prefix}:${filePath}:${content.length}:${content.slice(0, 64)}:${content.slice(-64)}`
 }
 
-export function EditFileBlock({ filePath, oldContent, newContent }: EditFileBlockProps) {
+/** Line-level change stats — approximate, for visual indicator only. */
+function computeChangeStats(oldContent: string, newContent: string) {
+  const oldLines = oldContent.split('\n').filter(l => l.trim())
+  const newLines = newContent.split('\n').filter(l => l.trim())
+  const oldSet = new Set(oldLines)
+  const newSet = new Set(newLines)
+  return {
+    added: newLines.filter(l => !oldSet.has(l)).length,
+    removed: oldLines.filter(l => !newSet.has(l)).length,
+  }
+}
+
+export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = false }: EditFileBlockProps) {
+  const [open, setOpen] = useState(defaultOpen)
   const [layout, setLayout] = useState<DiffLayout>('split')
+
+  const stats = useMemo(() => computeChangeStats(oldContent, newContent), [oldContent, newContent])
+
+  const segments = filePath.split('/')
+  const fileName = segments.at(-1) ?? filePath
+  const dirPath = segments.length > 1 ? `${segments.slice(0, -1).join('/')}/` : ''
 
   const oldFile = useMemo<FileContents>(
     () => ({
@@ -76,71 +90,122 @@ export function EditFileBlock({ filePath, oldContent, newContent }: EditFileBloc
       hunkSeparators: 'line-info-basic',
       lineDiffType: 'word' as const,
       overflow: 'scroll' as const,
-      parseDiffOptions: {
-        context: 3,
-      },
+      parseDiffOptions: { context: 3 },
     }),
     [layout],
   )
 
   return (
     <m.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.25, ease: [0.25, 0.1, 0.25, 1] }}
-      className="grid gap-2 py-2"
+      initial={{ opacity: 0, y: 3 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
       data-testid="chat-edit-file-block"
+      className="overflow-hidden rounded-md"
     >
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <FilePenLineIcon className="size-3.5" aria-hidden />
-          </span>
-          <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={filePath}>
-            {filePath}
-          </span>
-        </div>
-        <ToggleGroup
-          type="single"
-          value={layout}
-          onValueChange={(nextLayout) => {
-            if (nextLayout === 'split' || nextLayout === 'stacked') {
-              setLayout(nextLayout)
-            }
-          }}
-          variant="outline"
-          size="sm"
-          className="shrink-0 bg-background/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
-          aria-label="Diff layout"
-        >
-          {DIFF_LAYOUT_OPTIONS.map(({ value, label, icon: Icon }) => (
-            <ToggleGroupItem
-              key={value}
-              value={value}
-              aria-label={`${label} diff layout`}
-              title={`${label} diff layout`}
-              className="min-w-10 active:scale-[0.96]"
-            >
-              <Icon className="size-3.5" />
-              <span className="hidden sm:inline">{label}</span>
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-      </div>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        {/* ── Trigger row ── */}
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              'group flex w-full min-w-0 items-center gap-2 px-2 py-1.5',
+              'transition-colors duration-100',
+              'hover:bg-accent/50 active:bg-accent/70',
+              open ? 'rounded-t-md bg-accent/30' : 'rounded-md',
+            )}
+          >
+            <FilePenLineIcon
+              className="size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70"
+              aria-hidden
+            />
 
-      <div
-        className={cn(
-          'overflow-hidden rounded-md bg-background shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_8px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1)]',
-          layout === 'split' && 'min-w-0',
-        )}
-      >
-        <MultiFileDiff
-          oldFile={oldFile}
-          newFile={newFile}
-          options={diffOptions}
-          className="max-h-[32rem] overflow-auto [--diffs-font-size:11px] [--diffs-line-height:18px]"
-        />
-      </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="min-w-0 flex-1 truncate text-left font-mono text-[12px] leading-none">
+                  {dirPath && <span className="text-muted-foreground/45">{dirPath}</span>}
+                  <span className="text-foreground/75">{fileName}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="font-mono text-[11px]">
+                {filePath}
+              </TooltipContent>
+            </Tooltip>
+
+            {(stats.added > 0 || stats.removed > 0) && (
+              <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] tabular-nums">
+                {stats.added > 0 && (
+                  <span className="text-emerald-500 dark:text-emerald-400">+{stats.added}</span>
+                )}
+                {stats.removed > 0 && (
+                  <span className="text-red-400 dark:text-red-400">-{stats.removed}</span>
+                )}
+              </span>
+            )}
+
+            <ChevronRightIcon
+              className={cn(
+                'size-3 shrink-0 text-muted-foreground/40',
+                'transition-transform duration-200',
+                open && 'rotate-90',
+              )}
+              aria-hidden
+            />
+          </button>
+        </CollapsibleTrigger>
+
+        {/* ── Diff pane ── */}
+        <AnimatePresence initial={false}>
+          {open && (
+            <CollapsibleContent forceMount asChild>
+              <m.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
+                className="overflow-hidden rounded-b-md"
+              >
+                {/* Controls bar */}
+                <div className="flex items-center justify-between bg-muted/30 px-2 py-1">
+                  <span className="truncate font-mono text-[10px] text-muted-foreground/40" title={filePath}>
+                    {filePath}
+                  </span>
+                  <ToggleGroup
+                    type="single"
+                    value={layout}
+                    onValueChange={(v) => {
+                      if (v === 'split' || v === 'stacked') {
+                        setLayout(v)
+                      }
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="h-5 shrink-0 gap-px"
+                    aria-label="Diff layout"
+                  >
+                    <ToggleGroupItem value="split" aria-label="Split" className="h-5 gap-1 px-1.5 text-[10px]">
+                      <Columns2Icon className="size-2.5" />
+                      Split
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="stacked" aria-label="Stacked" className="h-5 gap-1 px-1.5 text-[10px]">
+                      <Rows3Icon className="size-2.5" />
+                      Stacked
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
+
+                <MultiFileDiff
+                  oldFile={oldFile}
+                  newFile={newFile}
+                  options={diffOptions}
+                  className="max-h-128 overflow-auto [--diffs-font-size:11px] [--diffs-line-height:18px]"
+                />
+              </m.div>
+            </CollapsibleContent>
+          )}
+        </AnimatePresence>
+      </Collapsible>
     </m.div>
   )
 }
+

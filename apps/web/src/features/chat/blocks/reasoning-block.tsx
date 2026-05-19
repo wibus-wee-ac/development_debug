@@ -2,11 +2,12 @@
 // Output: A collapsible brain-icon block rendering thinking content via Streamdown
 // Position: apps/web/src/features/chat/blocks/reasoning-block.tsx
 
-import { useId, useState } from 'react'
-import { AnimatePresence, m } from 'motion/react'
 import { Streamdown } from '@cradle/streamdown'
-import { useStreamdownStore } from '~/store/streamdown'
+import { AnimatePresence, m } from 'motion/react'
+import { useId, useState } from 'react'
+
 import { cn } from '~/lib/cn'
+import { useStreamdownStore } from '~/store/streamdown'
 
 interface ReasoningBlockProps {
   text: string
@@ -47,7 +48,7 @@ export function ReasoningBlock({ text, state = 'done' }: ReasoningBlockProps) {
           className={cn(
             'size-4',
             state === 'streaming' && 'animate-pulse',
-            state === 'done' && 'opacity-60',
+            state === 'done' && 'opacity-60 hover:opacity-100',
           )}
         />
         <span>Thinking</span>
@@ -64,22 +65,15 @@ export function ReasoningBlock({ text, state = 'done' }: ReasoningBlockProps) {
             className="overflow-hidden"
           >
             <div className="relative pt-2 pl-5">
-              <div className="text-sm text-muted-foreground/70 leading-relaxed">
-                <Streamdown
-                  content={text}
-                  streaming={state === 'streaming'}
-                  animationPreset={animationPreset}
-                  animateMode={animateMode}
-                  showCursor={showCursor}
-                />
-              </div>
-              {/* Bottom fade mask */}
-              <div
-                className="absolute bottom-0 left-0 right-0 h-10 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(to top, var(--background) 0%, transparent 100%)',
-                }}
+              <div className="text-sm max-h-82 overflow-y-auto leading-relaxed opacity-50 before:absolute before:top-0 before:left-0 before:h-full before:w-0.5 before:bg-linear-to-b before:from-transparent before:via-muted-foreground/50 before:to-transparent">
+              <Streamdown
+                content={text}
+                streaming={state === 'streaming'}
+                animationPreset={animationPreset}
+                animateMode={animateMode}
+                showCursor={showCursor}
               />
+              </div>
             </div>
           </m.div>
         )}

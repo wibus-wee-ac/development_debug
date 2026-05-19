@@ -2,11 +2,11 @@
 // Output: A classified tool call display with structured input/output previews
 // Position: apps/web/src/features/chat/blocks/tool-call-block.tsx
 
-import { Streamdown } from '@cradle/streamdown'
 import {
   BotIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
   Code2Icon,
@@ -22,17 +22,14 @@ import {
   ServerIcon,
   SquareTerminalIcon,
 } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
-import type { ComponentType, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import { m } from 'motion/react'
+import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Highlighter } from 'shiki'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
-import { Badge } from '~/components/ui/badge'
-import { Button } from '~/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { Progress } from '~/components/ui/progress'
-import { ScrollArea } from '~/components/ui/scroll-area'
-import { Separator } from '~/components/ui/separator'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
@@ -86,18 +83,30 @@ const STATUS_LABELS: Record<ToolState, string> = {
   'output-denied': 'Denied',
 }
 
-const STATUS_BADGE_VARIANTS: Record<ToolState, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  'input-streaming': 'secondary',
-  'input-available': 'secondary',
-  'approval-requested': 'outline',
-  'approval-responded': 'outline',
-  'output-available': 'outline',
-  'output-error': 'destructive',
-  'output-denied': 'destructive',
-}
-
 const CODE_TEXT_CLASS = 'font-mono text-[11px] leading-relaxed text-muted-foreground'
 const BACKSLASH_PATTERN = /\\/g
+const TRAILING_NEWLINE_PATTERN = /\n$/
+const TERMINAL_HIGHLIGHT_MAX_CHARS = 12_000
+const TERMINAL_HIGHLIGHT_MAX_LINES = 240
+
+let bashHighlighterPromise: Promise<Highlighter> | null = null
+
+function getBashHighlighter(): Promise<Highlighter> {
+  bashHighlighterPromise ??= import('shiki').then(({ createHighlighter }) => {
+    return createHighlighter({
+      themes: ['github-dark', 'github-light'],
+      langs: ['bash', 'plaintext'],
+    })
+  })
+  return bashHighlighterPromise
+}
+
+function shouldHighlightTerminalOutput(text: string): boolean {
+  if (text.length > TERMINAL_HIGHLIGHT_MAX_CHARS) {
+    return false
+  }
+  return text.split('\n', TERMINAL_HIGHLIGHT_MAX_LINES + 1).length <= TERMINAL_HIGHLIGHT_MAX_LINES
+}
 
 function isRunning(state: ToolState): boolean {
   return state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
@@ -122,13 +131,8 @@ function formatValue(value: unknown): string {
   }
 }
 
-function compactPath(value: string): string {
-  const normalized = value.replace(BACKSLASH_PATTERN, '/')
-  const parts = normalized.split('/').filter(Boolean)
-  if (parts.length <= 3) {
-    return value
-  }
-  return `.../${parts.slice(-3).join('/')}`
+function basename(value: string): string {
+  return value.replace(BACKSLASH_PATTERN, '/').split('/').filter(Boolean).pop() ?? value
 }
 
 function formatCount(value: number, singular: string, plural = `${singular}s`): string {
@@ -154,6 +158,57 @@ function readNestedRecord(value: unknown, key: string): Record<string, unknown> 
     return null
   }
   return value[key]
+}
+
+interface TerminalOutputSection {
+  label: string
+  text: string
+  destructive: boolean
+}
+
+function readTerminalOutputSections(output: unknown, errorText?: string): TerminalOutputSection[] {
+  const sections: TerminalOutputSection[] = []
+  const stderr = readStringValue(output, ['stderr'])
+  const stdout = readStringValue(output, ['stdout'])
+  const fallback = typeof output === 'string'
+    ? output
+    : readStringValue(output, ['output', 'result', 'content', 'text'])
+
+  if (errorText) {
+    sections.push({ label: 'Error', text: errorText, destructive: true })
+  }
+  if (stderr && stderr !== errorText) {
+    sections.push({ label: 'stderr', text: stderr, destructive: true })
+  }
+  if (stdout) {
+    sections.push({ label: 'stdout', text: stdout, destructive: false })
+  }
+  if (fallback && fallback !== stdout && fallback !== stderr && fallback !== errorText) {
+    sections.push({ label: 'output', text: fallback, destructive: false })
+  }
+
+  return sections
+}
+
+function summarizeTerminalOutput(sections: TerminalOutputSection[]): string {
+  const lineCount = sections.reduce((total, section) => {
+    return total + section.text.split('\n').length
+  }, 0)
+  const labels = sections.map(section => section.label).join(' + ')
+  return `${labels} · ${formatCount(lineCount, 'line')}`
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function hasTerminalOutput(output: unknown, errorText?: string): boolean {
+  return readTerminalOutputSections(output, errorText).length > 0
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function hasTerminalDetails(input: unknown, output: unknown, errorText?: string): boolean {
+  return readStringValue(input, ['command', 'cmd']) !== null
+    || readNumberValue(input, ['timeout']) !== null
+    || readStringValue(output, ['backgroundTaskId']) !== null
+    || hasTerminalOutput(output, errorText)
 }
 
 interface EditDiffPreview {
@@ -222,12 +277,181 @@ function RawValue({ value, className }: { value: unknown, className?: string }) 
   if (!text) {
     return null
   }
+  return <NativeCodeBlock text={text} className={className} />
+}
+
+function NativeCodeBlock({
+  text,
+  html,
+  destructive = false,
+  wrap = true,
+  className,
+}: {
+  text: string
+  html?: string
+  destructive?: boolean
+  wrap?: boolean
+  className?: string
+}) {
   return (
-    <ScrollArea className={cn('max-h-56 rounded-md bg-muted/35', className)}>
-      <pre className={cn(CODE_TEXT_CLASS, 'whitespace-pre-wrap break-words p-2.5')}>
-        {text}
-      </pre>
-    </ScrollArea>
+    <div
+      className={cn(
+        'max-h-56 overflow-auto overscroll-contain rounded-md bg-muted/35',
+        destructive && 'bg-destructive/5',
+        className,
+      )}
+      onClick={event => event.stopPropagation()}
+    >
+      {html
+        ? (
+            <div
+              data-wrap={wrap ? 'true' : 'false'}
+              className={cn(
+                'tool-call-code-highlight font-mono text-[11px] leading-relaxed',
+                destructive ? 'text-destructive/80' : 'text-muted-foreground',
+              )}
+              // Shiki returns escaped token markup generated from the plain terminal text.
+              // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )
+        : (
+            <pre
+              className={cn(
+                CODE_TEXT_CLASS,
+                wrap ? 'whitespace-pre-wrap break-words' : 'min-w-max whitespace-pre',
+                'p-2.5',
+                destructive && 'text-destructive/80',
+              )}
+            >
+              {text}
+            </pre>
+          )}
+    </div>
+  )
+}
+
+function HighlightedTerminalOutput({ text, destructive }: { text: string, destructive: boolean }) {
+  const [html, setHtml] = useState('')
+  const lastTextRef = useRef('')
+  const highlightEnabled = shouldHighlightTerminalOutput(text)
+
+  useEffect(() => {
+    if (text === lastTextRef.current) {
+      return
+    }
+    lastTextRef.current = text
+    setHtml('')
+    if (!highlightEnabled) {
+      return
+    }
+
+    let cancelled = false
+    getBashHighlighter().then((highlighter) => {
+      if (cancelled) {
+        return
+      }
+      setHtml(highlighter.codeToHtml(text.replace(TRAILING_NEWLINE_PATTERN, ''), {
+        lang: 'bash',
+        themes: { dark: 'github-dark', light: 'github-light' },
+      }))
+    }, () => {
+      if (!cancelled) {
+        setHtml('')
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [highlightEnabled, text])
+
+  return (
+    <NativeCodeBlock
+      text={text}
+      html={html}
+      destructive={destructive}
+      wrap={false}
+      className="max-h-44"
+    />
+  )
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
+export function TerminalExecutionDetails({
+  input,
+  output,
+  errorText,
+  className,
+}: {
+  input: unknown
+  output: unknown
+  errorText?: string
+  className?: string
+}) {
+  const sections = readTerminalOutputSections(output, errorText)
+  const command = readStringValue(input, ['command', 'cmd'])
+  const timeout = readNumberValue(input, ['timeout'])
+  const backgroundTaskId = readStringValue(output, ['backgroundTaskId'])
+
+  if (!command && timeout === null && !backgroundTaskId && sections.length === 0) {
+    return null
+  }
+
+  return (
+    <div className={cn('grid gap-3', className)}>
+      {(command || timeout !== null || backgroundTaskId) && (
+        <DetailSection title="Command">
+          <div className="grid gap-1.5">
+            {command && <NativeCodeBlock text={command} wrap={false} className="max-h-32" />}
+            <KeyValueTable
+              rows={[
+                ['Timeout', timeout],
+                ['Background', backgroundTaskId],
+              ]}
+            />
+          </div>
+        </DetailSection>
+      )}
+      {sections.length > 0 && (
+        <DetailSection title={`Output · ${summarizeTerminalOutput(sections)}`}>
+          <div className="grid gap-2">
+            {sections.map(section => (
+              <section key={section.label} className="grid gap-1">
+                {sections.length > 1 && (
+                  <div className={cn(
+                    'px-0.5 font-mono text-[10px] font-medium',
+                    section.destructive ? 'text-destructive/70' : 'text-muted-foreground/60',
+                  )}
+                  >
+                    {section.label}
+                  </div>
+                )}
+                <HighlightedTerminalOutput text={section.text} destructive={section.destructive} />
+              </section>
+            ))}
+          </div>
+        </DetailSection>
+      )}
+    </div>
+  )
+}
+
+function TerminalCollapsedSummary({ output, errorText }: { output: unknown, errorText?: string }) {
+  const sections = readTerminalOutputSections(output, errorText)
+  if (sections.length === 0) {
+    return null
+  }
+  const destructive = sections.some(section => section.destructive)
+
+  return (
+    <div className={cn(
+      'rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground',
+      destructive && 'bg-destructive/5 text-destructive/80',
+    )}
+    >
+      {summarizeTerminalOutput(sections)}
+    </div>
   )
 }
 
@@ -309,26 +533,14 @@ function ToolHero({ descriptor, state, input, output, errorText }: { descriptor:
 }
 
 function TerminalSummary({ output, errorText }: { output: unknown, errorText?: string }) {
-  const stdout = readStringValue(output, ['stdout'])
-  const stderr = readStringValue(output, ['stderr'])
-  const message = errorText || stderr || stdout
-  if (!message) {
-    return <p className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">Command started.</p>
-  }
-  return (
-    <ScrollArea className={cn('max-h-44 rounded-md', errorText || stderr ? 'bg-destructive/5' : 'bg-muted/35')}>
-      <pre className={cn(CODE_TEXT_CLASS, 'whitespace-pre-wrap break-words p-2.5', (errorText || stderr) && 'text-destructive/80')}>
-        {message}
-      </pre>
-    </ScrollArea>
-  )
+  return <TerminalCollapsedSummary output={output} errorText={errorText} />
 }
 
 function FileReadSummary({ output }: { output: unknown }) {
   const outputType = readStringValue(output, ['type'])
   const file = readNestedRecord(output, 'file')
   if (!file) {
-    return <p className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">File read requested.</p>
+    return null
   }
   if (outputType === 'image') {
     const mimeType = readStringValue(file, ['type']) ?? 'image/png'
@@ -395,14 +607,6 @@ function SearchSummary({ output }: { output: unknown }) {
 }
 
 function WebSummary({ output }: { output: unknown }) {
-  const result = readStringValue(output, ['result'])
-  if (result) {
-    return (
-      <div className="rounded-md bg-muted/30 p-2.5 text-xs text-foreground/85">
-        <Streamdown content={result} streaming={false} animationPreset="minimal" animateMode="word" showCursor={false} />
-      </div>
-    )
-  }
   const results = isRecord(output) && Array.isArray(output.results) ? output.results : []
   const links = results.flatMap((item) => {
     if (!isRecord(item) || !Array.isArray(item.content)) {
@@ -431,25 +635,21 @@ function WebSummary({ output }: { output: unknown }) {
       </div>
     )
   }
-  return <RawValue value={output} />
+  return null
 }
 
 function SubagentSummary({ output }: { output: unknown }) {
   const status = readStringValue(output, ['status'])
-  const toolCount = readNumberValue(output, ['totalToolUseCount'])
-  const duration = readNumberValue(output, ['totalDurationMs'])
-  const tokens = readNumberValue(output, ['totalTokens'])
   const content = isRecord(output) && Array.isArray(output.content)
     ? output.content.filter(isRecord).map(item => readStringValue(item, ['text'])).filter(Boolean).join('\n\n')
     : ''
 
+  if (!status && !content) {
+    return null
+  }
+
   return (
     <div className="grid gap-2">
-      <div className="grid grid-cols-3 gap-1.5">
-        <Metric label="Tools" value={toolCount} />
-        <Metric label="Tokens" value={tokens} />
-        <Metric label="Time" value={duration === null ? null : `${(duration / 1000).toFixed(1)}s`} />
-      </div>
       {status === 'async_launched' && (
         <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300">
           <ClockIcon className="size-4" aria-hidden />
@@ -458,15 +658,6 @@ function SubagentSummary({ output }: { output: unknown }) {
         </Alert>
       )}
       {content && <RawValue value={content} />}
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string, value: string | number | null }) {
-  return (
-    <div className="rounded-md bg-muted/30 px-2 py-1.5">
-      <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
-      <div className="truncate font-mono text-xs tabular-nums text-foreground">{value ?? '-'}</div>
     </div>
   )
 }
@@ -510,7 +701,7 @@ function QuestionSummary({ output }: { output: unknown }) {
   )
 }
 
-function ToolDetails({ descriptor, input, output, errorText, children }: {
+function _ToolDetails({ descriptor, input, output, errorText, children }: {
   descriptor: ToolUiDescriptor
   input: unknown
   output: unknown
@@ -608,6 +799,7 @@ function FileDiffDetails({ input, output }: { input: unknown, output: unknown })
           filePath={editPreview.filePath}
           oldContent={editPreview.oldContent}
           newContent={editPreview.newContent}
+          defaultOpen
         />
       )}
     </div>
@@ -633,8 +825,33 @@ function StatusIcon({ state }: { state: ToolState }) {
   return <ClockIcon className={cn('size-3.5 text-muted-foreground', isRunning(state) && 'animate-pulse')} aria-hidden />
 }
 
+function hasHeroContent(descriptor: ToolUiDescriptor, output: unknown, errorText?: string): boolean {
+  if (errorText) {
+    return true
+  }
+  if (output === undefined || output === null) {
+    return false
+  }
+  switch (descriptor.kind) {
+    case 'terminal':
+      return hasTerminalOutput(output, errorText)
+    case 'file-read':
+      return readNestedRecord(output, 'file') !== null
+    case 'web': {
+      const results = isRecord(output) && Array.isArray(output.results) ? output.results : []
+      return results.some(item => isRecord(item) && Array.isArray((item as Record<string, unknown>).content))
+    }
+    case 'subagent': {
+      const status = readStringValue(output, ['status'])
+      const content = isRecord(output) && Array.isArray(output.content) ? output.content : []
+      return !!(status || content.length > 0)
+    }
+    default:
+      return true
+  }
+}
+
 export function ToolCallBlock({ toolName, toolCallId, state, input, output, errorText, children }: ToolCallBlockProps) {
-  const [expanded, setExpanded] = useState(false)
   const descriptor = useMemo(() => {
     const part: RenderableToolPart = {
       type: 'dynamic-tool',
@@ -648,10 +865,35 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
     return describeToolCall(part)
   }, [errorText, input, output, state, toolCallId, toolName])
 
+  const hasTerminalPanel = descriptor.kind === 'terminal' && hasTerminalDetails(input, output, errorText)
+  const hasChildren = Array.isArray(children) ? children.some(c => c !== null && c !== undefined && c !== false) : !!children
+  const expandable = hasTerminalPanel || hasChildren
+  const [expanded, setExpanded] = useState(() => isError(state) && hasTerminalPanel)
   const Icon = TOOL_ICON_MAP[descriptor.kind]
   const running = isRunning(state)
   const errored = isError(state)
-  const detailsId = `chat-tool-call-content-${toolCallId}`
+
+  useEffect(() => {
+    if (errored && hasTerminalPanel) {
+      setExpanded(true)
+    }
+  }, [errored, hasTerminalPanel])
+
+  const toggleExpanded = () => {
+    if (expandable) {
+      setExpanded(value => !value)
+    }
+  }
+
+  const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!expandable) {
+      return
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      setExpanded(value => !value)
+    }
+  }
 
   return (
     <m.div
@@ -663,109 +905,106 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
       data-tool-name={toolName}
       data-tool-kind={descriptor.kind}
     >
-      <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <div
+        className={cn(
+          'overflow-hidden rounded-lg bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
+          errored && 'ring-1 ring-destructive/30',
+          expandable && 'select-none',
+        )}
+      >
         <div
-          className={cn(
-            'overflow-hidden rounded-lg bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
-            errored && 'ring-1 ring-destructive/30',
-          )}
+          className={cn('flex h-9 items-center gap-2 px-3', expandable && 'cursor-pointer')}
+          role={expandable ? 'button' : undefined}
+          tabIndex={expandable ? 0 : undefined}
+          aria-expanded={expandable ? expanded : undefined}
+          onClick={toggleExpanded}
+          onKeyDown={handleHeaderKeyDown}
         >
-          <CollapsibleTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-auto w-full justify-start rounded-none px-3 py-2.5 text-left active:scale-[0.96]"
-              data-testid={`chat-tool-call-toggle-${toolCallId}`}
-              aria-expanded={expanded}
-              aria-controls={detailsId}
-            >
+          <Icon
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground/60',
+              running && 'text-amber-500 dark:text-amber-400',
+              errored && 'text-destructive',
+            )}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground/80">
+            {descriptor.title}
+          </span>
+          {(descriptor.target || descriptor.summary) && (
+            <span className="flex min-w-0 max-w-48 shrink-0 items-center gap-1 text-[11px] text-muted-foreground/50">
+              {descriptor.target && (
+                <Tooltip delayDuration={600}>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-default truncate font-mono">{basename(descriptor.target)}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="font-mono text-[11px]">{descriptor.target}</TooltipContent>
+                </Tooltip>
+              )}
+              {descriptor.summary && descriptor.target && (
+                <span className="text-muted-foreground/30">·</span>
+              )}
+              {descriptor.summary && (
+                <span className="truncate">{descriptor.summary}</span>
+              )}
+            </span>
+          )}
+          {expandable && (
+            <ChevronDownIcon
+              className={cn(
+                'size-3 shrink-0 text-muted-foreground/40 transition-transform duration-200',
+                expanded && 'rotate-180',
+              )}
+              aria-hidden
+            />
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
               <span className={cn(
-                'flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground',
-                running && 'text-amber-600 dark:text-amber-300',
-                errored && 'bg-destructive/10 text-destructive',
+                'flex shrink-0 items-center',
+                isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
+                (state === 'output-available' || state === 'approval-responded') && 'text-emerald-500/80',
               )}
               >
-                <Icon className="size-4" aria-hidden />
+                <StatusIcon state={state} />
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-sm font-medium text-foreground">{descriptor.title}</span>
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={(
-                      <Badge variant={STATUS_BADGE_VARIANTS[state]} className="h-5 shrink-0">
-                        <StatusIcon state={state} />
-                        {STATUS_LABELS[state]}
-                      </Badge>
-                      )}
-                    />
-                    <TooltipContent>
-                      {descriptor.displayName}
-                    </TooltipContent>
-                  </Tooltip>
-                </span>
-                <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  {descriptor.target && (
-                    <span className="truncate font-mono" title={descriptor.target}>{compactPath(descriptor.target)}</span>
-                  )}
-                  {descriptor.summary && (
-                    <>
-                      {descriptor.target && <span className="text-muted-foreground/45">/</span>}
-                      <span className="truncate">{descriptor.summary}</span>
-                    </>
-                  )}
-                </span>
-              </span>
-              <ChevronDownIcon
-                className={cn(
-                  'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
-                  expanded && 'rotate-180',
-                )}
-                aria-hidden
-              />
-            </Button>
-          </CollapsibleTrigger>
-
-          {running && (
-            <div className="h-px overflow-hidden bg-muted">
-              <m.div
-                className="h-full w-1/3 rounded-full bg-muted-foreground/25"
-                animate={{ x: ['-100%', '400%'] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-              />
-            </div>
-          )}
-
-          {!expanded && (
-            <div className="px-3 pb-3">
-              <ToolHero descriptor={descriptor} state={state} input={input} output={output} errorText={errorText} />
-            </div>
-          )}
-
-          <AnimatePresence initial={false}>
-            {expanded && (
-              <CollapsibleContent forceMount asChild>
-                <m.div
-                  id={detailsId}
-                  data-testid={detailsId}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
-                  className="overflow-hidden"
-                >
-                  <Separator />
-                  <div className="p-3">
-                    <ToolDetails descriptor={descriptor} input={input} output={output} errorText={errorText}>
-                      {children}
-                    </ToolDetails>
-                  </div>
-                </m.div>
-              </CollapsibleContent>
-            )}
-          </AnimatePresence>
+            </TooltipTrigger>
+            <TooltipContent>
+              {descriptor.displayName}
+              {' '}
+              ·
+              {' '}
+              {STATUS_LABELS[state]}
+            </TooltipContent>
+          </Tooltip>
         </div>
-      </Collapsible>
+
+        {running && (
+          <div className="h-px overflow-hidden bg-muted">
+            <m.div
+              className="h-full w-1/3 rounded-full bg-muted-foreground/25"
+              animate={{ x: ['-100%', '400%'] }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+            />
+          </div>
+        )}
+
+        {hasTerminalPanel && expanded && (
+          <div className="px-3 pb-3">
+            <TerminalExecutionDetails input={input} output={output} errorText={errorText} />
+          </div>
+        )}
+
+        {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, output, errorText) && (
+          <div className="px-3 pb-3">
+            <ToolHero descriptor={descriptor} state={state} input={input} output={output} errorText={errorText} />
+          </div>
+        )}
+      </div>
+
+      {hasChildren && expanded && (
+        <div className="ml-3 mt-0.5 max-h-80 overflow-y-auto space-y-0">{children}</div>
+      )}
     </m.div>
   )
 }
