@@ -6,21 +6,19 @@
 
 use crate::screen::{BrowserWindowObservation, CapturedFrame};
 
-#[derive(Debug, Clone)]
-pub struct PrivacyFilter {
-    chrome_bundles: Vec<&'static str>,
-}
+const CHROME_BUNDLES: &[&str] = &[
+    "com.google.Chrome",
+    "com.google.Chrome.beta",
+    "com.google.Chrome.canary",
+    "com.google.Chrome.dev",
+];
+
+#[derive(Debug, Clone, Copy)]
+pub struct PrivacyFilter;
 
 impl Default for PrivacyFilter {
     fn default() -> Self {
-        Self {
-            chrome_bundles: vec![
-                "com.google.Chrome",
-                "com.google.Chrome.beta",
-                "com.google.Chrome.canary",
-                "com.google.Chrome.dev",
-            ],
-        }
+        Self
     }
 }
 
@@ -40,7 +38,7 @@ impl PrivacyFilter {
         let bundle = window.app_bundle_identifier.as_str();
         let url = window.url.as_deref().unwrap_or("").to_ascii_lowercase();
 
-        let is_chrome = self.chrome_bundles.contains(&bundle);
+        let is_chrome = CHROME_BUNDLES.contains(&bundle);
         let is_safari =
             bundle == "com.apple.Safari" || bundle == "com.apple.SafariTechnologyPreview";
 

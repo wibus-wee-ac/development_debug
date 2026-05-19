@@ -9,14 +9,35 @@ use std::path::PathBuf;
 
 use crate::error::{ChronicleError, ChronicleResult};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureProvider {
+    Macos,
+    Inbox,
+}
+
+impl CaptureProvider {
+    pub fn parse(s: &str) -> ChronicleResult<Self> {
+        match s {
+            "macos" => Ok(Self::Macos),
+            "inbox" => Ok(Self::Inbox),
+            other => Err(ChronicleError::InvalidArgument(format!(
+                "unsupported provider: {other}"
+            ))),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChronicleConfig {
     pub storage_root: PathBuf,
     pub inbox_root: PathBuf,
-    pub provider: String,
+    pub provider: CaptureProvider,
     pub display_id: u32,
     pub capture_limit: usize,
     pub poll_interval_ms: u64,
+    pub idle_timeout_seconds: u64,
+    pub min_interval_ms: u64,
+    pub max_interval_ms: u64,
     pub smoke: bool,
     pub daemon: bool,
     pub run_once: bool,
@@ -38,16 +59,28 @@ impl ChronicleConfig {
         let mut inbox_root = env::var_os("CHRONICLE_INBOX_ROOT")
             .map(PathBuf::from)
             .unwrap_or_else(|| storage_root.join("inbox"));
-        let mut provider = env::var("CRADLE_CHRONICLE_PROVIDER").unwrap_or_else(|_| {
-            if cfg!(target_os = "macos") {
-                "macos".to_string()
-            } else {
-                "inbox".to_string()
+        let mut provider = match env::var("CRADLE_CHRONICLE_PROVIDER").as_deref() {
+            Ok("macos") => CaptureProvider::Macos,
+            Ok("inbox") => CaptureProvider::Inbox,
+            Ok(other) => {
+                return Err(ChronicleError::InvalidArgument(format!(
+                    "unsupported CRADLE_CHRONICLE_PROVIDER: {other}"
+                )));
             }
-        });
+            Err(_) => {
+                if cfg!(target_os = "macos") {
+                    CaptureProvider::Macos
+                } else {
+                    CaptureProvider::Inbox
+                }
+            }
+        };
         let mut display_id = 1;
         let mut capture_limit = 3;
-        let mut poll_interval_ms = 2_000;
+        let mut poll_interval_ms = 5_000;
+        let mut idle_timeout_seconds = 300;
+        let mut min_interval_ms = 2_000;
+        let mut max_interval_ms = 30_000;
         let mut smoke = false;
         let mut daemon = false;
         let mut run_once = false;
@@ -81,11 +114,12 @@ impl ChronicleConfig {
                 })?;
                 inbox_root = PathBuf::from(value);
             } else if let Some(value) = arg.strip_prefix("--provider=") {
-                provider = value.to_string();
+                provider = CaptureProvider::parse(value)?;
             } else if arg == "--provider" {
-                provider = iterator.next().ok_or_else(|| {
+                let value = iterator.next().ok_or_else(|| {
                     ChronicleError::InvalidArgument("--provider requires a value".to_string())
                 })?;
+                provider = CaptureProvider::parse(&value)?;
             } else if let Some(value) = arg.strip_prefix("--display-id=") {
                 display_id = parse_u32("--display-id", value)?;
             } else if arg == "--display-id" {
@@ -107,6 +141,27 @@ impl ChronicleConfig {
                     ChronicleError::InvalidArgument("--poll-ms requires a value".to_string())
                 })?;
                 poll_interval_ms = parse_u64("--poll-ms", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--idle-timeout=") {
+                idle_timeout_seconds = parse_u64("--idle-timeout", value)?;
+            } else if arg == "--idle-timeout" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument("--idle-timeout requires a value".to_string())
+                })?;
+                idle_timeout_seconds = parse_u64("--idle-timeout", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--min-interval-ms=") {
+                min_interval_ms = parse_u64("--min-interval-ms", value)?;
+            } else if arg == "--min-interval-ms" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument("--min-interval-ms requires a value".to_string())
+                })?;
+                min_interval_ms = parse_u64("--min-interval-ms", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--max-interval-ms=") {
+                max_interval_ms = parse_u64("--max-interval-ms", value)?;
+            } else if arg == "--max-interval-ms" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument("--max-interval-ms requires a value".to_string())
+                })?;
+                max_interval_ms = parse_u64("--max-interval-ms", &value)?;
             } else if arg == "--help" || arg == "-h" {
                 return Err(ChronicleError::InvalidArgument(usage()));
             } else {
@@ -130,6 +185,9 @@ impl ChronicleConfig {
             display_id,
             capture_limit,
             poll_interval_ms,
+            idle_timeout_seconds,
+            min_interval_ms,
+            max_interval_ms,
             smoke,
             daemon,
             run_once,
@@ -138,7 +196,7 @@ impl ChronicleConfig {
 }
 
 pub fn usage() -> String {
-    "usage: cradle-chronicle (--smoke | --daemon) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--run-once]".to_string()
+    "usage: cradle-chronicle (--smoke | --daemon) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--run-once]".to_string()
 }
 
 fn parse_u32(name: &str, value: &str) -> ChronicleResult<u32> {
@@ -163,7 +221,7 @@ fn parse_u64(name: &str, value: &str) -> ChronicleResult<u64> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::ChronicleConfig;
+    use super::{ChronicleConfig, CaptureProvider};
 
     #[test]
     fn parses_storage_root_forms() {
@@ -206,7 +264,7 @@ mod tests {
         assert!(config.daemon);
         assert!(config.run_once);
         assert_eq!(config.inbox_root, PathBuf::from("/tmp/cradle-inbox"));
-        assert_eq!(config.provider, "inbox");
+        assert_eq!(config.provider, CaptureProvider::Inbox);
         assert_eq!(config.poll_interval_ms, 25);
     }
 

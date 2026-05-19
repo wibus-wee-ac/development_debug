@@ -77,6 +77,15 @@ fn read_manifest(manifest_path: &Path) -> ChronicleResult<CapturedFrame> {
 
     let bytes =
         fs::read(&image_path).map_err(|source| ChronicleError::io_at(&image_path, source))?;
+    // Guard against pathologically large files (100 MB cap)
+    const MAX_IMAGE_BYTES: usize = 100 * 1024 * 1024;
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err(ChronicleError::Process(format!(
+            "inbox image exceeds {} MB limit: {}",
+            MAX_IMAGE_BYTES / (1024 * 1024),
+            image_path.display()
+        )));
+    }
     let observed_text = fs::read_to_string(&text_path)
         .map_err(|source| ChronicleError::io_at(&text_path, source))?;
     let frame_extension = image_path
@@ -163,14 +172,14 @@ fn percent_decode(value: &str) -> String {
     let mut output = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            if let (Some(high), Some(low)) =
+        if bytes[index] == b'%'
+            && index + 2 < bytes.len()
+            && let (Some(high), Some(low)) =
                 (hex_value(bytes[index + 1]), hex_value(bytes[index + 2]))
-            {
-                output.push(high * 16 + low);
-                index += 3;
-                continue;
-            }
+        {
+            output.push(high * 16 + low);
+            index += 3;
+            continue;
         }
         output.push(bytes[index]);
         index += 1;

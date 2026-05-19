@@ -99,13 +99,13 @@ fn local_markdown(request: &SummaryRequest) -> String {
 }
 
 fn join_distinct_text(frames: &[PersistedFrame]) -> String {
-    let mut values = Vec::new();
-    for frame in frames {
-        if !frame.normalized_text.is_empty() && !values.contains(&frame.normalized_text) {
-            values.push(frame.normalized_text.clone());
-        }
-    }
-    values.join(" ")
+    let mut seen = std::collections::HashSet::new();
+    let distinct: Vec<&str> = frames
+        .iter()
+        .filter(|f| !f.normalized_text.is_empty() && seen.insert(&f.normalized_text))
+        .map(|f| f.normalized_text.as_str())
+        .collect();
+    distinct.join(" ")
 }
 
 fn relative_display(path: &Path) -> String {

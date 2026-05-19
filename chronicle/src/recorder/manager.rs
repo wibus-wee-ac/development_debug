@@ -28,7 +28,7 @@ where
         Self {
             source,
             extractor,
-            privacy_filter: PrivacyFilter::default(),
+            privacy_filter: PrivacyFilter,
             artifact_store,
             previous_fingerprint: None,
         }

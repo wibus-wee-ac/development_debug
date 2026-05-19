@@ -1,186 +1,469 @@
 //! macOS native capture source for Cradle Chronicle.
 //!
-//! Input: macOS `screencapture`, CoreGraphics window inventory, and Vision OCR.
+//! Input: CoreGraphics window list, CGDisplay capture, Vision OCR via objc2 FFI.
 //! Output: real PNG screen frames with recognized text.
-//! Position: standalone macOS production provider; no Electron dependency.
+//! Position: standalone macOS production provider; no Electron or subprocess dependency.
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+#[cfg(target_os = "macos")]
+mod native {
+    use std::ffi::c_void;
+    use std::ptr;
 
-use crate::error::{ChronicleError, ChronicleResult};
-use crate::screen::privacy_filter::PrivacyFilter;
-use crate::screen::{BrowserWindowObservation, CaptureSource, CapturedFrame};
-use crate::time::Timestamp;
+    use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
+    use core_foundation::string::CFString;
+    use core_graphics::display::CGDisplay;
+    use core_graphics::image::CGImage;
+    use core_graphics::window::{
+        kCGNullWindowID, kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly,
+        kCGWindowName, kCGWindowNumber, kCGWindowOwnerName, kCGWindowOwnerPID,
+    };
+    use foreign_types::ForeignType;
 
-pub struct MacosCaptureSource {
-    frame: Option<CapturedFrame>,
-}
+    // Link frameworks needed for FFI calls
+    #[link(name = "AppKit", kind = "framework")]
+    unsafe extern "C" {}
+    #[link(name = "Vision", kind = "framework")]
+    unsafe extern "C" {}
 
-impl MacosCaptureSource {
-    pub fn capture(display_id: u32, frame_index: u64) -> ChronicleResult<Self> {
-        let windows = read_window_inventory()?;
-        if PrivacyFilter::default().should_exclude_windows(&windows) {
-            return Ok(Self { frame: None });
+    use crate::error::{ChronicleError, ChronicleResult};
+    use crate::screen::privacy_filter::PrivacyFilter;
+    use crate::screen::{BrowserWindowObservation, CaptureSource, CapturedFrame};
+    use crate::time::Timestamp;
+
+    pub struct MacosCaptureSource {
+        frame: Option<CapturedFrame>,
+    }
+
+    impl MacosCaptureSource {
+        pub fn capture(display_id: u32, frame_index: u64) -> ChronicleResult<Self> {
+            let windows = read_window_inventory()?;
+            if PrivacyFilter.should_exclude_windows(&windows) {
+                return Ok(Self { frame: None });
+            }
+
+            let captured_at = Timestamp::now()?;
+            let cg_image = capture_display(display_id)?;
+            let bytes = encode_cgimage_to_png(&cg_image)?;
+            if bytes.is_empty() {
+                return Err(ChronicleError::Process(
+                    "macOS display capture produced empty image data".to_string(),
+                ));
+            }
+            let observed_text = run_vision_ocr(&cg_image)?;
+
+            Ok(Self {
+                frame: Some(CapturedFrame {
+                    display_id,
+                    frame_index,
+                    captured_at,
+                    bytes,
+                    frame_extension: "png".to_string(),
+                    observed_text,
+                    windows,
+                }),
+            })
+        }
+    }
+
+    impl CaptureSource for MacosCaptureSource {
+        fn next_frame(&mut self) -> ChronicleResult<Option<CapturedFrame>> {
+            Ok(self.frame.take())
+        }
+    }
+
+    // --- Screen Capture via CGDisplay ---
+
+    fn capture_display(display_id: u32) -> ChronicleResult<CGImage> {
+        let display = if display_id == 0 {
+            CGDisplay::main()
+        } else {
+            CGDisplay::new(display_id)
+        };
+
+        display.image().ok_or_else(|| {
+            ChronicleError::Process(
+                "CGDisplayCreateImage returned null. Grant Screen Recording permission."
+                    .to_string(),
+            )
+        })
+    }
+
+    fn encode_cgimage_to_png(image: &CGImage) -> ChronicleResult<Vec<u8>> {
+        // Use ImageIO to write CGImage to PNG data in-memory.
+        #[link(name = "ImageIO", kind = "framework")]
+        unsafe extern "C" {
+            fn CGImageDestinationCreateWithData(
+                data: CFTypeRef,
+                type_: CFTypeRef,
+                count: usize,
+                options: CFTypeRef,
+            ) -> *mut c_void;
+            fn CGImageDestinationAddImage(
+                dest: *mut c_void,
+                image: *const c_void,
+                properties: CFTypeRef,
+            );
+            fn CGImageDestinationFinalize(dest: *mut c_void) -> bool;
         }
 
-        let captured_at = Timestamp::now()?;
-        let temp_path = temp_capture_path(captured_at, frame_index);
-        run_screencapture(&temp_path)?;
-        let bytes =
-            fs::read(&temp_path).map_err(|source| ChronicleError::io_at(&temp_path, source))?;
-        if bytes.is_empty() {
-            return Err(ChronicleError::Process(format!(
-                "macOS screen capture produced an empty file at {}",
-                temp_path.display()
-            )));
+        #[link(name = "CoreFoundation", kind = "framework")]
+        unsafe extern "C" {
+            fn CFDataCreateMutable(allocator: CFTypeRef, capacity: isize) -> CFTypeRef;
+            fn CFDataGetBytePtr(data: CFTypeRef) -> *const u8;
+            fn CFDataGetLength(data: CFTypeRef) -> isize;
         }
-        let observed_text = run_vision_ocr(&temp_path)?;
-        let _ = fs::remove_file(&temp_path);
 
-        Ok(Self {
-            frame: Some(CapturedFrame {
-                display_id,
-                frame_index,
-                captured_at,
-                bytes,
-                frame_extension: "png".to_string(),
-                observed_text,
-                windows,
-            }),
+        unsafe {
+            let mutable_data = CFDataCreateMutable(ptr::null(), 0);
+            if mutable_data.is_null() {
+                return Err(ChronicleError::Process(
+                    "failed to create mutable data for PNG encoding".to_string(),
+                ));
+            }
+
+            let png_uti = CFString::new("public.png");
+            let dest = CGImageDestinationCreateWithData(
+                mutable_data,
+                png_uti.as_CFTypeRef(),
+                1,
+                ptr::null(),
+            );
+            if dest.is_null() {
+                CFRelease(mutable_data);
+                return Err(ChronicleError::Process(
+                    "failed to create CGImageDestination for PNG".to_string(),
+                ));
+            }
+
+            CGImageDestinationAddImage(dest, image.as_ptr() as *const c_void, ptr::null());
+
+            let success = CGImageDestinationFinalize(dest);
+            CFRelease(dest as CFTypeRef);
+
+            if !success {
+                CFRelease(mutable_data);
+                return Err(ChronicleError::Process(
+                    "CGImageDestinationFinalize failed".to_string(),
+                ));
+            }
+
+            let ptr = CFDataGetBytePtr(mutable_data);
+            let len = CFDataGetLength(mutable_data) as usize;
+            let bytes = std::slice::from_raw_parts(ptr, len).to_vec();
+            CFRelease(mutable_data);
+
+            Ok(bytes)
+        }
+    }
+
+    // --- Window Enumeration via CoreGraphics ---
+
+    fn read_window_inventory() -> ChronicleResult<Vec<BrowserWindowObservation>> {
+        use core_foundation::array::CFArray;
+        use core_foundation::dictionary::CFDictionary;
+
+        let options = kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements;
+        let window_list: CFArray<CFDictionary<CFString, CFTypeRef>> = unsafe {
+            let raw = core_graphics::window::CGWindowListCopyWindowInfo(options, kCGNullWindowID);
+            if raw.is_null() {
+                return Ok(Vec::new());
+            }
+            CFArray::wrap_under_create_rule(raw as *mut _)
+        };
+
+        // Build PID -> bundle ID map via NSWorkspace
+        let pid_to_bundle = build_pid_to_bundle_map();
+
+        let key_number = unsafe { CFString::wrap_under_get_rule(kCGWindowNumber) };
+        let key_pid = unsafe { CFString::wrap_under_get_rule(kCGWindowOwnerPID) };
+        let key_name = unsafe { CFString::wrap_under_get_rule(kCGWindowName) };
+        let key_owner = unsafe { CFString::wrap_under_get_rule(kCGWindowOwnerName) };
+
+        let mut windows = Vec::new();
+        for i in 0..window_list.len() {
+            let dict = unsafe { window_list.get_unchecked(i) };
+
+            let window_id = get_dict_number(&dict, &key_number).unwrap_or(0) as u32;
+            let pid = get_dict_number(&dict, &key_pid).unwrap_or(0) as i32;
+            let title = get_dict_string(&dict, &key_name).unwrap_or_default();
+            let owner_name = get_dict_string(&dict, &key_owner).unwrap_or_default();
+
+            let bundle_id = pid_to_bundle.get(&pid).cloned().unwrap_or(owner_name);
+
+            windows.push(BrowserWindowObservation::new(window_id, title, bundle_id));
+        }
+
+        Ok(windows)
+    }
+
+    fn get_dict_number(
+        dict: &core_foundation::dictionary::CFDictionary<CFString, CFTypeRef>,
+        key: &CFString,
+    ) -> Option<i64> {
+        use core_foundation::number::CFNumber;
+        unsafe {
+            if dict.contains_key(key) {
+                let value = dict.get(key);
+                let number: CFNumber = CFNumber::wrap_under_get_rule(*value as *const _);
+                number.to_i64()
+            } else {
+                None
+            }
+        }
+    }
+
+    fn get_dict_string(
+        dict: &core_foundation::dictionary::CFDictionary<CFString, CFTypeRef>,
+        key: &CFString,
+    ) -> Option<String> {
+        unsafe {
+            if dict.contains_key(key) {
+                let value = dict.get(key);
+                let cf_str = CFString::wrap_under_get_rule(*value as *const _);
+                Some(cf_str.to_string())
+            } else {
+                None
+            }
+        }
+    }
+
+    fn build_pid_to_bundle_map() -> std::collections::HashMap<i32, String> {
+        use objc2::msg_send;
+        use objc2::rc::autoreleasepool;
+        use objc2::runtime::AnyObject;
+
+        autoreleasepool(|_| {
+            let mut map = std::collections::HashMap::new();
+
+            unsafe {
+                // [NSWorkspace sharedWorkspace]
+                let cls = objc2::runtime::AnyClass::get(c"NSWorkspace").unwrap();
+                let workspace: *mut AnyObject = msg_send![cls, sharedWorkspace];
+                if workspace.is_null() {
+                    return map;
+                }
+                // [workspace runningApplications]
+                let apps: *mut AnyObject = msg_send![workspace, runningApplications];
+                if apps.is_null() {
+                    return map;
+                }
+                let count: usize = msg_send![apps, count];
+                for i in 0..count {
+                    let app: *mut AnyObject = msg_send![apps, objectAtIndex: i];
+                    if app.is_null() {
+                        continue;
+                    }
+                    let pid: i32 = msg_send![app, processIdentifier];
+                    let bundle_id: *mut AnyObject = msg_send![app, bundleIdentifier];
+                    if !bundle_id.is_null() {
+                        let utf8: *const u8 = msg_send![bundle_id, UTF8String];
+                        if !utf8.is_null() {
+                            let cstr = std::ffi::CStr::from_ptr(utf8 as *const _);
+                            if let Ok(s) = cstr.to_str() {
+                                map.insert(pid, s.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+
+            map
+        })
+    }
+
+    // --- Vision OCR via objc2 ---
+
+    fn run_vision_ocr(cg_image: &CGImage) -> ChronicleResult<String> {
+        use objc2::msg_send;
+        use objc2::rc::autoreleasepool;
+        use objc2::runtime::AnyObject;
+
+        autoreleasepool(|_| {
+            unsafe {
+                // Create VNRecognizeTextRequest
+                let request_cls =
+                    objc2::runtime::AnyClass::get(c"VNRecognizeTextRequest").ok_or_else(|| {
+                        ChronicleError::Process(
+                            "VNRecognizeTextRequest class not found (requires macOS 10.15+)"
+                                .to_string(),
+                        )
+                    })?;
+                let request: *mut AnyObject = msg_send![request_cls, alloc];
+                let request: *mut AnyObject = msg_send![request, init];
+                if request.is_null() {
+                    return Err(ChronicleError::Process(
+                        "failed to create VNRecognizeTextRequest".to_string(),
+                    ));
+                }
+
+                // Set recognition level to accurate (1)
+                let _: () = msg_send![request, setRecognitionLevel: 1i64];
+                // Enable language correction for better accuracy
+                let _: () = msg_send![request, setUsesLanguageCorrection: true];
+                // Use revision 3 (macOS 13+) for best quality; falls back gracefully
+                let _: () = msg_send![request, setRevision: 3usize];
+                // Set recognition languages — prioritize English + Chinese + Japanese
+                let nsstring_cls = objc2::runtime::AnyClass::get(c"NSString").unwrap();
+                let array_cls = objc2::runtime::AnyClass::get(c"NSArray").unwrap();
+                let lang_en: *mut AnyObject = msg_send![nsstring_cls, stringWithUTF8String: c"en-US".as_ptr()];
+                let lang_zh: *mut AnyObject = msg_send![nsstring_cls, stringWithUTF8String: c"zh-Hans".as_ptr()];
+                let lang_ja: *mut AnyObject = msg_send![nsstring_cls, stringWithUTF8String: c"ja".as_ptr()];
+                let langs_raw: [*mut AnyObject; 3] = [lang_en, lang_zh, lang_ja];
+                let lang_array: *mut AnyObject = msg_send![array_cls, arrayWithObjects: langs_raw.as_ptr(), count: 3usize];
+                let _: () = msg_send![request, setRecognitionLanguages: lang_array];
+                // Minimum text height filter (ignore very tiny text that's usually noise)
+                let _: () = msg_send![request, setMinimumTextHeight: 0.01f32];
+
+                // Create VNImageRequestHandler with CGImage
+                let handler_cls =
+                    objc2::runtime::AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| {
+                        // Release request before returning error
+                        let _: () = msg_send![request, release];
+                        ChronicleError::Process(
+                            "VNImageRequestHandler class not found (requires macOS 10.15+)"
+                                .to_string(),
+                        )
+                    })?;
+                let handler: *mut AnyObject = msg_send![handler_cls, alloc];
+                // initWithCGImage:options: — use raw objc_msgSend because
+                // core_graphics::CGImage doesn't implement objc2::RefEncode
+                let cg_image_ptr: *const c_void = cg_image.as_ptr().cast();
+                let empty_dict_cls = objc2::runtime::AnyClass::get(c"NSDictionary").unwrap();
+                let empty_dict: *mut AnyObject = msg_send![empty_dict_cls, dictionary];
+                let sel = objc2::sel!(initWithCGImage:options:);
+                let init_fn: unsafe extern "C" fn(
+                    *mut AnyObject,
+                    objc2::runtime::Sel,
+                    *const c_void,
+                    *mut AnyObject,
+                ) -> *mut AnyObject =
+                    std::mem::transmute(objc2::ffi::objc_msgSend as *const ());
+                let handler: *mut AnyObject =
+                    init_fn(handler, sel, cg_image_ptr, empty_dict);
+                if handler.is_null() {
+                    let _: () = msg_send![request, release];
+                    return Err(ChronicleError::Process(
+                        "failed to create VNImageRequestHandler".to_string(),
+                    ));
+                }
+
+                // Create NSArray with single request
+                let array_cls = objc2::runtime::AnyClass::get(c"NSArray").unwrap();
+                let requests: *mut AnyObject = msg_send![array_cls, arrayWithObject: request];
+
+                // performRequests:error:
+                let mut error: *mut AnyObject = ptr::null_mut();
+                let success: bool =
+                    msg_send![handler, performRequests: requests, error: &mut error];
+
+                if !success {
+                    let desc = if !error.is_null() {
+                        let desc: *mut AnyObject = msg_send![error, localizedDescription];
+                        if !desc.is_null() {
+                            let utf8: *const u8 = msg_send![desc, UTF8String];
+                            if !utf8.is_null() {
+                                std::ffi::CStr::from_ptr(utf8 as *const _)
+                                    .to_string_lossy()
+                                    .to_string()
+                            } else {
+                                "unknown error".to_string()
+                            }
+                        } else {
+                            "unknown error".to_string()
+                        }
+                    } else {
+                        "unknown error".to_string()
+                    };
+                    let _: () = msg_send![request, release];
+                    let _: () = msg_send![handler, release];
+                    return Err(ChronicleError::Process(format!(
+                        "Vision OCR failed: {desc}"
+                    )));
+                }
+
+                // Extract results
+                let results: *mut AnyObject = msg_send![request, results];
+                let text = if results.is_null() {
+                    String::new()
+                } else {
+                    let count: usize = msg_send![results, count];
+                    let mut lines = Vec::with_capacity(count);
+                    for i in 0..count {
+                        let observation: *mut AnyObject = msg_send![results, objectAtIndex: i];
+                        if observation.is_null() {
+                            continue;
+                        }
+                        // Skip low-confidence observations (< 0.3)
+                        let confidence: f32 = msg_send![observation, confidence];
+                        if confidence < 0.3 {
+                            continue;
+                        }
+                        // topCandidates:1
+                        let candidates: *mut AnyObject =
+                            msg_send![observation, topCandidates: 1usize];
+                        if candidates.is_null() {
+                            continue;
+                        }
+                        let cand_count: usize = msg_send![candidates, count];
+                        if cand_count == 0 {
+                            continue;
+                        }
+                        let candidate: *mut AnyObject =
+                            msg_send![candidates, objectAtIndex: 0usize];
+                        if candidate.is_null() {
+                            continue;
+                        }
+                        let string: *mut AnyObject = msg_send![candidate, string];
+                        if string.is_null() {
+                            continue;
+                        }
+                        let utf8: *const u8 = msg_send![string, UTF8String];
+                        if !utf8.is_null() {
+                            let cstr = std::ffi::CStr::from_ptr(utf8 as *const _);
+                            if let Ok(s) = cstr.to_str() {
+                                lines.push(s.to_string());
+                            }
+                        }
+                    }
+                    lines.join("\n")
+                };
+
+                // Release owned objects
+                let _: () = msg_send![request, release];
+                let _: () = msg_send![handler, release];
+
+                Ok(text)
+            }
         })
     }
 }
 
-impl CaptureSource for MacosCaptureSource {
-    fn next_frame(&mut self) -> ChronicleResult<Option<CapturedFrame>> {
-        Ok(self.frame.take())
-    }
-}
+#[cfg(target_os = "macos")]
+pub use native::MacosCaptureSource;
 
-fn run_screencapture(output_path: &Path) -> ChronicleResult<()> {
-    let status = Command::new("/usr/sbin/screencapture")
-        .args(["-x", "-t", "png"])
-        .arg(output_path)
-        .status()
-        .map_err(|source| {
-            ChronicleError::Process(format!("failed to start macOS screencapture: {source}"))
-        })?;
+#[cfg(not(target_os = "macos"))]
+mod stub {
+    use crate::error::{ChronicleError, ChronicleResult};
+    use crate::screen::{CaptureSource, CapturedFrame};
 
-    if !status.success() {
-        return Err(ChronicleError::Process(format!(
-            "macOS screencapture failed with status {status}. Grant Screen Recording permission to the terminal or app that starts Chronicle."
-        )));
-    }
+    pub struct MacosCaptureSource;
 
-    Ok(())
-}
-
-fn read_window_inventory() -> ChronicleResult<Vec<BrowserWindowObservation>> {
-    let helper = resolve_helper(
-        "macos_windows.swift",
-        "CRADLE_CHRONICLE_MACOS_WINDOWS_HELPER",
-    )?;
-    let output = Command::new("/usr/bin/swift")
-        .arg(&helper)
-        .output()
-        .map_err(|source| {
-            ChronicleError::Process(format!(
-                "failed to start macOS window inventory helper {}: {source}",
-                helper.display()
+    impl MacosCaptureSource {
+        pub fn capture(_display_id: u32, _frame_index: u64) -> ChronicleResult<Self> {
+            Err(ChronicleError::Process(
+                "macOS capture is only available on macOS".to_string(),
             ))
-        })?;
-
-    if !output.status.success() {
-        return Err(ChronicleError::Process(format!(
-            "macOS window inventory helper failed with status {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        )));
+        }
     }
 
-    let stdout = String::from_utf8(output.stdout)?;
-    let mut windows = Vec::new();
-    for (index, line) in stdout.lines().enumerate() {
-        let mut fields = line.splitn(3, '\t');
-        let id = fields
-            .next()
-            .and_then(|value| value.parse::<u32>().ok())
-            .unwrap_or(index as u32 + 1);
-        let bundle_id = fields.next().unwrap_or("unknown");
-        let name = fields.next().unwrap_or("");
-        windows.push(BrowserWindowObservation::new(id, name, bundle_id));
-    }
-    Ok(windows)
-}
-
-fn run_vision_ocr(image_path: &Path) -> ChronicleResult<String> {
-    let helper = resolve_helper("macos_ocr.swift", "CRADLE_CHRONICLE_MACOS_OCR_HELPER")?;
-    let output = Command::new("/usr/bin/swift")
-        .arg(&helper)
-        .arg(image_path)
-        .output()
-        .map_err(|source| {
-            ChronicleError::Process(format!(
-                "failed to start macOS Vision OCR helper {}: {source}",
-                helper.display()
+    impl CaptureSource for MacosCaptureSource {
+        fn next_frame(&mut self) -> ChronicleResult<Option<CapturedFrame>> {
+            Err(ChronicleError::Process(
+                "macOS capture is only available on macOS".to_string(),
             ))
-        })?;
-
-    if !output.status.success() {
-        return Err(ChronicleError::Process(format!(
-            "macOS Vision OCR helper failed with status {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        )));
+        }
     }
-
-    String::from_utf8(output.stdout).map_err(ChronicleError::from)
 }
 
-fn resolve_helper(file_name: &str, env_name: &str) -> ChronicleResult<PathBuf> {
-    if let Some(configured) = std::env::var_os(env_name) {
-        let path = PathBuf::from(configured);
-        if path.exists() {
-            return Ok(path);
-        }
-        return Err(ChronicleError::InvalidArgument(format!(
-            "configured helper does not exist: {}",
-            path.display()
-        )));
-    }
-
-    let candidates = [
-        PathBuf::from("chronicle/helpers").join(file_name),
-        PathBuf::from("../chronicle/helpers").join(file_name),
-    ];
-    for candidate in candidates {
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-
-    let current_exe = std::env::current_exe()?;
-    for ancestor in current_exe.ancestors() {
-        let candidate = ancestor.join("helpers").join(file_name);
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-        let candidate = ancestor.join("chronicle/helpers").join(file_name);
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-
-    Err(ChronicleError::InvalidArgument(format!(
-        "macOS helper {file_name} not found; set {env_name}"
-    )))
-}
-
-fn temp_capture_path(timestamp: Timestamp, frame_index: u64) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "cradle-chronicle-capture-{}-{}-{frame_index}.png",
-        std::process::id(),
-        timestamp.seconds_since_epoch()
-    ))
-}
+#[cfg(not(target_os = "macos"))]
+pub use stub::MacosCaptureSource;

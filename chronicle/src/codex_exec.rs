@@ -7,7 +7,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::error::{ChronicleError, ChronicleResult};
 
@@ -46,33 +46,46 @@ pub fn run_child_process(request: ChildProcessRequest) -> ChronicleResult<ChildP
     stdin.write_all(request.stdin.as_bytes())?;
     drop(stdin);
 
-    let started_at = Instant::now();
-    loop {
-        if let Some(_status) = child.try_wait()? {
-            let output = child.wait_with_output()?;
-            if !output.status.success() {
+    // Avoid pipe deadlock: spawn a thread for the timeout kill,
+    // then call wait_with_output() which reads stdout/stderr concurrently.
+    let timeout = request.timeout;
+    let child_id = child.id();
+    let killer = thread::spawn(move || {
+        thread::sleep(timeout);
+        // Best-effort kill after timeout
+        unsafe { libc::kill(child_id as i32, libc::SIGKILL); }
+    });
+
+    let output = child.wait_with_output().map_err(|e| {
+        ChronicleError::Process(format!("failed to wait for child: {e}"))
+    })?;
+
+    // If the killer thread hasn't fired yet, it will exit harmlessly
+    // when its sleep completes (kill on a dead PID is a no-op).
+    drop(killer);
+
+    if !output.status.success() {
+        // Check if killed by our timeout thread
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            if output.status.signal() == Some(9) {
                 return Err(ChronicleError::Process(format!(
-                    "child exited with status {}",
-                    output.status
+                    "child timed out after {:?}",
+                    timeout
                 )));
             }
-            return Ok(ChildProcessOutput {
-                stdout: String::from_utf8(output.stdout)?,
-                stderr: String::from_utf8(output.stderr)?,
-            });
         }
-
-        if started_at.elapsed() >= request.timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(ChronicleError::Process(format!(
-                "child timed out after {:?}",
-                request.timeout
-            )));
-        }
-
-        thread::sleep(Duration::from_millis(10));
+        return Err(ChronicleError::Process(format!(
+            "child exited with status {}",
+            output.status
+        )));
     }
+
+    Ok(ChildProcessOutput {
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    })
 }
 
 #[cfg(test)]

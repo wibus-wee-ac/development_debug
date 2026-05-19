@@ -28,7 +28,14 @@ impl TextExtractor for ObservedTextExtractor {
 }
 
 pub fn normalize_observed_text(input: &str) -> String {
-    input.split_whitespace().collect::<Vec<_>>().join(" ")
+    let mut output = String::with_capacity(input.len());
+    for (i, word) in input.split_whitespace().enumerate() {
+        if i > 0 {
+            output.push(' ');
+        }
+        output.push_str(word);
+    }
+    output
 }
 
 #[cfg(test)]

@@ -5,10 +5,12 @@
 //! Position: independent Rust crate under Cradle ownership; platform capture and
 //! LLM providers plug into traits instead of owning the storage contract.
 
-pub mod codex_exec;
+#[allow(dead_code)]
+pub(crate) mod codex_exec;
 pub mod config;
+pub mod daemon;
 pub mod error;
-pub mod json;
+pub(crate) mod json;
 pub mod memory_pipeline;
 pub mod ocr;
 pub mod recorder;
