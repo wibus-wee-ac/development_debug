@@ -8,6 +8,7 @@
 #[allow(dead_code)]
 pub(crate) mod codex_exec;
 pub mod config;
+pub mod cradle_client;
 pub mod daemon;
 pub mod error;
 pub(crate) mod json;

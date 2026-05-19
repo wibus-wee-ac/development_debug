@@ -17,6 +17,7 @@ import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
+import { chronicle } from './modules/chronicle'
 import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
 import { health } from './modules/health'
@@ -86,6 +87,7 @@ export async function createServerApp() {
   app.use(approval)
   app.use(acp)
   app.use(chatRuntime)
+  app.use(chronicle)
   registerPtyRoutes(app)
   app.use(observability)
   app.use(issueAgent)

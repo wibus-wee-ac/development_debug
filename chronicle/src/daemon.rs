@@ -209,13 +209,46 @@ fn run_summary(
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let memories_dir = store.memories_dir();
+
+    // Try Cradle Server for LLM-backed summarization
+    let client = crate::cradle_client::CradleClient::from_env();
+    if let Some(remote_config) = client.fetch_config()
+        && remote_config.enabled
+    {
+        let prompt = crate::memory_pipeline::prompt::build_memory_prompt(persisted, &[]);
+        match client.summarize(&prompt, "10min") {
+            Ok(summary) => {
+                // Write LLM summary to memories directory
+                std::fs::create_dir_all(&memories_dir)
+                    .map_err(|e| ChronicleError::io_at(&memories_dir, e))?;
+                let filename = crate::memory_pipeline::naming::memory_filename(
+                    segment_started_at,
+                    &crate::memory_pipeline::naming::MemoryWindow::TenMinutes,
+                    "cradle-llm-summary",
+                );
+                let output_path = memories_dir.join(filename);
+                std::fs::write(&output_path, &summary)
+                    .map_err(|e| ChronicleError::io_at(&output_path, e))?;
+                eprintln!(
+                    "cradle chronicle LLM memory written: {}",
+                    output_path.display()
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("cradle chronicle LLM summary failed, falling back to local: {e}");
+            }
+        }
+    }
+
+    // Fallback: local summary (no LLM)
     let summarizer = RecursiveSummarizer::new(LocalSummaryWriter, memories_dir);
     let summary = summarizer.write_ten_minute_summary(
         "Cradle Chronicle daemon capture",
         persisted.to_vec(),
     )?;
     eprintln!(
-        "cradle chronicle memory written: {}",
+        "cradle chronicle local memory written: {}",
         summary.output_path.display()
     );
     Ok(())
