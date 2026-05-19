@@ -9,6 +9,9 @@ import { IssueDetail } from './issue-detail'
 import { IssuePeekPanel } from './issue-peek-panel'
 import { KanbanBoard } from './kanban-board'
 import { KanbanList } from './kanban-list'
+import type { IssueSelectionMode } from './kanban-selection'
+import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
+import { KanbanSelectionBar } from './kanban-selection-bar'
 import { KanbanToolbar } from './kanban-toolbar'
 import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
 import type { FilterState } from './use-view-config'
@@ -26,6 +29,8 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const [searchQuery, setSearchQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [createDefaultStatusId, setCreateDefaultStatusId] = useState<string | undefined>()
+  const [selectedIssueIds, setSelectedIssueIds] = useState<Set<string>>(() => new Set())
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null)
 
   // Peek state
   const [peekIssueId, setPeekIssueId] = useState<string | null>(null)
@@ -33,13 +38,16 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const [hoveredIssueId, setHoveredIssueId] = useState<string | null>(null)
   const spaceDownTimeRef = useRef<number>(0)
   const peekWasOpenRef = useRef(false)
-  const filteredIssuesRef = useRef<typeof allIssues>([])
+  const visibleIssuesRef = useRef<typeof allIssues>([])
 
   // Refs for keyboard handler (avoid stale closures + listener re-registration)
   const peekIssueIdRef = useRef<string | null>(null)
   const focusedIndexRef = useRef<number>(-1)
   const hoveredIssueIdRef = useRef<string | null>(null)
   const selectedIssueIdRef = useRef<string | null | undefined>(undefined)
+  const selectedIssueIdsRef = useRef<Set<string>>(selectedIssueIds)
+  const selectionAnchorIdRef = useRef<string | null>(selectionAnchorId)
+  const onSelectIssueRef = useRef(onSelectIssue)
 
   useEffect(() => {
     peekIssueIdRef.current = peekIssueId
@@ -53,6 +61,15 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   useEffect(() => {
     selectedIssueIdRef.current = selectedIssueId
   }, [selectedIssueId])
+  useEffect(() => {
+    selectedIssueIdsRef.current = selectedIssueIds
+  }, [selectedIssueIds])
+  useEffect(() => {
+    selectionAnchorIdRef.current = selectionAnchorId
+  }, [selectionAnchorId])
+  useEffect(() => {
+    onSelectIssueRef.current = onSelectIssue
+  }, [onSelectIssue])
 
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -128,12 +145,82 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     setCreateDialogOpen(true)
   }, [config.groupBy])
 
-  // Keep filteredIssues ref in sync
-  useEffect(() => {
-    filteredIssuesRef.current = filteredIssues
-  }, [filteredIssues])
+  const visibleIssues = useMemo(
+    () => orderedIssuesForKanbanView(filteredIssues, statuses, milestones, config),
+    [filteredIssues, statuses, milestones, config],
+  )
 
-  // Keyboard navigation for peek (registered once, reads from refs)
+  const visibleIssueIds = useMemo(() => visibleIssues.map(issue => issue.id), [visibleIssues])
+
+  const selectedIssues = useMemo(
+    () => visibleIssues.filter(issue => selectedIssueIds.has(issue.id)),
+    [visibleIssues, selectedIssueIds],
+  )
+
+  const clearSelectedIssues = useCallback(() => {
+    setSelectedIssueIds(new Set())
+    setSelectionAnchorId(null)
+    setFocusedIndex(-1)
+    setPeekIssueId(null)
+  }, [])
+
+  const selectAllVisibleIssues = useCallback(() => {
+    if (visibleIssuesRef.current.length === 0) {
+      return
+    }
+    setSelectedIssueIds(new Set(visibleIssuesRef.current.map(issue => issue.id)))
+    setSelectionAnchorId(visibleIssuesRef.current[0]?.id ?? null)
+  }, [])
+
+  const extendSelectionToIssue = useCallback((issueId: string) => {
+    const issueIds = visibleIssuesRef.current.map(issue => issue.id)
+    const fallbackAnchorId = selectionAnchorIdRef.current
+      ?? [...selectedIssueIdsRef.current][0]
+      ?? issueId
+
+    setSelectedIssueIds(prev => addIssueSelectionRange(prev, issueIds, fallbackAnchorId, issueId))
+    setSelectionAnchorId(fallbackAnchorId)
+  }, [])
+
+  const toggleIssueSelected = useCallback((issueId: string) => {
+    const next = toggleIssueSelection(selectedIssueIdsRef.current, issueId)
+    selectedIssueIdsRef.current = next
+    setSelectedIssueIds(next)
+    setSelectionAnchorId(next.has(issueId) ? issueId : ([...next][0] ?? null))
+    if (!next.has(issueId)) {
+      setFocusedIndex(-1)
+    }
+  }, [])
+
+  const handleIssueSelectionGesture = useCallback((issueId: string, mode: IssueSelectionMode) => {
+    const index = visibleIssuesRef.current.findIndex(issue => issue.id === issueId)
+    if (index >= 0) {
+      setFocusedIndex(index)
+    }
+    if (mode === 'range') {
+      extendSelectionToIssue(issueId)
+      return
+    }
+    toggleIssueSelected(issueId)
+  }, [extendSelectionToIssue, toggleIssueSelected])
+
+  // Keep visible issue order ref in sync with the rendered group layout.
+  useEffect(() => {
+    visibleIssuesRef.current = visibleIssues
+  }, [visibleIssues])
+
+  useEffect(() => {
+    setSelectedIssueIds((prev) => {
+      const visibleIds = new Set(visibleIssueIds)
+      const next = new Set([...prev].filter(id => visibleIds.has(id)))
+      return next.size === prev.size ? prev : next
+    })
+    if (selectionAnchorId && !visibleIssueIds.includes(selectionAnchorId)) {
+      setSelectionAnchorId(null)
+    }
+  }, [selectionAnchorId, visibleIssueIds])
+
+  // Keyboard navigation for peek and multi-selection
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (selectedIssueIdRef.current) {
@@ -152,7 +239,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
         return
       }
 
-      const issues = filteredIssuesRef.current
+      const issues = visibleIssuesRef.current
       if (issues.length === 0) {
         return
       }
@@ -160,6 +247,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
       const curFocus = focusedIndexRef.current
       const curPeek = peekIssueIdRef.current
       const curHover = hoveredIssueIdRef.current
+      const curSelectedIds = selectedIssueIdsRef.current
 
       // Resolve target index: keyboard focus > hover > first issue
       const resolveIndex = () => {
@@ -173,6 +261,62 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
           }
         }
         return 0
+      }
+
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'a') {
+        event.preventDefault()
+        selectAllVisibleIssues()
+        return
+      }
+
+      if (event.key === 'Escape' && curSelectedIds.size > 0 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        clearSelectedIssues()
+        return
+      }
+
+      if (event.key.toLowerCase() === 'x' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        const idx = resolveIndex()
+        const issueId = issues[idx]?.id
+        if (!issueId) {
+          return
+        }
+        setFocusedIndex(idx)
+        if (event.shiftKey) {
+          extendSelectionToIssue(issueId)
+          return
+        }
+        toggleIssueSelected(issueId)
+        return
+      }
+
+      if (
+        event.shiftKey
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key.toLowerCase() === 'j' || event.key.toLowerCase() === 'k')
+      ) {
+        event.preventDefault()
+        const startIdx = resolveIndex()
+        const next = event.key === 'ArrowDown' || event.key.toLowerCase() === 'j'
+          ? Math.min(startIdx + 1, issues.length - 1)
+          : Math.max(startIdx - 1, 0)
+        setFocusedIndex(next)
+        if (curPeek) {
+          setPeekIssueId(issues[next]?.id ?? null)
+        }
+        const issueId = issues[next]?.id
+        if (issueId) {
+          if (curSelectedIds.size === 0) {
+            const anchorIssueId = issues[startIdx]?.id ?? issueId
+            setSelectedIssueIds(new Set([anchorIssueId]))
+            setSelectionAnchorId(anchorIssueId)
+          }
+          extendSelectionToIssue(issueId)
+        }
+        return
       }
 
       // J or Down arrow: move focus down
@@ -214,7 +358,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
       // Enter: open full detail from peek
       if (event.key === 'Enter' && curPeek && !event.metaKey && !event.ctrlKey && !event.altKey) {
         event.preventDefault()
-        onSelectIssue?.(curPeek)
+        onSelectIssueRef.current?.(curPeek)
         return
       }
 
@@ -246,26 +390,26 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [])
+  }, [clearSelectedIssues, extendSelectionToIssue, selectAllVisibleIssues, toggleIssueSelected])
 
   const focusedIssueId = useMemo(() => {
-    if (focusedIndex >= 0 && focusedIndex < filteredIssues.length) {
-      return filteredIssues[focusedIndex].id
+    if (focusedIndex >= 0 && focusedIndex < visibleIssues.length) {
+      return visibleIssues[focusedIndex].id
     }
     return null
-  }, [focusedIndex, filteredIssues])
+  }, [focusedIndex, visibleIssues])
 
   // Follow hover when peek is active
   useEffect(() => {
     if (peekIssueId && hoveredIssueId && hoveredIssueId !== peekIssueId) {
       setPeekIssueId(hoveredIssueId)
       // Sync focusedIndex so next keyboard nav starts from the hovered issue
-      const idx = filteredIssues.findIndex(i => i.id === hoveredIssueId)
+      const idx = visibleIssues.findIndex(i => i.id === hoveredIssueId)
       if (idx >= 0) {
         setFocusedIndex(idx)
       }
     }
-  }, [hoveredIssueId])
+  }, [hoveredIssueId, peekIssueId, visibleIssues])
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden h-full">
@@ -298,9 +442,12 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               milestones={milestones}
               config={config}
               onIssueClick={handleIssueClick}
+              onIssueSelectionGesture={handleIssueSelectionGesture}
               onIssueHover={setHoveredIssueId}
               onMoveIssue={handleMoveIssue}
               onCreateIssue={handleCreateIssue}
+              highlightedIssueId={focusedIssueId}
+              selectedIssueIds={selectedIssueIds}
             />
           )
 : (
@@ -309,12 +456,20 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               statuses={statuses}
               milestones={milestones}
               config={config}
-              selectedIssueId={focusedIssueId}
+              highlightedIssueId={focusedIssueId}
+              selectedIssueIds={selectedIssueIds}
               onIssueClick={handleIssueClick}
+              onIssueSelectionGesture={handleIssueSelectionGesture}
               onIssueHover={setHoveredIssueId}
               onCreateIssue={handleCreateIssue}
             />
           )}
+
+          <KanbanSelectionBar
+            issues={selectedIssues}
+            statuses={statuses}
+            onClear={clearSelectedIssues}
+          />
 
           <CreateIssueDialog
             workspaceId={workspaceId}

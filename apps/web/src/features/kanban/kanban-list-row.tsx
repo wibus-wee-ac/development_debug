@@ -2,7 +2,9 @@
 // Output: Ultra-compact list row (32px height)
 // Position: List view row component
 
-import { BotIcon } from 'lucide-react'
+import { BotIcon, CheckIcon } from 'lucide-react'
+import type { MouseEvent, PointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
@@ -23,7 +25,9 @@ interface ListRowProps {
   milestones: KanbanMilestone[]
   displayProperties: ViewConfig['displayProperties']
   onClick: () => void
+  onSelectionGesture?: (id: string, mode: 'toggle' | 'range') => void
   onHover?: (id: string | null) => void
+  highlighted?: boolean
   selected?: boolean
 }
 
@@ -41,31 +45,111 @@ function formatRelativeTime(ts: number): string {
   return `${days}d`
 }
 
-export function KanbanListRow({ issue, statuses, milestones, displayProperties, onClick, onHover, selected }: ListRowProps) {
+export function KanbanListRow({
+  issue,
+  statuses,
+  milestones,
+  displayProperties,
+  onClick,
+  onSelectionGesture,
+  onHover,
+  highlighted,
+  selected,
+}: ListRowProps) {
+  const [pressed, setPressed] = useState(false)
+  const openTimerRef = useRef<number | null>(null)
   const { workspaces } = useWorkspaces()
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const labels = parseIssueLabels(issue.labels)
 
+  useEffect(() => {
+    return () => {
+      if (openTimerRef.current !== null) {
+        window.clearTimeout(openTimerRef.current)
+      }
+    }
+  }, [])
+
+  const openIssue = (delayMs: number) => {
+    if (openTimerRef.current !== null) {
+      window.clearTimeout(openTimerRef.current)
+    }
+    if (delayMs <= 0) {
+      onClick()
+      return
+    }
+    openTimerRef.current = window.setTimeout(() => {
+      openTimerRef.current = null
+      onClick()
+    }, delayMs)
+  }
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    setPressed(false)
+    if (onSelectionGesture && (event.shiftKey || event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      onSelectionGesture?.(issue.id, event.shiftKey ? 'range' : 'toggle')
+      return
+    }
+
+    openIssue(event.detail > 0 ? 70 : 0)
+  }
+
+  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    if (event.button === 0) {
+      setPressed(true)
+    }
+  }
+
+  const releasePress = () => {
+    setPressed(false)
+  }
+
   return (
     <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={onClick}>
       <button
         type="button"
-        aria-label={`Open issue ${issue.title}`}
-        onClick={onClick}
+        aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
+        aria-pressed={selected ? true : undefined}
+        data-pressed={pressed ? 'true' : undefined}
+        onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerUp={releasePress}
+        onPointerCancel={releasePress}
+        onPointerLeave={releasePress}
+        onBlur={releasePress}
         onMouseEnter={() => onHover?.(issue.id)}
         onMouseLeave={() => onHover?.(null)}
         className={cn(
           'group/row relative flex w-full items-center gap-2 px-3 h-9 text-left text-[13px] cursor-pointer rounded-md',
-          'transition-colors duration-100 ease-out',
+          'transition-[scale,background-color,color,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
           'first:mt-1',
-          selected ? 'bg-muted' : 'hover:bg-muted',
+          'active:scale-[0.995] data-[pressed=true]:scale-[0.995]',
+          selected ? 'bg-primary/10 text-primary' : highlighted ? 'bg-muted' : 'hover:bg-muted',
         )}
       >
         {/* Selected indicator */}
-        {selected && (
-          <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-primary" />
+        <span className={cn(
+          'absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full',
+          'origin-center transition-[opacity,background-color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+          selected ? 'scale-y-100 bg-primary opacity-100' : highlighted ? 'scale-y-100 bg-muted-foreground opacity-100' : 'scale-y-50 bg-muted-foreground opacity-0',
         )}
+        />
+
+        <span
+          className={cn(
+            'pointer-events-none flex size-4 shrink-0 items-center justify-center rounded border text-primary',
+            'transition-[opacity,background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            selected ? 'border-primary bg-primary/10 opacity-100' : 'border-border bg-background opacity-0 group-hover/row:opacity-100',
+          )}
+          aria-hidden="true"
+        >
+          <span className="t-icon-swap size-3" data-state={selected ? 'b' : 'a'}>
+            <span className="t-icon size-3" data-icon="a" />
+            <CheckIcon className="t-icon size-3" data-icon="b" />
+          </span>
+        </span>
 
         {/* Left: status + priority icons — fixed width so titles align */}
         <span className="flex items-center gap-1.5 shrink-0">
@@ -93,7 +177,7 @@ export function KanbanListRow({ issue, statuses, milestones, displayProperties, 
         <span className={cn(
           'flex items-center gap-2 shrink-0',
           'transition-opacity duration-100',
-          selected ? 'opacity-100' : 'opacity-50 group-hover/row:opacity-100',
+          selected || highlighted ? 'opacity-100' : 'opacity-50 group-hover/row:opacity-100',
         )}
         >
           {displayProperties.agentIndicator && (issue.delegateAgentId || issue.delegateAgentProfileId) && (

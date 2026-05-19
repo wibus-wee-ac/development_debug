@@ -11,6 +11,7 @@ import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanCard } from './kanban-card'
+import type { IssueSelectionMode } from './kanban-selection'
 import { StatusIcon } from './shared/status-icon'
 import { useCreateIssue } from './use-kanban'
 import type { StatusCategory, ViewConfig } from './use-view-config'
@@ -25,8 +26,11 @@ interface ColumnProps {
   milestones: KanbanMilestone[]
   displayProperties: ViewConfig['displayProperties']
   onIssueClick: (id: string) => void
+  onIssueSelectionGesture?: (id: string, mode: IssueSelectionMode) => void
   onIssueHover?: (id: string | null) => void
   onCreateIssue: (groupId: string) => void
+  highlightedIssueId?: string | null
+  selectedIssueIds?: Set<string>
 }
 
 export function KanbanColumn({
@@ -39,8 +43,11 @@ export function KanbanColumn({
   milestones,
   displayProperties,
   onIssueClick,
+  onIssueSelectionGesture,
   onIssueHover,
   onCreateIssue: _onCreateIssue,
+  highlightedIssueId,
+  selectedIssueIds,
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: groupId })
   const [showInlineInput, setShowInlineInput] = useState(false)
@@ -104,7 +111,10 @@ export function KanbanColumn({
             displayProperties={displayProperties}
             category={category}
             onClick={() => onIssueClick(issue.id)}
+            onSelectionGesture={onIssueSelectionGesture}
             onHover={onIssueHover}
+            highlighted={issue.id === highlightedIssueId}
+            selected={selectedIssueIds?.has(issue.id)}
           />
         ))}
 

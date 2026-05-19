@@ -23,6 +23,9 @@ Kanban owns issue board/list/detail UI, issue metadata editing, and issue-agent 
 - **kanban-list.tsx**: List-view composition for issues.
 - **kanban-item-actions.test.tsx**: Regression tests for native issue card/list row button semantics.
 - **kanban-list-row.tsx**: Compact list row for individual issues; rows use native named buttons for opening detail views.
+- **kanban-selection.ts**: Pure helper functions for visible-order multi-selection, toggle, and range semantics.
+- **kanban-selection.test.ts**: Regression tests for Linear-style issue selection ranges and toggles.
+- **kanban-selection-bar.tsx**: Floating bulk action bar for selected issues, currently supporting status and priority updates.
 - **kanban-sidebar.tsx**: Workspace/status navigation for the Kanban feature, using app-level current-tab navigation for board entries.
 - **kanban-toolbar.tsx**: View and filtering controls with named icon-only toolbar actions.
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.

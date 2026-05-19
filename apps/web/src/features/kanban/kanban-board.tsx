@@ -17,6 +17,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanCard } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
+import type { IssueSelectionMode } from './kanban-selection'
 import type { ViewConfig } from './use-view-config'
 
 interface BoardProps {
@@ -26,9 +27,12 @@ interface BoardProps {
   milestones: KanbanMilestone[]
   config: ViewConfig
   onIssueClick: (id: string) => void
+  onIssueSelectionGesture?: (id: string, mode: IssueSelectionMode) => void
   onIssueHover?: (id: string | null) => void
   onMoveIssue: (issueId: string, targetGroupId: string) => void
   onCreateIssue: (groupId: string) => void
+  highlightedIssueId?: string | null
+  selectedIssueIds?: Set<string>
 }
 
 interface GroupDef {
@@ -44,9 +48,12 @@ export function KanbanBoard({
   milestones,
   config,
   onIssueClick,
+  onIssueSelectionGesture,
   onIssueHover,
   onMoveIssue,
   onCreateIssue,
+  highlightedIssueId,
+  selectedIssueIds,
 }: BoardProps) {
   const [activeIssue, setActiveIssue] = useState<KanbanIssue | null>(null)
 
@@ -150,8 +157,11 @@ export function KanbanBoard({
             milestones={milestones}
             displayProperties={config.displayProperties}
             onIssueClick={onIssueClick}
+            onIssueSelectionGesture={onIssueSelectionGesture}
             onIssueHover={onIssueHover}
             onCreateIssue={onCreateIssue}
+            highlightedIssueId={highlightedIssueId}
+            selectedIssueIds={selectedIssueIds}
           />
         ))}
       </div>
@@ -173,6 +183,7 @@ export function KanbanBoard({
               milestones={milestones}
               displayProperties={config.displayProperties}
               onClick={() => {}}
+              selected={selectedIssueIds?.has(activeIssue.id)}
             />
           </m.div>
         )}

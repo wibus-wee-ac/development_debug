@@ -3,6 +3,9 @@
 // Position: Board card component used inside kanban columns
 
 import { useDraggable } from '@dnd-kit/core'
+import { CheckIcon } from 'lucide-react'
+import type { MouseEvent, PointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
@@ -23,8 +26,11 @@ interface CardProps {
   milestones: KanbanMilestone[]
   displayProperties: ViewConfig['displayProperties']
   onClick: () => void
+  onSelectionGesture?: (id: string, mode: 'toggle' | 'range') => void
   onHover?: (id: string | null) => void
   category?: string
+  highlighted?: boolean
+  selected?: boolean
 }
 
 const priorityLabel: Record<string, string> = {
@@ -34,19 +40,79 @@ const priorityLabel: Record<string, string> = {
   low: 'Low',
 }
 
-export function KanbanCard({ issue, statuses, milestones, displayProperties, onClick, onHover, category }: CardProps) {
+export function KanbanCard({
+  issue,
+  statuses,
+  milestones,
+  displayProperties,
+  onClick,
+  onSelectionGesture,
+  onHover,
+  category,
+  highlighted,
+  selected,
+}: CardProps) {
+  const [pressed, setPressed] = useState(false)
+  const openTimerRef = useRef<number | null>(null)
   const { workspaces } = useWorkspaces()
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: issue.id,
     data: { issue },
   })
   const { role: _draggableRole, tabIndex: _draggableTabIndex, ...draggableAttributes } = attributes
+  const { onPointerDown: onDragPointerDown, ...dragListeners } = listeners ?? {}
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
 
   const labels = parseIssueLabels(issue.labels)
+
+  useEffect(() => {
+    return () => {
+      if (openTimerRef.current !== null) {
+        window.clearTimeout(openTimerRef.current)
+      }
+    }
+  }, [])
+
+  const openIssue = (delayMs: number) => {
+    if (openTimerRef.current !== null) {
+      window.clearTimeout(openTimerRef.current)
+    }
+    if (delayMs <= 0) {
+      onClick()
+      return
+    }
+    openTimerRef.current = window.setTimeout(() => {
+      openTimerRef.current = null
+      onClick()
+    }, delayMs)
+  }
+
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    setPressed(false)
+
+    if (onSelectionGesture && (event.shiftKey || event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      onSelectionGesture?.(issue.id, event.shiftKey ? 'range' : 'toggle')
+      return
+    }
+
+    openIssue(event.detail > 0 ? 90 : 0)
+  }
+
+  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+    onDragPointerDown?.(event)
+    if (event.button === 0) {
+      setPressed(true)
+    }
+  }
+
+  const releasePress = () => {
+    setPressed(false)
+  }
 
   return (
     <div
@@ -60,30 +126,52 @@ export function KanbanCard({ issue, statuses, milestones, displayProperties, onC
           ref={setNodeRef}
           style={style}
           {...draggableAttributes}
-          {...listeners}
-          aria-label={`Open issue ${issue.title}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            onClick()
-          }}
+          {...dragListeners}
+          aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
+          aria-pressed={selected ? true : undefined}
+          data-pressed={pressed ? 'true' : undefined}
+          onClick={handleClick}
+          onPointerDown={handlePointerDown}
+          onPointerUp={releasePress}
+          onPointerCancel={releasePress}
+          onPointerLeave={releasePress}
+          onBlur={releasePress}
           data-testid={`issue-card-${issue.id}`}
           className={cn(
             'w-full bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border/80 text-left',
             'flex flex-col gap-1',
             'shadow-[var(--shadow-xs)]',
-            'transition-[transform,box-shadow,border-color,background-color] duration-150 ease-out',
-            'hover:shadow-[var(--shadow-sm)] hover:border-border hover:bg-card',
-            'active:scale-[0.96]',
+            'transition-[scale,transform,box-shadow,border-color,background-color] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            'hover:shadow-[var(--shadow-sm)] hover:bg-card',
+            'active:scale-[0.985] data-[pressed=true]:scale-[0.985] data-[pressed=true]:border-primary/40 data-[pressed=true]:shadow-[var(--shadow-xs)]',
+            !highlighted && !selected && !pressed && 'hover:border-border',
+            selected && 'border-primary/60 bg-primary/5 shadow-[var(--shadow-sm)]',
             isDragging && 'opacity-50',
           )}
         >
 
           <span className="flex justify-between">
-            {displayProperties.id && (
-              <span className="text-[10.5px] text-muted-foreground tabular-nums">
-                {formatIssueId(issue, workspaces)}
+            <span className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'pointer-events-none flex size-4 items-center justify-center rounded border text-primary',
+                  'transition-[opacity,background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+                  selected ? 'border-primary bg-primary/10 opacity-100' : 'border-border bg-background opacity-0 group-hover/button:opacity-100',
+                )}
+                aria-hidden="true"
+              >
+                <span className="t-icon-swap size-3" data-state={selected ? 'b' : 'a'}>
+                  <span className="t-icon size-3" data-icon="a" />
+                  <CheckIcon className="t-icon size-3" data-icon="b" />
+                </span>
               </span>
-            )}
+
+              {displayProperties.id && (
+                <span className="text-[10.5px] text-muted-foreground tabular-nums">
+                  {formatIssueId(issue, workspaces)}
+                </span>
+              )}
+            </span>
 
             {displayProperties.assignee && (
               issue.assigneeId

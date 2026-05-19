@@ -10,6 +10,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
+import type { IssueSelectionMode } from './kanban-selection'
 import type { ViewConfig } from './use-view-config'
 
 interface ListProps {
@@ -17,8 +18,10 @@ interface ListProps {
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   config: ViewConfig
-  selectedIssueId?: string | null
+  highlightedIssueId?: string | null
+  selectedIssueIds?: Set<string>
   onIssueClick: (id: string) => void
+  onIssueSelectionGesture?: (id: string, mode: IssueSelectionMode) => void
   onIssueHover?: (id: string | null) => void
   onCreateIssue?: (groupId: string) => void
 }
@@ -34,10 +37,12 @@ export function KanbanList({
   statuses,
   milestones,
   config,
-  selectedIssueId,
+  highlightedIssueId,
+  selectedIssueIds,
   onIssueHover,
   onCreateIssue,
   onIssueClick,
+  onIssueSelectionGesture,
 }: ListProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
@@ -142,8 +147,10 @@ export function KanbanList({
                       milestones={milestones}
                       displayProperties={config.displayProperties}
                       onClick={() => onIssueClick(issue.id)}
+                      onSelectionGesture={onIssueSelectionGesture}
                       onHover={onIssueHover ? (id: string | null) => onIssueHover(id) : undefined}
-                      selected={issue.id === selectedIssueId}
+                      highlighted={issue.id === highlightedIssueId}
+                      selected={selectedIssueIds?.has(issue.id)}
                     />
                   ))}
                 </m.div>
