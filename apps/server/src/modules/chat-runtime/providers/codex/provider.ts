@@ -9,11 +9,12 @@ import { join } from 'node:path'
 
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
-import type { Thread, ThreadEvent } from '@openai/codex-sdk'
+import type { CodexOptions, Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
 import type { UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../../langfuse'
+import { getRegisteredMcpServers } from '../../../../plugins'
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
 import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
@@ -96,9 +97,13 @@ export class CodexProvider implements ChatRuntime {
     const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
     const skillPaths = config.skillPaths ?? this.deps.resolveSkillPaths?.(workspacePath) ?? []
-    const codexConfig: Record<string, string | string[]> = {}
+    const codexConfig: NonNullable<CodexOptions['config']> = {}
     if (skillPaths.length > 0) {
       codexConfig.instructions_paths = skillPaths
+    }
+    const mcpServers = buildCodexMcpServersConfig()
+    if (Object.keys(mcpServers).length > 0) {
+      codexConfig.mcp_servers = mcpServers
     }
 
     // Inject system prompt via a temp instructions file
@@ -305,6 +310,21 @@ function parseProviderStateSnapshot(providerStateSnapshot: string | null): {
   catch {
     return {}
   }
+}
+
+function buildCodexMcpServersConfig(): Record<string, { command: string, args: string[], env?: Record<string, string> }> {
+  return Object.fromEntries(
+    Object.entries(getRegisteredMcpServers()).map(([name, config]) => {
+      const server: { command: string, args: string[], env?: Record<string, string> } = {
+        command: config.command,
+        args: config.args,
+      }
+      if (config.env && Object.keys(config.env).length > 0) {
+        server.env = config.env
+      }
+      return [name, server]
+    }),
+  )
 }
 
 function formatCodexThreadFailure(event: ThreadEvent, diagnostics: CodexStreamDiagnostics): string {

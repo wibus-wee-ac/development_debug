@@ -20,10 +20,10 @@ describe('preferences capability', () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const initialRes = await app.handle(new Request('http://localhost/preferences/chat'))
       expect(initialRes.status).toBe(200)
       expect(await initialRes.json()).toEqual({
@@ -82,10 +82,10 @@ describe('preferences capability', () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const invalidModel = await app.handle(new Request('http://localhost/preferences/chat', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },

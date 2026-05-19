@@ -26,10 +26,10 @@ describe('pack-codebase capability', () => {
     writeFileSync(join(workspaceRoot, 'app.ts'), 'export const greeting = "hello from cradle"\n')
     writeFileSync(join(workspaceRoot, 'secret.txt'), 'hidden token should not appear\n')
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-pack',
         name: 'Workspace Pack',
@@ -71,10 +71,10 @@ describe('pack-codebase capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const invalidRes = await app.handle(new Request('http://localhost/workspaces/workspace-pack/pack', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

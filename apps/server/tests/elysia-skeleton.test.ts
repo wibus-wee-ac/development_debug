@@ -35,7 +35,7 @@ function isoDaysAgo(daysAgo: number): string {
 
 describe('elysia migration skeleton', () => {
   it('serves /health with an x-request-id header', async () => {
-    const app = createServerApp()
+    const app = await createServerApp()
 
     const response = await app.handle(new Request('http://localhost/health'))
     expect(response.status).toBe(200)
@@ -47,7 +47,7 @@ describe('elysia migration skeleton', () => {
   })
 
   it('serves OpenAPI JSON plus the legacy /docs alias', async () => {
-    const app = createServerApp()
+    const app = await createServerApp()
 
     const openApiResponse = await app.handle(new Request(`http://localhost${OPENAPI_JSON_PATH}`))
     expect(openApiResponse.status).toBe(200)
@@ -94,7 +94,7 @@ describe('elysia migration skeleton', () => {
     process.env.CRADLE_DATA_DIR = dataDir
 
     try {
-      const app = createServerApp()
+      const app = await createServerApp()
       const filePath = join(dataDir, 'preferences', 'chat.json')
 
       const initialResponse = await app.handle(new Request('http://localhost/preferences/chat'))
@@ -154,7 +154,7 @@ describe('elysia migration skeleton', () => {
     process.env.CRADLE_DATA_DIR = dataDir
 
     try {
-      const app = createServerApp()
+      const app = await createServerApp()
 
       const response = await app.handle(new Request('http://localhost/preferences/chat', {
         method: 'PUT',
@@ -200,7 +200,7 @@ describe('elysia migration skeleton', () => {
     shutdownInfra()
 
     try {
-      const app = createServerApp()
+      const app = await createServerApp()
 
       const createResponse = await app.handle(new Request('http://localhost/workspaces/from-directory', {
         method: 'POST',
@@ -335,7 +335,7 @@ describe('elysia migration skeleton', () => {
       writeFileSync(join(workspaceRoot, '.git', 'config'), '[core]\n', 'utf8')
       writeFileSync(join(workspaceRoot, 'node_modules', 'pkg', 'index.js'), 'module.exports = {}\n', 'utf8')
 
-      const app = createServerApp()
+      const app = await createServerApp()
       const createResponse = await app.handle(new Request('http://localhost/workspaces/from-directory', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -502,7 +502,7 @@ describe('elysia migration skeleton', () => {
         },
       ]).run()
 
-      const app = createServerApp()
+      const app = await createServerApp()
 
       const dailyResponse = await app.handle(new Request('http://localhost/usage/daily?days=30'))
       expect(dailyResponse.status).toBe(200)

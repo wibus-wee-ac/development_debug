@@ -51,10 +51,10 @@ describe('acp capability', () => {
       })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const registryRes = await app.handle(new Request('http://localhost/acp/registry'))
       expect(registryRes.status).toBe(200)
       expect(await registryRes.json()).toEqual([
@@ -153,10 +153,10 @@ describe('acp capability', () => {
       })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const invalidInstallRes = await app.handle(new Request('http://localhost/acp/agents/demo-agent/installation', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },

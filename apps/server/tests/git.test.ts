@@ -75,11 +75,11 @@ describe('git capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
       createGitWorkspaceFixture(workspaceRoot)
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-git',
         name: 'Workspace Git',
@@ -129,11 +129,11 @@ describe('git capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
       createGitWorkspaceFixture(workspaceRoot)
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-git',
         name: 'Workspace Git',
@@ -185,10 +185,10 @@ describe('git capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-plain',
         name: 'Workspace Plain',

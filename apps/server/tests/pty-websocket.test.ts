@@ -16,7 +16,7 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import type { PtyServerEvent } from '../src/modules/pty/protocol'
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 const TERMINAL_FIXTURE_SCRIPT = [
   'process.stdout.write(\'READY\\n\')',
@@ -90,7 +90,7 @@ async function createCliTuiSession(baseUrl: string, workspaceRoot: string) {
 }
 
 async function startServerApp(): Promise<{ app: ElysiaApp, baseUrl: string }> {
-  const app = createServerApp()
+  const app = await createServerApp()
   const port = await getAvailablePort()
   app.listen({ hostname: '127.0.0.1', port })
   return { app, baseUrl: `http://127.0.0.1:${port}` }

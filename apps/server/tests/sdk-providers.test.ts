@@ -11,9 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
+import { registerMcpServer, unregisterMcpServer } from '../src/plugins/mcp-registry'
 
 const sdkMocks = vi.hoisted(() => ({
   claudeQuery: vi.fn(),
+  codexConstructor: vi.fn(),
   codexStartThread: vi.fn(),
   codexResumeThread: vi.fn(),
   codexRunStreamed: vi.fn(),
@@ -25,6 +27,10 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 vi.mock('@openai/codex-sdk', () => ({
   Codex: class FakeCodex {
+    constructor(options: unknown) {
+      sdkMocks.codexConstructor(options)
+    }
+
     startThread(options: unknown) {
       sdkMocks.codexStartThread(options)
       return { runStreamed: sdkMocks.codexRunStreamed }
@@ -53,7 +59,7 @@ interface ChatStreamEvent {
   data: Record<string, unknown>
 }
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -165,6 +171,7 @@ async function createProfileAndSession(app: ElysiaApp, input: {
 describe('sdk-backed providers in unified chat runtime', () => {
   beforeEach(() => {
     sdkMocks.claudeQuery.mockReset()
+    sdkMocks.codexConstructor.mockReset()
     sdkMocks.codexStartThread.mockReset()
     sdkMocks.codexResumeThread.mockReset()
     sdkMocks.codexRunStreamed.mockReset()
@@ -181,6 +188,13 @@ describe('sdk-backed providers in unified chat runtime', () => {
     const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+    unregisterMcpServer('browser-use')
+    registerMcpServer({
+      name: 'browser-use',
+      command: 'node',
+      args: ['/tmp/browser-use-mcp-server.mjs'],
+      env: { BROWSER_BACKEND_SOCKET: '/tmp/cradle-browser.sock' },
+    })
 
     sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
       {
@@ -228,10 +242,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
 
       await createProfileAndSession(app, {
@@ -315,10 +329,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({ id: 'workspace-sdk', name: 'Workspace SDK', path: workspaceRoot }).run()
 
       await createProfileAndSession(app, {
@@ -348,6 +362,17 @@ describe('sdk-backed providers in unified chat runtime', () => {
       expect(sdkMocks.codexStartThread).toHaveBeenCalledWith(expect.objectContaining({
         workingDirectory: workspaceRoot,
       }))
+      expect(sdkMocks.codexConstructor).toHaveBeenCalledWith(expect.objectContaining({
+        config: expect.objectContaining({
+          mcp_servers: {
+            'browser-use': {
+              command: 'node',
+              args: ['/tmp/browser-use-mcp-server.mjs'],
+              env: { BROWSER_BACKEND_SOCKET: '/tmp/cradle-browser.sock' },
+            },
+          },
+        }),
+      }))
 
       const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-codex'))
       expect(usageRes.status).toBe(200)
@@ -358,6 +383,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       }))
     }
     finally {
+      unregisterMcpServer('browser-use')
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
@@ -431,10 +457,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({ id: 'workspace-tool', name: 'Workspace Tool', path: workspaceRoot }).run()
 
       await createProfileAndSession(app, {
@@ -549,10 +575,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({ id: 'workspace-subagent', name: 'Workspace Subagent', path: workspaceRoot }).run()
 
       await createProfileAndSession(app, {
@@ -692,10 +718,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({ id: 'workspace-subagent-late-task', name: 'Workspace Subagent Late Task', path: workspaceRoot }).run()
 
       await createProfileAndSession(app, {
@@ -804,10 +830,10 @@ describe('sdk-backed providers in unified chat runtime', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({ id: 'workspace-tool-err', name: 'Workspace Tool Err', path: workspaceRoot }).run()
 
       await createProfileAndSession(app, {

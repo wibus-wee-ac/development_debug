@@ -50,10 +50,10 @@ describe('profiles capability', () => {
       })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const saveSecret = await app.handle(
         new Request('http://localhost/secrets', {
           method: 'POST',
@@ -196,10 +196,10 @@ describe('profiles capability', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     delete process.env.CRADLE_CREDENTIAL_SECRET
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const invalidProfile = await app.handle(
         new Request('http://localhost/profiles/profile-bad', {
           method: 'PUT',
@@ -311,10 +311,10 @@ describe('profiles capability', () => {
       )
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const saveSecret = await app.handle(
         new Request('http://localhost/secrets', {
           method: 'POST',

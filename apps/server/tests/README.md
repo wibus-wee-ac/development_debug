@@ -29,7 +29,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **observability.test.ts**: observability event persistence, incident rules, empty-output failure semantics, and bundle export.
 - **preferences.test.ts**: server-owned chat preference defaults, JSON persistence, and invalid payload handling.
 - **fetch-retry.test.ts**: retry/backoff helpers for outbound HTTP integrations.
-- **pty.test.ts**: session-owned cli-tui terminal runtime, SSE stream, input, replay, and cleanup.
+- **pty.test.ts**: session-owned cli-tui terminal runtime, terminal resource snapshots, HTTP control routes, and cleanup.
 - **pty-websocket.test.ts**: PTY WebSocket live channel, reconnect, delete-session teardown, and cli-tui session ownership semantics.
 - **codex-session-capture.test.ts**: Codex CLI JSONL metadata capture rules for cli-tui resume bindings.
 - **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.

@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 const TERMINAL_FIXTURE_SCRIPT = [
   'process.stdout.write(\'READY\\n\')',
@@ -73,10 +73,10 @@ describe('pty capability HTTP control plane', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     shutdownInfra()
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: ElysiaApp | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       await createCliTuiSession(app, workspaceRoot)
 
       const startRes = await app.handle(new Request('http://localhost/terminal-sessions/session-cli-tui/start-or-attach', {
@@ -112,6 +112,93 @@ describe('pty capability HTTP control plane', () => {
     }
   })
 
+  it('lists terminal resource snapshots for bottom panel terminals', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-pty-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    shutdownInfra()
+
+    let app: ElysiaApp | undefined
+
+    try {
+      app = await createServerApp()
+
+      const startRes = await app.handle(new Request('http://localhost/terminal-sessions/shell/start', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ptyId: 'resource-panel', cwd: workspaceRoot, cols: 120, rows: 32 }),
+      }))
+      expect(startRes.status).toBe(200)
+      expect(await startRes.json()).toEqual({ ptyId: 'resource-panel', running: true })
+
+      const resourcesRes = await app.handle(new Request('http://localhost/terminal-sessions/resources'))
+      expect(resourcesRes.status).toBe(200)
+
+      const resources = await resourcesRes.json() as {
+        terminals: Array<{
+          id: string
+          role: 'cli-tui' | 'bottom-panel'
+          pid: number
+          executable: string
+          cwd: string
+          running: boolean
+          startedAt: number
+          cols: number
+          rows: number
+          rssMB: number | null
+          descendantCount: number | null
+        }>
+        totals: {
+          cliTuiRssMB: number
+          bottomPanelRssMB: number
+        }
+        timestamp: number
+      }
+
+      const terminal = resources.terminals.find(item => item.id === 'resource-panel')
+      expect(terminal).toEqual(expect.objectContaining({
+        id: 'resource-panel',
+        role: 'bottom-panel',
+        cwd: workspaceRoot,
+        running: true,
+        cols: 120,
+        rows: 32,
+      }))
+      expect(terminal?.pid).toBeGreaterThan(0)
+      expect(terminal?.executable.length).toBeGreaterThan(0)
+      expect(terminal?.startedAt).toBeGreaterThan(0)
+      expect(resources.timestamp).toBeGreaterThan(0)
+      expect(resources.totals.cliTuiRssMB).toBe(0)
+      expect(resources.totals.bottomPanelRssMB).toBeGreaterThanOrEqual(0)
+      if (terminal?.rssMB !== null && terminal?.rssMB !== undefined) {
+        expect(terminal.rssMB).toBeGreaterThanOrEqual(0)
+        expect(resources.totals.bottomPanelRssMB).toBeGreaterThanOrEqual(terminal.rssMB)
+      }
+      if (terminal?.descendantCount !== null && terminal?.descendantCount !== undefined) {
+        expect(terminal.descendantCount).toBeGreaterThanOrEqual(0)
+      }
+
+      const stopRes = await app.handle(new Request('http://localhost/terminal-sessions/shell/resource-panel', { method: 'DELETE' }))
+      expect(stopRes.status).toBe(200)
+      expect(await stopRes.json()).toEqual({ ok: true })
+    }
+    finally {
+      if (app) {
+        await app.handle(new Request('http://localhost/terminal-sessions/shell/resource-panel', { method: 'DELETE' }))
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('returns structured errors for invalid input and unsupported sessions', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-pty-workspace-')
@@ -119,10 +206,10 @@ describe('pty capability HTTP control plane', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     shutdownInfra()
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: ElysiaApp | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-pty',
         name: 'Workspace Pty',

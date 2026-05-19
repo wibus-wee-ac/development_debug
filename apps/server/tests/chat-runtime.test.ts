@@ -27,7 +27,7 @@ interface ChatStreamEvent {
   data: Record<string, unknown>
 }
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -156,10 +156,10 @@ describe('chat runtime capability', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-chat',
         name: 'Workspace Chat',
@@ -241,10 +241,10 @@ describe('chat runtime capability', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-chat-stream',
         name: 'Workspace Chat Stream',
@@ -317,10 +317,10 @@ describe('chat runtime capability', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-chat',
         name: 'Workspace Chat',
@@ -396,10 +396,10 @@ describe('chat runtime capability', () => {
       headers: { 'content-type': 'application/json' },
     }))
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-chat-invalid-snapshot',
         name: 'Workspace Chat Invalid Snapshot',

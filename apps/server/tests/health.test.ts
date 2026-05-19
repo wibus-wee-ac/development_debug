@@ -16,10 +16,10 @@ describe('health module', () => {
     const dataDir = makeTempDataDir()
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const res = await app.handle(new Request('http://localhost/health'))
       expect(res.status).toBe(200)
 

@@ -36,7 +36,7 @@ interface AgentActivityView {
   signal: string | null
 }
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -143,10 +143,10 @@ describe('issue-agent capability', () => {
       })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-issue-agent',
         name: 'Workspace Issue Agent',
@@ -265,10 +265,10 @@ describe('issue-agent capability', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'issue-agent-secret'
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-issue-agent',
         name: 'Workspace Issue Agent',

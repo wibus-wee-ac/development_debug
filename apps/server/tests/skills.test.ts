@@ -58,10 +58,10 @@ describe('skills capability', () => {
     writeSkillPackage(fetchSourceRoot, 'alpha-fetch', 'alpha-fetch', 'Alpha fetched skill', 'alpha body')
     writeSkillPackage(join(fetchSourceRoot, 'nested'), 'bravo-fetch', 'bravo-fetch', 'Bravo fetched skill', 'bravo body')
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-1',
         name: 'Workspace One',
@@ -234,10 +234,10 @@ describe('skills capability', () => {
 
     writeSkillPackage(join(homeDir, '.agents', 'skills'), 'legacy-skill', 'legacy-skill', 'Legacy skill', 'legacy body')
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const readonlyCreate = await app.handle(new Request('http://localhost/skills', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

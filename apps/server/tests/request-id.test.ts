@@ -23,7 +23,7 @@ describe('request id middleware', () => {
     process.env.CRADLE_DATA_DIR = dataDir
 
     try {
-      const app = createServerApp()
+      const app = await createServerApp()
       const res = await app.handle(new Request('http://localhost/health'))
       expect(res.status).toBe(200)
       expect(res.headers.get(REQUEST_ID_HEADER)).toBeTruthy()

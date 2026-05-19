@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
+import { registerMcpServer, unregisterMcpServer } from '../src/plugins/mcp-registry'
 
 const acpMocks = vi.hoisted(() => {
   let client: {
@@ -66,7 +67,8 @@ vi.mock('@agentclientprotocol/sdk', () => {
   }
 })
 
-vi.mock('node:child_process', async () => {
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
   const { PassThrough } = await import('node:stream')
 
   class FakeChildProcess extends PassThrough {
@@ -84,6 +86,7 @@ vi.mock('node:child_process', async () => {
   }
 
   return {
+    ...actual,
     spawn: (...args: unknown[]) => acpMocks.spawn(...args),
     ChildProcess: FakeChildProcess,
   }
@@ -100,7 +103,7 @@ interface ChatMessageSnapshot {
   }
 }
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -177,6 +180,13 @@ describe('acp chat runtime capability', () => {
     acpMocks.setSessionModel.mockReset()
     acpMocks.setSessionConfigOption.mockReset()
     acpMocks.spawn.mockReset()
+    unregisterMcpServer('browser-use')
+    registerMcpServer({
+      name: 'browser-use',
+      command: 'node',
+      args: ['/tmp/browser-use-mcp-server.mjs'],
+      env: { BROWSER_BACKEND_SOCKET: '/tmp/cradle-browser.sock' },
+    })
 
     acpMocks.initialize.mockResolvedValue({
       protocolVersion: '1.0',
@@ -269,6 +279,7 @@ describe('acp chat runtime capability', () => {
   })
 
   afterEach(() => {
+    unregisterMcpServer('browser-use')
     vi.restoreAllMocks()
   })
 
@@ -278,10 +289,10 @@ describe('acp chat runtime capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       db().insert(workspaces).values({
         id: 'workspace-acp',
         name: 'Workspace ACP',
@@ -342,6 +353,17 @@ describe('acp chat runtime capability', () => {
         completionTokens: 4,
         totalTokens: 11,
       }))
+      expect(acpMocks.newSession).toHaveBeenCalledWith({
+        cwd: workspaceRoot,
+        mcpServers: [
+          {
+            name: 'browser-use',
+            command: 'node',
+            args: ['/tmp/browser-use-mcp-server.mjs'],
+            env: [{ name: 'BROWSER_BACKEND_SOCKET', value: '/tmp/cradle-browser.sock' }],
+          },
+        ],
+      })
     }
     finally {
       shutdownInfra()
@@ -354,5 +376,52 @@ describe('acp chat runtime capability', () => {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }
+  })
+
+  it('passes registered MCP servers when loading and resuming ACP sessions', async () => {
+    const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
+    const manager = new AcpConnectionManager({
+      spawn: () => ({
+        agentId: 'profile-acp',
+        proc: {} as never,
+        startedAt: Date.now(),
+        stderrBuf: [],
+        stdinWeb: new WritableStream<Uint8Array>(),
+        stdoutWeb: new ReadableStream<Uint8Array>(),
+      }),
+      stop: async () => {},
+      getMetrics: () => [],
+      disposeAll: () => {},
+    } as never)
+
+    await manager.connect('profile-acp', {
+      distributionType: 'npx',
+      cmd: '@demo/acp-agent',
+      args: '[]',
+      env: '{}',
+      installPath: null,
+    })
+
+    await manager.loadSession('profile-acp', 'acp-session-load', '/tmp/workspace')
+    await manager.resumeSession('profile-acp', 'acp-session-resume', '/tmp/workspace')
+
+    const expectedMcpServers = [
+      {
+        name: 'browser-use',
+        command: 'node',
+        args: ['/tmp/browser-use-mcp-server.mjs'],
+        env: [{ name: 'BROWSER_BACKEND_SOCKET', value: '/tmp/cradle-browser.sock' }],
+      },
+    ]
+    expect(acpMocks.loadSession).toHaveBeenCalledWith({
+      sessionId: 'acp-session-load',
+      cwd: '/tmp/workspace',
+      mcpServers: expectedMcpServers,
+    })
+    expect(acpMocks.resumeSession).toHaveBeenCalledWith({
+      sessionId: 'acp-session-resume',
+      cwd: '/tmp/workspace',
+      mcpServers: expectedMcpServers,
+    })
   })
 })

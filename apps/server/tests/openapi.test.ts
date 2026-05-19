@@ -21,7 +21,7 @@ describe('openapi capability', () => {
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
 
-    const app = createServerApp()
+    const app = await createServerApp()
 
     try {
       const response = await app.handle(new Request('http://localhost/openapi.json'))

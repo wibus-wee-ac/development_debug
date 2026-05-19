@@ -23,7 +23,7 @@ describe('database module', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     try {
       // Initialize server app to trigger DB setup
-      createServerApp()
+      await createServerApp()
       const d = db()
       const rows = d.select().from(sessions).limit(1).all()
       expect(rows).toEqual([])

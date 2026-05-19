@@ -22,10 +22,10 @@ describe('workspace capability', () => {
     const explicitWorkspaceRoot = makeTempDir('cradle-workspace-explicit-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       const createRes = await app.handle(new Request('http://localhost/workspaces/from-directory', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -143,7 +143,7 @@ describe('workspace capability', () => {
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
       writeFileSync(join(workspaceRoot, '.gitignore'), 'ignored.txt\nignored-dir/\n', 'utf8')
@@ -159,7 +159,7 @@ describe('workspace capability', () => {
       writeFileSync(join(workspaceRoot, '.git', 'config'), '[core]\n', 'utf8')
       writeFileSync(join(workspaceRoot, 'node_modules', 'pkg', 'index.js'), 'module.exports = {}\n', 'utf8')
 
-      app = createServerApp()
+      app = await createServerApp()
       const createRes = await app.handle(new Request('http://localhost/workspaces/from-directory', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

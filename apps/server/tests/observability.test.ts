@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 
-type ElysiaApp = ReturnType<typeof createServerApp>
+type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
 type ChatMessageSnapshot = {
   messageId: string
@@ -128,10 +128,10 @@ describe('observability capability', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       await createProfileAndSession(app, workspaceRoot)
 
       for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -217,10 +217,10 @@ describe('observability capability', () => {
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
 
-    let app: ReturnType<typeof createServerApp> | undefined
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
-      app = createServerApp()
+      app = await createServerApp()
       await createProfileAndSession(app, workspaceRoot)
 
       const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-observability/response', {
