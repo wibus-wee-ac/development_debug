@@ -22,6 +22,8 @@ The observable outcome is a working app with safer shell/tab behavior and a clea
 - [x] (2026-05-18 16:37Z) Strategy 2 Critique-Chain completed for API generation ownership escalation with InitialG, CritiqueH, and SynthesisI handoffs.
 - [x] (2026-05-18 16:38Z) Merged worker results and fixed integration test/typecheck blockers in `composer.test.tsx` and `workspace-sidebar.test.tsx`.
 - [x] (2026-05-18 16:40Z) Ran focused validation commands and recorded outcomes.
+- [x] (2026-05-18 17:52Z) Completed the deferred follow-up items that had been recorded as non-blocking: TabBar customization API shape, Electron `<webview>` custom attributes, Composer related-state structure, and low-risk changed-file UI hygiene.
+- [x] (2026-05-18 17:52Z) Re-ran focused validation for `@cradle/web` and `@cradle/tabs-next`, `git diff --check`, and React Doctor diff scans. The root changed-file scan, `apps/web`, and `packages/tabs-next` reported 100/100 with no React Doctor issues.
 
 ## Surprises & Discoveries
 
@@ -36,6 +38,9 @@ The observable outcome is a working app with safer shell/tab behavior and a clea
 
 - Observation: Adding `@cradle/web test` surfaced existing test-suite assumptions that were not valid under package-local jsdom execution.
   Evidence: `workspace-sidebar.test.tsx` originally rendered `Link` without a `TabsProvider`, and `composer.test.tsx` used a jest-dom matcher that was not configured in this project.
+
+- Observation: React Doctor can still exit non-zero even after the current frontend diff is clean because it scans sibling packages where it cannot detect a git diff and therefore reports existing full-package issues.
+  Evidence: `npx -y react-doctor@latest . --verbose --diff` reported 100/100 and no issues for the root changed-file scan, `apps/web`, and `packages/tabs-next`; the non-zero exit came from existing findings in `packages/streamdown`, `apps/playground`, and `plugins/system-info`.
 
 ## Decision Log
 
@@ -59,9 +64,21 @@ The observable outcome is a working app with safer shell/tab behavior and a clea
   Rationale: SynthesisI reconciled InitialG and CritiqueH: submitting generated client by default would add review churn, but live localhost should not be the normal bootstrap dependency. A server-owned export path allows deterministic regeneration without crossing namespace ownership.
   Date/Author: 2026-05-19 / Strategy 2 SynthesisI.
 
+- Decision: Replace the multiple TabBar render-prop customization props with a single `TabBarCustomization` object.
+  Rationale: The top tab chrome still needs app-specific icons and labels, but grouping these slots under one customization object gives `packages/tabs-next` a smaller public API shape and avoids requiring consumers to understand several independent render-prop hooks.
+  Date/Author: 2026-05-19 / Main Agent.
+
+- Decision: Keep Electron webview attributes on element creation through a small `React.createElement('webview', ...)` wrapper.
+  Rationale: Electron reads `partition` and `webpreferences` during webview creation, so moving them into a later ref effect would risk changing behavior. The wrapper isolates Electron-only custom attributes from JSX diagnostics while preserving creation-time semantics.
+  Date/Author: 2026-05-19 / Main Agent.
+
+- Decision: Convert Composer's input, mention, slash-command, and selected-command fields to a reducer.
+  Rationale: These fields form one interaction state machine. A reducer makes picker/input transitions atomic, removes cascading setState patterns, and preserves the existing slash-command and mention behavior covered by tests.
+  Date/Author: 2026-05-19 / Main Agent.
+
 ## Outcomes & Retrospective
 
-Completed. The DAG pass fixed the highest-priority correctness and DX/UX issues that were safe to land in the current dirty working tree.
+Completed. The DAG pass fixed the highest-priority correctness and DX/UX issues that were safe to land in the current dirty working tree. A follow-up pass then completed the previously recorded non-blocking items: TabBar API shape, Electron `<webview>` attribute handling, Composer state shape, and changed-file UI hygiene.
 
 Produced implementation handoffs:
 
@@ -84,7 +101,7 @@ Validation completed successfully:
     pnpm --filter @cradle/web exec tsc --noEmit --pretty false
     git diff --check
 
-`@cradle/web test` passed 18 files and 69 tests. `@cradle/tabs-next test` passed 6 files and 16 tests. React Doctor was also run with `npx -y react-doctor@latest . --verbose --diff`; it returned non-zero because broader existing warnings remain in `apps/web`, `packages/streamdown`, `apps/playground`, and plugin code. The web score was 90/100 and tabs-next was 99/100. The remaining React Doctor findings include larger follow-up work such as TabBar render-prop API shape, Electron `<webview>` custom attributes, Composer state shape, and unrelated existing component hygiene.
+`@cradle/web test` originally passed 18 files and 69 tests. `@cradle/tabs-next test` originally passed 6 files and 16 tests. After the follow-up pass, `@cradle/web test` passed 19 files and 75 tests, and `@cradle/tabs-next test` passed 6 files and 17 tests. React Doctor was also run with `npx -y react-doctor@latest . --verbose --diff`; the root changed-file scan, `apps/web`, and `packages/tabs-next` all reported 100/100 with no issues. The command still returned non-zero because unrelated full-package scans reported existing issues in `packages/streamdown`, `apps/playground`, and `plugins/system-info`, which are outside this plan's frontend architecture scope.
 
 ## Context and Orientation
 
@@ -110,6 +127,8 @@ Milestone 2 fixes tabs-next runtime invariants. The tabs-next worker owns `packa
 Milestone 3 fixes chat render behavior. The chat worker owns `apps/web/src/features/chat/message-bubble.tsx`, `apps/web/src/features/chat/tool-ui-classifier.ts`, `apps/web/src/features/chat/blocks/**`, `apps/web/src/features/chat/README.md`, and adjacent chat tests. It should keep all tool calls visible through generic fallback semantics, preserve input/output/error/subagent messages, extract testable render-plan or classifier logic when feasible, add a11y state to collapsible blocks, and update README inventory.
 
 Milestone 4 improves DX/UI hygiene outside the above scopes. The hygiene worker owns `apps/web/package.json`, `apps/web/src/components/ui/README.md`, and low-risk app UI cleanup files outside chat, layout, and tabs-next. It should add package-local scripts for web, document `components/ui` placement rules, and apply small static Tailwind or transition/scrollbar cleanup only where it will not conflict with the other workers.
+
+Milestone 5 completes the deferred follow-up work recorded after the initial React Doctor run. The main agent owns the already-related web and tabs-next files needed for this cleanup: `packages/tabs-next/src/components/tab-bar.tsx`, `packages/tabs-next/src/components/tab-link.tsx`, `packages/tabs-next/src/components/tab-renderer.tsx`, `packages/tabs-next/src/index.ts`, `packages/tabs-next/src/__tests__/tab-bar.test.tsx`, `apps/web/src/components/layout/app-header.tsx`, `apps/web/src/features/browser/browser-panel.tsx`, `apps/web/src/features/chat/composer.tsx`, `apps/web/src/features/chat/chat-minimap.tsx`, `apps/web/src/features/chat/chat-view.tsx`, `apps/web/src/features/chat/tool-call-block.tsx`, `apps/web/src/features/agent-management/agent-detail.tsx`, and `apps/web/src/features/workspace-detail/workspace-detail-page.tsx`. This milestone should not change product behavior. It should leave TabBar with one customization object, BrowserPanel with Electron webview custom attributes isolated from JSX diagnostics, Composer with reducer-owned interaction state, and changed web/tabs-next files clean under React Doctor.
 
 Main agent then merges, reads worker handoff files, runs focused checks, and decides whether any finding requires Strategy 2 Critique-Chain. If a worker reports an architecture escalation instead of a patch, the main agent will not patch around it; it will spawn critique/synthesis agents or narrow the scope.
 
@@ -138,6 +157,20 @@ If `@cradle/web test` is introduced with a narrower command, also run the specif
 
     npx -y react-doctor@latest . --verbose --diff
 
+For the follow-up pass, inspect that the legacy TabBar render-prop names are absent from tabs-next and the web header:
+
+    rg -n "renderCloseIcon|renderNewTabIcon|renderTabIcon|renderTooltip" packages/tabs-next apps/web/src/components/layout
+
+This command should exit with no matches. Inspect that Electron webview custom attributes are isolated in the wrapper and not written as JSX attributes:
+
+    rg -n "<webview|partition=|webpreferences=|createElement\\('webview'" apps/web/src/features/browser/browser-panel.tsx
+
+This command should show the file header comment and the `createElement('webview', ...)` wrapper, not JSX `partition=` or `webpreferences=` attributes. Inspect that Composer uses reducer-owned related state:
+
+    rg -n "useReducer|useState|setInputValue|setMention|setSlash|composerReducer|ComposerState" apps/web/src/features/chat/composer.tsx
+
+This command should show `useReducer`, `ComposerState`, and `composerReducer`, and no legacy setter names.
+
 ## Validation and Acceptance
 
 Acceptance requires all worker handoff files to exist and describe changed files, tests added or updated, validation run or skipped, and unresolved risks. Code acceptance requires no TypeScript errors in `@cradle/tabs-next` and `@cradle/web` for the touched scope, focused tests for `packages/tabs-next` and chat/layout behavior, and no `git diff --check` whitespace errors.
@@ -155,6 +188,8 @@ Chat tool calls remain visible even when specialized summary data is missing; to
 Collapsible tool/reasoning controls expose accessible expanded state and are safe as buttons.
 
 Frontend package-level validation commands exist for at least `@cradle/web` and `@cradle/tabs-next`.
+
+The deferred follow-up is accepted when `TabBarProps` exposes `customization?: TabBarCustomization`, `AppHeader` passes a single `tabBarCustomization` object, BrowserPanel no longer renders JSX custom `partition` or `webpreferences` attributes directly, Composer uses a reducer for related input and picker state, `packages/tabs-next/src/components/tab-link.tsx` avoids default object props and generic handler names, `packages/tabs-next/src/components/tab-renderer.tsx` uses reducer-owned loader state, and React Doctor reports no issues for changed files in `apps/web` and `packages/tabs-next`.
 
 ## Idempotence and Recovery
 
@@ -183,3 +218,5 @@ Package scripts should use existing workspace tooling. Prefer `vitest run <path>
 Revision note: Initial implementation plan created on 2026-05-19 for the DAG fix pass requested by Wibus.
 
 Revision note: Updated on 2026-05-19 after WorkerA, WorkerB, WorkerD, main-agent WorkerC fallback, Strategy 2 API ownership synthesis, and validation completed.
+
+Revision note: Updated on 2026-05-19 after completing the deferred follow-up items listed in the previous outcomes section and recording their validation evidence.

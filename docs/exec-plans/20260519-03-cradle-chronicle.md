@@ -14,11 +14,11 @@ After this change, a developer can run a local smoke command that writes a synth
 
 - [x] (2026-05-18T17:36:31Z) Read `docs/draft-solutions/codex-chronicle-spec.md`, confirmed the source spec covers capture, privacy filtering, artifact layout, recursive summarization, prompt safety, and `codex exec` isolation.
 - [x] (2026-05-18T17:36:31Z) Confirmed the repository has no existing Rust workspace or `chronicle/` directory, so this work creates an independent Rust crate under `chronicle/`.
-- [ ] Create the `chronicle/` crate with library and binary entry points.
-- [ ] Implement generic capture, OCR, artifact, fingerprint, privacy, summary, and child-process boundaries.
-- [ ] Add unit tests and an integration smoke test.
-- [ ] Run formatting, tests, and smoke validation.
-- [ ] Audit implementation against every explicit requirement in the user request and this plan.
+- [x] (2026-05-18T17:46:12Z) Created the `chronicle/` crate with `chronicle/src/lib.rs` library exports and `chronicle/src/main.rs` binary entry point.
+- [x] (2026-05-18T17:49:52Z) Implemented generic capture, OCR, artifact, fingerprint, privacy, recursive summary, local summary, and child-process boundaries.
+- [x] (2026-05-18T17:50:58Z) Added unit tests and a binary smoke integration test under `chronicle/tests/smoke.rs`.
+- [x] (2026-05-18T17:54:18Z) Ran formatting, tests, clippy, and smoke validation. `cargo test --manifest-path chronicle/Cargo.toml` passed with 20 unit tests and 1 integration smoke test. `cargo clippy --manifest-path chronicle/Cargo.toml --all-targets -- -D warnings` passed. The final smoke command wrote three frame artifacts and one `10min` memory file under `/tmp/cradle-chronicle-smoke-audit-20260518-1753`.
+- [x] (2026-05-18T17:56:00Z) Audited implementation against the user request and this plan, including real file output, test coverage, crate placement, Rust quality gates, and documentation updates.
 
 ## Surprises & Discoveries
 
@@ -26,6 +26,10 @@ After this change, a developer can run a local smoke command that writes a synth
   Evidence: `git status --short` showed many modified and untracked files before this plan was created. Chronicle work must avoid reverting or editing unrelated paths.
 - Observation: No root `Cargo.toml`, `Cargo.lock`, or `chronicle/` directory existed before this work.
   Evidence: `find . -maxdepth 3 -name Cargo.toml -print` and `find . -maxdepth 3 -iname '*chronicle*'` only found the draft spec.
+- Observation: Clippy caught an inefficient manual membership check in the privacy filter.
+  Evidence: `cargo clippy --manifest-path chronicle/Cargo.toml --all-targets -- -D warnings` initially failed with `clippy::manual_contains` in `chronicle/src/screen/privacy_filter.rs`; the implementation now uses `self.chrome_bundles.contains(&bundle)`.
+- Observation: The first synthetic smoke implementation used fixed frame timestamps while the segment directory used the current time.
+  Evidence: An audit read of `capture.json` showed mismatched `segment_started_at` and `captured_at` values. The CLI now uses `SyntheticCaptureSource::cradle_smoke_from(..., segment_started_at)` so smoke frame timestamps advance from the segment start.
 
 ## Decision Log
 
@@ -38,10 +42,18 @@ After this change, a developer can run a local smoke command that writes a synth
 - Decision: Avoid external Rust dependencies in the first crate.
   Rationale: Network access is restricted and the repo has no Rust lockfile. A `std`-only crate allows deterministic local testing now; dependencies such as `tokio`, `serde`, `tracing`, and platform bindings can be introduced later when the workspace policy is settled.
   Date/Author: 2026-05-18 / Codex.
+- Decision: Persist per-frame `capture-XXXXX.json` and `ocr-XXXXX.json` files while also writing `capture.json` and `ocr.json` as latest-frame aliases.
+  Rationale: The draft spec names `capture.json` and `ocr.json`, but a multi-frame segment would otherwise overwrite earlier metadata and weaken local citations. Per-frame files preserve evidence; latest aliases keep the simple consumer contract.
+  Date/Author: 2026-05-18 / Codex.
+- Decision: Use `.jpg` frame names in the artifact contract even though synthetic smoke bytes are text-backed.
+  Rationale: The source spec uses `frame-XXXXX.jpg`, and future real capture implementations should not need to rename the storage contract. Synthetic smoke only proves the pipeline and does not claim image decoding fidelity.
+  Date/Author: 2026-05-18 / Codex.
 
 ## Outcomes & Retrospective
 
-This section will be completed after implementation and validation.
+The first Cradle Chronicle implementation now exists under `chronicle/` as a standalone Rust crate. It provides a library, CLI binary, capture source trait, synthetic source, OCR trait, privacy filter, frame fingerprinting, artifact store, recorder manager, memory naming, anti-injection prompt builder, recursive `10min` and `6h` summary orchestration, deterministic local summary writer, and child-process execution boundary.
+
+The implementation is intentionally not a native screen recorder yet. It is a working and tested Cradle-owned pipeline with a synthetic smoke source. This keeps the Rust quality bar and storage/memory contracts stable before adding platform-specific ScreenCaptureKit, Windows, Linux, browser, or plugin capture providers.
 
 ## Context and Orientation
 
@@ -65,11 +77,11 @@ Implement privacy filtering in `chronicle/src/screen/privacy_filter.rs`. It excl
 
 Implement frame fingerprinting in `chronicle/src/recorder/fingerprint.rs` with a deterministic FNV-style content hash and similarity check for adjacent frames.
 
-Implement artifacts in `chronicle/src/recorder/artifacts.rs`. `ArtifactStore::persist_frame` creates `{storage_root}/{display_id}/{timestamp}/frame-00001.bin`, `ocr.json`, `capture.json`, and `snapshot.json`. JSON is written by explicit escaping helpers so the crate remains dependency-free.
+Implement artifacts in `chronicle/src/recorder/artifacts.rs`. `ArtifactStore::persist_frame` creates `{storage_root}/{display_id}/{timestamp}/frame-00001.jpg`, per-frame `ocr-00001.json` and `capture-00001.json`, latest-frame aliases `ocr.json` and `capture.json`, and `snapshot.json`. JSON is written by explicit escaping helpers so the crate remains dependency-free.
 
 Implement pipeline orchestration in `chronicle/src/recorder/manager.rs`. `RecorderManager` pulls frames from a source, applies privacy filtering, deduplicates repeated frames, extracts text, and persists artifacts.
 
-Implement memory generation modules under `chronicle/src/memory_pipeline/`. `naming.rs` creates deterministic Chronicle names shaped like `<timestamp>-<4chars>-<window>-<slug>.md`. `prompt.rs` builds a prompt with anti-prompt-injection guardrails. `summarizer.rs` offers a local deterministic summarizer for smoke tests and a trait boundary for future LLM-backed summarizers.
+Implement memory generation modules under `chronicle/src/memory_pipeline/`. `naming.rs` creates deterministic Chronicle names shaped like `<timestamp>-<4chars>-<window>-<slug>.md`. `prompt.rs` builds a prompt with anti-prompt-injection guardrails. `recursive.rs` orchestrates `10min` and `6h` summary windows. `summarizer.rs` offers a local deterministic summarizer for smoke tests and a trait boundary for future LLM-backed summarizers.
 
 Implement `chronicle/src/codex_exec.rs` as a child-process boundary that can spawn a configured command with prompt stdin and timeout. The first smoke path will not require `codex`; this module exists to preserve the architecture boundary from the spec.
 
@@ -83,6 +95,7 @@ From `/Users/wibus/dev/Cradle`, create files under `chronicle/` and this ExecPla
 
     cargo fmt --manifest-path chronicle/Cargo.toml
     cargo test --manifest-path chronicle/Cargo.toml
+    cargo clippy --manifest-path chronicle/Cargo.toml --all-targets -- -D warnings
     cargo run --manifest-path chronicle/Cargo.toml -- --smoke --storage-root /tmp/cradle-chronicle-smoke
 
 Expected successful smoke output includes a line similar to:
@@ -90,6 +103,17 @@ Expected successful smoke output includes a line similar to:
     cradle chronicle smoke completed
 
 The storage root should contain a display folder, one timestamped segment folder, and `memories/*.md`.
+
+Final observed validation from this implementation:
+
+    cargo test --manifest-path chronicle/Cargo.toml
+    result: 20 unit tests passed, 1 integration smoke test passed, 0 failed.
+
+    cargo clippy --manifest-path chronicle/Cargo.toml --all-targets -- -D warnings
+    result: finished successfully with no warnings.
+
+    cargo run --manifest-path chronicle/Cargo.toml -- --smoke --storage-root /tmp/cradle-chronicle-smoke-audit-20260518-1753 --capture-limit 3
+    result: cradle chronicle smoke completed: observed=3 persisted=3 duplicates=0 privacy_filtered=0 memory=/tmp/cradle-chronicle-smoke-audit-20260518-1753/memories/20260518175418-ccxi-10min-cradle_chronicle_smoke.md
 
 ## Validation and Acceptance
 
@@ -111,7 +135,23 @@ If a test fails, inspect the failing module and rerun only the crate tests. No d
 
 ## Artifacts and Notes
 
-Important evidence will be added here after validation, including concise transcripts from `cargo test` and smoke runs.
+The final smoke run wrote these files:
+
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/capture-00001.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/capture-00002.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/capture-00003.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/capture.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/frame-00001.jpg
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/frame-00002.jpg
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/frame-00003.jpg
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/ocr-00001.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/ocr-00002.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/ocr-00003.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/ocr.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/1/2026-05-18T17-54-16Z/snapshot.json
+    /tmp/cradle-chronicle-smoke-audit-20260518-1753/memories/20260518175418-ccxi-10min-cradle_chronicle_smoke.md
+
+The final `capture.json` latest-frame alias contained `display_id`, `segment_started_at`, `captured_at`, `frame_index`, `persisted_frame_path`, and `normalized_text`. The final memory Markdown contained `## Memory summary`, `## Recording summary`, `## Local citations`, and `[chronicle memory]` tags.
 
 ## Interfaces and Dependencies
 
@@ -142,3 +182,5 @@ In `chronicle/src/memory_pipeline/summarizer.rs`, define:
 In `chronicle/src/codex_exec.rs`, define a child process runner that accepts an executable path, args, stdin text, and timeout. It should be tested with a local command that does not require network or LLM credentials.
 
 Revision note 2026-05-18: Initial plan created after reading the draft spec and confirming no existing Rust or Chronicle implementation exists in the repository.
+
+Revision note 2026-05-18: Updated after implementation with completed progress, artifact contract details, validation transcripts, and retrospective notes.
