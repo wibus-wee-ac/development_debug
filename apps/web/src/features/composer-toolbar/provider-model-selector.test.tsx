@@ -135,6 +135,49 @@ describe('providerModelSelector', () => {
     expect(screen.queryByText('No models available')).toBeNull()
   })
 
+  it('selects the model owner profile when choosing a model directly', () => {
+    const openaiProfile = profile({
+      id: 'profile-openai',
+      name: 'OpenAI',
+      providerKind: 'openai-compatible',
+    })
+    const anthropicProfile = profile({
+      id: 'profile-anthropic',
+      name: 'Anthropic',
+      providerKind: 'anthropic',
+    })
+    const onSelectModel = vi.fn()
+
+    render(
+      <ProviderModelSelector
+        profiles={[openaiProfile, anthropicProfile]}
+        selectedProfileId={openaiProfile.id}
+        selectedModelId="gpt-5.1"
+        models={[
+          model({ id: 'gpt-5.1', label: 'GPT 5.1', providerKind: 'openai-compatible' }),
+        ]}
+        modelsByProfileId={{
+          [openaiProfile.id]: [
+            model({ id: 'gpt-5.1', label: 'GPT 5.1', providerKind: 'openai-compatible' }),
+          ],
+          [anthropicProfile.id]: [
+            model({ id: 'claude-opus-4.5', label: 'Claude Opus 4.5', providerKind: 'anthropic' }),
+          ],
+        }}
+        loadingProfileIds={new Set()}
+        thinkingEffort={null}
+        isLoadingModels={false}
+        onSelectProfile={vi.fn()}
+        onSelectModel={onSelectModel}
+        onSelectThinkingEffort={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('Claude Opus 4.5'))
+
+    expect(onSelectModel).toHaveBeenCalledWith('claude-opus-4.5', anthropicProfile.id)
+  })
+
   it('filters thinking choices by selected model reasoning capability', () => {
     const plainModel = model({ id: 'gpt-4o-mini', label: 'GPT 4o mini', providerKind: 'openai-compatible' })
     const reasoningModel = model({
@@ -147,6 +190,32 @@ describe('providerModelSelector', () => {
     expect(filterThinkingOptionsForModel(plainModel, THINKING_EFFORTS).map(option => option.value)).toEqual([null])
     expect(filterThinkingOptionsForModel(reasoningModel, THINKING_EFFORTS).map(option => option.value)).toEqual([null, 'low', 'medium', 'high'])
     expect(selectSupportedThinkingValue(plainModel, THINKING_EFFORTS, 'high', null)).toBeNull()
+  })
+
+  it('shows the selected model id when metadata is not available yet', () => {
+    const openaiProfile = profile({
+      id: 'profile-openai',
+      name: 'OpenAI',
+      providerKind: 'openai-compatible',
+    })
+
+    render(
+      <ProviderModelSelector
+        profiles={[openaiProfile]}
+        selectedProfileId={openaiProfile.id}
+        selectedModelId="unlisted-model"
+        models={[]}
+        modelsByProfileId={{ [openaiProfile.id]: [] }}
+        loadingProfileIds={new Set()}
+        thinkingEffort={null}
+        isLoadingModels={false}
+        onSelectProfile={vi.fn()}
+        onSelectModel={vi.fn()}
+        onSelectThinkingEffort={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('provider-model-selector').textContent).toContain('unlisted-model')
   })
 
   it('filters model search by trimmed label and id text', () => {

@@ -11,7 +11,8 @@ import { presetForProfile } from '~/features/agent-management/agent-runtime-sett
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
-import { ProviderModelMenu, type ThinkingOption } from './provider-model-menu'
+import type { ThinkingOption } from './provider-model-menu'
+import { ProviderModelMenu } from './provider-model-menu'
 import type { ModelsByProfileId } from './types'
 
 interface ProviderModelPickerProps<TThinking extends string | null> {
@@ -78,6 +79,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
     ? triggerThinkingOptions.find(option => option.value === thinkingValue)?.label ?? null
     : null
   const modelLabel = selectedModel?.label
+    ?? selectedModelId
     ?? (isLoadingSelectedModels ? loadingLabel : emptySelectionLabel)
 
   return (

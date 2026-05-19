@@ -18,7 +18,7 @@ interface ProviderModelSelectorProps {
   thinkingEffort: ThinkingEffort
   isLoadingModels: boolean
   onSelectProfile: (id: string) => void
-  onSelectModel: (id: string) => void
+  onSelectModel: (id: string, profileId: string) => void
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
 }
 
@@ -59,7 +59,7 @@ export function ProviderModelSelector({
       }}
       onSelectModel={(id, profileId) => {
         if (id) {
-          onSelectModel(id)
+          onSelectModel(id, profileId)
           const nextModel = (modelsByProfileId[profileId] ?? []).find(model => model.id === id) ?? null
           onSelectThinkingEffort(selectThinkingForModel(nextModel))
         }

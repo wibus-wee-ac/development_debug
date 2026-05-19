@@ -25,7 +25,7 @@ export interface ComposerStateResult {
   selection: ComposerSelection
   setAgentId: (id: string) => void
   setProfileId: (id: string) => void
-  setModelId: (id: string) => void
+  setModelId: (id: string, profileId?: string) => void
   setThinkingEffort: (effort: ThinkingEffort) => void
   setRuntimeKind: (kind: RuntimeKind) => void
   agents: Agent[]
@@ -39,14 +39,22 @@ export interface ComposerStateResult {
   effectiveModel: ModelDescriptor | null
 }
 
+const EMPTY_MODELS: ModelDescriptor[] = []
+
 export function useComposerState(config: ComposerStateConfig): ComposerStateResult {
   const { context, boundProfileId, boundRuntimeKind } = config
 
   // Persisted state
+  const lastRuntimeKind = useNewChatStore(s => s.lastRuntimeKind)
+  const setLastRuntimeKind = useNewChatStore(s => s.setLastRuntimeKind)
+  const lastCliTuiAgentId = useNewChatStore(s => s.lastCliTuiAgentId)
+  const setLastCliTuiAgentId = useNewChatStore(s => s.setLastCliTuiAgentId)
   const lastProfileId = useNewChatStore(s => s.lastAgentProfileId)
   const setLastProfileId = useNewChatStore(s => s.setLastAgentProfileId)
   const setLastModelForProfile = useNewChatStore(s => s.setLastModelForProfile)
   const lastModelByProfile = useNewChatStore(s => s.lastModelByProfile)
+  const lastThinkingEffort = useNewChatStore(s => s.lastThinkingEffort)
+  const setLastThinkingEffort = useNewChatStore(s => s.setLastThinkingEffort)
 
   // Data
   const { agents } = useAgents()
@@ -55,8 +63,17 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   // Local non-persisted state
   const [manualAgentId, setManualAgentId] = useState<string | null>(null)
   const [manualModelId, setManualModelId] = useState<string | null>(null)
-  const [thinkingEffort, setThinkingEffortState] = useState<ThinkingEffort>(null)
-  const [runtimeKind, setRuntimeKindState] = useState<RuntimeKind>(boundRuntimeKind ?? 'standard')
+  const [manualThinkingEffort, setManualThinkingEffort] = useState<ThinkingEffort | undefined>(undefined)
+  const [manualRuntimeKind, setManualRuntimeKind] = useState<RuntimeKind | null>(null)
+
+  const runtimeKind = useMemo(() => {
+    if (context === 'chat') {
+      return boundRuntimeKind ?? 'standard'
+    }
+    return manualRuntimeKind ?? lastRuntimeKind ?? 'standard'
+  }, [context, boundRuntimeKind, manualRuntimeKind, lastRuntimeKind])
+
+  const thinkingEffort = manualThinkingEffort === undefined ? lastThinkingEffort : manualThinkingEffort
 
   const cliTuiAgents = useMemo(
     () => agents.filter(agent => agent.enabled && agent.runtimeKind === 'cli-tui'),
@@ -70,8 +87,11 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (manualAgentId && cliTuiAgents.some(agent => agent.id === manualAgentId)) {
       return manualAgentId
     }
+    if (lastCliTuiAgentId && cliTuiAgents.some(agent => agent.id === lastCliTuiAgentId)) {
+      return lastCliTuiAgentId
+    }
     return cliTuiAgents[0]?.id ?? null
-  }, [runtimeKind, manualAgentId, cliTuiAgents])
+  }, [runtimeKind, manualAgentId, lastCliTuiAgentId, cliTuiAgents])
 
   // Resolve effective profile
   const profileId = useMemo(() => {
@@ -86,7 +106,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   }, [runtimeKind, context, boundProfileId, lastProfileId, profiles])
 
   const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
-  const models = profileId ? modelsByProfileId[profileId] ?? [] : []
+  const models = profileId ? modelsByProfileId[profileId] ?? EMPTY_MODELS : EMPTY_MODELS
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
 
   // Resolve effective model
@@ -133,6 +153,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   const setAgentId = (id: string) => {
     setManualAgentId(id)
+    setLastCliTuiAgentId(id)
   }
 
   const setProfileId = (id: string) => {
@@ -143,15 +164,32 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     setManualModelId(null) // reset manual model when profile changes
   }
 
-  const setModelId = (id: string) => {
-    setManualModelId(id)
-    if (profileId) {
-      setLastModelForProfile(profileId, id)
+  const setModelId = (id: string, nextProfileId?: string) => {
+    const targetProfileId = nextProfileId ?? profileId
+    if (!targetProfileId) {
+      return
     }
+    if (context === 'chat' && targetProfileId !== profileId) {
+      return
+    }
+    if (context !== 'chat' && targetProfileId !== profileId) {
+      setLastProfileId(targetProfileId)
+    }
+    setManualModelId(id)
+    setLastModelForProfile(targetProfileId, id)
   }
 
   const setThinkingEffort = (effort: ThinkingEffort) => {
-    setThinkingEffortState(effort)
+    setManualThinkingEffort(effort)
+    setLastThinkingEffort(effort)
+  }
+
+  const setRuntimeKind = (kind: RuntimeKind) => {
+    if (context === 'chat') {
+      return
+    }
+    setManualRuntimeKind(kind)
+    setLastRuntimeKind(kind)
   }
 
   return {
@@ -160,7 +198,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     setProfileId,
     setModelId,
     setThinkingEffort,
-    setRuntimeKind: setRuntimeKindState,
+    setRuntimeKind,
     agents: cliTuiAgents,
     profiles,
     models,

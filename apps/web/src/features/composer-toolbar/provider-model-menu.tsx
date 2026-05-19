@@ -51,6 +51,13 @@ interface ProviderGroupProps<TThinking extends string | null> {
 
 const INITIAL_BATCH = 20
 
+function occurrenceKey(id: string, counts: Map<string, number>): string {
+  const count = counts.get(id) ?? 0
+  counts.set(id, count + 1)
+  return `${id}:${count}`
+}
+
+// eslint-disable-next-line react-refresh/only-export-components
 export function filterModelsBySearch(models: ModelDescriptor[], search: string): ModelDescriptor[] {
   const normalizedSearch = search.trim().toLowerCase()
   if (!normalizedSearch) {
@@ -96,6 +103,7 @@ function ProviderGroup<TThinking extends string | null>({
   }, [modelSearch])
 
   const visibleModels = filteredModels.slice(0, renderCount)
+  const modelKeyCounts = new Map<string, number>()
 
   return (
     <MenuSub>
@@ -132,7 +140,7 @@ function ProviderGroup<TThinking extends string | null>({
             const isModelSelected = model.id === selectedModelId
             return (
               <ModelSubmenu
-                key={model.id}
+                key={occurrenceKey(model.id, modelKeyCounts)}
                 model={model}
                 isModelSelected={isModelSelected}
                 thinkingValue={thinkingValue}
