@@ -377,7 +377,6 @@ function HighlightedTerminalOutput({ text, destructive }: { text: string, destru
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function TerminalExecutionDetails({
   input,
   output,
@@ -580,6 +579,7 @@ function DiffSummary({ input, output }: { input: unknown, output: unknown }) {
         filePath={editPreview.filePath}
         oldContent={editPreview.oldContent}
         newContent={editPreview.newContent}
+        defaultOpen
       />
     )
   }
