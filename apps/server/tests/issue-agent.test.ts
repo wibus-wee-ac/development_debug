@@ -16,6 +16,7 @@ interface AgentSessionView {
   id: string
   issueId: string
   agentProfileId: string
+  agentId: string | null
   chatSessionId: string | null
   status: 'created' | 'active' | 'completed' | 'stopped' | 'failed'
   isCurrentDelegation: boolean
@@ -25,6 +26,7 @@ interface DelegationState {
   issueId: string
   delegated: boolean
   agentProfileId: string | null
+  agentId: string | null
   agentSessionId: string | null
   chatSessionId: string | null
 }
@@ -66,6 +68,22 @@ async function createProfile(app: ElysiaApp) {
     }),
   }))
   expect(profileRes.status).toBe(200)
+}
+
+async function createAgent(app: ElysiaApp) {
+  const agentRes = await app.handle(new Request('http://localhost/agents', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Issue Agent',
+      avatarStyle: 'bottts-neutral',
+      avatarSeed: 'issue-agent',
+      agentProfileId: 'profile-issue-agent',
+      runtimeKind: 'standard',
+    }),
+  }))
+  expect(agentRes.status).toBe(200)
+  return await agentRes.json() as { id: string, name: string, agentProfileId: string }
 }
 
 async function createIssue(app: ElysiaApp, workspaceId: string) {
@@ -154,17 +172,19 @@ describe('issue-agent capability', () => {
       }).run()
 
       await createProfile(app)
+      const agent = await createAgent(app)
       const issue = await createIssue(app, 'workspace-issue-agent')
 
       const delegateRes = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/delegation`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentProfileId: 'profile-issue-agent' }),
+        body: JSON.stringify({ agentId: agent.id }),
       }))
       expect(delegateRes.status).toBe(200)
       const delegatedSession = await delegateRes.json() as AgentSessionView
       expect(delegatedSession.issueId).toBe(issue.id)
       expect(delegatedSession.agentProfileId).toBe('profile-issue-agent')
+      expect(delegatedSession.agentId).toBe(agent.id)
 
       const sessionsAfterDelegate = await waitForSessionStatus(app, issue.id, 'completed')
       expect(sessionsAfterDelegate).toHaveLength(1)
@@ -181,15 +201,22 @@ describe('issue-agent capability', () => {
         issueId: issue.id,
         delegated: true,
         agentProfileId: 'profile-issue-agent',
+        agentId: agent.id,
         agentSessionId: delegatedSession.id,
       }))
       expect(delegationState.chatSessionId).toBeTruthy()
+
+      const commentsRes = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/comments`))
+      expect(commentsRes.status).toBe(200)
+      expect(await commentsRes.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ authorKind: 'system.delegated', authorId: null }),
+      ]))
 
       const activitiesRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/activities`))
       expect(activitiesRes.status).toBe(200)
       const activities = await activitiesRes.json() as AgentActivityView[]
       expect(activities.map(activity => JSON.parse(activity.content).body)).toEqual(expect.arrayContaining([
-        'Delegated to Mock LLM',
+        'Delegated to Issue Agent',
         'Examining issue...',
         'Completed work on issue',
       ]))
@@ -199,6 +226,10 @@ describe('issue-agent capability', () => {
       const messages = await messagesRes.json() as Array<{ role: string, content: string, status: string }>
       expect(messages.at(-1)).toEqual(expect.objectContaining({ role: 'assistant', content: 'Hello from delegated run 1', status: 'complete' }))
       expect(completionBodies[0]).toContain(`Issue ID: ${issue.id}`)
+
+      const chatSessionRes = await app.handle(new Request(`http://localhost/sessions/${encodeURIComponent(String(delegationState.chatSessionId))}`))
+      expect(chatSessionRes.status).toBe(200)
+      expect(await chatSessionRes.json()).toEqual(expect.objectContaining({ agentId: agent.id }))
 
       const rerunRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/rerun`, {
         method: 'POST',
@@ -228,6 +259,7 @@ describe('issue-agent capability', () => {
         issueId: issue.id,
         delegated: false,
         agentProfileId: null,
+        agentId: null,
         agentSessionId: null,
         chatSessionId: null,
       }))
@@ -276,6 +308,7 @@ describe('issue-agent capability', () => {
       }).run()
 
       await createProfile(app)
+      const agent = await createAgent(app)
       const issue = await createIssue(app, 'workspace-issue-agent')
 
       const invalidDelegate = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/delegation`, {
@@ -289,18 +322,18 @@ describe('issue-agent capability', () => {
       const missingIssue = await app.handle(new Request('http://localhost/kanban/issues/missing-issue/delegation', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentProfileId: 'profile-issue-agent' }),
+        body: JSON.stringify({ agentId: agent.id }),
       }))
       expect(missingIssue.status).toBe(404)
       expect((await missingIssue.json()).code).toBe('issue_agent_issue_not_found')
 
-      const missingProfile = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/delegation`, {
+      const missingAgent = await app.handle(new Request(`http://localhost/kanban/issues/${encodeURIComponent(issue.id)}/delegation`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentProfileId: 'missing-profile' }),
+        body: JSON.stringify({ agentId: 'missing-agent' }),
       }))
-      expect(missingProfile.status).toBe(404)
-      expect((await missingProfile.json()).code).toBe('issue_agent_profile_not_found')
+      expect(missingAgent.status).toBe(404)
+      expect((await missingAgent.json()).code).toBe('issue_agent_agent_not_found')
 
       const missingActivities = await app.handle(new Request('http://localhost/issue-agent-sessions/missing-session/activities'))
       expect(missingActivities.status).toBe(404)

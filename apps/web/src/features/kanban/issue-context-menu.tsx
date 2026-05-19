@@ -90,9 +90,9 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const undelegateIssue = useUndelegateIssue()
   const issueKey = formatIssueId(issue, workspaces)
   const delegateAgents = agents.filter(agent => !!agent.agentProfileId)
-  const delegatedAgent = issue.delegateAgentProfileId
-    ? delegateAgents.find(agent => agent.agentProfileId === issue.delegateAgentProfileId) ?? null
-    : null
+  const delegatedAgent = delegateAgents.find(agent =>
+    agent.id === issue.delegateAgentId || agent.agentProfileId === issue.delegateAgentProfileId,
+  ) ?? null
 
   const isMutating = updateIssue.isPending || delegateIssue.isPending || deleteIssue.isPending || undelegateIssue.isPending
   const currentStatusValue = issue.statusId ?? ''
@@ -229,7 +229,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
               : delegateAgents.map(agent => (
                   <ContextMenuItem
                     key={agent.id}
-                    disabled={isMutating || agent.agentProfileId === issue.delegateAgentProfileId}
+                    disabled={isMutating || agent.id === issue.delegateAgentId}
                     onSelect={() => delegateIssue.mutate({
                       issueId: issue.id,
                       agentProfileId: agent.agentProfileId!,

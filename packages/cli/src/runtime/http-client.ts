@@ -5,6 +5,7 @@
 import type { CliHttpMethod } from './types'
 
 const PATH_PARAM_RE = /\{([^}]+)\}/g
+const CRADLE_CHAT_SESSION_ID_HEADER = 'x-cradle-chat-session-id'
 
 interface RequestInput {
   body?: unknown
@@ -59,11 +60,20 @@ export async function requestJson<T = unknown>(input: RequestInput): Promise<T> 
   const url = new URL(path, input.serverUrl)
   appendQuery(url, input.query)
 
+  const headers: Record<string, string> = {}
+  if (input.body !== undefined) {
+    headers['content-type'] = 'application/json'
+  }
+  const chatSessionId = process.env.CRADLE_CHAT_SESSION_ID?.trim()
+  if (chatSessionId) {
+    headers[CRADLE_CHAT_SESSION_ID_HEADER] = chatSessionId
+  }
+
   let response: Response
   try {
     response = await fetch(url, {
       body: input.body === undefined ? undefined : JSON.stringify(input.body),
-      headers: input.body === undefined ? undefined : { 'content-type': 'application/json' },
+      headers: Object.keys(headers).length === 0 ? undefined : headers,
       method: input.method.toUpperCase(),
     })
   }

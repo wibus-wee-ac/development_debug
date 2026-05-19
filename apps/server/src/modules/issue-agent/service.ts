@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
-import type { AgentActivity, AgentSession } from '@cradle/db'
+import type { Agent, AgentActivity, AgentSession } from '@cradle/db'
 import {
   agentActivities,
+  agents,
   agentProfiles,
   agentSessions,
 } from '@cradle/db'
@@ -33,6 +34,7 @@ interface IssueAgentDelegationState {
   issueId: string
   delegated: boolean
   agentProfileId: string | null
+  agentId: string | null
   agentSessionId: string | null
   chatSessionId: string | null
 }
@@ -79,12 +81,13 @@ function listAgentActivities(agentSessionId: string): AgentActivity[] {
   return db().select().from(agentActivities).where(eq(agentActivities.agentSessionId, agentSessionId)).orderBy(agentActivities.createdAt).all()
 }
 
-function createDelegationSession(input: { issueId: string, agentProfileId: string }): AgentSession {
+function createDelegationSession(input: { issueId: string, agentProfileId: string, agentId: string }): AgentSession {
   const now = currentUnixSeconds()
   return db().insert(agentSessions).values({
     id: randomUUID(),
     issueId: input.issueId,
     agentProfileId: input.agentProfileId,
+    agentId: input.agentId,
     chatSessionId: null,
     status: 'created',
     createdAt: now,
@@ -150,6 +153,39 @@ function requireAgentProfile(agentProfileId: string) {
     })
   }
   return profile
+}
+
+function requireDelegationAgent(agentId: string): Agent & { agentProfileId: string } {
+  const agent = db().select().from(agents).where(eq(agents.id, agentId)).get()
+  if (!agent) {
+    throw new AppError({
+      code: 'issue_agent_agent_not_found',
+      status: 404,
+      message: 'Agent not found',
+      details: { agentId },
+    })
+  }
+  if (!agent.enabled) {
+    throw new AppError({
+      code: 'issue_agent_agent_not_available',
+      status: 409,
+      message: 'Agent is disabled',
+      details: { agentId },
+    })
+  }
+  if (!agent.agentProfileId) {
+    throw new AppError({
+      code: 'issue_agent_agent_not_supported',
+      status: 409,
+      message: 'Issue delegation requires a provider-backed agent',
+      details: { agentId, runtimeKind: agent.runtimeKind },
+    })
+  }
+
+  return {
+    ...agent,
+    agentProfileId: agent.agentProfileId,
+  }
 }
 
 function requireAgentSession(agentSessionId: string) {
@@ -260,29 +296,38 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
 
 // ── run session ──
 
-async function runSession(agentSessionId: string, agentId?: string): Promise<void> {
-  const session = requireAgentSession(agentSessionId)
-  const issue = requireIssue(session.issueId)
-  const workflowRules = await WorkflowRules.get(issue.workspaceId, session.agentProfileId)
-  const chatSession = Session.create({
-    workspaceId: issue.workspaceId,
-    title: `Issue: ${issue.title}`,
-    agentProfileId: session.agentProfileId,
-    agentId: agentId ?? null,
-    linkedIssueId: issue.id,
-    configJson: JSON.stringify({ permissionMode: 'bypassPermissions' }),
-  })
-
-  attachChatSession({ agentSessionId, chatSessionId: chatSession.id })
-  updateAgentSessionStatus(agentSessionId, 'active')
-  createActivity({
-    agentSessionId,
-    type: 'thought',
-    body: 'Examining issue...',
-    signal: 'run.started',
-  })
-
+async function runSession(agentSessionId: string): Promise<void> {
   try {
+    const session = requireAgentSession(agentSessionId)
+    if (!session.agentId) {
+      throw new AppError({
+        code: 'issue_agent_missing_agent_identity',
+        status: 409,
+        message: 'Issue agent session is missing agent identity',
+        details: { agentSessionId },
+      })
+    }
+
+    const issue = requireIssue(session.issueId)
+    const workflowRules = await WorkflowRules.get(issue.workspaceId, session.agentProfileId)
+    const chatSession = Session.create({
+      workspaceId: issue.workspaceId,
+      title: `Issue: ${issue.title}`,
+      agentProfileId: session.agentProfileId,
+      agentId: session.agentId,
+      linkedIssueId: issue.id,
+      configJson: JSON.stringify({ permissionMode: 'bypassPermissions' }),
+    })
+
+    attachChatSession({ agentSessionId, chatSessionId: chatSession.id })
+    updateAgentSessionStatus(agentSessionId, 'active')
+    createActivity({
+      agentSessionId,
+      type: 'thought',
+      body: 'Examining issue...',
+      signal: 'run.started',
+    })
+
     const run = await ChatRuntime.createRun({
       sessionId: chatSession.id,
       text: buildIssuePrompt(issue, workflowRules),
@@ -313,18 +358,19 @@ export function getDelegation(issueId: string): IssueAgentDelegationState {
   requireIssue(issueId)
   const latestSession = listAgentSessions(issueId)[0]
   if (!latestSession) {
-    return { issueId, delegated: false, agentProfileId: null, agentSessionId: null, chatSessionId: null }
+    return { issueId, delegated: false, agentProfileId: null, agentId: null, agentSessionId: null, chatSessionId: null }
   }
 
   const latestActivity = listAgentActivities(latestSession.id).at(-1)
   if (latestActivity?.signal === 'delegation.removed') {
-    return { issueId, delegated: false, agentProfileId: null, agentSessionId: null, chatSessionId: null }
+    return { issueId, delegated: false, agentProfileId: null, agentId: null, agentSessionId: null, chatSessionId: null }
   }
 
   return {
     issueId,
     delegated: true,
     agentProfileId: latestSession.agentProfileId,
+    agentId: latestSession.agentId,
     agentSessionId: latestSession.id,
     chatSessionId: latestSession.chatSessionId,
   }
@@ -344,42 +390,53 @@ export function listActivities(agentSessionId: string): AgentActivity[] {
   return listAgentActivities(agentSessionId)
 }
 
-export async function delegateIssue(input: { issueId: string, agentProfileId: string, agentId?: string }): Promise<IssueAgentSessionView> {
+export async function delegateIssue(input: { issueId: string, agentId: string, agentProfileId?: string | null }): Promise<IssueAgentSessionView> {
   requireIssue(input.issueId)
-  const profile = requireAgentProfile(input.agentProfileId)
+  const agent = requireDelegationAgent(input.agentId)
+  if (input.agentProfileId && input.agentProfileId !== agent.agentProfileId) {
+    throw new AppError({
+      code: 'issue_agent_identity_mismatch',
+      status: 400,
+      message: 'Agent profile does not match the selected agent',
+      details: { agentId: input.agentId, agentProfileId: input.agentProfileId, expectedAgentProfileId: agent.agentProfileId },
+    })
+  }
+
+  const profile = requireAgentProfile(agent.agentProfileId)
   if (!profile.enabled) {
     throw new AppError({
       code: 'issue_agent_profile_not_available',
       status: 409,
       message: 'Agent profile is disabled',
-      details: { agentProfileId: input.agentProfileId },
+      details: { agentProfileId: agent.agentProfileId },
     })
   }
 
-  Kanban.updateIssueDelegation(input.issueId, input.agentProfileId)
+  Kanban.updateIssueDelegation(input.issueId, { agentId: agent.id, agentProfileId: agent.agentProfileId })
 
   // Add system comment to activity timeline
-  Kanban.addComment({ issueId: input.issueId, content: `Delegated to ${profile.name}`, authorKind: 'system.delegated' })
+  Kanban.addComment({ issueId: input.issueId, content: `Delegated to ${agent.name}`, authorKind: 'system.delegated' })
 
   const session = createDelegationSession({
     issueId: input.issueId,
-    agentProfileId: input.agentProfileId,
+    agentProfileId: agent.agentProfileId,
+    agentId: agent.id,
   })
 
   createActivity({
     agentSessionId: session.id,
     type: 'response',
-    body: `Delegated to ${profile.name}`,
+    body: `Delegated to ${agent.name}`,
     signal: 'delegation.created',
-    signalMetadata: { agentProfileId: input.agentProfileId, agentId: input.agentId ?? null },
+    signalMetadata: { agentProfileId: agent.agentProfileId, agentId: agent.id },
   })
 
-  void runSession(session.id, input.agentId)
+  void runSession(session.id)
 
   return { ...session, isCurrentDelegation: true }
 }
 
-export async function rerunSession(input: { agentSessionId: string, agentId?: string }): Promise<IssueAgentSessionView> {
+export async function rerunSession(input: { agentSessionId: string }): Promise<IssueAgentSessionView> {
   const session = requireAgentSession(input.agentSessionId)
   if (activeRuns.has(session.id)) {
     throw new AppError({
@@ -391,7 +448,7 @@ export async function rerunSession(input: { agentSessionId: string, agentId?: st
   }
 
   const refreshed = updateAgentSessionStatus(session.id, 'created') ?? session
-  void runSession(session.id, input.agentId)
+  void runSession(session.id)
 
   const delegation = getDelegation(session.issueId)
   return { ...refreshed, isCurrentDelegation: delegation.agentSessionId === session.id }

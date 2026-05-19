@@ -4,6 +4,7 @@
 
 import { index, int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
+import { agents } from './identity'
 import { createdAt, textPk, timestamps, workspaces } from './shared'
 
 export const kanbanStatuses = sqliteTable('kanban_statuses', {
@@ -63,6 +64,9 @@ export const kanbanIssues = sqliteTable('kanban_issues', {
   labels: text('labels').notNull().default('[]'),
   assigneeKind: text('assignee_kind'),
   assigneeId: text('assignee_id'),
+  createdByKind: text('created_by_kind', { enum: ['user', 'agent', 'system'] }).notNull().default('user'),
+  createdById: text('created_by_id').notNull().default('__self__'),
+  delegateAgentId: text('delegate_agent_id').references(() => agents.id, { onDelete: 'set null' }),
   delegateAgentProfileId: text('delegate_agent_profile_id'),
   contextRefs: text('context_refs').notNull().default('[]'),
   order: int('order').notNull().default(0),
@@ -72,6 +76,7 @@ export const kanbanIssues = sqliteTable('kanban_issues', {
   byStatus: index('kanban_issues_status_id_idx').on(table.statusId),
   byMilestone: index('kanban_issues_milestone_id_idx').on(table.milestoneId),
   byParent: index('kanban_issues_parent_issue_id_idx').on(table.parentIssueId),
+  byDelegateAgent: index('kanban_issues_delegate_agent_id_idx').on(table.delegateAgentId),
   byDelegateAgentProfile: index('kanban_issues_delegate_agent_profile_id_idx').on(table.delegateAgentProfileId),
 }))
 

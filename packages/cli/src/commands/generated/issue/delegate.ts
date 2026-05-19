@@ -22,15 +22,15 @@ const spec = {
   "description": "Delegate issue",
   "flags": [
     {
-      "name": "agentProfileId",
+      "name": "agentId",
       "required": true,
-      "target": "body.agentProfileId",
+      "target": "body.agentId",
       "type": "string"
     },
     {
-      "name": "agentId",
+      "name": "agentProfileId",
       "required": false,
-      "target": "body.agentId",
+      "target": "body.agentProfileId",
       "type": "string"
     }
   ],

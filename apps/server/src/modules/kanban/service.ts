@@ -16,6 +16,7 @@ import { desc, eq, or, sql } from 'drizzle-orm'
 import { AppError } from '../../errors/app-error'
 import { parseJsonStringArray } from '../../helpers/json-text'
 import { currentUnixSeconds } from '../../helpers/time'
+import type { MutationActor } from '../../http/actor-context'
 import { db } from '../../infra'
 
 // ── helpers ──
@@ -276,7 +277,7 @@ export function createIssue(input: {
   milestoneId?: string | null
   parentIssueId?: string | null
   statusId?: string | null
-}): KanbanIssue {
+}, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user' }): KanbanIssue {
   requireWorkspace(input.workspaceId)
   const now = currentUnixSeconds()
   const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${kanbanIssues.order}), 0)` }).from(kanbanIssues).where(eq(kanbanIssues.workspaceId, input.workspaceId)).get()
@@ -299,6 +300,9 @@ export function createIssue(input: {
     number,
     assigneeKind: null,
     assigneeId: null,
+    createdByKind: actor.kind,
+    createdById: actor.id,
+    delegateAgentId: null,
     delegateAgentProfileId: null,
     contextRefs: '[]',
     order,
@@ -359,8 +363,12 @@ export function updateIssue(id: string, patch: Partial<{
   return issue
 }
 
-export function updateIssueDelegation(id: string, agentProfileId: string | null): KanbanIssue {
-  db().update(kanbanIssues).set({ delegateAgentProfileId: agentProfileId, updatedAt: currentUnixSeconds() }).where(eq(kanbanIssues.id, id)).run()
+export function updateIssueDelegation(id: string, delegation: { agentId: string, agentProfileId: string } | null): KanbanIssue {
+  db().update(kanbanIssues).set({
+    delegateAgentId: delegation?.agentId ?? null,
+    delegateAgentProfileId: delegation?.agentProfileId ?? null,
+    updatedAt: currentUnixSeconds(),
+  }).where(eq(kanbanIssues.id, id)).run()
   return getIssue(id)
 }
 
@@ -409,12 +417,13 @@ export function listComments(issueId: string): KanbanIssueComment[] {
 
 export function addComment(input: { issueId: string, content: string, authorKind?: KanbanIssueComment['authorKind'], authorId?: string | null }): KanbanIssueComment {
   getIssue(input.issueId) // throws if not found
+  const authorKind = input.authorKind ?? 'user'
   return db().insert(kanbanIssueComments).values({
     id: randomUUID(),
     issueId: input.issueId,
     content: input.content,
-    authorKind: input.authorKind ?? 'user',
-    authorId: input.authorId ?? '__self__',
+    authorKind,
+    authorId: input.authorId ?? (authorKind.startsWith('system') ? null : '__self__'),
     agentActivityId: null,
     createdAt: currentUnixSeconds(),
   }).returning().get()

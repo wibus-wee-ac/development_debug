@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia'
 
+import { resolveActorContext } from '../../http/actor-context'
 import { KanbanModel } from './model'
 import * as Kanban from './service'
 
@@ -196,7 +197,7 @@ export const kanban = new Elysia({
     params: KanbanModel.idParams,
     response: { 200: KanbanModel.issue },
   })
-  .post('/issues', ({ body }) => Kanban.createIssue(body), {
+  .post('/issues', ({ body, request }) => Kanban.createIssue(body, resolveActorContext(request)), {
     detail: {
       'summary': 'Create issue',
       'x-cradle-cli': {
@@ -250,7 +251,15 @@ export const kanban = new Elysia({
     params: KanbanModel.idParams,
     response: { 200: t.Array(KanbanModel.issueComment) },
   })
-  .post('/issues/:id/comments', ({ params, body }) => Kanban.addComment({ issueId: params.id, content: body.content }), {
+  .post('/issues/:id/comments', ({ params, body, request }) => {
+    const actor = resolveActorContext(request)
+    return Kanban.addComment({
+      issueId: params.id,
+      content: body.content,
+      authorKind: actor.kind,
+      authorId: actor.id,
+    })
+  }, {
     detail: {
       'summary': 'Add comment',
       'x-cradle-cli': {

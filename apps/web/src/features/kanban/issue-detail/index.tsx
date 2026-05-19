@@ -104,7 +104,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
               <SubIssuesList issueId={issueId} workspaceId={workspaceId} statuses={statuses} />
             </div>
 
-            {issue.delegateAgentProfileId && (
+            {(issue.delegateAgentId || issue.delegateAgentProfileId) && (
               <div className="mt-8">
                 <AgentSessionPanel issueId={issueId} workspaceId={workspaceId} />
               </div>

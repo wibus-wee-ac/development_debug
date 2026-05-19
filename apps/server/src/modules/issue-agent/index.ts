@@ -24,8 +24,8 @@ export const issueAgent = new Elysia({
   .post('/kanban/issues/:id/delegation', ({ params, body }) =>
     IssueAgent.delegateIssue({
       issueId: params.id,
-      agentProfileId: body.agentProfileId,
       agentId: body.agentId,
+      agentProfileId: body.agentProfileId,
     }), {
     detail: {
       'summary': 'Delegate issue',
@@ -78,10 +78,9 @@ export const issueAgent = new Elysia({
     response: { 200: t.Array(IssueAgentModel.agentActivity) },
   })
 
-  .post('/issue-agent-sessions/:agentSessionId/rerun', ({ params, body }) =>
+  .post('/issue-agent-sessions/:agentSessionId/rerun', ({ params }) =>
     IssueAgent.rerunSession({
       agentSessionId: params.agentSessionId,
-      agentId: body?.agentId,
     }), {
     detail: {
       'summary': 'Rerun session',

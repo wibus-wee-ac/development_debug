@@ -20,14 +20,7 @@ const spec = {
     "rerun"
   ],
   "description": "Rerun session",
-  "flags": [
-    {
-      "name": "agentId",
-      "required": false,
-      "target": "body.agentId",
-      "type": "string"
-    }
-  ],
+  "flags": [],
   "method": "post",
   "path": "/issue-agent-sessions/{agentSessionId}/rerun"
 } satisfies CliOperationSpec

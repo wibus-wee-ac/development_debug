@@ -150,6 +150,9 @@ function toKanbanIssue(row: ApiKanbanIssue): KanbanIssue {
     description: nullableString(row.description),
     assigneeKind: nullableString(row.assigneeKind),
     assigneeId: nullableString(row.assigneeId),
+    createdByKind: ((row as { createdByKind?: 'user' | 'agent' | 'system' }).createdByKind ?? 'user'),
+    createdById: ((row as { createdById?: string }).createdById ?? '__self__'),
+    delegateAgentId: nullableString((row as { delegateAgentId?: unknown }).delegateAgentId),
     delegateAgentProfileId: nullableString(row.delegateAgentProfileId),
   }
 }
@@ -500,7 +503,7 @@ export function useDeleteRelation() {
 export function useDelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (vars: { issueId: string, agentProfileId: string, agentId?: string }) => {
+    mutationFn: async (vars: { issueId: string, agentId: string, agentProfileId?: string | null }) => {
       const { data } = await postKanbanIssuesByIdDelegation({
         path: { id: vars.issueId },
         body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId },
@@ -551,11 +554,10 @@ export function useStartAgentSession() {
       issueId: string
       workspaceId?: string
       agentSessionId: string
-      agentId?: string
     }) => {
       await postIssueAgentSessionsByAgentSessionIdRerun({
         path: { agentSessionId: vars.agentSessionId },
-        body: { agentId: vars.agentId },
+        body: {},
       })
     },
     onSuccess: (_data, vars) => {

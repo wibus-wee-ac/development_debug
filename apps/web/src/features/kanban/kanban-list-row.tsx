@@ -96,7 +96,7 @@ export function KanbanListRow({ issue, statuses, milestones, displayProperties, 
           selected ? 'opacity-100' : 'opacity-50 group-hover/row:opacity-100',
         )}
         >
-          {displayProperties.agentIndicator && issue.delegateAgentProfileId && (
+          {displayProperties.agentIndicator && (issue.delegateAgentId || issue.delegateAgentProfileId) && (
             <BotIcon className="size-3 text-muted-foreground" />
           )}
 

@@ -5,7 +5,7 @@
 import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { sessions } from './chat'
-import { agentProfiles } from './identity'
+import { agentProfiles, agents } from './identity'
 import { kanbanIssues } from './kanban'
 import { createdAt, textPk, timestamps } from './shared'
 
@@ -17,6 +17,8 @@ export const agentSessions = sqliteTable('agent_sessions', {
   agentProfileId: text('agent_profile_id')
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  agentId: text('agent_id')
+    .references(() => agents.id, { onDelete: 'set null' }),
   chatSessionId: text('chat_session_id')
     .references(() => sessions.id, { onDelete: 'set null' }),
   status: text('status', {
@@ -26,6 +28,7 @@ export const agentSessions = sqliteTable('agent_sessions', {
 }, table => ({
   byIssue: index('agent_sessions_issue_id_idx').on(table.issueId),
   byAgentProfile: index('agent_sessions_agent_profile_id_idx').on(table.agentProfileId),
+  byAgent: index('agent_sessions_agent_id_idx').on(table.agentId),
   byChatSession: index('agent_sessions_chat_session_id_idx').on(table.chatSessionId),
 }))
 

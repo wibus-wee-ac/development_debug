@@ -221,9 +221,9 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
     return candidates
   }, [])
 
-  const delegatedAgent = issue.delegateAgentProfileId
-    ? delegateCandidates.find(a => a.agentProfileId === issue.delegateAgentProfileId) ?? null
-    : null
+  const delegatedAgent = delegateCandidates.find(agent =>
+    agent.id === issue.delegateAgentId || agent.agentProfileId === issue.delegateAgentProfileId,
+  ) ?? null
 
   return (
     <PropertyRow label="Agent">
@@ -252,7 +252,7 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
             : delegateCandidates.map(a => (
               <DropdownMenuItem
                 key={a.id}
-                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentProfileId: a.agentProfileId!, agentId: a.id })}
+                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentId: a.id, agentProfileId: a.agentProfileId })}
                 data-testid={`issue-agent-option-${a.id}`}
               >
                 <BotIcon className="size-3 text-muted-foreground" />
