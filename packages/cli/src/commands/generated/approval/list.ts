@@ -2,28 +2,27 @@
 // Output: approval list command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [],
-  command: [
-    'approval',
-    'list',
+  "arguments": [],
+  "command": [
+    "approval",
+    "list"
   ],
-  description: 'List pending approvals',
-  flags: [
+  "description": "List pending approvals",
+  "flags": [
     {
-      name: 'chatSessionId',
-      required: false,
-      target: 'query.chatSessionId',
-      type: 'string',
-    },
+      "name": "chatSessionId",
+      "required": false,
+      "target": "query.chatSessionId",
+      "type": "string"
+    }
   ],
-  method: 'get',
-  path: '/approvals/',
+  "method": "get",
+  "path": "/approvals/"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

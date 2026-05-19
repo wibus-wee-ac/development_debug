@@ -2,22 +2,21 @@
 // Output: acp registry list command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [],
-  command: [
-    'acp',
-    'registry',
-    'list',
+  "arguments": [],
+  "command": [
+    "acp",
+    "registry",
+    "list"
   ],
-  description: 'List registry agents',
-  flags: [],
-  method: 'get',
-  path: '/acp/registry',
+  "description": "List registry agents",
+  "flags": [],
+  "method": "get",
+  "path": "/acp/registry"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -2,35 +2,34 @@
 // Output: workflow-rule get command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'workspaceId',
-      required: true,
-      target: 'path.workspaceId',
-      type: 'string',
-    },
+      "name": "workspaceId",
+      "required": true,
+      "target": "path.workspaceId",
+      "type": "string"
+    }
   ],
-  command: [
-    'workflow-rule',
-    'get',
+  "command": [
+    "workflow-rule",
+    "get"
   ],
-  description: 'Get workflow rules',
-  flags: [
+  "description": "Get workflow rules",
+  "flags": [
     {
-      name: 'agentProfileId',
-      required: false,
-      target: 'query.agentProfileId',
-      type: 'string',
-    },
+      "name": "agentProfileId",
+      "required": false,
+      "target": "query.agentProfileId",
+      "type": "string"
+    }
   ],
-  method: 'get',
-  path: '/workflow-rules/{workspaceId}',
+  "method": "get",
+  "path": "/workflow-rules/{workspaceId}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

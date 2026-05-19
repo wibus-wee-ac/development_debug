@@ -1,9 +1,9 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: workspace git graph command registration
+// Output: profile custom-models command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../../runtime/types'
+import { registerOperationCommand } from '../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
@@ -16,21 +16,20 @@ const spec = {
     }
   ],
   "command": [
-    "workspace",
-    "git",
-    "graph"
+    "profile",
+    "custom-models"
   ],
-  "description": "Get git graph",
+  "description": "Update custom models for a profile",
   "flags": [
     {
-      "name": "limit",
-      "required": false,
-      "target": "query.limit",
-      "type": "string"
+      "name": "models",
+      "required": true,
+      "target": "body.models",
+      "type": "string[]"
     }
   ],
-  "method": "get",
-  "path": "/workspaces/{id}/git/graph"
+  "method": "patch",
+  "path": "/profiles/{id}/custom-models"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -2,41 +2,40 @@
 // Output: board update command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'id',
-      required: true,
-      target: 'path.id',
-      type: 'string',
-    },
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
   ],
-  command: [
-    'board',
-    'update',
+  "command": [
+    "board",
+    "update"
   ],
-  description: 'Update board',
-  flags: [
+  "description": "Update board",
+  "flags": [
     {
-      name: 'name',
-      required: false,
-      target: 'body.name',
-      type: 'string',
+      "name": "name",
+      "required": false,
+      "target": "body.name",
+      "type": "string"
     },
     {
-      name: 'filterConfig',
-      required: false,
-      target: 'body.filterConfig',
-      type: 'string',
-    },
+      "name": "filterConfig",
+      "required": false,
+      "target": "body.filterConfig",
+      "type": "string"
+    }
   ],
-  method: 'patch',
-  path: '/kanban/boards/{id}',
+  "method": "patch",
+  "path": "/kanban/boards/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: acp agent uninstall command registration
+// Output: preferences jarvis get command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../../runtime/operation-command'
@@ -7,23 +7,16 @@ import type { CliOperationSpec } from '../../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
-  "arguments": [
-    {
-      "name": "agentId",
-      "required": true,
-      "target": "path.agentId",
-      "type": "string"
-    }
-  ],
+  "arguments": [],
   "command": [
-    "acp",
-    "agent",
-    "uninstall"
+    "preferences",
+    "jarvis",
+    "get"
   ],
-  "description": "Uninstall an agent",
+  "description": "Get Jarvis preferences",
   "flags": [],
-  "method": "delete",
-  "path": "/acp/agents/{agentId}"
+  "method": "get",
+  "path": "/preferences/jarvis"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

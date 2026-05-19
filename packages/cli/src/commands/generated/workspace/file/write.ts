@@ -2,42 +2,41 @@
 // Output: workspace file write command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'id',
-      required: true,
-      target: 'path.id',
-      type: 'string',
-    },
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
   ],
-  command: [
-    'workspace',
-    'file',
-    'write',
+  "command": [
+    "workspace",
+    "file",
+    "write"
   ],
-  description: 'Write workspace file content',
-  flags: [
+  "description": "Write workspace file content",
+  "flags": [
     {
-      name: 'path',
-      required: true,
-      target: 'body.path',
-      type: 'string',
+      "name": "path",
+      "required": true,
+      "target": "body.path",
+      "type": "string"
     },
     {
-      name: 'content',
-      required: true,
-      target: 'body.content',
-      type: 'string',
-    },
+      "name": "content",
+      "required": true,
+      "target": "body.content",
+      "type": "string"
+    }
   ],
-  method: 'put',
-  path: '/workspaces/{id}/files/content',
+  "method": "put",
+  "path": "/workspaces/{id}/files/content"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

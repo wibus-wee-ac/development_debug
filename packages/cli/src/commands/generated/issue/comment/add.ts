@@ -2,36 +2,35 @@
 // Output: issue comment add command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'id',
-      required: true,
-      target: 'path.id',
-      type: 'string',
-    },
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
   ],
-  command: [
-    'issue',
-    'comment',
-    'add',
+  "command": [
+    "issue",
+    "comment",
+    "add"
   ],
-  description: 'Add comment',
-  flags: [
+  "description": "Add comment",
+  "flags": [
     {
-      name: 'content',
-      required: true,
-      target: 'body.content',
-      type: 'string',
-    },
+      "name": "content",
+      "required": true,
+      "target": "body.content",
+      "type": "string"
+    }
   ],
-  method: 'post',
-  path: '/kanban/issues/{id}/comments',
+  "method": "post",
+  "path": "/kanban/issues/{id}/comments"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

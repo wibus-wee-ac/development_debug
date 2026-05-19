@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: preferences chat set command registration
+// Output: preferences jarvis set command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../../runtime/operation-command'
@@ -10,26 +10,40 @@ const spec = {
   "arguments": [],
   "command": [
     "preferences",
-    "chat",
+    "jarvis",
     "set"
   ],
-  "description": "Set chat preferences",
+  "description": "Set Jarvis preferences",
   "flags": [
     {
-      "name": "modelId",
+      "name": "profileId",
       "required": true,
-      "target": "body.modelId",
+      "target": "body.profileId",
       "type": "string"
     },
     {
-      "name": "configSelections",
+      "description": "Explicit model ID for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)",
+      "name": "model",
+      "required": false,
+      "target": "body.model",
+      "type": "string"
+    },
+    {
+      "name": "thinkingLevel",
       "required": true,
-      "target": "body.configSelections",
-      "type": "json"
+      "target": "body.thinkingLevel",
+      "type": "string",
+      "values": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
     }
   ],
   "method": "put",
-  "path": "/preferences/chat"
+  "path": "/preferences/jarvis"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

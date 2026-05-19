@@ -2,46 +2,45 @@
 // Output: issue relation create command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [],
-  command: [
-    'issue',
-    'relation',
-    'create',
+  "arguments": [],
+  "command": [
+    "issue",
+    "relation",
+    "create"
   ],
-  description: 'Create relation',
-  flags: [
+  "description": "Create relation",
+  "flags": [
     {
-      name: 'sourceIssueId',
-      required: true,
-      target: 'body.sourceIssueId',
-      type: 'string',
+      "name": "sourceIssueId",
+      "required": true,
+      "target": "body.sourceIssueId",
+      "type": "string"
     },
     {
-      name: 'targetIssueId',
-      required: true,
-      target: 'body.targetIssueId',
-      type: 'string',
+      "name": "targetIssueId",
+      "required": true,
+      "target": "body.targetIssueId",
+      "type": "string"
     },
     {
-      name: 'type',
-      required: true,
-      target: 'body.type',
-      type: 'string',
-      values: [
-        'blocks',
-        'duplicates',
-        'relates_to',
-      ],
-    },
+      "name": "type",
+      "required": true,
+      "target": "body.type",
+      "type": "string",
+      "values": [
+        "blocks",
+        "duplicates",
+        "relates_to"
+      ]
+    }
   ],
-  method: 'post',
-  path: '/kanban/relations',
+  "method": "post",
+  "path": "/kanban/relations"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

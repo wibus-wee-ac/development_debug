@@ -57,6 +57,9 @@ import { register as registerObservabilityExport } from './observability/export'
 import { register as registerObservabilityIncidents } from './observability/incidents'
 import { register as registerPreferencesChatGet } from './preferences/chat/get'
 import { register as registerPreferencesChatSet } from './preferences/chat/set'
+import { register as registerPreferencesJarvisGet } from './preferences/jarvis/get'
+import { register as registerPreferencesJarvisSet } from './preferences/jarvis/set'
+import { register as registerProfileCustomModels } from './profile/custom-models'
 import { register as registerProfileDelete } from './profile/delete'
 import { register as registerProfileGet } from './profile/get'
 import { register as registerProfileList } from './profile/list'
@@ -180,6 +183,9 @@ export function registerGeneratedCommands(program: Command): void {
   registerObservabilityIncidents(program)
   registerPreferencesChatGet(program)
   registerPreferencesChatSet(program)
+  registerPreferencesJarvisGet(program)
+  registerPreferencesJarvisSet(program)
+  registerProfileCustomModels(program)
   registerProfileDelete(program)
   registerProfileGet(program)
   registerProfileList(program)

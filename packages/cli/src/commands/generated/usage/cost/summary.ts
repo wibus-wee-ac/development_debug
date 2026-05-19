@@ -2,35 +2,34 @@
 // Output: usage cost summary command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [],
-  command: [
-    'usage',
-    'cost',
-    'summary',
+  "arguments": [],
+  "command": [
+    "usage",
+    "cost",
+    "summary"
   ],
-  description: 'Get cost summary with model breakdown',
-  flags: [
+  "description": "Get cost summary with model breakdown",
+  "flags": [
     {
-      name: 'from',
-      required: false,
-      target: 'query.from',
-      type: 'string',
+      "name": "from",
+      "required": false,
+      "target": "query.from",
+      "type": "string"
     },
     {
-      name: 'to',
-      required: false,
-      target: 'query.to',
-      type: 'string',
-    },
+      "name": "to",
+      "required": false,
+      "target": "query.to",
+      "type": "string"
+    }
   ],
-  method: 'get',
-  path: '/usage/cost/summary',
+  "method": "get",
+  "path": "/usage/cost/summary"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

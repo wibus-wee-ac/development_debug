@@ -140,8 +140,8 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
 | `milestone` | 4 | Manage Kanban milestones. | `cradle man milestone` |
 | `observability` | 3 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
-| `preferences` | 2 | Read and update server preferences. | `cradle man preferences` |
-| `profile` | 4 | Manage agent profiles. | `cradle man profile` |
+| `preferences` | 4 | Read and update server preferences. | `cradle man preferences` |
+| `profile` | 5 | Manage agent profiles. | `cradle man profile` |
 | `provider` | 2 | Inspect provider health and model availability. | `cradle man provider` |
 | `search` | 1 | Search Cradle data. | `cradle man search` |
 | `secret` | 2 | Manage secret metadata. | `cradle man secret` |

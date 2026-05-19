@@ -2,28 +2,27 @@
 // Output: session get command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'id',
-      required: true,
-      target: 'path.id',
-      type: 'string',
-    },
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
   ],
-  command: [
-    'session',
-    'get',
+  "command": [
+    "session",
+    "get"
   ],
-  description: 'Get session by ID',
-  flags: [],
-  method: 'get',
-  path: '/sessions/{id}',
+  "description": "Get session by ID",
+  "flags": [],
+  "method": "get",
+  "path": "/sessions/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

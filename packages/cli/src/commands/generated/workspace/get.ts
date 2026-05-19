@@ -2,28 +2,27 @@
 // Output: workspace get command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'id',
-      required: true,
-      target: 'path.id',
-      type: 'string',
-    },
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
   ],
-  command: [
-    'workspace',
-    'get',
+  "command": [
+    "workspace",
+    "get"
   ],
-  description: 'Get workspace',
-  flags: [],
-  method: 'get',
-  path: '/workspaces/{id}',
+  "description": "Get workspace",
+  "flags": [],
+  "method": "get",
+  "path": "/workspaces/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

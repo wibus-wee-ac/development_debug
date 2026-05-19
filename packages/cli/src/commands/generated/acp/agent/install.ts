@@ -2,41 +2,40 @@
 // Output: acp agent install command registration
 // Position: packages/cli generated command module
 
-import type { Command } from 'commander'
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
+import type { Command } from 'commander'
 
 const spec = {
-  arguments: [
+  "arguments": [
     {
-      name: 'agentId',
-      required: true,
-      target: 'path.agentId',
-      type: 'string',
-    },
+      "name": "agentId",
+      "required": true,
+      "target": "path.agentId",
+      "type": "string"
+    }
   ],
-  command: [
-    'acp',
-    'agent',
-    'install',
+  "command": [
+    "acp",
+    "agent",
+    "install"
   ],
-  description: 'Install an agent',
-  flags: [
+  "description": "Install an agent",
+  "flags": [
     {
-      name: 'distributionType',
-      required: true,
-      target: 'body.distributionType',
-      type: 'string',
-      values: [
-        'binary',
-        'npx',
-        'uvx',
-      ],
-    },
+      "name": "distributionType",
+      "required": true,
+      "target": "body.distributionType",
+      "type": "string",
+      "values": [
+        "binary",
+        "npx",
+        "uvx"
+      ]
+    }
   ],
-  method: 'put',
-  path: '/acp/agents/{agentId}/installation',
+  "method": "put",
+  "path": "/acp/agents/{agentId}/installation"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {
