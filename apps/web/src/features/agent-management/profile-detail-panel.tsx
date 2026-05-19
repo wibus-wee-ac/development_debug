@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,
   CircleAlertIcon,
@@ -36,6 +37,7 @@ import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ModelCapabilities, ModelDescriptor } from '~/lib/types'
@@ -49,6 +51,19 @@ import { ProviderIcon } from './provider-icons'
 type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
+
+interface EditableCustomModel {
+  id: string
+  label: string
+  capabilities: ModelCapabilities
+}
+
+interface StoredCustomModel {
+  id?: unknown
+  label?: unknown
+  capabilities?: unknown
+  contextWindow?: unknown
+}
 
 interface ProfileDetailFormValues {
   name: string
@@ -83,6 +98,50 @@ const INITIAL_UI_STATE: ProfileDetailUiState = {
   health: 'unknown',
   saveState: 'idle',
   confirmRemove: false,
+}
+
+const EMPTY_ENABLED_MODELS: string[] = []
+
+function readModelCapabilities(value: unknown): ModelCapabilities {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as ModelCapabilities : {}
+}
+
+function normalizeEditableCustomModel(value: unknown): EditableCustomModel | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const item = value as StoredCustomModel
+  const id = typeof item.id === 'string' ? item.id.trim() : ''
+  if (!id) {
+    return null
+  }
+
+  const label = typeof item.label === 'string' && item.label.trim() ? item.label.trim() : id
+  const capabilities = readModelCapabilities(item.capabilities)
+
+  if (capabilities.contextWindow == null && typeof item.contextWindow === 'number') {
+    capabilities.contextWindow = item.contextWindow
+  }
+
+  return { id, label, capabilities }
+}
+
+function parseCustomModelsJson(customModelsJson: string): EditableCustomModel[] {
+  try {
+    const parsed = JSON.parse(customModelsJson) as unknown
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return parsed.flatMap((item) => {
+      const normalized = normalizeEditableCustomModel(item)
+      return normalized ? [normalized] : []
+    })
+  }
+  catch {
+    return []
+  }
 }
 
 function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDetailUiAction): ProfileDetailUiState {
@@ -197,7 +256,7 @@ export function ProfileDetailPanel({
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
-  const enabledModels = useWatch({ control: form.control, name: 'enabledModels' }) ?? []
+  const enabledModels = useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
   const {
@@ -736,52 +795,47 @@ function ProfileCustomModelsSection({
   customModelsJson: string
   onSaved: () => void
 }) {
-  const [models, setModels] = useState(() => {
-    try {
-      const parsed = JSON.parse(customModelsJson) as Array<{ id: string, label: string, capabilities?: ModelCapabilities, contextWindow?: number | null }>
-      // Backward compat: migrate old { contextWindow } → { capabilities: { contextWindow } }
-      return parsed.map(m => ({
-        id: m.id,
-        label: m.label,
-        capabilities: m.capabilities ?? (m.contextWindow != null ? { contextWindow: m.contextWindow } : {}),
-      }))
-    }
-    catch {
-      return []
-    }
-  })
+  const queryClient = useQueryClient()
+  const [models, setModels] = useState(() => parseCustomModelsJson(customModelsJson))
 
   // Sync from props when profile changes
   useEffect(() => {
-    try {
-      const parsed = JSON.parse(customModelsJson) as Array<{ id: string, label: string, capabilities?: ModelCapabilities, contextWindow?: number | null }>
-      setModels(parsed.map(m => ({
-        id: m.id,
-        label: m.label,
-        capabilities: m.capabilities ?? (m.contextWindow != null ? { contextWindow: m.contextWindow } : {}),
-      })))
-    }
-    catch {
-      setModels([])
-    }
+    setModels(parseCustomModelsJson(customModelsJson))
   }, [customModelsJson])
 
-  const saveCustomModels = useCallback(async (next: Array<{ id: string, label: string, capabilities: ModelCapabilities }>) => {
-    setModels(next)
+  const saveCustomModels = useCallback(async (next: EditableCustomModel[]) => {
+    const sanitized = next.flatMap((item) => {
+      const normalized = normalizeEditableCustomModel(item)
+      return normalized ? [normalized] : []
+    })
+
+    setModels(sanitized)
     try {
       const res = await fetch(`${getServerUrl()}/profiles/${profileId}/custom-models`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ models: next.map(m => ({ id: m.id, label: m.label !== m.id ? m.label : undefined, capabilities: m.capabilities })) }),
+        body: JSON.stringify({
+          models: sanitized.map(m => ({
+            id: m.id,
+            label: m.label !== m.id ? m.label : undefined,
+            capabilities: m.capabilities,
+          })),
+        }),
       })
       if (res.ok) {
-        const saved = await res.json() as Array<{ id: string, label: string, capabilities: ModelCapabilities }>
-        setModels(saved)
+        const saved = await res.json() as unknown
+        setModels(Array.isArray(saved)
+          ? saved.flatMap((item) => {
+              const normalized = normalizeEditableCustomModel(item)
+              return normalized ? [normalized] : []
+            })
+          : sanitized)
+        void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
         onSaved()
       }
     }
     catch { /* ignore — optimistic update stays */ }
-  }, [profileId, onSaved])
+  }, [profileId, queryClient, onSaved])
 
   return (
     <>

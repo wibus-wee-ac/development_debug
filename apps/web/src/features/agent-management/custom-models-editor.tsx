@@ -21,6 +21,12 @@ interface SearchResult {
   capabilities: ModelCapabilities
 }
 
+interface ProviderModelLookupResult {
+  id?: unknown
+  label?: unknown
+  capabilities?: unknown
+}
+
 interface CustomModelsEditorState {
   newId: string
   enrichingId: string | null
@@ -52,6 +58,32 @@ const initialCustomModelsEditorState: CustomModelsEditorState = {
   highlightIdx: 0,
   lookupPending: false,
   searchPending: false,
+}
+
+function readCapabilities(value: unknown): ModelCapabilities {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as ModelCapabilities : {}
+}
+
+function readLookupResult(modelId: string, value: unknown): CustomModelEntry | null {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const result = value as ProviderModelLookupResult
+  const id = typeof result.id === 'string' && result.id.trim() ? result.id.trim() : modelId
+  const label = typeof result.label === 'string' && result.label.trim() ? result.label.trim() : id
+
+  return {
+    id,
+    label,
+    capabilities: readCapabilities(result.capabilities),
+  }
+}
+
+function occurrenceKey(id: string, counts: Map<string, number>): string {
+  const count = counts.get(id) ?? 0
+  counts.set(id, count + 1)
+  return `${id}:${count}`
 }
 
 function customModelsEditorReducer(state: CustomModelsEditorState, action: CustomModelsEditorAction): CustomModelsEditorState {
@@ -104,8 +136,7 @@ async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
     body: { modelId },
     throwOnError: true,
   })
-  const result = data as { id: string, label: string, capabilities: ModelCapabilities } | null
-  return result ? { id: result.id, label: result.label, capabilities: result.capabilities ?? {} } : null
+  return readLookupResult(modelId, data)
 }
 
 async function searchProviderModels(query: string): Promise<SearchResult[]> {
@@ -188,7 +219,13 @@ export function CustomModelsEditor({
   }, [models, onChange])
 
   const applyEnrichResult = useCallback((targetModelId: string, result: SearchResult) => {
-    onChange(models.map(m => m.id === targetModelId ? { ...m, label: result.label, capabilities: result.capabilities } : m))
+    onChange(models.map(m => m.id === targetModelId
+      ? {
+          ...m,
+          label: result.label.trim() || targetModelId,
+          capabilities: readCapabilities(result.capabilities),
+        }
+      : m))
     dispatch({ type: 'enrich/apply' })
   }, [models, onChange])
 
@@ -224,6 +261,9 @@ export function CustomModelsEditor({
       applyEnrichResult(state.enrichingId, state.searchResults[state.highlightIdx])
     }
   }, [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults])
+
+  const modelKeyCounts = new Map<string, number>()
+  const searchResultKeyCounts = new Map<string, number>()
 
   return (
     <div className="flex flex-col gap-3">
@@ -261,7 +301,7 @@ export function CustomModelsEditor({
         <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/6">
           <ul className="divide-y divide-foreground/4">
             {models.map(m => (
-              <li key={m.id} className="relative">
+              <li key={occurrenceKey(m.id, modelKeyCounts)} className="relative">
                 <div className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12.5px] font-medium text-foreground">
@@ -329,7 +369,7 @@ export function CustomModelsEditor({
                     {state.searchResults.length > 0 && (
                       <ul ref={searchListRef} className="mt-1.5 max-h-40 overflow-y-auto rounded-lg ring-1 ring-foreground/6">
                         {state.searchResults.map((r, idx) => (
-                          <li key={r.id}>
+                          <li key={occurrenceKey(r.id, searchResultKeyCounts)}>
                             <button
                               type="button"
                               onClick={() => applyEnrichResult(m.id, r)}

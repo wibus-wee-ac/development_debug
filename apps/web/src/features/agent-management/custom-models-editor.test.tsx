@@ -5,7 +5,7 @@
 // Position: Agent Management feature test for provider custom model editing UI
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CustomModelsEditor } from './custom-models-editor'
 
@@ -19,7 +19,12 @@ vi.mock('~/api-gen/sdk.gen', () => ({
   postProvidersModelSearch: apiMocks.search,
 }))
 
-describe('CustomModelsEditor', () => {
+describe('customModelsEditor', () => {
+  beforeEach(() => {
+    apiMocks.lookup.mockReset()
+    apiMocks.search.mockReset()
+  })
+
   it('labels icon-only model actions with the target model id', () => {
     render(
       <CustomModelsEditor
@@ -61,6 +66,34 @@ describe('CustomModelsEditor', () => {
         {
           id: 'custom-model',
           label: 'custom-model',
+          capabilities: {},
+        },
+      ])
+    })
+  })
+
+  it('keeps the typed model id when lookup metadata is incomplete', async () => {
+    apiMocks.lookup.mockResolvedValueOnce({ data: { label: '', capabilities: null } })
+    const onChange = vi.fn()
+
+    const { container } = render(
+      <CustomModelsEditor
+        profileId="profile-1"
+        models={[]}
+        onChange={onChange}
+      />,
+    )
+
+    fireEvent.change(within(container).getByPlaceholderText('e.g. claude-sonnet-4-20250514'), {
+      target: { value: 'unlisted-model' },
+    })
+    fireEvent.click(within(container).getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([
+        {
+          id: 'unlisted-model',
+          label: 'unlisted-model',
           capabilities: {},
         },
       ])

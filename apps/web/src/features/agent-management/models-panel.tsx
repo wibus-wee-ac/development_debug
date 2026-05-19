@@ -29,6 +29,12 @@ function formatTimeAgo(ts: number): string {
   return `${days}d ago`
 }
 
+function occurrenceKey(id: string, counts: Map<string, number>): string {
+  const count = counts.get(id) ?? 0
+  counts.set(id, count + 1)
+  return `${id}:${count}`
+}
+
 export function ModelsPanel({
   loading,
   models,
@@ -101,6 +107,8 @@ export function ModelsPanel({
       onChange(next.length === 0 ? [ALL_DISABLED_SENTINEL] : next)
     }
   }
+
+  const modelKeyCounts = new Map<string, number>()
 
   return (
     <div className="flex flex-col gap-3">
@@ -195,7 +203,7 @@ export function ModelsPanel({
                   {visible.map((m) => {
                     const checked = isChecked(m.id)
                     return (
-                      <li key={m.id}>
+                      <li key={occurrenceKey(m.id, modelKeyCounts)}>
                         <label
                           className={cn(
                             'flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors',
