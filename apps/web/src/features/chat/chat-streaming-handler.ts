@@ -141,8 +141,8 @@ export class ChatStreamingHandler {
     }
     if (this.activeMessageId === null) {
       const controller = store.activeAbortControllers.get(this.messageId) ?? new AbortController()
-      store.finishGeneration(this.messageId)
       store.startGeneration(this.sessionId, messageId, controller)
+      store.finishGeneration(this.messageId)
     }
     this.activeMessageId = messageId
   }

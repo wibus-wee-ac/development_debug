@@ -251,7 +251,7 @@ export function useChatSession(chatSessionId: string | null) {
           // Let the in-band stream handler capture the error with its message
           return
         }
-        useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
+        useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined })
         useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
         scheduleSnapshotRefresh(0)
         return
@@ -265,7 +265,7 @@ export function useChatSession(chatSessionId: string | null) {
       switch (data.event.type) {
         case 'run.completed':
         case 'run.aborted':
-          useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false })
+          useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined })
           useChatStore.getState().setPassiveStatus(chatSessionId, 'idle')
           scheduleSnapshotRefresh(0)
           break
@@ -348,7 +348,7 @@ export function useChatSession(chatSessionId: string | null) {
     }
     finally {
       handlerRef.current = null
-      useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, passiveStatus: 'idle' })
+      useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined, passiveStatus: 'idle' })
       // Sync from server to get canonical message IDs
       scheduleSnapshotRefresh(0)
     }
@@ -360,10 +360,14 @@ export function useChatSession(chatSessionId: string | null) {
     if (!chatSessionId) {
       return
     }
-    const messages = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
+    const store = useChatStore.getState()
+    const messages = store.messagesMap.get(chatSessionId) ?? []
+    const activeAssistant = [...messages].reverse().find(m => m.role === 'assistant' && store.generatingMessageIds.has(m.id))
+    const localDriverMessageId = store.sessionMetaMap.get(chatSessionId)?.localDriverMessageId
     const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
-    if (lastAssistant) {
-      await useChatStore.getState().stopGeneration(lastAssistant.id, chatSessionId)
+    const messageId = activeAssistant?.id ?? localDriverMessageId ?? lastAssistant?.id
+    if (messageId) {
+      await store.stopGeneration(messageId, chatSessionId)
     }
   }, [chatSessionId])
 

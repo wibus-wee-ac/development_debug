@@ -123,4 +123,34 @@ describe('useChatStore', () => {
       },
     ])
   })
+
+  it('shows a session as streaming while the local driver waits for the server message id', () => {
+    const sessionId = 'session-1'
+    const controller = new AbortController()
+
+    useChatStore.getState().setMessages(sessionId, [
+      {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'hello' }],
+      },
+    ])
+    useChatStore.getState().startGeneration(sessionId, 'assistant-local', controller)
+
+    expect(chatSelectors.visibleStatus(sessionId)(useChatStore.getState())).toBe('streaming')
+    expect(chatSelectors.isSessionGenerating(sessionId)(useChatStore.getState())).toBe(true)
+    expect(useChatStore.getState().sessionMetaMap.get(sessionId)?.localDriverMessageId).toBe('assistant-local')
+  })
+
+  it('clears the local driver marker when the pre-SSE generation fails', () => {
+    const sessionId = 'session-1'
+    const controller = new AbortController()
+
+    useChatStore.getState().startGeneration(sessionId, 'assistant-local', controller)
+    useChatStore.getState().failGeneration('assistant-local', 'Chat session already has an active run')
+
+    expect(chatSelectors.visibleStatus(sessionId)(useChatStore.getState())).toBe('idle')
+    expect(chatSelectors.isSessionGenerating(sessionId)(useChatStore.getState())).toBe(false)
+    expect(useChatStore.getState().sessionMetaMap.get(sessionId)?.localDriverMessageId).toBeUndefined()
+  })
 })

@@ -22,6 +22,8 @@ interface SessionMeta {
   passiveStatus: PublicStatus
   /** Whether this renderer locally initiated the current stream */
   locallyDriving: boolean
+  /** Message id currently associated with the local stream driver, including pre-SSE temp ids. */
+  localDriverMessageId?: string
 }
 
 // ── State Interface ─────────────────────────────────────────
@@ -146,6 +148,7 @@ export const useChatStore = create<ChatState>()(
           nextMeta.set(sessionId, {
             ...(state.sessionMetaMap.get(sessionId) ?? { passiveStatus: 'idle', locallyDriving: false }),
             locallyDriving: true,
+            localDriverMessageId: messageId,
           })
           return {
             generatingMessageIds: nextGen,
@@ -161,9 +164,20 @@ export const useChatStore = create<ChatState>()(
           nextGen.delete(messageId)
           const nextCtrl = new Map(state.activeAbortControllers)
           nextCtrl.delete(messageId)
+          const nextMeta = new Map(state.sessionMetaMap)
+          for (const [sessionId, meta] of nextMeta) {
+            if (meta.localDriverMessageId === messageId) {
+              nextMeta.set(sessionId, {
+                ...meta,
+                locallyDriving: false,
+                localDriverMessageId: undefined,
+              })
+            }
+          }
           return {
             generatingMessageIds: nextGen,
             activeAbortControllers: nextCtrl,
+            sessionMetaMap: nextMeta,
           }
         })
       },
@@ -177,10 +191,21 @@ export const useChatStore = create<ChatState>()(
         nextCtrl.delete(messageId)
         const nextErr = new Map(state.errorMap)
         nextErr.set(messageId, { message: error, timestamp: Date.now() })
+        const nextMeta = new Map(state.sessionMetaMap)
+        for (const [sessionId, meta] of nextMeta) {
+          if (meta.localDriverMessageId === messageId) {
+            nextMeta.set(sessionId, {
+              ...meta,
+              locallyDriving: false,
+              localDriverMessageId: undefined,
+            })
+          }
+        }
         set({
           generatingMessageIds: nextGen,
           activeAbortControllers: nextCtrl,
           errorMap: nextErr,
+          sessionMetaMap: nextMeta,
         })
       },
 
@@ -295,6 +320,10 @@ export const chatSelectors = {
 
   /** Session-level: is this session generating? */
   isSessionGenerating: (sessionId: string) => (s: ChatState) => {
+    const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    if (meta.locallyDriving) {
+      return true
+    }
     const messages = s.messagesMap.get(sessionId)
     if (!messages) {
       return false
@@ -313,6 +342,9 @@ export const chatSelectors = {
   /** Resolved visible status combining local + passive */
   visibleStatus: (sessionId: string) => (s: ChatState): PublicStatus => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    if (meta.locallyDriving) {
+      return 'streaming'
+    }
     const messages = s.messagesMap.get(sessionId)
     const isLocallyStreaming = messages?.some(m => s.generatingMessageIds.has(m.id)) ?? false
 
