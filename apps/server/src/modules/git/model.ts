@@ -37,6 +37,12 @@ export const GitModel = {
     })),
   }),
 
+  remotesView: t.Array(t.Object({
+    name: t.String(),
+    fetchUrl: t.Nullable(t.String()),
+    pushUrl: t.Nullable(t.String()),
+  })),
+
   graphCommitView: t.Object({
     sha: t.String(),
     shortSha: t.String(),

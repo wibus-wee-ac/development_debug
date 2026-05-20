@@ -1,9 +1,28 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { GitCommitHorizontalIcon, GitPullRequestIcon, LoaderCircleIcon, PlusIcon, WandSparklesIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 
-import { getSessionAwaitsByIdLiveStatusOptions, getSessionAwaitsOptions } from '~/api-gen/@tanstack/react-query.gen'
+import {
+  getSessionAwaitsByIdLiveStatusOptions,
+  getSessionAwaitsOptions,
+  getSessionAwaitsQueryKey,
+  getSessionAwaitsSummaryQueryKey,
+  postSessionAwaitsMutation,
+} from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
+import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
+import { toastManager } from '~/components/ui/toast'
+import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
+
+import {
+  derivePullRequestNumberFromStatus,
+  parseGitHubAwaitTargetInput,
+  parseGitHubRepositoryInput,
+  selectGitHubRepository,
+} from './await-github'
 
 // ── Types ──
 
@@ -44,6 +63,28 @@ function useLiveCIStatus(awaitId: string | null) {
     ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
     enabled: !!awaitId,
     refetchInterval: 20_000,
+  })
+}
+
+function useCreateGitHubAwait(sessionId: string | null, workspaceId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    ...postSessionAwaitsMutation(),
+    onSuccess: () => {
+      if (sessionId) {
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsQueryKey({ query: { sessionId } }) })
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsSummaryQueryKey({ query: { sessionId } }) })
+      }
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: 'error',
+        title: 'Failed to create await',
+        description: error instanceof Error ? error.message : 'GitHub CI await could not be created',
+      })
+    },
+    meta: { sessionId, workspaceId },
   })
 }
 
@@ -319,6 +360,7 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
   }
 
   const tree = buildRunTree(ci.runs)
+  const targetLabel = ci.prNumber ? null : ci.ref.slice(0, 12)
 
   return (
     <div className="rounded-md border border-border overflow-hidden">
@@ -335,6 +377,12 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
 )}
             {ci.prNumber && ' '}
             {ci.prTitle ?? `${ci.owner}/${ci.repo}`}
+            {targetLabel && (
+              <span className="text-muted-foreground/60">
+                {' @'}
+                {targetLabel}
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -357,13 +405,180 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
   )
 }
 
+function GitHubAwaitComposer({
+  sessionId,
+  workspaceId,
+  compact = false,
+}: {
+  sessionId: string | null
+  workspaceId: string | null
+  compact?: boolean
+}) {
+  const { data: remotes, isLoading: remotesLoading, isError: remotesError } = useGitRemotes(workspaceId)
+  const { data: status } = useGitStatus(workspaceId)
+  const detectedRepo = useMemo(() => selectGitHubRepository(remotes), [remotes])
+  const detectedPrNumber = useMemo(() => derivePullRequestNumberFromStatus(status), [status])
+  const [repoInput, setRepoInput] = useState('')
+  const [targetInput, setTargetInput] = useState('')
+  const repoEditedRef = useRef(false)
+  const targetEditedRef = useRef(false)
+  const repoInputId = useId()
+  const targetInputId = useId()
+  const mutation = useCreateGitHubAwait(sessionId, workspaceId)
+
+  useEffect(() => {
+    if (!repoEditedRef.current && detectedRepo?.fullName) {
+      setRepoInput(detectedRepo.fullName)
+    }
+  }, [detectedRepo?.fullName])
+
+  useEffect(() => {
+    if (!targetEditedRef.current && detectedPrNumber) {
+      setTargetInput(String(detectedPrNumber))
+    }
+  }, [detectedPrNumber])
+
+  const parsedRepo = parseGitHubRepositoryInput(repoInput)
+  const parsedTarget = parseGitHubAwaitTargetInput(targetInput)
+  const canCreate = !!sessionId && !!workspaceId && !!parsedRepo && !!parsedTarget
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!sessionId || !workspaceId || !parsedRepo || !parsedTarget || !canCreate) {
+      return
+    }
+
+    mutation.mutate({
+      body: {
+        chatSessionId: sessionId,
+        workspaceId,
+        source: 'github-ci',
+        filterJson: JSON.stringify({ repo: parsedRepo.fullName, ...parsedTarget.filter }),
+        reason: `Waiting for GitHub CI checks on ${parsedRepo.fullName}${parsedTarget.label}`,
+      },
+    }, {
+      onSuccess: () => {
+        toastManager.add({
+          type: 'success',
+          title: 'GitHub CI await created',
+          description: `${parsedRepo.fullName}${parsedTarget.label}`,
+        })
+      },
+    })
+  }
+
+  const statusText = (() => {
+    if (!workspaceId) {
+      return 'Select a workspace-backed session to create awaits.'
+    }
+    if (remotesLoading) {
+      return 'Reading git remotes...'
+    }
+    if (detectedRepo) {
+      return `Detected ${detectedRepo.fullName} from ${detectedRepo.remoteName}.`
+    }
+    if (remotesError) {
+      return 'Git remotes are unavailable; enter a GitHub repo manually.'
+    }
+    return 'Enter a GitHub repo manually. SSH and HTTPS remotes are supported.'
+  })()
+
+  const TargetIcon = parsedTarget?.kind === 'pull-request' ? GitPullRequestIcon : GitCommitHorizontalIcon
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className={cn(
+        'rounded-lg border border-border/70 bg-muted/35 p-2.5',
+        compact ? 'space-y-2' : 'w-full max-w-[22rem] space-y-3',
+      )}
+      data-testid="github-await-composer"
+    >
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background">
+          <GitHubIcon className="text-foreground/80" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-foreground">GitHub CI</span>
+            {detectedRepo && (
+              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary bg-primary/10">
+                <WandSparklesIcon className="size-2.5" aria-hidden />
+                Detected
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground text-pretty">
+            {statusText}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="min-w-0 space-y-1">
+          <label htmlFor={repoInputId} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            Repository
+          </label>
+          <Input
+            id={repoInputId}
+            value={repoInput}
+            onChange={(event) => {
+              repoEditedRef.current = true
+              setRepoInput(event.target.value)
+            }}
+            placeholder="owner/repo"
+            className="h-7 rounded-md text-xs"
+            aria-label="GitHub repository"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <div className="min-w-0 space-y-1">
+          <label htmlFor={targetInputId} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            PR or commit
+          </label>
+          <div className="relative">
+            <TargetIcon className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/70" aria-hidden />
+            <Input
+              id={targetInputId}
+              value={targetInput}
+              onChange={(event) => {
+                targetEditedRef.current = true
+                setTargetInput(event.target.value)
+              }}
+              inputMode="text"
+              placeholder="123 or commit sha/ref"
+              className="h-7 rounded-md pl-7 font-mono text-xs tabular-nums"
+              aria-label="GitHub pull request number or commit SHA/ref"
+            />
+          </div>
+        </div>
+      </div>
+
+      <Button
+        type="submit"
+        size="sm"
+        className="h-7 w-full rounded-md text-xs"
+        disabled={!canCreate || mutation.isPending}
+      >
+        {mutation.isPending
+          ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden />
+          : <PlusIcon className="size-3" aria-hidden />}
+        Wait for checks
+      </Button>
+    </form>
+  )
+}
+
 // ── Main Panel ──
 
 interface AwaitPanelProps {
   sessionId: string | null
+  workspaceId: string | null
 }
 
-export function AwaitPanel({ sessionId }: AwaitPanelProps) {
+export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
   const { data: awaits = [] } = useSessionAwaits(sessionId)
 
   if (!sessionId) {
@@ -379,14 +594,15 @@ export function AwaitPanel({ sessionId }: AwaitPanelProps) {
 
   if (awaits.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-[11px] text-muted-foreground">No awaits</p>
+      <div className="flex flex-1 items-center justify-center p-3">
+        <GitHubAwaitComposer sessionId={sessionId} workspaceId={workspaceId} />
       </div>
     )
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto p-3 gap-y-3">
+      <GitHubAwaitComposer sessionId={sessionId} workspaceId={workspaceId} compact />
       {activeAwaits.length > 0 && (
         <div className="space-y-2">
           <span className="text-[10px] text-muted-foreground/50">Active</span>

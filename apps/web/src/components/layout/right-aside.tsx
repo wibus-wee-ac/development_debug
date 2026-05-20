@@ -144,7 +144,7 @@ export function RightAside({ sessionId }: RightAsideProps) {
         )}
         {activeTab === 'await' && (
           <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-await">
-            <AwaitPanel sessionId={sessionId ?? null} />
+            <AwaitPanel sessionId={sessionId ?? null} workspaceId={workspaceId} />
           </div>
         )}
       </div>

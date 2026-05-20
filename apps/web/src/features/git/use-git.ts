@@ -1,5 +1,5 @@
 // Input: generated API SDK, generated queryOptions helpers, TanStack Query, git types
-// Output: useGitStatus / useGitBranches / useGitGraph hooks + query key builders for invalidation
+// Output: useGitStatus / useGitBranches / useGitRemotes / useGitGraph hooks + query key builders for invalidation
 // Position: Feature hooks for git panel and git branch control; renderer-side data layer
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
@@ -12,7 +12,14 @@ import {
   getWorkspacesByIdGitStatusOptions,
   getWorkspacesByIdGitStatusQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { client } from '~/lib/client.config'
 import type { GitBranches, GitGraphCommit, GitStatus } from '~/lib/types'
+
+interface GitRemote {
+  name: string
+  fetchUrl: string | null
+  pushUrl: string | null
+}
 
 // ─── Re-export generated query key builders so callers don't import from api-gen ──
 
@@ -39,6 +46,23 @@ export function useGitBranches(workspaceId: string | null | undefined) {
     staleTime: 30_000,
     retry: false,
     select: data => data as GitBranches,
+  })
+}
+
+export function useGitRemotes(workspaceId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['git-remotes', workspaceId] as const,
+    queryFn: async () => {
+      const { data } = await client.get<{ 200: GitRemote[] }, unknown, true>({
+        url: '/workspaces/{id}/git/remotes',
+        path: { id: workspaceId! },
+        throwOnError: true,
+      })
+      return data
+    },
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+    retry: false,
   })
 }
 

@@ -23,6 +23,12 @@ export interface GitRemoteBranchView {
   name: string
 }
 
+export interface GitRemoteView {
+  name: string
+  fetchUrl: string | null
+  pushUrl: string | null
+}
+
 export interface GitBranchesView {
   local: GitLocalBranchView[]
   remote: GitRemoteBranchView[]
@@ -122,6 +128,21 @@ export async function getBranches(workspaceId: string): Promise<GitBranchesView>
     }
 
     return { local, remote }
+  }
+  catch (error) {
+    throw mapGitError(workspaceId, error)
+  }
+}
+
+export async function getRemotes(workspaceId: string): Promise<GitRemoteView[]> {
+  const git = getGit(workspaceId)
+  try {
+    const remotes = await git.getRemotes(true)
+    return remotes.map(remote => ({
+      name: remote.name,
+      fetchUrl: remote.refs.fetch ?? null,
+      pushUrl: remote.refs.push ?? null,
+    }))
   }
   catch (error) {
     throw mapGitError(workspaceId, error)

@@ -27,6 +27,13 @@ export const git = new Elysia({
     params: GitModel.idParams,
     response: { 200: GitModel.branchesView },
   })
+  .get('/:id/git/remotes', ({ params }) => Git.getRemotes(params.id), {
+    detail: {
+      'summary': 'Get git remotes',
+    },
+    params: GitModel.idParams,
+    response: { 200: GitModel.remotesView },
+  })
   .get('/:id/git/graph', ({ params, query }) => Git.getGraph(params.id, query.limit ?? 100), {
     detail: {
       'summary': 'Get git graph',
