@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { GitCommitHorizontalIcon, GitPullRequestIcon, LoaderCircleIcon, PlusIcon, WandSparklesIcon } from 'lucide-react'
+import {
+  GitCommitHorizontalIcon,
+  GitPullRequestIcon,
+  LoaderCircleIcon,
+  MessageSquareCheckIcon,
+  MessageSquareWarningIcon,
+  PlusIcon,
+  WandSparklesIcon,
+} from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 
@@ -13,7 +21,9 @@ import {
 import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { toastManager } from '~/components/ui/toast'
+import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
 
@@ -27,6 +37,8 @@ import {
 // ── Types ──
 
 type AwaitRow = GetSessionAwaitsResponse[number]
+type GitHubAwaitSourceKind = 'github-ci' | 'github-review'
+type GitHubReviewMode = 'approved' | 'changes-requested' | 'reviewed'
 
 interface LiveCheckRun {
   name: string
@@ -35,18 +47,57 @@ interface LiveCheckRun {
   required: boolean
 }
 
+interface LiveCommitStatus {
+  context: string
+  state: 'error' | 'failure' | 'pending' | 'success'
+  description: string | null
+  targetUrl: string | null
+}
+
 interface LiveCIStatus {
   supported: true
+  kind: 'github-ci'
   owner: string
   repo: string
   prNumber: number | null
   prTitle: string | null
   ref: string
-  runs: LiveCheckRun[]
+  checkRuns: LiveCheckRun[]
+  statuses: LiveCommitStatus[]
+  totalCount: number
+  pendingCount: number
+  failureCount: number
   allCompleted: boolean
   allPassed: boolean
+  noCIConfigured: boolean
   hasToken: boolean
 }
+
+interface LiveReview {
+  id: number
+  reviewer: string | null
+  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
+  commitId: string
+  submittedAt: string | null
+}
+
+interface LiveReviewStatus {
+  supported: true
+  kind: 'github-review'
+  owner: string
+  repo: string
+  prNumber: number
+  prTitle: string | null
+  mode: GitHubReviewMode
+  headSha: string | null
+  matched: boolean
+  approvedCount: number
+  changesRequestedCount: number
+  reviews: LiveReview[]
+  hasToken: boolean
+}
+
+type LiveAwaitStatus = LiveCIStatus | LiveReviewStatus
 
 // ── Hooks ──
 
@@ -163,6 +214,16 @@ function RunStatusIcon({ run }: { run: LiveCheckRun }) {
       </m.span>
     </AnimatePresence>
   )
+}
+
+function StatusContextIcon({ status }: { status: LiveCommitStatus }) {
+  if (status.state === 'success') {
+    return <CheckRunIcon className="text-green-500" />
+  }
+  if (status.state === 'pending') {
+    return <SpinRunIcon className="text-amber-500" />
+  }
+  return <FailRunIcon className="text-red-500" />
 }
 
 // ── Tree structure ──
@@ -331,8 +392,8 @@ function TreeItem({ node, isLast: _isLast }: { node: TreeNode, isLast: boolean }
 // ── Card ──
 
 function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
-  const { data: rawData } = useLiveCIStatus(awaitRow.source === 'github-ci' ? awaitRow.id : null)
-  const data = rawData as (LiveCIStatus | { supported: false }) | undefined
+  const { data: rawData } = useLiveCIStatus(awaitRow.source === 'github-ci' || awaitRow.source === 'github-review' ? awaitRow.id : null)
+  const data = rawData as (LiveAwaitStatus | { supported: false }) | undefined
 
   if (!data || !data.supported) {
     return (
@@ -346,8 +407,14 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
     )
   }
 
-  const ci = data as LiveCIStatus
+  if (data.kind === 'github-review') {
+    return <GitHubReviewCard review={data} />
+  }
 
+  return <GitHubCICard ci={data} />
+}
+
+function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
   if (!ci.hasToken) {
     return (
       <div className="rounded-md border border-border p-3">
@@ -359,7 +426,7 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
     )
   }
 
-  const tree = buildRunTree(ci.runs)
+  const tree = buildRunTree(ci.checkRuns)
   const targetLabel = ci.prNumber ? null : ci.ref.slice(0, 12)
 
   return (
@@ -387,7 +454,6 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
         </div>
       </div>
 
-      {/* Tree runs — connector originates from header icon position */}
       {tree.length > 0 && (
         <div className="px-3 pb-2">
           <div className="ml-1.25">
@@ -396,9 +462,95 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
         </div>
       )}
 
-      {ci.runs.length === 0 && (
+      {ci.statuses.length > 0 && (
+        <div className="space-y-1 px-3 pb-2">
+          {ci.statuses.map(status => (
+            <div key={status.context} className="flex min-w-0 items-center gap-1.5 text-[11px]">
+              <StatusContextIcon status={status} />
+              <span className="min-w-0 flex-1 truncate text-foreground/80">{status.context}</span>
+              <span className={cn(
+                'shrink-0 capitalize',
+                status.state === 'success' ? 'text-green-500' : status.state === 'pending' ? 'text-amber-500' : 'text-red-500',
+              )}
+              >
+                {status.state}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ci.totalCount === 0 && (
         <div className="px-3 pb-2 text-[11px] text-muted-foreground">
-          No checks found yet
+          No checks or statuses found yet
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GitHubReviewCard({ review }: { review: LiveReviewStatus }) {
+  if (!review.hasToken) {
+    return (
+      <div className="rounded-md border border-border p-3">
+        <div className="flex items-center gap-2 text-xs text-amber-500">
+          <GitHubIcon />
+          <span>GitHub token not available</span>
+        </div>
+      </div>
+    )
+  }
+
+  const modeLabel = review.mode === 'approved'
+    ? 'Waiting for approval'
+    : review.mode === 'changes-requested'
+      ? 'Waiting for changes requested'
+      : 'Waiting for review'
+
+  return (
+    <div className="rounded-md border border-border overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <GitHubIcon className="shrink-0 text-foreground/70" />
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-[11px] font-medium text-foreground/90">
+            <span className="text-muted-foreground/60">
+              #
+              {review.prNumber}
+            </span>
+            {' '}
+            {review.prTitle ?? `${review.owner}/${review.repo}`}
+          </span>
+          <span className="block truncate text-[10px] text-muted-foreground/70">
+            {modeLabel}
+            {review.headSha && ` @${review.headSha.slice(0, 12)}`}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 px-3 pb-2 text-[11px]">
+        <div className="flex items-center gap-1.5 text-green-500">
+          <MessageSquareCheckIcon className="size-3" aria-hidden />
+          <span>{review.approvedCount} approved</span>
+        </div>
+        <div className="flex items-center gap-1.5 text-red-500">
+          <MessageSquareWarningIcon className="size-3" aria-hidden />
+          <span>{review.changesRequestedCount} requested</span>
+        </div>
+      </div>
+
+      {review.reviews.length > 0 && (
+        <div className="space-y-1 px-3 pb-2">
+          {review.reviews.map(item => (
+            <div key={item.id} className="flex min-w-0 items-center gap-1.5 text-[11px]">
+              {item.state === 'APPROVED'
+                ? <MessageSquareCheckIcon className="size-3 shrink-0 text-green-500" aria-hidden />
+                : item.state === 'CHANGES_REQUESTED'
+                  ? <MessageSquareWarningIcon className="size-3 shrink-0 text-red-500" aria-hidden />
+                  : <GitPullRequestIcon className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />}
+              <span className="min-w-0 flex-1 truncate">{item.reviewer ?? 'Unknown reviewer'}</span>
+              <span className="shrink-0 text-muted-foreground/70">{item.state.toLowerCase().replaceAll('_', ' ')}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -420,6 +572,8 @@ function GitHubAwaitComposer({
   const detectedPrNumber = useMemo(() => derivePullRequestNumberFromStatus(status), [status])
   const [repoInput, setRepoInput] = useState('')
   const [targetInput, setTargetInput] = useState('')
+  const [sourceKind, setSourceKind] = useState<GitHubAwaitSourceKind>('github-ci')
+  const [reviewMode, setReviewMode] = useState<GitHubReviewMode>('approved')
   const repoEditedRef = useRef(false)
   const targetEditedRef = useRef(false)
   const repoInputId = useId()
@@ -440,11 +594,38 @@ function GitHubAwaitComposer({
 
   const parsedRepo = parseGitHubRepositoryInput(repoInput)
   const parsedTarget = parseGitHubAwaitTargetInput(targetInput)
-  const canCreate = !!sessionId && !!workspaceId && !!parsedRepo && !!parsedTarget
+  const canCreate = !!sessionId
+    && !!workspaceId
+    && !!parsedRepo
+    && !!parsedTarget
+    && (sourceKind === 'github-ci' || parsedTarget.kind === 'pull-request')
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!sessionId || !workspaceId || !parsedRepo || !parsedTarget || !canCreate) {
+      return
+    }
+    if (sourceKind === 'github-review') {
+      if (parsedTarget.kind !== 'pull-request') {
+        return
+      }
+      mutation.mutate({
+        body: {
+          chatSessionId: sessionId,
+          workspaceId,
+          source: 'github-review',
+          filterJson: JSON.stringify({ repo: parsedRepo.fullName, pr: parsedTarget.filter.pr, mode: reviewMode }),
+          reason: `Waiting for GitHub PR review on ${parsedRepo.fullName}${parsedTarget.label}`,
+        },
+      }, {
+        onSuccess: () => {
+          toastManager.add({
+            type: 'success',
+            title: 'GitHub review await created',
+            description: `${parsedRepo.fullName}${parsedTarget.label}`,
+          })
+        },
+      })
       return
     }
 
@@ -454,13 +635,13 @@ function GitHubAwaitComposer({
         workspaceId,
         source: 'github-ci',
         filterJson: JSON.stringify({ repo: parsedRepo.fullName, ...parsedTarget.filter }),
-        reason: `Waiting for GitHub CI checks on ${parsedRepo.fullName}${parsedTarget.label}`,
+        reason: `Waiting for GitHub checks on ${parsedRepo.fullName}${parsedTarget.label}`,
       },
     }, {
       onSuccess: () => {
         toastManager.add({
           type: 'success',
-          title: 'GitHub CI await created',
+          title: 'GitHub checks await created',
           description: `${parsedRepo.fullName}${parsedTarget.label}`,
         })
       },
@@ -484,6 +665,7 @@ function GitHubAwaitComposer({
   })()
 
   const TargetIcon = parsedTarget?.kind === 'pull-request' ? GitPullRequestIcon : GitCommitHorizontalIcon
+  const sourceLabel = sourceKind === 'github-ci' ? 'GitHub checks' : 'GitHub review'
 
   return (
     <form
@@ -500,7 +682,7 @@ function GitHubAwaitComposer({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-foreground">GitHub CI</span>
+            <span className="text-xs font-medium text-foreground">{sourceLabel}</span>
             {detectedRepo && (
               <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-primary bg-primary/10">
                 <WandSparklesIcon className="size-2.5" aria-hidden />
@@ -515,6 +697,32 @@ function GitHubAwaitComposer({
       </div>
 
       <div className="space-y-2">
+        <div className="space-y-1">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">Await</div>
+          <ToggleGroup
+            type="single"
+            value={sourceKind}
+            onValueChange={(value) => {
+              if (value) {
+                setSourceKind(value as GitHubAwaitSourceKind)
+              }
+            }}
+            variant="outline"
+            size="sm"
+            className="grid w-full grid-cols-2 rounded-md"
+            aria-label="GitHub await source"
+          >
+            <ToggleGroupItem value="github-ci" aria-label="GitHub checks" className="h-7 gap-1 rounded-l-md px-2 text-xs">
+              <CheckRunIcon className="size-3" aria-hidden />
+              Checks
+            </ToggleGroupItem>
+            <ToggleGroupItem value="github-review" aria-label="GitHub review" className="h-7 gap-1 rounded-r-md px-2 text-xs">
+              <MessageSquareCheckIcon className="size-3" aria-hidden />
+              Review
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+
         <div className="min-w-0 space-y-1">
           <label htmlFor={repoInputId} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
             Repository
@@ -536,7 +744,7 @@ function GitHubAwaitComposer({
       <div className="space-y-1">
         <div className="min-w-0 space-y-1">
           <label htmlFor={targetInputId} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-            PR or commit
+            {sourceKind === 'github-ci' ? 'PR or commit' : 'Pull request'}
           </label>
           <div className="relative">
             <TargetIcon className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/70" aria-hidden />
@@ -548,13 +756,31 @@ function GitHubAwaitComposer({
                 setTargetInput(event.target.value)
               }}
               inputMode="text"
-              placeholder="123 or commit sha/ref"
+              placeholder={sourceKind === 'github-ci' ? '123 or commit sha/ref' : '123'}
               className="h-7 rounded-md pl-7 font-mono text-xs tabular-nums"
-              aria-label="GitHub pull request number or commit SHA/ref"
+              aria-label={sourceKind === 'github-ci' ? 'GitHub pull request number or commit SHA/ref' : 'GitHub pull request number'}
             />
           </div>
         </div>
       </div>
+
+      {sourceKind === 'github-review' && (
+        <div className="space-y-1">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            Review signal
+          </div>
+          <Select value={reviewMode} onValueChange={value => setReviewMode(value as GitHubReviewMode)}>
+            <SelectTrigger size="sm" className="h-7 w-full rounded-md text-xs" aria-label="GitHub review signal">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="changes-requested">Changes requested</SelectItem>
+              <SelectItem value="reviewed">Any review</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <Button
         type="submit"
@@ -565,7 +791,7 @@ function GitHubAwaitComposer({
         {mutation.isPending
           ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden />
           : <PlusIcon className="size-3" aria-hidden />}
-        Wait for checks
+        {sourceKind === 'github-ci' ? 'Wait for checks' : 'Wait for review'}
       </Button>
     </form>
   )

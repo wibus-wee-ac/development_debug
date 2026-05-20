@@ -5,6 +5,7 @@ import { SessionAwaitModel } from './model'
 import * as Poller from './poller'
 import * as SessionAwait from './service'
 import { fetchLiveCIStatus, githubCISource } from './sources/github-ci'
+import { fetchLiveReviewStatus, githubReviewSource } from './sources/github-review'
 
 export const sessionAwait = new Elysia({
   prefix: '/session-awaits',
@@ -12,6 +13,7 @@ export const sessionAwait = new Elysia({
 })
   .onStart(() => {
     Poller.registerSource(githubCISource)
+    Poller.registerSource(githubReviewSource)
     Poller.start()
   })
   .onStop(() => { Poller.stop() })
@@ -103,14 +105,18 @@ export const sessionAwait = new Elysia({
     if (!row) {
       throw new AppError({ code: 'session_await_not_found', status: 404, message: 'Session await not found' })
     }
-    if (row.source !== 'github-ci') {
-      return { supported: false as const }
+    if (row.source === 'github-ci') {
+      const status = await fetchLiveCIStatus(row.filterJson)
+      return status ? { supported: true as const, ...status } : { supported: false as const }
     }
-    const status = await fetchLiveCIStatus(row.filterJson)
-    return { supported: true as const, ...status }
+    if (row.source === 'github-review') {
+      const status = await fetchLiveReviewStatus(row.filterJson)
+      return status ? { supported: true as const, ...status } : { supported: false as const }
+    }
+    return { supported: false as const }
   }, {
     detail: {
-      summary: 'Get live CI status for a session await',
+      summary: 'Get live status for a session await',
     },
     params: SessionAwaitModel.idParams,
   })
