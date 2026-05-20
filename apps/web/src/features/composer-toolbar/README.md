@@ -10,7 +10,7 @@ Shared composer controls for selecting runtime, provider profile, provider-owned
 - **composer-toolbar.tsx**: Root toolbar component that chooses runtime-specific selectors from `useComposerState`.
 - **constants.ts**: Static runtime and thinking effort label options.
 - **index.ts**: Barrel exports for the toolbar feature.
-- **provider-model-menu.tsx**: Reusable Provider > model > thinking cascading menu content; model lists are keyed by profile id, model search trims surrounding whitespace, and thinking options are filtered by the selected model.
+- **provider-model-menu.tsx**: Reusable Provider > model > thinking cascading menu content plus the shared current-provider model list; model lists are keyed by profile id, model search trims surrounding whitespace, and thinking options are filtered by the selected model.
 - **provider-model-picker.tsx**: Unified trigger plus `ProviderModelMenu` composition reused by composer surfaces and Jarvis settings.
 - **provider-model-selector.tsx**: Composer toolbar state adapter for `ProviderModelPicker`; direct model selection forwards the owning profile id.
 - **provider-model-selector.test.tsx**: Regression coverage for provider-owned model lists in the menu.

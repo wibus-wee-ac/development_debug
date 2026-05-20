@@ -1,10 +1,12 @@
-// Input: CLI TUI environment textarea content
-// Output: parser contract for saved env values plus invalid line feedback
+// @vitest-environment jsdom
+//
+// Input: Agent detail runtime config helpers
+// Output: parser and serializer contracts for saved agent settings
 // Position: apps/web/src/features/agent-management unit tests
 
 import { describe, expect, it } from 'vitest'
 
-import { getAgentCreateDisabledReason, parseCliEnvText } from './agent-detail'
+import { getAgentCreateDisabledReason, parseCliEnvText, stringifyConfigJson } from './agent-detail'
 
 describe('parseCliEnvText', () => {
   it('returns env values and invalid line numbers for mixed input', () => {
@@ -30,6 +32,46 @@ describe('parseCliEnvText', () => {
       env: undefined,
       invalidLineNumbers: [1, 3],
     })
+  })
+})
+
+describe('stringifyConfigJson', () => {
+  const baseInput = {
+    systemPrompt: '',
+    baseConfig: {},
+    runtimeKind: 'claude-agent' as const,
+    cliTuiPreset: 'claude-code',
+    cliTuiExecutable: '',
+    cliTuiArguments: '',
+    cliTuiEnvText: '',
+  }
+
+  it('saves Claude Agent SDK model aliases under agent config', () => {
+    expect(JSON.parse(stringifyConfigJson({
+      ...baseInput,
+      systemPrompt: 'Use project conventions.',
+      claudeAgentHaikuModel: ' claude-haiku-4-5 ',
+      claudeAgentSonnetModel: 'claude-sonnet-4-5',
+      claudeAgentOpusModel: 'claude-opus-4-5',
+    }))).toEqual({
+      systemPrompt: 'Use project conventions.',
+      claudeAgent: {
+        modelAliases: {
+          haiku: 'claude-haiku-4-5',
+          sonnet: 'claude-sonnet-4-5',
+          opus: 'claude-opus-4-5',
+        },
+      },
+    })
+  })
+
+  it('does not write empty Claude Agent SDK aliases', () => {
+    expect(JSON.parse(stringifyConfigJson({
+      ...baseInput,
+      claudeAgentHaikuModel: '',
+      claudeAgentSonnetModel: '   ',
+      claudeAgentOpusModel: '',
+    }))).toEqual({})
   })
 })
 

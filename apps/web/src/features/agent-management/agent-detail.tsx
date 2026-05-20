@@ -2,7 +2,7 @@
 // Output: AgentDetailPage — profile-card identity zone + auto-saving config + private skills. Create and edit unified.
 // Position: Rendered by AgentList in both create and edit modes
 
-import { ArrowLeftIcon, CheckIcon, DicesIcon } from 'lucide-react'
+import { ArrowLeftIcon, CheckIcon, DicesIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
 import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef } from 'react'
@@ -20,13 +20,14 @@ import {
   AlertDialogTrigger,
 } from '~/components/ui/alert-dialog'
 import { Button } from '~/components/ui/button'
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
-import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
+import { CurrentProviderModelList, type ModelsByProfileId, type ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
 import type { Agent, AgentProfile, AgentRuntimeConfig, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
@@ -91,12 +92,10 @@ const AVATAR_STYLES = [
 type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 
-const AGENT_THINKING_OPTIONS: Array<ThinkingOption<ThinkingEffort>> = [
-  { value: 'auto', label: 'Auto', description: 'Let the runtime choose an appropriate reasoning budget' },
-  { value: 'low', label: 'Low', description: 'Fast responses with light reasoning' },
-  { value: 'medium', label: 'Medium', description: 'Balanced reasoning for everyday work' },
-  { value: 'high', label: 'High', description: 'Deeper reasoning for complex work' },
-]
+const AGENT_THINKING_OPTIONS: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map(option => ({
+  ...option,
+  value: option.value ?? 'auto',
+}))
 
 interface AgentDetailFormValues {
   name: string
@@ -108,10 +107,27 @@ interface AgentDetailFormValues {
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
   systemPrompt: string
+  claudeAgentHaikuModel: string
+  claudeAgentSonnetModel: string
+  claudeAgentOpusModel: string
   cliTuiPreset: string
   cliTuiExecutable: string
   cliTuiArguments: string
   cliTuiEnvText: string
+}
+
+interface ClaudeAgentModelAliases {
+  haiku?: string
+  sonnet?: string
+  opus?: string
+}
+
+type ClaudeAgentModelField = 'claudeAgentHaikuModel' | 'claudeAgentSonnetModel' | 'claudeAgentOpusModel'
+
+const CLAUDE_AGENT_ALIAS_LABELS: Record<ClaudeAgentModelField, string> = {
+  claudeAgentHaikuModel: 'haiku alias',
+  claudeAgentSonnetModel: 'sonnet alias',
+  claudeAgentOpusModel: 'opus alias',
 }
 
 interface AgentDetailUiState {
@@ -236,21 +252,90 @@ function inferCliPreset(launch: CliTuiLaunchConfig | null): string {
   return 'custom'
 }
 
-function parseConfigJson(configJson?: string | null): { systemPrompt: string, cliTui: CliTuiLaunchConfig | null, baseConfig: Record<string, unknown> } {
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function trimToValue(value: string): string | undefined {
+  const trimmed = value.trim()
+  return trimmed ? trimmed : undefined
+}
+
+function parseConfigJson(configJson?: string | null): {
+  systemPrompt: string
+  cliTui: CliTuiLaunchConfig | null
+  claudeAgentModelAliases: ClaudeAgentModelAliases
+  baseConfig: Record<string, unknown>
+} {
   try {
     const parsed = JSON.parse(configJson ?? '{}') as AgentRuntimeConfig
     const systemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : ''
     const cliTui = parsed.cliTui && typeof parsed.cliTui.executable === 'string' ? parsed.cliTui : null
+    const claudeAgent = readRecord(parsed.claudeAgent)
+    const modelAliases = readRecord(claudeAgent.modelAliases)
     const { systemPrompt: _sp, skills: _sk, cliTui: _cliTui, ...baseConfig } = parsed
-    return { systemPrompt, cliTui, baseConfig }
+    return {
+      systemPrompt,
+      cliTui,
+      claudeAgentModelAliases: {
+        haiku: readString(modelAliases.haiku),
+        sonnet: readString(modelAliases.sonnet),
+        opus: readString(modelAliases.opus),
+      },
+      baseConfig,
+    }
   }
   catch {
-    return { systemPrompt: '', cliTui: null, baseConfig: {} }
+    return { systemPrompt: '', cliTui: null, claudeAgentModelAliases: {}, baseConfig: {} }
   }
 }
 
-function stringifyConfigJson(input: {
+function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
+  runtimeKind: RuntimeKind
+  haikuModel: string
+  sonnetModel: string
+  opusModel: string
+}): void {
+  const existing = { ...readRecord(config.claudeAgent) }
+  const aliases: ClaudeAgentModelAliases = {}
+  const haiku = trimToValue(input.haikuModel)
+  const sonnet = trimToValue(input.sonnetModel)
+  const opus = trimToValue(input.opusModel)
+
+  if (haiku) {
+    aliases.haiku = haiku
+  }
+  if (sonnet) {
+    aliases.sonnet = sonnet
+  }
+  if (opus) {
+    aliases.opus = opus
+  }
+
+  if (input.runtimeKind === 'claude-agent' && Object.keys(aliases).length > 0) {
+    existing.modelAliases = aliases
+  }
+  else if (input.runtimeKind === 'claude-agent') {
+    delete existing.modelAliases
+  }
+
+  if (Object.keys(existing).length > 0) {
+    config.claudeAgent = existing
+    return
+  }
+
+  delete config.claudeAgent
+}
+
+export function stringifyConfigJson(input: {
   systemPrompt: string
+  claudeAgentHaikuModel: string
+  claudeAgentSonnetModel: string
+  claudeAgentOpusModel: string
   baseConfig: Record<string, unknown>
   runtimeKind: RuntimeKind
   cliTuiPreset: string
@@ -262,6 +347,12 @@ function stringifyConfigJson(input: {
   if (input.systemPrompt.trim()) {
     config.systemPrompt = input.systemPrompt
   }
+  writeClaudeAgentConfig(config, {
+    runtimeKind: input.runtimeKind,
+    haikuModel: input.claudeAgentHaikuModel,
+    sonnetModel: input.claudeAgentSonnetModel,
+    opusModel: input.claudeAgentOpusModel,
+  })
   if (input.runtimeKind === 'cli-tui') {
     const cliEnv = stringifyEnvText(input.cliTuiEnvText)
     config.cliTui = {
@@ -288,6 +379,9 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
     thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
     runtimeKind: (agent?.runtimeKind as RuntimeKind) ?? 'standard',
     systemPrompt: initialConfig.systemPrompt,
+    claudeAgentHaikuModel: initialConfig.claudeAgentModelAliases.haiku ?? '',
+    claudeAgentSonnetModel: initialConfig.claudeAgentModelAliases.sonnet ?? '',
+    claudeAgentOpusModel: initialConfig.claudeAgentModelAliases.opus ?? '',
     cliTuiPreset,
     cliTuiExecutable: initialConfig.cliTui?.executable ?? presetExecutable,
     cliTuiArguments: initialConfig.cliTui?.args?.join(' ') ?? '',
@@ -365,6 +459,159 @@ function AgentProviderModelPicker({
   )
 }
 
+function ClaudeAgentAliasModelPicker({
+  field,
+  mainModelId,
+  pickerProfiles,
+  profileId,
+  modelsByProfileId,
+  loadingProfileIds,
+  testId,
+}: {
+  field: ClaudeAgentModelField
+  mainModelId: string | null
+  pickerProfiles: AgentProfile[]
+  profileId: string | null
+  modelsByProfileId: ModelsByProfileId
+  loadingProfileIds: Set<string>
+  testId: string
+}) {
+  const form = useFormContext<AgentDetailFormValues>()
+  const value = useWatch({ control: form.control, name: field }) ?? ''
+  const models = profileId ? modelsByProfileId[profileId] ?? [] : []
+  const selectedModel = models.find(model => model.id === value) ?? null
+  const mainModel = models.find(model => model.id === mainModelId) ?? null
+  const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
+  const mainModelLabel = mainModel?.label ?? mainModelId ?? 'main model'
+  const label = selectedModel?.label ?? (value || mainModelLabel)
+  const aliasLabel = CLAUDE_AGENT_ALIAS_LABELS[field]
+  const reusedMainModelRow = !value && mainModelId && pickerProfiles.length > 0
+    ? (
+        <MenuItem disabled className="items-start">
+          <span className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[11px] text-muted-foreground/60">Reusing main model</span>
+            <span className="max-w-48 truncate text-[12px] text-foreground/75">{mainModelLabel}</span>
+          </div>
+        </MenuItem>
+      )
+    : null
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <Menu>
+        <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={testId} />}>
+          <span className={cn('max-w-40 truncate', !value && 'text-muted-foreground/80')}>
+            {label}
+          </span>
+          {!value && (
+            <span className="text-muted-foreground/45">
+              (reused)
+            </span>
+          )}
+        </MenuTrigger>
+        <MenuPopup side="bottom" align="end">
+          {pickerProfiles.length === 0 && (
+            <MenuItem disabled>Select a provider profile first</MenuItem>
+          )}
+          {pickerProfiles.length > 0 && (
+            <CurrentProviderModelList
+              models={models}
+              selectedModelId={value || null}
+              thinkingValue={null}
+              getThinkingOptionsForModel={() => [{ value: null, label: 'Auto', description: '' }]}
+              isLoadingModels={isLoadingModels}
+              leadingContent={reusedMainModelRow}
+              onSelectModel={modelId => form.setValue(field, modelId, { shouldDirty: true })}
+              onSelectThinking={() => {}}
+            />
+          )}
+        </MenuPopup>
+      </Menu>
+      {value && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Reuse main model for ${aliasLabel}`}
+          onClick={() => form.setValue(field, '', { shouldDirty: true })}
+          className="text-muted-foreground/60 hover:text-foreground"
+        >
+          <XIcon className="size-3" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+function ClaudeAgentSdkSettings({
+  profiles,
+  profileId,
+  mainModelId,
+}: {
+  profiles: AgentProfile[]
+  profileId: string | null
+  mainModelId: string | null
+}) {
+  const selectedProfile = profileId ? profiles.find(profile => profile.id === profileId) ?? null : null
+  const pickerProfiles = useMemo(() => selectedProfile ? [selectedProfile] : [], [selectedProfile])
+  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(pickerProfiles)
+
+  return (
+    <>
+      <SettingsDivider />
+      <div className="flex flex-col gap-0">
+        <div className="mb-2">
+          <h5 className="font-heading text-[13px] font-medium text-foreground">
+            Claude Agent SDK
+          </h5>
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
+            Configure the models used when this agent asks the SDK for model aliases.
+          </p>
+        </div>
+
+        <SettingsRow label="Haiku alias" description="Used when the SDK requests the haiku alias.">
+          <ClaudeAgentAliasModelPicker
+            field="claudeAgentHaikuModel"
+            pickerProfiles={pickerProfiles}
+            profileId={profileId}
+            modelsByProfileId={modelsByProfileId}
+            loadingProfileIds={loadingProfileIds}
+            mainModelId={mainModelId}
+            testId="agent-claude-haiku-model"
+          />
+        </SettingsRow>
+
+        <SettingsDivider />
+        <SettingsRow label="Sonnet alias" description="Used when the SDK requests the sonnet alias.">
+          <ClaudeAgentAliasModelPicker
+            field="claudeAgentSonnetModel"
+            pickerProfiles={pickerProfiles}
+            profileId={profileId}
+            modelsByProfileId={modelsByProfileId}
+            loadingProfileIds={loadingProfileIds}
+            mainModelId={mainModelId}
+            testId="agent-claude-sonnet-model"
+          />
+        </SettingsRow>
+
+        <SettingsDivider />
+        <SettingsRow label="Opus alias" description="Used when the SDK requests the opus alias.">
+          <ClaudeAgentAliasModelPicker
+            field="claudeAgentOpusModel"
+            pickerProfiles={pickerProfiles}
+            profileId={profileId}
+            modelsByProfileId={modelsByProfileId}
+            loadingProfileIds={loadingProfileIds}
+            mainModelId={mainModelId}
+            testId="agent-claude-opus-model"
+          />
+        </SettingsRow>
+      </div>
+    </>
+  )
+}
+
 // ── Save Indicator ─────────────────────────────────────────────────────────────
 
 function SaveIndicator({ state }: { state: SaveState }) {
@@ -404,6 +651,9 @@ interface AgentDetailDraft {
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
   systemPrompt: string
+  claudeAgentHaikuModel: string
+  claudeAgentSonnetModel: string
+  claudeAgentOpusModel: string
   cliTuiPreset: string
   cliTuiExecutable: string
   cliTuiArguments: string
@@ -709,6 +959,14 @@ function AgentIdentitySection({
                   thinkingEffort={draft.thinkingEffort}
                 />
               </SettingsRow>
+
+              {draft.runtimeKind === 'claude-agent' && (
+                <ClaudeAgentSdkSettings
+                  profiles={enabledProfiles}
+                  profileId={draft.agentProfileId}
+                  mainModelId={draft.modelId}
+                />
+              )}
             </>
           )}
     </div>
@@ -817,6 +1075,9 @@ function useAgentDetailOwner({
     thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
     runtimeKind: watchedValues.runtimeKind ?? 'standard',
     systemPrompt: watchedValues.systemPrompt ?? '',
+    claudeAgentHaikuModel: watchedValues.claudeAgentHaikuModel ?? '',
+    claudeAgentSonnetModel: watchedValues.claudeAgentSonnetModel ?? '',
+    claudeAgentOpusModel: watchedValues.claudeAgentOpusModel ?? '',
     cliTuiPreset: watchedValues.cliTuiPreset ?? 'claude-code',
     cliTuiExecutable: watchedValues.cliTuiExecutable ?? '',
     cliTuiArguments: watchedValues.cliTuiArguments ?? '',
@@ -887,6 +1148,9 @@ function useAgentDetailOwner({
     try {
       const configJson = stringifyConfigJson({
         systemPrompt: currentValues.systemPrompt,
+        claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
+        claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
+        claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
         baseConfig: persistedConfig.baseConfig,
         runtimeKind: currentValues.runtimeKind,
         cliTuiPreset: currentValues.cliTuiPreset,
@@ -970,6 +1234,9 @@ function useAgentDetailOwner({
         runtimeKind: currentValues.runtimeKind,
         configJson: stringifyConfigJson({
           systemPrompt: currentValues.systemPrompt,
+          claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
+          claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
+          claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
           baseConfig: {},
           runtimeKind: currentValues.runtimeKind,
           cliTuiPreset: currentValues.cliTuiPreset,

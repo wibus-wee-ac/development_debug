@@ -8,8 +8,8 @@ Agent 专属 Skills 基于文件系统表达，存储在 `~/.cradle/agents/{agen
 
 ## Files
 
-- **agent-detail.tsx**: Agent 详情页，提供内联编辑 identity、provider/model/thinking 统一选择器、system prompt、CLI TUI env 输入反馈与 agent-private Skills 管理，并确保 provider 切换时默认模型与 thinking 能力会同步到 state
-- **agent-detail.test.ts**: Agent detail 的纯函数契约测试，覆盖 CLI TUI env 解析反馈与创建按钮禁用原因
+- **agent-detail.tsx**: Agent 详情页，提供内联编辑 identity、provider/model/thinking 统一选择器、system prompt、Claude Agent SDK haiku / sonnet / opus alias、CLI TUI env 输入反馈与 agent-private Skills 管理；alias 清空后直接映射主模型并打开当前 profile 的模型列表，并确保 provider 切换时默认模型与 thinking 能力会同步到 state
+- **agent-detail.test.ts**: Agent detail 的纯函数契约测试，覆盖 CLI TUI env 解析反馈、Claude Agent SDK alias config 序列化与创建按钮禁用原因
 - **agent-list.tsx**: Agent 列表，显示所有 Agent 卡片；点击行导航到 agent-detail；列表行现在展示绑定的 provider 名称，避免多个同类 provider 时无法分辨归属
 - **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持编辑 / 删除 / 启停
 - **avatar-url.ts**: 统一生成 Agent DiceBear avatar URL，避免列表与详情页重复编码规则

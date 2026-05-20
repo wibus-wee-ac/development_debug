@@ -3,7 +3,7 @@
 // Position: Shared selector core used by composer toolbar and settings surfaces
 
 import { BrainIcon, CheckIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
@@ -49,6 +49,17 @@ interface ProviderGroupProps<TThinking extends string | null> {
   onSelectThinking: (value: TThinking) => void
 }
 
+interface CurrentProviderModelListProps<TThinking extends string | null> {
+  models: ModelDescriptor[]
+  selectedModelId: string | null
+  thinkingValue: TThinking
+  getThinkingOptionsForModel: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
+  isLoadingModels: boolean
+  leadingContent?: ReactNode
+  onSelectModel: (id: string) => void
+  onSelectThinking: (value: TThinking) => void
+}
+
 const INITIAL_BATCH = 20
 
 function occurrenceKey(id: string, counts: Map<string, number>): string {
@@ -69,20 +80,16 @@ export function filterModelsBySearch(models: ModelDescriptor[], search: string):
     || model.id.toLowerCase().includes(normalizedSearch))
 }
 
-function ProviderGroup<TThinking extends string | null>({
-  profile,
-  isActive,
+export function CurrentProviderModelList<TThinking extends string | null>({
   models,
   selectedModelId,
   thinkingValue,
   getThinkingOptionsForModel,
   isLoadingModels,
-  isProfileSelectionDisabled,
-  onSelectProfile,
+  leadingContent,
   onSelectModel,
   onSelectThinking,
-}: ProviderGroupProps<TThinking>) {
-  const preset = presetForProfile(profile)
+}: CurrentProviderModelListProps<TThinking>) {
   const [modelSearch, setModelSearch] = useState('')
   const filteredModels = filterModelsBySearch(models, modelSearch)
 
@@ -106,6 +113,68 @@ function ProviderGroup<TThinking extends string | null>({
   const modelKeyCounts = new Map<string, number>()
 
   return (
+    <>
+      {models.length > 0 && (
+        <div className="px-1 pt-1 pb-1.5">
+          <input
+            value={modelSearch}
+            onChange={event => setModelSearch(event.target.value)}
+            placeholder="Search models..."
+            className="w-full rounded-md border border-border/50 bg-input/30 px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
+            onClick={event => event.stopPropagation()}
+            onKeyDown={event => event.stopPropagation()}
+          />
+        </div>
+      )}
+      {leadingContent}
+      {isLoadingModels && models.length === 0 && (
+        <MenuItem disabled>Loading models…</MenuItem>
+      )}
+      <div className="max-h-80 overflow-y-auto">
+        {visibleModels.map((model) => {
+          const isModelSelected = model.id === selectedModelId
+          return (
+            <ModelSubmenu
+              key={occurrenceKey(model.id, modelKeyCounts)}
+              model={model}
+              isModelSelected={isModelSelected}
+              thinkingValue={thinkingValue}
+              thinkingOptions={getThinkingOptionsForModel(model)}
+              onSelectModel={() => onSelectModel(model.id)}
+              onSelectThinking={onSelectThinking}
+            />
+          )
+        })}
+      </div>
+      {renderCount < filteredModels.length && (
+        <MenuItem disabled>Loading more…</MenuItem>
+      )}
+      {filteredModels.length === 0 && models.length > 0 && (
+        <MenuItem disabled>No matching models</MenuItem>
+      )}
+      {models.length === 0 && !isLoadingModels && (
+        <MenuItem disabled>No models available</MenuItem>
+      )}
+    </>
+  )
+}
+
+function ProviderGroup<TThinking extends string | null>({
+  profile,
+  isActive,
+  models,
+  selectedModelId,
+  thinkingValue,
+  getThinkingOptionsForModel,
+  isLoadingModels,
+  isProfileSelectionDisabled,
+  onSelectProfile,
+  onSelectModel,
+  onSelectThinking,
+}: ProviderGroupProps<TThinking>) {
+  const preset = presetForProfile(profile)
+
+  return (
     <MenuSub>
       <MenuSubTrigger
         onClick={() => {
@@ -120,46 +189,15 @@ function ProviderGroup<TThinking extends string | null>({
         <span>{profile.name}</span>
       </MenuSubTrigger>
       <MenuSubPopup>
-        {models.length > 0 && (
-          <div className="px-1 pt-1 pb-1.5">
-            <input
-              value={modelSearch}
-              onChange={event => setModelSearch(event.target.value)}
-              placeholder="Search models..."
-              className="w-full rounded-md border border-border/50 bg-input/30 px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
-              onClick={event => event.stopPropagation()}
-              onKeyDown={event => event.stopPropagation()}
-            />
-          </div>
-        )}
-        {isLoadingModels && models.length === 0 && (
-          <MenuItem disabled>Loading models…</MenuItem>
-        )}
-        <div className="max-h-80 overflow-y-auto">
-          {visibleModels.map((model) => {
-            const isModelSelected = model.id === selectedModelId
-            return (
-              <ModelSubmenu
-                key={occurrenceKey(model.id, modelKeyCounts)}
-                model={model}
-                isModelSelected={isModelSelected}
-                thinkingValue={thinkingValue}
-                thinkingOptions={getThinkingOptionsForModel(model)}
-                onSelectModel={() => onSelectModel(model.id, profile.id)}
-                onSelectThinking={onSelectThinking}
-              />
-            )
-          })}
-        </div>
-        {renderCount < filteredModels.length && (
-          <MenuItem disabled>Loading more…</MenuItem>
-        )}
-        {filteredModels.length === 0 && models.length > 0 && (
-          <MenuItem disabled>No matching models</MenuItem>
-        )}
-        {models.length === 0 && !isLoadingModels && (
-          <MenuItem disabled>No models available</MenuItem>
-        )}
+        <CurrentProviderModelList
+          models={models}
+          selectedModelId={selectedModelId}
+          thinkingValue={thinkingValue}
+          getThinkingOptionsForModel={getThinkingOptionsForModel}
+          isLoadingModels={isLoadingModels}
+          onSelectModel={modelId => onSelectModel(modelId, profile.id)}
+          onSelectThinking={onSelectThinking}
+        />
       </MenuSubPopup>
     </MenuSub>
   )
