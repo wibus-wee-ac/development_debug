@@ -1,4 +1,4 @@
-// Input: useWorkspaces, useSessions (per workspace), GlobalSearchDialog, useCradleNavigation
+// Input: useWorkspaces, useSessions (per workspace), automation queries, GlobalSearchDialog
 // Output: HomeDashboard — scenario-driven dashboard hub
 // Position: Main content for the home tab; no composer, no chat entry point
 
@@ -21,6 +21,8 @@ import { useCallback, useState } from 'react'
 
 import { getSessionsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
+import type { AutomationDefinition, AutomationRun } from '~/features/automation'
+import { AutomationDashboard, useAutomationDefinitions } from '~/features/automation'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
@@ -55,6 +57,8 @@ interface ScheduledTask {
   id: string
   label: string
   schedule: string
+  status?: string
+  latestRunAt?: number | string | null
 }
 
 const MOCK_PENDING: PendingRun[] = [
@@ -87,10 +91,6 @@ const QUICK_ACTIONS: QuickAction[] = [
   { id: 'automate', label: '新建自动化', description: '设置定时 / 触发任务', icon: <ZapIcon className="size-3.5" /> },
 ]
 
-const MOCK_SCHEDULED: ScheduledTask[] = [
-  { id: 'sch-1', label: '项目周报生成', schedule: '每周一 09:00' },
-]
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatRelativeTime(unixTimestamp: number): string {
@@ -109,6 +109,51 @@ function formatRelativeTime(unixTimestamp: number): string {
     return `${Math.floor(diff / 86400)}d`
   }
   return `${Math.floor(diff / 2592000)}mo`
+}
+
+function asUnixSeconds(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value === 'number') {
+    return value > 10_000_000_000 ? Math.floor(value / 1000) : value
+  }
+
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? null : Math.floor(parsed / 1000)
+}
+
+function formatSchedule(definition: AutomationDefinition): string {
+  const trigger = definition.trigger ?? definition.triggerJson
+  if (!trigger) {
+    return 'No trigger'
+  }
+
+  const timezone = trigger.timezone ? ` · ${trigger.timezone}` : ''
+  return `${trigger.rrule}${timezone}`
+}
+
+function formatLatestRun(run: AutomationRun | null | undefined): string | undefined {
+  if (!run) {
+    return undefined
+  }
+
+  const timestamp = asUnixSeconds(run.finishedAt ?? run.startedAt ?? run.createdAt ?? run.scheduledFor)
+  if (timestamp === null) {
+    return run.status
+  }
+
+  return `${run.status} · ${formatRelativeTime(timestamp)}`
+}
+
+function toScheduledTask(definition: AutomationDefinition): ScheduledTask {
+  return {
+    id: definition.id,
+    label: definition.title,
+    schedule: formatSchedule(definition),
+    status: formatLatestRun(definition.latestRun),
+    latestRunAt: definition.latestRun?.finishedAt ?? definition.latestRun?.startedAt ?? definition.latestRun?.createdAt ?? null,
+  }
 }
 
 function SectionLabel({ label, count }: { label: string, count?: number }) {
@@ -266,10 +311,11 @@ function ArtifactRow({ artifact }: { artifact: Artifact }) {
 
 // ── Quick action button ───────────────────────────────────────────────────────
 
-function QuickActionButton({ action }: { action: QuickAction }) {
+function QuickActionButton({ action, onClick }: { action: QuickAction, onClick?: () => void }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent/60 w-full"
     >
       <span className="shrink-0 text-muted-foreground">
@@ -287,13 +333,20 @@ function QuickActionButton({ action }: { action: QuickAction }) {
 
 // ── Scheduled row ─────────────────────────────────────────────────────────────
 
-function ScheduledRow({ task }: { task: ScheduledTask }) {
+function ScheduledRow({ task, onClick }: { task: ScheduledTask, onClick: () => void }) {
   return (
-    <div className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 cursor-pointer">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-accent/50"
+    >
       <TimerIcon className="size-3.5 shrink-0 text-muted-foreground/50" />
-      <span className="truncate flex-1 text-foreground">{task.label}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{task.schedule}</span>
-    </div>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-foreground">{task.label}</span>
+        {task.status ? <span className="block truncate text-[10px] text-muted-foreground">{task.status}</span> : null}
+      </span>
+      <span className="max-w-32 shrink-0 truncate text-[11px] text-muted-foreground">{task.schedule}</span>
+    </button>
   )
 }
 
@@ -307,8 +360,10 @@ type ActivityItem
 export function HomeDashboard() {
   const { workspaces } = useWorkspaces()
   const [searchOpen, setSearchOpen] = useState(false)
+  const [automationOpen, setAutomationOpen] = useState(false)
   const queryClient = useQueryClient()
   const { selectDirectory } = useDirectoryPicker()
+  const automationDefinitionsQuery = useAutomationDefinitions()
 
   const sessionQueries = useQueries({
     queries: workspaces.map(ws => getSessionsOptions({ query: { workspaceId: ws.id } })),
@@ -321,6 +376,10 @@ export function HomeDashboard() {
     })))
     .sort((a, b) => b.session.updatedAt - a.session.updatedAt)
     .slice(0, 10)
+
+  const scheduledTasks = (automationDefinitionsQuery.data ?? [])
+    .map(toScheduledTask)
+    .slice(0, 5)
 
   // Build activity cards: recent sessions + workspaces + mock artifacts, sorted by recency
   const activityCards: ActivityItem[] = [
@@ -344,6 +403,10 @@ export function HomeDashboard() {
     await postWorkspacesFromDirectory({ body: { path: dirPath } })
     await queryClient.invalidateQueries({ queryKey: ['workspaces'] })
   }, [queryClient, selectDirectory])
+
+  if (automationOpen) {
+    return <AutomationDashboard onBack={() => setAutomationOpen(false)} />
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background" data-testid="home-dashboard">
@@ -461,22 +524,39 @@ export function HomeDashboard() {
             <SectionLabel label="快速派发" />
             <div className="flex flex-col gap-0.5">
               {QUICK_ACTIONS.map(a => (
-                <QuickActionButton key={a.id} action={a} />
+                <QuickActionButton
+                  key={a.id}
+                  action={a}
+                  onClick={a.id === 'automate' ? () => setAutomationOpen(true) : undefined}
+                />
               ))}
             </div>
           </section>
 
           <section>
-            <SectionLabel label="自动化" />
+            <SectionLabel label="自动化" count={scheduledTasks.length} />
             <div className="flex flex-col gap-0.5">
-              {MOCK_SCHEDULED.map(t => (
-                <ScheduledRow key={t.id} task={t} />
+              {automationDefinitionsQuery.isLoading
+? (
+                <div className="p-2 text-xs text-muted-foreground">Loading automations</div>
+              )
+: null}
+              {!automationDefinitionsQuery.isLoading && scheduledTasks.length === 0
+? (
+                <div className="p-2 text-xs text-muted-foreground">
+                  {automationDefinitionsQuery.isError ? 'Automation API unavailable' : 'No automations'}
+                </div>
+              )
+: null}
+              {scheduledTasks.map(t => (
+                <ScheduledRow key={t.id} task={t} onClick={() => setAutomationOpen(true)} />
               ))}
               <button
                 type="button"
+                onClick={() => setAutomationOpen(true)}
                 className="mt-0.5 flex items-center gap-2 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border/60"
               >
-                + 新建自动化
+                查看自动化
               </button>
             </div>
           </section>

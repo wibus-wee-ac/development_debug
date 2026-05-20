@@ -8,4 +8,4 @@ Place chat-related components in `features/chat/` or `features/new-chat/` instea
 
 ## Files
 
-- **home-dashboard.tsx**: Dashboard component — search bar, recent sessions across all workspaces, projects list, and static activity card themes
+- **home-dashboard.tsx**: Dashboard component — search bar, recent sessions across all workspaces, projects list, static activity card themes, and the Home projection/entry point for the automation registry.
