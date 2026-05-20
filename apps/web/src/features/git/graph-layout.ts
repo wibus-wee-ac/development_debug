@@ -26,6 +26,8 @@ interface GraphLine {
 export interface LayoutCommit extends GitGraphCommit {
   lane: number
   totalLanes: number
+  /** Number of lane columns needed by this row's visible segments. */
+  visibleLaneCount: number
   /**
    * Line segments to draw from the TOP of this row (y=0) to the commit dot (y=HALF).
    * Each segment's color = laneColor(fromLane).
@@ -152,6 +154,12 @@ export function computeGraphLayout(commits: GitGraphCommit[]): LayoutCommit[] {
       ...commit,
       lane: myLane,
       totalLanes: 1, // patched below
+      visibleLaneCount: Math.max(
+        1,
+        myLane + 1,
+        ...linesAbove.map(line => Math.max(line.fromLane + 1, line.toLane + 1)),
+        ...linesBelow.map(line => Math.max(line.fromLane + 1, line.toLane + 1)),
+      ),
       linesAbove,
       linesBelow,
     })

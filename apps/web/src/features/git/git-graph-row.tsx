@@ -11,7 +11,7 @@ import type { LayoutCommit } from './graph-layout'
 import { LANE_COLORS } from './graph-layout'
 
 // Must match VList itemSize in git-panel
-export const ROW_HEIGHT = 23
+export const ROW_HEIGHT = 27
 const HALF = ROW_HEIGHT / 2
 const DOT_RADIUS = 4.5
 const LANE_WIDTH = 16
@@ -112,8 +112,8 @@ interface GitGraphRowProps {
 export const GitGraphRow = memo(GitGraphRowInner)
 
 function GitGraphRowInner({ commit }: GitGraphRowProps) {
-  const laneCount = Math.max(commit.totalLanes, commit.lane + 1)
-  const svgWidth = (laneCount + 1) * LANE_WIDTH
+  const laneCount = Math.max(commit.visibleLaneCount, commit.lane + 1)
+  const svgWidth = laneCount * LANE_WIDTH
   const cx = commit.lane * LANE_WIDTH + LANE_WIDTH / 2
 
   const svgPaths = useMemo(() => {
@@ -196,13 +196,13 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
 
       {/* Single-line commit info: [badges] message */}
       <Tooltip>
-        <TooltipTrigger className="flex min-w-0 flex-1 items-center gap-1.5 px-1 text-left">
+        <TooltipTrigger className="flex min-w-0 flex-1 items-center gap-1.5 pl-0.5 pr-1 text-left">
           {/* Ref badges — inline */}
           {refBadges.map(ref => (
             <span
               key={ref}
               className={cn(
-                'shrink-0 rounded px-1 py-px font-mono text-[9px] leading-tight whitespace-nowrap',
+                'shrink-0 rounded px-1 py-px font-mono text-[10px] leading-tight whitespace-nowrap',
                 isTag && 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
               )}
               style={!isTag ? { background: `${dotColor}26`, color: dotColor } : undefined}
@@ -211,7 +211,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
             </span>
           ))}
           {/* Commit message */}
-          <span className="truncate text-[11px] text-foreground/85">
+          <span className="truncate text-xs text-foreground/85">
             {commit.subject}
           </span>
         </TooltipTrigger>
@@ -242,13 +242,13 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
 
       {/* Right-aligned: sha · time */}
       <div className="flex shrink-0 items-center gap-1.5 pr-2">
-        <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           {commit.shortSha}
         </span>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
+        <span className="text-[11px] text-muted-foreground tabular-nums">
           ·
         </span>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
+        <span className="text-[11px] text-muted-foreground tabular-nums">
           {relativeTime(commit.timestamp)}
         </span>
       </div>

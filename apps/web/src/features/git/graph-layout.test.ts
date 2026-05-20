@@ -33,6 +33,7 @@ describe('computeGraphLayout', () => {
 
     expect(layout.map(item => item.lane)).toEqual([0, 0, 0])
     expect(layout.map(item => item.totalLanes)).toEqual([1, 1, 1])
+    expect(layout.map(item => item.visibleLaneCount)).toEqual([1, 1, 1])
     expect(layout[0].linesAbove).toEqual([])
     expect(layout[0].linesBelow).toEqual([{ fromLane: 0, toLane: 0 }])
     expect(layout[1].linesAbove).toEqual([{ fromLane: 0, toLane: 0 }])
@@ -53,11 +54,12 @@ describe('computeGraphLayout', () => {
       sha: item.sha,
       lane: item.lane,
       totalLanes: item.totalLanes,
+      visibleLaneCount: item.visibleLaneCount,
     }))).toEqual([
-      { sha: 'merge', lane: 0, totalLanes: 2 },
-      { sha: 'main-parent', lane: 0, totalLanes: 2 },
-      { sha: 'feature-parent', lane: 1, totalLanes: 2 },
-      { sha: 'base', lane: 0, totalLanes: 2 },
+      { sha: 'merge', lane: 0, totalLanes: 2, visibleLaneCount: 2 },
+      { sha: 'main-parent', lane: 0, totalLanes: 2, visibleLaneCount: 2 },
+      { sha: 'feature-parent', lane: 1, totalLanes: 2, visibleLaneCount: 2 },
+      { sha: 'base', lane: 0, totalLanes: 2, visibleLaneCount: 1 },
     ])
 
     expect(layout[0].linesBelow).toEqual([
@@ -78,6 +80,31 @@ describe('computeGraphLayout', () => {
     ])
     expect(layout[2].linesBelow).toEqual([{ fromLane: 1, toLane: 0 }])
     expect(layout[3].linesAbove).toEqual([{ fromLane: 0, toLane: 0 }])
+  })
+
+  it('keeps mainline-only rows compact after a side branch ends', () => {
+    const layout = computeGraphLayout([
+      commit('tip', ['after-merge']),
+      commit('after-merge', ['merge']),
+      commit('merge', ['main-parent', 'feature-parent']),
+      commit('main-parent', ['base']),
+      commit('feature-parent', ['base']),
+      commit('base'),
+    ])
+
+    expect(layout.map(item => ({
+      sha: item.sha,
+      lane: item.lane,
+      totalLanes: item.totalLanes,
+      visibleLaneCount: item.visibleLaneCount,
+    }))).toEqual([
+      { sha: 'tip', lane: 0, totalLanes: 2, visibleLaneCount: 1 },
+      { sha: 'after-merge', lane: 0, totalLanes: 2, visibleLaneCount: 1 },
+      { sha: 'merge', lane: 0, totalLanes: 2, visibleLaneCount: 2 },
+      { sha: 'main-parent', lane: 0, totalLanes: 2, visibleLaneCount: 2 },
+      { sha: 'feature-parent', lane: 1, totalLanes: 2, visibleLaneCount: 2 },
+      { sha: 'base', lane: 0, totalLanes: 2, visibleLaneCount: 1 },
+    ])
   })
 
   it('returns an empty layout for an empty graph', () => {
