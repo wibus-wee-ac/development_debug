@@ -24,16 +24,24 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 
 import { deleteSessionsById, getSessionsByIdExportMarkdown, patchSessionsById } from '~/api-gen'
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '~/components/ui/context-menu'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
+import { ScrollArea } from '~/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
-import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
+import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useShortcut } from '~/hooks/use-shortcut'
@@ -125,6 +133,54 @@ function formatRelativeTime(unixTimestamp: number): string {
   return `${Math.floor(diff / 2592000)} 月`
 }
 
+type SessionMenuAction = {
+  key: string
+  label: string
+  icon: React.ReactNode
+  testId: string
+  invoke: () => void | Promise<void>
+  variant?: 'default' | 'destructive'
+}
+
+function SessionMenuActionItems({ actions, surface }: { actions: SessionMenuAction[], surface: 'button' | 'context' }) {
+  return actions.map((action) => {
+    const content = (
+      <>
+        {action.icon}
+        {action.label}
+      </>
+    )
+
+    if (surface === 'context') {
+      return (
+        <Fragment key={action.key}>
+          {action.variant === 'destructive' && <ContextMenuSeparator />}
+          <ContextMenuItem
+            variant={action.variant}
+            onSelect={() => { void action.invoke() }}
+            data-testid={`${action.testId}-context`}
+          >
+            {content}
+          </ContextMenuItem>
+        </Fragment>
+      )
+    }
+
+    return (
+      <Fragment key={action.key}>
+        {action.variant === 'destructive' && <MenuSeparator />}
+        <MenuItem
+          variant={action.variant}
+          onClick={() => { void action.invoke() }}
+          data-testid={action.testId}
+        >
+          {content}
+        </MenuItem>
+      </Fragment>
+    )
+  })
+}
+
 // ── Session item ──────────────────────────────────────────────────────────────
 
 function SessionItem({ session, workspaceId }: { session: WorkspaceSession, workspaceId: string }) {
@@ -203,13 +259,45 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
     // }
   }, [])
 
-  return (
+  const sessionActions: SessionMenuAction[] = [
+    {
+      key: 'rename',
+      label: '重命名',
+      icon: <PencilIcon />,
+      testId: `session-menu-rename-${session.id}`,
+      invoke: handleStartRename,
+    },
+    {
+      key: 'toggle-pin',
+      label: session.pinned ? '取消置顶' : '置顶',
+      icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
+      testId: `session-menu-toggle-pin-${session.id}`,
+      invoke: handleTogglePin,
+    },
+    {
+      key: 'copy-markdown',
+      label: '复制为 Markdown',
+      icon: <ClipboardCopyIcon />,
+      testId: `session-menu-copy-markdown-${session.id}`,
+      invoke: handleExport,
+    },
+    {
+      key: 'delete',
+      label: '删除会话',
+      icon: <Trash2Icon />,
+      testId: `session-menu-delete-${session.id}`,
+      invoke: handleDelete,
+      variant: 'destructive',
+    },
+  ]
+
+  const itemContent = (
     <div
       draggable={!isRenaming}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       className={cn(
-        'group flex w-full items-center rounded-lg text-left text-xs transition-colors hover:bg-accent/50',
+        'group flex min-w-0 w-full items-center rounded-lg text-left text-xs transition-colors hover:bg-accent/50',
         !isRenaming && 'cursor-grab active:cursor-grabbing',
         isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
@@ -234,7 +322,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
               to="chat"
               params={{ sessionId: session.id }}
               data-testid={`session-open-${session.id}`}
-              className="flex flex-1 items-center gap-2 px-2.5 py-1.5 min-w-0 text-sidebar-foreground/80"
+              className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
               {session.pinned
 ? (
@@ -264,28 +352,27 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
                 <MoreHorizontalIcon className="size-3" aria-hidden="true" />
               </MenuTrigger>
               <MenuPopup align="start" side="bottom" sideOffset={4}>
-                <MenuItem onClick={handleStartRename} data-testid={`session-menu-rename-${session.id}`}>
-                  <PencilIcon />
-                  重命名
-                </MenuItem>
-                <MenuItem onClick={handleTogglePin} data-testid={`session-menu-toggle-pin-${session.id}`}>
-                  {session.pinned ? <PinOffIcon /> : <PinIcon />}
-                  {session.pinned ? '取消置顶' : '置顶'}
-                </MenuItem>
-                <MenuItem onClick={handleExport} data-testid={`session-menu-copy-markdown-${session.id}`}>
-                  <ClipboardCopyIcon />
-                  复制为 Markdown
-                </MenuItem>
-                <MenuSeparator />
-                <MenuItem variant="destructive" onClick={handleDelete} data-testid={`session-menu-delete-${session.id}`}>
-                  <Trash2Icon />
-                  删除会话
-                </MenuItem>
+                <SessionMenuActionItems actions={sessionActions} surface="button" />
               </MenuPopup>
             </Menu>
           </>
         )}
     </div>
+  )
+
+  if (isRenaming) {
+    return itemContent
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        {itemContent}
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-48">
+        <SessionMenuActionItems actions={sessionActions} surface="context" />
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -306,8 +393,8 @@ function WorkspaceGroup({
   }, [])
 
   return (
-    <div className="flex flex-col" data-testid={`workspace-group-${workspace.id}`}>
-      <div className="group flex items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50 transition-colors">
+    <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`}>
+      <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50 transition-colors">
         <button
           type="button"
           onClick={toggleExpanded}
@@ -382,9 +469,9 @@ function WorkspaceGroup({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-            className="overflow-hidden"
+            className="min-w-0 overflow-hidden"
           >
-            <div className="ml-4.25 flex flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
+            <div className="ml-4.25 flex min-w-0 flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
               {sessions.length === 0 && (
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground">暂无会话</p>
               )}
@@ -419,7 +506,12 @@ interface NavItemProps {
 }
 
 function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dataTestId }: NavItemProps) {
-  const className = 'group flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
+  const className = 'group flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
+  const iconNode = (
+    <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
+      {icon}
+    </span>
+  )
 
   const content = (
     <>
@@ -427,49 +519,31 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
         ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
-                {icon}
-              </span>
+              {iconNode}
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
           </Tooltip>
         )
         : (
-          <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
-            {icon}
-          </span>
+          iconNode
         )}
-      <AnimatePresence initial={false}>
-        {!collapsed && (
-          <m.span
-            key="label"
-            className="flex-1 text-left whitespace-nowrap"
-            initial={{ opacity: 0, width: 0 }}
-            animate={{ opacity: 1, width: 'auto' }}
-            exit={{ opacity: 0, width: 0 }}
-            transition={{ type: 'spring', stiffness: 600, damping: 40 }}
-            style={{ overflow: 'hidden', display: 'block' }}
-          >
-            {label}
-          </m.span>
+      <span
+        className={cn(
+          'flex-1 overflow-hidden text-left whitespace-nowrap transition-opacity duration-[120ms]',
+          collapsed ? 'opacity-0' : 'opacity-100',
         )}
-      </AnimatePresence>
+      >
+        {label}
+      </span>
       {shortcut && (
-        <AnimatePresence initial={false}>
-          {!collapsed && (
-            <m.span
-              key="shortcut"
-              className="shrink-0 font-mono text-[10px] text-muted-foreground/40 opacity-0 group-hover:opacity-100 whitespace-nowrap"
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: undefined, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }}
-              transition={{ type: 'spring', stiffness: 600, damping: 40 }}
-              style={{ overflow: 'hidden', display: 'block' }}
-            >
-              {shortcut}
-            </m.span>
+        <span
+          className={cn(
+            'shrink-0 overflow-hidden font-mono text-[10px] text-muted-foreground/40 whitespace-nowrap transition-opacity duration-[120ms]',
+            collapsed ? 'opacity-0' : 'opacity-0 group-hover:opacity-100',
           )}
-        </AnimatePresence>
+        >
+          {shortcut}
+        </span>
       )}
     </>
   )
@@ -562,85 +636,92 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         </nav>
       </TooltipProvider>
 
-      {/* ── Kanban section ── */}
-      <KanbanSidebar collapsed={collapsed} />
-
-      {/* ── Plugins section ── */}
-      <PluginsSidebar collapsed={collapsed} />
-
-      {/* ── Projects section — always rendered, opacity fades on collapse ── */}
-      <div
-        className="flex min-h-0 flex-1 flex-col overflow-hidden"
-        style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
+      <ScrollArea
+        scrollFade
+        className="min-h-0 min-w-0 flex-1 overflow-x-hidden [--scroll-area-fade-background:var(--sidebar)]"
+        viewportClassName="min-w-0 max-w-full overflow-x-hidden"
+        contentClassName="min-w-0 max-w-full overflow-x-hidden"
       >
-        <div className="flex items-center px-2.5 py-1.5">
-          <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
-            项目
-          </span>
-          <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-              title="排列"
-            >
-              <SlidersHorizontalIcon className="size-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-              title="筛选"
-            >
-              <GitBranchIcon className="size-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-              onClick={addFromPicker}
-              disabled={adding}
-              title="添加项目"
-              data-testid="add-workspace-btn"
-            >
-              <PlusIcon className="size-3" />
-            </Button>
-          </div>
-        </div>
+        {/* ── Kanban section ── */}
+        <KanbanSidebar collapsed={collapsed} />
 
-        {/* Workspace list */}
-        <nav className="flex flex-col gap-0.5 overflow-y-auto px-2 pb-2" data-testid="workspace-list">
-          {workspaces.length === 0 && (
-            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
-                <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-xs font-medium text-muted-foreground">还没有项目</p>
-                <p className="text-[11px] text-muted-foreground">添加一个本地仓库开始使用</p>
-              </div>
+        {/* ── Plugins section ── */}
+        <PluginsSidebar collapsed={collapsed} />
+
+        {/* ── Projects section — always rendered, opacity fades on collapse ── */}
+        <div
+          className="flex min-w-0 flex-col"
+          style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
+        >
+          <div className="flex items-center px-2.5 py-1.5">
+            <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
+              项目
+            </span>
+            <div className="flex items-center gap-0.5">
               <Button
-                variant="outline"
-                size="xs"
+                variant="ghost"
+                size="icon-xs"
+                className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                title="排列"
+              >
+                <SlidersHorizontalIcon className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                title="筛选"
+              >
+                <GitBranchIcon className="size-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
                 onClick={addFromPicker}
                 disabled={adding}
-                className="mt-1 border-dashed"
-                data-testid="add-workspace-empty-btn"
+                title="添加项目"
+                data-testid="add-workspace-btn"
               >
-                <PlusIcon />
-                添加项目
+                <PlusIcon className="size-3" />
               </Button>
             </div>
-          )}
-          {workspaces.map(workspace => (
-            <WorkspaceGroup
-              key={workspace.id}
-              workspace={workspace}
-              onDelete={handleDelete}
-            />
-          ))}
-        </nav>
-      </div>
+          </div>
+
+          {/* Workspace list */}
+          <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
+            {workspaces.length === 0 && (
+              <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
+                  <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-muted-foreground">还没有项目</p>
+                  <p className="text-[11px] text-muted-foreground">添加一个本地仓库开始使用</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={addFromPicker}
+                  disabled={adding}
+                  className="mt-1 border-dashed"
+                  data-testid="add-workspace-empty-btn"
+                >
+                  <PlusIcon />
+                  添加项目
+                </Button>
+              </div>
+            )}
+            {workspaces.map(workspace => (
+              <WorkspaceGroup
+                key={workspace.id}
+                workspace={workspace}
+                onDelete={handleDelete}
+              />
+            ))}
+          </nav>
+        </div>
+      </ScrollArea>
 
       <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>

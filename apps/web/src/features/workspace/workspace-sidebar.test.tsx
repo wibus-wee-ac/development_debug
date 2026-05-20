@@ -61,6 +61,23 @@ vi.mock('~/components/ui/menu', () => ({
   MenuSeparator: () => <hr />,
 }))
 
+vi.mock('~/components/ui/context-menu', () => ({
+  ContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ContextMenuTrigger: ({ children }: { children: React.ReactNode, asChild?: boolean }) => <>{children}</>,
+  ContextMenuContent: ({ children }: { children: React.ReactNode }) => <div data-testid="session-context-menu">{children}</div>,
+  ContextMenuItem: ({
+    children,
+    onSelect,
+    ...props
+  }: {
+    children: React.ReactNode
+    onSelect?: () => void
+  } & React.HTMLAttributes<HTMLButtonElement>) => (
+    <button type="button" onClick={onSelect} {...props}>{children}</button>
+  ),
+  ContextMenuSeparator: () => <hr />,
+}))
+
 vi.mock('~/features/search/global-search-dialog', () => ({
   GlobalSearchDialog: () => null,
 }))
@@ -302,5 +319,29 @@ describe('workspaceSidebar', () => {
     expect(sessionMenuTrigger).not.toBeNull()
     expect(sessionMenuTrigger?.className).toContain('size-6')
     expect(sessionMenuTrigger?.className).toContain('focus-visible:opacity-100')
+  })
+
+  it('keeps long session titles constrained to the sidebar width', () => {
+    const { view } = renderWorkspaceSidebar()
+
+    const sessionItem = screen.getByTestId('session-item-session-1')
+    const sessionLink = screen.getByTestId('session-open-session-1')
+    const sessionTitle = screen.getByTestId('session-title-session-1')
+    const workspaceList = view.container.querySelector<HTMLElement>('[data-testid="workspace-list"]')
+
+    expect(workspaceList?.className).toContain('min-w-0')
+    expect(sessionItem.className).toContain('min-w-0')
+    expect(sessionLink.className).toContain('min-w-0')
+    expect(sessionLink.className).toContain('overflow-hidden')
+    expect(sessionTitle.className).toContain('truncate')
+  })
+
+  it('reuses session menu actions in the row context menu', () => {
+    renderWorkspaceSidebar()
+
+    expect(screen.getByTestId('session-menu-rename-session-1-context')).toBeTruthy()
+    expect(screen.getByTestId('session-menu-toggle-pin-session-1-context')).toBeTruthy()
+    expect(screen.getByTestId('session-menu-copy-markdown-session-1-context')).toBeTruthy()
+    expect(screen.getByTestId('session-menu-delete-session-1-context')).toBeTruthy()
   })
 })
