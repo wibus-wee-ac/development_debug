@@ -81,6 +81,7 @@ export interface TokenUsage {
 export interface ChatRuntime {
   readonly runtimeKind: RuntimeKind
   readonly lastUsage?: TokenUsage | null
+  readonly lastModelId?: string | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
   getCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>

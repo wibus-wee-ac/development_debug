@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
-import type { DefaultRuntimeConfigOptions, MessageIngressCommand } from '@hijarvis/jar-core'
+import type { DefaultRuntimeConfigOptions, MessageIngressCommand, MessageIngressResult } from '@hijarvis/jar-core'
 import { defaultRuntimeConfig, executeIngressCommand } from '@hijarvis/jar-core'
 import type { UIMessageChunk } from 'ai'
 
@@ -26,6 +26,7 @@ import type {
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
+  TokenUsage,
 } from '../../runtime-provider-types'
 
 interface SystemAgentProviderDeps {
@@ -96,10 +97,22 @@ export class SystemAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
 
   private readonly activeTurns = new Map<string, AbortController>()
+  private _lastUsage: TokenUsage | null = null
+  private _lastModelId: string | null = null
+
+  get lastUsage(): TokenUsage | null {
+    return this._lastUsage
+  }
+
+  get lastModelId(): string | null {
+    return this._lastModelId
+  }
 
   constructor(private readonly deps: SystemAgentProviderDeps) {}
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    const jarvisPrefs = await Preferences.getJarvisPreferences()
+    const currentModelId = input.modelId ?? jarvisPrefs.model ?? null
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
@@ -107,13 +120,15 @@ export class SystemAgentProvider implements ChatRuntime {
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
-        models: { currentModelId: input.modelId ?? null },
+        models: { currentModelId },
       }),
     }
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    if (!input.modelId) {
+    const jarvisPrefs = await Preferences.getJarvisPreferences()
+    const currentModelId = input.modelId ?? jarvisPrefs.model
+    if (!currentModelId) {
       return input.runtimeSession
     }
     const snapshot = parseSnapshot(input.runtimeSession.providerStateSnapshot)
@@ -121,7 +136,7 @@ export class SystemAgentProvider implements ChatRuntime {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
         ...snapshot,
-        models: { currentModelId: input.modelId },
+        models: { currentModelId },
       }),
     }
   }
@@ -248,6 +263,8 @@ export class SystemAgentProvider implements ChatRuntime {
 
     const abortController = new AbortController()
     this.activeTurns.set(sessionId, abortController)
+    this._lastUsage = null
+    this._lastModelId = model
 
     const chunks: UIMessageChunk[] = []
     let done = false
@@ -297,7 +314,12 @@ export class SystemAgentProvider implements ChatRuntime {
     // Resolve skill roots — use jarvis workspace root (always has a valid path)
     const skillRoots = this.deps.resolveSkillPaths(jarvisWorkspaceRoot)
 
-    executeIngressCommand({ config: jarConfig, command, pluginOverrides: { skillRoots } }).catch((err) => {
+    const commandPromise = executeIngressCommand({ config: jarConfig, command, pluginOverrides: { skillRoots } }).then((result) => {
+      if (result.kind === 'message') {
+        this.captureResultUsage(result, model)
+      }
+      return result
+    }).catch((err) => {
       streamError = err instanceof Error ? err : new Error(String(err))
       if (!done) {
         done = true
@@ -326,6 +348,10 @@ export class SystemAgentProvider implements ChatRuntime {
       this.activeTurns.delete(sessionId)
     }
 
+    if (!abortController.signal.aborted) {
+      await commandPromise
+    }
+
     if (streamError) {
       throw streamError
     }
@@ -336,6 +362,19 @@ export class SystemAgentProvider implements ChatRuntime {
     if (controller) {
       controller.abort()
       this.activeTurns.delete(input.runtimeSession.chatSessionId)
+    }
+  }
+
+  private captureResultUsage(result: MessageIngressResult, fallbackModelId: string): void {
+    this._lastModelId = result.model ?? fallbackModelId
+    if (!result.usage) {
+      this._lastUsage = null
+      return
+    }
+    this._lastUsage = {
+      promptTokens: result.usage.inputTokens,
+      completionTokens: result.usage.outputTokens,
+      totalTokens: result.usage.totalTokens,
     }
   }
 }

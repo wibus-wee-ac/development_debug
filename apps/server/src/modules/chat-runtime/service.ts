@@ -724,6 +724,7 @@ async function executeRun(activeRun: ActiveRun, input: {
   let streamEmittedError = false
   let snapshotTerminal: { status: ChatMessageStatus, errorText: string | null } | null = null
   const usesSnapshotStream = typeof activeRun.runtime.streamTurnSnapshots === 'function'
+  let actualModelId = activeRun.modelId
 
   try {
     if (usesSnapshotStream) {
@@ -840,12 +841,13 @@ async function executeRun(activeRun: ActiveRun, input: {
     }
 
     const usage = activeRun.runtime?.lastUsage
+    actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
     if (usage) {
       insertUsage({
         sessionId: activeRun.sessionId,
         messageId: activeRun.messageId,
         agentProfileId: activeRun.agentProfileId,
-        modelId: activeRun.modelId,
+        modelId: actualModelId,
         usage,
       })
     }
@@ -854,7 +856,7 @@ async function executeRun(activeRun: ActiveRun, input: {
     const runtimeWithSteps = activeRun.runtime as { lastStepUsages?: Array<{ stepNumber: number, stepType: string, modelId?: string, usage: TokenUsage }> }
     const steps = runtimeWithSteps.lastStepUsages ?? []
     if (steps.length > 0) {
-      const fallbackModelId = activeRun.modelId ?? 'gpt-4o'
+      const fallbackModelId = actualModelId ?? 'gpt-4o'
       for (const step of steps) {
         const effectiveModelId = step.modelId ?? fallbackModelId
         db().insert(stepUsageTable).values({
@@ -884,7 +886,7 @@ async function executeRun(activeRun: ActiveRun, input: {
         agentProfileId: activeRun.agentProfileId,
         runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
-        requestedModelId: activeRun.modelId,
+        requestedModelId: actualModelId,
       })
     }
     catch {
