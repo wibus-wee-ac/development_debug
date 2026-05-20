@@ -153,4 +153,61 @@ describe('chatStreamingHandler', () => {
       },
     ])
   })
+
+  it('accumulates streaming tool input deltas before tool input is complete', () => {
+    const handler = new ChatStreamingHandler('session-1', 'assistant-local')
+
+    handler.handleEvent({
+      type: 'message_delta',
+      data: {
+        messageId: 'assistant-server',
+        deltas: [
+          {
+            seq: 1,
+            type: 'part_add',
+            partIndex: 0,
+            part: {
+              type: 'dynamic-tool',
+              toolName: 'Edit File',
+              toolCallId: 'tool-edit',
+              state: 'input-streaming',
+              input: undefined,
+            },
+          },
+          {
+            seq: 2,
+            type: 'tool_input_append',
+            partIndex: 0,
+            inputKey: 'input',
+            text: '{"file_path":"/repo/src/app.tsx","old_string":"old',
+          },
+          {
+            seq: 3,
+            type: 'tool_input_append',
+            partIndex: 0,
+            inputKey: 'input',
+            text: '","new_string":"new',
+          },
+        ],
+      },
+    })
+
+    expect(mockedStore.state.messagesMap.get('session-1')).toEqual([
+      {
+        id: 'assistant-server',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'dynamic-tool',
+            toolName: 'Edit File',
+            toolCallId: 'tool-edit',
+            state: 'input-streaming',
+            input: {
+              input: '{"file_path":"/repo/src/app.tsx","old_string":"old","new_string":"new',
+            },
+          },
+        ],
+      },
+    ])
+  })
 })

@@ -67,18 +67,41 @@ const LINE_BREAK_PATTERN = /\r?\n/
 
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
   const toolName = part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
+  const input = materializeStreamingToolInput(part.input)
   const normalizedName = normalizeToolName(toolName)
-  const kind = classifyToolKind(normalizedName, part.input, part.output)
+  const kind = classifyToolKind(normalizedName, input, part.output)
   const displayName = formatToolName(toolName)
-  const target = readToolTarget(kind, part.input, part.output)
+  const target = readToolTarget(kind, input, part.output)
   return {
     kind,
     toolName,
     displayName,
-    title: readToolTitle(kind, displayName, part.input, part.output),
+    title: readToolTitle(kind, displayName, input, part.output),
     target,
-    summary: readToolSummary(kind, part.input, part.output),
+    summary: readToolSummary(kind, input, part.output),
   }
+}
+
+export function materializeStreamingToolInput(input: unknown): unknown {
+  if (typeof input === 'string') {
+    return parseToolInputText(input) ?? input
+  }
+
+  if (!isRecord(input)) {
+    return input
+  }
+
+  const text = typeof input.input === 'string' ? input.input : null
+  if (!text) {
+    return input
+  }
+
+  const parsed = parseToolInputText(text)
+  if (!parsed) {
+    return input
+  }
+
+  return { ...input, ...parsed }
 }
 
 export function normalizeToolName(toolName: string): string {
@@ -493,6 +516,162 @@ function readDiffSummary(input: unknown, output: unknown): string | null {
     return 'Write content'
   }
   return null
+}
+
+function parseToolInputText(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const complete = parseCompleteToolInputText(trimmed)
+  if (complete) {
+    return complete
+  }
+
+  const fields: Record<string, unknown> = {}
+  for (const key of STREAMING_TOOL_INPUT_STRING_KEYS) {
+    const value = readJsonStringFieldPrefix(trimmed, key)
+    if (value !== null) {
+      fields[key] = value
+    }
+  }
+
+  for (const key of STREAMING_TOOL_INPUT_BOOLEAN_KEYS) {
+    const value = readJsonBooleanField(trimmed, key)
+    if (value !== null) {
+      fields[key] = value
+    }
+  }
+
+  return Object.keys(fields).length > 0 ? fields : null
+}
+
+function parseCompleteToolInputText(trimmed: string): Record<string, unknown> | null {
+  for (const candidate of readJsonObjectCandidates(trimmed)) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown
+      if (isRecord(parsed)) {
+        return parsed
+      }
+    }
+    catch {
+      // Partial tool inputs are expected while the model is still emitting JSON.
+    }
+  }
+  return null
+}
+
+function readJsonObjectCandidates(trimmed: string): string[] {
+  if (trimmed.startsWith('{')) {
+    return [trimmed]
+  }
+  if (trimmed.includes(':')) {
+    return [`{${trimmed}}`]
+  }
+  return []
+}
+
+const STREAMING_TOOL_INPUT_STRING_KEYS = [
+  'file_path',
+  'filePath',
+  'path',
+  'file',
+  'filename',
+  'old_string',
+  'oldString',
+  'new_string',
+  'newString',
+  'content',
+  'command',
+  'cmd',
+  'pattern',
+  'query',
+  'url',
+  'description',
+  'prompt',
+  'notebook_path',
+] as const
+
+const STREAMING_TOOL_INPUT_BOOLEAN_KEYS = ['replace_all', 'replaceAll'] as const
+
+function readJsonStringFieldPrefix(source: string, key: string): string | null {
+  const keyNeedle = `"${key}"`
+  const keyStart = source.indexOf(keyNeedle)
+  if (keyStart === -1) {
+    return null
+  }
+
+  const colonIndex = source.indexOf(':', keyStart + keyNeedle.length)
+  if (colonIndex === -1) {
+    return null
+  }
+
+  let valueStart = colonIndex + 1
+  while (valueStart < source.length && /\s/.test(source[valueStart]!)) {
+    valueStart += 1
+  }
+  if (source[valueStart] !== '"') {
+    return null
+  }
+
+  let index = valueStart + 1
+  let escaped = false
+  while (index < source.length) {
+    const char = source[index]!
+    if (escaped) {
+      escaped = false
+      index += 1
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      index += 1
+      continue
+    }
+    if (char === '"') {
+      return decodeJsonStringPrefix(source.slice(valueStart + 1, index))
+    }
+    index += 1
+  }
+
+  return decodeJsonStringPrefix(source.slice(valueStart + 1))
+}
+
+function readJsonBooleanField(source: string, key: string): boolean | null {
+  const keyNeedle = `"${key}"`
+  const keyStart = source.indexOf(keyNeedle)
+  if (keyStart === -1) {
+    return null
+  }
+
+  const colonIndex = source.indexOf(':', keyStart + keyNeedle.length)
+  if (colonIndex === -1) {
+    return null
+  }
+
+  const rest = source.slice(colonIndex + 1).trimStart()
+  if (rest.startsWith('true')) {
+    return true
+  }
+  if (rest.startsWith('false')) {
+    return false
+  }
+  return null
+}
+
+function decodeJsonStringPrefix(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string
+  }
+  catch {
+    return raw
+      .replace(/\\\\/g, '\\')
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r')
+      .replace(/\\t/g, '\t')
+  }
 }
 
 function readNestedNumber(value: unknown, parentKeys: string[], childKeys: string[]): number | null {

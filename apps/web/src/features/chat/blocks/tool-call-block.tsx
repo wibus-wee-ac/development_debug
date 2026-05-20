@@ -11,6 +11,7 @@ import {
   ClockIcon,
   Code2Icon,
   DiffIcon,
+  FilePenLineIcon,
   FileSearchIcon,
   FileTextIcon,
   GitBranchIcon,
@@ -38,6 +39,7 @@ import type { RenderableToolPart, ToolState, ToolUiDescriptor, ToolUiKind } from
 import {
   describeToolCall,
   isRecord,
+  materializeStreamingToolInput,
   readNumberValue,
   readStringArray,
   readStringValue,
@@ -257,6 +259,31 @@ function readEditDiffPreview(input: unknown, output: unknown): EditDiffPreview |
   }
 
   return null
+}
+
+function readStreamingInputText(input: unknown): string | null {
+  if (typeof input === 'string') {
+    return input
+  }
+  return readStringValue(input, ['input'])
+}
+
+function readEditTarget(input: unknown, output: unknown): string | null {
+  return readStringValue(input, ['file_path', 'filePath', 'path', 'file', 'filename'])
+    ?? readStringValue(output, ['filePath', 'file_path', 'path', 'filename'])
+}
+
+function readEditPayloadSize(input: unknown): number {
+  const streamingText = readStreamingInputText(input)
+  if (streamingText) {
+    return streamingText.length
+  }
+  const parts = [
+    readStringValue(input, ['old_string', 'oldString']),
+    readStringValue(input, ['new_string', 'newString']),
+    readStringValue(input, ['content']),
+  ].filter((value): value is string => typeof value === 'string')
+  return parts.reduce((total, value) => total + value.length, 0)
 }
 
 function readReplaceAll(input: unknown, output: unknown): boolean {
@@ -505,9 +532,9 @@ function ToolHero({ descriptor, state, input, output, errorText }: { descriptor:
     case 'file-read':
       return <FileReadSummary output={output} />
     case 'file-diff':
-      return <DiffSummary input={input} output={output} />
+      return <DiffSummary input={input} output={output} state={state} />
     case 'notebook-diff':
-      return <DiffSummary input={input} output={output} />
+      return <DiffSummary input={input} output={output} state={state} />
     case 'search':
       return <SearchSummary output={output} />
     case 'web':
@@ -571,7 +598,7 @@ function FileReadSummary({ output }: { output: unknown }) {
   )
 }
 
-function DiffSummary({ input, output }: { input: unknown, output: unknown }) {
+function DiffSummary({ input, output, state }: { input: unknown, output: unknown, state: ToolState }) {
   const editPreview = readEditDiffPreview(input, output)
   if (editPreview) {
     return (
@@ -579,8 +606,32 @@ function DiffSummary({ input, output }: { input: unknown, output: unknown }) {
         filePath={editPreview.filePath}
         oldContent={editPreview.oldContent}
         newContent={editPreview.newContent}
-        defaultOpen
+        defaultOpen={!isRunning(state)}
       />
+    )
+  }
+
+  const filePath = readEditTarget(input, output)
+  const payloadSize = readEditPayloadSize(input)
+  if (filePath || payloadSize > 0) {
+    return (
+      <div
+        className="grid gap-2 rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground"
+        data-testid="chat-edit-file-streaming-preview"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <FilePenLineIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/75" title={filePath ?? undefined}>
+            {filePath ?? 'Receiving file edit'}
+          </span>
+          {payloadSize > 0 && (
+            <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/60">
+              {formatCount(payloadSize, 'char')}
+            </span>
+          )}
+        </div>
+        {isRunning(state) && <Progress value={65} className="h-1" />}
+      </div>
     )
   }
 
@@ -825,18 +876,19 @@ function StatusIcon({ state }: { state: ToolState }) {
   return <ClockIcon className={cn('size-3.5 text-muted-foreground', isRunning(state) && 'animate-pulse')} aria-hidden />
 }
 
-function hasHeroContent(descriptor: ToolUiDescriptor, output: unknown, errorText?: string): boolean {
+function hasHeroContent(descriptor: ToolUiDescriptor, input: unknown, output: unknown, errorText?: string): boolean {
   if (errorText) {
     return true
-  }
-  if (output === undefined || output === null) {
-    return false
   }
   switch (descriptor.kind) {
     case 'terminal':
       return hasTerminalOutput(output, errorText)
     case 'file-read':
       return readNestedRecord(output, 'file') !== null
+    case 'file-diff':
+      return readEditDiffPreview(input, output) !== null
+        || readEditTarget(input, output) !== null
+        || readEditPayloadSize(input) > 0
     case 'web': {
       const results = isRecord(output) && Array.isArray(output.results) ? output.results : []
       return results.some(item => isRecord(item) && Array.isArray((item as Record<string, unknown>).content))
@@ -847,25 +899,26 @@ function hasHeroContent(descriptor: ToolUiDescriptor, output: unknown, errorText
       return !!(status || content.length > 0)
     }
     default:
-      return true
+      return output !== undefined && output !== null
   }
 }
 
 export function ToolCallBlock({ toolName, toolCallId, state, input, output, errorText, children }: ToolCallBlockProps) {
+  const displayInput = useMemo(() => materializeStreamingToolInput(input), [input])
   const descriptor = useMemo(() => {
     const part: RenderableToolPart = {
       type: 'dynamic-tool',
       toolName,
       toolCallId,
       state,
-      input,
+      input: displayInput,
       output,
       errorText,
     }
     return describeToolCall(part)
-  }, [errorText, input, output, state, toolCallId, toolName])
+  }, [displayInput, errorText, output, state, toolCallId, toolName])
 
-  const hasTerminalPanel = descriptor.kind === 'terminal' && hasTerminalDetails(input, output, errorText)
+  const hasTerminalPanel = descriptor.kind === 'terminal' && hasTerminalDetails(displayInput, output, errorText)
   const hasChildren = Array.isArray(children) ? children.some(c => c !== null && c !== undefined && c !== false) : !!children
   const expandable = hasTerminalPanel || hasChildren
   const [expanded, setExpanded] = useState(() => isError(state) && hasTerminalPanel)
@@ -991,13 +1044,13 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
 
         {hasTerminalPanel && expanded && (
           <div className="px-3 pb-3">
-            <TerminalExecutionDetails input={input} output={output} errorText={errorText} />
+            <TerminalExecutionDetails input={displayInput} output={output} errorText={errorText} />
           </div>
         )}
 
-        {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, output, errorText) && (
+        {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, displayInput, output, errorText) && (
           <div className="px-3 pb-3">
-            <ToolHero descriptor={descriptor} state={state} input={input} output={output} errorText={errorText} />
+            <ToolHero descriptor={descriptor} state={state} input={displayInput} output={output} errorText={errorText} />
           </div>
         )}
       </div>
