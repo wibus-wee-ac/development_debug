@@ -10,7 +10,13 @@ import {
 import { eq } from 'drizzle-orm'
 
 import { db } from '../../infra'
-import { enrichModelsFromRegistry } from '../providers/model-info-registry'
+import { deleteCachedModels } from '../providers/model-cache'
+import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
+import { enrichModelsFromRegistry, lookupModelRawExact } from '../providers/model-info-registry'
+import {
+  normalizeModelsDevModel,
+  serializeProfileConfigWithMapping,
+} from '../providers/model-registry-mappings'
 import type { ModelCapabilities, ProviderKind } from '../providers/types'
 import * as Session from '../session/service'
 
@@ -127,4 +133,39 @@ export async function updateCustomModels(
     }).where(eq(agentProfiles.id, profileId)).run()
 
   return entries
+}
+
+// ── available model registry mappings ──
+
+export async function updateModelRegistryMapping(
+  profileId: string,
+  input: { modelId: string, registryModelId?: string, model?: ModelsDevModel },
+): Promise<ModelRegistryMappingEntry[]> {
+  const profile = getProfile(profileId)
+  if (!profile) {
+    return []
+  }
+
+  const normalizedModel = input.model ? normalizeModelsDevModel(input.model) : null
+  const registryModelId = input.registryModelId?.trim() || normalizedModel?.id
+  if (!registryModelId) {
+    return []
+  }
+
+  const registryModel = normalizedModel ?? await lookupModelRawExact(registryModelId)
+  const mapping: ModelRegistryMappingEntry = {
+    modelId: input.modelId,
+    registryModelId,
+    ...(registryModel === null ? {} : { model: registryModel }),
+    updatedAt: Math.floor(Date.now() / 1000),
+  }
+  const next = serializeProfileConfigWithMapping(profile.configJson, mapping)
+
+  db().update(agentProfiles).set({
+      configJson: next.configJson,
+      updatedAt: Math.floor(Date.now() / 1000),
+    }).where(eq(agentProfiles.id, profileId)).run()
+  deleteCachedModels(profileId)
+
+  return next.mappings
 }

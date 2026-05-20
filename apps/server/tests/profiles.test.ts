@@ -282,6 +282,161 @@ describe('profiles capability', () => {
     }
   })
 
+  it('stores Available Model registry mappings separately from custom models', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-model-mapping'
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = getRequestUrl(input)
+      if (url === MODELS_DEV_URL) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
+      expect(url).toBe('https://example.com/v1/models')
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer sk-map-test' })
+      return new Response(JSON.stringify({ data: [{ id: 'vendor-gpt4o' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const secretRes = await app.handle(new Request('http://localhost/secrets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'openai-compatible',
+          label: 'Mapped Key',
+          secret: 'sk-map-test',
+        }),
+      }))
+      expect(secretRes.status).toBe(200)
+      const secret = await secretRes.json() as { id: string }
+
+      const profileRes = await app.handle(new Request('http://localhost/profiles/profile-map', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Mapped Profile',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: { baseUrl: 'https://example.com/v1' },
+          credentialRef: secret.id,
+        }),
+      }))
+      expect(profileRes.status).toBe(200)
+
+      const firstModelsRes = await app.handle(new Request('http://localhost/providers/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          profileId: 'profile-map',
+          providerKind: 'openai-compatible',
+          label: 'Mapped Profile',
+          config: { baseUrl: 'https://example.com/v1' },
+          secretRef: secret.id,
+        }),
+      }))
+      expect(firstModelsRes.status).toBe(200)
+      expect(await firstModelsRes.json()).toEqual([
+        expect.objectContaining({
+          id: 'vendor-gpt4o',
+          capabilities: expect.objectContaining({ registryMatch: 'unmatched' }),
+        }),
+      ])
+
+      const mappingRes = await app.handle(new Request('http://localhost/profiles/profile-map/model-registry-mappings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: 'vendor-gpt4o',
+          model: {
+            id: 'gpt-4o',
+            name: 'GPT-4o',
+            limit: { context: 128000, output: 16384 },
+            modalities: { input: ['text', 'image'], output: ['text'] },
+            reasoning: false,
+            tool_call: true,
+          },
+        }),
+      }))
+      expect(mappingRes.status).toBe(200)
+      expect(await mappingRes.json()).toEqual([
+        expect.objectContaining({
+          modelId: 'vendor-gpt4o',
+          registryModelId: 'gpt-4o',
+          model: expect.objectContaining({ id: 'gpt-4o', name: 'GPT-4o' }),
+        }),
+      ])
+
+      const profileAfterMappingRes = await app.handle(new Request('http://localhost/profiles/profile-map'))
+      expect(profileAfterMappingRes.status).toBe(200)
+      const profileAfterMapping = await profileAfterMappingRes.json() as { configJson: string, customModels: string }
+      const config = JSON.parse(profileAfterMapping.configJson) as { modelRegistryMappings?: unknown[] }
+      expect(profileAfterMapping.customModels).toBe('[]')
+      expect(config.modelRegistryMappings).toEqual([
+        expect.objectContaining({ modelId: 'vendor-gpt4o', registryModelId: 'gpt-4o' }),
+      ])
+
+      const mappedModelsRes = await app.handle(new Request('http://localhost/providers/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          profileId: 'profile-map',
+          providerKind: 'openai-compatible',
+          label: 'Mapped Profile',
+          config: { baseUrl: 'https://example.com/v1' },
+          secretRef: secret.id,
+        }),
+      }))
+      expect(mappedModelsRes.status).toBe(200)
+      expect(await mappedModelsRes.json()).toEqual([
+        expect.objectContaining({
+          id: 'vendor-gpt4o',
+          label: 'GPT-4o',
+          capabilities: expect.objectContaining({
+            registryMatch: 'manual',
+            registryModelId: 'gpt-4o',
+            registryModelLabel: 'GPT-4o',
+            contextWindow: 128000,
+            maxOutput: 16384,
+            toolCall: true,
+          }),
+        }),
+      ])
+
+      const providerFetchCount = fetchSpy.mock.calls.filter(
+        ([callInput]) => getRequestUrl(callInput) === 'https://example.com/v1/models',
+      ).length
+      expect(providerFetchCount).toBe(2)
+    }
+ finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+ else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+ else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
   it('lists Anthropic models with the official default base URL and x-api-key auth', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR

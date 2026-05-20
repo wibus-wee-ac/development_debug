@@ -87,6 +87,7 @@ type ProfileDetailUiAction = { type: 'reset' }
   | { type: 'models/loading' }
   | { type: 'models/loaded', models: ModelDescriptor[], cachedAt?: number | null }
   | { type: 'models/failed' }
+  | { type: 'models/update-one', model: ModelDescriptor }
   | { type: 'health/set', status: HealthStatus }
   | { type: 'save/set', state: SaveState }
   | { type: 'remove/set', open: boolean }
@@ -154,6 +155,11 @@ function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDeta
       return { ...state, availableModels: action.models, modelsLoading: false, modelsCachedAt: action.cachedAt ?? Date.now() }
     case 'models/failed':
       return { ...state, availableModels: [], modelsLoading: false }
+    case 'models/update-one':
+      return {
+        ...state,
+        availableModels: state.availableModels.map(model => model.id === action.model.id ? action.model : model),
+      }
     case 'health/set':
       return { ...state, health: action.status }
     case 'save/set':
@@ -198,10 +204,11 @@ function buildProviderRequestBody(profile: AgentProfile) {
   }
 }
 
-function buildProfileConfig(values: ProfileDetailFormValues): Record<string, unknown> {
+function buildProfileConfig(values: ProfileDetailFormValues, currentConfig: Record<string, unknown>): Record<string, unknown> {
   const cleanEnabled = values.enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
   const allDisabledNow = values.enabledModels[0] === ALL_DISABLED_SENTINEL
   return {
+    ...currentConfig,
     baseUrl: values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
@@ -245,6 +252,7 @@ export function ProfileDetailPanel({
   onSaved: () => void
 }) {
   const preset = presetForProfile(profile)
+  const queryClient = useQueryClient()
 
   const supportsModels = true
 
@@ -286,6 +294,12 @@ export function ProfileDetailPanel({
   const handleEnabledModelsChange = useCallback((next: string[]) => {
     form.setValue('enabledModels', next, { shouldDirty: true })
   }, [form])
+
+  const handleModelRegistryMapped = useCallback((next: ModelDescriptor) => {
+    dispatch({ type: 'models/update-one', model: next })
+    void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+    onSaved()
+  }, [queryClient, onSaved])
 
   const clearAutoSaveTimer = useCallback(() => {
     clearTimer(autoSaveTimerRef)
@@ -468,7 +482,7 @@ export function ProfileDetailPanel({
           name: currentValues.name,
           providerKind: profile.providerKind,
           enabled: profile.enabled,
-          config: supportsModels ? buildProfileConfig(currentValues) : parseConfig(profile.configJson),
+          config: supportsModels ? buildProfileConfig(currentValues, parseConfig(profile.configJson)) : parseConfig(profile.configJson),
           credentialRef,
         },
       })
@@ -578,9 +592,11 @@ export function ProfileDetailPanel({
           // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileModelsSection
             loading={modelsLoading}
+            profileId={profile.id}
             models={availableModels}
             enabledModels={enabledModels}
             onChange={handleEnabledModelsChange}
+            onModelRegistryMapped={handleModelRegistryMapped}
             onRefresh={handleRefreshModels}
             cachedAt={modelsCachedAt}
           />
@@ -754,16 +770,20 @@ function ProfileGeneralSettings({
 
 function ProfileModelsSection({
   loading,
+  profileId,
   models,
   enabledModels,
   onChange,
+  onModelRegistryMapped,
   onRefresh,
   cachedAt,
 }: {
   loading: boolean
+  profileId: string
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
+  onModelRegistryMapped: (next: ModelDescriptor) => void
   onRefresh?: () => void
   cachedAt?: number | null
 }) {
@@ -773,9 +793,11 @@ function ProfileModelsSection({
       <section className="mt-4 flex flex-col gap-4">
         <ModelsPanel
           loading={loading}
+          profileId={profileId}
           models={models}
           enabledModels={enabledModels}
           onChange={onChange}
+          onModelRegistryMapped={onModelRegistryMapped}
           onRefresh={onRefresh}
           cachedAt={cachedAt}
         />

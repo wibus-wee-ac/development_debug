@@ -15,5 +15,6 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 - `providers.store.ts` — writes runtime audit rows and capability snapshots.
 - `provider-catalog.ts` — registers provider metadata implementations by kind, including provider-specific auth and default base URL handling.
 - `provider-base.ts` — shared Zod-backed config parsing and API-key helpers.
-- `model-info-registry.ts` — best-effort `models.dev` enrichment.
+- `model-info-registry.ts` — best-effort `models.dev` enrichment plus exact/fuzzy/manual/unmatched status projection.
+- `model-registry-mappings.ts` — normalizes provider profile `configJson.modelRegistryMappings`, keeping Available Model overrides separate from custom models.
 - `types.ts` — shared provider taxonomy and metadata response types.

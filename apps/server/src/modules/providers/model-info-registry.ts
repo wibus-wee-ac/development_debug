@@ -23,6 +23,19 @@ export interface ModelsDevModel {
   release_date?: string
 }
 
+export interface ModelRegistryMappingEntry {
+  modelId: string
+  registryModelId?: string
+  model?: ModelsDevModel
+  updatedAt?: number
+}
+
+export interface ModelRegistrySearchResult {
+  id: string
+  label: string
+  capabilities: ModelCapabilities
+}
+
 interface ModelsDevProvider {
   models: Record<string, ModelsDevModel>
 }
@@ -122,6 +135,16 @@ function findModel(data: ModelsDevData, modelId: string): ModelsDevModel | null 
   return null
 }
 
+function findModelWithProvider(data: ModelsDevData, modelId: string): { id: string, model: ModelsDevModel } | null {
+  for (const provider of Object.values(data)) {
+    const model = provider.models?.[modelId]
+    if (model) {
+      return { id: modelId, model }
+    }
+  }
+  return null
+}
+
 function findModelFuzzy(data: ModelsDevData, modelId: string): { model: ModelsDevModel, matchType: 'exact' | 'fuzzy' } | null {
   // 1. Try exact match first
   const exact = findModel(data, modelId)
@@ -168,6 +191,54 @@ function findModelFuzzy(data: ModelsDevData, modelId: string): { model: ModelsDe
     for (const [id, model] of Object.entries(provider.models)) {
       if (id.toLowerCase().startsWith(lower) && id.length - lower.length <= 12) {
         return { model, matchType: 'fuzzy' }
+      }
+    }
+  }
+
+  return null
+}
+
+function findModelFuzzyWithId(data: ModelsDevData, modelId: string): { id: string, model: ModelsDevModel, matchType: 'exact' | 'fuzzy' } | null {
+  const exact = findModelWithProvider(data, modelId)
+  if (exact) {
+    return { ...exact, matchType: 'exact' }
+  }
+
+  const withoutDate = modelId.replace(DATE_SUFFIX_RE, '')
+  if (withoutDate !== modelId) {
+    const match = findModelWithProvider(data, withoutDate)
+    if (match) {
+      return { ...match, matchType: 'fuzzy' }
+    }
+  }
+
+  const withoutVersion = modelId.replace(VERSION_SUFFIX_RE, '')
+  if (withoutVersion !== modelId && withoutVersion !== withoutDate) {
+    const match = findModelWithProvider(data, withoutVersion)
+    if (match) {
+      return { ...match, matchType: 'fuzzy' }
+    }
+  }
+
+  const lower = modelId.toLowerCase()
+  for (const provider of Object.values(data)) {
+    if (!provider.models) {
+      continue
+    }
+    for (const [id, model] of Object.entries(provider.models)) {
+      if (lower.startsWith(id.toLowerCase()) && lower.length - id.length <= 12) {
+        return { id, model, matchType: 'fuzzy' }
+      }
+    }
+  }
+
+  for (const provider of Object.values(data)) {
+    if (!provider.models) {
+      continue
+    }
+    for (const [id, model] of Object.entries(provider.models)) {
+      if (id.toLowerCase().startsWith(lower) && id.length - lower.length <= 12) {
+        return { id, model, matchType: 'fuzzy' }
       }
     }
   }
@@ -233,25 +304,61 @@ function extractCapabilities(model: ModelsDevModel): ModelCapabilities {
 
 export async function enrichModelsFromRegistry(models: ModelDescriptor[]): Promise<ModelDescriptor[]> {
   const data = await fetchModelsDevData()
-  if (!data) {
-    return models
-  }
+  return enrichModelsWithRegistryData(models, data, [])
+}
+
+export function enrichModelsWithRegistryData(
+  models: ModelDescriptor[],
+  data: ModelsDevData | null,
+  mappings: ModelRegistryMappingEntry[],
+): ModelDescriptor[] {
+  const mappingsByModelId = new Map(mappings.map(mapping => [mapping.modelId, mapping]))
 
   return models.map((model) => {
-    const result = findModelFuzzy(data, model.id)
+    const mapping = mappingsByModelId.get(model.id)
+    const mappedModel = mapping
+      ? mapping.model ?? (data && mapping.registryModelId ? findModelWithProvider(data, mapping.registryModelId)?.model : null)
+      : null
+    const mappedModelId = mapping?.model?.id ?? mapping?.registryModelId
+    const result = mappedModel && mappedModelId
+      ? { id: mappedModelId, model: mappedModel, matchType: 'manual' as const }
+      : data
+        ? findModelFuzzyWithId(data, model.id)
+        : null
+
     if (!result) {
-      return model
+      return {
+        ...model,
+        capabilities: {
+          ...model.capabilities,
+          registryMatch: 'unmatched',
+        },
+      }
     }
+
     const registryCaps = extractCapabilities(result.model)
     const registryName = result.model.name
-    // Use registry display name when available (both exact and fuzzy)
     const label = registryName ?? model.label
     return {
       ...model,
       label,
-      capabilities: { ...registryCaps, ...model.capabilities, registryMatch: result.matchType },
+      capabilities: {
+        ...registryCaps,
+        ...model.capabilities,
+        registryMatch: result.matchType,
+        registryModelId: result.id,
+        registryModelLabel: registryName ?? result.id,
+      },
     }
   })
+}
+
+export async function enrichModelsFromRegistryMappings(
+  models: ModelDescriptor[],
+  mappings: ModelRegistryMappingEntry[],
+): Promise<ModelDescriptor[]> {
+  const data = await fetchModelsDevData()
+  return enrichModelsWithRegistryData(models, data, mappings)
 }
 
 /**
@@ -271,7 +378,7 @@ export async function lookupContextWindow(modelId: string): Promise<number | nul
  * Look up a single model's metadata from models.dev registry.
  * Returns null if the model is not found.
  */
-export async function lookupModel(modelId: string): Promise<{ id: string, label: string, capabilities: ModelCapabilities } | null> {
+export async function lookupModel(modelId: string): Promise<ModelRegistrySearchResult | null> {
   const data = await fetchModelsDevData()
   if (!data) {
     return null
@@ -300,18 +407,26 @@ export async function lookupModelRaw(modelId: string): Promise<ModelsDevModel | 
   return result?.model ?? null
 }
 
+export async function lookupModelRawExact(modelId: string): Promise<ModelsDevModel | null> {
+  const data = await fetchModelsDevData()
+  if (!data) {
+    return null
+  }
+  return findModel(data, modelId)
+}
+
 /**
  * Search models by substring match on ID or name.
  * Returns up to `limit` results.
  */
-export async function searchModels(query: string, limit = 20): Promise<Array<{ id: string, label: string, capabilities: ModelCapabilities }>> {
+export async function searchModels(query: string, limit = 20): Promise<ModelRegistrySearchResult[]> {
   const data = await fetchModelsDevData()
   if (!data) {
     return []
   }
 
   const q = query.toLowerCase()
-  const results: Array<{ id: string, label: string, capabilities: ModelCapabilities }> = []
+  const results: ModelRegistrySearchResult[] = []
 
   for (const provider of Object.values(data)) {
     if (!provider.models) {

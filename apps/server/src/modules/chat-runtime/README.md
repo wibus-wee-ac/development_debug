@@ -26,7 +26,7 @@ Route metadata includes `x-cradle-cli` descriptors for non-streaming generated C
   - `providers/mock-claude-agent/provider.ts`: debug/test runtime that mimics Claude Agent chunk output under mock configuration.
   - `providers/codex/provider.ts`: Codex SDK runtime bound to the unified `/chat` API; projects plugin-registered MCP servers into Codex `mcp_servers` config.
   - `providers/codex/mapper.ts`: Codex SDK thread event → unified chat delta input mapper.
-  - `providers/system-agent/provider.ts`: System Agent (`jar-core`) runtime bridged into the same snapshot + delta contract, using jar-core `defaultRuntimeConfig` while keeping Cradle-owned session/workspace paths and normalizing thinking level against model reasoning capability.
+  - `providers/system-agent/provider.ts`: System Agent (`jar-core`) runtime bridged into the same snapshot + delta contract, using jar-core `defaultRuntimeConfig` while keeping Cradle-owned session/workspace paths, applying profile-owned models.dev mappings as per-model metadata, and normalizing thinking level against model reasoning capability.
 - `runtime-provider-types.ts`: chat runtime provider contracts.
 
 ## Provider MCP Ownership

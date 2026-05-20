@@ -11,7 +11,8 @@ import type { UIMessageChunk } from 'ai'
 
 import { getServerConfig } from '../../../../infra'
 import * as Preferences from '../../../preferences/service'
-import { lookupModelRaw } from '../../../providers/model-info-registry'
+import { lookupModelRaw, lookupModelRawExact } from '../../../providers/model-info-registry'
+import { parseProfileConfig, readModelRegistryMappings } from '../../../providers/model-registry-mappings'
 import {
   BaseProviderConfig,
   parseConfigWith,
@@ -76,6 +77,21 @@ function normalizeThinkingLevel(
   return requested
 }
 
+async function resolveMappedRegistryModel(configJson: string, modelId: string): Promise<Awaited<ReturnType<typeof lookupModelRaw>> | null> {
+  const mappings = readModelRegistryMappings(parseProfileConfig(configJson))
+  const mapping = mappings.find(item => item.modelId === modelId)
+  if (!mapping) {
+    return null
+  }
+  if (mapping.model) {
+    return mapping.model
+  }
+  if (!mapping.registryModelId) {
+    return null
+  }
+  return lookupModelRawExact(mapping.registryModelId)
+}
+
 export class SystemAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
 
@@ -128,10 +144,12 @@ export class SystemAgentProvider implements ChatRuntime {
       : (config.apiKey ?? baseConfig.apiKey ?? null)
 
     const registryModel = await lookupModelRaw(model)
+    const mappedRegistryModel = await resolveMappedRegistryModel(input.profile.configJson, model)
+    const runtimeRegistryModel = mappedRegistryModel ?? registryModel
     const thinkingLevel = normalizeThinkingLevel(
       model,
       (jarvisPrefs.thinkingLevel ?? config.thinkingLevel ?? 'medium') as JarvisThinkingLevel,
-      registryModel,
+      runtimeRegistryModel,
     )
     const systemPrompt = input.systemPrompt ?? 'You are Jarvis, a helpful system assistant.'
     const sessionId = input.runtimeSession.chatSessionId
@@ -167,38 +185,38 @@ export class SystemAgentProvider implements ChatRuntime {
     }
 
     // Build per-model metadata from models.dev registry for non-builtin providers
-    if (registryModel) {
+    if (runtimeRegistryModel) {
       const modelConfig: NonNullable<DefaultRuntimeConfigOptions['models']>[string] = {}
-      if (registryModel.limit?.context != null) {
-        modelConfig.contextWindow = registryModel.limit.context
+      if (runtimeRegistryModel.limit?.context != null) {
+        modelConfig.contextWindow = runtimeRegistryModel.limit.context
       }
-      if (registryModel.limit?.output != null) {
-        modelConfig.maxTokens = registryModel.limit.output
+      if (runtimeRegistryModel.limit?.output != null) {
+        modelConfig.maxTokens = runtimeRegistryModel.limit.output
       }
-      if (registryModel.reasoning != null) {
-        modelConfig.reasoning = registryModel.reasoning
+      if (runtimeRegistryModel.reasoning != null) {
+        modelConfig.reasoning = runtimeRegistryModel.reasoning
       }
-      if (registryModel.tool_call != null) {
-        modelConfig.toolCall = registryModel.tool_call
+      if (runtimeRegistryModel.tool_call != null) {
+        modelConfig.toolCall = runtimeRegistryModel.tool_call
       }
-      if (registryModel.modalities?.input) {
-        modelConfig.input = registryModel.modalities.input.filter(
+      if (runtimeRegistryModel.modalities?.input) {
+        modelConfig.input = runtimeRegistryModel.modalities.input.filter(
           (m): m is 'text' | 'image' => m === 'text' || m === 'image',
         )
       }
-      if (registryModel.cost) {
+      if (runtimeRegistryModel.cost) {
         const cost: NonNullable<typeof modelConfig.cost> = {}
-        if (registryModel.cost.input != null) {
-          cost.input = registryModel.cost.input
+        if (runtimeRegistryModel.cost.input != null) {
+          cost.input = runtimeRegistryModel.cost.input
         }
-        if (registryModel.cost.output != null) {
-          cost.output = registryModel.cost.output
+        if (runtimeRegistryModel.cost.output != null) {
+          cost.output = runtimeRegistryModel.cost.output
         }
-        if (registryModel.cost.cache_read != null) {
-          cost.cacheRead = registryModel.cost.cache_read
+        if (runtimeRegistryModel.cost.cache_read != null) {
+          cost.cacheRead = runtimeRegistryModel.cost.cache_read
         }
-        if (registryModel.cost.cache_write != null) {
-          cost.cacheWrite = registryModel.cost.cache_write
+        if (runtimeRegistryModel.cost.cache_write != null) {
+          cost.cacheWrite = runtimeRegistryModel.cost.cache_write
         }
         if (Object.keys(cost).length > 0) {
           modelConfig.cost = cost

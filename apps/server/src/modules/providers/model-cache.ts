@@ -41,6 +41,10 @@ export function setCachedModels(profileId: string, models: ModelDescriptor[]): v
   }).run()
 }
 
+export function deleteCachedModels(profileId: string): void {
+  db().delete(providerModelCache).where(eq(providerModelCache.profileId, profileId)).run()
+}
+
 export function isCacheStale(fetchedAt: number): boolean {
   const now = Math.floor(Date.now() / 1000)
   return (now - fetchedAt) > STALE_THRESHOLD_S

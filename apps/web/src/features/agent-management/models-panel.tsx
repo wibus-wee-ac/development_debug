@@ -1,14 +1,24 @@
-import { RefreshCwIcon, SearchIcon } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, SparklesIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { postProvidersModelSearch } from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
 import { modelIsVisible, readModelVisibility } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor } from '~/lib/types'
+import { getServerUrl } from '~/lib/electron'
+import type { ModelCapabilities, ModelDescriptor } from '~/lib/types'
 
 import { ALL_DISABLED_SENTINEL } from './agent-runtime-settings'
 
@@ -35,22 +45,182 @@ function occurrenceKey(id: string, counts: Map<string, number>): string {
   return `${id}:${count}`
 }
 
+interface SearchResult {
+  id: string
+  label: string
+  capabilities: ModelCapabilities
+}
+
+interface ManualRegistryDraft {
+  id: string
+  name: string
+  context: string
+  output: string
+  inputText: boolean
+  inputImage: boolean
+  outputText: boolean
+  reasoning: boolean
+  toolCall: boolean
+  temperature: boolean
+  structuredOutput: boolean
+  family: string
+  knowledge: string
+  releaseDate: string
+  costInput: string
+  costOutput: string
+  costCacheRead: string
+  costCacheWrite: string
+}
+
+function createManualDraft(model: ModelDescriptor | null, query: string): ManualRegistryDraft {
+  const id = query.trim() || model?.capabilities.registryModelId || model?.id || ''
+  return {
+    id,
+    name: model?.label && model.label !== model.id ? model.label : id,
+    context: model?.capabilities.contextWindow ? String(model.capabilities.contextWindow) : '',
+    output: model?.capabilities.maxOutput ? String(model.capabilities.maxOutput) : '',
+    inputText: true,
+    inputImage: model?.capabilities.inputModalities?.includes('image') ?? false,
+    outputText: true,
+    reasoning: model?.capabilities.reasoning ?? false,
+    toolCall: model?.capabilities.toolCall ?? true,
+    temperature: model?.capabilities.temperature ?? true,
+    structuredOutput: model?.capabilities.structuredOutput ?? false,
+    family: model?.capabilities.family ?? '',
+    knowledge: model?.capabilities.knowledgeCutoff ?? '',
+    releaseDate: model?.capabilities.releaseDate ?? '',
+    costInput: model?.capabilities.cost?.input != null ? String(model.capabilities.cost.input) : '',
+    costOutput: model?.capabilities.cost?.output != null ? String(model.capabilities.cost.output) : '',
+    costCacheRead: model?.capabilities.cost?.cacheRead != null ? String(model.capabilities.cost.cacheRead) : '',
+    costCacheWrite: model?.capabilities.cost?.cacheWrite != null ? String(model.capabilities.cost.cacheWrite) : '',
+  }
+}
+
+function readOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function buildManualModelsDevModel(draft: ManualRegistryDraft) {
+  const input = [
+    ...(draft.inputText ? ['text'] : []),
+    ...(draft.inputImage ? ['image'] : []),
+  ]
+  const output = draft.outputText ? ['text'] : []
+  const cost = {
+    input: readOptionalNumber(draft.costInput),
+    output: readOptionalNumber(draft.costOutput),
+    cache_read: readOptionalNumber(draft.costCacheRead),
+    cache_write: readOptionalNumber(draft.costCacheWrite),
+  }
+
+  return {
+    id: draft.id.trim(),
+    name: draft.name.trim() || draft.id.trim(),
+    limit: {
+      context: readOptionalNumber(draft.context),
+      output: readOptionalNumber(draft.output),
+    },
+    modalities: { input, output },
+    reasoning: draft.reasoning,
+    tool_call: draft.toolCall,
+    temperature: draft.temperature,
+    structured_output: draft.structuredOutput,
+    cost,
+    family: draft.family.trim() || undefined,
+    knowledge: draft.knowledge.trim() || undefined,
+    release_date: draft.releaseDate.trim() || undefined,
+  }
+}
+
+function capabilitiesFromManualDraft(draft: ManualRegistryDraft): ModelCapabilities {
+  return {
+    contextWindow: readOptionalNumber(draft.context),
+    maxOutput: readOptionalNumber(draft.output),
+    inputModalities: [
+      ...(draft.inputText ? ['text'] : []),
+      ...(draft.inputImage ? ['image'] : []),
+    ],
+    outputModalities: draft.outputText ? ['text'] : [],
+    reasoning: draft.reasoning,
+    toolCall: draft.toolCall,
+    temperature: draft.temperature,
+    structuredOutput: draft.structuredOutput,
+    cost: {
+      input: readOptionalNumber(draft.costInput),
+      output: readOptionalNumber(draft.costOutput),
+      cacheRead: readOptionalNumber(draft.costCacheRead),
+      cacheWrite: readOptionalNumber(draft.costCacheWrite),
+    },
+    family: draft.family.trim() || undefined,
+    knowledgeCutoff: draft.knowledge.trim() || undefined,
+    releaseDate: draft.releaseDate.trim() || undefined,
+  }
+}
+
+function applyRegistryResult(model: ModelDescriptor, result: SearchResult, match: 'manual'): ModelDescriptor {
+  return {
+    ...model,
+    label: result.label || model.label,
+    capabilities: {
+      ...result.capabilities,
+      ...model.capabilities,
+      registryMatch: match,
+      registryModelId: result.id,
+      registryModelLabel: result.label || result.id,
+    },
+  }
+}
+
+function registryStatusLabel(model: ModelDescriptor): string {
+  switch (model.capabilities.registryMatch) {
+    case 'exact': return 'exact'
+    case 'fuzzy': return 'fuzzy'
+    case 'manual': return 'manual'
+    default: return 'unmatched'
+  }
+}
+
+async function searchProviderModels(query: string): Promise<SearchResult[]> {
+  const { data } = await postProvidersModelSearch({
+    body: { query },
+    throwOnError: true,
+  })
+  return (data ?? []) as SearchResult[]
+}
+
 export function ModelsPanel({
   loading,
+  profileId,
   models,
   enabledModels,
   onChange,
+  onModelRegistryMapped,
   onRefresh,
   cachedAt,
 }: {
   loading: boolean
+  profileId: string
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
+  onModelRegistryMapped: (next: ModelDescriptor) => void
   onRefresh?: () => void
   cachedAt?: number | null
 }) {
   const [filter, setFilter] = useState('')
+  const [mappingModel, setMappingModel] = useState<ModelDescriptor | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [searchPending, setSearchPending] = useState(false)
+  const [savingMapping, setSavingMapping] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualDraft, setManualDraft] = useState<ManualRegistryDraft>(() => createManualDraft(null, ''))
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const visibility = useMemo(() => readModelVisibility(enabledModels), [enabledModels])
   const allDisabled = visibility.kind === 'none'
@@ -107,6 +277,87 @@ export function ModelsPanel({
       onChange(next.length === 0 ? [ALL_DISABLED_SENTINEL] : next)
     }
   }
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!mappingModel || !query) {
+      setSearchResults([])
+      setSearchPending(false)
+      return
+    }
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+    }
+    setSearchPending(true)
+    searchDebounceRef.current = setTimeout(() => {
+      void searchProviderModels(query).then(
+        (results) => {
+          setSearchResults(results)
+          setSearchPending(false)
+        },
+        () => {
+          setSearchResults([])
+          setSearchPending(false)
+        },
+      )
+    }, 220)
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+    }
+  }, [mappingModel, searchQuery])
+
+  const openMappingDialog = useCallback((model: ModelDescriptor) => {
+    setMappingModel(model)
+    setSearchQuery(model.capabilities.registryModelId ?? model.id)
+    setSearchResults([])
+    setManualOpen(false)
+    setManualDraft(createManualDraft(model, model.capabilities.registryModelId ?? model.id))
+  }, [])
+
+  const closeMappingDialog = useCallback(() => {
+    setMappingModel(null)
+    setSearchQuery('')
+    setSearchResults([])
+    setManualOpen(false)
+    setSavingMapping(false)
+  }, [])
+
+  const saveRegistryMapping = useCallback(async (model: ModelDescriptor, result: SearchResult, manualModel?: ReturnType<typeof buildManualModelsDevModel>) => {
+    setSavingMapping(true)
+    const body = manualModel
+      ? { modelId: model.id, registryModelId: result.id, model: manualModel }
+      : { modelId: model.id, registryModelId: result.id }
+    try {
+      const response = await fetch(`${getServerUrl()}/profiles/${encodeURIComponent(profileId)}/model-registry-mappings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) {
+        return
+      }
+      onModelRegistryMapped(applyRegistryResult(model, result, 'manual'))
+      closeMappingDialog()
+    }
+    finally {
+      setSavingMapping(false)
+    }
+  }, [closeMappingDialog, onModelRegistryMapped, profileId])
+
+  const saveManualMapping = useCallback(() => {
+    if (!mappingModel || !manualDraft.id.trim()) {
+      return
+    }
+    const manualModel = buildManualModelsDevModel(manualDraft)
+    void saveRegistryMapping(mappingModel, {
+      id: manualModel.id,
+      label: manualModel.name,
+      capabilities: capabilitiesFromManualDraft(manualDraft),
+    }, manualModel)
+  }, [manualDraft, mappingModel, saveRegistryMapping])
 
   const modelKeyCounts = new Map<string, number>()
 
@@ -202,11 +453,12 @@ export function ModelsPanel({
                 <ul className="divide-y divide-foreground/4">
                   {visible.map((m) => {
                     const checked = isChecked(m.id)
+                    const registryStatus = registryStatusLabel(m)
                     return (
                       <li key={occurrenceKey(m.id, modelKeyCounts)}>
-                        <label
+                        <div
                           className={cn(
-                            'flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors',
+                            'flex items-center gap-3 px-3 py-2 transition-colors',
                             'hover:bg-foreground/2.5',
                           )}
                         >
@@ -223,14 +475,44 @@ export function ModelsPanel({
                                 {m.id}
                               </div>
                             )}
+                            {m.capabilities.registryModelId && m.capabilities.registryModelId !== m.id && (
+                              <div className="truncate text-[10.5px] text-muted-foreground/70">
+                                models.dev:
+                                {' '}
+                                <span className="font-mono">{m.capabilities.registryModelId}</span>
+                              </div>
+                            )}
                           </div>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              'text-[10px] font-normal tabular-nums',
+                              registryStatus === 'exact' && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                              registryStatus === 'fuzzy' && 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                              registryStatus === 'manual' && 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+                              registryStatus === 'unmatched' && 'text-muted-foreground',
+                            )}
+                          >
+                            {registryStatus}
+                          </Badge>
                           {m.capabilities.contextWindow != null && m.capabilities.contextWindow > 0 && (
                             <Badge variant="secondary" className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground">
                               {Math.round(m.capabilities.contextWindow / 1000)}
                               k
                             </Badge>
                           )}
-                        </label>
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => openMappingDialog(m)}
+                            aria-label={`Map ${m.id} to models.dev`}
+                            title="Map to models.dev"
+                            className="text-muted-foreground/60 hover:text-foreground"
+                          >
+                            <SparklesIcon className="size-3" aria-hidden="true" />
+                          </Button>
+                        </div>
                       </li>
                     )
                   })}
@@ -246,6 +528,155 @@ export function ModelsPanel({
               </div>
             )}
       </div>
+
+      <Dialog open={mappingModel !== null && !manualOpen} onOpenChange={open => !open && closeMappingDialog()}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Map to models.dev</DialogTitle>
+            <DialogDescription>
+              Select the registry entry that describes this provider model.
+            </DialogDescription>
+          </DialogHeader>
+
+          {mappingModel && (
+            <div className="flex flex-col gap-3">
+              <div className="rounded-lg bg-muted/40 px-3 py-2">
+                <div className="truncate text-[12.5px] font-medium text-foreground">{mappingModel.label || mappingModel.id}</div>
+                <div className="truncate font-mono text-[10.5px] text-muted-foreground">{mappingModel.id}</div>
+              </div>
+
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+                <Input
+                  value={searchQuery}
+                  onChange={event => setSearchQuery(event.target.value)}
+                  placeholder="Search models.dev..."
+                  className="h-8 pl-8 font-mono text-[12px]"
+                />
+                {searchPending && (
+                  <Spinner className="absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                )}
+              </div>
+
+              <div className="max-h-72 overflow-y-auto rounded-lg ring-1 ring-foreground/6">
+                {searchResults.length > 0
+                  ? (
+                    <ul className="divide-y divide-foreground/4">
+                      {searchResults.map(result => (
+                        <li key={result.id}>
+                          <button
+                            type="button"
+                            onClick={() => void saveRegistryMapping(mappingModel, result)}
+                            disabled={savingMapping}
+                            className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-accent disabled:opacity-60"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[12px] font-medium text-foreground">{result.label}</div>
+                              <div className="truncate font-mono text-[10.5px] text-muted-foreground">{result.id}</div>
+                            </div>
+                            {result.capabilities.contextWindow != null && result.capabilities.contextWindow > 0 && (
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                {Math.round(result.capabilities.contextWindow / 1000)}
+                                k
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    )
+                  : (
+                    <div className="px-4 py-8 text-center text-[12px] text-muted-foreground">
+                      {searchPending ? 'Searching...' : 'No models.dev entries found'}
+                    </div>
+                    )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter variant="bare">
+            <Button size="sm" variant="outline" onClick={closeMappingDialog}>Cancel</Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              className="gap-1.5"
+              onClick={() => {
+                setManualDraft(createManualDraft(mappingModel, searchQuery))
+                setManualOpen(true)
+              }}
+            >
+              <SlidersHorizontalIcon className="size-3.5" />
+              Create entry
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={manualOpen} onOpenChange={open => !open && setManualOpen(false)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Manual models.dev entry</DialogTitle>
+            <DialogDescription>
+              Define the registry metadata that should describe this available model.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid max-h-[min(70vh,34rem)] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+            <Input value={manualDraft.id} onChange={event => setManualDraft({ ...manualDraft, id: event.target.value })} placeholder="id" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.name} onChange={event => setManualDraft({ ...manualDraft, name: event.target.value })} placeholder="name" className="h-8 text-[12px]" />
+            <Input value={manualDraft.context} onChange={event => setManualDraft({ ...manualDraft, context: event.target.value })} placeholder="context window" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.output} onChange={event => setManualDraft({ ...manualDraft, output: event.target.value })} placeholder="max output tokens" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.family} onChange={event => setManualDraft({ ...manualDraft, family: event.target.value })} placeholder="family" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.knowledge} onChange={event => setManualDraft({ ...manualDraft, knowledge: event.target.value })} placeholder="knowledge cutoff" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.releaseDate} onChange={event => setManualDraft({ ...manualDraft, releaseDate: event.target.value })} placeholder="release date" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.costInput} onChange={event => setManualDraft({ ...manualDraft, costInput: event.target.value })} placeholder="input cost" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.costOutput} onChange={event => setManualDraft({ ...manualDraft, costOutput: event.target.value })} placeholder="output cost" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.costCacheRead} onChange={event => setManualDraft({ ...manualDraft, costCacheRead: event.target.value })} placeholder="cache read cost" className="h-8 font-mono text-[12px]" />
+            <Input value={manualDraft.costCacheWrite} onChange={event => setManualDraft({ ...manualDraft, costCacheWrite: event.target.value })} placeholder="cache write cost" className="h-8 font-mono text-[12px]" />
+
+            <div className="grid gap-2 rounded-lg bg-muted/35 p-3 sm:col-span-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.inputText} onCheckedChange={checked => setManualDraft({ ...manualDraft, inputText: !!checked })} />
+                  text input
+                </label>
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.inputImage} onCheckedChange={checked => setManualDraft({ ...manualDraft, inputImage: !!checked })} />
+                  image input
+                </label>
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.outputText} onCheckedChange={checked => setManualDraft({ ...manualDraft, outputText: !!checked })} />
+                  text output
+                </label>
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.reasoning} onCheckedChange={checked => setManualDraft({ ...manualDraft, reasoning: !!checked })} />
+                  reasoning
+                </label>
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.toolCall} onCheckedChange={checked => setManualDraft({ ...manualDraft, toolCall: !!checked })} />
+                  tools
+                </label>
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.temperature} onCheckedChange={checked => setManualDraft({ ...manualDraft, temperature: !!checked })} />
+                  temperature
+                </label>
+                <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
+                  <Checkbox checked={manualDraft.structuredOutput} onCheckedChange={checked => setManualDraft({ ...manualDraft, structuredOutput: !!checked })} />
+                  structured output
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter variant="bare">
+            <Button size="sm" variant="outline" onClick={() => setManualOpen(false)}>Back</Button>
+            <Button size="sm" onClick={saveManualMapping} disabled={!manualDraft.id.trim() || savingMapping} className="gap-1.5">
+              {savingMapping && <Spinner className="size-3.5" />}
+              Save mapping
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Footer summary */}
       <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">

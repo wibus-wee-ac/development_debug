@@ -1,8 +1,12 @@
+import { agentProfiles } from '@cradle/db'
+import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
+import { db } from '../../infra'
 import { ProvidersModel } from './model'
 import { getCachedModels, isCacheStale, setCachedModels } from './model-cache'
-import { lookupModel, searchModels } from './model-info-registry'
+import { enrichModelsFromRegistryMappings, lookupModel, searchModels } from './model-info-registry'
+import { parseProfileConfig, readModelRegistryMappings } from './model-registry-mappings'
 import * as Providers from './service'
 
 export const providers = new Elysia({
@@ -25,13 +29,15 @@ export const providers = new Elysia({
     body: ProvidersModel.providerBody,
     response: { 200: t.Array(ProvidersModel.modelDescriptor) },
   })
-  .get('/:profileId/models-cache', ({ params }) => {
+  .get('/:profileId/models-cache', async ({ params }) => {
     const cached = getCachedModels(params.profileId)
     if (!cached) {
       return { models: [], cached: false, stale: false }
     }
+    const profile = db().select({ configJson: agentProfiles.configJson }).from(agentProfiles).where(eq(agentProfiles.id, params.profileId)).get()
+    const mappings = profile ? readModelRegistryMappings(parseProfileConfig(profile.configJson)) : []
     const stale = isCacheStale(cached.fetchedAt)
-    return { models: cached.models, cached: true, stale }
+    return { models: await enrichModelsFromRegistryMappings(cached.models, mappings), cached: true, stale }
   }, {
     detail: {
       summary: 'Get cached models for a provider profile',

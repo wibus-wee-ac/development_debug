@@ -34,7 +34,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **codex-session-capture.test.ts**: Codex CLI JSONL metadata capture rules for cli-tui resume bindings.
 - **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.
 - **workflow-rules.test.ts**: workflow-rules HTTP CRUD + filesystem ownership.
-- **profiles.test.ts**: profile CRUD, secret masking, and provider metadata endpoints.
+- **profiles.test.ts**: profile CRUD, secret masking, provider metadata endpoints, and Available Model registry mapping persistence.
 - **sdk-providers.test.ts**: unified Claude Agent / Codex metadata probing, model listing, `/chat` execution flows, and subagent delta routing contracts.
 - **acp.test.ts**: ACP registry browsing, install lifecycle, installed-agent inventory, and audit queries.
 - **acp-chat-runtime.test.ts**: unified ACP chat execution, approval routing, session-title sync, and usage persistence.

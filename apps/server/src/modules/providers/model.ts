@@ -27,6 +27,14 @@ const modelCapabilities = t.Object({
   family: t.Optional(t.String()),
   knowledgeCutoff: t.Optional(t.String()),
   releaseDate: t.Optional(t.String()),
+  registryMatch: t.Optional(t.Union([
+    t.Literal('exact'),
+    t.Literal('fuzzy'),
+    t.Literal('manual'),
+    t.Literal('unmatched'),
+  ])),
+  registryModelId: t.Optional(t.String()),
+  registryModelLabel: t.Optional(t.String()),
 })
 
 export const ProvidersModel = {

@@ -98,3 +98,17 @@ export const profiles = new Elysia({
     body: ProfilesModel.customModelsBody,
     response: { 200: t.Array(ProfilesModel.customModelEntry) },
   })
+  .patch('/:id/model-registry-mappings', async ({ params, body }) => {
+    const profile = Profiles.getProfile(params.id)
+    if (!profile) {
+      throw new AppError({ code: 'profile_not_found', status: 404, message: 'Profile not found' })
+    }
+    return Profiles.updateModelRegistryMapping(params.id, body)
+  }, {
+    detail: {
+      summary: 'Update an Available Model to models.dev mapping for a profile',
+    },
+    params: ProfilesModel.idParams,
+    body: ProfilesModel.modelRegistryMappingBody,
+    response: { 200: t.Array(ProfilesModel.modelRegistryMappingEntry) },
+  })

@@ -18,4 +18,5 @@ Used across features and components in the renderer.
 - **shortcut-provider.tsx**: Provider component for shortcut context
 - **shortcut-utils.ts**: Keyboard shortcut parsing and matching utilities
 - **spring.ts**: Spring animation configuration constants
+- **types.ts**: Shared renderer type surface, including provider model capabilities and models.dev registry match metadata.
 - **utils.ts**: Re-exports from cn.ts
