@@ -12,7 +12,8 @@ Kanban owns issue board/list/detail UI, issue metadata editing, and issue-agent 
 
 - **create-issue-dialog.tsx**: Floating create-issue panel with status and priority metadata controls.
 - **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring while list view remains read/select/create focused.
-- **issue-aside-panel.tsx**: Side panel shell for issue detail surfaces.
+- **issue-aside-panel.tsx**: Right-aside linked issue panel for chat sessions, including linked issue summary, unlink/open actions, and a searchable combobox picker with status icons and issue badges.
+- **issue-aside-panel.test.tsx**: Regression tests for linked issue rendering, Kanban navigation, unlink actions, and combobox-based issue linking.
 - **issue-context-menu.tsx**: Shared right-click issue actions for board cards and list rows.
 - **issue-detail/**: Issue detail subviews, including properties, activity, relations, sub-issues, and agent session controls; includes a focused README and accessibility regression coverage for prompt and property controls.
 - **kanban-board.tsx**: Board layout and drag/drop composition.

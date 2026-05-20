@@ -652,14 +652,11 @@ function useRemoveContextRef() {
 
 // ── Session ↔ Issue Link ──────────────────────────────────────────────────────
 
-type LinkedIssueView = {
-  issue?: KanbanIssue | null
-  status?: KanbanStatus | null
-  agentSession?: AgentSession | null
+type LinkedIssueRef = {
+  issueId: string | null
 }
 
-// eslint-disable-next-line unused-imports/no-unused-vars
-function useLinkedIssue(chatSessionId: string | null) {
+export function useLinkedIssue(chatSessionId: string | null) {
   return useQuery({
     queryKey: ['kanban', 'linkedIssue', chatSessionId] as const,
     queryFn: async () => {
@@ -667,14 +664,13 @@ function useLinkedIssue(chatSessionId: string | null) {
         return null
       }
       const { data } = await getSessionsByIdLinkedIssue({ path: { id: chatSessionId } })
-      return (data ?? null) as LinkedIssueView | null
+      return (data ?? null) as LinkedIssueRef | null
     },
     enabled: !!chatSessionId,
   })
 }
 
-// eslint-disable-next-line unused-imports/no-unused-vars
-function useLinkIssue() {
+export function useLinkIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { chatSessionId: string, issueId: string }) => {
@@ -686,8 +682,7 @@ function useLinkIssue() {
   })
 }
 
-// eslint-disable-next-line unused-imports/no-unused-vars
-function useUnlinkIssue() {
+export function useUnlinkIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (chatSessionId: string) => {
