@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::config::{ChronicleConfig, CaptureProvider};
+use crate::config::{CaptureProvider, ChronicleConfig};
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::memory_pipeline::recursive::RecursiveSummarizer;
 use crate::memory_pipeline::summarizer::LocalSummaryWriter;
@@ -124,7 +124,9 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
                     // Cap pending frames to prevent unbounded growth
                     const MAX_PENDING_FRAMES: usize = 500;
                     if all_persisted.len() > MAX_PENDING_FRAMES {
-                        eprintln!("cradle chronicle: pending frames exceeded cap, forcing early summarization");
+                        eprintln!(
+                            "cradle chronicle: pending frames exceeded cap, forcing early summarization"
+                        );
                         if let Err(e) = run_summary(config, &all_persisted) {
                             eprintln!("cradle chronicle forced summary error: {e}");
                         }
@@ -134,7 +136,8 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
 
                     eprintln!(
                         "cradle chronicle daemon processed batch: observed={} persisted={}",
-                        report.observed_frames, all_persisted.len()
+                        report.observed_frames,
+                        all_persisted.len()
                     );
                 } else {
                     // No new content — signal duplicate to sampler
@@ -187,25 +190,31 @@ fn capture_inbox(config: &ChronicleConfig) -> ChronicleResult<crate::RecorderRep
 }
 
 #[cfg(target_os = "macos")]
-fn capture_macos(config: &ChronicleConfig, frame_index: u64) -> ChronicleResult<crate::RecorderReport> {
+fn capture_macos(
+    config: &ChronicleConfig,
+    frame_index: u64,
+) -> ChronicleResult<crate::RecorderReport> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
-    let source = MacosCaptureSource::capture(config.display_id, frame_index)?;
+    let source = match config.display_id {
+        Some(display_id) => MacosCaptureSource::capture(display_id, frame_index)?,
+        None => MacosCaptureSource::capture_all(frame_index)?,
+    };
     let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
     manager.run_until_exhausted()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn capture_macos(_config: &ChronicleConfig, _frame_index: u64) -> ChronicleResult<crate::RecorderReport> {
+fn capture_macos(
+    _config: &ChronicleConfig,
+    _frame_index: u64,
+) -> ChronicleResult<crate::RecorderReport> {
     Err(ChronicleError::InvalidArgument(
         "macOS capture provider is only available on macOS".to_string(),
     ))
 }
 
-fn run_summary(
-    config: &ChronicleConfig,
-    persisted: &[PersistedFrame],
-) -> ChronicleResult<()> {
+fn run_summary(config: &ChronicleConfig, persisted: &[PersistedFrame]) -> ChronicleResult<()> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let memories_dir = store.memories_dir();
@@ -243,10 +252,8 @@ fn run_summary(
 
     // Fallback: local summary (no LLM)
     let summarizer = RecursiveSummarizer::new(LocalSummaryWriter, memories_dir);
-    let summary = summarizer.write_ten_minute_summary(
-        "Cradle Chronicle daemon capture",
-        persisted.to_vec(),
-    )?;
+    let summary = summarizer
+        .write_ten_minute_summary("Cradle Chronicle daemon capture", persisted.to_vec())?;
     eprintln!(
         "cradle chronicle local memory written: {}",
         summary.output_path.display()
@@ -260,16 +267,11 @@ fn run_summary(
 fn system_idle_seconds() -> u64 {
     // CGEventSourceSecondsSinceLastEventType with kCGEventSourceStateCombinedSessionState
     unsafe extern "C" {
-        fn CGEventSourceSecondsSinceLastEventType(
-            source_state: u32,
-            event_type: u32,
-        ) -> f64;
+        fn CGEventSourceSecondsSinceLastEventType(source_state: u32, event_type: u32) -> f64;
     }
     // kCGEventSourceStateCombinedSessionState = 0
     // kCGAnyInputEventType = 0xFFFFFFFF (all event types)
-    let seconds = unsafe {
-        CGEventSourceSecondsSinceLastEventType(0, 0xFFFF_FFFF)
-    };
+    let seconds = unsafe { CGEventSourceSecondsSinceLastEventType(0, 0xFFFF_FFFF) };
     if seconds < 0.0 { 0 } else { seconds as u64 }
 }
 
@@ -286,15 +288,13 @@ fn install_signal_handlers() {
     {
         use std::sync::Once;
         static INIT: Once = Once::new();
-        INIT.call_once(|| {
-            unsafe {
-                let mut sa: libc::sigaction = std::mem::zeroed();
-                sa.sa_sigaction = signal_handler as *const () as usize;
-                sa.sa_flags = libc::SA_RESTART;
-                libc::sigemptyset(&mut sa.sa_mask);
-                libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
-                libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
-            }
+        INIT.call_once(|| unsafe {
+            let mut sa: libc::sigaction = std::mem::zeroed();
+            sa.sa_sigaction = signal_handler as *const () as usize;
+            sa.sa_flags = libc::SA_RESTART;
+            libc::sigemptyset(&mut sa.sa_mask);
+            libc::sigaction(libc::SIGTERM, &sa, std::ptr::null_mut());
+            libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
         });
     }
 }
@@ -334,7 +334,9 @@ impl InstanceLock {
                 ));
             }
             // Set CLOEXEC so child processes don't inherit the lock
-            unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC); }
+            unsafe {
+                libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC);
+            }
             Ok(Self { lock_path, _fd: fd })
         }
 
@@ -371,10 +373,8 @@ impl Drop for InstanceLock {
 
 fn write_pid_file(storage_root: &Path) -> ChronicleResult<()> {
     let pid_path = storage_root.join("chronicle-started.pid");
-    let mut file = fs::File::create(&pid_path)
-        .map_err(|e| ChronicleError::io_at(&pid_path, e))?;
-    write!(file, "{}", std::process::id())
-        .map_err(|e| ChronicleError::io_at(&pid_path, e))?;
+    let mut file = fs::File::create(&pid_path).map_err(|e| ChronicleError::io_at(&pid_path, e))?;
+    write!(file, "{}", std::process::id()).map_err(|e| ChronicleError::io_at(&pid_path, e))?;
     Ok(())
 }
 
@@ -391,10 +391,8 @@ mod tests {
 
     #[test]
     fn lock_acquires_and_releases() {
-        let root = std::env::temp_dir().join(format!(
-            "cradle-chronicle-lock-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("cradle-chronicle-lock-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 
@@ -426,10 +424,8 @@ mod tests {
 
     #[test]
     fn pid_file_written_and_cleaned() {
-        let root = std::env::temp_dir().join(format!(
-            "cradle-chronicle-pid-test-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("cradle-chronicle-pid-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
 

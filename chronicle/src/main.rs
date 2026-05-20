@@ -50,7 +50,7 @@ fn run_smoke(config: ChronicleConfig) -> Result<String, ChronicleError> {
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let memories_dir = store.memories_dir();
     let source = SyntheticCaptureSource::cradle_smoke_from(
-        config.display_id,
+        config.display_id.unwrap_or(1),
         config.capture_limit,
         segment_started_at,
     );

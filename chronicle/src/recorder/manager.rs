@@ -4,6 +4,8 @@
 //! Output: persisted frames and a recorder report.
 //! Position: main capture pipeline used by the CLI and future host integrations.
 
+use std::collections::HashMap;
+
 use crate::error::ChronicleResult;
 use crate::ocr::TextExtractor;
 use crate::recorder::artifacts::{ArtifactStore, PersistedFrame};
@@ -16,7 +18,7 @@ pub struct RecorderManager<S, O> {
     extractor: O,
     privacy_filter: PrivacyFilter,
     artifact_store: ArtifactStore,
-    previous_fingerprint: Option<FrameFingerprint>,
+    previous_fingerprints: HashMap<u32, FrameFingerprint>,
 }
 
 impl<S, O> RecorderManager<S, O>
@@ -30,7 +32,7 @@ where
             extractor,
             privacy_filter: PrivacyFilter,
             artifact_store,
-            previous_fingerprint: None,
+            previous_fingerprints: HashMap::new(),
         }
     }
 
@@ -48,14 +50,16 @@ where
             let ocr = self.extractor.extract_text(&frame)?;
             let fingerprint = FrameFingerprint::from_parts(&frame.bytes, &ocr.normalized_text);
             if self
-                .previous_fingerprint
-                .is_some_and(|previous| fingerprint.is_duplicate_of(previous))
+                .previous_fingerprints
+                .get(&frame.display_id)
+                .is_some_and(|previous| fingerprint.is_duplicate_of(*previous))
             {
                 report.duplicate_frames += 1;
                 continue;
             }
 
-            self.previous_fingerprint = Some(fingerprint);
+            self.previous_fingerprints
+                .insert(frame.display_id, fingerprint);
             let persisted = self.artifact_store.persist_frame(&frame, &ocr)?;
             report.persisted_frames.push(persisted);
         }
@@ -127,9 +131,73 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn deduplicates_three_displays_independently() {
+        let root = std::env::temp_dir().join(format!(
+            "cradle-chronicle-manager-display-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let frames = vec![
+            display_frame(10, 1, "same"),
+            display_frame(20, 1, "same"),
+            display_frame(30, 1, "same"),
+            display_frame(10, 2, "same"),
+            display_frame(20, 2, "same"),
+            display_frame(30, 2, "same"),
+        ];
+        let source = SyntheticCaptureSource::from_frames(frames);
+        let store = ArtifactStore::new(&root, Timestamp::from_seconds(1_779_125_791));
+        let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
+
+        let report = manager.run_until_exhausted().expect("run should succeed");
+
+        assert_eq!(report.observed_frames, 6);
+        assert_eq!(report.duplicate_frames, 3);
+        assert_eq!(report.persisted_frames.len(), 3);
+        assert!(
+            report
+                .persisted_frames
+                .iter()
+                .any(|frame| frame.display_id == 10)
+        );
+        assert!(
+            report
+                .persisted_frames
+                .iter()
+                .any(|frame| frame.display_id == 20)
+        );
+        assert!(
+            report
+                .persisted_frames
+                .iter()
+                .any(|frame| frame.display_id == 30)
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
     fn frame(index: u64, text: &str, window: BrowserWindowObservation) -> CapturedFrame {
+        frame_for_display(1, index, text, window)
+    }
+
+    fn display_frame(display_id: u32, index: u64, text: &str) -> CapturedFrame {
+        frame_for_display(
+            display_id,
+            index,
+            text,
+            BrowserWindowObservation::new(display_id, "Cradle", "app.cradle"),
+        )
+    }
+
+    fn frame_for_display(
+        display_id: u32,
+        index: u64,
+        text: &str,
+        window: BrowserWindowObservation,
+    ) -> CapturedFrame {
         CapturedFrame {
-            display_id: 1,
+            display_id,
             frame_index: index,
             captured_at: Timestamp::from_seconds(1_779_125_791 + index),
             bytes: text.as_bytes().to_vec(),

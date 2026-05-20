@@ -32,7 +32,7 @@ pub struct ChronicleConfig {
     pub storage_root: PathBuf,
     pub inbox_root: PathBuf,
     pub provider: CaptureProvider,
-    pub display_id: u32,
+    pub display_id: Option<u32>,
     pub capture_limit: usize,
     pub poll_interval_ms: u64,
     pub idle_timeout_seconds: u64,
@@ -75,7 +75,7 @@ impl ChronicleConfig {
                 }
             }
         };
-        let mut display_id = 1;
+        let mut display_id = None;
         let mut capture_limit = 3;
         let mut poll_interval_ms = 5_000;
         let mut idle_timeout_seconds = 300;
@@ -121,12 +121,12 @@ impl ChronicleConfig {
                 })?;
                 provider = CaptureProvider::parse(&value)?;
             } else if let Some(value) = arg.strip_prefix("--display-id=") {
-                display_id = parse_u32("--display-id", value)?;
+                display_id = Some(parse_u32("--display-id", value)?);
             } else if arg == "--display-id" {
                 let value = iterator.next().ok_or_else(|| {
                     ChronicleError::InvalidArgument("--display-id requires a value".to_string())
                 })?;
-                display_id = parse_u32("--display-id", &value)?;
+                display_id = Some(parse_u32("--display-id", &value)?);
             } else if let Some(value) = arg.strip_prefix("--capture-limit=") {
                 capture_limit = parse_usize("--capture-limit", value)?;
             } else if arg == "--capture-limit" {
@@ -152,14 +152,18 @@ impl ChronicleConfig {
                 min_interval_ms = parse_u64("--min-interval-ms", value)?;
             } else if arg == "--min-interval-ms" {
                 let value = iterator.next().ok_or_else(|| {
-                    ChronicleError::InvalidArgument("--min-interval-ms requires a value".to_string())
+                    ChronicleError::InvalidArgument(
+                        "--min-interval-ms requires a value".to_string(),
+                    )
                 })?;
                 min_interval_ms = parse_u64("--min-interval-ms", &value)?;
             } else if let Some(value) = arg.strip_prefix("--max-interval-ms=") {
                 max_interval_ms = parse_u64("--max-interval-ms", value)?;
             } else if arg == "--max-interval-ms" {
                 let value = iterator.next().ok_or_else(|| {
-                    ChronicleError::InvalidArgument("--max-interval-ms requires a value".to_string())
+                    ChronicleError::InvalidArgument(
+                        "--max-interval-ms requires a value".to_string(),
+                    )
                 })?;
                 max_interval_ms = parse_u64("--max-interval-ms", &value)?;
             } else if arg == "--help" || arg == "-h" {
@@ -221,7 +225,7 @@ fn parse_u64(name: &str, value: &str) -> ChronicleResult<u64> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{ChronicleConfig, CaptureProvider};
+    use super::{CaptureProvider, ChronicleConfig};
 
     #[test]
     fn parses_storage_root_forms() {
@@ -242,6 +246,7 @@ mod tests {
             config.inbox_root,
             PathBuf::from("/tmp/cradle-chronicle-test/inbox")
         );
+        assert_eq!(config.display_id, None);
         assert_eq!(config.capture_limit, 2);
     }
 
@@ -266,6 +271,14 @@ mod tests {
         assert_eq!(config.inbox_root, PathBuf::from("/tmp/cradle-inbox"));
         assert_eq!(config.provider, CaptureProvider::Inbox);
         assert_eq!(config.poll_interval_ms, 25);
+    }
+
+    #[test]
+    fn parses_display_id_as_explicit_override() {
+        let config = ChronicleConfig::from_args(["--daemon", "--display-id", "42"])
+            .expect("config should parse");
+
+        assert_eq!(config.display_id, Some(42));
     }
 
     #[test]

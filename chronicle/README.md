@@ -18,7 +18,9 @@ Cradle Chronicle 是用于被动上下文采集与本地记忆生成的 Rust cra
 
     cargo run --manifest-path chronicle/Cargo.toml -- --daemon --provider macos --run-once --storage-root /tmp/cradle-chronicle-macos
 
-smoke 运行会把 frame artifacts 写入 `/tmp/cradle-chronicle-smoke/{display_id}/{timestamp}/`，并把 memory files 写入 `/tmp/cradle-chronicle-smoke/memories/`。每个被接受的 frame 都会得到 `frame-00001.jpg`、`capture-00001.json` 和 `ocr-00001.json`；`capture.json`、`ocr.json` 和 `snapshot.json` 指向最新被接受的 frame，方便简单消费者读取。
+macOS daemon 默认枚举并采集所有 active displays，不需要额外设置显示器。`--display-id <id>` 仅作为调试或手动限制到单个 CoreGraphics display id 的覆盖项。
+
+smoke 运行会把 frame artifacts 写入 `/tmp/cradle-chronicle-smoke/{display_id}/{timestamp}/`，macOS 原生采集会为每个 active display 写入对应的 `{display_id}` 目录，并把 memory files 写入 `{storage_root}/memories/`。每个被接受的 frame 都会得到 `frame-00001.jpg`、`capture-00001.json` 和 `ocr-00001.json`；`capture.json`、`ocr.json` 和 `snapshot.json` 指向最新被接受的 frame，方便简单消费者读取。
 
 ## File Inventory
 

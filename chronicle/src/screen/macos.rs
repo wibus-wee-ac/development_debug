@@ -6,6 +6,7 @@
 
 #[cfg(target_os = "macos")]
 mod native {
+    use std::collections::VecDeque;
     use std::ffi::c_void;
     use std::ptr;
 
@@ -31,47 +32,74 @@ mod native {
     use crate::time::Timestamp;
 
     pub struct MacosCaptureSource {
-        frame: Option<CapturedFrame>,
+        frames: VecDeque<CapturedFrame>,
     }
 
     impl MacosCaptureSource {
+        pub fn capture_all(frame_index: u64) -> ChronicleResult<Self> {
+            let display_ids = active_display_ids()?;
+            Self::capture_displays(&display_ids, frame_index)
+        }
+
         pub fn capture(display_id: u32, frame_index: u64) -> ChronicleResult<Self> {
+            Self::capture_displays(&[display_id], frame_index)
+        }
+
+        fn capture_displays(display_ids: &[u32], frame_index: u64) -> ChronicleResult<Self> {
             let windows = read_window_inventory()?;
             if PrivacyFilter.should_exclude_windows(&windows) {
-                return Ok(Self { frame: None });
+                return Ok(Self {
+                    frames: VecDeque::new(),
+                });
+            }
+            if display_ids.is_empty() {
+                return Err(ChronicleError::Process(
+                    "macOS active display list is empty".to_string(),
+                ));
             }
 
             let captured_at = Timestamp::now()?;
-            let cg_image = capture_display(display_id)?;
-            let bytes = encode_cgimage_to_png(&cg_image)?;
-            if bytes.is_empty() {
-                return Err(ChronicleError::Process(
-                    "macOS display capture produced empty image data".to_string(),
-                ));
-            }
-            let observed_text = run_vision_ocr(&cg_image)?;
+            let mut frames = VecDeque::with_capacity(display_ids.len());
+            for display_id in display_ids {
+                let cg_image = capture_display(*display_id)?;
+                let bytes = encode_cgimage_to_png(&cg_image)?;
+                if bytes.is_empty() {
+                    return Err(ChronicleError::Process(format!(
+                        "macOS display capture produced empty image data for display {display_id}"
+                    )));
+                }
+                let observed_text = run_vision_ocr(&cg_image)?;
 
-            Ok(Self {
-                frame: Some(CapturedFrame {
-                    display_id,
+                frames.push_back(CapturedFrame {
+                    display_id: *display_id,
                     frame_index,
                     captured_at,
                     bytes,
                     frame_extension: "png".to_string(),
                     observed_text,
-                    windows,
-                }),
-            })
+                    windows: windows.clone(),
+                });
+            }
+
+            Ok(Self { frames })
         }
     }
 
     impl CaptureSource for MacosCaptureSource {
         fn next_frame(&mut self) -> ChronicleResult<Option<CapturedFrame>> {
-            Ok(self.frame.take())
+            Ok(self.frames.pop_front())
         }
     }
 
     // --- Screen Capture via CGDisplay ---
+
+    fn active_display_ids() -> ChronicleResult<Vec<u32>> {
+        CGDisplay::active_displays().map_err(|error| {
+            ChronicleError::Process(format!(
+                "failed to enumerate active macOS displays: {error:?}"
+            ))
+        })
+    }
 
     fn capture_display(display_id: u32) -> ChronicleResult<CGImage> {
         let display = if display_id == 0 {
@@ -281,8 +309,8 @@ mod native {
         autoreleasepool(|_| {
             unsafe {
                 // Create VNRecognizeTextRequest
-                let request_cls =
-                    objc2::runtime::AnyClass::get(c"VNRecognizeTextRequest").ok_or_else(|| {
+                let request_cls = objc2::runtime::AnyClass::get(c"VNRecognizeTextRequest")
+                    .ok_or_else(|| {
                         ChronicleError::Process(
                             "VNRecognizeTextRequest class not found (requires macOS 10.15+)"
                                 .to_string(),
@@ -305,18 +333,22 @@ mod native {
                 // Set recognition languages — prioritize English + Chinese + Japanese
                 let nsstring_cls = objc2::runtime::AnyClass::get(c"NSString").unwrap();
                 let array_cls = objc2::runtime::AnyClass::get(c"NSArray").unwrap();
-                let lang_en: *mut AnyObject = msg_send![nsstring_cls, stringWithUTF8String: c"en-US".as_ptr()];
-                let lang_zh: *mut AnyObject = msg_send![nsstring_cls, stringWithUTF8String: c"zh-Hans".as_ptr()];
-                let lang_ja: *mut AnyObject = msg_send![nsstring_cls, stringWithUTF8String: c"ja".as_ptr()];
+                let lang_en: *mut AnyObject =
+                    msg_send![nsstring_cls, stringWithUTF8String: c"en-US".as_ptr()];
+                let lang_zh: *mut AnyObject =
+                    msg_send![nsstring_cls, stringWithUTF8String: c"zh-Hans".as_ptr()];
+                let lang_ja: *mut AnyObject =
+                    msg_send![nsstring_cls, stringWithUTF8String: c"ja".as_ptr()];
                 let langs_raw: [*mut AnyObject; 3] = [lang_en, lang_zh, lang_ja];
-                let lang_array: *mut AnyObject = msg_send![array_cls, arrayWithObjects: langs_raw.as_ptr(), count: 3usize];
+                let lang_array: *mut AnyObject =
+                    msg_send![array_cls, arrayWithObjects: langs_raw.as_ptr(), count: 3usize];
                 let _: () = msg_send![request, setRecognitionLanguages: lang_array];
                 // Minimum text height filter (ignore very tiny text that's usually noise)
                 let _: () = msg_send![request, setMinimumTextHeight: 0.01f32];
 
                 // Create VNImageRequestHandler with CGImage
-                let handler_cls =
-                    objc2::runtime::AnyClass::get(c"VNImageRequestHandler").ok_or_else(|| {
+                let handler_cls = objc2::runtime::AnyClass::get(c"VNImageRequestHandler")
+                    .ok_or_else(|| {
                         // Release request before returning error
                         let _: () = msg_send![request, release];
                         ChronicleError::Process(
@@ -336,10 +368,8 @@ mod native {
                     objc2::runtime::Sel,
                     *const c_void,
                     *mut AnyObject,
-                ) -> *mut AnyObject =
-                    std::mem::transmute(objc2::ffi::objc_msgSend as *const ());
-                let handler: *mut AnyObject =
-                    init_fn(handler, sel, cg_image_ptr, empty_dict);
+                ) -> *mut AnyObject = std::mem::transmute(objc2::ffi::objc_msgSend as *const ());
+                let handler: *mut AnyObject = init_fn(handler, sel, cg_image_ptr, empty_dict);
                 if handler.is_null() {
                     let _: () = msg_send![request, release];
                     return Err(ChronicleError::Process(
@@ -449,6 +479,12 @@ mod stub {
     pub struct MacosCaptureSource;
 
     impl MacosCaptureSource {
+        pub fn capture_all(_frame_index: u64) -> ChronicleResult<Self> {
+            Err(ChronicleError::Process(
+                "macOS capture is only available on macOS".to_string(),
+            ))
+        }
+
         pub fn capture(_display_id: u32, _frame_index: u64) -> ChronicleResult<Self> {
             Err(ChronicleError::Process(
                 "macOS capture is only available on macOS".to_string(),
