@@ -5,12 +5,26 @@ directories:
   output: release
 files:
   - dist/**/*
-  - '!node_modules/**/*'
+  - node_modules/velopack/**/*
+  - node_modules/@neon-rs/load/**/*
 extraResources:
+  - from: ../server/dist
+    to: server
+    filter:
+      - '**/*'
+  - from: ../server/dist/node_modules
+    to: server/node_modules
+    filter:
+      - '**/*'
   - from: ../../packages/db/drizzle
     to: drizzle
     filter:
       - '**/*'
+  - from: ../../plugins/browser-use
+    to: plugins/browser-use
+    filter:
+      - package.json
+      - dist/**/*
 asar: true
 asarUnpack:
   - '**/*.node'

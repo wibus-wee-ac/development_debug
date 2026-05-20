@@ -6,15 +6,17 @@ Position: apps/desktop/src/main/README.md
 
 # Desktop Main Process
 
-这个目录拥有 Electron main process 的启动、窗口生命周期、server 子进程、native IPC service，以及 desktop plugin runtime。
+这个目录拥有 Electron main process 的启动、窗口生命周期、server 子进程、native IPC service、Velopack update runtime，以及 desktop plugin runtime。
 
 ## 文件清单
 
-- `index.ts`：main process 入口；负责激活 desktop plugins、启动 server、创建主窗口，并把 webview creation event 转发给 plugin loader。
+- `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
+- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager，并把 webview creation event 转发给 plugin loader。
 - `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑；在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置。
 - `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接。
-- `server-process.ts`：拥有 server 子进程启动、停止和环境变量注入。
+- `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
 - `native-services.ts`：拥有 main-process native IPC service 注册。
+- `update-manager.ts`：拥有 Velopack update feed URL 解析、后台检查、下载进度、应用更新，以及 renderer 状态事件。
 - `plugin-discovery.ts`：拥有 desktop plugin discovery 和 manifest validation。
 - `plugin-loader.ts`：拥有 desktop plugin activation、shared config projection、webview listener registry，以及 renderer browser tab bridge。
 - `browser-backend.ts`：legacy browser-use socket backend。当前 main process 不会启动这个 backend；active browser-use path 是 `plugins/browser-use/src/desktop.ts` 通过 desktop plugin loader 激活。

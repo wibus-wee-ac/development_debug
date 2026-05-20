@@ -44,6 +44,17 @@ const cradleElectron = {
     maximize: () => ipcRenderer.invoke('window.maximize'),
     close: () => ipcRenderer.invoke('window.close'),
   },
+
+  /** Desktop update status events pushed by the main process */
+  desktopUpdate: {
+    onStatusChanged: (handler: (status: unknown) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: unknown) => handler(status)
+      ipcRenderer.on('desktop-update:status-changed', listener)
+      return () => {
+        ipcRenderer.removeListener('desktop-update:status-changed', listener)
+      }
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('cradle', cradleElectron)

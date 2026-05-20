@@ -1,14 +1,14 @@
-// Input: child_process fork, get-port, tsx runner, development Node executable, Electron safe storage
+// Input: child_process fork, get-port, tsx runner, and development Node executable
 // Output: Starts the Cradle server as a child process with desktop-owned runtime environment
 // Position: apps/desktop/src/main/server-process.ts
 
 import type { ChildProcess } from 'node:child_process'
 import { fork } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { app, dialog, safeStorage } from 'electron'
+import { app, dialog } from 'electron'
 import getPort from 'get-port'
 
 import { getPluginEnvVars } from './plugin-loader'
@@ -19,6 +19,7 @@ const MAX_RESTARTS = 3
 const CREDENTIAL_SECRET_FILE = 'credential-secret'
 const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
+const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
 let currentServerUrl = ''
 
 /**
@@ -119,26 +120,34 @@ function resolveDesktopCredentialSecret(dataDir: string): string {
   }
 
   const secret = randomBytes(32).toString('base64url')
-  const serializedSecret = safeStorage.isEncryptionAvailable()
-    ? `${SAFE_STORAGE_PREFIX}${safeStorage.encryptString(secret).toString('base64')}`
-    : `${PLAIN_STORAGE_PREFIX}${secret}`
-  writeFileSync(secretPath, serializedSecret, { encoding: 'utf8', mode: 0o600 })
+  writeDesktopCredentialSecret(secretPath, secret)
   return secret
 }
 
 function readDesktopCredentialSecret(secretPath: string): string {
   const serializedSecret = readFileSync(secretPath, 'utf8').trim()
   if (serializedSecret.startsWith(SAFE_STORAGE_PREFIX)) {
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error('Desktop credential secret is encrypted, but Electron safeStorage is unavailable')
-    }
-    const payload = serializedSecret.slice(SAFE_STORAGE_PREFIX.length)
-    return safeStorage.decryptString(Buffer.from(payload, 'base64'))
+    const secret = randomBytes(32).toString('base64url')
+    archiveKeychainBackedSecret(secretPath)
+    writeDesktopCredentialSecret(secretPath, secret)
+    return secret
   }
   if (serializedSecret.startsWith(PLAIN_STORAGE_PREFIX)) {
     return serializedSecret.slice(PLAIN_STORAGE_PREFIX.length)
   }
   return serializedSecret
+}
+
+function writeDesktopCredentialSecret(secretPath: string, secret: string): void {
+  writeFileSync(secretPath, `${PLAIN_STORAGE_PREFIX}${secret}`, { encoding: 'utf8', mode: 0o600 })
+}
+
+function archiveKeychainBackedSecret(secretPath: string): void {
+  const backupPath = `${secretPath}${KEYCHAIN_BACKUP_SUFFIX}`
+  if (existsSync(backupPath)) {
+    return
+  }
+  renameSync(secretPath, backupPath)
 }
 
 function showServerCrashDialog(exitCode: number | null): void {

@@ -7,12 +7,16 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const webRoot = resolve(__dirname, '../web')
+const desktopUpdateUrl = process.env.CRADLE_DESKTOP_UPDATE_URL ?? ''
 
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({
       exclude: ['get-port', '@cradle/ipc', '@cradle/browser-use'],
     })],
+    define: {
+      __CRADLE_DESKTOP_UPDATE_URL__: JSON.stringify(desktopUpdateUrl),
+    },
     build: {
       outDir: resolve(__dirname, 'dist/main'),
       rollupOptions: {

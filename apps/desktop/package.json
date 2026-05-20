@@ -11,7 +11,8 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "pnpm --filter @cradle/server build && pnpm --filter @cradle/browser-use build && pnpm rebuild:server-native && electron-vite build",
+    "rebuild:server-native": "node scripts/rebuild-server-native.mjs",
     "postinstall": "electron-builder install-app-deps",
     "pack": "pnpm build && electron-builder --dir",
     "dist": "pnpm build && electron-builder",
@@ -24,7 +25,8 @@
     "@cradle/browser-use": "workspace:*",
     "@cradle/ipc": "workspace:*",
     "electron-window-state": "^5.0.3",
-    "get-port": "^7.1.0"
+    "get-port": "^7.1.0",
+    "velopack": "0.0.1589-ga2c5a97"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

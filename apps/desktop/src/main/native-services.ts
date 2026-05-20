@@ -1,10 +1,11 @@
-// Input: @cradle/ipc IpcService/IpcMethod, Electron dialog/shell APIs, WindowManager
+// Input: @cradle/ipc IpcService/IpcMethod, Electron dialog/shell APIs, WindowManager, DesktopUpdateManager
 // Output: Native IPC services for Electron-only features
 // Position: apps/desktop/src/main/native-services.ts
 
 import { createServices, IpcMethod, IpcService } from '@cradle/ipc'
 import { dialog, shell } from 'electron'
 
+import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
 
 // ── Native File System Service ────────────────────────────────────────────────
@@ -59,53 +60,69 @@ class NativeService extends IpcService {
 
 // ── Window Management Service ─────────────────────────────────────────────────
 
-let windowManagerRef: WindowManager | null = null
+interface NativeServicesContext {
+  getWindowManager: () => WindowManager | undefined
+  getUpdateManager: () => DesktopUpdateManager | null
+}
+
+let nativeServicesContext: NativeServicesContext | null = null
+
+function getWindowManager(): WindowManager | undefined {
+  return nativeServicesContext?.getWindowManager()
+}
+
+function getUpdateManager(): DesktopUpdateManager | null {
+  return nativeServicesContext?.getUpdateManager() ?? null
+}
 
 class WindowService extends IpcService {
   static readonly groupName = 'window'
 
   @IpcMethod()
   async tearOffSession(sessionId: string, screenX: number, screenY: number): Promise<void> {
-    if (!windowManagerRef) {
+    const windowManager = getWindowManager()
+    if (!windowManager) {
       throw new Error('WindowManager not initialized')
     }
-    await windowManagerRef.openSessionWindow(sessionId, screenX, screenY)
+    await windowManager.openSessionWindow(sessionId, screenX, screenY)
   }
 
   @IpcMethod()
   async focusSession(sessionId: string): Promise<boolean> {
-    if (!windowManagerRef) {
+    const windowManager = getWindowManager()
+    if (!windowManager) {
       return false
     }
-    return windowManagerRef.focusSessionWindow(sessionId)
+    return windowManager.focusSessionWindow(sessionId)
   }
 
   @IpcMethod()
   async closeSession(sessionId: string): Promise<void> {
-    windowManagerRef?.closeSessionWindow(sessionId)
+    getWindowManager()?.closeSessionWindow(sessionId)
   }
 
   @IpcMethod()
   async getOpenSessions(): Promise<string[]> {
-    return windowManagerRef?.getOpenSessionIds() ?? []
+    return getWindowManager()?.getOpenSessionIds() ?? []
   }
 
   @IpcMethod()
   async openDevtool(): Promise<void> {
-    if (!windowManagerRef) {
+    const windowManager = getWindowManager()
+    if (!windowManager) {
       throw new Error('WindowManager not initialized')
     }
-    await windowManagerRef.openDevtoolWindow()
+    await windowManager.openDevtoolWindow()
   }
 
   @IpcMethod()
   async minimize(): Promise<void> {
-    windowManagerRef?.getMainWindow()?.minimize()
+    getWindowManager()?.getMainWindow()?.minimize()
   }
 
   @IpcMethod()
   async maximize(): Promise<void> {
-    const win = windowManagerRef?.getMainWindow()
+    const win = getWindowManager()?.getMainWindow()
     if (!win) {
       return
     }
@@ -118,13 +135,51 @@ class WindowService extends IpcService {
 
   @IpcMethod()
   async close(): Promise<void> {
-    windowManagerRef?.getMainWindow()?.close()
+    getWindowManager()?.getMainWindow()?.close()
+  }
+}
+
+// ── Desktop Update Service ────────────────────────────────────────────────────
+
+class DesktopUpdateService extends IpcService {
+  static readonly groupName = 'desktopUpdate'
+
+  @IpcMethod()
+  async getStatus(): Promise<DesktopUpdateStatus> {
+    const updateManager = this.readUpdateManager()
+    return updateManager.status
+  }
+
+  @IpcMethod()
+  async checkForUpdates(): Promise<DesktopUpdateStatus> {
+    const updateManager = this.readUpdateManager()
+    return updateManager.checkForUpdates()
+  }
+
+  @IpcMethod()
+  async downloadUpdate(): Promise<DesktopUpdateStatus> {
+    const updateManager = this.readUpdateManager()
+    return updateManager.downloadUpdate()
+  }
+
+  @IpcMethod()
+  async applyUpdate(): Promise<void> {
+    const updateManager = this.readUpdateManager()
+    await updateManager.applyUpdate()
+  }
+
+  private readUpdateManager(): DesktopUpdateManager {
+    const updateManager = getUpdateManager()
+    if (!updateManager) {
+      throw new Error('Desktop update manager is not initialized')
+    }
+    return updateManager
   }
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 
-export function createNativeServices(windowManager: WindowManager) {
-  windowManagerRef = windowManager
-  return createServices([NativeService, WindowService] as const)
+export function createNativeServices(context: NativeServicesContext) {
+  nativeServicesContext = context
+  return createServices([NativeService, WindowService, DesktopUpdateService] as const)
 }
