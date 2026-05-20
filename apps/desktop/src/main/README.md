@@ -11,6 +11,7 @@ Position: apps/desktop/src/main/README.md
 ## 文件清单
 
 - `index.ts`：main process 入口；负责激活 desktop plugins、启动 server、创建主窗口，并把 webview creation event 转发给 plugin loader。
+- `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑；在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置。
 - `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接。
 - `server-process.ts`：拥有 server 子进程启动、停止和环境变量注入。
 - `native-services.ts`：拥有 main-process native IPC service 注册。

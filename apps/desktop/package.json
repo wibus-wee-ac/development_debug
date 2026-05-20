@@ -23,6 +23,7 @@
   "dependencies": {
     "@cradle/browser-use": "workspace:*",
     "@cradle/ipc": "workspace:*",
+    "electron-window-state": "^5.0.3",
     "get-port": "^7.1.0"
   },
   "devDependencies": {

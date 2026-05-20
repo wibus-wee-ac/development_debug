@@ -4,12 +4,14 @@
 
 import { join } from 'node:path'
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, screen } from 'electron'
+import windowStateKeeper from 'electron-window-state'
 
 import { createNativeServices } from './native-services'
 import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
 import { startServer, stopServer } from './server-process'
 import { WindowManager } from './window-manager'
+import { readStoredWindowBounds, resolveVisibleWindowBounds } from './window-state'
 
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock()
@@ -20,12 +22,44 @@ if (!gotLock) {
 let mainWindow: BrowserWindow | null = null
 let windowManager: WindowManager
 
+const MAIN_WINDOW_DEFAULT_WIDTH = 1280
+const MAIN_WINDOW_DEFAULT_HEIGHT = 820
+const MAIN_WINDOW_MIN_WIDTH = 800
+const MAIN_WINDOW_MIN_HEIGHT = 600
+const MAIN_WINDOW_STATE_FILE = 'main-window-state.json'
+
 async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
+  const mainWindowStatePath = join(app.getPath('userData'), MAIN_WINDOW_STATE_FILE)
+  const storedBounds = readStoredWindowBounds(mainWindowStatePath)
+  const mainWindowState = windowStateKeeper({
+    defaultWidth: MAIN_WINDOW_DEFAULT_WIDTH,
+    defaultHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
+    file: MAIN_WINDOW_STATE_FILE,
+  })
+  const restoredBounds = resolveVisibleWindowBounds(
+    storedBounds ?? {
+      x: mainWindowState.x,
+      y: mainWindowState.y,
+      width: mainWindowState.width,
+      height: mainWindowState.height,
+    },
+    screen.getAllDisplays().map(display => display.workArea),
+    {
+      defaultWidth: MAIN_WINDOW_DEFAULT_WIDTH,
+      defaultHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
+      minWidth: MAIN_WINDOW_MIN_WIDTH,
+      minHeight: MAIN_WINDOW_MIN_HEIGHT,
+    },
+    screen.getPrimaryDisplay().workArea,
+  )
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 800,
-    minHeight: 600,
+    x: restoredBounds.x,
+    y: restoredBounds.y,
+    width: restoredBounds.width,
+    height: restoredBounds.height,
+    minWidth: MAIN_WINDOW_MIN_WIDTH,
+    minHeight: MAIN_WINDOW_MIN_HEIGHT,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
@@ -38,6 +72,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
     },
     show: false,
   })
+  mainWindowState.manage(win)
 
   win.once('ready-to-show', () => {
     win.show()
