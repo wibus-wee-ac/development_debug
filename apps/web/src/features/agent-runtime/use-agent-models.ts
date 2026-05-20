@@ -4,7 +4,7 @@
 
 import { useQueries, useQuery } from '@tanstack/react-query'
 
-import { getProfilesById, postProvidersModels } from '~/api-gen/sdk.gen'
+import { getProfilesById, getProvidersByProfileIdModelsCache, postProvidersModels } from '~/api-gen/sdk.gen'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import { filterVisibleModels, readConfigModelVisibility } from './model-visibility'
@@ -23,17 +23,36 @@ function parseProfileConfig(configJson: string): Record<string, unknown> {
 
 async function fetchVisibleModelsForProfile(profile: AgentProfile): Promise<ModelDescriptor[]> {
   const config = parseProfileConfig(profile.configJson)
-  const { data } = await postProvidersModels({
-    body: {
-      providerKind: profile.providerKind,
-      label: profile.name,
-      config,
-      secretRef: profile.credentialRef ?? null,
-      profileId: profile.id,
-    },
-  })
-  const allModels = (data ?? []) as ModelDescriptor[]
-  return filterVisibleModels(allModels, readConfigModelVisibility(config))
+  const visibility = readConfigModelVisibility(config)
+  const requestBody = {
+    providerKind: profile.providerKind,
+    label: profile.name,
+    config,
+    secretRef: profile.credentialRef ?? null,
+    profileId: profile.id,
+  } as const
+
+  let allModels: ModelDescriptor[]
+  try {
+    const { data } = await postProvidersModels({
+      body: requestBody,
+      throwOnError: true,
+    })
+    allModels = (data ?? []) as ModelDescriptor[]
+  }
+  catch (error) {
+    const { data: cache } = await getProvidersByProfileIdModelsCache({
+      path: { profileId: profile.id },
+      throwOnError: true,
+    })
+    if (cache.cached && cache.models.length > 0) {
+      allModels = cache.models as ModelDescriptor[]
+    }
+    else {
+      throw error
+    }
+  }
+  return filterVisibleModels(allModels, visibility)
 }
 
 export function useAgentModels(profileId: string | null) {

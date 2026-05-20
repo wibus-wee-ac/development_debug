@@ -13,4 +13,4 @@ Model visibility semantics are owned here: missing or empty `enabledModels` mean
 - **model-visibility.test.ts**: Unit coverage for default-all, all-disabled, and explicit allow-list model visibility semantics
 - **use-agent-profiles.ts**: `useAgentProfiles` hook — owns unified Agent Runtime profile query state and update/delete mutations, invalidating model queries when profile config changes
 - **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities (TanStack Query mutations)
-- **use-agent-models.ts**: `useAgentModels` and `useAgentModelMap` hooks — fetch visible models for one profile or a profile-keyed composer model map, with shared query-key ownership
+- **use-agent-models.ts**: `useAgentModels` and `useAgentModelMap` hooks — fetch visible models for one profile or a profile-keyed composer model map, with shared query-key ownership and stale profile model cache fallback when fresh provider listing fails
