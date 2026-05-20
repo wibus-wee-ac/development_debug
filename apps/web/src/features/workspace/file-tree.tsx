@@ -3,13 +3,13 @@
 // Position: Content for the File Tree tab in the right aside panel
 
 import { prepareFileTreeInput } from '@pierre/trees'
-import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
+import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2Icon, PackageIcon } from 'lucide-react'
-import { normalize } from 'pathe'
+import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 
 import { getWorkspacesByIdFiles, getWorkspacesByIdGitStatus } from '~/api-gen/sdk.gen'
+import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 import type { GitFileStatus } from '~/lib/types'
 
 // ── Git status mapper ─────────────────────────────────────────────────────────
@@ -20,11 +20,21 @@ function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
   return statuses.map(s => ({ path: s.path, status: s.status }))
 }
 
-// ── Path quoting for drag ─────────────────────────────────────────────────────
+function getDraggedTreeItemPath(event: DragEvent): string | null {
+  const target = event.target instanceof HTMLElement
+    ? event.target.closest('[data-item-path]')
+    : null
+  if (target instanceof HTMLElement && target.dataset.itemPath) {
+    return target.dataset.itemPath
+  }
 
-function quotePath(p: string): string {
-  const normalized = normalize(p)
-  return normalized.includes(' ') ? `"${normalized}"` : normalized
+  for (const entry of event.composedPath()) {
+    if (entry instanceof HTMLElement && entry.dataset.itemPath) {
+      return entry.dataset.itemPath
+    }
+  }
+
+  return null
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -35,7 +45,7 @@ interface FileTreeProps {
   onPackRequested?: (paths: string[]) => void
 }
 
-export function FileTree({ workspaceId, onPackRequested }: FileTreeProps) {
+export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
   const { data: files = [], isLoading } = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
@@ -99,6 +109,7 @@ export function FileTree({ workspaceId, onPackRequested }: FileTreeProps) {
     <FileTreeInner
       preparedInput={preparedInput}
       gitStatus={treeGitStatus}
+      workspacePath={workspacePath ?? undefined}
       onPackRequested={onPackRequested}
     />
   )
@@ -116,8 +127,11 @@ interface FileTreeInnerProps {
 function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
   const { model } = useFileTree({
     preparedInput,
-    search: true,
+    initialSearchQuery: '',
     fileTreeSearchMode: 'hide-non-matches',
+    dragAndDrop: {
+      canDrop: () => false,
+    },
     icons: { set: 'complete', colored: true },
     density: 'compact',
     initialExpansion: 'closed',
@@ -133,29 +147,32 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequeste
   })
 
   const selectedPaths = useFileTreeSelection(model)
+  const search = useFileTreeSearch(model)
+  const hasSearchValue = search.value.length > 0
 
   // Update git status when it changes
   useEffect(() => {
     model.setGitStatus(gitStatus)
   }, [model, gitStatus])
 
-  // Drag handler: copy absolute path for shell insertion
+  // Drag handler: expose workspace file paths to chat and TUI drop targets.
   useEffect(() => {
     const container = model.getFileTreeContainer()
-    if (!container || !workspacePath) {
+    if (!container) {
       return
     }
 
     function handleDragStart(e: DragEvent) {
-      const target = (e.target as HTMLElement)?.closest('[data-item-path]') as HTMLElement | null
-      const itemPath = target?.dataset.itemPath
-      if (itemPath) {
-        const absPath = `${workspacePath}/${itemPath}`
-        e.dataTransfer?.setData('text/plain', quotePath(absPath))
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'copy'
-        }
+      const itemPath = getDraggedTreeItemPath(e)
+      if (!itemPath || !e.dataTransfer) {
+        return
       }
+
+      writeWorkspaceFileDragData(
+        e.dataTransfer,
+        serializeWorkspaceFileDragPayload({ relativePath: itemPath, workspacePath }),
+      )
+      e.dataTransfer.effectAllowed = 'copy'
     }
 
     container.addEventListener('dragstart', handleDragStart)
@@ -164,7 +181,35 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequeste
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden pt-2">
-      {/* Tree — library handles search UI internally */}
+      <div className="shrink-0 px-2 pb-2">
+        <div className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 focus-within:border-ring/50 focus-within:ring-2 focus-within:ring-ring/15">
+          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+          <input
+            value={search.value}
+            onChange={event => search.setValue(event.target.value)}
+            placeholder="Search files"
+            aria-label="Search files"
+            className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/45"
+          />
+          {hasSearchValue && (
+            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">
+              {search.matchingPaths.length}
+            </span>
+          )}
+          {hasSearchValue && (
+            <button
+              type="button"
+              onClick={() => search.setValue('')}
+              aria-label="Clear search"
+              className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <XIcon className="size-3" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tree */}
       <PierreFileTree
         model={model}
         className="flex-1"

@@ -18,6 +18,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
+import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
@@ -512,7 +513,7 @@ export function ChatView({
       suppressHydrationWarning
       onDrop={(e) => {
         e.preventDefault()
-        const path = e.dataTransfer.getData('text/plain')
+        const path = readWorkspaceFileDragText(e.dataTransfer)
         if (path) {
           setDroppedPath({ text: path, ts: Date.now() })
         }

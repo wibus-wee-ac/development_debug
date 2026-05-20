@@ -9,6 +9,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import type { ChatSlashCommand } from './chat-capabilities'
 import type { MentionItem } from './mention-panel'
@@ -506,7 +507,8 @@ export function Composer({
             onKeyDown={handleKeyDown}
             onDrop={(e) => {
               e.preventDefault()
-              const path = e.dataTransfer.getData('text/plain')
+              e.stopPropagation()
+              const path = readWorkspaceFileDragText(e.dataTransfer)
               if (path) {
                 dispatch({ type: 'drop/inserted', inputValue: state.inputValue ? `${state.inputValue} ${path}` : path })
               }

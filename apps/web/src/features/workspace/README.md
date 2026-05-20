@@ -9,6 +9,7 @@ Also owns the sidebar interaction contract between workspace groups and the laun
 ## Files
 
 - **index.ts**: Barrel re-exports for the workspace feature
+- **file-tree.tsx**: Right-aside workspace file tree using `@pierre/trees`, with persistent model-backed search, Git status annotations, context actions, Pack handoff, and workspace file drag payloads for chat/TUI drops.
 - **workspace-sidebar.test.tsx**: Regression tests locking workspace header navigation, folder-only collapse behavior, and accessible session menu triggers
 - **use-workspace-files.ts**: Hook for listing workspace files for composer mentions
 - **use-workspace.ts**: Hooks for listing, adding (via native directory picker), and deleting workspaces

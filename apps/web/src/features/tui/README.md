@@ -13,6 +13,6 @@ Uses HTTP only for PTY resource lifecycle (`start-or-attach`, `delete`) and a sh
 - **pty-protocol.ts**: Shared PTY WebSocket message types and JSON parser for `snapshot` / `output` / `exit` / `pong` / `error`.
 - **pty-protocol.test.ts**: Unit coverage for PTY WebSocket server event parsing, invalid payload rejection, and nullable exit fields.
 - **pty-channel.ts**: Shared PTY WebSocket channel adapter with reconnect, ping, and queued input / resize sends.
-- **tui-view.tsx**: TuiView component — mounts and manages an xterm.js terminal instance for a cli-tui session.
+- **tui-view.tsx**: TuiView component — mounts and manages an xterm.js terminal instance for a cli-tui session, including workspace file drop insertion through the shared drag payload protocol.
 - **shell-api.ts**: Shell control-plane helpers for explicit start and stop; live keystrokes and resize travel on the PTY socket.
 - **shell-view.tsx**: ShellView component — bottom-panel interactive shell terminal, panel-owned and explicitly stopped on cleanup.

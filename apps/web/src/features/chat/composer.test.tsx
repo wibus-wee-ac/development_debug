@@ -7,11 +7,23 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
+
 import { Composer } from './composer'
 
 afterEach(() => {
   cleanup()
 })
+
+function createFakeDataTransfer(): DataTransfer {
+  const values = new Map<string, string>()
+  return {
+    getData: (format: string) => values.get(format) ?? '',
+    setData: (format: string, data: string) => {
+      values.set(format, data)
+    },
+  } as DataTransfer
+}
 
 describe('Composer slash commands', () => {
   it('exposes a named send control and keeps send disabled while empty', () => {
@@ -142,5 +154,23 @@ describe('Composer slash commands', () => {
     finally {
       consoleErrorSpy.mockRestore()
     }
+  })
+
+  it('inserts a structured workspace file drag payload into the composer', () => {
+    render(<Composer onSend={vi.fn()} />)
+
+    const dataTransfer = createFakeDataTransfer()
+    writeWorkspaceFileDragData(
+      dataTransfer,
+      serializeWorkspaceFileDragPayload({
+        relativePath: 'src/app file.ts',
+        workspacePath: '/Users/wibus/dev/Cradle',
+      }),
+    )
+
+    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
+    fireEvent.drop(textarea, { dataTransfer })
+
+    expect(textarea.value).toBe('"/Users/wibus/dev/Cradle/src/app file.ts"')
   })
 })

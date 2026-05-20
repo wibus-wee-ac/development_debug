@@ -16,6 +16,7 @@ import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef } from 'react'
 
 import { postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
+import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
@@ -184,7 +185,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
       style={{ padding: '4px 8px' }}
       onDrop={(e) => {
         e.preventDefault()
-        const path = e.dataTransfer.getData('text/plain')
+        const path = readWorkspaceFileDragText(e.dataTransfer)
         if (path) {
           channelRef.current?.sendInput(`${path} `)
         }
