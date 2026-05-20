@@ -51,6 +51,12 @@ export class OpenAICompatibleProvider implements ChatRuntime {
 
   constructor(private readonly deps: OpenAICompatibleProviderDeps) {}
 
+  private releaseTurn(sessionId: string, abortController: AbortController): void {
+    if (this.activeTurns.get(sessionId) === abortController) {
+      this.activeTurns.delete(sessionId)
+    }
+  }
+
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     const config = parseConfigWith(input.profile.configJson, OpenAICompatibleConfigSchema)
     const currentModelId = input.modelId ?? config.model ?? null
@@ -99,7 +105,8 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       : 'no-key'
 
     const abortController = new AbortController()
-    this.activeTurns.set(runtimeSession.chatSessionId, abortController)
+    const sessionId = runtimeSession.chatSessionId
+    this.activeTurns.set(sessionId, abortController)
     this._lastUsage = null
     this._lastStepUsages = []
 
@@ -146,7 +153,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       throw error
     }
     finally {
-      this.activeTurns.delete(runtimeSession.chatSessionId)
+      this.releaseTurn(sessionId, abortController)
     }
   }
 
@@ -163,7 +170,8 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       : 'no-key'
 
     const abortController = new AbortController()
-    this.activeTurns.set(runtimeSession.chatSessionId, abortController)
+    const sessionId = runtimeSession.chatSessionId
+    this.activeTurns.set(sessionId, abortController)
     this._lastUsage = null
     this._lastStepUsages = []
 
@@ -209,15 +217,16 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       throw error
     }
     finally {
-      this.activeTurns.delete(runtimeSession.chatSessionId)
+      this.releaseTurn(sessionId, abortController)
     }
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
-    const controller = this.activeTurns.get(input.runtimeSession.chatSessionId)
+    const sessionId = input.runtimeSession.chatSessionId
+    const controller = this.activeTurns.get(sessionId)
     if (controller) {
       controller.abort()
-      this.activeTurns.delete(input.runtimeSession.chatSessionId)
+      this.releaseTurn(sessionId, controller)
     }
   }
 }

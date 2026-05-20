@@ -12,7 +12,7 @@ import {
   workspaces,
 } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, or } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
@@ -43,6 +43,7 @@ const chatLogger = createChildLogger({ module: 'chat-runtime' })
 // ── types ──
 
 export type ChatMessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
+type TerminalChatMessageStatus = Exclude<ChatMessageStatus, 'streaming'>
 
 export interface ChatMessageSnapshotRow {
   messageId: string
@@ -75,6 +76,8 @@ interface ActiveRun {
   subagentProjections: Map<string, SubagentProjectionRecord>
   nextSeq: number
   eventBuffer: ChatStreamEvent[]
+  terminalStatus?: TerminalChatMessageStatus
+  cancelRequested?: boolean
 }
 
 interface SubagentProjectionRecord {
@@ -134,20 +137,31 @@ function getSessionRunContext(sessionId: string): SessionRunContext | null {
     return null
   }
 
-  // Merge session-level config overrides into profile config
-  let effectiveProfile = profile
-  if (session.configJson && session.configJson !== '{}') {
-    try {
-      const sessionConfig = JSON.parse(session.configJson)
-      const profileConfig = JSON.parse(profile.configJson || '{}')
-      effectiveProfile = { ...profile, configJson: JSON.stringify({ ...profileConfig, ...sessionConfig }) }
-    }
- catch {
-      // Ignore invalid JSON
-    }
+  const profileConfig = readJsonObject(profile.configJson)
+  const agent = session.agentId
+    ? db().select().from(agents).where(eq(agents.id, session.agentId)).get()
+    : null
+  const agentConfig = readJsonObject(agent?.configJson)
+  const sessionConfig = readJsonObject(session.configJson)
+  const effectiveProfile = {
+    ...profile,
+    configJson: JSON.stringify({ ...profileConfig, ...agentConfig, ...sessionConfig }),
   }
 
   return { session, workspacePath: workspace?.path ?? '', profile: effectiveProfile }
+}
+
+function readJsonObject(json: string | null | undefined): Record<string, unknown> {
+  if (!json || json === '{}') {
+    return {}
+  }
+  try {
+    const parsed = JSON.parse(json) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+  }
+  catch {
+    return {}
+  }
 }
 
 function getBinding(sessionId: string): BackendSessionBinding | undefined {
@@ -563,18 +577,21 @@ export async function streamResponse(input: {
 export async function abortRun(runId: string): Promise<void> {
   const active = activeRuns.get(runId)
   if (!active) {
-    if (!getRun(runId)) {
+    const persistedRun = getRun(runId)
+    if (!persistedRun) {
       throw new AppError({ code: 'chat_run_not_found', status: 404, message: 'Chat run not found', details: { runId } })
     }
+    abortPersistedRun(persistedRun)
     return
   }
 
-  const context = getSessionRunContext(active.sessionId)
-  if (!context) {
-    throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId: active.sessionId } })
+  settleActiveRun(active, 'aborted', null)
+  try {
+    await requestRuntimeCancel(active)
   }
-
-  await active.runtime?.cancelTurn({ runtimeSession: active.runtimeSession, profile: context.profile })
+  finally {
+    releaseActiveRun(active)
+  }
 }
 
 /**
@@ -584,7 +601,8 @@ export async function abortRun(runId: string): Promise<void> {
 export async function cancelSession(sessionId: string): Promise<void> {
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
-    return // No active run — nothing to cancel
+    abortPersistedStreamingSession(sessionId)
+    return
   }
   await abortRun(runId)
 }
@@ -595,7 +613,13 @@ export async function abortAllRuns(): Promise<void> {
     try {
       const active = activeRuns.get(runId)
       if (active) {
-        await active.runtime?.cancelTurn({ runtimeSession: active.runtimeSession, profile: {} as AgentProfile })
+        settleActiveRun(active, 'aborted', null)
+        try {
+          await requestRuntimeCancel(active)
+        }
+        finally {
+          releaseActiveRun(active)
+        }
       }
     }
     catch { /* best-effort */ }
@@ -740,14 +764,19 @@ async function executeRun(activeRun: ActiveRun, input: {
         systemPrompt: input.systemPrompt,
         history: input.history,
       })) {
+        if (activeRun.terminalStatus) {
+          break
+        }
         const applied = applyAndPublishSnapshot(activeRun, message)
         accumulateDeltaDiagnostics(diagnostics, applied.deltas)
       }
 
-      const validation = validateTurnOutput(diagnostics)
-      snapshotTerminal = validation.ok
-        ? { status: 'complete', errorText: null }
-        : { status: 'failed', errorText: validation.errorText }
+      if (!activeRun.terminalStatus) {
+        const validation = validateTurnOutput(diagnostics)
+        snapshotTerminal = validation.ok
+          ? { status: 'complete', errorText: null }
+          : { status: 'failed', errorText: validation.errorText }
+      }
     }
     else {
       applyAndPublishChunk(activeRun, { type: 'start' })
@@ -764,6 +793,9 @@ async function executeRun(activeRun: ActiveRun, input: {
         systemPrompt: input.systemPrompt,
         history: input.history,
       })) {
+        if (activeRun.terminalStatus) {
+          break
+        }
         accumulateDiagnostics(diagnostics, chunk)
         applyAndPublishChunk(activeRun, chunk)
         if (chunk.type === 'error') {
@@ -791,87 +823,89 @@ async function executeRun(activeRun: ActiveRun, input: {
   }
 
   try {
-    if (usesSnapshotStream) {
-      applyAndPublishTerminalState(
-        activeRun,
-        snapshotTerminal?.status ?? 'complete',
-        snapshotTerminal?.errorText ?? null,
-      )
-    }
-    else if (!streamEmittedError) {
-      applyAndPublishChunk(activeRun, finalChunk)
-    }
+    if (!activeRun.cancelRequested) {
+      if (usesSnapshotStream) {
+        applyAndPublishTerminalState(
+          activeRun,
+          snapshotTerminal?.status ?? 'complete',
+          snapshotTerminal?.errorText ?? null,
+        )
+      }
+      else if (!streamEmittedError) {
+        applyAndPublishChunk(activeRun, finalChunk)
+      }
 
-    const finalFailureText = usesSnapshotStream
-      ? snapshotTerminal?.status === 'failed'
-        ? snapshotTerminal.errorText ?? 'Chat run failed'
-        : null
-      : finalChunk.type === 'error'
-        ? finalChunk.errorText
-        : null
+      const finalFailureText = usesSnapshotStream
+        ? snapshotTerminal?.status === 'failed'
+          ? snapshotTerminal.errorText ?? 'Chat run failed'
+          : null
+        : finalChunk.type === 'error'
+          ? finalChunk.errorText
+          : null
 
-    if (finalFailureText) {
-      const observabilityCode = usesSnapshotStream
-        ? resolveSnapshotFailureObservabilityCode(finalFailureText)
-        : resolveTurnFailureObservabilityCode(finalChunk)
-      Observability.record({
-        source: 'chat-engine',
-        code: observabilityCode,
-        severity: 'error',
-        category: 'chat',
-        message: finalFailureText,
-        chatSessionId: activeRun.sessionId,
-        runId: activeRun.runId,
-        messageId: activeRun.messageId,
-        dedupeKey: observabilityCode === OBSERVABILITY_CODES.chatEmptyOutputCompletion
-          ? createDedupeKey({
-              code: observabilityCode,
-              chatSessionId: activeRun.sessionId,
-              runId: null,
-            })
-          : undefined,
-        attrs: {
-          agentProfileId: activeRun.agentProfileId,
-          runtimeKind: activeRun.runtimeSession.runtimeKind,
-          providerSessionId: activeRun.runtimeSession.providerSessionId,
-          diagnostics,
-          ...(failurePayload ? { payload: failurePayload } : {}),
-        },
-      })
-    }
-
-    const usage = activeRun.runtime?.lastUsage
-    actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
-    if (usage) {
-      insertUsage({
-        sessionId: activeRun.sessionId,
-        messageId: activeRun.messageId,
-        agentProfileId: activeRun.agentProfileId,
-        modelId: actualModelId,
-        usage,
-      })
-    }
-
-    // Write per-step usage if the runtime supports it
-    const runtimeWithSteps = activeRun.runtime as { lastStepUsages?: Array<{ stepNumber: number, stepType: string, modelId?: string, usage: TokenUsage }> }
-    const steps = runtimeWithSteps.lastStepUsages ?? []
-    if (steps.length > 0) {
-      const fallbackModelId = actualModelId ?? 'gpt-4o'
-      for (const step of steps) {
-        const effectiveModelId = step.modelId ?? fallbackModelId
-        db().insert(stepUsageTable).values({
-          id: randomUUID(),
+      if (finalFailureText) {
+        const observabilityCode = usesSnapshotStream
+          ? resolveSnapshotFailureObservabilityCode(finalFailureText)
+          : resolveTurnFailureObservabilityCode(finalChunk)
+        Observability.record({
+          source: 'chat-engine',
+          code: observabilityCode,
+          severity: 'error',
+          category: 'chat',
+          message: finalFailureText,
+          chatSessionId: activeRun.sessionId,
           runId: activeRun.runId,
+          messageId: activeRun.messageId,
+          dedupeKey: observabilityCode === OBSERVABILITY_CODES.chatEmptyOutputCompletion
+            ? createDedupeKey({
+                code: observabilityCode,
+                chatSessionId: activeRun.sessionId,
+                runId: null,
+              })
+            : undefined,
+          attrs: {
+            agentProfileId: activeRun.agentProfileId,
+            runtimeKind: activeRun.runtimeSession.runtimeKind,
+            providerSessionId: activeRun.runtimeSession.providerSessionId,
+            diagnostics,
+            ...(failurePayload ? { payload: failurePayload } : {}),
+          },
+        })
+      }
+
+      const usage = activeRun.runtime?.lastUsage
+      actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
+      if (usage) {
+        insertUsage({
           sessionId: activeRun.sessionId,
-          stepNumber: step.stepNumber,
-          stepType: step.stepType,
-          modelId: effectiveModelId,
-          promptTokens: step.usage.promptTokens,
-          completionTokens: step.usage.completionTokens,
-          totalTokens: step.usage.totalTokens,
-          estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
-          createdAt: currentUnixSeconds(),
-        }).run()
+          messageId: activeRun.messageId,
+          agentProfileId: activeRun.agentProfileId,
+          modelId: actualModelId,
+          usage,
+        })
+      }
+
+      // Write per-step usage if the runtime supports it
+      const runtimeWithSteps = activeRun.runtime as { lastStepUsages?: Array<{ stepNumber: number, stepType: string, modelId?: string, usage: TokenUsage }> }
+      const steps = runtimeWithSteps.lastStepUsages ?? []
+      if (steps.length > 0) {
+        const fallbackModelId = actualModelId ?? 'gpt-4o'
+        for (const step of steps) {
+          const effectiveModelId = step.modelId ?? fallbackModelId
+          db().insert(stepUsageTable).values({
+            id: randomUUID(),
+            runId: activeRun.runId,
+            sessionId: activeRun.sessionId,
+            stepNumber: step.stepNumber,
+            stepType: step.stepType,
+            modelId: effectiveModelId,
+            promptTokens: step.usage.promptTokens,
+            completionTokens: step.usage.completionTokens,
+            totalTokens: step.usage.totalTokens,
+            estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
+            createdAt: currentUnixSeconds(),
+          }).run()
+        }
       }
     }
   }
@@ -892,12 +926,15 @@ async function executeRun(activeRun: ActiveRun, input: {
     catch {
       // session may have been deleted during the run
     }
-    activeRuns.delete(activeRun.runId)
-    activeRunIdsBySession.delete(activeRun.sessionId)
+    releaseActiveRun(activeRun)
   }
 }
 
 function applyAndPublishChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {
+  if (activeRun.terminalStatus) {
+    return
+  }
+
   const route = readChunkRouteContext(chunk)
   const target = route.parentToolCallId
     ? getSubagentProjection(activeRun, route.parentToolCallId, route.taskId)
@@ -930,6 +967,16 @@ function applyAndPublishChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void
 }
 
 function applyAndPublishSnapshot(activeRun: ActiveRun, message: UIMessage): ProjectionApplyResult {
+  if (activeRun.terminalStatus) {
+    return {
+      deltas: [],
+      nextSeq: activeRun.nextSeq,
+      terminal: false,
+      status: 'streaming',
+      errorText: null,
+    }
+  }
+
   const applied = applySnapshotToProjection(activeRun.mainProjection, message, activeRun.nextSeq)
   activeRun.nextSeq = applied.nextSeq
 
@@ -957,6 +1004,12 @@ function applyAndPublishTerminalState(
   errorText: string | null,
   persistMainSnapshot = true,
 ): void {
+  if (status === 'streaming' || activeRun.terminalStatus) {
+    return
+  }
+
+  activeRun.terminalStatus = status
+
   if (persistMainSnapshot) {
     persistMessageSnapshot({
       sessionId: activeRun.sessionId,
@@ -976,6 +1029,123 @@ function applyAndPublishTerminalState(
       ? { type: 'run_aborted', data: { messageId: activeRun.messageId } }
       : { type: 'run_failed', data: { messageId: activeRun.messageId, errorText: errorText ?? 'Chat run failed' } }
   publishStreamEvent(activeRun, event, true)
+}
+
+function settleActiveRun(activeRun: ActiveRun, status: TerminalChatMessageStatus, errorText: string | null): void {
+  if (activeRun.terminalStatus) {
+    return
+  }
+  if (status === 'aborted') {
+    activeRun.cancelRequested = true
+  }
+  applyAndPublishTerminalState(activeRun, status, errorText)
+}
+
+async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
+  const context = getSessionRunContext(activeRun.sessionId)
+  if (!context) {
+    chatLogger.warn('cannot cancel runtime turn because chat session context is missing', {
+      sessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+    })
+    return
+  }
+
+  try {
+    await activeRun.runtime.cancelTurn({ runtimeSession: activeRun.runtimeSession, profile: context.profile })
+  }
+  catch (error) {
+    chatLogger.warn('runtime turn cancellation failed after chat run was marked aborted', {
+      error,
+      sessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+    })
+  }
+}
+
+function abortPersistedRun(run: BackendRun): void {
+  if (run.status !== 'streaming') {
+    return
+  }
+
+  const now = currentUnixSeconds()
+  const messagePredicate = run.messageId
+    ? and(
+        eq(messages.sessionId, run.chatSessionId),
+        eq(messages.status, 'streaming'),
+        or(eq(messages.id, run.messageId), eq(messages.parentMessageId, run.messageId)),
+      )
+    : and(eq(messages.sessionId, run.chatSessionId), eq(messages.status, 'streaming'))
+
+  db().transaction((tx) => {
+    tx.update(backendRuns)
+      .set({
+        status: 'aborted',
+        stopReason: 'response.cancelled',
+        errorText: null,
+        finishedAt: now,
+      })
+      .where(eq(backendRuns.id, run.id))
+      .run()
+
+    tx.update(messages)
+      .set({
+        status: 'aborted',
+        errorText: null,
+        updatedAt: now,
+      })
+      .where(messagePredicate)
+      .run()
+
+    tx.update(sessions)
+      .set({ updatedAt: now })
+      .where(eq(sessions.id, run.chatSessionId))
+      .run()
+  })
+}
+
+function abortPersistedStreamingSession(sessionId: string): void {
+  const streamingRuns = db()
+    .select()
+    .from(backendRuns)
+    .where(and(eq(backendRuns.chatSessionId, sessionId), eq(backendRuns.status, 'streaming')))
+    .all()
+
+  if (streamingRuns.length > 0) {
+    for (const run of streamingRuns) {
+      abortPersistedRun(run)
+    }
+    abortPersistedStreamingMessages(sessionId)
+    return
+  }
+
+  abortPersistedStreamingMessages(sessionId)
+}
+
+function abortPersistedStreamingMessages(sessionId: string): void {
+  const now = currentUnixSeconds()
+  db().transaction((tx) => {
+    tx.update(messages)
+      .set({
+        status: 'aborted',
+        errorText: null,
+        updatedAt: now,
+      })
+      .where(and(eq(messages.sessionId, sessionId), eq(messages.status, 'streaming')))
+      .run()
+
+    tx.update(sessions)
+      .set({ updatedAt: now })
+      .where(eq(sessions.id, sessionId))
+      .run()
+  })
+}
+
+function releaseActiveRun(activeRun: ActiveRun): void {
+  activeRuns.delete(activeRun.runId)
+  if (activeRunIdsBySession.get(activeRun.sessionId) === activeRun.runId) {
+    activeRunIdsBySession.delete(activeRun.sessionId)
+  }
 }
 
 function publishStreamEvent(activeRun: ActiveRun, event: ChatStreamEvent, terminal: boolean): void {

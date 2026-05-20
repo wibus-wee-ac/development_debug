@@ -1,6 +1,6 @@
 // Input: Claude Agent provider and plugin MCP registry
-// Output: focused tests for Chat runtime MCP server injection
-// Position: Verifies plugin-registered tools reach Claude Agent SDK query options
+// Output: focused tests for Claude Agent SDK query option projection
+// Position: Verifies plugin MCP servers and model alias settings reach Claude Agent SDK query options
 
 import type { AgentProfile } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
@@ -45,7 +45,7 @@ function createAsyncQuery(
   }
 }
 
-function createProfile(): AgentProfile {
+function createProfile(config: Record<string, unknown> = {}): AgentProfile {
   return {
     id: 'profile-claude',
     name: 'Claude Agent',
@@ -54,6 +54,7 @@ function createProfile(): AgentProfile {
     configJson: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       permissionMode: 'bypassPermissions',
+      ...config,
     }),
     credentialRef: 'credential-claude',
     customModels: '[]',
@@ -200,5 +201,89 @@ describe('ClaudeAgentProvider MCP integration', () => {
     expect(sdkMocks.query).toHaveBeenNthCalledWith(2, expect.objectContaining({
       prompt: '/review src/app.ts',
     }))
+  })
+
+  it('passes configured Claude Agent SDK model aliases through the query environment', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-model-aliases',
+        message: {
+          content: [{ type: 'text', text: 'ready' }],
+        },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const profile = createProfile({
+      claudeAgent: {
+        modelAliases: {
+          haiku: ' claude-haiku-4-5 ',
+          sonnet: 'claude-sonnet-4-5',
+          opus: 'claude-opus-4-5',
+        },
+      },
+    })
+
+    for await (const _chunk of provider.streamTurn({
+      runtimeSession: createRuntimeSession(),
+      profile,
+      message: 'Use aliases',
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream to force query construction.
+    }
+
+    expect(sdkMocks.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        env: expect.objectContaining({
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4-5',
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-5',
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4-5',
+        }),
+      }),
+    }))
+  })
+
+  it('does not override Claude Agent SDK model defaults when aliases are empty', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-empty-aliases',
+        message: {
+          content: [{ type: 'text', text: 'ready' }],
+        },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const profile = createProfile({
+      claudeAgent: {
+        modelAliases: {
+          haiku: '',
+          sonnet: '   ',
+        },
+      },
+    })
+
+    for await (const _chunk of provider.streamTurn({
+      runtimeSession: createRuntimeSession(),
+      profile,
+      message: 'Use defaults',
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream to force query construction.
+    }
+
+    const call = sdkMocks.query.mock.calls[0]?.[0] as {
+      options?: { env?: Record<string, string> }
+    } | undefined
+    expect(call?.options?.env).not.toHaveProperty('ANTHROPIC_DEFAULT_HAIKU_MODEL')
+    expect(call?.options?.env).not.toHaveProperty('ANTHROPIC_DEFAULT_SONNET_MODEL')
+    expect(call?.options?.env).not.toHaveProperty('ANTHROPIC_DEFAULT_OPUS_MODEL')
   })
 })

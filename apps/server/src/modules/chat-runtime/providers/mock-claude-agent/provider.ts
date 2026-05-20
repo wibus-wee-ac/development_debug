@@ -33,6 +33,12 @@ export class MockClaudeAgentProvider implements ChatRuntime {
     return this._lastUsage
   }
 
+  private releaseTurn(sessionId: string, abortController: AbortController): void {
+    if (this.activeAbortControllers.get(sessionId) === abortController) {
+      this.activeAbortControllers.delete(sessionId)
+    }
+  }
+
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     return {
       id: input.chatSessionId,
@@ -78,7 +84,8 @@ export class MockClaudeAgentProvider implements ChatRuntime {
     }
 
     const abortController = new AbortController()
-    this.activeAbortControllers.set(input.runtimeSession.chatSessionId, abortController)
+    const sessionId = input.runtimeSession.chatSessionId
+    this.activeAbortControllers.set(sessionId, abortController)
     this._lastUsage = null
 
     const textItemId = randomUUID()
@@ -162,7 +169,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       }
     }
     finally {
-      this.activeAbortControllers.delete(input.runtimeSession.chatSessionId)
+      this.releaseTurn(sessionId, abortController)
     }
   }
 
@@ -226,10 +233,11 @@ export class MockClaudeAgentProvider implements ChatRuntime {
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
     Approval.rejectPendingBySession(input.runtimeSession.chatSessionId)
-    const ctrl = this.activeAbortControllers.get(input.runtimeSession.chatSessionId)
+    const sessionId = input.runtimeSession.chatSessionId
+    const ctrl = this.activeAbortControllers.get(sessionId)
     if (ctrl) {
       ctrl.abort()
-      this.activeAbortControllers.delete(input.runtimeSession.chatSessionId)
+      this.releaseTurn(sessionId, ctrl)
     }
   }
 }

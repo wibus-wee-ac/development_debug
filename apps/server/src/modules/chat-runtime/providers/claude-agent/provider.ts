@@ -35,11 +35,12 @@ interface ClaudeAgentProviderDeps {
 }
 
 const RUNTIME_KIND: RuntimeKind = 'claude-agent'
+type ActiveClaudeQuery = { query: Query, abortController: AbortController }
 
 export class ClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
 
-  private readonly activeQueries = new Map<string, { query: Query, abortController: AbortController }>()
+  private readonly activeQueries = new Map<string, ActiveClaudeQuery>()
   private _lastUsage: TokenUsage | null = null
 
   get lastUsage(): TokenUsage | null {
@@ -47,6 +48,12 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   constructor(private readonly deps: ClaudeAgentProviderDeps) {}
+
+  private releaseQuery(sessionId: string, entry: ActiveClaudeQuery): void {
+    if (this.activeQueries.get(sessionId) === entry) {
+      this.activeQueries.delete(sessionId)
+    }
+  }
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     return {
@@ -116,7 +123,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
     })
 
     const activeQuery = query({ prompt: input.message, options: queryOptions })
-    this.activeQueries.set(input.runtimeSession.chatSessionId, { query: activeQuery, abortController })
+    const sessionId = input.runtimeSession.chatSessionId
+    const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController }
+    this.activeQueries.set(sessionId, activeEntry)
     this._lastUsage = null
 
     const mapperState: ClaudeAgentChunkMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map(), currentParentToolUseId: null }
@@ -193,20 +202,21 @@ export class ClaudeAgentProvider implements ChatRuntime {
       throw error
     }
     finally {
-      this.activeQueries.delete(input.runtimeSession.chatSessionId)
+      this.releaseQuery(sessionId, activeEntry)
     }
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
-    const entry = this.activeQueries.get(input.runtimeSession.chatSessionId)
+    const sessionId = input.runtimeSession.chatSessionId
+    const entry = this.activeQueries.get(sessionId)
     if (!entry) {
       return
     }
     // Reject any pending approval prompts so the canUseTool callback unblocks
-    Approval.rejectPendingBySession(input.runtimeSession.chatSessionId)
+    Approval.rejectPendingBySession(sessionId)
     entry.abortController.abort()
     entry.query.close()
-    this.activeQueries.delete(input.runtimeSession.chatSessionId)
+    this.releaseQuery(sessionId, entry)
   }
 }
 
@@ -265,6 +275,7 @@ function buildClaudeQueryOptions(input: {
     CRADLE_CHAT_SESSION_ID: input.input.runtimeSession.chatSessionId,
     CRADLE_WORKSPACE_ID: input.input.workspaceId ?? undefined,
     ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
+    ...buildClaudeAgentModelEnv(config.claudeAgent),
   }
 
   if (input.attachPermissionHandler && config.permissionMode !== 'bypassPermissions') {
@@ -272,6 +283,42 @@ function buildClaudeQueryOptions(input: {
   }
 
   return queryOptions
+}
+
+function buildClaudeAgentModelEnv(config: {
+  modelAliases?: {
+    haiku?: string
+    sonnet?: string
+    opus?: string
+  }
+  subagentModel?: string
+} | undefined): Record<string, string> {
+  const env: Record<string, string> = {}
+  const aliases = config?.modelAliases
+  const haiku = normalizeModelEnvValue(aliases?.haiku)
+  const sonnet = normalizeModelEnvValue(aliases?.sonnet)
+  const opus = normalizeModelEnvValue(aliases?.opus)
+  const subagentModel = normalizeModelEnvValue(config?.subagentModel)
+
+  if (haiku) {
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku
+  }
+  if (sonnet) {
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnet
+  }
+  if (opus) {
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = opus
+  }
+  if (subagentModel) {
+    env.CLAUDE_CODE_SUBAGENT_MODEL = subagentModel
+  }
+
+  return env
+}
+
+function normalizeModelEnvValue(value: string | undefined): string | null {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : null
 }
 
 async function* emptyUserInput(): AsyncGenerator<SDKUserMessage, void, void> {}

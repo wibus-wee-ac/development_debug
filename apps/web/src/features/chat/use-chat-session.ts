@@ -15,7 +15,7 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import type { ChatMessageSnapshotRow } from './chat-delta-events'
-import { startChatResponse } from './chat-response-command'
+import { cancelChatResponse, startChatResponse } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { buildEventStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
 
@@ -209,8 +209,12 @@ export function useChatSession(chatSessionId: string | null) {
     }
 
     const projected = projectMainMessagesFromSnapshotRows(snapshotRowsQuery.data)
+    const passiveStatus = derivePassiveStatus(snapshotRowsQuery.data)
     useChatStore.getState().setMessages(chatSessionId, projected)
-    useChatStore.getState().setPassiveStatus(chatSessionId, derivePassiveStatus(snapshotRowsQuery.data))
+    useChatStore.getState().setSessionMeta(chatSessionId, {
+      cancelling: meta?.cancelling && passiveStatus === 'streaming',
+      passiveStatus,
+    })
 
     // Hydrate errorMap from server-side failed messages
     for (const row of snapshotRowsQuery.data) {
@@ -245,15 +249,20 @@ export function useChatSession(chatSessionId: string | null) {
     return onChatRunEvent(chatSessionId, (data) => {
       const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
       const isLocallyDriving = meta?.locallyDriving ?? false
+      const isCancelling = meta?.cancelling ?? false
 
       if (data.event.type === 'run.failed') {
         if (isLocallyDriving) {
           // Let the in-band stream handler capture the error with its message
           return
         }
-        useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined })
+        useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
         useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
         scheduleSnapshotRefresh(0)
+        return
+      }
+
+      if (isCancelling && data.event.type === 'run.streaming') {
         return
       }
 
@@ -265,7 +274,7 @@ export function useChatSession(chatSessionId: string | null) {
       switch (data.event.type) {
         case 'run.completed':
         case 'run.aborted':
-          useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined })
+          useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
           useChatStore.getState().setPassiveStatus(chatSessionId, 'idle')
           scheduleSnapshotRefresh(0)
           break
@@ -347,10 +356,13 @@ export function useChatSession(chatSessionId: string | null) {
       }
     }
     finally {
+      const wasLocallyAborted = controller.signal.aborted
       handlerRef.current = null
       useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined, passiveStatus: 'idle' })
-      // Sync from server to get canonical message IDs
-      scheduleSnapshotRefresh(0)
+      if (!wasLocallyAborted) {
+        // Sync from server to get canonical message IDs
+        scheduleSnapshotRefresh(0)
+      }
     }
   }, [chatSessionId, queryClient, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
@@ -367,9 +379,19 @@ export function useChatSession(chatSessionId: string | null) {
     const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant')
     const messageId = activeAssistant?.id ?? localDriverMessageId ?? lastAssistant?.id
     if (messageId) {
-      await store.stopGeneration(messageId, chatSessionId)
+      store.stopGeneration(messageId, chatSessionId)
     }
-  }, [chatSessionId])
+    store.setSessionMeta(chatSessionId, { cancelling: true, locallyDriving: false, localDriverMessageId: undefined, passiveStatus: 'idle' })
+
+    try {
+      await cancelChatResponse(chatSessionId)
+      scheduleSnapshotRefresh(0)
+    }
+    catch (error) {
+      store.setSessionMeta(chatSessionId, { cancelling: false })
+      console.warn('[useChatSession] failed to cancel server chat response', error)
+    }
+  }, [chatSessionId, scheduleSnapshotRefresh])
 
   // ── isReady (always true once hydrated) ──
 

@@ -1,14 +1,15 @@
 # Chat Runtime Module
 
-Provides server-owned chat turn execution for existing sessions, including message snapshot persistence, sequenced delta streaming, usage writes, run state updates, and ACP live runtime orchestration.
+Provides server-owned chat turn execution for existing sessions, including message snapshot persistence, sequenced delta streaming, usage writes, run state updates, cancellation terminal transitions, and ACP live runtime orchestration.
 `messages.message_json` is the only hydration source of truth; invalid snapshots must fail fast instead of falling back to `messages.content`.
+`POST /chat/sessions/:sessionId/cancel` owns the canonical aborted transition: it marks active runs/messages terminal before asking the provider to stop, ignores late provider chunks after terminal state, and repairs persisted `streaming` rows when no in-memory active run exists.
 Route metadata includes `x-cradle-cli` descriptors for non-streaming generated CLI commands.
 
 ## Files
 
 - `index.ts`: Elysia route surface for `POST /chat/sessions/:sessionId/response`, `GET /chat/sessions/:sessionId/capabilities`, `GET /chat/sessions/:sessionId/messages`, and `POST /chat/sessions/:sessionId/cancel`.
 - `model.ts`: HTTP params/body schemas for the chat runtime surface.
-- `service.ts`: active-run orchestration, runtime-native capabilities discovery, duplicate-run reservation, native AI SDK snapshot diffing, chunk projection for non-AI SDK runtimes, snapshot persistence, strict snapshot hydration, completion subscription, and event broadcasting.
+- `service.ts`: active-run orchestration, runtime-native capabilities discovery, duplicate-run reservation, profile + agent + session runtime config merging, native AI SDK snapshot diffing, chunk projection for non-AI SDK runtimes, snapshot persistence, strict snapshot hydration, cancellation terminal-state ownership, persisted streaming cleanup, completion subscription, and event broadcasting.
 - `delta-events.ts`: backend adapter for both provider `UIMessageChunk` streams and progressive `UIMessage` snapshots, producing persisted message snapshots and sequenced part-level delta events with global `seq` assignment and subagent routing by `parentToolCallId`.
 - `chat-turn-context.ts`: system prompt and history resolution.
 - `chat-runtime-provider-registry.ts`: runtime provider registry for ACP Chat, OpenAI-compatible, Claude Agent, Codex, System Agent (`jar-core`), and debug/mock variants.
@@ -21,7 +22,7 @@ Route metadata includes `x-cradle-cli` descriptors for non-streaming generated C
   - `providers/acp/provider.ts`: ACP Chat provider bound to the unified `/chat` API.
   - `providers/acp/timeline-mapper.ts`: ACP session updates → unified chat delta input mapper.
   - `providers/openai-compatible/provider.ts`: OpenAI-compatible AI SDK runtime that emits progressive assistant `UIMessage` snapshots directly.
-  - `providers/claude-agent/provider.ts`: Claude Agent SDK runtime bound to the unified `/chat` API; injects plugin-registered MCP servers into Claude Agent SDK query options.
+  - `providers/claude-agent/provider.ts`: Claude Agent SDK runtime bound to the unified `/chat` API; injects plugin-registered MCP servers and `config.claudeAgent.modelAliases` environment overrides into Claude Agent SDK query options.
   - `providers/claude-agent/mapper.ts`: Claude Agent SDK message → unified chat delta input mapper.
   - `providers/mock-claude-agent/provider.ts`: debug/test runtime that mimics Claude Agent chunk output under mock configuration.
   - `providers/codex/provider.ts`: Codex SDK runtime bound to the unified `/chat` API; projects plugin-registered MCP servers into Codex `mcp_servers` config.

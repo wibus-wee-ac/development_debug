@@ -6,7 +6,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { messages, workspaces } from '@cradle/db'
+import { backendRuns, backendSessionBindings, messages, workspaces } from '@cradle/db'
+import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -89,6 +90,12 @@ async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedS
   }
 
   throw new Error(`Timed out waiting for assistant status ${expectedStatus}`)
+}
+
+async function getChatMessages(app: ElysiaApp, sessionId: string): Promise<ChatMessageRow[]> {
+  const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
+  expect(response.status).toBe(200)
+  return await response.json() as ChatMessageRow[]
 }
 
 function buildSseResponse(chunks: string[], delaysMs?: number[]): Response {
@@ -361,8 +368,115 @@ describe('chat runtime capability', () => {
       expect(abortRes.status).toBe(200)
       expect(await abortRes.json()).toEqual({ ok: true })
 
-      const rows = await waitForMessageStatus(app, 'session-chat-abort', 'aborted')
+      const rows = await getChatMessages(app, 'session-chat-abort')
       expect(rows[1]).toEqual(expect.objectContaining({ role: 'assistant', status: 'aborted' }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('cancels persisted streaming state when the in-memory active run is missing', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-orphan',
+        name: 'Workspace Chat Orphan',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-orphan', {
+        profileId: 'profile-chat-orphan',
+        sessionId: 'session-chat-orphan',
+      })
+
+      db().insert(messages).values({
+        id: 'message-orphan-assistant',
+        sessionId: 'session-chat-orphan',
+        parentMessageId: null,
+        parentToolCallId: null,
+        taskId: null,
+        depth: 0,
+        role: 'assistant',
+        status: 'streaming',
+        content: 'partial response',
+        messageJson: JSON.stringify({
+          id: 'message-orphan-assistant',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'partial response' }],
+        }),
+        errorText: null,
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
+      db().insert(backendSessionBindings).values({
+        id: 'binding-chat-orphan',
+        chatSessionId: 'session-chat-orphan',
+        agentProfileId: 'profile-chat-orphan',
+        runtimeKind: 'standard',
+        backendSessionId: null,
+        backendStateSnapshot: null,
+        requestedModelId: 'gpt-4o-mini',
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
+      db().insert(backendRuns).values({
+        id: 'run-chat-orphan',
+        bindingId: 'binding-chat-orphan',
+        chatSessionId: 'session-chat-orphan',
+        messageId: 'message-orphan-assistant',
+        origin: 'user',
+        status: 'streaming',
+        stopReason: null,
+        errorText: null,
+        startedAt: 1700000000,
+        finishedAt: null,
+      }).run()
+
+      const cancelRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-orphan/cancel', {
+        method: 'POST',
+      }))
+      expect(cancelRes.status).toBe(200)
+      expect(await cancelRes.json()).toEqual({ ok: true })
+
+      const rows = await getChatMessages(app, 'session-chat-orphan')
+      expect(rows[0]).toEqual(expect.objectContaining({ role: 'assistant', status: 'aborted' }))
+
+      const run = db().select().from(backendRuns).where(eq(backendRuns.id, 'run-chat-orphan')).get()
+      expect(run).toEqual(expect.objectContaining({
+        status: 'aborted',
+        stopReason: 'response.cancelled',
+        errorText: null,
+      }))
+      expect(run?.finishedAt).toEqual(expect.any(Number))
     }
     finally {
       shutdownInfra()

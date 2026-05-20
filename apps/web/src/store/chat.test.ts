@@ -153,4 +153,17 @@ describe('useChatStore', () => {
     expect(chatSelectors.isSessionGenerating(sessionId)(useChatStore.getState())).toBe(false)
     expect(useChatStore.getState().sessionMetaMap.get(sessionId)?.localDriverMessageId).toBeUndefined()
   })
+
+  it('keeps visible status idle while local cancellation waits for server terminal state', () => {
+    const sessionId = 'session-1'
+
+    useChatStore.getState().setSessionMeta(sessionId, {
+      cancelling: true,
+      locallyDriving: false,
+      passiveStatus: 'streaming',
+    })
+
+    expect(chatSelectors.visibleStatus(sessionId)(useChatStore.getState())).toBe('idle')
+    expect(chatSelectors.isSessionGenerating(sessionId)(useChatStore.getState())).toBe(false)
+  })
 })

@@ -6,8 +6,6 @@ import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
-import { postChatSessionsBySessionIdCancel } from '~/api-gen'
-
 // ── Types ───────────────────────────────────────────────────
 
 export type PublicStatus = 'idle' | 'streaming' | 'error'
@@ -22,6 +20,8 @@ interface SessionMeta {
   passiveStatus: PublicStatus
   /** Whether this renderer locally initiated the current stream */
   locallyDriving: boolean
+  /** Whether the local UI already requested cancellation and is waiting for canonical server state */
+  cancelling: boolean
   /** Message id currently associated with the local stream driver, including pre-SSE temp ids. */
   localDriverMessageId?: string
 }
@@ -54,7 +54,7 @@ interface ChatState {
   startGeneration: (sessionId: string, messageId: string, controller: AbortController) => void
   finishGeneration: (messageId: string) => void
   failGeneration: (messageId: string, error: string) => void
-  stopGeneration: (messageId: string, sessionId: string) => Promise<void>
+  stopGeneration: (messageId: string, sessionId: string) => void
 
   // --- Actions: Session Meta ---
   setSessionMeta: (sessionId: string, meta: Partial<SessionMeta>) => void
@@ -73,7 +73,7 @@ interface ChatState {
 
 type MessagePart = UIMessage['parts'][number]
 const EMPTY_MESSAGES: UIMessage[] = []
-const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false }
+const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false, cancelling: false }
 
 // ── Store ───────────────────────────────────────────────────
 
@@ -146,7 +146,8 @@ export const useChatStore = create<ChatState>()(
           nextCtrl.set(messageId, controller)
           const nextMeta = new Map(state.sessionMetaMap)
           nextMeta.set(sessionId, {
-            ...(state.sessionMetaMap.get(sessionId) ?? { passiveStatus: 'idle', locallyDriving: false }),
+            ...(state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META),
+            cancelling: false,
             locallyDriving: true,
             localDriverMessageId: messageId,
           })
@@ -169,6 +170,7 @@ export const useChatStore = create<ChatState>()(
             if (meta.localDriverMessageId === messageId) {
               nextMeta.set(sessionId, {
                 ...meta,
+                cancelling: false,
                 locallyDriving: false,
                 localDriverMessageId: undefined,
               })
@@ -196,6 +198,7 @@ export const useChatStore = create<ChatState>()(
           if (meta.localDriverMessageId === messageId) {
             nextMeta.set(sessionId, {
               ...meta,
+              cancelling: false,
               locallyDriving: false,
               localDriverMessageId: undefined,
             })
@@ -209,15 +212,19 @@ export const useChatStore = create<ChatState>()(
         })
       },
 
-      stopGeneration: async (messageId, sessionId) => {
+      stopGeneration: (messageId, sessionId) => {
         const state = get()
         const controller = state.activeAbortControllers.get(messageId)
         if (controller) {
           controller.abort()
         }
-        postChatSessionsBySessionIdCancel({ path: { sessionId } }).catch(() => {})
-        // Clean up store state
         get().finishGeneration(messageId)
+        get().setSessionMeta(sessionId, {
+          cancelling: true,
+          locallyDriving: false,
+          localDriverMessageId: undefined,
+          passiveStatus: 'idle',
+        })
       },
 
       // --- Session Meta ---
@@ -225,7 +232,7 @@ export const useChatStore = create<ChatState>()(
       setSessionMeta: (sessionId, meta) => {
         set((state) => {
           const nextMeta = new Map(state.sessionMetaMap)
-          const current = state.sessionMetaMap.get(sessionId) ?? { passiveStatus: 'idle', locallyDriving: false }
+          const current = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
           nextMeta.set(sessionId, { ...current, ...meta })
           return { sessionMetaMap: nextMeta }
         })
@@ -234,7 +241,7 @@ export const useChatStore = create<ChatState>()(
       setPassiveStatus: (sessionId, status) => {
         set((state) => {
           const nextMeta = new Map(state.sessionMetaMap)
-          const current = state.sessionMetaMap.get(sessionId) ?? { passiveStatus: 'idle', locallyDriving: false }
+          const current = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
           if (current.passiveStatus === status) {
             return state
           }
@@ -354,6 +361,9 @@ export const chatSelectors = {
     // Check errors for the session's messages
     if (messages?.some(m => s.errorMap.has(m.id))) {
       return 'error'
+    }
+    if (meta.cancelling) {
+      return 'idle'
     }
     return meta.passiveStatus
   },

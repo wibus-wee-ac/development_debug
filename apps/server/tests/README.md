@@ -22,8 +22,9 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **workspace.test.ts**: workspace capability CRUD + file IO.
 - **session.test.ts**: session capability CRUD + messages + markdown export.
 - **session-await.test.ts**: session await/resume lifecycle, pending states, and resume semantics.
-- **chat-runtime.test.ts**: chat run execution, strict snapshot hydration, SSE `message_delta` sequencing, usage writes, and abort flow.
-- **kanban.test.ts**: kanban board shell, default status seeding, issue core loop, and comments core loop.
+- **session-await-github.test.ts**: GitHub session-await source behavior for check runs, legacy commit statuses, no-signal grace, and PR review modes.
+- **chat-runtime.test.ts**: chat run execution, strict snapshot hydration, SSE `message_delta` sequencing, usage writes, active abort flow, and persisted streaming cleanup when an in-memory active run is missing.
+- **kanban.test.ts**: Kanban board shell plus Issue-owned status, issue, ID generation, and comment core loops.
 - **issue-agent.test.ts**: issue delegation, activity timeline, rerun, and undelegation flows.
 - **git.test.ts**: workspace-owned git status, branches, commit graph, checkout, and create-branch flows.
 - **observability.test.ts**: observability event persistence, incident rules, empty-output failure semantics, and bundle export.

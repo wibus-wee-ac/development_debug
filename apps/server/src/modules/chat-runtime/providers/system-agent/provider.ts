@@ -110,6 +110,12 @@ export class SystemAgentProvider implements ChatRuntime {
 
   constructor(private readonly deps: SystemAgentProviderDeps) {}
 
+  private releaseTurn(sessionId: string, abortController: AbortController): void {
+    if (this.activeTurns.get(sessionId) === abortController) {
+      this.activeTurns.delete(sessionId)
+    }
+  }
+
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
     const currentModelId = input.modelId ?? jarvisPrefs.model ?? null
@@ -259,6 +265,11 @@ export class SystemAgentProvider implements ChatRuntime {
       runtimeConfigOptions.models = { [model]: modelConfig }
     }
 
+    // Inject session ID so bash subprocesses spawned by skills can call Cradle
+    // APIs with the correct identity (e.g. `cradle issue comment add` sets the
+    // x-cradle-chat-session-id header from this env var).
+    runtimeConfigOptions.extraShellEnv = { CRADLE_CHAT_SESSION_ID: sessionId }
+
     const jarConfig = await defaultRuntimeConfig(runtimeConfigOptions)
 
     const abortController = new AbortController()
@@ -270,8 +281,11 @@ export class SystemAgentProvider implements ChatRuntime {
     let done = false
     let streamError: Error | null = null
     let resolveNext: (() => void) | null = null
-    const textItemId = randomUUID()
-    let assistantStarted = false
+    const bridgeState: BridgeState = {
+      currentTextId: null,
+      currentReasoningId: null,
+      assistantStarted: false,
+    }
 
     const command: MessageIngressCommand = {
       kind: 'message',
@@ -291,18 +305,20 @@ export class SystemAgentProvider implements ChatRuntime {
 
           if (event.type === 'message_update') {
             const ame = event.assistantMessageEvent
-            const newChunks = bridgeEvent(ame, textItemId, assistantStarted)
+            const newChunks = bridgeEvent(ame, bridgeState)
             if (newChunks.length > 0) {
-              if (!assistantStarted && newChunks.some(c => c.type === 'text-start')) {
-                assistantStarted = true
-              }
               chunks.push(...newChunks)
               resolveNext?.()
             }
           }
  else if (event.type === 'agent_end') {
-            if (assistantStarted) {
-              chunks.push({ type: 'text-end', id: textItemId })
+            if (bridgeState.currentTextId) {
+              chunks.push({ type: 'text-end', id: bridgeState.currentTextId })
+              bridgeState.currentTextId = null
+            }
+            if (bridgeState.currentReasoningId) {
+              chunks.push({ type: 'reasoning-end', id: bridgeState.currentReasoningId })
+              bridgeState.currentReasoningId = null
             }
             done = true
             resolveNext?.()
@@ -344,8 +360,8 @@ export class SystemAgentProvider implements ChatRuntime {
         }
       }
     }
- finally {
-      this.activeTurns.delete(sessionId)
+    finally {
+      this.releaseTurn(sessionId, abortController)
     }
 
     if (!abortController.signal.aborted) {
@@ -358,10 +374,11 @@ export class SystemAgentProvider implements ChatRuntime {
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
-    const controller = this.activeTurns.get(input.runtimeSession.chatSessionId)
+    const sessionId = input.runtimeSession.chatSessionId
+    const controller = this.activeTurns.get(sessionId)
     if (controller) {
       controller.abort()
-      this.activeTurns.delete(input.runtimeSession.chatSessionId)
+      this.releaseTurn(sessionId, controller)
     }
   }
 
@@ -401,40 +418,84 @@ type AssistantMessageEvent = {
   [key: string]: unknown
 }
 
+interface BridgeState {
+  currentTextId: string | null
+  currentReasoningId: string | null
+  assistantStarted: boolean
+}
+
 function bridgeEvent(
   ame: AssistantMessageEvent,
-  textItemId: string,
-  assistantStarted: boolean,
+  state: BridgeState,
 ): UIMessageChunk[] {
   const out: UIMessageChunk[] = []
 
+  function closeTextBlock(): void {
+    if (state.currentTextId) {
+      out.push({ type: 'text-end', id: state.currentTextId })
+      state.currentTextId = null
+    }
+  }
+
+  function closeReasoningBlock(): void {
+    if (state.currentReasoningId) {
+      out.push({ type: 'reasoning-end', id: state.currentReasoningId })
+      state.currentReasoningId = null
+    }
+  }
+
+  function openTextBlock(delta?: string): void {
+    closeReasoningBlock()
+    const id = randomUUID()
+    state.currentTextId = id
+    out.push({ type: 'text-start', id } as UIMessageChunk)
+    if (delta) {
+      out.push({ type: 'text-delta', id, delta } as UIMessageChunk)
+    }
+    state.assistantStarted = true
+  }
+
+  function openReasoningBlock(delta?: string): void {
+    closeTextBlock()
+    const id = randomUUID()
+    state.currentReasoningId = id
+    out.push({ type: 'reasoning-start', id } as UIMessageChunk)
+    if (delta) {
+      out.push({ type: 'reasoning-delta', id, delta } as UIMessageChunk)
+    }
+  }
+
   switch (ame.type) {
     case 'text_start':
-      if (!assistantStarted) {
-        out.push({ type: 'text-start', id: textItemId })
-      }
+      openTextBlock()
       break
     case 'text_delta':
-      if (!assistantStarted) {
-        out.push({ type: 'text-start', id: textItemId })
+      if (!state.currentTextId) {
+        openTextBlock(ame.delta)
       }
-      if (ame.delta) {
-        out.push({ type: 'text-delta', delta: ame.delta } as UIMessageChunk)
+      else if (ame.delta) {
+        out.push({ type: 'text-delta', id: state.currentTextId, delta: ame.delta } as UIMessageChunk)
       }
       break
     case 'thinking_start':
-      out.push({ type: 'reasoning-start' } as UIMessageChunk)
+      openReasoningBlock()
       break
     case 'thinking_delta':
-      if (ame.delta) {
-        out.push({ type: 'reasoning-delta', delta: ame.delta } as UIMessageChunk)
+      if (!state.currentReasoningId) {
+        openReasoningBlock(ame.delta)
+      }
+      else if (ame.delta) {
+        out.push({ type: 'reasoning-delta', id: state.currentReasoningId, delta: ame.delta } as UIMessageChunk)
       }
       break
     case 'thinking_end':
-      out.push({ type: 'reasoning-end' } as UIMessageChunk)
+      closeReasoningBlock()
       break
     case 'error':
-      out.push({ type: 'text-delta', delta: '\n\n[Error occurred]' } as UIMessageChunk)
+      if (!state.currentTextId) {
+        openTextBlock()
+      }
+      out.push({ type: 'text-delta', id: state.currentTextId!, delta: '\n\n[Error occurred]' } as UIMessageChunk)
       break
   }
 

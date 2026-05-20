@@ -31,3 +31,14 @@ export async function startChatResponse(args: {
     signal: args.signal,
   })
 }
+
+export async function cancelChatResponse(sessionId: string): Promise<void> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${sessionId}/cancel`, {
+    method: 'POST',
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to cancel chat response: ${res.status} ${body}`)
+  }
+}

@@ -39,6 +39,7 @@ interface CodexProviderDeps {
 
 const RUNTIME_KIND: RuntimeKind = 'codex'
 const MAX_EVENT_SAMPLES = 20
+type ActiveCodexThread = { thread: Thread, abortController: AbortController }
 
 interface CodexStreamDiagnostics {
   totalEvents: number
@@ -51,7 +52,7 @@ interface CodexStreamDiagnostics {
 export class CodexProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
 
-  private readonly activeThreads = new Map<string, { thread: Thread, abortController: AbortController }>()
+  private readonly activeThreads = new Map<string, ActiveCodexThread>()
   private _lastUsage: TokenUsage | null = null
 
   get lastUsage(): TokenUsage | null {
@@ -59,6 +60,12 @@ export class CodexProvider implements ChatRuntime {
   }
 
   constructor(private readonly deps: CodexProviderDeps) {}
+
+  private releaseThread(sessionId: string, entry: ActiveCodexThread): void {
+    if (this.activeThreads.get(sessionId) === entry) {
+      this.activeThreads.delete(sessionId)
+    }
+  }
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     return {
@@ -135,7 +142,9 @@ export class CodexProvider implements ChatRuntime {
       ? codex.resumeThread(input.runtimeSession.providerSessionId, threadOptions)
       : codex.startThread(threadOptions)
 
-    this.activeThreads.set(input.runtimeSession.chatSessionId, { thread, abortController })
+    const sessionId = input.runtimeSession.chatSessionId
+    const activeEntry: ActiveCodexThread = { thread, abortController }
+    this.activeThreads.set(sessionId, activeEntry)
     this._lastUsage = null
 
     const textItemId = randomUUID()
@@ -272,7 +281,7 @@ export class CodexProvider implements ChatRuntime {
       throw error
     }
     finally {
-      this.activeThreads.delete(input.runtimeSession.chatSessionId)
+      this.releaseThread(sessionId, activeEntry)
       // Clean up temp system prompt file
       if (systemPromptFile) {
         try {
@@ -284,12 +293,13 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
-    const entry = this.activeThreads.get(input.runtimeSession.chatSessionId)
+    const sessionId = input.runtimeSession.chatSessionId
+    const entry = this.activeThreads.get(sessionId)
     if (!entry) {
       return
     }
     entry.abortController.abort()
-    this.activeThreads.delete(input.runtimeSession.chatSessionId)
+    this.releaseThread(sessionId, entry)
   }
 }
 
