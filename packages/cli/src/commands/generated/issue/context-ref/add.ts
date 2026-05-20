@@ -20,7 +20,7 @@ const spec = {
     "context-ref",
     "add"
   ],
-  "description": "Add context ref",
+  "description": "Add issue context ref",
   "flags": [
     {
       "name": "ref",
@@ -30,7 +30,7 @@ const spec = {
     }
   ],
   "method": "post",
-  "path": "/kanban/issues/{id}/context-refs"
+  "path": "/issues/{id}/context-refs"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

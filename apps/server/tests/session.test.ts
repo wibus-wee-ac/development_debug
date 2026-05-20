@@ -15,6 +15,7 @@ import {
   messages,
   workspaces,
 } from '@cradle/db'
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -82,7 +83,14 @@ describe('session capability', () => {
         workspaceId,
         title: 'Chat',
         agentProfileId,
+        agentId: expect.any(String),
         modelId: null,
+      }))
+      const defaultAgent = d.select().from(agents).where(eq(agents.id, created.agentId)).get()
+      expect(defaultAgent).toEqual(expect.objectContaining({
+        name: 'Test Agent',
+        agentProfileId,
+        runtimeKind: 'standard',
       }))
       expect(created.createdAt).toBeTypeOf('number')
       expect(created.updatedAt).toBeTypeOf('number')

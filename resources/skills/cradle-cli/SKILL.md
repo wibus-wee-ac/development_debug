@@ -133,12 +133,12 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `acp` | 9 | Manage ACP agent installation and registry state. | `cradle man acp` |
 | `agent` | 5 | Manage Cradle agent identities. | `cradle man agent` |
 | `approval` | 2 | Inspect and respond to pending approvals. | `cradle man approval` |
+| `automation` | 13 | Generated Cradle CLI module. | `cradle man automation` |
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
 | `chat` | 2 | Control chat runtime commands. | `cradle man chat` |
 | `health` | 1 | Check server health. | `cradle man health` |
-| `issue` | 18 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
+| `issue` | 27 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
-| `milestone` | 4 | Manage Kanban milestones. | `cradle man milestone` |
 | `observability` | 3 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
 | `preferences` | 4 | Read and update server preferences. | `cradle man preferences` |
 | `profile` | 5 | Manage agent profiles. | `cradle man profile` |
@@ -147,7 +147,6 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `secret` | 2 | Manage secret metadata. | `cradle man secret` |
 | `session` | 16 | Manage chat sessions and session links. | `cradle man session` |
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
-| `status` | 5 | Manage Kanban statuses. | `cradle man status` |
 | `usage` | 7 | Inspect usage and cost data. | `cradle man usage` |
 | `workflow-rule` | 4 | Manage workflow rules. | `cradle man workflow-rule` |
 | `workspace` | 17 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |

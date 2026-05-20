@@ -31,7 +31,7 @@ export function resolveActorContext(request: Request): MutationActor {
   }
 
   const session = db()
-    .select({ id: sessions.id, agentId: sessions.agentId })
+    .select({ id: sessions.id, agentId: sessions.agentId, agentProfileId: sessions.agentProfileId })
     .from(sessions)
     .where(eq(sessions.id, chatSessionId))
     .get()
@@ -45,17 +45,26 @@ export function resolveActorContext(request: Request): MutationActor {
     })
   }
 
-  if (!session.agentId) {
+  if (session.agentId) {
     return {
-      kind: 'user',
-      id: '__self__',
+      kind: 'agent',
+      id: session.agentId,
       source: 'chat-session',
     }
   }
 
+  if (session.agentProfileId) {
+    throw new AppError({
+      code: 'runtime_agent_identity_missing',
+      status: 409,
+      message: 'Runtime session is missing agent identity',
+      details: { chatSessionId, agentProfileId: session.agentProfileId },
+    })
+  }
+
   return {
-    kind: 'agent',
-    id: session.agentId,
+    kind: 'user',
+    id: '__self__',
     source: 'chat-session',
   }
 }

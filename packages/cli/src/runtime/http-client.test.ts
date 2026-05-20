@@ -24,11 +24,11 @@ describe('requestJson', () => {
       path: {},
       query: {},
       serverUrl: 'http://localhost:21423',
-      template: '/kanban/issues/issue-1/comments',
+      template: '/issues/issue-1/comments',
       body: { content: 'Hello' },
     })
 
-    expect(fetchSpy).toHaveBeenCalledWith(new URL('http://localhost:21423/kanban/issues/issue-1/comments'), expect.objectContaining({
+    expect(fetchSpy).toHaveBeenCalledWith(new URL('http://localhost:21423/issues/issue-1/comments'), expect.objectContaining({
       headers: {
         'content-type': 'application/json',
         'x-cradle-chat-session-id': 'chat-session-1',

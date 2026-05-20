@@ -7,12 +7,12 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { KanbanIssueComment } from '~/lib/types'
+import type { KanbanIssueCommentView } from '~/lib/types'
 import { ActivityTimeline } from './activity-timeline'
 
 const mockedDeps = vi.hoisted(() => ({
   addComment: vi.fn(),
-  comments: [] as KanbanIssueComment[],
+  comments: [] as KanbanIssueCommentView[],
 }))
 
 vi.mock('../shared/assignee-avatar', () => ({
@@ -27,6 +27,9 @@ vi.mock('../use-kanban', () => ({
   }),
   useComments: () => ({
     data: mockedDeps.comments,
+  }),
+  useDeleteComment: () => ({
+    mutate: vi.fn(),
   }),
 }))
 
@@ -48,6 +51,13 @@ describe('ActivityTimeline', () => {
         content: 'Delegated to agent',
         authorKind: 'system.delegated',
         authorId: null,
+        author: {
+          kind: 'system',
+          id: null,
+          displayName: 'Cradle',
+          avatarUrl: null,
+          label: 'System',
+        },
         agentActivityId: null,
         createdAt: Math.floor(Date.now() / 1000),
       },
@@ -57,6 +67,13 @@ describe('ActivityTimeline', () => {
         content: 'Investigated the failing workflow',
         authorKind: 'agent',
         authorId: 'agent-1',
+        author: {
+          kind: 'agent',
+          id: 'agent-1',
+          displayName: 'Jarvis',
+          avatarUrl: null,
+          label: 'AI',
+        },
         agentActivityId: null,
         createdAt: Math.floor(Date.now() / 1000),
       },
@@ -71,6 +88,8 @@ describe('ActivityTimeline', () => {
     expect(agentComment.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
     expect(screen.getByText('Delegated to agent')).toBeTruthy()
     expect(screen.getByText('Investigated the failing workflow')).toBeTruthy()
+    expect(screen.getByText('Jarvis')).toBeTruthy()
+    expect(screen.getByText('AI')).toBeTruthy()
   })
 
   it('submits trimmed comments and clears the input through the named action', () => {

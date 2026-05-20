@@ -26,10 +26,10 @@ const spec = {
     "context-ref",
     "remove"
   ],
-  "description": "Remove context ref",
+  "description": "Remove issue context ref",
   "flags": [],
   "method": "delete",
-  "path": "/kanban/issues/{id}/context-refs/{index}"
+  "path": "/issues/{id}/context-refs/{index}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -19,7 +19,7 @@ const spec = {
     "board",
     "update"
   ],
-  "description": "Update board",
+  "description": "Update Kanban board",
   "flags": [
     {
       "name": "name",

@@ -2,6 +2,8 @@
 // Output: Consolidated frontend type surface for apps/web
 // Position: apps/web/src/lib/types.ts — shared type definitions for the web app
 
+import type { KanbanIssueComment as DbKanbanIssueComment } from '@cradle/db'
+
 // ── DB entity types (from @cradle/db — import type only, erased by bundler) ──
 
 export type {
@@ -9,6 +11,11 @@ export type {
   AgentActivity,
   AgentProfile,
   AgentSession,
+  Issue,
+  IssueComment,
+  IssueMilestone,
+  IssueRelation,
+  IssueStatus,
   KanbanBoard,
   KanbanIssue,
   KanbanIssueComment,
@@ -18,6 +25,18 @@ export type {
   Session,
   Workspace,
 } from '@cradle/db'
+
+export interface IssueCommentAuthor {
+  kind: 'user' | 'agent' | 'system'
+  id: string | null
+  displayName: string
+  avatarUrl: string | null
+  label: string | null
+}
+
+export type KanbanIssueCommentView = DbKanbanIssueComment & {
+  author: IssueCommentAuthor
+}
 
 // ── Provider / Runtime types ───────────────────────────────────────────────
 
@@ -134,6 +153,12 @@ interface GitRemoteBranch {
 export interface GitBranches {
   local: GitLocalBranch[]
   remote: GitRemoteBranch[]
+}
+
+export interface GitRemote {
+  name: string
+  fetchUrl: string | null
+  pushUrl: string | null
 }
 
 export interface GitGraphCommit {

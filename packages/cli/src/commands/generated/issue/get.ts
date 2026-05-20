@@ -22,7 +22,7 @@ const spec = {
   "description": "Get issue",
   "flags": [],
   "method": "get",
-  "path": "/kanban/issues/{id}"
+  "path": "/issues/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

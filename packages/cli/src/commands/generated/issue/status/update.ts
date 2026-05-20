@@ -1,9 +1,9 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: status update command registration
+// Output: issue status update command registration
 // Position: packages/cli generated command module
 
-import { registerOperationCommand } from '../../../runtime/operation-command'
-import type { CliOperationSpec } from '../../../runtime/types'
+import { registerOperationCommand } from '../../../../runtime/operation-command'
+import type { CliOperationSpec } from '../../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
@@ -16,10 +16,11 @@ const spec = {
     }
   ],
   "command": [
+    "issue",
     "status",
     "update"
   ],
-  "description": "Update status",
+  "description": "Update issue status",
   "flags": [
     {
       "name": "name",
@@ -35,7 +36,7 @@ const spec = {
     }
   ],
   "method": "patch",
-  "path": "/kanban/statuses/{id}"
+  "path": "/issues/statuses/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

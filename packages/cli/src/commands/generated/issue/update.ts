@@ -90,7 +90,7 @@ const spec = {
     }
   ],
   "method": "patch",
-  "path": "/kanban/issues/{id}"
+  "path": "/issues/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

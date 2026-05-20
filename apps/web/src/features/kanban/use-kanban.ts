@@ -7,49 +7,49 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   deleteIssueAgentSessionsByAgentSessionId,
   deleteKanbanBoardsById,
-  deleteKanbanCommentsById,
-  deleteKanbanIssuesById,
-  deleteKanbanIssuesByIdContextRefsByIndex,
-  deleteKanbanIssuesByIdDelegation,
-  deleteKanbanMilestonesById,
-  deleteKanbanRelationsById,
-  deleteKanbanStatusesById,
+  deleteIssuesCommentsById,
+  deleteIssuesById,
+  deleteIssuesByIdContextRefsByIndex,
+  deleteIssuesByIdDelegation,
+  deleteIssuesMilestonesById,
+  deleteIssuesRelationsById,
+  deleteIssuesStatusesById,
   deleteSessionsByIdLinkedIssue,
   getIssueAgentSessionsByAgentSessionIdActivities,
   getKanbanBoards,
-  getKanbanIssues,
-  getKanbanIssuesById,
-  getKanbanIssuesByIdAgentSessions,
-  getKanbanIssuesByIdComments,
-  getKanbanIssuesByIdRelations,
-  getKanbanIssuesSearch,
-  getKanbanMilestones,
-  getKanbanStatuses,
+  getIssues,
+  getIssuesById,
+  getIssuesByIdAgentSessions,
+  getIssuesByIdComments,
+  getIssuesByIdRelations,
+  getIssuesSearch,
+  getIssuesMilestones,
+  getIssuesStatuses,
   getSessionsByIdLinkedIssue,
   patchKanbanBoardsById,
-  patchKanbanIssuesById,
-  patchKanbanMilestonesById,
-  patchKanbanStatusesById,
+  patchIssuesById,
+  patchIssuesMilestonesById,
+  patchIssuesStatusesById,
   postIssueAgentSessionsByAgentSessionIdRerun,
   postKanbanBoards,
-  postKanbanIssues,
-  postKanbanIssuesByIdComments,
-  postKanbanIssuesByIdContextRefs,
-  postKanbanIssuesByIdDelegation,
-  postKanbanMilestones,
-  postKanbanRelations,
-  postKanbanStatuses,
-  postKanbanStatusesReorder,
+  postIssues,
+  postIssuesByIdComments,
+  postIssuesByIdContextRefs,
+  postIssuesByIdDelegation,
+  postIssuesMilestones,
+  postIssuesRelations,
+  postIssuesStatuses,
+  postIssuesStatusesReorder,
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import type {
-  GetKanbanIssuesByIdResponse,
-  GetKanbanIssuesResponse,
-  GetKanbanIssuesSearchResponse,
-  PatchKanbanIssuesByIdResponse,
-  PostKanbanIssuesResponse,
+  GetIssuesByIdResponse,
+  GetIssuesResponse,
+  GetIssuesSearchResponse,
+  PatchIssuesByIdResponse,
+  PostIssuesResponse,
 } from '~/api-gen/types.gen'
-import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueComment, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { sessionsQueryKey } from '../workspace/use-session'
 
@@ -131,11 +131,11 @@ type AddRelationInput = { sourceIssueId: string, targetIssueId: string, type: 'b
 type DeleteRelationInput = { id: string, issueId: string }
 
 type ApiKanbanIssue
-  = | GetKanbanIssuesResponse[number]
-    | GetKanbanIssuesSearchResponse[number]
-    | GetKanbanIssuesByIdResponse
-    | PostKanbanIssuesResponse
-    | PatchKanbanIssuesByIdResponse
+  = | GetIssuesResponse[number]
+    | GetIssuesSearchResponse[number]
+    | GetIssuesByIdResponse
+    | PostIssuesResponse
+    | PatchIssuesByIdResponse
 
 function nullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
@@ -228,7 +228,7 @@ export function useStatuses(workspaceId: string) {
   return useQuery({
     queryKey: kanbanKeys.statuses(workspaceId),
     queryFn: async () => {
-      const { data } = await getKanbanStatuses({ query: { workspaceId } })
+      const { data } = await getIssuesStatuses({ query: { workspaceId } })
       return (data ?? []) as KanbanStatus[]
     },
     enabled: !!workspaceId,
@@ -239,7 +239,7 @@ export function useCreateStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateStatusInput) => {
-      const { data } = await postKanbanStatuses({ body: input })
+      const { data } = await postIssuesStatuses({ body: input })
       return data as KanbanStatus
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
@@ -250,7 +250,7 @@ export function useUpdateStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: UpdateStatusInput) => {
-      const { data } = await patchKanbanStatusesById({ path: { id: vars.id }, body: vars.patch })
+      const { data } = await patchIssuesStatusesById({ path: { id: vars.id }, body: vars.patch })
       return data as KanbanStatus
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
@@ -261,7 +261,7 @@ export function useReorderStatuses() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: ReorderStatusesInput) => {
-      await postKanbanStatusesReorder({ body: vars })
+      await postIssuesStatusesReorder({ body: vars })
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
   })
@@ -271,7 +271,7 @@ export function useDeleteStatus() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: DeleteStatusInput) => {
-      await deleteKanbanStatusesById({ path: { id: vars.id } })
+      await deleteIssuesStatusesById({ path: { id: vars.id } })
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) })
@@ -286,7 +286,7 @@ export function useMilestones(workspaceId: string) {
   return useQuery({
     queryKey: kanbanKeys.milestones(workspaceId),
     queryFn: async () => {
-      const { data } = await getKanbanMilestones({ query: { workspaceId } })
+      const { data } = await getIssuesMilestones({ query: { workspaceId } })
       return (data ?? []) as KanbanMilestone[]
     },
     enabled: !!workspaceId,
@@ -298,7 +298,7 @@ function useCreateMilestone() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateMilestoneInput) => {
-      const { data } = await postKanbanMilestones({ body: input })
+      const { data } = await postIssuesMilestones({ body: input })
       return data as KanbanMilestone
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
@@ -310,7 +310,7 @@ function useUpdateMilestone() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: UpdateMilestoneInput) => {
-      const { data } = await patchKanbanMilestonesById({ path: { id: vars.id }, body: vars.patch })
+      const { data } = await patchIssuesMilestonesById({ path: { id: vars.id }, body: vars.patch })
       return data as KanbanMilestone
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
@@ -322,7 +322,7 @@ function useDeleteMilestone() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: DeleteMilestoneInput) => {
-      await deleteKanbanMilestonesById({ path: { id: vars.id } })
+      await deleteIssuesMilestonesById({ path: { id: vars.id } })
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
   })
@@ -334,7 +334,7 @@ export function useIssues(params: IssueFilterParams) {
   return useQuery({
     queryKey: kanbanKeys.issues(params),
     queryFn: async () => {
-      const { data } = await getKanbanIssues({
+      const { data } = await getIssues({
         query: {
           workspaceId: params.workspaceId,
           milestoneId: params.milestoneId ?? undefined,
@@ -357,7 +357,7 @@ function useSearchIssues(query: string, limit = 20, enabled = true) {
   return useQuery({
     queryKey: kanbanKeys.searchIssues(trimmed, limit),
     queryFn: async () => {
-      const { data } = await getKanbanIssuesSearch({
+      const { data } = await getIssuesSearch({
         query: { q: trimmed, limit: String(limit) },
       })
       return (data ?? []).map(toKanbanIssue)
@@ -371,7 +371,7 @@ export function useIssue(id: string) {
   return useQuery({
     queryKey: kanbanKeys.issue(id),
     queryFn: async () => {
-      const { data } = await getKanbanIssuesById({ path: { id } })
+      const { data } = await getIssuesById({ path: { id } })
       return data ? toKanbanIssue(data) : undefined
     },
     enabled: !!id,
@@ -382,7 +382,7 @@ export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: CreateIssueInput) => {
-      const { data, error } = await postKanbanIssues({ body: input })
+      const { data, error } = await postIssues({ body: input })
       if (error || !data) {
         throw new Error('Failed to create issue')
       }
@@ -396,7 +396,7 @@ export function useUpdateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: UpdateIssueInput) => {
-      const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: vars.patch })
+      const { data } = await patchIssuesById({ path: { id: vars.id }, body: vars.patch })
       return readKanbanIssue(data, 'update')
     },
     onSuccess: (_data, vars) => {
@@ -411,7 +411,7 @@ export function useBulkUpdateIssues() {
   return useMutation({
     mutationFn: async (vars: BulkUpdateIssuesInput) => {
       const rows = await Promise.all(vars.ids.map(async (id) => {
-        const { data } = await patchKanbanIssuesById({ path: { id }, body: vars.patch })
+        const { data } = await patchIssuesById({ path: { id }, body: vars.patch })
         return readKanbanIssue(data, 'update')
       }))
       return rows
@@ -429,7 +429,7 @@ export function useMoveIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: MoveIssueInput) => {
-      const { data } = await patchKanbanIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
+      const { data } = await patchIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
       return readKanbanIssue(data, 'move')
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
@@ -439,7 +439,7 @@ export function useMoveIssue() {
 export function useDeleteIssue() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => deleteKanbanIssuesById({ path: { id } }),
+    mutationFn: (id: string) => deleteIssuesById({ path: { id } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
   })
 }
@@ -450,8 +450,8 @@ export function useComments(issueId: string) {
   return useQuery({
     queryKey: kanbanKeys.comments(issueId),
     queryFn: async () => {
-      const { data } = await getKanbanIssuesByIdComments({ path: { id: issueId } })
-      return (data ?? []) as KanbanIssueComment[]
+      const { data } = await getIssuesByIdComments({ path: { id: issueId } })
+      return (data ?? []) as KanbanIssueCommentView[]
     },
     enabled: !!issueId,
   })
@@ -461,21 +461,21 @@ export function useAddComment() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: AddCommentInput) => {
-      const { data } = await postKanbanIssuesByIdComments({
+      const { data } = await postIssuesByIdComments({
         path: { id: input.issueId },
         body: { content: input.content },
       })
-      return data as KanbanIssueComment
+      return data as KanbanIssueCommentView
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) }),
   })
 }
 
 // eslint-disable-next-line unused-imports/no-unused-vars
-function useDeleteComment() {
+export function useDeleteComment() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (vars: DeleteCommentInput) => deleteKanbanCommentsById({ path: { id: vars.id } }),
+    mutationFn: (vars: DeleteCommentInput) => deleteIssuesCommentsById({ path: { id: vars.id } }),
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) }),
   })
 }
@@ -486,7 +486,7 @@ export function useRelations(issueId: string) {
   return useQuery({
     queryKey: kanbanKeys.relations(issueId),
     queryFn: async () => {
-      const { data } = await getKanbanIssuesByIdRelations({ path: { id: issueId } })
+      const { data } = await getIssuesByIdRelations({ path: { id: issueId } })
       return (data ?? []) as KanbanIssueRelation[]
     },
     enabled: !!issueId,
@@ -498,7 +498,7 @@ function useAddRelation() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: AddRelationInput) => {
-      const { data } = await postKanbanRelations({ body: input })
+      const { data } = await postIssuesRelations({ body: input })
       return data
     },
     onSuccess: (_data, vars) => {
@@ -512,7 +512,7 @@ export function useDeleteRelation() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: DeleteRelationInput) => {
-      await deleteKanbanRelationsById({ path: { id: vars.id } })
+      await deleteIssuesRelationsById({ path: { id: vars.id } })
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.relations(vars.issueId) }),
   })
@@ -524,7 +524,7 @@ export function useDelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, agentId: string, agentProfileId?: string | null }) => {
-      const { data } = await postKanbanIssuesByIdDelegation({
+      const { data } = await postIssuesByIdDelegation({
         path: { id: vars.issueId },
         body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId },
       })
@@ -543,7 +543,7 @@ export function useUndelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string }) => {
-      await deleteKanbanIssuesByIdDelegation({ path: { id: vars.issueId } })
+      await deleteIssuesByIdDelegation({ path: { id: vars.issueId } })
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
@@ -595,7 +595,7 @@ export function useAgentSessions(issueId: string) {
   return useQuery({
     queryKey: kanbanKeys.agentSessions(issueId),
     queryFn: async () => {
-      const { data } = await getKanbanIssuesByIdAgentSessions({ path: { id: issueId } })
+      const { data } = await getIssuesByIdAgentSessions({ path: { id: issueId } })
       return (data ?? []) as AgentSession[]
     },
     enabled: !!issueId,
@@ -629,7 +629,7 @@ function useAddContextRef() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, ref: string }) => {
-      await postKanbanIssuesByIdContextRefs({ path: { id: vars.issueId }, body: { ref: vars.ref } })
+      await postIssuesByIdContextRefs({ path: { id: vars.issueId }, body: { ref: vars.ref } })
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
@@ -642,7 +642,7 @@ function useRemoveContextRef() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, index: number }) => {
-      await deleteKanbanIssuesByIdContextRefsByIndex({ path: { id: vars.issueId, index: String(vars.index) } })
+      await deleteIssuesByIdContextRefsByIndex({ path: { id: vars.issueId, index: String(vars.index) } })
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })

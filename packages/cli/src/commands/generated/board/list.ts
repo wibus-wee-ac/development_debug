@@ -12,7 +12,7 @@ const spec = {
     "board",
     "list"
   ],
-  "description": "List boards",
+  "description": "List Kanban boards",
   "flags": [
     {
       "name": "workspaceId",

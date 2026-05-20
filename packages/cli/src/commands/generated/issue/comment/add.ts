@@ -20,7 +20,7 @@ const spec = {
     "comment",
     "add"
   ],
-  "description": "Add comment",
+  "description": "Add issue comment",
   "flags": [
     {
       "name": "content",
@@ -30,7 +30,7 @@ const spec = {
     }
   ],
   "method": "post",
-  "path": "/kanban/issues/{id}/comments"
+  "path": "/issues/{id}/comments"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

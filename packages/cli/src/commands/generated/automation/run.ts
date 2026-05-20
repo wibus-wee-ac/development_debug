@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: status reorder command registration
+// Output: automation run command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../runtime/operation-command'
@@ -7,28 +7,35 @@ import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
-  "arguments": [],
-  "command": [
-    "status",
-    "reorder"
+  "arguments": [
+    {
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
   ],
-  "description": "Reorder statuses",
+  "command": [
+    "automation",
+    "run"
+  ],
+  "description": "Run automation now",
   "flags": [
     {
-      "name": "workspaceId",
-      "required": true,
-      "target": "body.workspaceId",
+      "name": "occurrenceKey",
+      "required": false,
+      "target": "body.occurrenceKey",
       "type": "string"
     },
     {
-      "name": "orderedIds",
-      "required": true,
-      "target": "body.orderedIds",
-      "type": "string[]"
+      "name": "scheduledFor",
+      "required": false,
+      "target": "body.scheduledFor",
+      "type": "number"
     }
   ],
   "method": "post",
-  "path": "/kanban/statuses/reorder"
+  "path": "/automations/{id}/run"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

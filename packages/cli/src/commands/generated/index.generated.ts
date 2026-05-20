@@ -20,6 +20,19 @@ import { register as registerAgentList } from './agent/list'
 import { register as registerAgentUpdate } from './agent/update'
 import { register as registerApprovalList } from './approval/list'
 import { register as registerApprovalRespond } from './approval/respond'
+import { register as registerAutomationArtifactGet } from './automation/artifact/get'
+import { register as registerAutomationArtifactList } from './automation/artifact/list'
+import { register as registerAutomationArtifacts } from './automation/artifacts'
+import { register as registerAutomationCreate } from './automation/create'
+import { register as registerAutomationDelete } from './automation/delete'
+import { register as registerAutomationDisable } from './automation/disable'
+import { register as registerAutomationEnable } from './automation/enable'
+import { register as registerAutomationGet } from './automation/get'
+import { register as registerAutomationList } from './automation/list'
+import { register as registerAutomationRun } from './automation/run'
+import { register as registerAutomationRunGet } from './automation/run/get'
+import { register as registerAutomationRuns } from './automation/runs'
+import { register as registerAutomationUpdate } from './automation/update'
 import { register as registerBoardCreate } from './board/create'
 import { register as registerBoardDelete } from './board/delete'
 import { register as registerBoardList } from './board/list'
@@ -38,20 +51,25 @@ import { register as registerIssueDelegation } from './issue/delegation'
 import { register as registerIssueDelete } from './issue/delete'
 import { register as registerIssueGet } from './issue/get'
 import { register as registerIssueList } from './issue/list'
+import { register as registerIssueMilestoneCreate } from './issue/milestone/create'
+import { register as registerIssueMilestoneDelete } from './issue/milestone/delete'
+import { register as registerIssueMilestoneList } from './issue/milestone/list'
+import { register as registerIssueMilestoneUpdate } from './issue/milestone/update'
 import { register as registerIssueRelationCreate } from './issue/relation/create'
 import { register as registerIssueRelationDelete } from './issue/relation/delete'
 import { register as registerIssueRelationList } from './issue/relation/list'
 import { register as registerIssueSearch } from './issue/search'
 import { register as registerIssueSessions } from './issue/sessions'
+import { register as registerIssueStatusCreate } from './issue/status/create'
+import { register as registerIssueStatusDelete } from './issue/status/delete'
+import { register as registerIssueStatusList } from './issue/status/list'
+import { register as registerIssueStatusReorder } from './issue/status/reorder'
+import { register as registerIssueStatusUpdate } from './issue/status/update'
 import { register as registerIssueUndelegate } from './issue/undelegate'
 import { register as registerIssueUpdate } from './issue/update'
 import { register as registerIssueAgentSessionActivities } from './issue-agent-session/activities'
 import { register as registerIssueAgentSessionRerun } from './issue-agent-session/rerun'
 import { register as registerIssueAgentSessionStop } from './issue-agent-session/stop'
-import { register as registerMilestoneCreate } from './milestone/create'
-import { register as registerMilestoneDelete } from './milestone/delete'
-import { register as registerMilestoneList } from './milestone/list'
-import { register as registerMilestoneUpdate } from './milestone/update'
 import { register as registerObservabilityEvents } from './observability/events'
 import { register as registerObservabilityExport } from './observability/export'
 import { register as registerObservabilityIncidents } from './observability/incidents'
@@ -95,11 +113,6 @@ import { register as registerSkillList } from './skill/list'
 import { register as registerSkillSourceCancelFetch } from './skill/source/cancel-fetch'
 import { register as registerSkillSourceFetch } from './skill/source/fetch'
 import { register as registerSkillSourceImport } from './skill/source/import'
-import { register as registerStatusCreate } from './status/create'
-import { register as registerStatusDelete } from './status/delete'
-import { register as registerStatusList } from './status/list'
-import { register as registerStatusReorder } from './status/reorder'
-import { register as registerStatusUpdate } from './status/update'
 import { register as registerUsageCostDaily } from './usage/cost/daily'
 import { register as registerUsageCostSessions } from './usage/cost/sessions'
 import { register as registerUsageCostSummary } from './usage/cost/summary'
@@ -146,6 +159,19 @@ export function registerGeneratedCommands(program: Command): void {
   registerAgentUpdate(program)
   registerApprovalList(program)
   registerApprovalRespond(program)
+  registerAutomationArtifactGet(program)
+  registerAutomationArtifactList(program)
+  registerAutomationArtifacts(program)
+  registerAutomationCreate(program)
+  registerAutomationDelete(program)
+  registerAutomationDisable(program)
+  registerAutomationEnable(program)
+  registerAutomationGet(program)
+  registerAutomationList(program)
+  registerAutomationRun(program)
+  registerAutomationRunGet(program)
+  registerAutomationRuns(program)
+  registerAutomationUpdate(program)
   registerBoardCreate(program)
   registerBoardDelete(program)
   registerBoardList(program)
@@ -164,20 +190,25 @@ export function registerGeneratedCommands(program: Command): void {
   registerIssueDelete(program)
   registerIssueGet(program)
   registerIssueList(program)
+  registerIssueMilestoneCreate(program)
+  registerIssueMilestoneDelete(program)
+  registerIssueMilestoneList(program)
+  registerIssueMilestoneUpdate(program)
   registerIssueRelationCreate(program)
   registerIssueRelationDelete(program)
   registerIssueRelationList(program)
   registerIssueSearch(program)
   registerIssueSessions(program)
+  registerIssueStatusCreate(program)
+  registerIssueStatusDelete(program)
+  registerIssueStatusList(program)
+  registerIssueStatusReorder(program)
+  registerIssueStatusUpdate(program)
   registerIssueUndelegate(program)
   registerIssueUpdate(program)
   registerIssueAgentSessionActivities(program)
   registerIssueAgentSessionRerun(program)
   registerIssueAgentSessionStop(program)
-  registerMilestoneCreate(program)
-  registerMilestoneDelete(program)
-  registerMilestoneList(program)
-  registerMilestoneUpdate(program)
   registerObservabilityEvents(program)
   registerObservabilityExport(program)
   registerObservabilityIncidents(program)
@@ -221,11 +252,6 @@ export function registerGeneratedCommands(program: Command): void {
   registerSkillSourceCancelFetch(program)
   registerSkillSourceFetch(program)
   registerSkillSourceImport(program)
-  registerStatusCreate(program)
-  registerStatusDelete(program)
-  registerStatusList(program)
-  registerStatusReorder(program)
-  registerStatusUpdate(program)
   registerUsageCostDaily(program)
   registerUsageCostSessions(program)
   registerUsageCostSummary(program)

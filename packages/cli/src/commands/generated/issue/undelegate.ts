@@ -22,7 +22,7 @@ const spec = {
   "description": "Undelegate issue",
   "flags": [],
   "method": "delete",
-  "path": "/kanban/issues/{id}/delegation"
+  "path": "/issues/{id}/delegation"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

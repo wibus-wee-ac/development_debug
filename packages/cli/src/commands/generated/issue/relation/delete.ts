@@ -20,10 +20,10 @@ const spec = {
     "relation",
     "delete"
   ],
-  "description": "Delete relation",
+  "description": "Delete issue relation",
   "flags": [],
   "method": "delete",
-  "path": "/kanban/relations/{id}"
+  "path": "/issues/relations/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -12,7 +12,7 @@ const spec = {
     "board",
     "create"
   ],
-  "description": "Create board",
+  "description": "Create Kanban board",
   "flags": [
     {
       "name": "workspaceId",

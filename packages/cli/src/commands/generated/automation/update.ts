@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: milestone update command registration
+// Output: automation update command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../runtime/operation-command'
@@ -16,10 +16,10 @@ const spec = {
     }
   ],
   "command": [
-    "milestone",
+    "automation",
     "update"
   ],
-  "description": "Update milestone",
+  "description": "Update automation",
   "flags": [
     {
       "name": "title",
@@ -34,24 +34,37 @@ const spec = {
       "type": "string"
     },
     {
-      "name": "dueDate",
+      "name": "trigger",
       "required": false,
-      "target": "body.dueDate",
-      "type": "number"
+      "target": "body.trigger",
+      "type": "json"
     },
     {
-      "name": "status",
+      "name": "recipe",
       "required": false,
-      "target": "body.status",
+      "target": "body.recipe",
+      "type": "json"
+    },
+    {
+      "name": "createdByKind",
+      "required": false,
+      "target": "body.createdByKind",
       "type": "string",
       "values": [
-        "open",
-        "closed"
+        "agent",
+        "user",
+        "system"
       ]
+    },
+    {
+      "name": "createdById",
+      "required": false,
+      "target": "body.createdById",
+      "type": "string"
     }
   ],
   "method": "patch",
-  "path": "/kanban/milestones/{id}"
+  "path": "/automations/{id}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

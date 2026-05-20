@@ -1,12 +1,14 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import type { Message, Session } from '@cradle/db'
-import { agents, backendRuns, backendSessionBindings, messages, sessions } from '@cradle/db'
+import { agentProfiles, agents, backendRuns, backendSessionBindings, messages, sessions } from '@cradle/db'
 import { desc, eq, inArray } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { buildSessionRuntimeConfigJson, readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
+import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
+import { buildAgentAvatarUrl } from '../agent-identity/avatar'
 import type { RuntimeKind } from '../providers/types'
 
 // ── session CRUD ──
@@ -35,6 +37,74 @@ function toSessionView(session: Session, modelId: string | null): SessionView {
     ...session,
     modelId,
   }
+}
+
+function resolveDefaultAgentName(runtimeKind: RuntimeKind, profileName: string): string {
+  if (runtimeKind === 'jar-core') {
+    return 'Jarvis'
+  }
+  return profileName
+}
+
+function defaultAgentId(profileId: string, runtimeKind: RuntimeKind): string {
+  const digest = createHash('sha256').update(`${profileId}:${runtimeKind}`).digest('hex').slice(0, 24)
+  return `default-agent-${digest}`
+}
+
+function resolveProfileBackedAgent(input: { agentProfileId: string, runtimeKind: RuntimeKind }): string {
+  const id = defaultAgentId(input.agentProfileId, input.runtimeKind)
+  const existing = db()
+    .select({ id: agents.id })
+    .from(agents)
+    .where(eq(agents.id, id))
+    .get()
+
+  if (existing) {
+    return existing.id
+  }
+
+  const profile = db()
+    .select({ id: agentProfiles.id, name: agentProfiles.name })
+    .from(agentProfiles)
+    .where(eq(agentProfiles.id, input.agentProfileId))
+    .get()
+
+  if (!profile) {
+    throw new AppError({
+      code: 'agent_profile_not_found',
+      status: 404,
+      message: 'Agent profile not found',
+      details: { agentProfileId: input.agentProfileId },
+    })
+  }
+
+  const now = currentUnixSeconds()
+  const name = resolveDefaultAgentName(input.runtimeKind, profile.name)
+  const avatarSeed = input.runtimeKind === 'jar-core' ? 'jarvis' : `${profile.id}:${input.runtimeKind}`
+  const created = db()
+    .insert(agents)
+    .values({
+      id,
+      name,
+      description: `Default ${name} identity for ${profile.name}`,
+      avatarUrl: buildAgentAvatarUrl('bottts-neutral', avatarSeed),
+      avatarStyle: 'bottts-neutral',
+      avatarSeed,
+      agentProfileId: profile.id,
+      runtimeKind: input.runtimeKind,
+      configJson: '{}',
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: agents.id,
+      set: { updatedAt: now },
+    })
+    .returning({ id: agents.id })
+    .get()
+
+  return created.id
 }
 
 export function list(workspaceId: string): SessionView[] {
@@ -168,10 +238,11 @@ function resolveSessionCreateInput(input: {
     })
   }
 
+  const runtimeKind = input.runtimeKind ?? 'standard'
   return {
     agentProfileId: input.agentProfileId,
-    runtimeKind: input.runtimeKind ?? 'standard',
-    agentId: input.agentId ?? null,
+    runtimeKind,
+    agentId: resolveProfileBackedAgent({ agentProfileId: input.agentProfileId, runtimeKind }),
     configJson: '{}',
   }
 }

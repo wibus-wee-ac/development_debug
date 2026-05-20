@@ -20,10 +20,10 @@ const spec = {
     "comment",
     "list"
   ],
-  "description": "List comments",
+  "description": "List issue comments",
   "flags": [],
   "method": "get",
-  "path": "/kanban/issues/{id}/comments"
+  "path": "/issues/{id}/comments"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

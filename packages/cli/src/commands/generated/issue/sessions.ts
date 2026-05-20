@@ -22,7 +22,7 @@ const spec = {
   "description": "List agent sessions",
   "flags": [],
   "method": "get",
-  "path": "/kanban/issues/{id}/agent-sessions"
+  "path": "/issues/{id}/agent-sessions"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: milestone create command registration
+// Output: automation create command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../runtime/operation-command'
@@ -9,14 +9,20 @@ import type { Command } from 'commander'
 const spec = {
   "arguments": [],
   "command": [
-    "milestone",
+    "automation",
     "create"
   ],
-  "description": "Create milestone",
+  "description": "Create automation",
   "flags": [
     {
+      "name": "id",
+      "required": false,
+      "target": "body.id",
+      "type": "string"
+    },
+    {
       "name": "workspaceId",
-      "required": true,
+      "required": false,
       "target": "body.workspaceId",
       "type": "string"
     },
@@ -33,24 +39,43 @@ const spec = {
       "type": "string"
     },
     {
-      "name": "dueDate",
+      "name": "enabled",
       "required": false,
-      "target": "body.dueDate",
-      "type": "number"
+      "target": "body.enabled",
+      "type": "boolean"
     },
     {
-      "name": "status",
+      "name": "trigger",
+      "required": true,
+      "target": "body.trigger",
+      "type": "json"
+    },
+    {
+      "name": "recipe",
+      "required": true,
+      "target": "body.recipe",
+      "type": "json"
+    },
+    {
+      "name": "createdByKind",
       "required": false,
-      "target": "body.status",
+      "target": "body.createdByKind",
       "type": "string",
       "values": [
-        "open",
-        "closed"
+        "agent",
+        "user",
+        "system"
       ]
+    },
+    {
+      "name": "createdById",
+      "required": false,
+      "target": "body.createdById",
+      "type": "string"
     }
   ],
   "method": "post",
-  "path": "/kanban/milestones"
+  "path": "/automations/"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

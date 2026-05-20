@@ -19,7 +19,7 @@ const spec = {
     "board",
     "delete"
   ],
-  "description": "Delete board",
+  "description": "Delete Kanban board",
   "flags": [],
   "method": "delete",
   "path": "/kanban/boards/{id}"

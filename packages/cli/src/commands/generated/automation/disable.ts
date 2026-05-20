@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: milestone list command registration
+// Output: automation disable command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../runtime/operation-command'
@@ -7,22 +7,22 @@ import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
-  "arguments": [],
-  "command": [
-    "milestone",
-    "list"
-  ],
-  "description": "List milestones",
-  "flags": [
+  "arguments": [
     {
-      "name": "workspaceId",
+      "name": "id",
       "required": true,
-      "target": "query.workspaceId",
+      "target": "path.id",
       "type": "string"
     }
   ],
-  "method": "get",
-  "path": "/kanban/milestones"
+  "command": [
+    "automation",
+    "disable"
+  ],
+  "description": "Disable automation",
+  "flags": [],
+  "method": "post",
+  "path": "/automations/{id}/disable"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

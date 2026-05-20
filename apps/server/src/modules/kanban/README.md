@@ -1,10 +1,10 @@
 # Kanban Module
 
-Provides the workspace-scoped board shell, default status seeding, issue core loop, actor provenance, and comment core loop.
-Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
+Provides workspace-scoped board/view configuration. Issues, statuses, milestones, comments, relations, context refs, and delegation markers are owned by the Issue capability under `/issues`.
+Route metadata includes `x-cradle-cli` descriptors for generated board CLI commands.
 
 ## Files
 
 - `index.ts`: Elysia `/kanban` routes, OpenAPI metadata, and generated CLI descriptors.
-- `model.ts`: TypeBox schemas for kanban requests and responses.
-- `service.ts`: board, status, milestone, issue, relation, context-ref, delegation marker, actor provenance, and comment semantics, using shared helpers for JSON text metadata and timestamps.
+- `model.ts`: TypeBox schemas for Kanban board requests and responses.
+- `service.ts`: Kanban board persistence and workspace validation.

@@ -1,11 +1,11 @@
-// Input: shared schema helpers, identity tables, Kanban issue table, and sqlite column builders
+// Input: shared schema helpers, identity tables, Issue table, and sqlite column builders
 // Output: Chat/session/message/usage tables and inferred row types
 // Position: Chat persistence schema module used by chat, search, and linked-session flows
 
 import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { agentProfiles, agents } from './identity'
-import { kanbanIssues } from './kanban'
+import { issues } from './issue'
 import { createdAt, textPk, timestamps, workspaces } from './shared'
 
 export const sessions = sqliteTable('sessions', {
@@ -22,7 +22,7 @@ export const sessions = sqliteTable('sessions', {
     .references(() => agents.id, { onDelete: 'set null' }),
   configJson: text('config_json').notNull().default('{}'),
   linkedIssueId: text('linked_issue_id')
-    .references(() => kanbanIssues.id, { onDelete: 'set null' }),
+    .references(() => issues.id, { onDelete: 'set null' }),
   pinned: int('pinned').notNull().default(0),
   ptyStartedAt: int('pty_started_at'),
   ...timestamps(),

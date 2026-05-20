@@ -8,6 +8,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { AppError } from '../../errors/app-error'
 import { readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
+import { buildAgentAvatarUrl } from './avatar'
 
 // ── types ──
 
@@ -65,7 +66,7 @@ export function get(id: string): Agent | null {
 
 export function create(input: CreateAgentInput): Agent {
   const normalized = normalizeAgentInput(input)
-  const avatarUrl = buildAvatarUrl(input.avatarStyle, input.avatarSeed)
+  const avatarUrl = buildAgentAvatarUrl(input.avatarStyle, input.avatarSeed)
   try {
     return db()
       .insert(agents)
@@ -144,7 +145,7 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
     updatePatch.enabled = patch.enabled
   }
   if (patch.avatarStyle !== undefined || patch.avatarSeed !== undefined) {
-    updatePatch.avatarUrl = buildAvatarUrl(nextStyle, nextSeed)
+    updatePatch.avatarUrl = buildAgentAvatarUrl(nextStyle, nextSeed)
   }
 
   try {
@@ -160,10 +161,6 @@ export function remove(id: string): void {
 }
 
 // ── helpers ──
-
-function buildAvatarUrl(style: string | null, seed: string | null): string {
-  return `https://api.dicebear.com/9.x/${encodeURIComponent(style ?? 'bottts')}/svg?seed=${encodeURIComponent(seed ?? 'default')}`
-}
 
 function normalizeAgentInput(input: CreateAgentInput): Required<Omit<CreateAgentInput, 'agentProfileId'>> & { agentProfileId: string | null, description: string | null } {
   const runtimeKind = input.runtimeKind ?? 'standard'

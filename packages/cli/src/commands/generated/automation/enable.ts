@@ -1,5 +1,5 @@
 // Input: generated OpenAPI CLI operation metadata
-// Output: status list command registration
+// Output: automation enable command registration
 // Position: packages/cli generated command module
 
 import { registerOperationCommand } from '../../../runtime/operation-command'
@@ -7,22 +7,22 @@ import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
-  "arguments": [],
-  "command": [
-    "status",
-    "list"
-  ],
-  "description": "List statuses",
-  "flags": [
+  "arguments": [
     {
-      "name": "workspaceId",
+      "name": "id",
       "required": true,
-      "target": "query.workspaceId",
+      "target": "path.id",
       "type": "string"
     }
   ],
-  "method": "get",
-  "path": "/kanban/statuses"
+  "command": [
+    "automation",
+    "enable"
+  ],
+  "description": "Enable automation",
+  "flags": [],
+  "method": "post",
+  "path": "/automations/{id}/enable"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

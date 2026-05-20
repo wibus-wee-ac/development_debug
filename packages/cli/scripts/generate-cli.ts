@@ -230,7 +230,7 @@ function createImportName(command: string[]): string {
 }
 
 async function loadOpenApiDocument(): Promise<OpenApiDocument> {
-  const app = await createServerApp()
+  const app = await createServerApp({ startBackgroundTasks: false })
   try {
     const response = await app.handle(new Request('http://localhost/openapi.json'))
     if (!response.ok) {

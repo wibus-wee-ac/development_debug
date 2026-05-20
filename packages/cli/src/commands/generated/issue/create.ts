@@ -71,7 +71,7 @@ const spec = {
     }
   ],
   "method": "post",
-  "path": "/kanban/issues"
+  "path": "/issues/"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

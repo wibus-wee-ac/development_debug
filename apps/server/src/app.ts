@@ -15,6 +15,7 @@ import { createRequestLoggerPlugin } from './http/request-logger'
 import { shutdownInfra } from './infra'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
+import { automation } from './modules/automation'
 import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
@@ -23,6 +24,7 @@ import { initDaemon as chronicleInitDaemon } from './modules/chronicle/service'
 import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
 import { health } from './modules/health'
+import { issue } from './modules/issue'
 import { issueAgent } from './modules/issue-agent'
 import { kanban } from './modules/kanban'
 import { observability } from './modules/observability'
@@ -41,6 +43,10 @@ import { usage } from './modules/usage'
 import { workflowRules } from './modules/workflow-rules'
 import { workspace } from './modules/workspace'
 
+interface CreateServerAppOptions {
+  startBackgroundTasks?: boolean
+}
+
 function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   const origin = headers.get('origin')
   if (!origin || origin === 'null') {
@@ -57,7 +63,8 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   }
 }
 
-export async function createServerApp() {
+export async function createServerApp(options: CreateServerAppOptions = {}) {
+  const { startBackgroundTasks = true } = options
   const app = new Elysia({
     name: 'cradle.server.elysia',
     adapter: node(),
@@ -78,8 +85,10 @@ export async function createServerApp() {
   app.use(secrets)
   app.use(providers)
   app.use(agentIdentity)
+  app.use(automation)
   app.use(session)
   app.use(sessionAwait)
+  app.use(issue)
   app.use(kanban)
   app.use(search)
   app.use(skills)
@@ -102,7 +111,9 @@ export async function createServerApp() {
   app.onStop([() => shutdownInfra(), () => chronicleCleanup()])
 
   // Start chronicle daemon if enabled
-  void chronicleInitDaemon()
+  if (startBackgroundTasks) {
+    void chronicleInitDaemon()
+  }
 
   registerOpenApiAlias(app)
 

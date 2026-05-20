@@ -22,7 +22,7 @@ const spec = {
   "description": "Get delegation state",
   "flags": [],
   "method": "get",
-  "path": "/kanban/issues/{id}/delegation"
+  "path": "/issues/{id}/delegation"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -13,7 +13,7 @@ const spec = {
     "relation",
     "create"
   ],
-  "description": "Create relation",
+  "description": "Create issue relation",
   "flags": [
     {
       "name": "sourceIssueId",
@@ -40,7 +40,7 @@ const spec = {
     }
   ],
   "method": "post",
-  "path": "/kanban/relations"
+  "path": "/issues/relations"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {
