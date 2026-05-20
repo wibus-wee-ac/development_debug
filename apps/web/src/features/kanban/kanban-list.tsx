@@ -11,6 +11,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
 import type { IssueSelectionMode } from './kanban-selection'
+import { normalizeStatusCategory } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
 interface ListProps {
@@ -51,7 +52,7 @@ export function KanbanList({
       return statuses.map(s => ({
         id: s.id,
         name: s.name,
-        category: s.category as GroupDef['category'],
+        category: normalizeStatusCategory(s.category),
       }))
     }
     if (config.groupBy === 'priority') {
@@ -71,7 +72,7 @@ export function KanbanList({
     return statuses.map(s => ({
       id: s.id,
       name: s.name,
-      category: s.category as GroupDef['category'],
+      category: normalizeStatusCategory(s.category),
     }))
   }, [config.groupBy, statuses, milestones])
 

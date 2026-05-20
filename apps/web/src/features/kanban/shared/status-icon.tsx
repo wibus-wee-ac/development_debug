@@ -15,12 +15,17 @@ const categoryColors: Record<StatusCategory, string> = {
   canceled: '#6b7280',
 }
 
+export function normalizeStatusCategory(value: unknown): StatusCategory {
+  return typeof value === 'string' && value in categoryColors ? value as StatusCategory : 'unstarted'
+}
+
 export function StatusIcon({ category, size = 16, className }: {
-  category: StatusCategory
+  category: StatusCategory | string | null | undefined
   size?: number
   className?: string
 }) {
-  const color = categoryColors[category]
+  const normalizedCategory = normalizeStatusCategory(category)
+  const color = categoryColors[normalizedCategory]
   const r = size / 2 - 2
   const cx = size / 2
   const cy = size / 2
@@ -32,16 +37,16 @@ export function StatusIcon({ category, size = 16, className }: {
       viewBox={`0 0 ${size} ${size}`}
       className={cn('shrink-0', className)}
     >
-      {category === 'triage' && (
+      {normalizedCategory === 'triage' && (
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={2} />
       )}
-      {category === 'backlog' && (
+      {normalizedCategory === 'backlog' && (
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray="2 2" />
       )}
-      {category === 'unstarted' && (
+      {normalizedCategory === 'unstarted' && (
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1.5} />
       )}
-      {category === 'started' && (
+      {normalizedCategory === 'started' && (
         <>
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1.5} />
           <path
@@ -50,10 +55,10 @@ export function StatusIcon({ category, size = 16, className }: {
           />
         </>
       )}
-      {category === 'completed' && (
+      {normalizedCategory === 'completed' && (
         <circle cx={cx} cy={cy} r={r} fill={color} />
       )}
-      {category === 'canceled' && (
+      {normalizedCategory === 'canceled' && (
         <>
           <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={1.5} />
           <line x1={cx - r + 2} y1={cy} x2={cx + r - 2} y2={cy} stroke={color} strokeWidth={1.5} />

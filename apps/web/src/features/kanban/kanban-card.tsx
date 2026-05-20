@@ -17,7 +17,7 @@ import { formatIssueId } from './shared/format-issue-id'
 import { parseIssueLabels } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
-import { StatusIcon } from './shared/status-icon'
+import { normalizeStatusCategory, StatusIcon } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
 interface CardProps {
@@ -67,6 +67,8 @@ export function KanbanCard({
     : undefined
 
   const labels = parseIssueLabels(issue.labels)
+  const issueStatus = statuses.find(status => status.id === issue.statusId)
+  const statusCategory = normalizeStatusCategory(issueStatus?.category ?? category)
 
   useEffect(() => {
     return () => {
@@ -181,9 +183,9 @@ export function KanbanCard({
           </span>
 
           <span className="flex items-start gap-2">
-            {displayProperties.status && category && (
+            {displayProperties.status && (
               <span className="mt-1 shrink-0">
-                <StatusIcon category={category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={16} />
+                <StatusIcon category={statusCategory} size={16} />
               </span>
             )}
             <span className="text-[13px] font-medium text-foreground leading-snug tracking-tight text-balance">
