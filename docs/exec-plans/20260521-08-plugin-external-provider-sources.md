@@ -84,7 +84,7 @@
 
 ## Outcomes & Retrospective
 
-第一版 Host 能力已完成。Cradle core 不内置 CC Switch source，Plugin 也不直接控制 Provider UI；server plugin 现在可以注册 fixed-shape external provider source，host 会把 snapshot 投影进 Cradle-owned `agent_profiles`、`agent_credentials` 和 external source tracking tables。Provider settings 使用固定 UI 展示 external source metadata，并禁用 source-owned edits。后续新增的 `plugins/cc-switch` 是第一条真实 adapter，已完成 plugin-local reader/mapping/fake DB tests，并补齐 host discovery + refresh 端到端测试。CC Switch mirror 仍需扩展更新、删除、锁定和旧 schema 兼容验证。
+第一版 Host 能力已完成。Cradle core 不内置 CC Switch source，Plugin 也不直接控制 Provider UI；server plugin 现在可以注册 fixed-shape external provider source，host 会把 snapshot 投影进 Cradle-owned `agent_profiles`、`agent_credentials` 和 external source tracking tables。Provider settings 使用固定 UI 展示 external source metadata，并禁用 source-owned edits。后续新增的 `plugins/cc-switch` 是第一条真实 adapter，已完成 plugin-local reader/mapping/fake DB tests，并补齐 host discovery + refresh 端到端测试。CC Switch mirror 的更新、删除、锁定、旧 schema 和 current provider 切换验证已按 Wibus 确认收口。
 
 已验证 `pnpm --filter @cradle/plugin-sdk typecheck`、`pnpm --filter @cradle/server exec tsc --noEmit`、`pnpm --filter @cradle/server exec vitest run tests/external-provider-sources.test.ts`、`pnpm --filter @cradle/server test`、`pnpm --filter @cradle/web exec tsc --noEmit`、`pnpm typecheck` 和 `pnpm test` 均通过。
 

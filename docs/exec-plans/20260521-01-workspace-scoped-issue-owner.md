@@ -18,7 +18,7 @@ Issues are currently implemented under the Kanban namespace even though every is
 - [x] (2026-05-21 00:55Z) Updated issue-agent, server tests, frontend SDK callers, and docs to use the Issue namespace.
 - [x] (2026-05-21 00:57Z) Added workspace-derived Issue ID coverage for sequential IDs and same-prefix conflict skipping.
 - [x] (2026-05-21 00:58Z) Ran focused server tests, server typecheck, and frontend typecheck. Server tests passed all assertions but Vitest exited 1 due to unrelated Chronicle daemon unhandled rejections.
-- [ ] Run generated CLI refresh later if desired; do not hand-edit generated command files.
+- [x] (2026-05-21 16:05Z) Closed the generated CLI refresh item as intentionally out of scope. The generated CLI artifacts are not required for this plan and must not be hand-edited.
 
 ## Surprises & Discoveries
 
@@ -28,8 +28,8 @@ Issues are currently implemented under the Kanban namespace even though every is
 - Observation: A physical table rename would mix namespace ownership with risky data migration.
   Evidence: current SQLite migrations and foreign keys already reference `kanban_issues`, `kanban_statuses`, and related tables.
 
-- Observation: The generated CLI command tree is owned by the OpenAPI generator and should not be edited by hand.
-  Evidence: the user explicitly clarified that command files are generated. This plan leaves `packages/cli/src/commands/generated` untouched and treats CLI refresh as a generator-only follow-up.
+- Observation: The generated CLI command tree is owned by the OpenAPI generator and should not be edited by hand, and generated CLI refresh is not required for this plan.
+  Evidence: the user explicitly clarified that command files are generated and later confirmed the CLI generation follow-up should be ignored. This plan leaves `packages/cli/src/commands/generated` untouched.
 
 - Observation: Focused server tests passed their assertions but the command still exited with code 1 because unrelated Chronicle daemon startup work reads server config after tests restore `CRADLE_DATA_DIR`.
   Evidence: Vitest reported `34 files / 104 tests passed`, then two unhandled rejections from `chronicleInitDaemon` with `CRADLE_DATA_DIR or CRADLE_DB_PATH is required`.
@@ -83,7 +83,7 @@ Run all commands from `/Users/wibus/dev/Cradle`.
 3. Run `pnpm --filter @cradle/server test -- apps/server/tests/kanban.test.ts apps/server/tests/issue-agent.test.ts` if Vitest accepts the path filter, otherwise run `pnpm --filter @cradle/server test`.
 4. Use the existing generated web SDK names for `/issues` and update frontend SDK call sites.
 5. Run `pnpm typecheck:apps-web`.
-6. Do not hand-edit CLI command files. If CLI generated artifacts need to be refreshed, run `pnpm gen:cli` as a separate generator step and review only the generated diff.
+6. Do not hand-edit CLI command files. Generated CLI refresh is intentionally out of scope for this plan.
 
 ## Validation and Acceptance
 
@@ -115,3 +115,5 @@ At the end of this plan, `apps/server/src/modules/issue/index.ts` must export `i
 Revision note: Initial plan created to capture the breaking Issue owner migration before implementation.
 
 Revision note: Updated after implementation to record the Issue module split, workspace-derived issue IDs, generated CLI boundary, and validation outcomes.
+
+Revision note: Updated after Wibus confirmed generated CLI refresh is not required for this plan; the remaining checkbox is closed as intentionally out of scope.

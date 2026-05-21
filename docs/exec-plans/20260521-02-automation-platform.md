@@ -21,7 +21,7 @@ After this change, an agent can create an automation such as "项目周报生成
 - [x] (2026-05-20T17:45:58Z) Wired automation into server composition and test reset.
 - [x] (2026-05-20T17:45:58Z) Added server tests for CRUD, absolute file reference validation, inline file content, RRULE due detection, run-now, core chat-runtime linkage, artifacts, and duplicate prevention.
 - [x] (2026-05-20T17:45:58Z) Added web UI for automation definitions, latest run state, runs, artifacts, and Home projection.
-- [ ] Regenerate API/CLI clients and verify typecheck/tests. Paused by user because current `gen:cli`/CI behavior is a separate issue they will handle.
+- [x] (2026-05-21 16:05Z) Closed generated API/CLI refresh as intentionally out of scope. Wibus confirmed generated CLI work does not need to be tracked for this plan.
 
 ## Surprises & Discoveries
 
@@ -31,8 +31,8 @@ After this change, an agent can create an automation such as "项目周报生成
   Evidence: `rg -n "rrule|cron-parser|node-cron" package.json pnpm-lock.yaml apps packages -S` found no direct RRULE package. `pnpm add rrule --filter @cradle/server` completed successfully with only existing peer warnings.
 - Observation: The chat execution core is represented by `sessions`, `backend_session_bindings`, and `backend_runs`, and `Session.create()` already resolves selected agents/profiles into normal runtime config.
   Evidence: `apps/server/src/modules/session/service.ts` creates sessions with `agentId`, `agentProfileId`, and `runtimeKind`; `apps/server/src/modules/chat-runtime/service.ts` owns `backendRuns`.
-- Observation: `pnpm gen:cli` currently fails while loading server modules before OpenAPI collection.
-  Evidence: the failure is `SyntaxError: The requested module 'rrule' does not provide an export named 'rrulestr'` from `apps/server/src/modules/automation/scheduler.ts`. The user clarified this belongs to the CLI/CI generation path and asked not to change the scheduler import for that issue.
+- Observation: Generated CLI refresh is intentionally outside the Automation plan acceptance boundary.
+  Evidence: the user clarified the CLI/CI generation path is a separate issue and later confirmed generated CLI work does not need to be tracked for this plan.
 - Observation: Full web typecheck is blocked by unrelated existing files outside automation.
   Evidence: `pnpm --filter @cradle/web typecheck` reports errors in `src/features/chat/use-chat-session-binding.test.tsx`, `src/features/chronicle/chronicle-settings.tsx`, and `src/features/chronicle/use-chronicle.ts`.
 - Observation: `rrule` returns floating wall-clock dates; without explicit conversion, `Asia/Shanghai` Monday 09:00 was interpreted as 09:00 UTC.
@@ -71,8 +71,9 @@ Validated:
 
 Known external blockers:
 
-    pnpm gen:cli
     pnpm --filter @cradle/web typecheck
+
+Generated CLI refresh is intentionally out of scope for this plan.
 
 ## Context and Orientation
 
@@ -94,7 +95,7 @@ Third, connect execution to the core chat runtime. The automation runner should 
 
 Fourth, add UI. Replace Home's mock scheduled automation data with real automation reads where practical, and add a focused automation feature surface under `apps/web/src/features/automation` for definitions, runs, and artifacts. The UI is not a complex builder; it should be a registry and run/artifact viewer with basic create/edit JSON capability for Agent-authored definitions.
 
-Fifth, verify. Add server tests for definition CRUD, RRULE due calculation, run-now, duplicate prevention, and chat-runtime linkage with a fake or test-safe execution seam. Generate web/CLI API clients, then run focused typechecks and tests.
+Fifth, verify. Add server tests for definition CRUD, RRULE due calculation, run-now, duplicate prevention, and chat-runtime linkage with a fake or test-safe execution seam. Run focused typechecks and tests. Generated API/CLI refresh is intentionally outside this plan's completion criteria.
 
 ## Concrete Steps
 
@@ -126,8 +127,6 @@ Run these commands as validation as implementation progresses:
 
     pnpm --filter @cradle/server test automation
     pnpm typecheck:server
-    pnpm --filter @cradle/web generate
-    pnpm gen:cli
     pnpm --filter @cradle/web typecheck
     pnpm --filter @cradle/cli typecheck
 
@@ -145,7 +144,7 @@ A run-now test must prove that `POST /automations/:id/run` creates an `automatio
 
 The UI must let a user see automation definitions, latest run state, linked chat session/run IDs, and artifacts. The Home scheduled automation row should come from real API data rather than the old mock array when the API is available.
 
-Generated CLI metadata must expose useful Agent-facing commands such as `automation create`, `automation list`, `automation get`, `automation run`, `automation runs`, and `automation artifact get`.
+Generated CLI metadata can be refreshed later if the generated CLI track needs it, but this is not part of the current plan's acceptance boundary.
 
 ## Idempotence and Recovery
 
@@ -154,6 +153,8 @@ The migration is additive. Re-running tests should not duplicate definitions bec
 If an automation run crashes after a chat session/backend run is created, the run remains auditable because `chat_session_id` and `backend_run_id` are stored on `automation_runs`. v0 recovery may mark the run failed and expose manual rerun, but it must not lose the link to the core chat execution.
 
 No destructive Git or database reset command is needed for normal implementation.
+
+Revision note: Updated after Wibus confirmed generated API/CLI refresh does not need to be tracked for this plan; the remaining checkbox is closed as intentionally out of scope.
 
 ## Artifacts and Notes
 

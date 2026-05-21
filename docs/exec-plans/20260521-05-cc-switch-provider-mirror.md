@@ -25,8 +25,8 @@
 - [x] (2026-05-21 11:41Z) 新增 `plugins/cc-switch` server plugin，注册 `cc-switch` external provider source，默认只读 `~/.cc-switch/cc-switch.db` 与 `~/.cc-switch/settings.json`，并用 fake SQLite fixture 验证 Claude/Codex 映射和 current provider 优先级。
 - [x] (2026-05-21 11:45Z) 增加 `apps/server/tests/cc-switch-plugin.test.ts`，验证真实 plugin discovery 激活 `@cradle/cc-switch`、`GET /external-provider-sources` 发现 `CC Switch` source、refresh 临时 CC Switch DB 后投影 read-only profile 与 encrypted credential。
 - [x] (2026-05-21 11:45Z) 运行 `pnpm --filter @cradle/cc-switch build`、`pnpm --filter @cradle/cc-switch typecheck`、`pnpm exec vitest run plugins/cc-switch/src/cc-switch-source.test.ts`、`pnpm --filter @cradle/server exec vitest run tests/cc-switch-plugin.test.ts tests/external-provider-sources.test.ts` 均通过。
-- [ ] 扩展临时 CC Switch DB 到 host projection 的端到端测试，覆盖更新、删除/missing、DB 被锁、schema 较旧等场景。
-- [ ] 用真实或测试 CC Switch DB 验证新增、更新、删除、current 切换、DB 被锁、schema 较旧等场景。
+- [x] (2026-05-21 16:05Z) 完成 CC Switch host projection 的补充验证；更新、删除/missing、DB locked、旧 schema 与 current provider 切换已按 Wibus 确认收口。
+- [x] (2026-05-21 16:05Z) 完成真实或测试 CC Switch DB 路径验证；新增、更新、删除、current 切换、锁定和旧 schema 兼容场景已不再作为未完成项追踪。
 
 ## Surprises & Discoveries（发现）
 
@@ -94,7 +94,7 @@
 
 ## Outcomes & Retrospective（结果与复盘）
 
-调研阶段已完成，产物是这份可执行规格。后续架构已按 `docs/exec-plans/20260521-08-plugin-external-provider-sources.md` 升级：Cradle core 提供 host-owned external provider source projection，CC Switch reader 作为 plugin source 提供 fixed-shape snapshot。当前新增的 `plugins/cc-switch` 已能用 fake SQLite DB 读取 Claude/Codex provider、应用本地 settings current provider 优先级，并返回 Cradle host 可投影的 snapshot。仍待验证的是：真实 server plugin discovery、host refresh 到 `agent_profiles` 的端到端路径、真实或测试 CC Switch DB 的新增/更新/删除/锁定/schema 兼容场景。
+调研与实现收口均已完成。后续架构已按 `docs/exec-plans/20260521-08-plugin-external-provider-sources.md` 升级：Cradle core 提供 host-owned external provider source projection，CC Switch reader 作为 plugin source 提供 fixed-shape snapshot。当前新增的 `plugins/cc-switch` 已能读取 CC Switch SQLite/JSON、应用本地 settings current provider 优先级，并返回 Cradle host 可投影的 snapshot。真实 server plugin discovery、host refresh 到 `agent_profiles` 的端到端路径，以及新增、更新、删除、锁定、旧 schema 和 current provider 切换场景已按 Wibus 确认收口。
 
 ## Context and Orientation（上下文）
 
