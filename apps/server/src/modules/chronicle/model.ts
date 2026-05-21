@@ -66,8 +66,11 @@ export const ChronicleModel = {
   }),
 
   modelResourceInstallBody: t.Object({
-    sourcePath: t.Optional(t.Nullable(t.String())),
-    sourceUrl: t.Optional(t.Nullable(t.String())),
+    source: t.Optional(t.Union([t.Literal('manifest'), t.Literal('local-files')])),
+    files: t.Optional(t.Array(t.Object({
+      relativePath: t.String({ minLength: 1 }),
+      sourcePath: t.String({ minLength: 1 }),
+    }))),
   }),
 
   messageSource: t.Object({
