@@ -23,6 +23,10 @@ export interface SaveSecretInput {
   secret: string
 }
 
+export interface UpsertSecretInput extends SaveSecretInput {
+  id: string
+}
+
 // ── cipher ──
 
 const ALGORITHM = 'aes-256-gcm'
@@ -115,6 +119,42 @@ export function saveSecret(input: SaveSecretInput): SecretMetadata {
     createdAt: now,
     updatedAt: now,
   }
+}
+
+export function upsertSecretInDb(database: ReturnType<typeof db>, input: UpsertSecretInput): SecretMetadata {
+  ensureConfigured()
+  const now = Math.floor(Date.now() / 1000)
+  const encryptedSecret = encrypt(input.secret)
+
+  database.insert(agentCredentials).values({
+      id: input.id,
+      kind: input.kind,
+      label: input.label,
+      encryptedSecret,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoUpdate({
+      target: agentCredentials.id,
+      set: {
+        kind: input.kind,
+        label: input.label,
+        encryptedSecret,
+        updatedAt: now,
+      },
+    }).run()
+
+  return {
+    id: input.id,
+    kind: input.kind,
+    label: input.label,
+    maskedSecret: maskSecret(input.secret),
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+export function upsertSecret(input: UpsertSecretInput): SecretMetadata {
+  return upsertSecretInDb(db(), input)
 }
 
 export function removeSecret(id: string): void {

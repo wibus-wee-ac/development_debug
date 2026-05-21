@@ -1,4 +1,4 @@
-import { acpChatConfigSchema } from '../../../../helpers/provider-config-schemas'
+import { acpChatConfigJsonSchema } from '../../../../helpers/provider-config-schemas'
 
 export type AcpDistributionType = 'binary' | 'npx' | 'uvx'
 export type AcpRuntimeConfig = import('../../../../helpers/provider-config-schemas').AcpChatConfig
@@ -12,7 +12,7 @@ export interface AcpConnectionRecord {
 }
 
 export function buildAcpConnectionRecord(configJson: string): AcpConnectionRecord {
-  const parsed = parseAcpRuntimeConfig(configJson)
+  const parsed = acpChatConfigJsonSchema.parse(configJson)
   const distributionType = parsed.distributionType ?? 'npx'
   const cmd = parsed.cmd ?? parsed.packageName
 
@@ -26,15 +26,5 @@ export function buildAcpConnectionRecord(configJson: string): AcpConnectionRecor
     cmd,
     args: JSON.stringify(parsed.args ?? []),
     env: JSON.stringify(parsed.env ?? {}),
-  }
-}
-
-function parseAcpRuntimeConfig(configJson: string): AcpRuntimeConfig {
-  try {
-    const parsed = acpChatConfigSchema.safeParse(JSON.parse(configJson))
-    return parsed.success ? parsed.data : {}
-  }
-  catch {
-    return {}
   }
 }

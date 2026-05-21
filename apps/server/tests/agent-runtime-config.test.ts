@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  readCliTuiLaunchSpecFromSessionConfig,
-  readCodexCliSessionBindingFromSessionConfig,
+  SessionRuntimeConfigJsonSchema,
   writeCodexCliSessionBindingToSessionConfig,
 } from '../src/helpers/agent-runtime-config'
 
@@ -30,12 +29,14 @@ describe('agent runtime config helpers', () => {
       },
     })
 
-    expect(readCliTuiLaunchSpecFromSessionConfig(next)).toEqual({
+    const config = SessionRuntimeConfigJsonSchema.parse(next)
+
+    expect(config.cliTuiLaunch).toEqual({
       preset: 'codex',
       executable: 'codex',
       args: ['--model', 'gpt-5.1-codex'],
     })
-    expect(readCodexCliSessionBindingFromSessionConfig(next)).toEqual({
+    expect(config.codexCliSession).toEqual({
       sessionId: CODEX_SESSION_ID,
       capturedAt: 1_779_123_000,
       startedAt: 1_779_122_900,

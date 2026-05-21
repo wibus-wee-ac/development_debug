@@ -10,7 +10,7 @@ The Cradle Plugin System runs across **3 runtime layers**:
 
 | Layer | Runtime | Entry Point | Capabilities |
 |-------|---------|-------------|-------------|
-| **Server** | Node.js (Elysia) | `src/server.ts` | HTTP routes, MCP servers, skills, hooks, events, KV storage |
+| **Server** | Node.js (Elysia) | `src/server.ts` | HTTP routes, MCP servers, skills, external provider sources, hooks, events, KV storage |
 | **Web** | Browser (React) | `dist/web.mjs` | UI panels, commands, localStorage |
 | **Desktop** | Electron main | `src/desktop.ts` | System-level access, CDP, IPC, shared config |
 
@@ -251,9 +251,61 @@ export function activate(ctx: ServerPluginContext): void {
 }
 ```
 
-### `ctx.storage` — Persistent KV Storage
+### `ctx.externalProviderSources.register(source)` — External Provider Source
 
-Async key-value store scoped to the plugin. Data persists across restarts.
+插件可以提供外部 provider 数据源。这个能力只返回标准化数据，不允许插件渲染 Provider settings UI，也不允许插件直接写 Cradle 的 `agent_profiles` 或 `agent_credentials`。Cradle host 会读取 snapshot、加密 credential、投影 profile、处理 missing/stale 状态，并用固定 Provider UI 展示。
+
+```ts
+import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
+
+export function activate(ctx: ServerPluginContext): void {
+  ctx.externalProviderSources.register({
+    id: 'fixture-providers',
+    label: 'Fixture Providers',
+    capabilities: { refresh: true },
+    async readSnapshot() {
+      return {
+        source: { status: 'ok' },
+        inventory: { mcpServers: 2, prompts: 1, skills: 3 },
+        providers: [
+          {
+            externalId: 'codex:fixture-openai',
+            app: 'codex',
+            name: 'Fixture OpenAI',
+            providerKind: 'openai-compatible',
+            config: {
+              baseUrl: 'https://openai.example.test',
+              model: 'gpt-test',
+            },
+            credential: {
+              kind: 'api-key',
+              value: 'test-secret-value',
+              label: 'Fixture OpenAI',
+            },
+            metadata: {
+              baseUrl: 'https://openai.example.test',
+              model: 'gpt-test',
+              apiFormat: 'openai_responses',
+            },
+          },
+        ],
+      }
+    },
+  })
+}
+```
+
+Provider source contract 的边界是：
+
+- 插件读取外部 namespace，例如本地配置文件、SQLite DB 或远端 registry。
+- 插件返回 `ExternalProviderSourceSnapshot`，其中 provider record 使用稳定 `externalId`。
+- 插件不得把 plaintext secret 放进 `config`；如需提供 API key，只能放在 `credential.value`。
+- 插件不贡献 badge、button、React component、surface descriptor 或 action ref。
+- Cradle host 固定渲染 external source UI，并负责 profile read-only guard。
+
+### `ctx.storage` — Plugin KV Storage
+
+Async key-value store scoped to the plugin. 当前 server host implementation 是 in-memory cache，不能作为 source-of-truth；需要长期保存的 provider projection、fingerprint、credential ref 和 sync status 必须交给 host-owned external provider source pipeline。
 
 ```ts
 export async function activate(ctx: ServerPluginContext): Promise<void> {

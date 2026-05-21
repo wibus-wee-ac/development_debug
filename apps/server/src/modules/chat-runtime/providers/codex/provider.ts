@@ -13,7 +13,7 @@ import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
-import { CodexConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
+import { CodexConfigJsonSchema, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
@@ -24,6 +24,7 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 import type { CodexChunkMapperState } from './mapper'
 import { closeOpenCodexReasoning, mapCodexThreadEventToChunks } from './mapper'
 
@@ -75,7 +76,7 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -89,7 +90,7 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
-    const config = parseConfigWith(input.profile.configJson, CodexConfigSchema)
+    const config = CodexConfigJsonSchema.parse(input.profile.configJson)
     const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
     if (!apiKey) {
@@ -97,7 +98,7 @@ export class CodexProvider implements ChatRuntime {
     }
 
     const abortController = new AbortController()
-    const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
     const skillPaths = config.skillPaths ?? this.deps.resolveSkillPaths?.(workspacePath) ?? []
     const codexConfig: NonNullable<CodexOptions['config']> = {}
@@ -296,25 +297,6 @@ export class CodexProvider implements ChatRuntime {
     }
     entry.abortController.abort()
     this.releaseThread(sessionId, entry)
-  }
-}
-
-function parseProviderStateSnapshot(providerStateSnapshot: string | null): {
-  workspacePath?: string
-  models?: { currentModelId?: string | null }
-} {
-  if (!providerStateSnapshot) {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(providerStateSnapshot) as {
-      workspacePath?: string
-      models?: { currentModelId?: string | null }
-    }
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  }
-  catch {
-    return {}
   }
 }
 

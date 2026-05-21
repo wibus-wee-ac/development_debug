@@ -9,4 +9,9 @@ export const acpChatConfigSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
 })
 
+export const acpChatConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  acpChatConfigSchema,
+)
+
 export type AcpChatConfig = z.infer<typeof acpChatConfigSchema>

@@ -11,7 +11,7 @@ import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import * as Secrets from '../secrets/service'
 import { enrichModelsFromRegistryMappings } from './model-info-registry'
-import { parseProfileConfig, readModelRegistryMappings } from './model-registry-mappings'
+import { ProfileConfigWithModelRegistryJsonSchema } from './model-registry-mappings'
 import { getProviderCatalog } from './provider-catalog'
 import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, ProviderRequest } from './types'
 
@@ -117,10 +117,15 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
     }
   }
 
-  const profileConfig = input.profileId
-    ? parseProfileConfig(db().select({ configJson: agentProfiles.configJson }).from(agentProfiles).where(eq(agentProfiles.id, input.profileId)).get()?.configJson ?? input.configJson)
-    : parseProfileConfig(input.configJson)
-  models = await enrichModelsFromRegistryMappings(models, readModelRegistryMappings(profileConfig))
+  const configJson = input.profileId
+    ? db()
+        .select({ configJson: agentProfiles.configJson })
+        .from(agentProfiles)
+        .where(eq(agentProfiles.id, input.profileId))
+        .get()?.configJson ?? input.configJson
+    : input.configJson
+  const profileConfig = ProfileConfigWithModelRegistryJsonSchema.parse(configJson)
+  models = await enrichModelsFromRegistryMappings(models, profileConfig.modelRegistryMappings)
 
   return models
 }

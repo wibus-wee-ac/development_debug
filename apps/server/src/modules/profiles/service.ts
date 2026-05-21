@@ -9,14 +9,13 @@ import {
 } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 
+import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import { isExternalProfile } from '../external-provider-sources/profile-link-store'
 import { deleteCachedModels } from '../providers/model-cache'
 import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
 import { enrichModelsFromRegistry, lookupModelRawExact } from '../providers/model-info-registry'
-import {
-  normalizeModelsDevModel,
-  serializeProfileConfigWithMapping,
-} from '../providers/model-registry-mappings'
+import { serializeProfileConfigWithMapping } from '../providers/model-registry-mappings'
 import type { ModelCapabilities, ProviderKind } from '../providers/types'
 import * as Session from '../session/service'
 
@@ -42,10 +41,23 @@ export function getProfile(id: string): AgentProfile | null {
   return db().select().from(agentProfiles).where(eq(agentProfiles.id, id)).get() ?? null
 }
 
-export function upsertProfile(input: UpsertProfileInput): AgentProfile {
+function assertProfileEditable(profileId: string): void {
+  if (!isExternalProfile(profileId)) {
+    return
+  }
+
+  throw new AppError({
+    code: 'profile_managed_by_external_source',
+    status: 409,
+    message: 'Profile is managed by an external provider source',
+    details: { profileId },
+  })
+}
+
+function writeProfile(input: UpsertProfileInput, database = db()): AgentProfile {
   const now = Math.floor(Date.now() / 1000)
   const configJson = input.configJson
-  db().insert(agentProfiles).values({
+  database.insert(agentProfiles).values({
       id: input.id,
       name: input.name,
       providerKind: input.providerKind,
@@ -68,16 +80,27 @@ export function upsertProfile(input: UpsertProfileInput): AgentProfile {
       },
     }).run()
 
-  return db().select().from(agentProfiles).where(eq(agentProfiles.id, input.id)).get()!
+  return database.select().from(agentProfiles).where(eq(agentProfiles.id, input.id)).get()!
+}
+
+export function upsertProfile(input: UpsertProfileInput): AgentProfile {
+  assertProfileEditable(input.id)
+  return writeProfile(input)
+}
+
+export function upsertMirroredProfile(input: UpsertProfileInput, database = db()): AgentProfile {
+  return writeProfile(input, database)
 }
 
 export function updateIcon(profileId: string, iconSlug: string | null): AgentProfile {
+  assertProfileEditable(profileId)
   const now = Math.floor(Date.now() / 1000)
   db().update(agentProfiles).set({ iconSlug, updatedAt: now }).where(eq(agentProfiles.id, profileId)).run()
   return db().select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()!
 }
 
 export function removeProfile(id: string): void {
+  assertProfileEditable(id)
   const d = db()
   d.transaction((tx) => {
     Session.deleteByAgentProfileInDb(id, tx)
@@ -102,6 +125,7 @@ export async function updateCustomModels(
   profileId: string,
   models: Array<{ id: string, label?: string, capabilities?: ModelCapabilities }>,
 ): Promise<CustomModelEntry[]> {
+  assertProfileEditable(profileId)
   // Build descriptors for enrichment
   const descriptors = models.map(m => ({
     id: m.id,
@@ -141,18 +165,18 @@ export async function updateModelRegistryMapping(
   profileId: string,
   input: { modelId: string, registryModelId?: string, model?: ModelsDevModel },
 ): Promise<ModelRegistryMappingEntry[]> {
+  assertProfileEditable(profileId)
   const profile = getProfile(profileId)
   if (!profile) {
     return []
   }
 
-  const normalizedModel = input.model ? normalizeModelsDevModel(input.model) : null
-  const registryModelId = input.registryModelId?.trim() || normalizedModel?.id
+  const registryModelId = input.registryModelId?.trim() || input.model?.id
   if (!registryModelId) {
     return []
   }
 
-  const registryModel = normalizedModel ?? await lookupModelRawExact(registryModelId)
+  const registryModel = input.model ?? await lookupModelRawExact(registryModelId)
   const mapping: ModelRegistryMappingEntry = {
     modelId: input.modelId,
     registryModelId,

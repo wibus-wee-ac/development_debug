@@ -14,6 +14,9 @@ export interface ServerPluginContext {
   /** Register a skill for agent discovery */
   registerSkill(skill: SkillDefinition): void
 
+  /** Register external provider sources that return host-rendered provider snapshots */
+  externalProviderSources: ExternalProviderSourceRegistry
+
   /** Plugin-scoped persistent KV storage */
   storage: PluginStorage
 
@@ -53,6 +56,86 @@ export interface SkillDefinition {
   description: string
   /** Absolute path to SKILL.md file */
   skillFile: string
+}
+
+export interface ExternalProviderSourceRegistry {
+  register(source: ExternalProviderSource): Disposable
+}
+
+export interface ExternalProviderSource {
+  id: string
+  label: string
+  description?: string
+  capabilities?: ExternalProviderSourceCapabilities
+  readSnapshot(ctx: ExternalProviderSourceReadContext): Promise<ExternalProviderSourceSnapshot>
+}
+
+export interface ExternalProviderSourceCapabilities {
+  refresh?: boolean
+  revealSourceFile?: boolean
+  importAsNative?: boolean
+}
+
+export interface ExternalProviderSourceReadContext {
+  signal: AbortSignal
+  logger: Logger
+  sharedConfig: ReadonlyMap<string, string>
+}
+
+export interface ExternalProviderSourceSnapshot {
+  source: ExternalProviderSourceSnapshotInfo
+  providers: ExternalProviderRecord[]
+  inventory?: ExternalProviderInventory
+  warnings?: ExternalProviderWarning[]
+}
+
+export interface ExternalProviderSourceSnapshotInfo {
+  status: 'ok' | 'warning' | 'error'
+  message?: string
+  observedAt?: string
+}
+
+export interface ExternalProviderRecord {
+  externalId: string
+  app: string
+  name: string
+  providerKind: 'anthropic' | 'openai-compatible'
+  config: Record<string, unknown>
+  credential?: ExternalProviderCredential
+  current?: boolean
+  enabled?: boolean
+  readonly?: boolean
+  metadata?: ExternalProviderRecordMetadata
+  warnings?: ExternalProviderWarning[]
+}
+
+export interface ExternalProviderCredential {
+  kind: 'api-key'
+  value: string
+  label?: string
+}
+
+export interface ExternalProviderRecordMetadata {
+  baseUrl?: string
+  model?: string
+  apiFormat?: string
+  health?: 'healthy' | 'unhealthy' | 'unknown'
+  sourceUpdatedAt?: string
+  rawFingerprintHint?: string
+}
+
+export interface ExternalProviderInventory {
+  mcpServers?: number
+  prompts?: number
+  skills?: number
+  usageRollups?: number
+  modelPricingEntries?: number
+}
+
+export interface ExternalProviderWarning {
+  code: string
+  message: string
+  severity: 'info' | 'warning' | 'error'
 }
 
 export interface PluginStorage {

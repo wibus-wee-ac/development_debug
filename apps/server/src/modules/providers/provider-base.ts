@@ -63,6 +63,31 @@ export const SystemAgentConfigSchema = z.object({
   maxTurns: z.number().default(20),
 })
 
+export const BaseProviderConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  BaseProviderConfig,
+)
+
+export const OpenAICompatibleConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  OpenAICompatibleConfigSchema,
+)
+
+export const CodexConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  CodexConfigSchema,
+)
+
+export const ClaudeAgentConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  ClaudeAgentConfigSchema,
+)
+
+export const SystemAgentConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  SystemAgentConfigSchema,
+)
+
 export type BaseProviderConfigInput = z.infer<typeof BaseProviderConfig>
 export type OpenAICompatibleConfig = z.infer<typeof OpenAICompatibleConfigSchema>
 export type CodexConfig = z.infer<typeof CodexConfigSchema>
@@ -93,20 +118,6 @@ export function resolveApiKey(
     return configApiKey
   }
   return process.env[envVar] ?? null
-}
-
-export function parseConfigWith<Schema extends z.ZodTypeAny>(
-  configJson: string,
-  schema: Schema,
-): Partial<z.output<Schema>> {
-  try {
-    const raw = JSON.parse(configJson)
-    const result = schema.safeParse(raw)
-    return result.success ? result.data : {}
-  }
-  catch {
-    return {}
-  }
 }
 
 const TRAILING_SLASH_RE = /\/+$/

@@ -15,7 +15,7 @@ import {
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
-import { modelIsVisible, readModelVisibility } from '~/features/agent-runtime/model-visibility'
+import { ModelVisibilitySchema, modelIsVisible } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import type { ModelCapabilities, ModelDescriptor } from '~/lib/types'
@@ -222,7 +222,7 @@ export function ModelsPanel({
   const [manualDraft, setManualDraft] = useState<ManualRegistryDraft>(() => createManualDraft(null, ''))
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const visibility = useMemo(() => readModelVisibility(enabledModels), [enabledModels])
+  const visibility = useMemo(() => ModelVisibilitySchema.parse(enabledModels), [enabledModels])
   const allDisabled = visibility.kind === 'none'
   const isExplicitSelection = visibility.kind === 'list'
 

@@ -24,6 +24,7 @@ import {
 } from './modules/chronicle/service'
 import { desktop } from './modules/desktop'
 import { filesystem } from './modules/filesystem'
+import { externalProviderSources } from './modules/external-provider-sources'
 import { git } from './modules/git'
 import { health } from './modules/health'
 import { issue } from './modules/issue'
@@ -84,6 +85,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(filesystem)
   app.use(usage)
   app.use(profiles)
+  app.use(externalProviderSources)
   app.use(secrets)
   app.use(providers)
   app.use(agentIdentity)
@@ -115,7 +117,9 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {
-    void chronicleInitDaemon()
+    void chronicleInitDaemon().catch((error) => {
+      console.error('[chronicle] Daemon initialization failed:', error)
+    })
     chronicleStartSlackBackgroundSync()
   }
 

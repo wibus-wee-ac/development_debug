@@ -15,6 +15,7 @@ import type {
 } from '../../runtime-provider-types'
 import type { ClaudeAgentChunkMapperState } from '../claude-agent/mapper'
 import { mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
+import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 
 const RUNTIME_KIND = 'claude-agent' as RuntimeKind
 const TRAILING_SLASH_RE = /\/$/
@@ -50,7 +51,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    const snapshot = parseSnapshot(input.runtimeSession.providerStateSnapshot)
+    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -235,21 +236,5 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       ctrl.abort()
       this.releaseTurn(sessionId, ctrl)
     }
-  }
-}
-
-function parseSnapshot(state: string | null): {
-  workspacePath?: string
-  models?: { currentModelId?: string | null }
-} {
-  if (!state) {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(state) as { workspacePath?: string, models?: { currentModelId?: string | null } }
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  }
-  catch {
-    return {}
   }
 }

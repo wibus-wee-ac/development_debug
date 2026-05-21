@@ -1,9 +1,8 @@
 import { AppError } from '../../errors/app-error'
 import {
-  BaseProviderConfig,
+  BaseProviderConfigJsonSchema,
   normalizeBaseUrl,
-  OpenAICompatibleConfigSchema,
-  parseConfigWith,
+  OpenAICompatibleConfigJsonSchema,
 } from './provider-base'
 import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, ProviderRequest } from './types'
 
@@ -36,7 +35,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
   readonly providerKind = 'openai-compatible' as const
 
   async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
-    const config = parseConfigWith(input.configJson, OpenAICompatibleConfigSchema)
+    const config = OpenAICompatibleConfigJsonSchema.parse(input.configJson)
     if (!config.baseUrl) {
       return {
         ok: false,
@@ -68,7 +67,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
   }
 
   async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
-    const config = parseConfigWith(input.configJson, OpenAICompatibleConfigSchema)
+    const config = OpenAICompatibleConfigJsonSchema.parse(input.configJson)
     if (!config.baseUrl) {
       throw invalidProviderRequest('Base URL is required')
     }
@@ -107,7 +106,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
   private readonly defaultBaseUrl = 'https://api.anthropic.com/v1'
 
   async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
-    const config = parseConfigWith(input.configJson, BaseProviderConfig)
+    const config = BaseProviderConfigJsonSchema.parse(input.configJson)
     if (!input.secretRef) {
       return {
         ok: false,
@@ -130,7 +129,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
   }
 
   async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
-    const config = parseConfigWith(input.configJson, BaseProviderConfig)
+    const config = BaseProviderConfigJsonSchema.parse(input.configJson)
 
     const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
     const baseUrl = normalizeBaseUrl(config.baseUrl ?? this.defaultBaseUrl).replace(TRAILING_SLASH_RE, '')

@@ -2,6 +2,7 @@ import type { PluginManifest } from '@cradle/plugin-sdk'
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 import { createChildLogger } from '../logging/logger'
 import { createPluginEventBus } from './event-bus'
+import { registerExternalProviderSource } from './external-provider-source-registry'
 import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
 import { registerPluginMcpServer } from './mcp-registry'
 import { registerOwnedPluginSkill } from './skill-registry'
@@ -40,6 +41,11 @@ export function createServerPluginContext(
     },
     registerSkill(skill) {
       registerOwnedPluginSkill(manifest.name, skill)
+    },
+    externalProviderSources: {
+      register(source) {
+        return registerExternalProviderSource(manifest.name, source)
+      },
     },
     storage: createPluginStorage(manifest.name),
     logger,

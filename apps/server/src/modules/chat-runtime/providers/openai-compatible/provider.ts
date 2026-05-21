@@ -1,10 +1,7 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { lookupContextWindow } from '../../../providers/model-info-registry'
-import {
-  OpenAICompatibleConfigSchema,
-  parseConfigWith,
-} from '../../../providers/provider-base'
+import { OpenAICompatibleConfigJsonSchema } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import { createAssistantMessage } from '../../delta-events'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
@@ -18,6 +15,7 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { ProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 
 interface OpenAICompatibleProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -54,7 +52,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
   }
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
-    const config = parseConfigWith(input.profile.configJson, OpenAICompatibleConfigSchema)
+    const config = OpenAICompatibleConfigJsonSchema.parse(input.profile.configJson)
     const currentModelId = input.modelId ?? config.model ?? null
 
     return {
@@ -75,7 +73,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       return input.runtimeSession
     }
 
-    const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const snapshot = ProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -87,7 +85,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
 
   async* streamTurnSnapshots(input: StreamTurnInput): AsyncGenerator<UIMessage, void, void> {
     const { runtimeSession, profile, message, modelId: requestedModelId, providerOptions } = input
-    const config = parseConfigWith(profile.configJson, OpenAICompatibleConfigSchema)
+    const config = OpenAICompatibleConfigJsonSchema.parse(profile.configJson)
     const effectiveModel = requestedModelId ?? config.model
     if (!config.baseUrl || !effectiveModel) {
       throw new Error('OpenAI-compatible provider requires baseUrl and model')
@@ -155,7 +153,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const { runtimeSession, profile, message, modelId: requestedModelId, providerOptions } = input
-    const config = parseConfigWith(profile.configJson, OpenAICompatibleConfigSchema)
+    const config = OpenAICompatibleConfigJsonSchema.parse(profile.configJson)
     const effectiveModel = requestedModelId ?? config.model
     if (!config.baseUrl || !effectiveModel) {
       throw new Error('OpenAI-compatible provider requires baseUrl and model')
@@ -224,19 +222,6 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       controller.abort()
       this.releaseTurn(sessionId, controller)
     }
-  }
-}
-
-function parseProviderStateSnapshot(providerStateSnapshot: string | null): Record<string, unknown> {
-  if (!providerStateSnapshot) {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(providerStateSnapshot) as Record<string, unknown>
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  }
-  catch {
-    return {}
   }
 }
 

@@ -1,6 +1,7 @@
 import { agents, messages, sessions } from '@cradle/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
+import { AgentRuntimeConfigJsonSchema } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 
 export interface ChatTurnContext {
@@ -14,7 +15,7 @@ export function resolve(input: { sessionId: string, draftMessageId: string, draf
   let systemPrompt: string | undefined
   if (session?.agentId) {
     const agent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
-    systemPrompt = readAgentSystemPrompt(agent?.configJson)
+    systemPrompt = AgentRuntimeConfigJsonSchema.parse(agent?.configJson).systemPrompt
   }
 
   const historyRows = db()
@@ -33,19 +34,6 @@ export function resolve(input: { sessionId: string, draftMessageId: string, draf
   return {
     systemPrompt,
     history: history.length > 0 ? history : undefined,
-  }
-}
-
-function readAgentSystemPrompt(configJson: string | null | undefined): string | undefined {
-  if (!configJson) {
-    return undefined
-  }
-  try {
-    const parsed = JSON.parse(configJson) as { systemPrompt?: unknown }
-    return typeof parsed.systemPrompt === 'string' && parsed.systemPrompt.length > 0 ? parsed.systemPrompt : undefined
-  }
-  catch {
-    return undefined
   }
 }
 

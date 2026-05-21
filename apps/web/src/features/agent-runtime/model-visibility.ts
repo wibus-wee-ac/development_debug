@@ -1,4 +1,5 @@
 import type { ModelDescriptor } from '~/lib/types'
+import { z } from 'zod'
 
 export const ALL_MODELS_DISABLED_SENTINEL = '__all_disabled__'
 
@@ -7,25 +8,22 @@ export type ModelVisibility
     | { kind: 'none' }
     | { kind: 'list', ids: Set<string> }
 
-export function readModelVisibility(value: unknown): ModelVisibility {
-  if (!Array.isArray(value) || value.length === 0) {
-    return { kind: 'all' }
-  }
+export const ModelVisibilitySchema = z.array(z.string().min(1))
+  .default([])
+  .transform((values): ModelVisibility => {
+    const ids = values.filter(Boolean)
+    if (ids.length === 0) {
+      return { kind: 'all' }
+    }
+    if (ids.length === 1 && ids[0] === ALL_MODELS_DISABLED_SENTINEL) {
+      return { kind: 'none' }
+    }
 
-  const ids = value.filter((id): id is string => typeof id === 'string' && id.length > 0)
-  if (ids.length === 1 && ids[0] === ALL_MODELS_DISABLED_SENTINEL) {
-    return { kind: 'none' }
-  }
-
-  return {
-    kind: 'list',
-    ids: new Set(ids.filter(id => id !== ALL_MODELS_DISABLED_SENTINEL)),
-  }
-}
-
-export function readConfigModelVisibility(config: Record<string, unknown>): ModelVisibility {
-  return readModelVisibility(config.enabledModels)
-}
+    return {
+      kind: 'list',
+      ids: new Set(ids.filter(id => id !== ALL_MODELS_DISABLED_SENTINEL)),
+    }
+  })
 
 export function modelIsVisible(visibility: ModelVisibility, modelId: string): boolean {
   switch (visibility.kind) {

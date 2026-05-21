@@ -14,6 +14,7 @@ import {
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
+import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
@@ -26,16 +27,6 @@ import { buildAvatarUrl } from './avatar-url'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DRAFT_ID = '__agent-draft__'
-
-function readCliTuiLaunch(configJson?: string | null): CliTuiLaunchConfig | null {
-  try {
-    const parsed = JSON.parse(configJson ?? '{}') as { cliTui?: CliTuiLaunchConfig }
-    return parsed.cliTui && typeof parsed.cliTui.executable === 'string' ? parsed.cliTui : null
-  }
-  catch {
-    return null
-  }
-}
 
 // ── Sidebar row ───────────────────────────────────────────────────────────────
 
@@ -52,7 +43,7 @@ function AgentSidebarRow({
 }) {
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
   const profile = profiles.find(p => p.id === agent.agentProfileId)
-  const cliTuiLaunch = agent.runtimeKind === 'cli-tui' ? readCliTuiLaunch(agent.configJson) : null
+  const cliTuiLaunch = agent.runtimeKind === 'cli-tui' ? AgentRuntimeConfigJsonSchema.parse(agent.configJson).cliTui : null
   const subtitle = agent.runtimeKind === 'cli-tui'
     ? ['CLI TUI', cliTuiLaunch?.preset ?? cliTuiLaunch?.executable].filter(Boolean).join(' ·\n') || 'CLI TUI'
     : [profile?.name, agent.modelId].filter(Boolean).join(' ·\n') || undefined

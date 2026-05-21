@@ -25,24 +25,19 @@ const sessionRuntimeConfigSchema = z.object({
   codexCliSession: codexCliSessionBindingSchema.optional(),
 }).passthrough()
 
+export const AgentRuntimeConfigJsonSchema = z.preprocess(
+  raw => JSON.parse((raw ?? '{}') as string),
+  agentRuntimeConfigSchema,
+)
+
+export const SessionRuntimeConfigJsonSchema = z.preprocess(
+  raw => JSON.parse((raw ?? '{}') as string),
+  sessionRuntimeConfigSchema,
+)
+
 export type CliTuiLaunchSpec = z.infer<typeof cliTuiLaunchSpecSchema>
 export type CodexCliSessionBinding = z.infer<typeof codexCliSessionBindingSchema>
 export type AgentRuntimeConfig = z.infer<typeof agentRuntimeConfigSchema>
-
-export function parseAgentRuntimeConfig(configJson?: string | null): AgentRuntimeConfig {
-  try {
-    const parsed = agentRuntimeConfigSchema.safeParse(JSON.parse(configJson ?? '{}'))
-    return parsed.success ? parsed.data : {}
-  }
-  catch {
-    return {}
-  }
-}
-
-export function readCliTuiLaunchSpecFromAgentConfig(configJson?: string | null): CliTuiLaunchSpec | null {
-  const config = parseAgentRuntimeConfig(configJson)
-  return config.cliTui ?? null
-}
 
 export function buildSessionRuntimeConfigJson(input: {
   cliTuiLaunch?: CliTuiLaunchSpec | null
@@ -63,39 +58,13 @@ export function buildSessionRuntimeConfigJson(input: {
   return JSON.stringify(payload)
 }
 
-export function readCliTuiLaunchSpecFromSessionConfig(configJson?: string | null): CliTuiLaunchSpec | null {
-  try {
-    const parsed = sessionRuntimeConfigSchema.safeParse(JSON.parse(configJson ?? '{}'))
-    return parsed.success ? parsed.data.cliTuiLaunch ?? null : null
-  }
-  catch {
-    return null
-  }
-}
-
-export function readCodexCliSessionBindingFromSessionConfig(configJson?: string | null): CodexCliSessionBinding | null {
-  try {
-    const parsed = sessionRuntimeConfigSchema.safeParse(JSON.parse(configJson ?? '{}'))
-    return parsed.success ? parsed.data.codexCliSession ?? null : null
-  }
-  catch {
-    return null
-  }
-}
-
 export function writeCodexCliSessionBindingToSessionConfig(input: {
   configJson?: string | null
   binding: CodexCliSessionBinding
 }): string {
-  let payload: Record<string, unknown>
-  try {
-    const parsed = JSON.parse(input.configJson ?? '{}')
-    payload = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
-  }
-  catch {
-    payload = {}
-  }
-
-  payload.codexCliSession = input.binding
-  return JSON.stringify(payload)
+  const config = SessionRuntimeConfigJsonSchema.parse(input.configJson)
+  return JSON.stringify({
+    ...config,
+    codexCliSession: input.binding,
+  })
 }

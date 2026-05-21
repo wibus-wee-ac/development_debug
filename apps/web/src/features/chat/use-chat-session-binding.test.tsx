@@ -7,6 +7,12 @@ import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 
 import { useChatSession } from './use-chat-session'
 
+type ChatRunEventHandler = (data: {
+  chatSessionId: string
+  messageId: string
+  event: { type: 'run.streaming' | 'run.completed' | 'run.aborted' | 'run.failed' }
+}) => void
+
 const mockedDeps = vi.hoisted(() => {
   const storeState = {
     sessionMetaMap: new Map<string, { cancelling?: boolean, locallyDriving?: boolean, passiveStatus?: string, localDriverMessageId?: string }>(),
@@ -182,7 +188,8 @@ describe('useChatSession session binding invalidation', () => {
 
     renderHook(() => useChatSession('session-1'))
 
-    const runEventHandler = mockedDeps.onChatRunEvent.mock.calls.at(-1)?.[1]
+    const calls = mockedDeps.onChatRunEvent.mock.calls as unknown as Array<[string, ChatRunEventHandler]>
+    const runEventHandler = calls.at(-1)?.[1]
     expect(runEventHandler).toBeDefined()
 
     act(() => {

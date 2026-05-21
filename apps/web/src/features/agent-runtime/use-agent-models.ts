@@ -3,23 +3,14 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { getProfilesById, getProvidersByProfileIdModelsCache, postProvidersModels } from '~/api-gen/sdk.gen'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
-import { filterVisibleModels, readConfigModelVisibility } from './model-visibility'
+import { ModelVisibilitySchema, filterVisibleModels } from './model-visibility'
+import { ProfileConfigJsonSchema } from './profile-config-schema'
 
 export const AGENT_MODELS_QUERY_KEY = ['agent-models'] as const
 
-function parseProfileConfig(configJson: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(configJson)
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
-  }
-  catch {
-    return {}
-  }
-}
-
 async function fetchVisibleModelsForProfile(profile: AgentProfile): Promise<ModelDescriptor[]> {
-  const config = parseProfileConfig(profile.configJson)
-  const visibility = readConfigModelVisibility(config)
+  const config = ProfileConfigJsonSchema.parse(profile.configJson)
+  const visibility = ModelVisibilitySchema.parse(config.enabledModels)
   const requestBody = {
     providerKind: profile.providerKind,
     label: profile.name,

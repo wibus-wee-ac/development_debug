@@ -15,6 +15,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { and, eq, isNull, or } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { AgentRuntimeConfigJsonSchema } from '../../helpers/agent-runtime-config'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
@@ -36,6 +37,7 @@ import {
   parseMessageJson,
   readChunkRouteContext,
 } from './delta-events'
+import { ProviderStateSnapshotJsonSchema } from './providers/provider-state-snapshot'
 import type { ChatRuntime, ChatRuntimeCapabilities, RuntimeSession, TokenUsage } from './runtime-provider-types'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
@@ -347,7 +349,7 @@ function resolveSessionSystemPrompt(session: import('@cradle/db').Session | null
   let systemPrompt: string | undefined
   if (session?.agentId) {
     const agent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
-    systemPrompt = readAgentSystemPrompt(agent?.configJson)
+    systemPrompt = AgentRuntimeConfigJsonSchema.parse(agent?.configJson).systemPrompt
   }
 
   // Inject system workflow as base context for all agents
@@ -382,19 +384,6 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
   return {
     systemPrompt,
     history: history.length > 0 ? history : undefined,
-  }
-}
-
-function readAgentSystemPrompt(configJson: string | null | undefined): string | undefined {
-  if (!configJson) {
-    return undefined
-  }
-  try {
-    const parsed = JSON.parse(configJson) as { systemPrompt?: unknown }
-    return typeof parsed.systemPrompt === 'string' && parsed.systemPrompt.length > 0 ? parsed.systemPrompt : undefined
-  }
-  catch {
-    return undefined
   }
 }
 
@@ -460,7 +449,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
         },
         profile: context.profile,
         workspacePath: context.workspacePath,
-        modelId: extractModelId(binding.backendStateSnapshot) ?? undefined,
+        modelId: ProviderStateSnapshotJsonSchema.parse(binding.backendStateSnapshot).models.currentModelId ?? undefined,
       })
     : await runtime.startChatSession({
         chatSessionId: sessionId,
@@ -473,7 +462,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
     profile: context.profile,
     workspaceId: context.session.workspaceId,
     workspacePath: context.workspacePath,
-    modelId: extractModelId(runtimeSession.providerStateSnapshot) ?? undefined,
+    modelId: ProviderStateSnapshotJsonSchema.parse(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
     systemPrompt: resolveSessionSystemPrompt(context.session),
   })
 }
@@ -527,7 +516,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
       agentProfileId: context.profile.id,
       runtimeKind: runtimeSession.runtimeKind,
       runtimeSession,
-      requestedModelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
+      requestedModelId: input.modelId ?? ProviderStateSnapshotJsonSchema.parse(runtimeSession.providerStateSnapshot).models.currentModelId,
     })
 
     const draft = createDraftTurn({ sessionId: input.sessionId, userText: input.text })
@@ -539,7 +528,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
       agentProfileId: context.profile.id,
       runtime,
       runtimeSession,
-      modelId: input.modelId ?? extractModelId(runtimeSession.providerStateSnapshot),
+      modelId: input.modelId ?? ProviderStateSnapshotJsonSchema.parse(runtimeSession.providerStateSnapshot).models.currentModelId,
       mainProjection: createMessageProjection(createAssistantMessage(draft.assistantMessageId)),
       subagentProjections: new Map(),
       nextSeq: 0,
@@ -1257,21 +1246,6 @@ function finalizeSubagentSnapshots(activeRun: ActiveRun, status: ChatMessageStat
       messageStatus: status,
       errorText,
     })
-  }
-}
-
-// ── helpers ──
-
-function extractModelId(providerStateSnapshot: string | null): string | null {
-  if (!providerStateSnapshot) {
-    return null
-  }
-  try {
-    const parsed = JSON.parse(providerStateSnapshot) as { models?: { currentModelId?: string } }
-    return typeof parsed.models?.currentModelId === 'string' ? parsed.models.currentModelId : null
-  }
-  catch {
-    return null
   }
 }
 

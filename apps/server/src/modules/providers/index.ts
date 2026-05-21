@@ -6,7 +6,7 @@ import { db } from '../../infra'
 import { ProvidersModel } from './model'
 import { getCachedModels, isCacheStale, setCachedModels } from './model-cache'
 import { enrichModelsFromRegistryMappings, lookupModel, searchModels } from './model-info-registry'
-import { parseProfileConfig, readModelRegistryMappings } from './model-registry-mappings'
+import { ProfileConfigWithModelRegistryJsonSchema } from './model-registry-mappings'
 import * as Providers from './service'
 
 export const providers = new Elysia({
@@ -34,8 +34,14 @@ export const providers = new Elysia({
     if (!cached) {
       return { models: [], cached: false, stale: false }
     }
-    const profile = db().select({ configJson: agentProfiles.configJson }).from(agentProfiles).where(eq(agentProfiles.id, params.profileId)).get()
-    const mappings = profile ? readModelRegistryMappings(parseProfileConfig(profile.configJson)) : []
+    const profile = db()
+      .select({ configJson: agentProfiles.configJson })
+      .from(agentProfiles)
+      .where(eq(agentProfiles.id, params.profileId))
+      .get()
+    const mappings = profile
+      ? ProfileConfigWithModelRegistryJsonSchema.parse(profile.configJson).modelRegistryMappings
+      : []
     const stale = isCacheStale(cached.fetchedAt)
     return { models: await enrichModelsFromRegistryMappings(cached.models, mappings), cached: true, stale }
   }, {

@@ -19,6 +19,7 @@ import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
+import { AgentRuntimeConfigJsonSchema, ClaudeAgentConfigSchema } from '~/features/agent-runtime/agent-config-schema'
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
@@ -26,7 +27,7 @@ import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-
 import { CurrentProviderModelList, type ModelsByProfileId, type ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile, AgentRuntimeConfig, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { Agent, AgentProfile, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { buildAvatarUrl } from './avatar-url'
@@ -113,9 +114,9 @@ interface AgentDetailFormValues {
 }
 
 interface ClaudeAgentModelAliases {
-  haiku?: string
-  sonnet?: string
-  opus?: string
+  haiku: string
+  sonnet: string
+  opus: string
 }
 
 type ClaudeAgentModelField = 'claudeAgentHaikuModel' | 'claudeAgentSonnetModel' | 'claudeAgentOpusModel'
@@ -248,46 +249,9 @@ function inferCliPreset(launch: CliTuiLaunchConfig | null): string {
   return 'custom'
 }
 
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
-}
-
-function readString(value: unknown): string {
-  return typeof value === 'string' ? value : ''
-}
-
 function trimToValue(value: string): string | undefined {
   const trimmed = value.trim()
   return trimmed ? trimmed : undefined
-}
-
-function parseConfigJson(configJson?: string | null): {
-  systemPrompt: string
-  cliTui: CliTuiLaunchConfig | null
-  claudeAgentModelAliases: ClaudeAgentModelAliases
-  baseConfig: Record<string, unknown>
-} {
-  try {
-    const parsed = JSON.parse(configJson ?? '{}') as AgentRuntimeConfig
-    const systemPrompt = typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : ''
-    const cliTui = parsed.cliTui && typeof parsed.cliTui.executable === 'string' ? parsed.cliTui : null
-    const claudeAgent = readRecord(parsed.claudeAgent)
-    const modelAliases = readRecord(claudeAgent.modelAliases)
-    const { systemPrompt: _sp, skills: _sk, cliTui: _cliTui, ...baseConfig } = parsed
-    return {
-      systemPrompt,
-      cliTui,
-      claudeAgentModelAliases: {
-        haiku: readString(modelAliases.haiku),
-        sonnet: readString(modelAliases.sonnet),
-        opus: readString(modelAliases.opus),
-      },
-      baseConfig,
-    }
-  }
-  catch {
-    return { systemPrompt: '', cliTui: null, claudeAgentModelAliases: {}, baseConfig: {} }
-  }
 }
 
 function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
@@ -296,8 +260,12 @@ function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
   sonnetModel: string
   opusModel: string
 }): void {
-  const existing = { ...readRecord(config.claudeAgent) }
-  const aliases: ClaudeAgentModelAliases = {}
+  const existing = { ...ClaudeAgentConfigSchema.parse(config.claudeAgent) }
+  const aliases: ClaudeAgentModelAliases = {
+    haiku: '',
+    sonnet: '',
+    opus: '',
+  }
   const haiku = trimToValue(input.haikuModel)
   const sonnet = trimToValue(input.sonnetModel)
   const opus = trimToValue(input.opusModel)
@@ -312,11 +280,15 @@ function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
     aliases.opus = opus
   }
 
-  if (input.runtimeKind === 'claude-agent' && Object.keys(aliases).length > 0) {
+  if (input.runtimeKind === 'claude-agent' && (haiku || sonnet || opus)) {
     existing.modelAliases = aliases
   }
   else if (input.runtimeKind === 'claude-agent') {
-    delete existing.modelAliases
+    existing.modelAliases = {
+      haiku: '',
+      sonnet: '',
+      opus: '',
+    }
   }
 
   if (Object.keys(existing).length > 0) {
@@ -362,7 +334,7 @@ export function stringifyConfigJson(input: {
 }
 
 function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: AgentProfile[]): AgentDetailFormValues {
-  const initialConfig = parseConfigJson(agent?.configJson)
+  const initialConfig = AgentRuntimeConfigJsonSchema.parse(agent?.configJson)
   const cliTuiPreset = inferCliPreset(initialConfig.cliTui)
   const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === cliTuiPreset)?.executable ?? ''
   return {
@@ -375,9 +347,9 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
     thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
     runtimeKind: (agent?.runtimeKind as RuntimeKind) ?? 'standard',
     systemPrompt: initialConfig.systemPrompt,
-    claudeAgentHaikuModel: initialConfig.claudeAgentModelAliases.haiku ?? '',
-    claudeAgentSonnetModel: initialConfig.claudeAgentModelAliases.sonnet ?? '',
-    claudeAgentOpusModel: initialConfig.claudeAgentModelAliases.opus ?? '',
+    claudeAgentHaikuModel: initialConfig.claudeAgent.modelAliases.haiku,
+    claudeAgentSonnetModel: initialConfig.claudeAgent.modelAliases.sonnet,
+    claudeAgentOpusModel: initialConfig.claudeAgent.modelAliases.opus,
     cliTuiPreset,
     cliTuiExecutable: initialConfig.cliTui?.executable ?? presetExecutable,
     cliTuiArguments: initialConfig.cliTui?.args?.join(' ') ?? '',
@@ -1055,7 +1027,8 @@ function useAgentDetailOwner({
 }) {
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
-  const persistedConfig = useMemo(() => parseConfigJson(agent?.configJson), [agent?.configJson])
+  const persistedConfig = useMemo(() => AgentRuntimeConfigJsonSchema.parse(agent?.configJson), [agent?.configJson])
+  const { systemPrompt: _systemPrompt, skills: _skills, cliTui: _cliTui, ...baseConfig } = persistedConfig
   const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
   const form = useForm<AgentDetailFormValues>({
     defaultValues: getAgentDetailFormValues(agent, enabledProfiles),
@@ -1147,7 +1120,7 @@ function useAgentDetailOwner({
         claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
         claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
         claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
-        baseConfig: persistedConfig.baseConfig,
+        baseConfig,
         runtimeKind: currentValues.runtimeKind,
         cliTuiPreset: currentValues.cliTuiPreset,
         cliTuiExecutable: currentValues.cliTuiExecutable,

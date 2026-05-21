@@ -22,6 +22,7 @@ describe('chronicle daemon manager', () => {
     const args = createDaemonArgs({
       storageRoot: '/tmp/cradle-chronicle',
       audioCaptureEnabled: true,
+      audioSource: 'microphone',
       audioSegmentMs: 1_500,
       audioSegmentIntervalMs: 10_000,
       audioRmsThreshold: 0.03,
@@ -32,6 +33,8 @@ describe('chronicle daemon manager', () => {
       '--storage-root',
       '/tmp/cradle-chronicle',
       '--audio-capture',
+      '--audio-source',
+      'microphone',
       '--audio-segment-ms',
       '1500',
       '--audio-segment-interval-ms',

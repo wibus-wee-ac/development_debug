@@ -23,8 +23,10 @@ import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
+import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ProviderKind } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
@@ -48,20 +50,14 @@ export interface DraftProvider {
   presetId: string | null
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-export function parseConfig(json: string | null | undefined): Record<string, unknown> {
-  if (!json) {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(json)
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  }
-  catch {
-    return {}
-  }
+interface ExternalProviderRecordView {
+  id: string
+  sourceKey: string
+  externalId: string
+  status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
 }
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
 export function buildProfileId(name: string, fallback: string): string {
   const base = name.trim().toLowerCase().replace(RE_WHITESPACE, '-')
@@ -88,6 +84,20 @@ export function AgentRuntimeSettings() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftProvider | null>(null)
   const [filter, setFilter] = useState('')
+  const [externalRecords, setExternalRecords] = useState<ExternalProviderRecordView[]>([])
+
+  const externalProfileIds = useMemo(() => new Set(externalRecords.map(record => record.id)), [externalRecords])
+
+  const refetchExternalRecords = useCallback(() => {
+    fetch(`${getServerUrl()}/external-provider-sources/records`)
+      .then(res => res.ok ? res.json() : [])
+      .then((records: ExternalProviderRecordView[]) => setExternalRecords(Array.isArray(records) ? records : []))
+      .catch(() => setExternalRecords([]))
+  }, [])
+
+  useEffect(() => {
+    refetchExternalRecords()
+  }, [refetchExternalRecords])
 
   const visibleProfiles = useMemo(() => {
     if (!filter.trim()) {
@@ -124,28 +134,35 @@ export function AgentRuntimeSettings() {
 
   const handleDraftComplete = useCallback((newProfileId?: string) => {
     void refetch().finally(() => {
+      refetchExternalRecords()
       setDraft(null)
       setSelectedId(newProfileId ?? null)
     })
-  }, [refetch])
+  }, [refetch, refetchExternalRecords])
 
   const handleRemoveProfile = useCallback(async (id: string) => {
+    if (externalProfileIds.has(id)) {
+      return
+    }
     await removeProfile.mutateAsync(id)
     setSelectedId(null)
-  }, [removeProfile])
+  }, [externalProfileIds, removeProfile])
 
   const handleToggleProfile = useCallback(async (profile: AgentProfile, enabled: boolean) => {
+    if (externalProfileIds.has(profile.id)) {
+      return
+    }
     await updateProfile.mutateAsync({
       id: profile.id,
       body: {
         name: profile.name,
         providerKind: profile.providerKind,
         enabled,
-        config: parseConfig(profile.configJson),
+        config: ProfileConfigJsonSchema.parse(profile.configJson),
         credentialRef: profile.credentialRef ?? '',
       },
     })
-  }, [updateProfile])
+  }, [externalProfileIds, updateProfile])
 
   return (
     <div
@@ -236,10 +253,11 @@ export function AgentRuntimeSettings() {
                     )}
                     title={profile.name}
                     subtitle={(() => {
-                      const cfg = parseConfig(profile.configJson)
-                      const m = typeof cfg.model === 'string' ? cfg.model : ''
+                      const cfg = ProfileConfigJsonSchema.parse(profile.configJson)
+                      const m = cfg.model
                       return m ? `${PROVIDER_KIND_LABELS[profile.providerKind]} · ${m}` : PROVIDER_KIND_LABELS[profile.providerKind]
                     })()}
+                    external={externalProfileIds.has(profile.id)}
                     badge={!profile.enabled
                       ? <StatusDot tone="muted" />
                       : <StatusDot tone="active" />}
@@ -295,7 +313,10 @@ export function AgentRuntimeSettings() {
                     profile={selectedProfile}
                     onRemove={() => void handleRemoveProfile(selectedProfile.id)}
                     onToggle={enabled => void handleToggleProfile(selectedProfile, enabled)}
-                    onSaved={() => void refetch()}
+                    onSaved={() => {
+                      void refetch()
+                      refetchExternalRecords()
+                    }}
                   />
                 </div>
               )
@@ -335,6 +356,7 @@ function SidebarRow({
   title,
   subtitle,
   badge,
+  external,
   isDraft,
   testId,
   onClick,
@@ -344,6 +366,7 @@ function SidebarRow({
   title: string
   subtitle?: string
   badge?: React.ReactNode
+  external?: boolean
   isDraft?: boolean
   testId?: string
   onClick: () => void
@@ -375,6 +398,11 @@ function SidebarRow({
             {title}
           </span>
           {badge}
+          {external && (
+            <span className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[9.5px] font-medium leading-none text-blue-700 dark:text-blue-300">
+              External
+            </span>
+          )}
         </div>
         {subtitle && (
           <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/70">

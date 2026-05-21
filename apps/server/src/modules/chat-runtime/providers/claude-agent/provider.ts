@@ -8,7 +8,7 @@ import type { UIMessageChunk } from 'ai'
 import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
 import * as Approval from '../../../approval/service'
-import { ClaudeAgentConfigSchema, parseConfigWith, resolveApiKey } from '../../../providers/provider-base'
+import { ClaudeAgentConfigJsonSchema, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
@@ -22,6 +22,7 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 import type { ClaudeAgentChunkMapperState } from './mapper'
 import { mapClaudeAgentMessageToChunks } from './mapper'
 
@@ -66,7 +67,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    const snapshot = parseProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -109,7 +110,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
     const abortController = new AbortController()
     const textItemId = randomUUID()
-    const config = parseConfigWith(input.profile.configJson, ClaudeAgentConfigSchema)
+    const config = ClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
     const effectiveModel = input.modelId ?? config.model
     const queryOptions = buildClaudeQueryOptions({
       deps: this.deps,
@@ -222,7 +223,7 @@ function buildClaudeQueryOptions(input: {
   abortController: AbortController
   attachPermissionHandler: boolean
 }): Options {
-  const config = parseConfigWith(input.input.profile.configJson, ClaudeAgentConfigSchema)
+  const config = ClaudeAgentConfigJsonSchema.parse(input.input.profile.configJson)
   const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
   const effectiveModel = input.input.modelId ?? config.model
 
@@ -230,7 +231,7 @@ function buildClaudeQueryOptions(input: {
     throw new Error('Claude Agent provider requires an API key')
   }
 
-  const snapshot = parseProviderStateSnapshot(input.input.runtimeSession.providerStateSnapshot)
+  const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.input.runtimeSession.providerStateSnapshot)
   const queryOptions: Options = {
     abortController: input.abortController,
     model: effectiveModel,
@@ -325,25 +326,6 @@ function toRuntimeSlashCommand(command: SlashCommand): RuntimeSlashCommand {
     description: command.description,
     argumentHint: command.argumentHint,
     aliases: command.aliases,
-  }
-}
-
-function parseProviderStateSnapshot(providerStateSnapshot: string | null): {
-  workspacePath?: string
-  models?: { currentModelId?: string | null }
-} {
-  if (!providerStateSnapshot) {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(providerStateSnapshot) as {
-      workspacePath?: string
-      models?: { currentModelId?: string | null }
-    }
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  }
-  catch {
-    return {}
   }
 }
 

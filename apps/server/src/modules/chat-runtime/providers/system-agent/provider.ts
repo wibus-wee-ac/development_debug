@@ -8,11 +8,10 @@ import type { UIMessageChunk } from 'ai'
 import { getServerConfig } from '../../../../infra'
 import * as Preferences from '../../../preferences/service'
 import { lookupModelRaw, lookupModelRawExact } from '../../../providers/model-info-registry'
-import { parseProfileConfig, readModelRegistryMappings } from '../../../providers/model-registry-mappings'
+import { ProfileConfigWithModelRegistryJsonSchema } from '../../../providers/model-registry-mappings'
 import {
-  BaseProviderConfig,
-  parseConfigWith,
-  SystemAgentConfigSchema,
+  BaseProviderConfigJsonSchema,
+  SystemAgentConfigJsonSchema,
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type {
@@ -24,6 +23,7 @@ import type {
   StreamTurnInput,
   TokenUsage,
 } from '../../runtime-provider-types'
+import { ProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 
 interface SystemAgentProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -75,8 +75,8 @@ function normalizeThinkingLevel(
 }
 
 async function resolveMappedRegistryModel(configJson: string, modelId: string): Promise<Awaited<ReturnType<typeof lookupModelRaw>> | null> {
-  const mappings = readModelRegistryMappings(parseProfileConfig(configJson))
-  const mapping = mappings.find(item => item.modelId === modelId)
+  const config = ProfileConfigWithModelRegistryJsonSchema.parse(configJson)
+  const mapping = config.modelRegistryMappings.find(item => item.modelId === modelId)
   if (!mapping) {
     return null
   }
@@ -133,7 +133,7 @@ export class SystemAgentProvider implements ChatRuntime {
     if (!currentModelId) {
       return input.runtimeSession
     }
-    const snapshot = parseSnapshot(input.runtimeSession.providerStateSnapshot)
+    const snapshot = ProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -145,8 +145,8 @@ export class SystemAgentProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
-    const config = parseConfigWith(input.profile.configJson, SystemAgentConfigSchema)
-    const baseConfig = parseConfigWith(input.profile.configJson, BaseProviderConfig)
+    const config = SystemAgentConfigJsonSchema.parse(input.profile.configJson)
+    const baseConfig = BaseProviderConfigJsonSchema.parse(input.profile.configJson)
 
     const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
     const model = jarvisPrefs.model
@@ -393,19 +393,6 @@ export class SystemAgentProvider implements ChatRuntime {
 }
 
 // ── helpers ──
-
-function parseSnapshot(raw: string | null): Record<string, unknown> {
-  if (!raw) {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(raw)
-    return typeof parsed === 'object' && parsed !== null ? parsed : {}
-  }
- catch {
-    return {}
-  }
-}
 
 type AssistantMessageEvent = {
   type: string
