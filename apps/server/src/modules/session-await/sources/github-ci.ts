@@ -3,11 +3,16 @@ import {
   fetchCheckRuns,
   fetchCombinedStatus,
   fetchPullRequest,
+  fetchWorkflowRunJobs,
+  fetchWorkflowRunsForHead,
   hasGitHubToken,
   isGitHubRateLimited,
   resetTokenCache,
   type GitHubCheckRun,
   type GitHubCommitStatus,
+  type GitHubWorkflowJob,
+  type GitHubWorkflowJobStep,
+  type GitHubWorkflowRun,
 } from './github-api'
 
 export { resetTokenCache }
@@ -23,10 +28,16 @@ interface GitHubCIFilter {
 }
 
 export interface LiveCheckRun {
+  id: number | null
   name: string
   status: 'queued' | 'in_progress' | 'completed'
   conclusion: string | null
   required: boolean
+  htmlUrl: string | null
+  detailsUrl: string | null
+  workflowRunId: number | null
+  workflowJobId: number | null
+  steps: LiveWorkflowJobStep[]
 }
 
 export interface LiveCommitStatus {
@@ -34,6 +45,44 @@ export interface LiveCommitStatus {
   state: 'error' | 'failure' | 'pending' | 'success'
   description: string | null
   targetUrl: string | null
+}
+
+export interface LiveWorkflowJobStep {
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | 'pending'
+  conclusion: string | null
+  number: number
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export interface LiveWorkflowJob {
+  id: number
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
+  conclusion: string | null
+  htmlUrl: string | null
+  checkRunId: number | null
+  startedAt: string | null
+  completedAt: string | null
+  runnerName: string | null
+  labels: string[]
+  steps: LiveWorkflowJobStep[]
+}
+
+export interface LiveWorkflowRun {
+  id: number
+  name: string | null
+  displayTitle: string | null
+  runNumber: number
+  runAttempt: number
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
+  conclusion: string | null
+  headSha: string
+  htmlUrl: string | null
+  createdAt: string
+  updatedAt: string
+  jobs: LiveWorkflowJob[]
 }
 
 export interface LiveCIStatus {
@@ -44,6 +93,7 @@ export interface LiveCIStatus {
   prTitle: string | null
   ref: string
   checkRuns: LiveCheckRun[]
+  workflowRuns: LiveWorkflowRun[]
   statuses: LiveCommitStatus[]
   totalCount: number
   pendingCount: number
@@ -75,6 +125,7 @@ interface AggregatedCI {
 const DEFAULT_NO_CHECKS_GRACE_SECONDS = 300
 const PASSING_CHECK_CONCLUSIONS = new Set(['success', 'neutral', 'skipped'])
 const FAILING_CHECK_CONCLUSIONS = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'])
+const CHECK_RUN_ID_PATTERN = /\/check-runs\/(\d+)(?:$|\?)/
 
 function parseFilter(filterJson: string): GitHubCIFilter | null {
   try {
@@ -177,6 +228,112 @@ async function fetchAggregatedCI(target: ResolvedCITarget): Promise<AggregatedCI
     return null
   }
   return aggregateCI(checkRuns.check_runs, combinedStatus.statuses)
+}
+
+function parseCheckRunId(url: string | null): number | null {
+  if (!url) {
+    return null
+  }
+  const match = url.match(CHECK_RUN_ID_PATTERN)
+  return match ? Number.parseInt(match[1], 10) : null
+}
+
+function toLiveWorkflowStep(step: GitHubWorkflowJobStep): LiveWorkflowJobStep {
+  return {
+    name: step.name,
+    status: step.status,
+    conclusion: step.conclusion,
+    number: step.number,
+    startedAt: step.started_at,
+    completedAt: step.completed_at,
+  }
+}
+
+function toLiveWorkflowJob(job: GitHubWorkflowJob): LiveWorkflowJob {
+  return {
+    id: job.id,
+    name: job.name,
+    status: job.status,
+    conclusion: job.conclusion,
+    htmlUrl: job.html_url,
+    checkRunId: parseCheckRunId(job.check_run_url),
+    startedAt: job.started_at,
+    completedAt: job.completed_at,
+    runnerName: job.runner_name,
+    labels: job.labels,
+    steps: job.steps.map(toLiveWorkflowStep),
+  }
+}
+
+function toLiveWorkflowRun(run: GitHubWorkflowRun, jobs: GitHubWorkflowJob[]): LiveWorkflowRun {
+  return {
+    id: run.id,
+    name: run.name,
+    displayTitle: run.display_title,
+    runNumber: run.run_number,
+    runAttempt: run.run_attempt,
+    status: run.status,
+    conclusion: run.conclusion,
+    headSha: run.head_sha,
+    htmlUrl: run.html_url,
+    createdAt: run.created_at,
+    updatedAt: run.updated_at,
+    jobs: jobs.map(toLiveWorkflowJob),
+  }
+}
+
+async function fetchWorkflowRuns(target: ResolvedCITarget): Promise<LiveWorkflowRun[]> {
+  const runs = await fetchWorkflowRunsForHead(target.owner, target.repo, target.ref)
+  if (!runs) {
+    return []
+  }
+
+  const liveRuns: LiveWorkflowRun[] = []
+  for (const run of runs.workflow_runs) {
+    const jobs = await fetchWorkflowRunJobs(target.owner, target.repo, run.id)
+    liveRuns.push(toLiveWorkflowRun(run, jobs?.jobs ?? []))
+  }
+  return liveRuns
+}
+
+function findWorkflowJob(run: GitHubCheckRun, workflowRuns: LiveWorkflowRun[]): LiveWorkflowJob | null {
+  if (run.id) {
+    for (const workflowRun of workflowRuns) {
+      const matchedJob = workflowRun.jobs.find(job => job.checkRunId === run.id)
+      if (matchedJob) {
+        return matchedJob
+      }
+    }
+  }
+
+  for (const workflowRun of workflowRuns) {
+    const matchedJob = workflowRun.jobs.find(job => job.name === run.name)
+    if (matchedJob) {
+      return matchedJob
+    }
+  }
+
+  return null
+}
+
+function toLiveCheckRun(run: GitHubCheckRun, workflowRuns: LiveWorkflowRun[]): LiveCheckRun {
+  const workflowJob = findWorkflowJob(run, workflowRuns)
+  const workflowRun = workflowJob
+    ? workflowRuns.find(candidate => candidate.jobs.some(job => job.id === workflowJob.id)) ?? null
+    : null
+
+  return {
+    id: run.id ?? null,
+    name: run.name,
+    status: run.status,
+    conclusion: run.conclusion,
+    required: false,
+    htmlUrl: run.html_url ?? null,
+    detailsUrl: run.details_url ?? null,
+    workflowRunId: workflowRun?.id ?? null,
+    workflowJobId: workflowJob?.id ?? null,
+    steps: workflowJob?.steps ?? [],
+  }
 }
 
 function buildCIResumePayload(target: ResolvedCITarget, aggregate: AggregatedCI, noCIConfigured = false): string {
@@ -291,6 +448,7 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
       prTitle: null,
       ref: filter.sha ?? '',
       checkRuns: [],
+      workflowRuns: [],
       statuses: [],
       totalCount: 0,
       pendingCount: 0,
@@ -317,6 +475,7 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
       prTitle: target.prTitle,
       ref: target.ref,
       checkRuns: [],
+      workflowRuns: [],
       statuses: [],
       totalCount: 0,
       pendingCount: 0,
@@ -328,6 +487,8 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
     }
   }
 
+  const workflowRuns = await fetchWorkflowRuns(target)
+
   return {
     kind: 'github-ci',
     owner: target.owner,
@@ -335,12 +496,8 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
     prNumber: target.prNumber,
     prTitle: target.prTitle,
     ref: target.ref,
-    checkRuns: aggregate.checkRuns.map(r => ({
-      name: r.name,
-      status: r.status,
-      conclusion: r.conclusion,
-      required: false,
-    })),
+    checkRuns: aggregate.checkRuns.map(r => toLiveCheckRun(r, workflowRuns)),
+    workflowRuns,
     statuses: aggregate.statuses.map(s => ({
       context: s.context,
       state: s.state,

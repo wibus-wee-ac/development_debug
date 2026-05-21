@@ -9,7 +9,8 @@ import {
   WandSparklesIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
+import type { FormEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import {
   getSessionAwaitsByIdLiveStatusOptions,
@@ -41,10 +42,54 @@ type GitHubAwaitSourceKind = 'github-ci' | 'github-review'
 type GitHubReviewMode = 'approved' | 'changes-requested' | 'reviewed'
 
 interface LiveCheckRun {
+  id: number | null
   name: string
   status: 'queued' | 'in_progress' | 'completed'
   conclusion: string | null
   required: boolean
+  htmlUrl: string | null
+  detailsUrl: string | null
+  workflowRunId: number | null
+  workflowJobId: number | null
+  steps: LiveWorkflowJobStep[]
+}
+
+interface LiveWorkflowJobStep {
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | 'pending'
+  conclusion: string | null
+  number: number
+  startedAt: string | null
+  completedAt: string | null
+}
+
+interface LiveWorkflowJob {
+  id: number
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
+  conclusion: string | null
+  htmlUrl: string | null
+  checkRunId: number | null
+  startedAt: string | null
+  completedAt: string | null
+  runnerName: string | null
+  labels: string[]
+  steps: LiveWorkflowJobStep[]
+}
+
+interface LiveWorkflowRun {
+  id: number
+  name: string | null
+  displayTitle: string | null
+  runNumber: number
+  runAttempt: number
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
+  conclusion: string | null
+  headSha: string
+  htmlUrl: string | null
+  createdAt: string
+  updatedAt: string
+  jobs: LiveWorkflowJob[]
 }
 
 interface LiveCommitStatus {
@@ -63,6 +108,7 @@ interface LiveCIStatus {
   prTitle: string | null
   ref: string
   checkRuns: LiveCheckRun[]
+  workflowRuns: LiveWorkflowRun[]
   statuses: LiveCommitStatus[]
   totalCount: number
   pendingCount: number
@@ -183,18 +229,18 @@ function QueuedRunIcon({ className }: { className?: string }) {
   )
 }
 
-function RunStatusIcon({ run }: { run: LiveCheckRun }) {
+function RunStatusIcon({ status, conclusion }: { status: LiveCheckRun['status'] | LiveWorkflowJobStep['status'], conclusion: string | null }) {
   const icon = (() => {
-    if (run.status === 'completed') {
-      if (run.conclusion === 'success' || run.conclusion === 'neutral' || run.conclusion === 'skipped') {
+    if (status === 'completed') {
+      if (conclusion === 'success' || conclusion === 'neutral' || conclusion === 'skipped') {
         return <CheckRunIcon className="text-green-500" />
       }
-      if (run.conclusion === 'cancelled') {
+      if (conclusion === 'cancelled') {
         return <QueuedRunIcon className="text-muted-foreground" />
       }
       return <FailRunIcon className="text-red-500" />
     }
-    if (run.status === 'in_progress') {
+    if (status === 'in_progress') {
       return <SpinRunIcon className="text-amber-500" />
     }
     return <QueuedRunIcon className="text-muted-foreground/60" />
@@ -203,7 +249,7 @@ function RunStatusIcon({ run }: { run: LiveCheckRun }) {
   return (
     <AnimatePresence mode="wait">
       <m.span
-        key={`${run.status}-${run.conclusion}`}
+        key={`${status}-${conclusion}`}
         initial={{ scale: 0.5, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.5, opacity: 0 }}
@@ -231,14 +277,35 @@ function StatusContextIcon({ status }: { status: LiveCommitStatus }) {
 const MAX_TREE_DEPTH = 3
 
 interface TreeNode {
+  id: string
   label: string
   run: LiveCheckRun | null
+  step: LiveWorkflowJobStep | null
   children: TreeNode[]
+}
+
+interface TreeIndexEntry {
+  node: TreeNode
+  childIndex: Map<string, TreeIndexEntry>
+}
+
+function createStepNode(run: LiveCheckRun, step: LiveWorkflowJobStep): TreeNode {
+  return {
+    id: `run-${run.id ?? run.name}-step-${step.number}-${step.name}`,
+    label: step.name,
+    run: null,
+    step,
+    children: [],
+  }
+}
+
+function createStepNodes(run: LiveCheckRun): TreeNode[] {
+  return run.steps.map(step => createStepNode(run, step))
 }
 
 function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
   const root: TreeNode[] = []
-  const rootIndex = new Map<string, { node: TreeNode, childIndex: Map<string, { node: TreeNode, childIndex: any }> }>()
+  const rootIndex = new Map<string, TreeIndexEntry>()
 
   for (const run of runs) {
     const segments = run.name.split(' / ').map(s => s.trim())
@@ -247,20 +314,27 @@ function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
       : segments
 
     let currentLevel = root
-    let currentIndex: Map<string, any> = rootIndex
+    let currentIndex = rootIndex
     for (let i = 0; i < limited.length; i++) {
       const segment = limited[i]
       const isLeaf = i === limited.length - 1
       let entry = currentIndex.get(segment)
 
       if (!entry) {
-        const node: TreeNode = { label: segment, run: isLeaf ? run : null, children: [] }
+        const node: TreeNode = {
+          id: `run-${run.id ?? run.name}-part-${limited.slice(0, i + 1).join('/')}`,
+          label: segment,
+          run: isLeaf ? run : null,
+          step: null,
+          children: isLeaf ? createStepNodes(run) : [],
+        }
         entry = { node, childIndex: new Map() }
         currentLevel.push(node)
         currentIndex.set(segment, entry)
       }
       else if (isLeaf) {
         entry.node.run = run
+        entry.node.children = createStepNodes(run)
       }
       currentLevel = entry.node.children
       currentIndex = entry.childIndex
@@ -352,7 +426,7 @@ function TreeLevel({ nodes }: { nodes: TreeNode[] }) {
       </svg>
 
       {nodes.map((node, i) => (
-        <TreeItem key={node.label} node={node} isLast={i === nodes.length - 1} />
+        <TreeItem key={node.id} node={node} isLast={i === nodes.length - 1} />
       ))}
     </div>
   )
@@ -364,13 +438,14 @@ function TreeItem({ node, isLast: _isLast }: { node: TreeNode, isLast: boolean }
   return (
     <div>
       <div className="flex items-center gap-1.5 min-w-0" style={{ height: ROW_H }}>
-        {node.run && <RunStatusIcon run={node.run} />}
-        {!node.run && hasChildren && (
+        {node.run && <RunStatusIcon status={node.run.status} conclusion={node.run.conclusion} />}
+        {node.step && <RunStatusIcon status={node.step.status} conclusion={node.step.conclusion} />}
+        {!node.run && !node.step && hasChildren && (
           <span className="size-2 rounded-full bg-foreground/40 shrink-0" />
         )}
         <span className={cn(
           'truncate text-[11px]',
-          node.run ? 'text-foreground/80' : 'text-muted-foreground font-medium',
+          node.run || node.step ? 'text-foreground/80' : 'text-muted-foreground font-medium',
         )}
         >
           {node.label}
@@ -530,11 +605,17 @@ function GitHubReviewCard({ review }: { review: LiveReviewStatus }) {
       <div className="grid grid-cols-2 gap-2 px-3 pb-2 text-[11px]">
         <div className="flex items-center gap-1.5 text-green-500">
           <MessageSquareCheckIcon className="size-3" aria-hidden />
-          <span>{review.approvedCount} approved</span>
+          <span>
+            {review.approvedCount}
+            {' approved'}
+          </span>
         </div>
         <div className="flex items-center gap-1.5 text-red-500">
           <MessageSquareWarningIcon className="size-3" aria-hidden />
-          <span>{review.changesRequestedCount} requested</span>
+          <span>
+            {review.changesRequestedCount}
+            {' requested'}
+          </span>
         </div>
       </div>
 

@@ -122,9 +122,12 @@ export interface GitHubPullRequest {
 }
 
 export interface GitHubCheckRun {
+  id?: number
   name: string
   status: 'queued' | 'in_progress' | 'completed'
   conclusion: string | null
+  html_url?: string | null
+  details_url?: string | null
 }
 
 interface GitHubCheckRunsResponse {
@@ -158,6 +161,57 @@ export interface GitHubPullRequestReview {
   body: string | null
 }
 
+export interface GitHubWorkflowRun {
+  id: number
+  name: string | null
+  display_title: string | null
+  run_number: number
+  run_attempt: number
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
+  conclusion: string | null
+  head_sha: string
+  html_url: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface GitHubWorkflowRunsResponse {
+  total_count: number
+  workflow_runs: GitHubWorkflowRun[]
+}
+
+export interface GitHubWorkflowJobStep {
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | 'pending'
+  conclusion: string | null
+  number: number
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface GitHubWorkflowJob {
+  id: number
+  run_id: number
+  run_attempt: number
+  name: string
+  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
+  conclusion: string | null
+  workflow_name: string | null
+  head_sha: string
+  html_url: string | null
+  check_run_url: string | null
+  started_at: string | null
+  completed_at: string | null
+  runner_name: string | null
+  labels: string[]
+  steps: GitHubWorkflowJobStep[]
+}
+
+interface GitHubWorkflowJobsResponse {
+  total_count: number
+  jobs: GitHubWorkflowJob[]
+}
+
 export function hasGitHubToken(): boolean {
   return resolveGitHubToken() !== null
 }
@@ -181,6 +235,40 @@ export async function fetchCheckRuns(owner: string, repo: string, ref: string): 
     }
   }
   return { total_count: totalCount, check_runs: runs }
+}
+
+export async function fetchWorkflowRunsForHead(owner: string, repo: string, headSha: string): Promise<GitHubWorkflowRunsResponse | null> {
+  const runs: GitHubWorkflowRun[] = []
+  let totalCount = 0
+  for (let page = 1; page <= 3; page++) {
+    const data = await githubGet<GitHubWorkflowRunsResponse>(`/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100&page=${page}`)
+    if (!data) {
+      return null
+    }
+    totalCount = data.total_count
+    runs.push(...data.workflow_runs)
+    if (data.workflow_runs.length < 100 || runs.length >= data.total_count) {
+      break
+    }
+  }
+  return { total_count: totalCount, workflow_runs: runs }
+}
+
+export async function fetchWorkflowRunJobs(owner: string, repo: string, runId: number): Promise<GitHubWorkflowJobsResponse | null> {
+  const jobs: GitHubWorkflowJob[] = []
+  let totalCount = 0
+  for (let page = 1; page <= 10; page++) {
+    const data = await githubGet<GitHubWorkflowJobsResponse>(`/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100&page=${page}`)
+    if (!data) {
+      return null
+    }
+    totalCount = data.total_count
+    jobs.push(...data.jobs)
+    if (data.jobs.length < 100 || jobs.length >= data.total_count) {
+      break
+    }
+  }
+  return { total_count: totalCount, jobs }
 }
 
 export function fetchCombinedStatus(owner: string, repo: string, ref: string): Promise<GitHubCombinedStatus | null> {
