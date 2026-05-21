@@ -54,6 +54,7 @@ export const ChronicleModel = {
       t.Literal('audio-asr'),
       t.Literal('speaker'),
       t.Literal('embedding'),
+      t.Literal('pii'),
     ]),
     status: t.Union([
       t.Literal('available'),
@@ -78,6 +79,7 @@ export const ChronicleModel = {
       t.Literal('audio-asr'),
       t.Literal('speaker'),
       t.Literal('embedding'),
+      t.Literal('pii'),
     ]),
   }),
 

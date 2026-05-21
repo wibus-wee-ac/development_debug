@@ -9,7 +9,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::recorder::artifacts::PersistedFrame;
 
-const DEFAULT_CRADLE_URL: &str = "http://127.0.0.1:21423";
+/// Default Cradle Server URL.
+pub const DEFAULT_CRADLE_URL: &str = "http://127.0.0.1:21423";
+
+/// Read the Cradle Server base URL from `CRADLE_URL` env var or use default.
+pub fn cradle_base_url() -> String {
+    env::var("CRADLE_URL").unwrap_or_else(|_| DEFAULT_CRADLE_URL.to_string())
+}
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const CONFIG_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -455,7 +462,7 @@ pub struct CradleClient {
 impl CradleClient {
     /// Create a new client. Reads `CRADLE_URL` env var, falls back to default.
     pub fn from_env() -> Self {
-        let base_url = env::var("CRADLE_URL").unwrap_or_else(|_| DEFAULT_CRADLE_URL.to_string());
+        let base_url = cradle_base_url();
         Self { base_url }
     }
 
@@ -552,6 +559,21 @@ impl CradleClient {
     ) -> ChronicleResult<()> {
         segment.validate()?;
         self.post_json("/chronicle/audio-raw-segments", segment)
+    }
+
+    /// Report a chat message (e.g. from Slack) to Cradle Server.
+    pub fn record_chat_message(&self, payload: &serde_json::Value) -> ChronicleResult<()> {
+        let url = format!("{}/chronicle/chat-message", self.base_url);
+        let json_body = serde_json::to_string(payload)
+            .map_err(|e| ChronicleError::Process(format!("failed to serialize chat message: {e}")))?;
+        ureq::post(&url)
+            .header("Content-Type", "application/json")
+            .config()
+            .timeout_global(Some(REQUEST_TIMEOUT))
+            .build()
+            .send(json_body.as_bytes())
+            .map_err(|e| ChronicleError::Process(format!("failed to report chat message: {e}")))?;
+        Ok(())
     }
 
     /// Check if Cradle Server is reachable.

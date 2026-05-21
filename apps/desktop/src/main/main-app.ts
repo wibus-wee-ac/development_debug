@@ -83,7 +83,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   return win
 }
 
-function setMainWindow(win: BrowserWindow, serverUrl: string): void {
+function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
   windowManager?.setMainWindow(win)
 
@@ -164,13 +164,13 @@ export async function startDesktopApp(): Promise<void> {
     windowManager = new WindowManager(serverUrl)
 
     mainWindow = await createMainWindow(serverUrl)
-    setMainWindow(mainWindow, serverUrl)
+    setMainWindow(mainWindow)
     trayManager = new TrayManager({
       serverUrl,
       getMainWindow: () => mainWindow,
       createMainWindow: async () => {
         const win = await createMainWindow(serverUrl)
-        setMainWindow(win, serverUrl)
+        setMainWindow(win)
         return win
       },
     })
@@ -181,7 +181,7 @@ export async function startDesktopApp(): Promise<void> {
     app.on('activate', async () => {
       if (!mainWindow || mainWindow.isDestroyed()) {
         const restoredWindow = await createMainWindow(serverUrl)
-        setMainWindow(restoredWindow, serverUrl)
+        setMainWindow(restoredWindow)
         return
       }
       showMainWindow()

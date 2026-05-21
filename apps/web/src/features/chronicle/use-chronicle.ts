@@ -3,6 +3,7 @@
 // Position: apps/web/src/features/chronicle/use-chronicle.ts
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 
 import {
   getChronicleConfigOptions,
@@ -70,7 +71,7 @@ export interface ChronicleStatus {
   configuredModel: string | null
 }
 
-export type ChronicleModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding'
+export type ChronicleModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii'
 export type ChronicleModelResourceState = 'available' | 'missing' | 'optional' | 'installing' | 'error'
 
 interface ChronicleModelResourceEntry {
@@ -414,6 +415,19 @@ const CHRONICLE_MODEL_RESOURCE_DEFAULTS: ChronicleModelResource[] = [
     metadata: null,
     updatedAt: null,
   },
+  {
+    category: 'pii',
+    label: 'PII Detection',
+    state: 'optional',
+    required: false,
+    provider: null,
+    path: null,
+    version: null,
+    sizeBytes: null,
+    message: 'Optional PII detection model for local entity redaction.',
+    metadata: null,
+    updatedAt: null,
+  },
 ]
 
 const CHRONICLE_RESOURCE_LABELS: Record<ChronicleModelResourceCategory, string> = {
@@ -422,6 +436,7 @@ const CHRONICLE_RESOURCE_LABELS: Record<ChronicleModelResourceCategory, string> 
   'audio-asr': 'Audio ASR',
   'speaker': 'Speaker',
   'embedding': 'Embedding',
+  'pii': 'PII Detection',
 }
 
 const CHRONICLE_RESOURCE_CATEGORIES = new Set<ChronicleModelResourceCategory>([
@@ -430,6 +445,7 @@ const CHRONICLE_RESOURCE_CATEGORIES = new Set<ChronicleModelResourceCategory>([
   'audio-asr',
   'speaker',
   'embedding',
+  'pii',
 ])
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -599,6 +615,16 @@ export function useChronicleModelResourceActions() {
     onSuccess: invalidate,
   })
 
+  const { mutateAsync: installAllResources, isPending: installingAll } = useMutation({
+    mutationFn: async () => {
+      const data = await fetchChronicleJson<ChronicleModelResourceEntry[]>('/chronicle/model-resources/install-all', {
+        method: 'POST',
+      })
+      return normalizeModelResources(data)
+    },
+    onSuccess: invalidate,
+  })
+
   const { mutateAsync: verifyResource, isPending: verifying } = useMutation({
     mutationFn: async (category: ChronicleModelResourceCategory) => {
       const data = await fetchChronicleJson<ChronicleModelResourceEntry>(
@@ -645,14 +671,67 @@ export function useChronicleModelResourceActions() {
 
   return {
     reconcileResources,
+    installAllResources,
     verifyResource,
     installResource,
     removeResource,
     reconciling,
+    installingAll,
     verifying,
     installing,
     removing,
   }
+}
+
+export interface DownloadProgressEntry {
+  category: string
+  file: string
+  totalBytes: number | null
+  downloadedBytes: number
+  status: 'downloading' | 'done' | 'error'
+  error?: string
+  startedAt: number
+}
+
+export function useChronicleDownloadProgress(active: boolean): Map<string, DownloadProgressEntry> {
+  const [progress, setProgress] = useState<Map<string, DownloadProgressEntry>>(() => new Map())
+
+  useEffect(() => {
+    if (!active) {
+      setProgress(new Map())
+      return
+    }
+    const url = `${getServerUrl()}/chronicle/model-resources/download-progress`
+    const eventSource = new EventSource(url)
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        setProgress((prev) => {
+          const next = new Map(prev)
+          if (Array.isArray(data)) {
+            for (const entry of data) {
+              next.set(`${entry.category}/${entry.file}`, entry)
+            }
+          }
+          else {
+            next.set(`${data.category}/${data.file}`, data)
+          }
+          return next
+        })
+      }
+      catch {
+        // Ignore parse errors
+      }
+    }
+    eventSource.onerror = () => {
+      // Reconnect is automatic with EventSource
+    }
+    return () => {
+      eventSource.close()
+    }
+  }, [active])
+
+  return progress
 }
 
 export function useChronicleMessageSources() {

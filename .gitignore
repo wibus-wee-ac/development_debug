@@ -13,3 +13,4 @@ data
 !.env.example
 chronicle/target/
 apps/desktop/release
+.cradle/

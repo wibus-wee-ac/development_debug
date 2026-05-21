@@ -1,5 +1,6 @@
 //! Daemon mode for Cradle Chronicle.
 
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -8,22 +9,28 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::audio::{
-    AudioArtifactMetadata, RmsActivityGate, capture_microphone_samples,
-    write_audio_segment_artifact,
+    AudioArtifactMetadata, AudioTranscriptionPipeline, RmsActivityGate,
+    capture_microphone_samples, write_audio_segment_artifact,
 };
 use crate::config::{CaptureProvider, ChronicleConfig};
 use crate::cradle_client::{
     ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus,
     ChronicleMemoryReport, ChronicleSnapshotReport, CradleClient,
 };
+use crate::cron::{CronScheduler, CronTickResult, TaskKind, default_jobs};
+use crate::dream::{DreamConfig, DreamEngine, DreamMode};
 use crate::error::{ChronicleError, ChronicleResult};
+use crate::meeting::detect_meeting;
 use crate::memory_pipeline::recursive::RecursiveSummarizer;
 use crate::memory_pipeline::summarizer::LocalSummaryWriter;
 use crate::ocr::ObservedTextExtractor;
+use crate::pipeline::Pipeline;
 use crate::recorder::artifacts::{ArtifactStore, PersistedFrame};
 use crate::recorder::fingerprint::FrameFingerprint;
 use crate::recorder::sampler::AdaptiveSampler;
 use crate::screen::inbox::InboxCaptureSource;
+use crate::screen::BrowserWindowObservation;
+use crate::slack::SlackScanner;
 use crate::time::Timestamp;
 use crate::transcript_inbox::process_transcript_inbox_tick;
 
@@ -107,6 +114,54 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
     #[cfg(target_os = "macos")]
     let mut ax_observer = start_ax_observer(config);
 
+    // Pipeline, Cron, and Slack integration
+    let mut pipeline = Pipeline::from_env();
+
+    let cron_state_path = config.storage_root.join("cron-state.json");
+    let mut cron = CronScheduler::new(&cron_state_path);
+    if let Err(e) = cron.load_state() {
+        eprintln!("cradle chronicle cron load state error: {e}");
+    }
+    if cron.jobs().is_empty()
+        && let Ok(now) = Timestamp::now() {
+            for job in default_jobs(now) {
+                cron.add_job(job);
+            }
+        }
+
+    let mut slack_scanner: Option<SlackScanner> = if env::var("SLACK_BOT_TOKEN").is_ok() {
+        match SlackScanner::from_env() {
+            Ok(scanner) => {
+                eprintln!("cradle chronicle slack scanner initialized");
+                Some(scanner)
+            }
+            Err(e) => {
+                eprintln!("cradle chronicle slack scanner init error: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut last_cron_check = Instant::now();
+    let cron_interval = Duration::from_secs(30);
+    let mut last_slack_poll = Instant::now();
+    let slack_interval = Duration::from_secs(60);
+
+    // Meeting detection state
+    let mut is_in_meeting = false;
+
+    // ONNX Runtime — local model inference (VAD, ASR, Embedding, PII)
+    // Models are loaded lazily on first use via OnnxRuntime.
+    let onnx_runtime = crate::onnx::OnnxRuntime::new();
+    eprintln!("cradle chronicle onnx runtime initialized (models load on demand)");
+
+    // Audio transcription pipeline: local ONNX (Silero VAD + SenseVoice ASR)
+    let _local_transcription = crate::audio::asr::LocalTranscriptionPipeline::new(&onnx_runtime);
+    let _audio_pipeline = AudioTranscriptionPipeline::from_env();
+    eprintln!("cradle chronicle audio transcription pipeline ready (local ONNX + remote fallback)");
+
     while !SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
         process_transcripts(&config.inbox_root, &client);
         process_audio_segment_if_due(config, &client, &mut last_audio_segment_time);
@@ -139,6 +194,11 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
                 if !report.persisted_frames.is_empty() {
                     report_snapshots(&client, &report.persisted_frames);
 
+                    // Meeting detection from the latest captured frame
+                    if let Some(latest_frame) = report.persisted_frames.last() {
+                        check_meeting_state(latest_frame, &mut is_in_meeting);
+                    }
+
                     // Feed adaptive sampler with fingerprint from captured frame
                     let fp = FrameFingerprint::from_parts(
                         &format!("frame-{frame_index}").into_bytes(),
@@ -156,6 +216,7 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
                         if let Err(e) = run_summary(config, &all_persisted) {
                             eprintln!("cradle chronicle forced summary error: {e}");
                         }
+                        process_pipeline(&mut pipeline, &all_persisted);
                         all_persisted.clear();
                         last_summary_time = Instant::now();
                     }
@@ -181,8 +242,23 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
             if let Err(e) = run_summary(config, &all_persisted) {
                 eprintln!("cradle chronicle summary error: {e}");
             }
+            process_pipeline(&mut pipeline, &all_persisted);
             all_persisted.clear();
             last_summary_time = Instant::now();
+        }
+
+        // Cron check
+        if last_cron_check.elapsed() >= cron_interval {
+            process_cron_jobs(&mut cron, &mut pipeline, &all_persisted, &config.storage_root);
+            last_cron_check = Instant::now();
+        }
+
+        // Slack poll
+        if last_slack_poll.elapsed() >= slack_interval {
+            if let Some(ref mut scanner) = slack_scanner {
+                poll_slack(scanner, &client);
+            }
+            last_slack_poll = Instant::now();
         }
 
         let interval = Duration::from_millis(sampler.current_interval_ms());
@@ -190,8 +266,16 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
     }
 
     // Final summary before exit
-    if !all_persisted.is_empty() && run_summary(config, &all_persisted).is_err() {
-        eprintln!("cradle chronicle final summary error");
+    if !all_persisted.is_empty() {
+        if run_summary(config, &all_persisted).is_err() {
+            eprintln!("cradle chronicle final summary error");
+        }
+        process_pipeline(&mut pipeline, &all_persisted);
+    }
+
+    // Save cron state before exit
+    if let Err(e) = cron.save_state() {
+        eprintln!("cradle chronicle cron save state error on exit: {e}");
     }
 
     Ok("cradle chronicle daemon stopped".to_string())
@@ -418,6 +502,145 @@ fn report_snapshots(client: &CradleClient, persisted: &[PersistedFrame]) {
 fn report_memory(client: &CradleClient, report: ChronicleMemoryReport) {
     if let Err(error) = client.record_memory(&report) {
         eprintln!("cradle chronicle memory report failed, keeping local memory: {error}");
+    }
+}
+
+fn check_meeting_state(frame: &PersistedFrame, is_in_meeting: &mut bool) {
+    // Reconstruct window observations from accessibility elements
+    let windows: Vec<BrowserWindowObservation> = frame
+        .accessibility
+        .elements
+        .iter()
+        .filter(|el| el.role == "window")
+        .map(|el| {
+            let mut w = BrowserWindowObservation::new(
+                el.window_id.unwrap_or(0),
+                &el.label,
+                &el.app_bundle_identifier,
+            );
+            if let Some(ref url) = el.value {
+                w = w.with_url(url);
+            }
+            w
+        })
+        .collect();
+
+    let now = match Timestamp::now() {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+
+    let detection = detect_meeting(&windows, &frame.accessibility, now);
+
+    if detection.is_meeting && !*is_in_meeting {
+        *is_in_meeting = true;
+        let app = detection.meeting_app.as_deref().unwrap_or("unknown");
+        let title = detection.meeting_title.as_deref().unwrap_or("unknown");
+        eprintln!("cradle chronicle meeting detected: app={app} title={title}");
+    } else if !detection.is_meeting && *is_in_meeting {
+        *is_in_meeting = false;
+        eprintln!("cradle chronicle meeting ended");
+    }
+}
+
+fn process_pipeline(pipeline: &mut Pipeline, frames: &[PersistedFrame]) {
+    match pipeline.process_frames(frames) {
+        Ok(report) => {
+            eprintln!(
+                "cradle chronicle pipeline completed: segments={} kept={} chunks={} deduped={}",
+                report.segments_produced, report.segments_kept, report.chunks_produced, report.chunks_deduplicated
+            );
+        }
+        Err(error) => {
+            eprintln!("cradle chronicle pipeline error: {error}");
+        }
+    }
+}
+
+fn process_cron_jobs(cron: &mut CronScheduler, pipeline: &mut Pipeline, frames: &[PersistedFrame], _storage_root: &Path) {
+    let now = match Timestamp::now() {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+    let due_jobs = cron.tick(now);
+    for result in due_jobs {
+        if let CronTickResult::Due(job_id) = result {
+            let task_kind = cron.get_job(&job_id).map(|j| j.task_kind);
+            match task_kind {
+                Some(TaskKind::Summarize) => {
+                    eprintln!("cradle chronicle cron: summarize triggered");
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                Some(TaskKind::Crystallize) => {
+                    process_pipeline(pipeline, frames);
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                Some(TaskKind::DreamArchive) => {
+                    eprintln!("cradle chronicle cron: dream-archive triggered");
+                    let mut engine = DreamEngine::new(DreamConfig::default());
+                    let chunks = pipeline.drain_chunks();
+                    engine.load_chunks(chunks);
+                    let report = engine.run(DreamMode::Archive, now);
+                    eprintln!("cradle chronicle dream-archive: archived={}", report.archived_count);
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                Some(TaskKind::DreamMerge) => {
+                    eprintln!("cradle chronicle cron: dream-merge triggered");
+                    let mut engine = DreamEngine::new(DreamConfig::default());
+                    let chunks = pipeline.drain_chunks();
+                    engine.load_chunks(chunks);
+                    let report = engine.run(DreamMode::Merge, now);
+                    eprintln!("cradle chronicle dream-merge: merged={}", report.merged_count);
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                Some(TaskKind::DreamPrune) => {
+                    eprintln!("cradle chronicle cron: dream-prune triggered");
+                    let mut engine = DreamEngine::new(DreamConfig::default());
+                    let chunks = pipeline.drain_chunks();
+                    engine.load_chunks(chunks);
+                    let report = engine.run(DreamMode::Prune, now);
+                    eprintln!("cradle chronicle dream-prune: pruned={}", report.pruned_count);
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                Some(TaskKind::HealthCheck) => {
+                    eprintln!("cradle chronicle cron: health check ok");
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                Some(TaskKind::Cleanup) => {
+                    eprintln!("cradle chronicle cron: cleanup (not yet fully implemented)");
+                    cron.mark_completed(&job_id, now, "ok");
+                }
+                None => {}
+            }
+        }
+    }
+    if let Err(e) = cron.save_state() {
+        eprintln!("cradle chronicle cron save state error: {e}");
+    }
+}
+
+fn poll_slack(scanner: &mut SlackScanner, client: &CradleClient) {
+    match scanner.poll_all() {
+        Ok(messages) if !messages.is_empty() => {
+            eprintln!("cradle chronicle slack polled: {} new messages", messages.len());
+            for msg in &messages {
+                let report_body = serde_json::json!({
+                    "sourceId": format!("slack:{}:{}", msg.channel_id, msg.timestamp),
+                    "platform": "slack",
+                    "channelId": msg.channel_id,
+                    "userId": msg.user_id,
+                    "text": msg.text,
+                    "timestamp": msg.timestamp,
+                });
+                if let Err(e) = client.record_chat_message(&report_body) {
+                    eprintln!("cradle chronicle slack message report error: {e}");
+                }
+            }
+        }
+        Ok(_) => {}
+        Err(error) => {
+            eprintln!("cradle chronicle slack poll error: {error}");
+        }
     }
 }
 

@@ -405,7 +405,7 @@ export const chronicleAudioRawSegments = sqliteTable('chronicle_audio_raw_segmen
 export const chronicleModelResources = sqliteTable('chronicle_model_resources', {
   id: textPk(),
   category: text('category', {
-    enum: ['ocr', 'audio-vad', 'audio-asr', 'speaker', 'embedding'],
+    enum: ['ocr', 'audio-vad', 'audio-asr', 'speaker', 'embedding', 'pii'],
   }).notNull(),
   status: text('status', {
     enum: ['available', 'missing', 'installing', 'installed', 'error'],

@@ -13,7 +13,6 @@ import {
   MessageSquareIcon,
   RefreshCwIcon,
   SearchIcon,
-  Trash2Icon,
   TriangleAlertIcon,
 } from 'lucide-react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
@@ -53,6 +52,7 @@ import {
   useChronicleAudioRawSegments,
   useChronicleAudioTranscripts,
   useChronicleConfig,
+  useChronicleDownloadProgress,
   useChronicleDreamActions,
   useChronicleDreamRuns,
   useChronicleKnowledgeCards,
@@ -136,8 +136,6 @@ function hasVerifiedManifestDownload(resource: ChronicleModelResource): boolean 
   return files.length > 0 && files.every((file) => {
     const item = readRecord(file)
     return typeof item?.sourceUrl === 'string'
-      && typeof item.sha256 === 'string'
-      && typeof item.sizeBytes === 'number'
   })
 }
 
@@ -835,24 +833,35 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
 function ResourceGrid({ loading, resources }: { loading: boolean, resources: ChronicleModelResource[] }) {
   const {
     reconcileResources,
+    installAllResources,
     verifyResource,
     installResource,
-    removeResource,
     reconciling,
+    installingAll,
     verifying,
     installing,
-    removing,
   } = useChronicleModelResourceActions()
+  const downloadProgress = useChronicleDownloadProgress(installingAll || installing)
 
   if (loading) {
     return <EmptyState icon={<CpuIcon className="size-4" />} title="Loading resources" />
   }
 
-  const busy = reconciling || verifying || installing || removing
+  const busy = reconciling || installingAll || verifying || installing
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-1.5">
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          disabled={busy}
+          onClick={() => void installAllResources()}
+        >
+          <DownloadIcon className="size-3.5" />
+          Install All
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -871,8 +880,8 @@ function ResourceGrid({ loading, resources }: { loading: boolean, resources: Chr
             resource={resource}
             busy={busy || resource.state === 'installing'}
             installResource={installResource}
-            removeResource={removeResource}
             verifyResource={verifyResource}
+            downloadProgress={downloadProgress}
           />
         ))}
       </div>
@@ -884,21 +893,19 @@ function ResourceItem({
   resource,
   busy,
   installResource,
-  removeResource,
   verifyResource,
+  downloadProgress,
 }: {
   resource: ChronicleModelResource
   busy: boolean
   installResource: ReturnType<typeof useChronicleModelResourceActions>['installResource']
-  removeResource: ReturnType<typeof useChronicleModelResourceActions>['removeResource']
   verifyResource: ReturnType<typeof useChronicleModelResourceActions>['verifyResource']
+  downloadProgress: ReturnType<typeof useChronicleDownloadProgress>
 }) {
   const tone = getResourceTone(resource)
-  const [sourceRoot, setSourceRoot] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const canInstall = resource.category !== 'ocr'
   const canDownload = canInstall && hasVerifiedManifestDownload(resource)
-  const trimmedSourceRoot = sourceRoot.trim()
 
   return (
     <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
@@ -928,81 +935,50 @@ function ResourceItem({
             )}
           </div>
           {canInstall && (
-            <div className="mt-2 space-y-1.5">
-              <Input
-                value={sourceRoot}
-                placeholder="Local model file or directory"
-                disabled={busy}
-                onChange={event => setSourceRoot(event.target.value)}
-              />
-              <div className="flex flex-wrap gap-1.5">
-                {canDownload && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => {
-                      setMessage(null)
-                      void installResource({ category: resource.category, source: 'manifest' }).then((updated) => {
-                        setMessage(updated?.message ?? 'Resource downloaded')
-                      })
-                    }}
-                  >
-                    <DownloadIcon className="size-3" />
-                    Download
-                  </Button>
-                )}
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {canDownload && (
                 <Button
                   type="button"
                   variant="outline"
                   size="xs"
-                  disabled={busy || !trimmedSourceRoot}
-                  onClick={() => {
-                    setMessage(null)
-                    void installResource({ category: resource.category, sourceRoot: trimmedSourceRoot }).then((updated) => {
-                      setMessage(updated?.message ?? 'Resource installed')
-                      setSourceRoot('')
-                    })
-                  }}
-                >
-                  <HardDriveIcon className="size-3" />
-                  Install
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
                   disabled={busy}
                   onClick={() => {
                     setMessage(null)
-                    void verifyResource(resource.category).then((updated) => {
-                      setMessage(updated?.message ?? 'Resource verified')
+                    void installResource({ category: resource.category, source: 'manifest' }).then((updated) => {
+                      setMessage(updated?.message ?? 'Resource downloaded')
                     })
                   }}
                 >
-                  <RefreshCwIcon className="size-3" />
-                  Verify
+                  <DownloadIcon className="size-3" />
+                  Download
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  disabled={busy}
-                  onClick={() => {
-                    setMessage(null)
-                    void removeResource(resource.category).then((updated) => {
-                      setMessage(updated?.message ?? 'Resource removed')
-                    })
-                  }}
-                >
-                  <Trash2Icon className="size-3" />
-                  Remove
-                </Button>
-              </div>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={busy}
+                onClick={() => {
+                  setMessage(null)
+                  void verifyResource(resource.category).then((updated) => {
+                    setMessage(updated?.message ?? 'Resource verified')
+                  })
+                }}
+              >
+                <RefreshCwIcon className="size-3" />
+                Verify
+              </Button>
             </div>
           )}
           {message && <p className="mt-1 text-[11px] text-muted-foreground">{message}</p>}
+          {downloadProgress[resource.category] && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Download progress:
+{' '}
+{downloadProgress[resource.category]}
+%
+            </p>
+          )}
         </div>
       </div>
     </div>

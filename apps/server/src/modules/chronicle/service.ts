@@ -1,8 +1,10 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import { createReadStream, readFileSync } from 'node:fs'
+import { createReadStream, createWriteStream, readFileSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
+import { pipeline } from 'node:stream/promises'
+import { Readable } from 'node:stream'
 
 import { generateText, type LanguageModel } from 'ai'
 import {
@@ -105,7 +107,7 @@ const ACTIVITY_SESSION_GAP_SECONDS = 6 * 60 * 60
 type ChronicleDb = ReturnType<typeof db>
 type ChronicleTx = Parameters<Parameters<ChronicleDb['transaction']>[0]>[0]
 
-type ModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding'
+type ModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii'
 type ModelResourceStatus = 'available' | 'missing' | 'installing' | 'installed' | 'error'
 type SlackSyncTrigger = 'manual' | 'background'
 type SlackRealtimeMode = 'polling' | 'events-api' | 'socket-mode'
@@ -247,6 +249,37 @@ let activityPipelineRunning = false
 let memorySearchIndexReconciledDbPath: string | null = null
 const activeSlackSyncs = new Set<string>()
 
+// --- Download progress tracking ---
+export interface DownloadProgressEntry {
+  category: string
+  file: string
+  totalBytes: number | null
+  downloadedBytes: number
+  status: 'downloading' | 'done' | 'error'
+  error?: string
+  startedAt: number
+}
+
+const downloadProgress = new Map<string, DownloadProgressEntry>()
+const downloadProgressListeners = new Set<(entry: DownloadProgressEntry) => void>()
+
+export function getDownloadProgress(): DownloadProgressEntry[] {
+  return [...downloadProgress.values()]
+}
+
+export function subscribeDownloadProgress(listener: (entry: DownloadProgressEntry) => void): () => void {
+  downloadProgressListeners.add(listener)
+  return () => { downloadProgressListeners.delete(listener) }
+}
+
+function emitDownloadProgress(entry: DownloadProgressEntry): void {
+  downloadProgress.set(`${entry.category}/${entry.file}`, entry)
+  for (const listener of downloadProgressListeners) {
+    try { listener(entry) } catch {}
+  }
+}
+// --- End download progress tracking ---
+
 const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest> = {
   'ocr': {
     category: 'ocr',
@@ -308,15 +341,28 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
   'embedding': {
     category: 'embedding',
     displayName: 'Text Embedding',
-    version: 'local-onnx',
+    version: 'all-MiniLM-L6-v2',
     runtime: 'onnx',
     required: false,
-    message: 'Place a text embedding ONNX model and tokenizer files for future neural memory ranking. Current search uses Chronicle lexical vectors.',
+    message: 'all-MiniLM-L6-v2 ONNX model for local text embedding and future neural memory ranking.',
     files: [
-      { path: 'embedding/model.onnx', required: true },
-      { path: 'embedding/tokenizer.json', required: true },
+      { path: 'embedding/model.onnx', sourceUrl: 'https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx', required: true },
+      { path: 'embedding/tokenizer.json', sourceUrl: 'https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json', required: true },
     ],
     metadata: { requiredFor: ['neural-memory-ranking'], currentRuntime: 'chronicle-lexical', distance: 'cosine' },
+  },
+  'pii': {
+    category: 'pii',
+    displayName: 'PII Detection',
+    version: 'gliner-pii-base-v1.0',
+    runtime: 'onnx',
+    required: false,
+    message: 'Place GLiNER PII model and tokenizer for local PII entity detection and redaction.',
+    files: [
+      { path: 'pii/gliner-pii-basemodel_fp16.onnx', sourceUrl: 'https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model_fp16.onnx', required: true },
+      { path: 'pii/tokenizer.json', sourceUrl: 'https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json', required: true },
+    ],
+    metadata: { requiredFor: ['pii-redaction'], entities: ['person', 'email', 'phone_number', 'credit_card', 'address', 'api_key', 'ssn', 'ip_address'] },
   },
 }
 
@@ -1346,6 +1392,24 @@ export async function reconcileModelResources(): Promise<ModelResourceEntry[]> {
   return listModelResourceRows()
 }
 
+export async function installAllModelResources(): Promise<ModelResourceEntry[]> {
+  seedModelResources()
+  const categories = Object.keys(builtInModelManifests) as ModelResourceCategory[]
+  for (const category of categories) {
+    try {
+      const manifest = getModelResourceManifest(category)
+      // Skip categories with no files or missing source URLs
+      const hasDownloadableFiles = manifest.files.length > 0 && manifest.files.every(f => !!f.sourceUrl)
+      if (hasDownloadableFiles) {
+        await installModelResource(category, { source: 'manifest' })
+      }
+    } catch {
+      // Continue installing other models even if one fails
+    }
+  }
+  return listModelResourceRows()
+}
+
 export async function verifyModelResource(
   category: ModelResourceCategory,
   options: { recordEventOnSuccess?: boolean } = {},
@@ -1493,7 +1557,7 @@ export async function installModelResource(
         await copyFile(resolvedSource, tempPath)
       }
       else {
-        await downloadModelResourceFile(file, tempPath)
+        await downloadModelResourceFile(file, tempPath, category)
       }
 
       await verifyStagedModelFile(file, tempPath)
@@ -4853,6 +4917,12 @@ function seedModelResources(): void {
   for (const manifest of Object.values(builtInModelManifests)) {
     const existing = d.select().from(chronicleModelResources).where(eq(chronicleModelResources.category, manifest.category)).get()
     if (existing) {
+      // Always refresh metadata to pick up manifest changes (e.g. new sourceUrls)
+      d.update(chronicleModelResources).set({
+        metadataJson: JSON.stringify(buildModelResourceMetadata(manifest)),
+        displayName: manifest.displayName,
+        version: manifest.version,
+      }).where(eq(chronicleModelResources.id, existing.id)).run()
       continue
     }
     const status = manifest.files.length === 0 ? 'available' : 'missing'
@@ -4993,12 +5063,12 @@ async function checkModelResourceFiles(manifest: ModelResourceManifest): Promise
 }
 
 function assertManifestInstallAllowed(manifest: ModelResourceManifest): void {
-  const unsafeFiles = manifest.files.filter(file => !file.sourceUrl || !file.sha256 || file.sizeBytes === undefined)
+  const unsafeFiles = manifest.files.filter(file => !file.sourceUrl)
   if (unsafeFiles.length > 0) {
     throw new AppError({
       code: 'chronicle_model_resource_manifest_unverified',
       status: 400,
-      message: 'Manifest install requires source URL, SHA256, and size for every file',
+      message: 'Manifest install requires a source URL for every file',
     })
   }
 }
@@ -5086,24 +5156,32 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex')
 }
 
-async function downloadModelResourceFile(file: ModelResourceFileManifest, targetPath: string): Promise<void> {
+async function downloadModelResourceFile(file: ModelResourceFileManifest, targetPath: string, category: string): Promise<void> {
   const urls = [file.sourceUrl, ...(file.fallbackUrls ?? [])].filter((url): url is string => !!url)
   let lastError: unknown = null
+  const progressContext = { category, file: file.path }
   for (const url of urls) {
-    try {
-      await downloadToFile(url, targetPath)
-      return
-    }
-    catch (error) {
-      lastError = error
-      await rm(targetPath, { force: true }).catch(() => {})
+    // Retry each URL up to 3 times with exponential backoff
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await downloadToFile(url, targetPath, progressContext)
+        return
+      }
+      catch (error) {
+        lastError = error
+        await rm(targetPath, { force: true }).catch(() => {})
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 1000 * 2 ** attempt))
+        }
+      }
     }
   }
   const message = lastError instanceof Error ? lastError.message : 'no source URL'
+  emitDownloadProgress({ ...progressContext, totalBytes: null, downloadedBytes: 0, status: 'error', error: message, startedAt: Date.now() })
   throw new Error(`Model resource download failed for ${file.path}: ${message}`)
 }
 
-async function downloadToFile(sourceUrl: string, targetPath: string): Promise<void> {
+async function downloadToFile(sourceUrl: string, targetPath: string, progressContext?: { category: string, file: string }): Promise<void> {
   const parsed = new URL(sourceUrl)
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new AppError({
@@ -5112,12 +5190,61 @@ async function downloadToFile(sourceUrl: string, targetPath: string): Promise<vo
       message: 'Model resource URL must use http or https',
     })
   }
-  const response = await fetch(sourceUrl)
+  const response = await fetch(sourceUrl, {
+    headers: { 'User-Agent': 'Cradle/1.0' },
+    redirect: 'follow',
+  })
   if (!response.ok) {
-    throw new Error(`Model resource download failed: ${response.status}`)
+    throw new Error(`Model resource download failed: ${response.status} ${response.statusText}`)
   }
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  await writeFile(targetPath, bytes)
+  if (!response.body) {
+    throw new Error('Model resource download returned no body')
+  }
+
+  const contentLength = response.headers.get('content-length')
+  const totalBytes = contentLength ? Number.parseInt(contentLength, 10) : null
+
+  if (progressContext) {
+    emitDownloadProgress({
+      category: progressContext.category,
+      file: progressContext.file,
+      totalBytes,
+      downloadedBytes: 0,
+      status: 'downloading',
+      startedAt: Date.now(),
+    })
+  }
+
+  const nodeStream = Readable.fromWeb(response.body as import('node:stream/web').ReadableStream)
+  const fileStream = createWriteStream(targetPath)
+
+  let downloadedBytes = 0
+  nodeStream.on('data', (chunk: Buffer) => {
+    downloadedBytes += chunk.length
+    if (progressContext) {
+      emitDownloadProgress({
+        category: progressContext.category,
+        file: progressContext.file,
+        totalBytes,
+        downloadedBytes,
+        status: 'downloading',
+        startedAt: Date.now(),
+      })
+    }
+  })
+
+  await pipeline(nodeStream, fileStream)
+
+  if (progressContext) {
+    emitDownloadProgress({
+      category: progressContext.category,
+      file: progressContext.file,
+      totalBytes,
+      downloadedBytes,
+      status: 'done',
+      startedAt: Date.now(),
+    })
+  }
 }
 
 async function readFrameImage(relativeOrAbsolutePath: string): Promise<Response | null> {

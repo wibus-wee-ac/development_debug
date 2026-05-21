@@ -44,6 +44,51 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
     detail: { summary: 'Reconcile Chronicle local model resources', tags: ['chronicle'] },
     response: { 200: t.Array(ChronicleModel.modelResource) },
   })
+  .post('/model-resources/install-all', () => Chronicle.installAllModelResources(), {
+    detail: { summary: 'Install all Chronicle model resources from manifests', tags: ['chronicle'] },
+    response: { 200: t.Array(ChronicleModel.modelResource) },
+  })
+  .get('/model-resources/download-progress', () => {
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send current state
+        const current = Chronicle.getDownloadProgress()
+        if (current.length > 0) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(current)}\n\n`))
+        }
+        // Subscribe to updates
+        const unsubscribe = Chronicle.subscribeDownloadProgress((entry) => {
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(entry)}\n\n`))
+          } catch {
+            unsubscribe()
+          }
+        })
+        // Keep alive every 15s
+        const keepAlive = setInterval(() => {
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { clearInterval(keepAlive) }
+        }, 15000)
+        // Clean up when client disconnects (controller closed)
+        const checkClosed = setInterval(() => {
+          try { controller.enqueue(encoder.encode('')) } catch {
+            clearInterval(checkClosed)
+            clearInterval(keepAlive)
+            unsubscribe()
+          }
+        }, 5000)
+      },
+    })
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
+  }, {
+    detail: { summary: 'SSE stream of model resource download progress', tags: ['chronicle'] },
+  })
   .post('/model-resources/:category/verify', ({ params }) => Chronicle.verifyModelResource(params.category), {
     detail: { summary: 'Verify a Chronicle local model resource', tags: ['chronicle'] },
     params: ChronicleModel.modelResourceCategoryParams,
