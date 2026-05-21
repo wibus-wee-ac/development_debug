@@ -7,6 +7,7 @@
     "server-api",
     "web-api",
     "desktop-api",
+    "install-links",
     "browser-use",
     "system-info",
     "examples"

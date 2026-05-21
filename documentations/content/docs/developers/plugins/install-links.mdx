@@ -1,0 +1,123 @@
+---
+title: Plugin install links
+description: Deep-link contract and implementation strategy for installing Cradle plugins from the Marketplace.
+---
+
+Plugin install links 是 Marketplace 到 Cradle desktop installer 的边界契约。文档站负责生成可审计链接和 registry JSON；Cradle desktop 负责协议处理、用户确认、来源校验、文件写入和 activation。
+
+## Owner
+
+| Surface | Owner | Responsibility |
+| --- | --- | --- |
+| Marketplace registry | `documentations/lib/plugin-marketplace.ts` | 陈列 plugin metadata、docs link、install URL 和 web fallback。 |
+| Web display | `documentations/app/plugin-marketplace/page.tsx` and `documentations/components/plugin-marketplace.tsx` | 独立 Marketplace 页面、搜索、筛选、展示 trust notes，并提供复制或打开 install link。 |
+| JSON directory | `GET /api/plugin-marketplace` | 给 desktop installer 或外部页面读取当前 registry。 |
+| Protocol handler | `apps/desktop/src/main/plugin-install-links.ts` and `apps/desktop/src/main/main-app.ts` | 接收 `cradle://plugins/install`，做确认、校验、记录、下载和本地 install。 |
+| Server plugin host | `apps/server/src/plugins/**` | Discovery、validation、descriptor、server routes 和 capability registration。 |
+
+## URL contract
+
+Install URL 使用固定 scheme：
+
+```text
+cradle://plugins/install?source=github&repository=wibus-wee%2FCradle&path=plugins%2Fsystem-info&package=%40cradle%2Fsystem-info&version=0.0.1&channel=bundled
+```
+
+参数语义：
+
+| Parameter | Required | Meaning |
+| --- | --- | --- |
+| `source` | Yes | Plugin package source kind. 当前 registry 使用 `github`。 |
+| `repository` | Yes | Source repository identity，例如 `wibus-wee/Cradle`。 |
+| `path` | Yes | Repository-relative plugin package path。 |
+| `package` | Yes | Package manager identity，例如 `@cradle/system-info`。 |
+| `version` | Yes | Registry-listed package version。 |
+| `channel` | Yes | Distribution channel。当前 first-party entries 使用 `bundled`。 |
+| `ref` | No | GitHub ref。省略时 desktop installer 使用 `main`。 |
+
+## Desktop handling strategy
+
+Desktop handler 是一个显式 consent flow，而不是静默安装：
+
+<Steps>
+  <Step>
+    Parse URL with `URL` and reject unknown hosts, missing required fields, duplicate fields, unsupported channels, or non-normalized paths.
+  </Step>
+  <Step>
+    Restrict the current installer to first-party GitHub plugins from `wibus-wee/Cradle`, `@cradle/*` package names, `plugins/*` paths, semantic versions, and the `bundled` channel.
+  </Step>
+  <Step>
+    Show a native confirmation dialog listing package, version, repository, path, and ref.
+  </Step>
+  <Step>
+    If the plugin already exists in the current primary plugin directory, record an install receipt only. This avoids duplicating bundled plugins and causing duplicate plugin identities.
+  </Step>
+  <Step>
+    If the plugin is not already available, download the repository tarball, extract only the requested plugin path, validate `package.json`, require runnable JS layer entries, and publish into the Cradle-owned Marketplace plugin directory.
+  </Step>
+  <Step>
+    Ask for restart after install. The desktop and server plugin hosts include the Marketplace installed plugin directory in discovery on the next startup.
+  </Step>
+</Steps>
+
+## Namespace rule
+
+Marketplace 可以读取 package metadata from `plugins/*/package.json` 或 registry JSON。Installer 写入时使用 Cradle desktop `userData` 下的 Marketplace namespace：
+
+- Installed plugins: `marketplace/plugins/{package-name}`
+- Install receipts for already-available bundled plugins: `marketplace/receipts/{package-name}.json`
+
+它不能写入 `~/.agents/skills`、第三方 provider config 或其他产品 namespace，除非目标 owner 提供明确 API。
+
+## Security gates
+
+Desktop installer 至少需要这些 gate：
+
+- Protocol host must be exactly `plugins` and path must be exactly `/install` or equivalent normalized routing.
+- `path` must stay inside an allowed plugin package root.
+- URL metadata must match the downloaded package name, version and Cradle metadata before install.
+- User confirmation must include package, version, repository, path and ref.
+- Downloaded packages must declare runnable `.js`, `.mjs` or `.cjs` layer entries before they are written to the installed plugin directory.
+- Activation must be logged with source, version, route segment and validation result.
+
+## Current implementation state
+
+当前已经实现：
+
+- Standalone `/plugin-marketplace` page for browsing and copying links.
+- `GET /api/plugin-marketplace` registry JSON.
+- First-party entries for `browser-use`, `cc-switch` and `system-info`.
+- Stable install-link format for desktop protocol handling.
+- Desktop registration for the `cradle://` protocol.
+- Startup, macOS `open-url`, and `second-instance` handling for plugin install links.
+- URL parsing and validation in `apps/desktop/src/main/plugin-install-links.ts`.
+- Native consent dialog before any install write.
+- Bundled-plugin receipt recording to avoid duplicate plugin identities.
+- Download/install path for first-party plugins that are not already present in the primary plugin directory and already ship runnable JS entries.
+- Desktop and server discovery include the Cradle-owned Marketplace installed plugin directory on restart.
+
+Built-in plugin packaging is intentionally not part of this contract. Source-only built-in plugins can still be shown in the Marketplace and recorded as already available in development, but publishing them as packaged desktop resources is owned by the plugin distribution pipeline.
+
+## Validation
+
+文档站验证：
+
+```bash
+cd documentations
+pnpm types:check
+pnpm build
+```
+
+Desktop installer 验证：
+
+- URL parsing rejects malformed or ambiguous links.
+- Consent flow displays package, version, repository, path, and ref.
+- Files are written only to Cradle-owned plugin install namespace.
+- Bundled plugins record receipts without duplicate installation.
+- Plugin host discovery includes the Marketplace installed plugin directory after restart.
+
+```bash
+pnpm --filter @cradle/desktop exec tsc --noEmit -p tsconfig.node.json
+cd apps/desktop
+pnpm exec vitest run src/main/plugin-install-links.test.ts
+```

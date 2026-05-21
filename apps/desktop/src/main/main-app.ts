@@ -1,10 +1,19 @@
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
-import { app, BrowserWindow, screen } from 'electron'
+import { app, BrowserWindow, dialog, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
 import { createNativeServices } from './native-services'
+import {
+  collectPluginInstallUrls,
+  installPluginFromRequest,
+  parsePluginInstallUrl,
+  PluginInstallLinkError,
+  type PluginInstallResult,
+  type PluginInstallRequest,
+} from './plugin-install-links'
 import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
+import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
 import { startServer, stopServer } from './server-process'
 import { TrayManager } from './tray-manager'
 import { DesktopUpdateManager } from './update-manager'
@@ -22,6 +31,11 @@ const MAIN_WINDOW_DEFAULT_HEIGHT = 820
 const MAIN_WINDOW_MIN_WIDTH = 800
 const MAIN_WINDOW_MIN_HEIGHT = 600
 const MAIN_WINDOW_STATE_FILE = 'main-window-state.json'
+const DEEP_LINK_PROTOCOL = 'cradle'
+
+let installQueue = Promise.resolve()
+let canProcessPluginInstallLinks = false
+const pendingPluginInstallUrls: string[] = []
 
 async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   const mainWindowStatePath = join(app.getPath('userData'), MAIN_WINDOW_STATE_FILE)
@@ -142,7 +156,104 @@ function broadcastUpdateStatus(status: unknown): void {
   }
 }
 
+function registerPluginInstallProtocol(): void {
+  if (process.defaultApp && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [resolve(process.argv[1]!)])
+    return
+  }
+  app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL)
+}
+
+function describePluginInstallRequest(request: PluginInstallRequest): string {
+  return [
+    `Package: ${request.packageName}`,
+    `Version: ${request.version}`,
+    `Repository: ${request.repository}`,
+    `Path: ${request.path}`,
+    `Ref: ${request.ref}`,
+  ].join('\n')
+}
+
+async function askPluginInstallConsent(request: PluginInstallRequest): Promise<boolean> {
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    title: 'Install Cradle Plugin',
+    message: `Install ${request.packageName}?`,
+    detail: `${describePluginInstallRequest(request)}\n\nCradle will download this first-party plugin into the desktop Marketplace plugin directory. The plugin is activated after restart.`,
+    buttons: ['Install', 'Cancel'],
+    defaultId: 0,
+    cancelId: 1,
+  })
+  return response === 0
+}
+
+async function showPluginInstallSuccess(result: PluginInstallResult): Promise<void> {
+  const detail = result.mode === 'alreadyAvailable'
+    ? 'This plugin is already available in the current Cradle plugin directory. Cradle recorded the Marketplace install request.'
+    : 'Restart Cradle to activate the plugin in the desktop and server runtimes.'
+  const { response } = await dialog.showMessageBox({
+    type: 'info',
+    title: 'Plugin Installed',
+    message: `${result.request.packageName} was installed.`,
+    detail,
+    buttons: ['Restart Now', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  })
+  if (response === 0) {
+    app.relaunch()
+    app.exit(0)
+  }
+}
+
+async function showPluginInstallFailure(err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err)
+  await dialog.showMessageBox({
+    type: 'error',
+    title: 'Plugin Install Failed',
+    message: err instanceof PluginInstallLinkError ? 'The plugin install link is invalid.' : 'Cradle could not install the plugin.',
+    detail: message,
+    buttons: ['OK'],
+  })
+}
+
+async function installPluginFromDeepLink(rawUrl: string): Promise<void> {
+  showMainWindow()
+  try {
+    const request = parsePluginInstallUrl(rawUrl)
+    const accepted = await askPluginInstallConsent(request)
+    if (!accepted) return
+
+    const isDev = !!process.env.ELECTRON_RENDERER_URL
+    const result = await installPluginFromRequest(request, {
+      availablePluginsDir: resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname }),
+      userDataPath: app.getPath('userData'),
+    })
+    await showPluginInstallSuccess(result)
+  } catch (err) {
+    console.error('[plugin-marketplace] install link failed:', err)
+    await showPluginInstallFailure(err)
+  }
+}
+
+function handlePluginInstallUrls(urls: readonly string[]): void {
+  if (!canProcessPluginInstallLinks) {
+    pendingPluginInstallUrls.push(...urls)
+    return
+  }
+  for (const url of urls) {
+    installQueue = installQueue.then(() => installPluginFromDeepLink(url))
+  }
+}
+
+function processPendingPluginInstallUrls(): void {
+  canProcessPluginInstallLinks = true
+  const urls = pendingPluginInstallUrls.splice(0)
+  handlePluginInstallUrls(urls)
+}
+
 export async function startDesktopApp(): Promise<void> {
+  registerPluginInstallProtocol()
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
     app.quit()
@@ -155,6 +266,11 @@ export async function startDesktopApp(): Promise<void> {
     getUpdateManager: () => updateManager,
   })
   updateManager.on('statusChanged', broadcastUpdateStatus)
+
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    handlePluginInstallUrls([url])
+  })
 
   app.whenReady().then(async () => {
     await activateDesktopPlugins()
@@ -177,6 +293,8 @@ export async function startDesktopApp(): Promise<void> {
     trayManager.initialize()
 
     updateManager?.startBackgroundChecks()
+    processPendingPluginInstallUrls()
+    handlePluginInstallUrls(collectPluginInstallUrls(process.argv))
 
     app.on('activate', async () => {
       if (!mainWindow || mainWindow.isDestroyed()) {
@@ -203,7 +321,8 @@ export async function startDesktopApp(): Promise<void> {
     stopServer()
   })
 
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
     showMainWindow()
+    handlePluginInstallUrls(collectPluginInstallUrls(argv))
   })
 }

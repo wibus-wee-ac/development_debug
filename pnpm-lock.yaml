@@ -359,6 +359,9 @@ importers:
       get-port:
         specifier: ^7.1.0
         version: 7.2.0
+      tar:
+        specifier: ^7.5.13
+        version: 7.5.13
       velopack:
         specifier: 0.0.1589-ga2c5a97
         version: 0.0.1589-ga2c5a97

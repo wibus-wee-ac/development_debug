@@ -3,6 +3,7 @@ import { app, BrowserWindow } from 'electron'
 import type { Disposable, PluginCapabilityRecord, PluginDescriptor, PluginManifest } from '@cradle/plugin-sdk'
 import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
 import { discoverDesktopPlugins, type DesktopPluginSource } from './plugin-discovery'
+import { resolveDesktopInstalledPluginsDir } from './plugin-install-links'
 import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind } from './plugin-paths'
 
 /** Shared config written by desktop plugins, consumed as env vars by server */
@@ -107,6 +108,7 @@ function isRejectedDescriptor(descriptor: PluginDescriptor): boolean {
 function createDesktopPluginSources(isDev: boolean): DesktopPluginSource[] {
   const primaryPluginsDir = resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname })
   const primarySourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
+  const installedPluginsDir = resolveDesktopInstalledPluginsDir(app.getPath('userData'))
   const defaultSource: DesktopPluginSource = isDev
     ? {
         pluginsDir: primaryPluginsDir,
@@ -141,7 +143,16 @@ function createDesktopPluginSources(isDev: boolean): DesktopPluginSource[] {
     reason: 'Operator-configured trusted local plugin directory; no sandbox isolation is implied',
   }))
 
-  return [defaultSource, ...externalSources]
+  return [
+    defaultSource,
+    {
+      pluginsDir: installedPluginsDir,
+      kind: 'externalLocal',
+      trusted: true,
+      reason: 'Cradle Marketplace installed plugin directory owned by the desktop runtime',
+    },
+    ...externalSources,
+  ]
 }
 
 function createDesktopPluginContext(manifest: PluginManifest): DesktopPluginContext {

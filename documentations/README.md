@@ -43,9 +43,12 @@ pnpm build
 - `source.config.ts` 定义 Fumadocs MDX collection。
 - `lib/source.ts` 把 collection 加载为 Fumadocs page tree。
 - `app/docs/[[...slug]]/page.tsx` 渲染文档页面。
+- `app/plugin-marketplace/page.tsx` 渲染独立 Plugin Marketplace 页面，不使用 docs sidebar / toc layout。
 - `app/api/search/route.ts` 提供搜索。
+- `app/api/plugin-marketplace/route.ts` 提供 Plugin Marketplace registry JSON。
 - `app/llms.txt/route.ts` 和 `app/llms-full.txt/route.ts` 提供 LLM 文本入口。
 - `app/llms.mdx/docs/[[...slug]]/route.ts` 提供单页 Markdown。
+- `lib/plugin-marketplace.ts` 是 Marketplace 页面和 registry API 的静态数据源。
 
 ## 写作准则
 

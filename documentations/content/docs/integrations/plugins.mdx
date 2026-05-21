@@ -3,11 +3,13 @@ title: Plugins
 description: Inspect Cradle plugin discovery, server, web, desktop layers, panels, and commands.
 ---
 
-Plugins 扩展 Cradle 的 UI 和 runtime。用户和管理员主要通过 Devtools 的 Plugins 面板诊断注册状态。
+Plugins 扩展 Cradle 的 UI 和 runtime。用户和管理员通过 Plugin Marketplace 发现 plugin，通过 Devtools 的 Plugins 面板诊断注册状态。
 
 ## 先认识这个功能
 
 Cradle plugin discovery 可以涉及 server、web 和 desktop layers。Plugin 可能注册 panels、commands、server routes、MCP tools、skills 或 desktop hooks。
+
+如果你要先查看有哪些 plugin 可以使用，进入 [Plugin Marketplace](/plugin-marketplace)。如果 plugin 已经安装或内置在当前运行环境里，再用本页检查 discovery 和 activation。
 
 ## 查看 plugin
 
@@ -30,6 +32,7 @@ Cradle plugin discovery 可以涉及 server、web 和 desktop layers。Plugin �
 | Plugin | What to check | Docs |
 | --- | --- | --- |
 | `browser-use` | Desktop layer、MCP tools、`BROWSER_BACKEND_SOCKET`、browser tab availability | [Browser use](../agents/browser-use.mdx) |
+| `cc-switch` | Server layer、external provider source projection、read-only upstream access | [Examples](../developers/plugins/examples.mdx) |
 | `system-info` | `GET /api/plugins/system-info/info`、`system-info-panel`、`system-info.show` | [System Info](./system-info.mdx) |
 
 ## 信任提醒
@@ -52,4 +55,4 @@ Cradle plugin discovery 可以涉及 server、web 和 desktop layers。Plugin �
 
 ## 继续阅读
 
-阅读 [Devtools](../operations/devtools.mdx)、[Browser use](../agents/browser-use.mdx) 和 [Plugin SDK](../developers/plugins/sdk-overview.mdx)。
+阅读 [Plugin Marketplace](/plugin-marketplace)、[Devtools](../operations/devtools.mdx)、[Browser use](../agents/browser-use.mdx)、[Plugin SDK](../developers/plugins/sdk-overview.mdx) 和 [Plugin install links](../developers/plugins/install-links.mdx)。

@@ -5,6 +5,7 @@
  */
 
 import { cn } from '@/lib/cn';
+import Link from 'next/link';
 import {
   ArrowRight,
   BookOpen,
@@ -286,9 +287,9 @@ const docsGraphClusters = [
     icon: 'plugin',
     tone: 'cyan',
     links: [
+      ['Marketplace', '/plugin-marketplace'],
       ['Plugin SDK', '/docs/developers/plugins/sdk-overview'],
-      ['Web API', '/docs/developers/plugins/web-api'],
-      ['Desktop API', '/docs/developers/plugins/desktop-api'],
+      ['Install links', '/docs/developers/plugins/install-links'],
       ['Browser Use', '/docs/developers/plugins/browser-use'],
     ],
   },
@@ -634,12 +635,12 @@ export function DocsKnowledgeGraph({ mode = 'full' }: { mode?: 'full' | 'preview
               </div>
             </div>
             {showsMapLink ? (
-              <a
+              <Link
                 href="/docs/map"
                 className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md bg-fd-primary px-3 text-sm font-medium text-fd-primary-foreground no-underline transition-[background-color,transform] duration-150 hover:bg-fd-primary/90 active:scale-[0.96]"
               >
                 打开完整地图
-              </a>
+              </Link>
             ) : null}
           </div>
         </div>

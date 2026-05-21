@@ -1,4 +1,10 @@
 import Link from 'next/link';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Cradle Docs',
+  description: 'Learn how to set up Cradle, configure agents, and extend the local workspace runtime.',
+};
 
 export default function HomePage() {
   return (
@@ -14,8 +20,14 @@ export default function HomePage() {
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
-            href="/docs"
+            href="/plugin-marketplace"
             className="inline-flex h-10 items-center justify-center rounded-md bg-fd-primary px-4 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/90"
+          >
+            Plugin Marketplace
+          </Link>
+          <Link
+            href="/docs"
+            className="inline-flex h-10 items-center justify-center rounded-md border border-fd-border px-4 text-sm font-medium transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
           >
             Open Cradle docs
           </Link>

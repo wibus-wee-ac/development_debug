@@ -2,12 +2,13 @@ import type { ChildProcess } from 'node:child_process'
 import { fork } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { delimiter, join, resolve } from 'node:path'
 
 import { app, dialog } from 'electron'
 import getPort from 'get-port'
 
 import { getPluginEnvVars } from './plugin-loader'
+import { resolveDesktopInstalledPluginsDir } from './plugin-install-links'
 import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind } from './plugin-paths'
 
 let serverProcess: ChildProcess | null = null
@@ -68,6 +69,13 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   const execPath = isDev ? resolveDevNodeExecPath() : undefined
   const pluginsDir = resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname })
   const pluginsSourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
+  const installedPluginsDir = resolveDesktopInstalledPluginsDir(app.getPath('userData'))
+  const externalPluginsDirs = [
+    installedPluginsDir,
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    .join(delimiter)
 
   serverProcess = fork(serverEntry, [], {
     env: {
@@ -79,6 +87,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       CRADLE_CREDENTIAL_SECRET: credentialSecret,
       CRADLE_PLUGINS_DIR: pluginsDir,
       CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
+      CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirs,
       NODE_ENV: isDev ? 'development' : 'production',
     },
     execPath,
