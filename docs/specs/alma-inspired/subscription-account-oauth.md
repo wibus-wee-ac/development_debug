@@ -6,30 +6,30 @@ Position: docs/specs/alma-inspired/subscription-account-oauth.md
 
 # Subscription Account OAuth
 
-## Goal
+## 目标
 
-Cradle should support account-based AI subscriptions that cannot be represented as simple API key profiles, starting with GitHub Copilot and Claude Subscription only if the team accepts their product and policy risk.
+Cradle 需要支持不能用普通 API key profile 表达的账号型 AI 订阅。首批只建议在明确接受产品与合规风险后考虑 GitHub Copilot 和 Claude Subscription。
 
-## Alma Evidence
+## Alma 证据
 
-Alma preload exposes `copilot` methods for device-code auth, token save, token lookup, multi-account listing, user fetch, and logout. It exposes `claudeSubscription` methods for auth URL, authorization start/complete/cancel, token refresh, profile, quota, models, and logout.
+Alma preload 暴露 `copilot` device-code auth、token 保存、token 获取、多账号列表、user fetch、logout；还暴露 `claudeSubscription` auth URL、authorization start/complete/cancel、token refresh、profile、quota、models、logout。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has `profiles`, `providers`, and encrypted `secrets`, but no first-class subscription account lifecycle, device-code flow, quota fetch, or account switcher.
+Cradle 有 `profiles`、`providers` 和 encrypted `secrets`，但没有 subscription account lifecycle、device-code flow、quota fetch 或 account switcher。
 
-## Target Ownership
+## Owner / Namespace
 
-`profiles` owns account-backed provider profile metadata. `secrets` owns refresh/access token material. Provider-specific OAuth adapters own protocol details.
+`profiles` 拥有 account-backed provider profile metadata。`secrets` 拥有 refresh/access token material。provider-specific OAuth adapter 拥有协议细节。
 
-## Target Behavior
+## 目标行为
 
-- Users can add, refresh, inspect, and remove subscription accounts.
-- Token material never reaches Web except masked status.
-- Quota/model status is visible in provider settings.
-- Account profiles can be selected by chat runtime like other profiles.
+- 用户可以新增、刷新、查看、删除 subscription accounts。
+- Token material 不进入 Web，Web 只看到 masked status。
+- Provider settings 可展示 quota/model status。
+- Account profile 可像其他 profile 一样被 chat runtime 选择。
 
-## API Sketch
+## API 草案
 
 - `POST /provider-accounts/:kind/start-auth`
 - `POST /provider-accounts/:kind/complete-auth`
@@ -37,8 +37,8 @@ Cradle has `profiles`, `providers`, and encrypted `secrets`, but no first-class 
 - `GET /provider-accounts`
 - `DELETE /provider-accounts/:id`
 
-## Acceptance
+## 验收
 
-- Logging out removes secret material and disables dependent profiles.
-- Expired tokens surface as actionable reauth status.
-- Multiple accounts of the same kind can coexist.
+- Logout 删除 secret material 并禁用依赖 profile。
+- Token 过期时显示可操作的 reauth status。
+- 同一 provider kind 可同时存在多个账号。

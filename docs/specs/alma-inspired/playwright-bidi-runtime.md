@@ -4,43 +4,43 @@ Output: Spec for Playwright/BiDi runtime management.
 Position: docs/specs/alma-inspired/playwright-bidi-runtime.md
 -->
 
-# Playwright And BiDi Runtime
+# Playwright 与 BiDi Runtime
 
-## Goal
+## 目标
 
-Cradle should treat Playwright or Chromium BiDi as a product runtime only if it needs automation beyond the in-app browser-use plugin.
+Cradle 只有在需要超过 in-app browser-use plugin 的自动化能力时，才应把 Playwright 或 Chromium BiDi 作为产品 runtime。
 
-## Alma Evidence
+## Alma 证据
 
-Alma depends on `playwright` and `chromium-bidi`, exposes `playwright.getStatus`, `install`, and install status events, and installs browsers in the background.
+Alma 依赖 `playwright` 和 `chromium-bidi`，preload 暴露 `playwright.getStatus`、`install`、install status events，并在后台安装 browsers。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle uses `@playwright/test` for tests and browser-use for in-app browser control. It has no user-facing Playwright install/status/runtime manager.
+Cradle 用 `@playwright/test` 做测试，用 browser-use 控制 in-app browser。它没有用户可见的 Playwright install/status/runtime manager。
 
-## Target Ownership
+## Owner / Namespace
 
-A future browser automation owner would manage Playwright installation, browser binaries, test/runtime separation, and automation sessions. It must not be hidden inside test tooling.
+未来 browser automation owner 负责 Playwright installation、browser binaries、test/runtime separation、automation sessions。不能把产品 runtime 隐藏在 test tooling 里。
 
-## Target Behavior
+## 目标行为
 
-- Users can see browser runtime status and install missing browsers.
-- Automation sessions declare browser type, profile isolation, network policy, and artifact retention.
-- Runtime errors distinguish missing browser binaries from navigation/action failures.
+- 用户可以查看 browser runtime status 并安装缺失 browsers。
+- Automation sessions 声明 browser type、profile isolation、network policy、artifact retention。
+- Runtime errors 要区分 missing browser binaries 与 navigation/action failures。
 
-## API Sketch
+## API 草案
 
 - `GET /browser-runtime/status`
 - `POST /browser-runtime/install`
 - `POST /browser-runtime/sessions`
 - `POST /browser-runtime/sessions/:id/actions`
 
-## Data Model
+## 数据模型
 
-Persist installed runtime metadata, session records, and artifact references. Browser binaries remain in platform-appropriate cache directories.
+持久化 installed runtime metadata、session records、artifact references。Browser binaries 放在平台约定 cache 目录。
 
-## Acceptance
+## 验收
 
-- Missing browser dependencies produce an install action, not a stack trace.
-- Test Playwright dependency and product runtime dependency are separable.
-- A failed install leaves the previous runtime state intact.
+- 缺 browser dependency 时显示 install action，而不是 stack trace。
+- Test Playwright dependency 与 product runtime dependency 可分离。
+- Install 失败时保留 previous runtime state。

@@ -4,32 +4,33 @@ Output: Spec for cron jobs, heartbeat, and channel status.
 Position: docs/specs/alma-inspired/cron-heartbeat.md
 -->
 
-# Cron And Heartbeat
+# Cron 与 Heartbeat
 
-## Goal
+## 目标
 
-Cradle should separate generic scheduled automation from channel heartbeat/status delivery, while allowing channel owners to reuse automation runs.
+Cradle 需要把通用 scheduled automation 和 channel heartbeat/status delivery 拆开建模。前者负责时间、运行记录和重试；后者负责外部 channel 的投递状态、健康检查和用户可见诊断。
 
-## Alma Evidence
+## Alma 证据
 
-Alma exposes cron jobs, heartbeat config/status, Telegram/Discord/Feishu group status, scheduled message delivery, and TTS-adjacent voice/file behavior.
+Alma 暴露 cron jobs、heartbeat config/status、Telegram/Discord/Feishu group status、scheduled message delivery，以及和 TTS 相邻的 voice/file delivery 行为。这些证据说明 Alma 把定时任务和外部 channel 状态结合成了用户可见能力。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle automation supports RRULE schedules, run-now, runs, artifacts, and runtime kinds. Session Await supports GitHub checks/reviews. No channel heartbeat/status delivery module was found.
+Cradle automation 已支持 RRULE schedules、run-now、runs、artifacts 和 runtime kinds。Session Await 已支持 GitHub checks/reviews。当前没有发现 channel heartbeat/status delivery module。
 
-## Target Ownership
+## Owner / Namespace
 
-`automation` owns schedules and run lifecycle. A future `channels` module owns channel status and delivery. Feature-specific jobs register recipes instead of writing schedule tables directly.
+`automation` 拥有 schedule definition、run lifecycle、retry policy 和 run artifacts。未来 `channels` 模块拥有 heartbeat target、connector health、delivery status 和外部 channel 语义。具体 connector 只能通过 channel-owned API 上报状态，不能直接写 automation tables。
 
-## Target Behavior
+## 目标行为
 
-- Users can schedule recurring jobs using existing automation semantics.
-- Channel connectors can expose heartbeat targets and delivery health.
-- Heartbeat results are auditable and visible in channel status.
-- Missed or failed jobs surface structured retry information.
+- 用户可以用现有 automation 语义创建 recurring jobs。
+- Channel connector 可以声明 heartbeat target，并展示最后一次投递结果。
+- Heartbeat run 同时产生 automation run record 和 channel delivery attempt。
+- Missed 或 failed jobs 必须暴露结构化 retry 信息和 connector diagnostics。
+- 关闭 channel 后停止新的 heartbeat delivery，但保留历史运行记录。
 
-## API Sketch
+## API 草案
 
 - `GET /automations`
 - `POST /automations`
@@ -37,12 +38,12 @@ Cradle automation supports RRULE schedules, run-now, runs, artifacts, and runtim
 - `PUT /channels/heartbeat/config`
 - `POST /channels/:id/heartbeat/test`
 
-## Data Model
+## 数据模型
 
-Automation keeps schedule and run records. Channels own heartbeat target config, last delivery status, and connector health snapshots.
+Automation 继续保存 schedule、run 和 artifact records。Channels 保存 heartbeat target config、last delivery status、connector health snapshot、last error classification 和 retry cursor。两者通过 stable run id 关联，不共享所有权。
 
-## Acceptance
+## 验收
 
-- A scheduled channel heartbeat records an automation run and a channel delivery attempt.
-- Disabling a channel prevents new heartbeat deliveries but does not delete automation history.
-- Failed heartbeat delivery includes connector-specific diagnostics.
+- Scheduled channel heartbeat 会记录一条 automation run 和一条 channel delivery attempt。
+- 禁用 channel 不会删除 automation history。
+- Heartbeat delivery 失败时能区分 auth、network、rate limit、remote rejected、payload invalid 等诊断。

@@ -6,40 +6,40 @@ Position: docs/specs/alma-inspired/conversation-share.md
 
 # Conversation Share
 
-## Goal
+## 目标
 
-Cradle should let users turn selected conversation messages into a polished visual artifact for sharing, review, or archival.
+Cradle 需要支持把选中的 conversation messages 转成可分享、可审阅、可归档的视觉 artifact。
 
-## Alma Evidence
+## Alma 证据
 
-Alma has `share.html`, receives `share-data`, supports message selection, preview, header/timestamp toggles, zoom/pan preview, `modern-screenshot`, save PNG, and clipboard copy.
+Alma 有 `share.html`，通过 `share-data` 接收数据，支持 message selection、preview、header/timestamp toggles、zoom/pan preview、`modern-screenshot`、save PNG、clipboard copy。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle can export session Markdown and copy message text, but lacks a visual share/export surface.
+Cradle 可以导出 session Markdown 和复制 message text，但缺少视觉分享/导出 surface。
 
-## Target Ownership
+## Owner / Namespace
 
-`session` owns message snapshots. `apps/web/src/features/share` owns rendering and export UI. Desktop owns save dialog and clipboard bridges where browser APIs are insufficient.
+`session` 拥有 message snapshots。`apps/web/src/features/share` 拥有 rendering 和 export UI。Desktop 在 browser APIs 不够时提供 save dialog 与 clipboard bridge。
 
-## Target Behavior
+## 目标行为
 
-- Users can select messages from a session and generate a visual preview.
-- Users can include title, timestamps, workspace/session metadata, and theme.
-- Export supports PNG first; SVG/PDF can be deferred.
+- 用户可以选择 session 中的消息生成视觉预览。
+- 用户可以包含 title、timestamps、workspace/session metadata、theme。
+- 首期支持 PNG export；SVG/PDF 可延后。
 
-## API / IPC Sketch
+## API / IPC 草案
 
 - `GET /sessions/:id/messages`
 - `desktop.saveImage(dataUrl, suggestedName)`
 - `desktop.clipboard.writeImage(dataUrl)`
 
-## Data Model
+## 数据模型
 
-No new required persistent model. Optional share presets can live in preferences.
+不要求新增持久化模型。Share presets 可放入 preferences。
 
-## Acceptance
+## 验收
 
-- Exported image matches selected messages and excludes unselected messages.
-- Copy and save paths report actionable errors.
-- Share preview works without mutating the source session.
+- 导出的 image 与 selected messages 一致，并排除未选消息。
+- Copy/save failures 返回可操作错误。
+- Share preview 不修改 source session。

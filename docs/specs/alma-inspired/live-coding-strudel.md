@@ -4,43 +4,43 @@ Output: Spec for live coding and audio coding surface.
 Position: docs/specs/alma-inspired/live-coding-strudel.md
 -->
 
-# Live Coding And Strudel
+# Live Coding 与 Strudel
 
-## Goal
+## 目标
 
-Cradle should treat live coding and Strudel-style audio coding as a distinct creative tool surface, not as a terminal replacement.
+Cradle 如果引入 live coding 和 Strudel-style audio coding，应把它作为独立 creative tool surface，而不是 terminal replacement。Chat 可以生成代码，但执行、音频资源和 sandbox policy 必须由该 feature 自己拥有。
 
-## Alma Evidence
+## Alma 证据
 
-Alma includes `livecoding.html`, `LiveCodingEditor`, `LiveCodingVisualization`, `LiveCodingHelp`, `LiveCodingConsole`, CodeMirror, `@strudel/web`, and `tone`.
+Alma 包含 `livecoding.html`、`LiveCodingEditor`、`LiveCodingVisualization`、`LiveCodingHelp`、`LiveCodingConsole`、CodeMirror、`@strudel/web` 和 `tone`。这说明它有面向 live music/code execution 的独立窗口。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has PTY/TUI, workspace editor, chat code rendering, and diff review. It has no live coding/audio runtime.
+Cradle 有 PTY/TUI、workspace editor、chat code rendering 和 diff review。当前没有 live coding/audio runtime，也没有 browser audio sandbox surface。
 
-## Target Ownership
+## Owner / Namespace
 
-A future `live-coding` Web feature owns editor and visualization UI. Any audio engine resources must be explicit and sandboxed. Chat runtime may generate code, but it does not own execution.
+未来 `apps/web/src/features/live-coding` 拥有 editor、visualization、console、draft state 和 audio runtime UI。Audio engine resources 必须显式 sandboxed。`chat-runtime` 只负责生成或引用代码，不拥有 execution。
 
-## Target Behavior
+## 目标行为
 
-- Users can open a live coding surface from a chat artifact or workspace file.
-- Code runs in a sandboxed browser/audio context.
-- Users can send code back to chat or save it to workspace.
-- Audio autoplay and permissions follow browser/desktop policy.
+- 用户可以从 chat artifact 或 workspace file 打开 live coding surface。
+- Code 在 sandboxed browser/audio context 中运行，不能访问 Node 或 shell。
+- 用户可以把代码保存回 workspace，或发送回 chat。
+- Audio autoplay、mute、stop 和 permission 行为遵循 browser/desktop policy。
 
-## API / UI Sketch
+## API / UI 草案
 
 - Web route: `/live-coding?artifactId=...`
 - Optional `POST /live-coding/sessions`
 - Chat action: open selected code in live coding window.
 
-## Data Model
+## 数据模型
 
-Persist sessions only if users save them. Unsaved live code remains local draft state.
+只有用户保存时才持久化 sessions。Unsaved live code 属于 local draft state。Saved session 记录 source artifact、workspace path、runtime version 和 last run metadata。
 
-## Acceptance
+## 验收
 
-- Running generated Strudel code cannot execute arbitrary Node or shell code.
-- Closing the live coding window asks before discarding unsaved code.
-- Audio output can be muted and stopped reliably.
+- Running generated Strudel code 不能执行 arbitrary Node 或 shell code。
+- 关闭 live coding window 前，如果有 unsaved code，需要提示用户确认。
+- Audio output 可以可靠 mute 和 stop。

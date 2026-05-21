@@ -6,42 +6,42 @@ Position: docs/specs/alma-inspired/chrome-relay.md
 
 # Chrome Relay
 
-## Goal
+## 目标
 
-Cradle should distinguish in-app browser automation from external browser relay, and only add external relay if a clear user workflow requires it.
+Cradle 需要区分 in-app browser automation 和 external browser relay。只有在出现明确用户 workflow 时，才应增加外部 Chrome relay。
 
-## Alma Evidence
+## Alma 证据
 
-Alma has Chrome Relay routes for launching Chrome, listing tabs, navigating, reading DOM, taking screenshots, clicking, typing, uploading, back/forward, detach, and token handling.
+Alma 有 Chrome Relay routes，用于 launch Chrome、list tabs、navigate、read DOM、screenshot、click、type、upload、back/forward、detach、token handling。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle browser-use controls the embedded browser panel via Electron debugger and MCP tools. It does not launch or control an external Chrome profile as a product capability.
+Cradle browser panel 是 embedded webview；browser-use MCP 通过 Electron debugger 控制这个 panel。它没有把外部 Chrome profile 作为产品能力来启动和控制。
 
-## Target Ownership
+## Owner / Namespace
 
-`plugins/browser-use` continues owning in-app browser automation. A future `external-browser` connector would own external Chrome process lifecycle, debug port, profile path, and permissions.
+`plugins/browser-use` 继续拥有 in-app browser automation。未来 `external-browser` connector 拥有外部 Chrome process lifecycle、debug port、profile path、permissions。
 
-## Target Behavior
+## 目标行为
 
-- Users explicitly choose whether automation targets in-app browser or external browser.
-- External browser profiles are isolated and visible.
-- Uploads and downloads are policy controlled.
-- Cookies and user sessions are never silently copied between browser contexts.
+- 用户明确选择 automation target 是 in-app browser 还是 external browser。
+- External browser profile 隔离且可见。
+- Upload/download 受 policy 控制。
+- Cookies 和 user sessions 不在 browser contexts 间静默复制。
 
-## API Sketch
+## API 草案
 
 - `POST /browser/external/launch`
 - `GET /browser/external/tabs`
 - `POST /browser/external/tabs/:id/navigate`
 - `POST /browser/external/tabs/:id/action`
 
-## Data Model
+## 数据模型
 
-Persist external browser sessions, profile paths, debug ports, and user consent state. Do not persist cookies in Cradle DB.
+持久化 external browser sessions、profile paths、debug ports、user consent state。不在 Cradle DB 保存 cookies。
 
-## Acceptance
+## 验收
 
-- External browser relay cannot attach to an existing user profile without explicit opt-in.
-- In-app browser tools continue working independently.
-- Closing a relay session shuts down the managed Chrome process unless the user detaches it.
+- External browser relay 未经显式 opt-in 不能附着到现有用户 profile。
+- In-app browser tools 继续独立工作。
+- 关闭 relay session 时关闭 managed Chrome process，除非用户明确 detach。

@@ -6,34 +6,30 @@ Position: docs/specs/alma-inspired/acp-runtime.md
 
 # ACP Runtime
 
-## Goal
+## 目标
 
-Cradle should keep ACP as a first-class runtime and installation capability, while using Alma only as confirmation that ACP belongs in the local AI desktop category.
+Cradle 应继续把 ACP 作为 first-class runtime 和安装能力。Alma 证据只说明 ACP 属于本地 AI desktop 的合理能力面，不需要照搬 Alma 的实现。
 
-## Alma Evidence
+## Alma 证据
 
-Alma depends on `@mcpc-tech/acp-ai-provider` and `acpx`, has provider/session cleanup evidence, and exposes ACP as a provider type.
+Alma 依赖 `@mcpc-tech/acp-ai-provider` 和 `acpx`，有 provider/session cleanup 证据，并把 ACP 暴露为 provider type。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle already has ACP registry, distribution types, install/cancel/uninstall, audit log, install path, chat runtime integration, process supervisor, connection/session manager, approvals bridge, and MCP server forwarding.
+Cradle 已有 ACP registry、distribution types、install/cancel/uninstall、audit log、install path、chat runtime integration、process supervisor、connection/session manager、approvals bridge 和 MCP server forwarding。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/server/src/modules/acp` owns install lifecycle and audit. `chat-runtime/providers/acp` owns ACP chat session semantics. Web settings and agent runtime surfaces read these APIs.
+`apps/server/src/modules/acp` 拥有安装生命周期和 audit。`chat-runtime/providers/acp` 拥有 ACP chat session 语义。Web settings 与 agent runtime surfaces 只读取这些 APIs。
 
-## Target Behavior
+## 目标行为
 
-- ACP install lifecycle remains server-owned and auditable.
-- ACP runtime sessions use the unified chat runtime and approval contracts.
-- ACP receives plugin/user MCP server records only through a read-only registry projection.
+- ACP install lifecycle 保持 server-owned 且可审计。
+- ACP runtime session 走统一 chat runtime 与 approval contracts。
+- ACP 通过只读 registry projection 接收 plugin/user MCP servers。
 
-## API Sketch
+## 验收
 
-Current APIs are sufficient for baseline coverage. Future additions should focus on diagnostics, upgrade checks, and per-agent capability display.
-
-## Acceptance
-
-- Installed ACP agents can be used as chat runtime profiles.
-- Uninstalling an ACP agent prevents new sessions and preserves audit history.
-- ACP failures appear in observability with actionable error codes.
+- Installed ACP agent 可以作为 chat runtime profile 使用。
+- Uninstall ACP agent 后不能创建新 session，但 audit history 保留。
+- ACP failure 进入 observability，并包含可操作 error code。

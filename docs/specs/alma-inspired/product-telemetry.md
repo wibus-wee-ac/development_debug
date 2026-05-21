@@ -6,41 +6,41 @@ Position: docs/specs/alma-inspired/product-telemetry.md
 
 # Product Telemetry
 
-## Goal
+## 目标
 
-Cradle should keep local observability distinct from optional release crash reporting and product analytics.
+Cradle 需要把 local observability、release crash reporting 和 product analytics 明确分开。外部 telemetry 必须有 consent、redaction 和 disable semantics，不能和本地 diagnostics 混为一谈。
 
-## Alma Evidence
+## Alma 证据
 
-Alma includes Sentry Electron release metadata and renderer PostHog provider signals. Settings include analytics-related UI signals.
+Alma 包含 Sentry Electron release metadata 和 renderer PostHog provider signals。Settings 中也有 analytics-related UI signals。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has local observability events/incidents, server logs, Langfuse tracing, and devtools. No Electron crash reporting or product analytics opt-in/out surface was found.
+Cradle 有 local observability events/incidents、server logs、Langfuse tracing 和 devtools。当前没有发现 Electron crash reporting 或 product analytics opt-in/out surface。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/desktop` owns crash reporting. `apps/web` owns product analytics capture points. `preferences` owns consent. `observability` remains local diagnostics and should not be conflated with external telemetry.
+`apps/desktop` 拥有 crash reporting integration。`apps/web` 拥有 product analytics capture points。`preferences` 拥有 consent state。`observability` 继续拥有本地 diagnostics，不向外部 telemetry owner 写入数据。
 
-## Target Behavior
+## 目标行为
 
-- Telemetry is disabled or privacy-safe by default according to product policy.
-- Users can see and change telemetry consent.
-- Crash reports redact paths, prompts, secrets, and message content unless explicitly allowed.
-- Local observability remains available without external telemetry.
+- Telemetry 默认遵守产品隐私策略，且用户可以查看和修改 consent。
+- Crash reports 必须 redact paths、prompts、secrets 和 message content，除非用户明确允许。
+- Local observability 在 telemetry disabled 时仍然可用。
+- Release channel、app version 和 platform metadata 可以发送，但不得包含 workspace content。
 
-## API / IPC Sketch
+## API / IPC 草案
 
 - `GET /preferences/telemetry`
 - `PUT /preferences/telemetry`
 - `desktop.telemetry.captureCrash(metadata)`
 
-## Data Model
+## 数据模型
 
-Persist consent, last changed time, and policy version. Do not persist raw analytics events in Cradle DB unless needed for local diagnostics.
+Persist consent state、last changed time、policy version、allowed event classes 和 redaction mode。Cradle DB 不默认保存 raw analytics events，除非它们属于本地 diagnostics。
 
-## Acceptance
+## 验收
 
-- Disabling telemetry stops external event emission immediately.
-- Crash reporting redaction is tested with paths, prompts, and secrets.
-- Local devtool observability still works when telemetry is off.
+- 禁用 telemetry 后立即停止 external event emission。
+- Crash reporting redaction 覆盖 paths、prompts、secrets 和 message content。
+- Telemetry off 时 local devtool observability 仍能记录和导出 local events。

@@ -4,43 +4,43 @@ Output: Spec for custom notification center.
 Position: docs/specs/alma-inspired/custom-notifications.md
 -->
 
-# Custom Notifications
+# 自定义通知中心
 
-## Goal
+## 目标
 
-Cradle should provide a desktop notification system for actionable local agent events that need queueing, action buttons, and consistent styling.
+Cradle 需要为本地 agent events 提供可排队、可操作、样式一致的桌面通知系统。
 
-## Alma Evidence
+## Alma 证据
 
-Alma has `notifications.html`, `almaNotifications`, `notificationWindow`, transparent always-on-top windows, click-through, queue updates, clear all, action clicks, theme snapshots, and sounds.
+Alma 有 `notifications.html`、`almaNotifications`、`notificationWindow`、透明置顶窗口、click-through、queue updates、clear all、action clicks、theme snapshots、sounds。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has web toasts, tray popover, badges, approvals, and awaits. It lacks a native/custom notification queue and action API.
+Cradle 有 Web toasts、tray popover、badges、approvals、awaits，但缺 native/custom notification queue 和 action API。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/desktop` owns native notification windows and OS notification permission. A future notification server module or `desktop` projection owns event queue metadata. Feature owners publish notification intents.
+`apps/desktop` 拥有 native notification windows 和 OS notification permission。未来 notification server module 或 `desktop` projection 拥有 event queue metadata。Feature owners 发布 notification intents。
 
-## Target Behavior
+## 目标行为
 
-- Features can publish notification intents with title, body, severity, actions, source id, and expiration.
-- Users can click actions, dismiss, clear all, or jump to source.
-- Notification rendering respects theme and do-not-disturb settings.
+- Feature 可以发布包含 title、body、severity、actions、source id、expiration 的 notification intent。
+- 用户可以 click actions、dismiss、clear all、jump to source。
+- Notification rendering 遵守 theme 和 do-not-disturb 设置。
 
-## API / IPC Sketch
+## API 草案
 
 - `POST /desktop/notifications`
 - `GET /desktop/notifications`
 - `POST /desktop/notifications/:id/action`
 - `POST /desktop/notifications/:id/dismiss`
 
-## Data Model
+## 数据模型
 
-Persist only actionable notifications that must survive restart. Ephemeral toasts can remain in memory.
+只有需要跨重启保留的 actionable notifications 持久化。Ephemeral toasts 可保持内存态。
 
-## Acceptance
+## 验收
 
-- A pending approval can emit a notification with approve/reject actions.
-- Dismissing a notification does not resolve the underlying approval unless an action is clicked.
-- Notification windows never steal focus unless configured.
+- Pending approval 可以发出带 approve/reject actions 的 notification。
+- Dismiss notification 不会隐式 resolve underlying approval。
+- Notification window 默认不抢 focus。

@@ -4,44 +4,44 @@ Output: Spec for system permissions management.
 Position: docs/specs/alma-inspired/permissions-manager.md
 -->
 
-# Permissions Manager
+# 权限管理
 
-## Goal
+## 目标
 
-Cradle should expose a unified permissions surface for native capabilities such as screen recording, accessibility, microphone, notifications, file access, and browser automation.
+Cradle 需要为 screen recording、accessibility、microphone、notifications、file access、browser automation 等 native capabilities 提供统一权限表面。
 
-## Alma Evidence
+## Alma 证据
 
-Alma preload exposes `permissions`, `accessibility`, microphone permission methods, permission overlay drag, status change events, and system settings deep links.
+Alma preload 暴露 `permissions`、`accessibility`、microphone permission methods、permission overlay drag、status change events、system settings deep links。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle uses native dialogs and Chronicle needs screen capture permissions, but no unified permissions status API or settings UI was found.
+Cradle 使用 native dialogs，Chronicle 需要 screen capture permission，但没有统一 permissions status API 或 settings UI。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/desktop` owns OS permission checks and system settings deep links. `preferences` stores user intent. Feature owners declare required permissions and read status through a central projection.
+`apps/desktop` 拥有 OS permission checks 和 system settings deep links。`preferences` 持久化用户意图。Feature owner 声明 required permissions，并通过 central projection 读取 status。
 
-## Target Behavior
+## 目标行为
 
-- Settings shows required, optional, granted, denied, and unknown permissions.
-- Features can request permission status without triggering prompts.
-- Request flows are explicit and explain why a permission is needed.
-- Permission changes are broadcast to interested UI surfaces.
+- Settings 展示 required、optional、granted、denied、unknown permissions。
+- Feature 可查询 permission status，且不会触发 prompt。
+- Request flow 必须解释为什么需要权限。
+- Permission changes 广播给相关 UI。
 
-## API / IPC Sketch
+## API / IPC 草案
 
 - `desktop.permissions.getAll()`
 - `desktop.permissions.request(kind)`
 - `desktop.permissions.openSettings(kind)`
 - `desktop.permissions.onStatusChanged(handler)`
 
-## Data Model
+## 数据模型
 
-Store user dismissals and explanation state only. OS permission state remains queried from the OS.
+只存用户 dismissals 与 explanation state。OS permission state 实时查询 OS。
 
-## Acceptance
+## 验收
 
-- Chronicle can show screen recording permission status before starting capture.
-- Quick Chat can detect missing accessibility permission and present an action.
-- Denied permission states include an open-settings action.
+- Chronicle 启动 capture 前能显示 screen recording permission status。
+- Quick Chat 能检测 accessibility permission 缺失并给出操作。
+- Denied permission state 包含 open-settings action。

@@ -6,30 +6,30 @@ Position: docs/specs/alma-inspired/prompt-apps.md
 
 # Prompt Apps
 
-## Goal
+## 目标
 
-Cradle should support user-authored prompt mini-apps that package a prompt, typed inputs, runtime configuration, optional tools, and execution history into reusable one-click workflows.
+Cradle 需要支持用户自定义的 prompt mini-app：把 prompt、typed inputs、runtime config、可选 tools、执行历史封装成可复用的一键 workflow。
 
-## Alma Evidence
+## Alma 证据
 
-Alma has `PromptAppsManager`, `prompt-app-runner.html`, `promptAppRunner` preload, dynamic placeholders, file/image inputs, global shortcuts, model/tool/reasoning settings, execution history, and image-result retry logic.
+Alma 有 `PromptAppsManager`、`prompt-app-runner.html`、`promptAppRunner` preload、动态 placeholders、file/image inputs、global shortcuts、model/tool/reasoning settings、execution history 和 image-result retry logic。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has automation definitions, skills, slash commands, and chat runtime, but no prompt app CRUD or independent runner surface.
+Cradle 有 automation definitions、skills、slash commands 和 chat runtime，但没有 prompt app CRUD 或独立 runner surface。
 
-## Target Ownership
+## Owner / Namespace
 
-Future `apps/server/src/modules/prompt-apps` owns prompt app definitions, input schema, execution records, and shortcut metadata. `chat-runtime` owns actual generation. Web owns management and runner UI. Desktop owns optional runner windows and shortcuts.
+未来 `apps/server/src/modules/prompt-apps` 拥有 prompt app definitions、input schema、execution records、shortcut metadata。`chat-runtime` 拥有实际生成。Web 拥有管理和 runner UI。Desktop 只拥有可选 runner window 与 shortcuts。
 
-## Target Behavior
+## 目标行为
 
-- Users can create, edit, enable, disable, duplicate, delete, and reorder Prompt Apps.
-- Inputs support text, textarea, select, number, checkbox, file, and image.
-- A run creates or resumes a normal Cradle chat session with provenance metadata.
-- History records inputs, output session, status, and errors.
+- 用户可以创建、编辑、启用、禁用、复制、删除、排序 Prompt Apps。
+- Inputs 支持 text、textarea、select、number、checkbox、file、image。
+- 每次运行创建或恢复普通 Cradle chat session，并带 provenance metadata。
+- History 记录 inputs、output session、status、errors。
 
-## API Sketch
+## API 草案
 
 - `GET /prompt-apps`
 - `POST /prompt-apps`
@@ -38,12 +38,12 @@ Future `apps/server/src/modules/prompt-apps` owns prompt app definitions, input 
 - `POST /prompt-apps/:id/run`
 - `GET /prompt-apps/:id/runs`
 
-## Data Model
+## 数据模型
 
-Tables should include `prompt_apps`, `prompt_app_inputs`, `prompt_app_runs`, and optional shortcut records. File/image inputs should reference Cradle-owned asset records, not arbitrary temp paths.
+表应包含 `prompt_apps`、`prompt_app_inputs`、`prompt_app_runs` 和可选 shortcut records。File/image inputs 应引用 Cradle-owned asset records，不能直接依赖 arbitrary temp paths。
 
-## Acceptance
+## 验收
 
-- Running a Prompt App produces a normal chat session and usage record.
-- Required inputs are validated before generation starts.
-- Disabled apps cannot be run from shortcuts or URLs.
+- 运行 Prompt App 会产生正常 chat session 与 usage record。
+- Required inputs 在生成开始前完成校验。
+- Disabled app 不能通过 shortcut 或 URL 运行。

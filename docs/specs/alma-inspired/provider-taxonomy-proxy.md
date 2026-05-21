@@ -4,39 +4,39 @@ Output: Spec for provider taxonomy and proxy expansion.
 Position: docs/specs/alma-inspired/provider-taxonomy-proxy.md
 -->
 
-# Provider Taxonomy And Proxy
+# Provider Taxonomy 与 Proxy
 
-## Goal
+## 目标
 
-Cradle should expand provider management where provider-specific auth, default URLs, models, pricing, or capability metadata justify first-class support, while keeping generic OpenAI-compatible profiles for long-tail providers.
+Cradle 应在确有 provider-specific auth、默认 URL、model listing、pricing、capability metadata 需求时扩展 first-class provider，同时保留 OpenAI-compatible 作为长尾 provider 的通用入口。
 
-## Alma Evidence
+## Alma 证据
 
-Alma includes OpenAI, Anthropic, Google, DeepSeek, Azure, OpenRouter, AIHubMix, Moonshot, Kimi, Ollama, Volcengine, Z.ai, Cloudflare AI Gateway, custom providers, Copilot, and Claude Subscription. It also exposes local provider proxy routes for OpenAI Responses and Anthropic Messages.
+Alma 支持 OpenAI、Anthropic、Google、DeepSeek、Azure、OpenRouter、AIHubMix、Moonshot、Kimi、Ollama、Volcengine、Z.ai、Cloudflare AI Gateway、custom providers、Copilot、Claude Subscription，并提供 OpenAI Responses 与 Anthropic Messages proxy route。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle provider taxonomy is narrower, centered on OpenAI-compatible and Anthropic profiles plus runtime-specific providers. Models.dev enrichment exists, but many Alma first-class providers are not separate provider kinds.
+Cradle provider taxonomy 更窄，主要是 OpenAI-compatible、Anthropic 与 runtime-specific providers。已有 `models.dev` enrichment，但很多 Alma first-class providers 还没有独立 provider kind。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/server/src/modules/providers` owns provider taxonomy, model listing, health checks, pricing metadata, and default config schemas. `profiles` owns saved profile instances. `secrets` owns credentials.
+`apps/server/src/modules/providers` 拥有 provider taxonomy、model listing、health checks、pricing metadata、默认 config schema。`profiles` 拥有 saved profile instances。`secrets` 拥有 credentials。
 
-## Target Behavior
+## 目标行为
 
-- Promote providers to first-class only when they need custom auth, endpoint shape, model listing, pricing, or safety metadata.
-- Preserve OpenAI-compatible for providers that require only `baseUrl` and API key.
-- Optional provider proxy routes must be explicit and access-controlled.
+- 只有当 provider 需要 custom auth、endpoint shape、model listing、pricing 或 safety metadata 时才升格为 first-class。
+- 其余 provider 继续走 OpenAI-compatible。
+- provider proxy route 必须显式、可审计、受权限控制。
 
-## API Sketch
+## API 草案
 
 - `GET /providers/catalog`
 - `POST /providers/models`
 - `POST /providers/health-check`
-- Optional `POST /providers/:profileId/proxy/responses`
+- `POST /providers/:profileId/proxy/responses`
 
-## Acceptance
+## 验收
 
-- Adding DeepSeek or Google does not require changing chat UI conditionals outside provider metadata.
-- Provider health and model fetch failures return structured errors.
-- Proxy routes never expose raw secrets to renderer code.
+- 增加 DeepSeek 或 Google 不需要在 chat UI 内写分支条件。
+- Provider health/model fetch failure 返回结构化错误。
+- Proxy route 不把 raw secrets 暴露给 renderer。

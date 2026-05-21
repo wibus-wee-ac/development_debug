@@ -6,30 +6,31 @@ Position: docs/specs/alma-inspired/workspace-snapshots.md
 
 # Workspace Snapshots
 
-## Goal
+## 目标
 
-Cradle should provide Git-independent workspace snapshots for agent edits, temporary files, and recovery workflows.
+Cradle 需要提供 Git-independent workspace snapshots，用于 agent edits、temporary files、非 Git workspace 和高风险批量修改的恢复流程。Snapshot 是 Cradle-owned recovery point，不替代 Git。
 
-## Alma Evidence
+## Alma 证据
 
-Alma preload exposes `snapshot.create`, `snapshotFile`, `list`, `get`, `diff`, `rollback`, `rollbackFile`, and `cleanup`.
+Alma preload 暴露 `snapshot.create`、`snapshotFile`、`list`、`get`、`diff`、`rollback`、`rollbackFile` 和 `cleanup`。这些接口覆盖创建、查看、diff、回滚和清理完整链路。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has Git status/diff and chat message snapshots. It does not have a workspace-owned snapshot/diff/rollback subsystem for arbitrary files.
+Cradle 有 Git status/diff 和 chat message snapshots。当前没有 workspace-owned snapshot/diff/rollback subsystem 能覆盖 arbitrary files，也没有和 agent risky operation 绑定的恢复点。
 
-## Target Ownership
+## Owner / Namespace
 
-A future `workspace-snapshots` module owns snapshot metadata and file copies. `workspace` owns path validation. `git` remains separate and should not be required.
+未来 `workspace-snapshots` 模块拥有 snapshot metadata、file copies、diff records 和 cleanup policy。`workspace` 拥有 path validation 和 root boundary。`git` 保持独立，不能成为 snapshot 前置条件。
 
-## Target Behavior
+## 目标行为
 
-- Users or agents can create snapshots before risky operations.
-- Snapshots can cover a whole workspace or selected files.
-- Users can view diffs and rollback all or selected files.
-- Cleanup policy limits disk growth.
+- 用户或 agent 可以在 risky operation 前创建 workspace snapshot。
+- Snapshot 可以覆盖整个 workspace 或 selected files。
+- 用户可以查看 snapshot diff，并 rollback all files 或 selected files。
+- 回滚前检测当前文件是否已变更，并给出 conflict report。
+- Cleanup policy 限制磁盘增长，但保留 protected snapshots。
 
-## API Sketch
+## API 草案
 
 - `POST /workspaces/:id/snapshots`
 - `POST /workspaces/:id/snapshots/file`
@@ -38,12 +39,13 @@ A future `workspace-snapshots` module owns snapshot metadata and file copies. `w
 - `POST /workspaces/:id/snapshots/:snapshotId/rollback`
 - `POST /workspaces/:id/snapshots/cleanup`
 
-## Data Model
+## 数据模型
 
-Tables should include `workspace_snapshots`, `workspace_snapshot_files`, and cleanup audit rows. Snapshot file storage belongs under Cradle workspace data, not under the source project unless explicitly configured.
+需要 `workspace_snapshots`、`workspace_snapshot_files` 和 cleanup audit records。Snapshot file storage 放在 Cradle workspace data 目录，不默认写入 source project。每个 file record 保存 path、content hash、size、mtime、capture status 和 optional ignore reason。
 
-## Acceptance
+## 验收
 
-- A rollback restores file bytes and reports conflicts if files changed since snapshot.
-- Snapshot cleanup never removes the latest protected snapshot.
-- Snapshot creation respects ignored paths and size limits.
+- Rollback 能恢复 file bytes，并在文件自 snapshot 后变化时报告 conflict。
+- Cleanup 不会删除 latest protected snapshot。
+- Snapshot creation 遵守 ignored paths、size limits 和 workspace root boundary。
+- 非 Git workspace 也能创建、diff 和 rollback snapshot。

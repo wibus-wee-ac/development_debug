@@ -4,32 +4,32 @@ Output: Spec for people/contact profiles.
 Position: docs/specs/alma-inspired/people-contacts.md
 -->
 
-# People And Contacts
+# People 与 Contacts
 
-## Goal
+## 目标
 
-Cradle should provide a human contact projection for external channels, mentions, and collaboration metadata without confusing people with agent identities.
+Cradle 需要提供 human contact projection，用于外部 channels、mentions 和协作 metadata，同时不能把人类联系人和 agent identities 混在一起。
 
-## Alma Evidence
+## Alma 证据
 
-Alma settings include People management with Telegram ID, Discord ID, Discord username, Feishu ID, username, profile, and avatar upload/remove.
+Alma settings 包含 People 管理，字段包括 Telegram ID、Discord ID、Discord username、Feishu ID、username、profile、avatar upload/remove。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has agent identity, issue actor context, and profiles, but no cross-channel human contact model.
+Cradle 有 agent identity、issue actor context 和 profiles，但没有跨 channel 的 human contact model。
 
-## Target Ownership
+## Owner / Namespace
 
-A future `people` module owns Cradle contact records and cross-channel identity links. Channel connectors can read and propose mappings but do not own people lifecycle.
+未来 `people` module 拥有 Cradle contact records 和 cross-channel identity links。Channel connectors 可以读取并提出 mapping，但不拥有 people lifecycle。
 
-## Target Behavior
+## 目标行为
 
-- Users can create, edit, merge, archive, and search people.
-- A person can link multiple external identities.
-- Channel messages can resolve sender display metadata to a person record.
-- Agent identities remain separate from people.
+- 用户可以创建、编辑、合并、归档、搜索 people。
+- 一个 person 可以链接多个 external identities。
+- Channel messages 可以把 sender display metadata 解析到 person record。
+- Agent identities 与 people records 完全分离。
 
-## API Sketch
+## API 草案
 
 - `GET /people`
 - `POST /people`
@@ -37,12 +37,12 @@ A future `people` module owns Cradle contact records and cross-channel identity 
 - `POST /people/:id/links`
 - `DELETE /people/:id/links/:linkId`
 
-## Data Model
+## 数据模型
 
-Tables should include `people`, `person_identity_links`, and optional avatar asset references.
+表应包含 `people`、`person_identity_links`，头像可引用 asset records。
 
-## Acceptance
+## 验收
 
-- The same person can be linked to Discord and Feishu identities.
-- Removing a channel connector does not delete people records.
-- Agent identity APIs never return people records as agents.
+- 同一个 person 可以同时链接 Discord 与 Feishu identity。
+- 移除 channel connector 不删除 people records。
+- Agent identity APIs 不返回 people records 作为 agents。

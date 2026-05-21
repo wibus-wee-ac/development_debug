@@ -4,44 +4,44 @@ Output: Spec for desktop multi-window product surfaces.
 Position: docs/specs/alma-inspired/desktop-multi-window.md
 -->
 
-# Desktop Multi-Window Surfaces
+# 桌面多窗口表面
 
-## Goal
+## 目标
 
-Cradle should support intentional, owner-scoped desktop windows for product surfaces that do not fit naturally inside the main tab shell: notifications, quick chat, media lightbox, prompt app runner, share preview, tray popover, devtool, and detached sessions.
+Cradle 需要支持有明确 owner 的桌面多窗口表面，用于承载不适合塞进主 tab shell 的体验：通知、Quick Chat、媒体灯箱、Prompt App runner、分享预览、托盘 popover、Devtool、独立 session 窗口。
 
-## Alma Evidence
+## Alma 证据
 
-Alma packages separate renderer entries for `index.html`, `settings.html`, `notifications.html`, `lightbox.html`, `prompt-app-runner.html`, `livecoding.html`, `gallery.html`, and `share.html`. Its preload exposes window-specific bridges such as `settingsWindow`, `promptAppRunner`, `galleryWindow`, `lightboxWindow`, `liveCodingWindow`, and `quickChatWindow`.
+Alma 打包了 `index.html`、`settings.html`、`notifications.html`、`lightbox.html`、`prompt-app-runner.html`、`livecoding.html`、`gallery.html`、`share.html`。preload 还暴露了 `settingsWindow`、`promptAppRunner`、`galleryWindow`、`lightboxWindow`、`liveCodingWindow`、`quickChatWindow` 等窗口专用 bridge。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle Desktop has one main renderer, a tray popover, a devtool window, and detached session windows. It does not have dedicated media, share, prompt runner, live coding, or quick chat renderer entries.
+Cradle Desktop 当前有主窗口、托盘 popover、Devtool 窗口和 detached session 窗口。它已经具备窗口基础设施，但还没有 media、share、prompt runner、live coding、quick chat 这些专用窗口表面。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/desktop` owns BrowserWindow lifecycle, routing, display placement, focus policy, and preload boundaries. Each product feature owns its own UI and state under `apps/web/src/features/*`. Desktop must not own feature semantics.
+`apps/desktop` 只拥有 BrowserWindow 生命周期、路由、显示器定位、focus policy 和 preload 边界。每个产品表面自己的状态和 UI 必须归属 `apps/web/src/features/*` 或对应 server module。Desktop 不拥有业务语义。
 
-## Target Behavior
+## 目标行为
 
-- A desktop window registry defines stable window kinds and their feature-owned routes.
-- Each window kind declares focus, transparency, resizable, always-on-top, click-through, and display placement policy.
-- Feature state flows through server APIs or typed IPC, not through global mutable renderer state.
-- Detached windows can navigate back to the canonical session, workspace, or asset in the main shell.
+- 建立桌面窗口 registry，定义稳定的 `windowKind`。
+- 每个窗口声明 focus、透明、可缩放、置顶、click-through、display placement 策略。
+- 功能状态通过 server API 或 typed IPC 传递，不能依赖全局 renderer mutable state。
+- 二级窗口可以跳回主窗口中的 canonical session、workspace 或 asset。
 
-## API / IPC Sketch
+## API / IPC 草案
 
 - `desktop.windows.open(kind, payload)`
 - `desktop.windows.close(kind, id)`
 - `desktop.windows.focus(kind, id)`
 - `desktop.windows.list()`
 
-## Data Model
+## 数据模型
 
-Persist only user preferences such as bounds, last display, and last-used window mode. Product data remains in the feature owner namespace.
+只持久化窗口 bounds、last display、last mode 等用户偏好。产品数据继续归 feature owner。
 
-## Acceptance
+## 验收
 
-- Opening a lightbox or prompt runner does not duplicate canonical session state.
-- Closing a secondary window never destroys session, workspace, or asset data.
-- Window bounds recover across restarts and stay visible after display changes.
+- 打开 lightbox 或 prompt runner 不会复制 session canonical state。
+- 关闭二级窗口不会删除 session、workspace 或 asset。
+- 重启后窗口 bounds 可恢复，外接显示器变化后窗口仍保持可见。

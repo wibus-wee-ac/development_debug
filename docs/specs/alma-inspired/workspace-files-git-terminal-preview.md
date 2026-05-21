@@ -4,39 +4,39 @@ Output: Spec for workspace file, Git, terminal, and preview coverage.
 Position: docs/specs/alma-inspired/workspace-files-git-terminal-preview.md
 -->
 
-# Workspace Files, Git, Terminal, And Preview
+# Workspace Files、Git、Terminal 与 Preview
 
-## Goal
+## 目标
 
-Cradle should keep its workspace-first coding environment and close remaining gaps around preview servers and non-text file review.
+Cradle 应继续强化 workspace-first coding environment，同时补齐 preview server 和非文本文件审阅相关缺口。
 
-## Alma Evidence
+## Alma 证据
 
-Alma renderer exposes workspace file tree, file content reading, binary previews, terminal sessions over WebSocket, preview server start/stop, workspace WebSocket refresh, Git operations, GitHub PR, and CI logs.
+Alma renderer 暴露 workspace file tree、file content reading、binary previews、terminal sessions over WebSocket、preview server start/stop、workspace WebSocket refresh、Git operations、GitHub PR、CI logs。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has workspace CRUD, file tree, Git status/branch/graph/fetch, Pack Codebase, PTY WebSocket terminal sessions, TUI, and workspace detail editing. Preview server and broad binary preview are not equivalent.
+Cradle 已有 workspace CRUD、file tree、Git status/branch/graph/fetch、Pack Codebase、PTY WebSocket terminal sessions、TUI、workspace detail editing。但 preview server 和广义 binary preview 还不等价。
 
-## Target Ownership
+## Owner / Namespace
 
-`workspace` owns safe file listing and text read/write. `git` owns Git operations. `pty` owns terminal processes. A future preview owner should own preview server lifecycle. File preview belongs to `file-preview`.
+`workspace` 拥有安全文件列表和文本读写。`git` 拥有 Git 操作。`pty` 拥有 terminal process。未来 preview owner 拥有 preview server lifecycle。文件预览归 `file-preview`。
 
-## Target Behavior
+## 目标行为
 
-- Workspace file operations stay path-safe and owner-scoped.
-- Terminal sessions remain session/workspace scoped and replayable.
-- Preview servers are started, stopped, and inspected through a server-owned lifecycle.
-- Binary preview delegates to the file preview owner.
+- Workspace file operations 保持 path-safe 与 owner-scoped。
+- Terminal sessions 继续 session/workspace scoped，并可 replay。
+- Preview servers 通过 server-owned lifecycle 启动、停止、查看状态。
+- Binary preview 委托给 file preview owner。
 
-## API Sketch
+## API 草案
 
-- Existing workspace, git, and terminal APIs remain canonical.
-- Future `POST /workspaces/:id/previews` starts a preview server.
-- Future `GET /workspaces/:id/previews` lists active previews.
+- 继续复用现有 workspace、git、terminal APIs。
+- `POST /workspaces/:id/previews`
+- `GET /workspaces/:id/previews`
 
-## Acceptance
+## 验收
 
-- Starting a preview server records its workspace, command, port, status, and logs.
-- Terminal resource cleanup runs on server shutdown.
-- File preview never bypasses workspace path validation.
+- 启动 preview server 会记录 workspace、command、port、status、logs。
+- Server shutdown 会清理 terminal resources。
+- File preview 不绕过 workspace path validation。

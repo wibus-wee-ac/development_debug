@@ -6,30 +6,30 @@ Position: docs/specs/alma-inspired/computer-use.md
 
 # Computer Use
 
-## Goal
+## 目标
 
-Cradle should only adopt OS-level Computer Use behind a strong approval, audit, and owner boundary because it can operate outside the app.
+如果 Cradle 采用 OS-level Computer Use，必须放在强 approval、audit、owner boundary 后面，因为它可以操作 Cradle 之外的应用。
 
-## Alma Evidence
+## Alma 证据
 
-Alma exposes Computer Use APIs for app/window state, screenshots, click, drag, key, type, scroll, launch, raise, approval, action log, PiP, and automatic MCP registration.
+Alma 暴露 Computer Use APIs，用于 app/window state、screenshots、click、drag、key、type、scroll、launch、raise、approval、action log、PiP 和 MCP auto registration。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle browser-use controls the in-app browser webview. Chronicle can observe screen content. Cradle does not have OS-wide app/window automation, approval logs, PiP, or Computer Use MCP server.
+Cradle browser-use 只能控制 in-app browser webview。Chronicle 可以观察 screen content。Cradle 没有 OS-wide app/window automation、approval logs、PiP 或 Computer Use MCP server。
 
-## Target Ownership
+## Owner / Namespace
 
-A future `computer-use` module owns OS automation policy, action audit, app approvals, and runtime sessions. Desktop owns native automation adapters. Approval module owns user approval decisions.
+未来 `computer-use` module 拥有 OS automation policy、action audit、app approvals、runtime sessions。Desktop 拥有 native automation adapters。`approval` module 拥有用户审批决定。
 
-## Target Behavior
+## 目标行为
 
-- OS automation is disabled by default.
-- Users approve apps or actions before automation can operate.
-- Every action writes an audit log with target app/window, coordinates or semantic target, result, and screenshot reference where safe.
-- PiP shows current computer-use state without stealing focus.
+- OS automation 默认关闭。
+- 自动化操作前要求用户批准 app 或 action。
+- 每个 action 写 audit log，包括 target app/window、coordinates 或 semantic target、result、安全的 screenshot reference。
+- PiP 显示当前 computer-use state，不抢 focus。
 
-## API Sketch
+## API 草案
 
 - `GET /computer-use/status`
 - `GET /computer-use/apps`
@@ -38,12 +38,12 @@ A future `computer-use` module owns OS automation policy, action audit, app appr
 - `POST /computer-use/approvals`
 - `GET /computer-use/actions/log`
 
-## Data Model
+## 数据模型
 
-Tables should include `computer_use_sessions`, `computer_use_action_log`, and `computer_use_app_approvals`.
+表应包含 `computer_use_sessions`、`computer_use_action_log`、`computer_use_app_approvals`。
 
-## Acceptance
+## 验收
 
-- Attempting an unapproved action returns `approval_required`.
-- Revoking an app approval prevents further actions in that app.
-- Action logs are exportable for audit.
+- 未批准 action 返回 `approval_required`。
+- 撤销 app approval 后不能继续操作该 app。
+- Action logs 可以导出审计。

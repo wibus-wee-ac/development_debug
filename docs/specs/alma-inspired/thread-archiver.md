@@ -4,44 +4,45 @@ Output: Spec for thread archiving and session retention.
 Position: docs/specs/alma-inspired/thread-archiver.md
 -->
 
-# Thread Archiver
+# Thread 归档
 
-## Goal
+## 目标
 
-Cradle should define retention and archive semantics for sessions and workspace-linked conversation artifacts before adding backup or cleanup features.
+Cradle 需要在引入 backup、cleanup、cloud sync 之前，先定义 session 和 workspace-linked conversation artifacts 的归档与保留语义。归档必须是可恢复的生命周期状态，不应被伪装成删除。
 
-## Alma Evidence
+## Alma 证据
 
-Alma has a thread archiver that writes archive state under workspace paths and migrates or records existing threads.
+Alma 有 thread archiver，能在 workspace path 下写入 archive state，并迁移或记录 existing threads。这说明 Alma 对 thread retention 有独立于普通 chat list 的处理。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has session CRUD, markdown export, workspace-linked sessions, and DB-backed messages. It does not expose a dedicated session archive lifecycle.
+Cradle 有 session CRUD、Markdown export、workspace-linked sessions 和 DB-backed messages。当前没有 dedicated session archive lifecycle；active list、search、export 和 workspace deletion 的归档语义尚未统一。
 
-## Target Ownership
+## Owner / Namespace
 
-`session` owns session archive state. `workspace` may expose workspace-scoped session views but must not own message lifecycle.
+`session` 拥有 session archive state、retention policy 和 message lifecycle。`workspace` 可以暴露 workspace-scoped session views，但不拥有 message retention 或 archive mutation。
 
-## Target Behavior
+## 目标行为
 
-- Users can archive and unarchive sessions.
-- Archived sessions disappear from default active lists but remain searchable/exportable according to policy.
-- Workspace deletion defines whether linked archived sessions are retained, detached, or deleted.
-- Archive operations are reversible unless a separate destructive delete is requested.
+- 用户可以 archive 和 unarchive sessions。
+- Archived sessions 默认不出现在 active lists，但可以按显式 filter 搜索和导出。
+- Workspace 删除时必须说明 linked archived sessions 是 retained、detached 还是 deleted。
+- Archive 操作默认可逆；destructive delete 需要单独 API 和 UI confirmation。
 
-## API Sketch
+## API 草案
 
 - `POST /sessions/:id/archive`
 - `POST /sessions/:id/unarchive`
 - `GET /sessions?archived=true`
 - `POST /sessions/archive/bulk`
 
-## Data Model
+## 数据模型
 
-Add archive timestamp, actor, reason, and optional retention policy to session-owned records.
+在 session-owned records 上增加 archive timestamp、actor、reason、retention policy、workspace detach policy 和 optional legal hold marker。Message records 不因 archive 自动变更。
 
-## Acceptance
+## 验收
 
-- Archiving a session does not delete messages.
-- Archived sessions can be exported to Markdown.
-- Search can include or exclude archived sessions explicitly.
+- Archive session 不会删除 messages、artifacts 或 usage records。
+- Archived session 可以导出为 Markdown。
+- Search 可以显式 include 或 exclude archived sessions。
+- Workspace deletion 对 archived sessions 的处理有确定结果并写入 audit event。

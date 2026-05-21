@@ -4,37 +4,33 @@ Output: Spec for local API server parity and boundaries.
 Position: docs/specs/alma-inspired/local-api-server.md
 -->
 
-# Local API Server
+# 本地 API Server
 
-## Goal
+## 目标
 
-Cradle should keep a local HTTP server as the canonical product boundary for desktop, web, CLI, plugins, and agents.
+Cradle 应继续把本地 HTTP server 作为 desktop、web、CLI、plugins、agents 之间的 canonical 产品边界。
 
-## Alma Evidence
+## Alma 证据
 
-Alma main process starts an Express API server, exposes its port through preload, serves chat, providers, workspace, plugins, MCP, activity, computer use, bot bridges, memory, cron, heartbeat, usage, gallery, and snapshot routes, and uses WebSocket for live thread and terminal-like flows.
+Alma main process 启动 Express API server，并通过 preload 暴露端口。它的 API 覆盖 chat、providers、workspace、plugins、MCP、activity、computer use、bot bridges、memory、cron、heartbeat、usage、gallery、snapshot 等能力，并用 WebSocket 承载 live thread 与 terminal 类流程。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle already has an Elysia server with OpenAPI, modules, CLI metadata, DB lifecycle, plugin activation, and desktop fork orchestration. This capability is covered.
+Cradle 已经有 Elysia server、OpenAPI、模块化 routes、CLI metadata、DB lifecycle、plugin activation 和 desktop fork orchestration。该能力已覆盖。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/server` owns API semantics. `apps/desktop` starts and monitors the server, but must not implement business routes. CLI and Web consume generated API contracts.
+`apps/server` 拥有 API 语义。`apps/desktop` 只负责启动与监控 server，不实现业务 routes。CLI 和 Web 消费生成的 API contract。
 
-## Target Behavior
+## 目标行为
 
-- Every new Alma-inspired feature defines server ownership before desktop or web work begins.
-- API routes expose OpenAPI metadata and `x-cradle-cli` where useful.
-- WebSocket use is limited to live channels; normal CRUD stays HTTP.
-- Desktop preload only exposes native capabilities that cannot be expressed as HTTP.
+- 每个 Alma-inspired feature 在进入实现前必须明确 server owner。
+- API route 需要公开 OpenAPI metadata；适合 CLI 的 route 需要补 `x-cradle-cli`。
+- WebSocket 只用于真正 live 的 channel，普通 CRUD 继续走 HTTP。
+- Desktop preload 只暴露 HTTP 无法表达的 native 能力。
 
-## API / IPC Sketch
+## 验收
 
-This spec does not add routes by itself. It constrains all feature specs in this directory to prefer server-owned APIs over feature-specific Electron IPC.
-
-## Acceptance
-
-- New feature proposals identify whether they need HTTP, WebSocket, or native IPC.
-- No new business semantic route is implemented directly in `apps/desktop`.
-- Generated CLI remains able to consume server-owned feature APIs where appropriate.
+- 新功能 proposal 明确说明使用 HTTP、WebSocket 还是 native IPC。
+- 不在 `apps/desktop` 里新增业务语义 route。
+- 生成 CLI 能继续消费 server-owned feature API。

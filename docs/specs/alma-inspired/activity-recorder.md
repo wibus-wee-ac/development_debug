@@ -6,30 +6,30 @@ Position: docs/specs/alma-inspired/activity-recorder.md
 
 # Activity Recorder
 
-## Goal
+## 目标
 
-Cradle Chronicle should evolve from screen OCR memory into a broader activity recorder only if ownership and privacy boundaries remain explicit.
+Cradle Chronicle 可以从 screen OCR memory 演进为更完整的 activity recorder，但必须保持明确的 ownership 和 privacy boundary。
 
-## Alma Evidence
+## Alma 证据
 
-Alma Activity Recorder captures screenshots, OCR text, input events, browser URL/tab titles, per-app focus, session analysis, reports, digests, semantic search, keyword search, suggestions, and tray start/stop.
+Alma Activity Recorder 记录 screenshots、OCR text、input events、browser URL/tab titles、per-app focus、session analysis、reports、digests、semantic search、keyword search、suggestions，并支持 tray start/stop。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle Chronicle captures screen frames, OCR, artifacts, memory summaries, timeline, resources, and settings. It lacks input-event capture, browser URL/tab correlation, app focus history, tray digest/report actions, and suggestions.
+Cradle Chronicle 已能 capture screen frames、OCR、artifacts、memory summaries、timeline、resources、settings。但缺 input-event capture、browser URL/tab correlation、app focus history、tray digest/report actions、suggestions。
 
-## Target Ownership
+## Owner / Namespace
 
-`chronicle` owns passive activity records, privacy filtering, and memory generation. Desktop owns native capture adapters. Browser plugins may provide browser tab metadata through explicit integration.
+`chronicle` 拥有 passive activity records、privacy filtering、memory generation。Desktop 拥有 native capture adapters。Browser plugins 只能通过显式 integration 提供 browser tab metadata。
 
-## Target Behavior
+## 目标行为
 
-- Users can start, pause, resume, and stop recording.
-- Recording captures screen/OCR plus optional app focus and browser metadata.
-- Sensitive windows and apps can be excluded.
-- Reports and digests are generated from Chronicle records with clear provenance.
+- 用户可以 start、pause、resume、stop recording。
+- Recording 捕获 screen/OCR，并可选 app focus 与 browser metadata。
+- Sensitive windows/apps 可以被排除。
+- Reports 与 digests 基于 Chronicle records 生成，并带清晰 provenance。
 
-## API Sketch
+## API 草案
 
 - `GET /chronicle/status`
 - `POST /chronicle/recording/start`
@@ -38,12 +38,12 @@ Cradle Chronicle captures screen frames, OCR, artifacts, memory summaries, timel
 - `POST /chronicle/activity/sessions/:id/analyze`
 - `GET /chronicle/activity/digest`
 
-## Data Model
+## 数据模型
 
-Extend Chronicle tables with app focus events, browser metadata events, capture source ids, privacy filter decisions, and analysis records.
+扩展 Chronicle tables，增加 app focus events、browser metadata events、capture source ids、privacy filter decisions、analysis records。
 
-## Acceptance
+## 验收
 
-- Recording can be paused from tray without losing existing artifacts.
-- Excluded apps never write OCR text or screenshots.
-- A digest can cite source snapshots and event ranges.
+- Recording 可从 tray 暂停，不丢失已有 artifacts。
+- Excluded apps 不写入 OCR text 或 screenshots。
+- Digest 可以引用 source snapshots 和 event ranges。

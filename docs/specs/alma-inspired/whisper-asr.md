@@ -6,42 +6,42 @@ Position: docs/specs/alma-inspired/whisper-asr.md
 
 # Whisper ASR
 
-## Goal
+## 目标
 
-Cradle should support local speech-to-text for active voice input and, if adopted later, passive Chronicle audio resources.
+Cradle 需要支持本地 speech-to-text。首要用途是主动语音输入；如果未来接入被动音频感知，则应纳入 Chronicle 的本地音频资源体系。
 
-## Alma Evidence
+## Alma 证据
 
-Alma preload exposes `whisper.getStatus`, `initialize`, `transcribe`, `dispose`, microphone status, microphone permission request, and microphone settings. Main process uses native Whisper packages and accepts Float32 audio for transcription.
+Alma preload 暴露 `whisper.getStatus`、`initialize`、`transcribe`、`dispose`、microphone status、microphone permission request、microphone settings。main process 使用 native Whisper packages，并接收 Float32 audio 做 transcription。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Chronicle schema reserves `audio-asr`, `audio-vad`, and `speaker` model resource categories, but current evidence shows screen capture and OCR as the mature path. No Whisper runtime or microphone transcription API was found.
+Chronicle schema 预留了 `audio-asr`、`audio-vad`、`speaker` model resource categories，但当前成熟路径是 screen capture 与 OCR。未发现 Whisper runtime 或 microphone transcription API。
 
-## Target Ownership
+## Owner / Namespace
 
-Active voice input belongs to chat/composer owner. Passive audio sensing belongs to Chronicle. Shared local model lifecycle should live under Chronicle-owned local model resources if both owners need it.
+主动语音输入归 chat/composer owner。被动音频感知归 Chronicle。若两者共用本地模型生命周期，应由 Chronicle-owned local model resources 统一管理。
 
-## Target Behavior
+## 目标行为
 
-- Users can enable voice input from the composer.
-- The system exposes local model status, download/init state, language, and device configuration.
-- Microphone permission is checked before recording.
-- Transcription results attach to normal chat drafts or messages.
+- 用户可以在 composer 中启用 voice input。
+- 系统可展示 local model status、download/init state、language、device config。
+- Recording 前必须检查 microphone permission。
+- Transcription result 可进入 chat draft 或附加到 message provenance。
 
-## API / IPC Sketch
+## API / IPC 草案
 
 - `GET /voice/asr/status`
 - `POST /voice/asr/models/:modelId/download`
 - `POST /voice/asr/transcribe`
 - `desktop.permissions.request('microphone')`
 
-## Data Model
+## 数据模型
 
-Model files should live under a Cradle-owned model resource root such as `~/.cradle/chronicle/models/asr` or a future voice namespace. Transcripts should only persist when attached to a user action.
+模型文件应放在 Cradle-owned model root，例如 `~/.cradle/chronicle/models/asr` 或未来 voice namespace。Transcript 默认不持久化，除非附加到用户动作。
 
-## Acceptance
+## 验收
 
-- A microphone recording can be transcribed into the chat composer without sending audio to a remote provider.
-- Denied microphone permission blocks recording with an actionable settings link.
-- Model initialization failures do not crash the desktop app.
+- Microphone recording 可以在本地转写到 chat composer。
+- Denied microphone permission 会阻止 recording，并提供 open settings action。
+- Model initialization 失败不会导致 desktop app 崩溃。

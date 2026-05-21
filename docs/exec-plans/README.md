@@ -54,3 +54,4 @@ Current canonical backend implementation for active product work lives under `ap
 - **20260516-03-message-snapshot-chat-runtime.md**: Canonical current execution plan for the breaking rewrite from chunk persistence/timeline replay to `messages.messageJson` snapshots plus sequenced SSE delta events.
 - **20260519-03-cradle-chronicle.md**: Execution plan for building the first Cradle-owned Rust Chronicle crate with synthetic smoke capture, artifact storage, privacy filtering, deduplication, and memory summary generation.
 - **20260521-05-cc-switch-provider-mirror.md**: CC Switch provider 与 CCDB catalog 镜像调研规格，覆盖外部 provider 到 Cradle-owned profiles 的投影、非 provider 对象的只读 snapshot，以及 plugin/SDK 可行性缺口。
+- **20260521-07-alma-cradle-gap-analysis.md**: Alma 与 Cradle 功能差异研究计划，覆盖 Alma packaged app 证据审计、Cradle 能力对比、缺口综合报告，以及 Alma-inspired specs 拆解。

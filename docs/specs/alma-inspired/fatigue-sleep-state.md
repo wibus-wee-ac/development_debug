@@ -4,43 +4,43 @@ Output: Spec for personal fatigue/sleep state.
 Position: docs/specs/alma-inspired/fatigue-sleep-state.md
 -->
 
-# Fatigue And Sleep State
+# Fatigue 与 Sleep State
 
-## Goal
+## 目标
 
-Cradle should only add personal fatigue or sleep state if it has a clear user-facing purpose and consent model.
+Cradle 只有在有明确用户价值和 consent model 时，才应引入 personal fatigue 或 sleep state。该能力必须是用户可控状态，而不是隐藏在 chat runtime 里的 prompt 注入副作用。
 
-## Alma Evidence
+## Alma 证据
 
-Alma includes a `fatigueService` chunk that persists fatigue state, message counts, last rest time, manual sleep/wake, and injects awake, tired, sleepy, or sleeping status into prompts.
+Alma 包含 `fatigueService` chunk，会持久化 fatigue state、message counts、last rest time、manual sleep/wake，并把 awake、tired、sleepy、sleeping 状态注入 prompts。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has agent/session state, Chronicle, and automation, but no personal fatigue or sleep state owner.
+Cradle 有 agent/session state、Chronicle 和 automation，但没有 personal fatigue/sleep state owner，也没有把用户个人状态注入 prompts 的 consent surface。
 
-## Target Ownership
+## Owner / Namespace
 
-A future personal state owner would manage user-controlled state. It must not be hidden inside chat runtime or provider profiles.
+未来 personal state owner 管理 user-controlled state、consent、deletion 和 prompt exposure policy。`chat-runtime` 只读取已授权的 state snapshot，不拥有 state lifecycle。
 
-## Target Behavior
+## 目标行为
 
-- Users can opt into personal state tracking.
-- State can be manually set to active, resting, or unavailable.
-- Prompts receive state only when the user enables it.
-- State has clear reset and deletion behavior.
+- 用户可以 opt in personal state tracking。
+- 用户可以手动设置 active、resting 或 unavailable。
+- Prompt context 只有在用户启用后才能包含 personal state。
+- 用户可以 reset 或 delete state，且删除不影响 chat history。
 
-## API Sketch
+## API 草案
 
 - `GET /personal-state`
 - `PUT /personal-state`
 - `POST /personal-state/reset`
 
-## Data Model
+## 数据模型
 
-Persist state, last updated time, source, and consent version. Avoid inferring health state from private content unless explicitly approved.
+保存 state、last updated time、source、consent version、prompt exposure flag 和 deletion timestamp。不要在未经明确同意时从 private content 推断 health-related state。
 
-## Acceptance
+## 验收
 
-- Disabling personal state removes it from future prompt context.
-- Manual state changes are visible and reversible.
-- State data can be deleted independently from chat history.
+- 禁用 personal state 后，后续 prompt context 不再包含该状态。
+- Manual state changes 可见、可逆，并写入 audit event。
+- State data 可以独立于 chat history 删除。

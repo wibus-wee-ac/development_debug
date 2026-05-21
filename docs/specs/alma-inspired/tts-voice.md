@@ -4,44 +4,44 @@ Output: Spec for TTS and voice replies.
 Position: docs/specs/alma-inspired/tts-voice.md
 -->
 
-# TTS And Voice Replies
+# TTS 与 Voice Replies
 
-## Goal
+## 目标
 
-Cradle should support controlled text-to-speech generation for user-facing playback and external channel voice replies where channel owners opt in.
+Cradle 需要支持受控 text-to-speech generation，用于本地播放和外部 channel 的 voice reply。是否启用 voice reply 由 channel owner 决定。
 
-## Alma Evidence
+## Alma 证据
 
-Alma exposes TTS settings for local Qwen3-TTS, ElevenLabs, and OpenAI, includes setup/model download progress, voice selection, test voice, `/api/tts/generate`, `/api/tts/setup`, and bot voice reply behavior.
+Alma 提供 local Qwen3-TTS、ElevenLabs、OpenAI 的 TTS settings，包含 setup/model download progress、voice selection、test voice、`/api/tts/generate`、`/api/tts/setup`，并在 bot bridge 中支持 voice reply。
 
-## Cradle Current State
+## Cradle 当前状态
 
-No TTS settings, voice reply pipeline, audio output module, or channel-specific voice response flow was found.
+未发现 TTS settings、voice reply pipeline、audio output module 或 channel-specific voice response flow。
 
-## Target Ownership
+## Owner / Namespace
 
-A future `voice` module owns TTS generation jobs and model/provider config. External channel connectors own whether a text response should be sent as voice. Provider secrets remain in `secrets`.
+未来 `voice` module 拥有 TTS generation jobs 与 model/provider config。外部 channel connector 拥有“是否把文本回复转成语音发送”的决策。Provider secrets 继续归 `secrets`。
 
-## Target Behavior
+## 目标行为
 
-- Users can configure TTS provider, model, voice, and output format.
-- Users can generate a preview voice clip from settings.
-- Channel bridges may request voice output for replies.
-- Generated audio files have explicit lifecycle and cleanup.
+- 用户可以配置 TTS provider、model、voice、output format。
+- 用户可以在 settings 中生成 test voice。
+- Channel bridge 可以请求 voice output。
+- Generated audio files 有明确 lifecycle 和 cleanup。
 
-## API Sketch
+## API 草案
 
 - `GET /voice/tts/config`
 - `PUT /voice/tts/config`
 - `POST /voice/tts/test`
 - `POST /voice/tts/generate`
 
-## Data Model
+## 数据模型
 
-Persist TTS config in preferences or a voice-owned table. Generated audio artifacts should be short-lived unless attached to a channel message or asset record.
+TTS config 可以放在 preferences 或 voice-owned table。Generated audio artifacts 默认短期保留，除非被 channel message 或 asset record 引用。
 
-## Acceptance
+## 验收
 
-- Test voice generation returns an audio artifact and structured provider errors.
-- Disabling TTS prevents channel voice reply generation.
-- Generated temp audio is cleaned up after retention expires.
+- Test voice generation 返回 audio artifact，并能返回结构化 provider errors。
+- 禁用 TTS 后 channel voice reply generation 不再执行。
+- Temporary audio 到期后被清理。

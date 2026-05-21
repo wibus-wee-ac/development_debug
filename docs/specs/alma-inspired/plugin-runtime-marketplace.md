@@ -4,32 +4,32 @@ Output: Spec for plugin runtime and marketplace parity.
 Position: docs/specs/alma-inspired/plugin-runtime-marketplace.md
 -->
 
-# Plugin Runtime And Marketplace
+# Plugin Runtime 与 Marketplace
 
-## Goal
+## 目标
 
-Cradle should keep its governed plugin architecture, but add a user-facing marketplace and lifecycle surface comparable to Alma's plugin product experience.
+Cradle 应保留现有 governed plugin architecture，同时补上类似 Alma 的用户可见 marketplace、安装、更新、权限和生命周期表面。
 
-## Alma Evidence
+## Alma 证据
 
-Alma has plugin install, uninstall, enable, disable, permissions, settings, updates, themes, hooks, a remote registry URL, and multiple install sources including marketplace, URL, npm, and local.
+Alma 支持 plugin install、uninstall、enable、disable、permissions、settings、updates、themes、hooks，并有 remote registry URL。安装来源包括 marketplace、URL、npm、local。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle has server, desktop, and web plugin layers, governed descriptors, routes, MCP/skills/hooks/panels/commands, shared config, and two system plugins. It lacks a full marketplace lifecycle UI and persistent plugin storage.
+Cradle 已有 server、desktop、web 三层 plugin runtime，支持 governed descriptors、routes、MCP、skills、hooks、panels、commands、shared config，并已有系统插件。但它还缺完整 marketplace lifecycle UI 和持久化 plugin storage。
 
-## Target Ownership
+## Owner / Namespace
 
-`apps/server/src/plugins` owns plugin discovery, governance, capability records, marketplace metadata, and lifecycle state. `packages/plugin-sdk` owns extension contracts. Web owns marketplace UX. Desktop owns native plugin hooks only.
+`apps/server/src/plugins` 拥有 plugin discovery、governance、capability records、marketplace metadata 和 lifecycle state。`packages/plugin-sdk` 拥有扩展合约。Web 拥有 marketplace UX。Desktop 只拥有 native plugin hooks。
 
-## Target Behavior
+## 目标行为
 
-- Users can browse installed and available plugins.
-- Users can install from approved marketplace entries, local paths, or explicit URLs if policy allows.
-- Plugin permissions are visible and auditable.
-- Plugin updates are checkable and reversible.
+- 用户可以浏览 installed plugins 与 available plugins。
+- 用户可以从 approved marketplace、本地路径或明确 URL 安装 plugin。
+- Plugin permissions 可见、可撤销、可审计。
+- Plugin updates 可检查、可执行、失败可恢复。
 
-## API Sketch
+## API 草案
 
 - `GET /plugins`
 - `GET /plugins/marketplace`
@@ -39,12 +39,12 @@ Cradle has server, desktop, and web plugin layers, governed descriptors, routes,
 - `POST /plugins/:name/update`
 - `DELETE /plugins/:name`
 
-## Data Model
+## 数据模型
 
-Persist plugin installation records, enabled state, version, source, permission grants, diagnostics, and capability projection snapshots.
+持久化 plugin installation records、enabled state、version、source、permission grants、diagnostics 和 capability projection snapshots。
 
-## Acceptance
+## 验收
 
-- Disabling a plugin removes its panels, commands, routes, MCP servers, and skills without restart where possible.
-- Invalid plugins appear with diagnostics and cannot register capabilities.
-- Marketplace install never writes to another product namespace.
+- 禁用 plugin 后，它的 panels、commands、routes、MCP servers、skills 在可行时无需重启即可卸载。
+- Invalid plugin 显示 diagnostics，且不能注册 capabilities。
+- Marketplace install 不写入其他产品 namespace。

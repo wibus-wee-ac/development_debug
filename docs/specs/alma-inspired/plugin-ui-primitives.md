@@ -6,29 +6,29 @@ Position: docs/specs/alma-inspired/plugin-ui-primitives.md
 
 # Plugin UI Primitives
 
-## Goal
+## 目标
 
-Cradle plugins should be able to request standard host-owned UI primitives without each plugin shipping custom panels for every interaction.
+Cradle plugin 应能请求 host-owned 标准 UI primitive，而不是每个 plugin 都为了简单交互自带一整套 panel。
 
-## Alma Evidence
+## Alma 证据
 
-Alma preload exposes `pluginStatusBar`, `pluginInputBox`, `pluginQuickPick`, `pluginConfirmDialog`, `pluginNotification`, `pluginTheme`, and `toolApprovalDialog`.
+Alma preload 暴露 `pluginStatusBar`、`pluginInputBox`、`pluginQuickPick`、`pluginConfirmDialog`、`pluginNotification`、`pluginTheme`、`toolApprovalDialog`。
 
-## Cradle Current State
+## Cradle 当前状态
 
-Cradle plugin SDK supports web panels, commands, server routes, MCP servers, skills, shared config, and desktop webview hooks. It does not expose universal quick pick, input box, confirm dialog, status bar, or notification primitives.
+Cradle plugin SDK 支持 web panels、commands、server routes、MCP servers、skills、shared config 和 desktop webview hooks，但没有 universal quick pick、input box、confirm dialog、status bar、notification primitive。
 
-## Target Ownership
+## Owner / Namespace
 
-`packages/plugin-sdk` defines contracts. `apps/web` owns host UI rendering and accessibility. `apps/desktop` owns native overlays only when a primitive cannot be rendered in web safely.
+`packages/plugin-sdk` 定义 contracts。`apps/web` 拥有 host UI rendering、focus management 和 accessibility。`apps/desktop` 只在 Web 无法安全表达时提供 native overlay。
 
-## Target Behavior
+## 目标行为
 
-- Plugin commands can request `showQuickPick`, `showInputBox`, `showConfirm`, `showNotification`, and `setStatusBarItem`.
-- Host UI enforces focus management, accessibility labels, cancellation, and timeout behavior.
-- Plugin requests are scoped by plugin identity and permission grants.
+- Plugin command 可以请求 `showQuickPick`、`showInputBox`、`showConfirm`、`showNotification`、`setStatusBarItem`。
+- Host UI 统一处理 focus、accessible name、cancel、timeout。
+- Plugin request 由 plugin identity 与 permission grants 约束。
 
-## API Sketch
+## API 草案
 
 - `plugin.ui.showQuickPick(options)`
 - `plugin.ui.showInputBox(options)`
@@ -36,12 +36,12 @@ Cradle plugin SDK supports web panels, commands, server routes, MCP servers, ski
 - `plugin.ui.showNotification(options)`
 - `plugin.ui.statusBar.set(item)`
 
-## Data Model
+## 数据模型
 
-Persistent state is limited to status bar registrations and permission grants. Transient prompts live in memory and are correlated with command execution IDs.
+只持久化 status bar registrations 和 permission grants。瞬态 prompts 存内存，并关联 command execution id。
 
-## Acceptance
+## 验收
 
-- A plugin can ask a user to choose from a list and receive the selected item.
-- Dismissing the UI resolves with a structured cancellation result.
-- A plugin cannot spoof another plugin's status bar or notification identity.
+- Plugin 可以要求用户从列表中选择，并收到 selected item。
+- Dismiss UI 时返回结构化 cancellation result。
+- Plugin 不能冒充另一个 plugin 的 status bar 或 notification identity。
