@@ -23,7 +23,13 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - [x] (2026-05-20 18:51Z) 修复审查问题：frontmatter values 改为 English，移除错误 GitHub `metadataBase`，补 Slack bridge setup guide、browser-use tool matrix、System Info pages、plugin web/desktop/first-party contract pages、真实 error-code troubleshooting tables。
 - [x] (2026-05-20 18:52Z) 重新运行 `cd documentations && pnpm types:check`，通过。
 - [x] (2026-05-20 18:52Z) 重新运行 `cd documentations && pnpm build`，通过；Next 提示未设置 `metadataBase`，因没有权威 docs deployment origin，保留为非阻塞提示而不写入错误 URL。
-- [ ] 执行复审与本地文档站 smoke check，只有证据证明目标完成时才关闭线程目标。
+- [x] (2026-05-21 04:11+08:00) `ReviewL` 指出 Fumadocs polish 仍 FAIL：`/docs/map` 只是静态 path map，没有消费 `extractedReferences`，且 visual components 有英文可见文案。
+- [x] (2026-05-21 04:11+08:00) `ReviewM` 确认可用能力边界：当前安装包没有可直接 import 的官方 `GraphView`，PASS 标准应是用 `source.getPages()` 与 `page.data.extractedReferences` 生成真实 link graph。
+- [x] (2026-05-21 04:11+08:00) 完成 `FixM`：新增 Fumadocs extracted-reference graph builder、交互式 force graph、`DocsLinkGraph` MDX 组件、`/docs/map` 真实链接图谱、OpenAPI route reference 边界说明，并将新增可见文案本地化。
+- [x] (2026-05-21 04:11+08:00) 重新运行 `cd documentations && pnpm types:check`，通过。
+- [x] (2026-05-21 04:11+08:00) 重新运行 `cd documentations && pnpm build`，通过；仅保留既有 `metadataBase` warning。
+- [x] (2026-05-21 04:11+08:00) 用生产服务器 `pnpm exec next start -p 3211` 做浏览器 smoke：`/docs/map` 桌面和移动 canvas 非空，指标为 71 pages / 150 internal links / 162 extracted references / 0 unresolved references；`/docs`、developer、agents、Chronicle、Slack bridge、troubleshooting 页面均无 browser page errors。
+- [x] (2026-05-21 04:11+08:00) 最终 Fumadocs polish 复审 `ReviewN` 返回 PASS；确认 ReviewL 的真实 link graph、graph UI、中文可见文案和 OpenAPI boundary 阻塞项全部关闭。
 
 ## Surprises & Discoveries
 
@@ -37,6 +43,10 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Evidence: `cd documentations && pnpm build` 通过，但输出多条 `metadataBase property in metadata export is not set` warning。此前把 `metadataBase` 指向 GitHub repository 被 `ReviewG` 判定为错误；当前没有权威 docs deployment origin，因此不填假 URL。
 - Observation: Fumadocs 审查把 frontmatter values 也纳入 English 规则。
   Evidence: `ReviewG` 将中文 `title` / `description` 标为 P1；修复后 `awk` 扫描所有 `.mdx` frontmatter 中 `title` / `description` 的非 ASCII 值，输出为空。
+- Observation: 当前 Fumadocs 版本没有可直接从 `fumadocs-ui` import 的官方 Graph View 组件。
+  Evidence: `ReviewM` 检查本地包，未发现直接可用 export；`@fumadocs/cli add graph-view` 的模板依赖 `react-force-graph-2d` 和 `d3-force`，因此本次采用该模式作为本地组件，并让数据源来自 `source.getPages()` 与 `extractedReferences`。
+- Observation: 并发运行 `fumadocs-mdx` 相关命令可能短暂把 `.source/server.ts` 置为 0 字节，导致 dev server HMR 留下 stale overlay error。
+  Evidence: 一次并发验证期间 `documentations/.source/server.ts`、`browser.ts`、`dynamic.ts` 均为 0 字节；顺序运行 `cd documentations && pnpm exec fumadocs-mdx` 后文件恢复，随后 `pnpm types:check` 与 `pnpm build` 均通过。最终浏览器 smoke 改用 production server `3211`，无 page errors。
 
 ## Decision Log
 
@@ -55,12 +65,18 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 - Decision: 将 developer plugin section 拆成 contract pages，而不是只保留 example page。
   Rationale: `ReviewF` 指出 plugin SDK 覆盖不能只列 examples；plugin authors 需要独立的 web API、desktop API、Browser Use、System Info contract pages 才能按 owner、namespace、lifecycle、validation 和 limits 工作。
   Date/Author: 2026-05-20 / Codex
+- Decision: `/docs/map` 保留 curated reader path map，同时新增真实 Fumadocs link graph。
+  Rationale: curated map 解释“应该如何理解 Cradle”，但用户要求图类能力和 ReviewL 要求真实消费 Fumadocs link references。新增 `DocsLinkGraph` 从 `source.getPages()`、`page.data.extractedReferences`、`source.getPageByHref()` 和 `source.resolveHref()` 构建 nodes、links、inbound/outbound counts 与 unresolved reference diagnostics，避免把静态卡片伪装成 graph。
+  Date/Author: 2026-05-21 / Codex
+- Decision: 不手写 OpenAPI route-level API reference。
+  Rationale: 当前 OpenAPI 页面解释 contract ownership 与 lifecycle；逐 route reference 应由 server `/docs` Scalar UI 和 `/openapi.json` 提供。若未来迁入 Fumadocs，应从同一份 OpenAPI document 生成，避免文档、OpenAPI 和 generated CLI drift。
+  Date/Author: 2026-05-21 / Codex
 
 ## Outcomes & Retrospective
 
-当前已完成可构建的 Cradle 文档站内容树。`documentations/content/docs/` 已从 scaffold 扩展为 70 个 MDX 页面和 21 个 `meta.json` 文件，覆盖用户、管理员、运维和开发者场景。默认 `test.mdx` scaffold 已删除，`documentations/README.md` 已替换为 Cradle 文档站维护说明，站点 shell 已设置为 `Cradle Docs` 和 `zh-CN`。
+当前已完成可构建的 Cradle 文档站内容树。`documentations/content/docs/` 已从 scaffold 扩展为 71 个 MDX 页面和 21 个 `meta.json` 文件，覆盖用户、管理员、运维和开发者场景。默认 `test.mdx` scaffold 已删除，`documentations/README.md` 已替换为 Cradle 文档站维护说明，站点 shell 已设置为 `Cradle Docs` 和 `zh-CN`。
 
-两轮独立审查发现的阻塞问题已经修复：`ReviewF` 的 plugin contracts、Slack bridge、browser-use、System Info、troubleshooting 和 ExecPlan stale status 问题已补；`ReviewG` 的 frontmatter language rule 和错误 `metadataBase` 问题已处理。`cd documentations && pnpm types:check` 和 `cd documentations && pnpm build` 均已通过。仍需复审和本地站点 smoke check 证明最终状态满足目标。
+多轮独立审查发现的阻塞问题已经修复：`ReviewF` 的 plugin contracts、Slack bridge、browser-use、System Info、troubleshooting 和 ExecPlan stale status 问题已补；`ReviewG` 的 frontmatter language rule 和错误 `metadataBase` 问题已处理；`ReviewL` 的 Fumadocs polish 问题已通过真实 extracted-reference graph、中文 visual copy、OpenAPI route reference boundary 修复。`cd documentations && pnpm types:check` 和 `cd documentations && pnpm build` 均已通过。生产服务器 smoke check 覆盖关键页面并通过。`ReviewN` 已 PASS。
 
 ## Context and Orientation
 
@@ -106,6 +122,31 @@ Fumadocs 是一个基于文件系统内容集合生成文档路由、侧栏树�
 
 `pnpm build` 输出显示 `/docs`、`/llms.txt`、`/llms-full.txt`、`/llms.mdx/docs/.../content.md` 和 `/og/docs/.../image.png` 均生成静态或动态路由。构建警告仅为未设置 `metadataBase`，原因见 Decision Log。
 
+Fumadocs graph smoke 已运行并通过：
+
+    cd documentations
+    pnpm exec next start -p 3211
+
+    /docs/map production smoke:
+    pages = 71
+    internal links = 150
+    extracted references = 162
+    unresolved local references = 0
+    desktop canvas = 802 x 544, non-empty
+    mobile canvas = 324 x 480, non-empty
+
+生产 smoke 页面：
+
+    /docs
+    /docs/map
+    /docs/developers/overview
+    /docs/agents/overview
+    /docs/chronicle/overview
+    /docs/integrations/slack-bridge
+    /docs/troubleshooting
+
+以上页面 browser page errors 均为空。
+
 ## Validation and Acceptance
 
 验收需要逐项证明，而不是只凭文件数量判断。
@@ -150,6 +191,14 @@ Fumadocs 是一个基于文件系统内容集合生成文档路由、侧栏树�
     documentations/content/docs/developers/plugins/desktop-api.mdx
     documentations/content/docs/developers/plugins/browser-use.mdx
     documentations/content/docs/developers/plugins/system-info.mdx
+    documentations/lib/docs-graph.ts
+    documentations/components/graph-view.tsx
+    documentations/components/docs-link-graph.tsx
+    documentations/content/docs/map.mdx
+    docs/multi-work/linear-documentation/20260521-fumadocs-polish-capabilities-ExplorationK.md
+    docs/multi-work/linear-documentation/20260521-fumadocs-polish-review-ReviewL.md
+    docs/multi-work/linear-documentation/20260521-fumadocs-link-graph-review-M.md
+    docs/multi-work/linear-documentation/20260521-fumadocs-polish-fixes-FixM.md
 
 Validation transcripts:
 
@@ -184,3 +233,5 @@ Validation transcripts:
 Revision note: 2026-05-20 创建计划，原因是用户要求使用 `$multi-work` 深度研究 Linear 与 Fumadocs，并把 Cradle 文档完整写入 `documentations/`。
 
 Revision note: 2026-05-20 18:52Z 更新计划，记录已完成的研究、实现、审查失败、修复、验证命令和剩余复审/smoke check，原因是 ExecPlan 需要作为当前状态的权威证据。
+
+Revision note: 2026-05-21 04:11+08:00 更新计划，记录用户追加要求后的 Fumadocs polish 修复、真实 extracted-reference graph、生产 smoke 证据和 `ReviewN` PASS。
