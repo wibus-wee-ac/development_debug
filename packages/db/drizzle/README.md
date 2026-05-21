@@ -15,4 +15,8 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0021_violet_stephen_strange.sql**: 增量 migration，为 Kanban issue/comment provenance 和 issue-agent session agent identity 增加字段与索引
 - **0023_outstanding_diamondback.sql**: Drizzle Kit 生成的 Chronicle 增量 migration，新增 snapshot、memory、model resource 与 event 表
 - **0024_wooden_nightcrawler.sql**: Drizzle Kit 生成的 Chronicle Slack 增量 migration，新增 message source 与 message 表
+- **0030_dazzling_blackheart.sql**: Drizzle Kit 生成的 Chronicle activity pipeline migration，新增 activity session、activity segment 与 pipeline run 表
+- **0031_shallow_captain_midlands.sql**: Drizzle Kit 生成的 Chronicle knowledge/dream foundation migration，新增 knowledge card/version/file 与 dream run 表
+- **0032_powerful_talos.sql**: Drizzle Kit 生成的 Chronicle normalized source/candidate migration，新增 knowledge source link 与 dream candidate 表
+- **0033_next_vector.sql**: Drizzle Kit 生成的 Chronicle stable knowledge key migration，新增 `stable_key` 与索引
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败
