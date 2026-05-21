@@ -2,12 +2,19 @@
 
 #[cfg(target_os = "macos")]
 mod native {
+    use std::collections::HashSet;
     use std::collections::VecDeque;
-    use std::ffi::c_void;
+    use std::ffi::{c_uchar, c_void};
     use std::ptr;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TryRecvError, TrySendError};
+    use std::thread;
+    use std::time::Duration;
 
-    use core_foundation::base::{CFRelease, CFTypeRef, TCFType};
-    use core_foundation::string::CFString;
+    use core_foundation::array::{CFArray, CFArrayGetTypeID};
+    use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeID, CFTypeRef, TCFType};
+    use core_foundation::string::{CFString, CFStringGetTypeID, CFStringRef};
     use core_graphics::display::CGDisplay;
     use core_graphics::image::CGImage;
     use core_graphics::window::{
@@ -24,7 +31,10 @@ mod native {
 
     use crate::error::{ChronicleError, ChronicleResult};
     use crate::screen::privacy_filter::PrivacyFilter;
-    use crate::screen::{BrowserWindowObservation, CaptureSource, CapturedFrame};
+    use crate::screen::{
+        AccessibilityCapture, AccessibilityCaptureStatus, AccessibilityElementObservation,
+        BrowserWindowObservation, CaptureSource, CapturedFrame,
+    };
     use crate::time::Timestamp;
 
     pub struct MacosCaptureSource {
@@ -42,6 +52,43 @@ mod native {
         }
 
         fn capture_displays(display_ids: &[u32], frame_index: u64) -> ChronicleResult<Self> {
+            let windows = read_window_inventory()?;
+            if PrivacyFilter.should_exclude_windows(&windows) {
+                return Ok(Self {
+                    frames: VecDeque::new(),
+                });
+            }
+            if display_ids.is_empty() {
+                return Err(ChronicleError::Process(
+                    "macOS active display list is empty".to_string(),
+                ));
+            }
+
+            let accessibility = read_accessibility_capture(&windows);
+            Self::capture_displays_with_accessibility(display_ids, frame_index, accessibility)
+        }
+
+        pub fn capture_all_with_accessibility(
+            frame_index: u64,
+            accessibility: AccessibilityCapture,
+        ) -> ChronicleResult<Self> {
+            let display_ids = active_display_ids()?;
+            Self::capture_displays_with_accessibility(&display_ids, frame_index, accessibility)
+        }
+
+        pub fn capture_with_accessibility(
+            display_id: u32,
+            frame_index: u64,
+            accessibility: AccessibilityCapture,
+        ) -> ChronicleResult<Self> {
+            Self::capture_displays_with_accessibility(&[display_id], frame_index, accessibility)
+        }
+
+        fn capture_displays_with_accessibility(
+            display_ids: &[u32],
+            frame_index: u64,
+            accessibility: AccessibilityCapture,
+        ) -> ChronicleResult<Self> {
             let windows = read_window_inventory()?;
             if PrivacyFilter.should_exclude_windows(&windows) {
                 return Ok(Self {
@@ -73,12 +120,619 @@ mod native {
                     bytes,
                     frame_extension: "png".to_string(),
                     observed_text,
+                    accessibility: accessibility.clone(),
                     windows: windows.clone(),
                 });
             }
 
             Ok(Self { frames })
         }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct AxObserverNotification {
+        pub pid: i32,
+        pub app_bundle_identifier: String,
+        pub notification: String,
+        pub dropped_before: u64,
+    }
+
+    enum AxObserverCommand {
+        Stop,
+    }
+
+    pub struct AxObserverRuntime {
+        command_tx: Sender<AxObserverCommand>,
+        event_rx: Receiver<AxObserverNotification>,
+        dropped_count: Arc<AtomicU64>,
+        target_pid: i32,
+        target_bundle_identifier: String,
+        worker: Option<thread::JoinHandle<()>>,
+    }
+
+    impl AxObserverRuntime {
+        pub fn start_for_frontmost_app() -> ChronicleResult<Self> {
+            if !accessibility_trusted() {
+                return Err(ChronicleError::Process(
+                    "Accessibility permission is required for AXObserver".to_string(),
+                ));
+            }
+            let app = frontmost_application().ok_or_else(|| {
+                ChronicleError::Process("frontmost macOS application is unavailable".to_string())
+            })?;
+            Self::start(app)
+        }
+
+        pub fn drain(&self, limit: usize) -> Vec<AxObserverNotification> {
+            let mut events = Vec::new();
+            let mut seen = HashSet::new();
+            let scan_limit = AX_OBSERVER_DRAIN_SCAN_LIMIT.max(limit);
+            for _ in 0..scan_limit {
+                match self.event_rx.try_recv() {
+                    Ok(event) => {
+                        let key = format!(
+                            "{}:{}:{}",
+                            event.pid, event.app_bundle_identifier, event.notification
+                        );
+                        if events.len() < limit && seen.insert(key) {
+                            events.push(event);
+                        }
+                    }
+                    Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+                }
+            }
+            events
+        }
+
+        fn start(app: FrontmostApplication) -> ChronicleResult<Self> {
+            let (command_tx, command_rx) = mpsc::channel();
+            let (event_tx, event_rx) = mpsc::sync_channel(AX_OBSERVER_EVENT_QUEUE_LIMIT);
+            let (ready_tx, ready_rx) = mpsc::channel();
+            let dropped_count = Arc::new(AtomicU64::new(0));
+            let worker_dropped_count = Arc::clone(&dropped_count);
+            let target_pid = app.pid;
+            let target_bundle_identifier = app.bundle_identifier.clone();
+            let worker = thread::spawn(move || {
+                run_ax_observer_worker(app, command_rx, event_tx, worker_dropped_count, ready_tx);
+            });
+
+            match ready_rx.recv_timeout(Duration::from_secs(2)) {
+                Ok(Ok(())) => Ok(Self {
+                    command_tx,
+                    event_rx,
+                    dropped_count,
+                    target_pid,
+                    target_bundle_identifier,
+                    worker: Some(worker),
+                }),
+                Ok(Err(error)) => {
+                    let _ = worker.join();
+                    Err(error)
+                }
+                Err(_) => {
+                    let _ = command_tx.send(AxObserverCommand::Stop);
+                    Err(ChronicleError::Process(format!(
+                        "AXObserver startup timed out for pid {target_pid}"
+                    )))
+                }
+            }
+        }
+
+        pub fn target_pid(&self) -> i32 {
+            self.target_pid
+        }
+
+        pub fn target_bundle_identifier(&self) -> &str {
+            &self.target_bundle_identifier
+        }
+
+        pub fn frontmost_target_changed(&self) -> bool {
+            frontmost_application().is_none_or(|app| {
+                app.pid != self.target_pid || app.bundle_identifier != self.target_bundle_identifier
+            })
+        }
+
+        pub fn dropped_count(&self) -> u64 {
+            self.dropped_count.load(Ordering::Relaxed)
+        }
+    }
+
+    impl Drop for AxObserverRuntime {
+        fn drop(&mut self) {
+            let _ = self.command_tx.send(AxObserverCommand::Stop);
+            if let Some(worker) = self.worker.take() {
+                let _ = worker.join();
+            }
+        }
+    }
+
+    pub fn read_ax_observer_accessibility_capture(
+        event: &AxObserverNotification,
+    ) -> AccessibilityCapture {
+        match read_window_inventory() {
+            Ok(windows) if PrivacyFilter.should_exclude_windows(&windows) => {
+                return AccessibilityCapture::from_elements(
+                    "macos-ax-observer",
+                    AccessibilityCaptureStatus::Unavailable,
+                    vec![AccessibilityElementObservation {
+                        role: "AXObserverPrivacyFilter".to_string(),
+                        label: "redacted-private-window".to_string(),
+                        value: Some(event.notification.clone()),
+                        app_bundle_identifier: event.app_bundle_identifier.clone(),
+                        window_id: None,
+                        depth: 0,
+                        path: "macos-ax-observer:privacy-filter".to_string(),
+                    }],
+                );
+            }
+            Ok(_) => {}
+            Err(_) => {
+                return AccessibilityCapture::unavailable("macos-ax-observer");
+            }
+        }
+
+        let mut capture = match read_application_ax_tree(
+            FrontmostApplication {
+                pid: event.pid,
+                bundle_identifier: event.app_bundle_identifier.clone(),
+            },
+            "macos-ax-observer",
+            Some(&event.notification),
+        ) {
+            Ok(elements) if !elements.is_empty() => AccessibilityCapture::from_elements(
+                "macos-ax-observer",
+                AccessibilityCaptureStatus::Ready,
+                elements,
+            ),
+            _ => AccessibilityCapture::unavailable("macos-ax-observer"),
+        };
+        if event.dropped_before > 0 {
+            capture.elements.push(AccessibilityElementObservation {
+                role: "AXObserverBackpressure".to_string(),
+                label: "dropped-events-before-this-capture".to_string(),
+                value: Some(event.dropped_before.to_string()),
+                app_bundle_identifier: event.app_bundle_identifier.clone(),
+                window_id: None,
+                depth: 0,
+                path: "macos-ax-observer:backpressure".to_string(),
+            });
+        }
+        capture
+    }
+
+    fn run_ax_observer_worker(
+        app: FrontmostApplication,
+        command_rx: Receiver<AxObserverCommand>,
+        event_tx: SyncSender<AxObserverNotification>,
+        dropped_count: Arc<AtomicU64>,
+        ready_tx: Sender<ChronicleResult<()>>,
+    ) {
+        #[link(name = "ApplicationServices", kind = "framework")]
+        unsafe extern "C" {
+            fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
+            fn AXObserverCreate(
+                application: i32,
+                callback: extern "C" fn(AXObserverRef, AXUIElementRef, CFStringRef, *mut c_void),
+                out_observer: *mut AXObserverRef,
+            ) -> i32;
+            fn AXObserverAddNotification(
+                observer: AXObserverRef,
+                element: AXUIElementRef,
+                notification: CFStringRef,
+                refcon: *mut c_void,
+            ) -> i32;
+            fn AXObserverGetRunLoopSource(observer: AXObserverRef) -> CFTypeRef;
+            fn CFRunLoopAddSource(rl: CFTypeRef, source: CFTypeRef, mode: CFStringRef);
+            fn CFRunLoopGetCurrent() -> CFTypeRef;
+            fn CFRunLoopRunInMode(
+                mode: CFStringRef,
+                seconds: f64,
+                return_after_source: bool,
+            ) -> i32;
+            static kCFRunLoopDefaultMode: CFStringRef;
+        }
+
+        let app_element = unsafe { AXUIElementCreateApplication(app.pid) };
+        if app_element.is_null() {
+            let _ = ready_tx.send(Err(ChronicleError::Process(format!(
+                "AXUIElementCreateApplication returned null for pid {}",
+                app.pid
+            ))));
+            return;
+        }
+
+        let mut observer: AXObserverRef = ptr::null();
+        let create_result =
+            unsafe { AXObserverCreate(app.pid, ax_observer_callback, &mut observer) };
+        if create_result != AX_SUCCESS || observer.is_null() {
+            unsafe { CFRelease(app_element as CFTypeRef) };
+            let _ = ready_tx.send(Err(ChronicleError::Process(format!(
+                "AXObserverCreate failed for pid {} with code {}",
+                app.pid, create_result
+            ))));
+            return;
+        }
+
+        let refcon = Box::into_raw(Box::new(AxObserverCallbackState {
+            pid: app.pid,
+            app_bundle_identifier: app.bundle_identifier.clone(),
+            event_tx,
+            dropped_count,
+        })) as *mut c_void;
+
+        let mut subscribed = Vec::new();
+        let mut failed = Vec::new();
+        for notification in AX_OBSERVER_NOTIFICATIONS {
+            let notification_string = CFString::new(notification);
+            let result = unsafe {
+                AXObserverAddNotification(
+                    observer,
+                    app_element,
+                    notification_string.as_concrete_TypeRef(),
+                    refcon,
+                )
+            };
+            if result == AX_SUCCESS {
+                subscribed.push(*notification);
+            } else {
+                failed.push(format!("{notification}:{result}"));
+            }
+        }
+        if subscribed.is_empty() {
+            unsafe {
+                drop(Box::from_raw(refcon as *mut AxObserverCallbackState));
+                CFRelease(observer as CFTypeRef);
+                CFRelease(app_element as CFTypeRef);
+            }
+            let _ = ready_tx.send(Err(ChronicleError::Process(format!(
+                "AXObserverAddNotification failed for pid {}: {}",
+                app.pid,
+                failed.join(", ")
+            ))));
+            return;
+        }
+
+        unsafe {
+            let source = AXObserverGetRunLoopSource(observer);
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopDefaultMode);
+        }
+        let _ = ready_tx.send(Ok(()));
+
+        loop {
+            match command_rx.try_recv() {
+                Ok(AxObserverCommand::Stop) | Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Empty) => {}
+            }
+            unsafe {
+                let _ = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.25, true);
+            }
+        }
+
+        unsafe {
+            drop(Box::from_raw(refcon as *mut AxObserverCallbackState));
+            CFRelease(observer as CFTypeRef);
+            CFRelease(app_element as CFTypeRef);
+        }
+    }
+
+    type AXObserverRef = *const c_void;
+
+    const AX_OBSERVER_EVENT_QUEUE_LIMIT: usize = 256;
+    const AX_OBSERVER_DRAIN_SCAN_LIMIT: usize = 64;
+
+    const AX_OBSERVER_NOTIFICATIONS: &[&str] = &[
+        "AXFocusedUIElementChanged",
+        "AXFocusedWindowChanged",
+        "AXWindowCreated",
+        "AXValueChanged",
+        "AXSelectedTextChanged",
+        "AXTitleChanged",
+    ];
+
+    struct AxObserverCallbackState {
+        pid: i32,
+        app_bundle_identifier: String,
+        event_tx: SyncSender<AxObserverNotification>,
+        dropped_count: Arc<AtomicU64>,
+    }
+
+    extern "C" fn ax_observer_callback(
+        _observer: AXObserverRef,
+        _element: AXUIElementRef,
+        notification: CFStringRef,
+        refcon: *mut c_void,
+    ) {
+        if refcon.is_null() || notification.is_null() {
+            return;
+        }
+        let state = unsafe { &*(refcon as *const AxObserverCallbackState) };
+        let notification = unsafe { CFString::wrap_under_get_rule(notification).to_string() };
+        let event = AxObserverNotification {
+            pid: state.pid,
+            app_bundle_identifier: state.app_bundle_identifier.clone(),
+            notification,
+            dropped_before: state.dropped_count.load(Ordering::Relaxed),
+        };
+        match state.event_tx.try_send(event) {
+            Ok(()) => {}
+            Err(TrySendError::Full(_)) => {
+                state.dropped_count.fetch_add(1, Ordering::Relaxed);
+            }
+            Err(TrySendError::Disconnected(_)) => {}
+        }
+    }
+
+    fn read_accessibility_capture(windows: &[BrowserWindowObservation]) -> AccessibilityCapture {
+        if !accessibility_trusted() {
+            return AccessibilityCapture::from_windows(
+                windows,
+                AccessibilityCaptureStatus::PermissionDenied,
+            );
+        }
+
+        match read_frontmost_ax_tree() {
+            Ok(elements) if !elements.is_empty() => AccessibilityCapture::from_elements(
+                "macos-ax-tree-poll",
+                AccessibilityCaptureStatus::Ready,
+                elements,
+            ),
+            _ => AccessibilityCapture::from_windows(windows, AccessibilityCaptureStatus::Ready),
+        }
+    }
+
+    fn accessibility_trusted() -> bool {
+        #[link(name = "ApplicationServices", kind = "framework")]
+        unsafe extern "C" {
+            fn AXIsProcessTrusted() -> c_uchar;
+        }
+
+        unsafe { AXIsProcessTrusted() != 0 }
+    }
+
+    const AX_MAX_DEPTH: usize = 6;
+    const AX_MAX_ELEMENTS: usize = 256;
+    const AX_SUCCESS: i32 = 0;
+
+    type AXUIElementRef = *const c_void;
+
+    #[derive(Debug, Clone)]
+    struct FrontmostApplication {
+        pid: i32,
+        bundle_identifier: String,
+    }
+
+    struct AxTreeCollectContext<'a> {
+        bundle_identifier: &'a str,
+        window_id: Option<u32>,
+        visited: HashSet<usize>,
+        elements: Vec<AccessibilityElementObservation>,
+    }
+
+    fn read_frontmost_ax_tree() -> ChronicleResult<Vec<AccessibilityElementObservation>> {
+        let app = frontmost_application().ok_or_else(|| {
+            ChronicleError::Process("frontmost macOS application is unavailable".to_string())
+        })?;
+        read_application_ax_tree(app, "macos-ax-tree-poll", None)
+    }
+
+    fn read_application_ax_tree(
+        app: FrontmostApplication,
+        provider: &str,
+        notification: Option<&str>,
+    ) -> ChronicleResult<Vec<AccessibilityElementObservation>> {
+        #[link(name = "ApplicationServices", kind = "framework")]
+        unsafe extern "C" {
+            fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
+        }
+
+        let app_element = unsafe { AXUIElementCreateApplication(app.pid) };
+        if app_element.is_null() {
+            return Err(ChronicleError::Process(format!(
+                "AXUIElementCreateApplication returned null for pid {}",
+                app.pid
+            )));
+        }
+
+        let root = ax_attribute_element(app_element, "AXFocusedWindow")
+            .or_else(|| ax_attribute_element(app_element, "AXMainWindow"))
+            .or_else(|| ax_attribute_element(app_element, "AXFocusedUIElement"));
+
+        let root_element = root.unwrap_or(app_element);
+        let mut context = AxTreeCollectContext {
+            bundle_identifier: &app.bundle_identifier,
+            window_id: None,
+            visited: HashSet::new(),
+            elements: Vec::new(),
+        };
+        if let Some(notification) = notification {
+            context.elements.push(AccessibilityElementObservation {
+                role: "AXObserverNotification".to_string(),
+                label: notification.to_string(),
+                value: Some(format!("pid:{}", app.pid)),
+                app_bundle_identifier: app.bundle_identifier.clone(),
+                window_id: None,
+                depth: 0,
+                path: format!("{provider}:notification"),
+            });
+        }
+        collect_ax_element(root_element, 0, "root".to_string(), &mut context);
+
+        if root_element != app_element {
+            unsafe { CFRelease(root_element as CFTypeRef) };
+        }
+        unsafe { CFRelease(app_element as CFTypeRef) };
+
+        Ok(context.elements)
+    }
+
+    fn collect_ax_element(
+        element: AXUIElementRef,
+        depth: usize,
+        path: String,
+        context: &mut AxTreeCollectContext<'_>,
+    ) {
+        if element.is_null() || depth > AX_MAX_DEPTH || context.elements.len() >= AX_MAX_ELEMENTS {
+            return;
+        }
+        let identity = element as usize;
+        if !context.visited.insert(identity) {
+            return;
+        }
+
+        let role =
+            ax_attribute_string(element, "AXRole").unwrap_or_else(|| "AXElement".to_string());
+        let label = ax_attribute_string(element, "AXTitle")
+            .or_else(|| ax_attribute_string(element, "AXDescription"))
+            .or_else(|| ax_attribute_string(element, "AXHelp"))
+            .or_else(|| ax_attribute_string(element, "AXIdentifier"))
+            .unwrap_or_default();
+        let value = ax_attribute_string(element, "AXValue");
+
+        if depth <= 1 || !label.is_empty() || value.as_deref().is_some_and(|item| !item.is_empty())
+        {
+            context.elements.push(AccessibilityElementObservation {
+                role,
+                label,
+                value,
+                app_bundle_identifier: context.bundle_identifier.to_string(),
+                window_id: context.window_id,
+                depth,
+                path: path.clone(),
+            });
+        }
+
+        if depth < AX_MAX_DEPTH {
+            for attribute in ["AXChildren", "AXContents"] {
+                collect_ax_child_array(element, attribute, depth, &path, context);
+                if context.elements.len() >= AX_MAX_ELEMENTS {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn collect_ax_child_array(
+        element: AXUIElementRef,
+        attribute: &str,
+        depth: usize,
+        path: &str,
+        context: &mut AxTreeCollectContext<'_>,
+    ) {
+        let Some(value) = ax_copy_attribute(element, attribute) else {
+            return;
+        };
+
+        unsafe {
+            if CFGetTypeID(value) != CFArrayGetTypeID() {
+                CFRelease(value);
+                return;
+            }
+
+            let children: CFArray = CFArray::wrap_under_create_rule(value as *const _);
+            let ax_type = ax_ui_element_type_id();
+            for (index, child) in children.get_all_values().iter().enumerate() {
+                let child_element = *child as AXUIElementRef;
+                if child_element.is_null() || CFGetTypeID(child_element as CFTypeRef) != ax_type {
+                    continue;
+                }
+                collect_ax_element(
+                    child_element,
+                    depth + 1,
+                    format!("{path}/{attribute}:{index}"),
+                    context,
+                );
+                if context.elements.len() >= AX_MAX_ELEMENTS {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn ax_attribute_string(element: AXUIElementRef, attribute: &str) -> Option<String> {
+        let value = ax_copy_attribute(element, attribute)?;
+        unsafe {
+            if CFGetTypeID(value) != CFStringGetTypeID() {
+                CFRelease(value);
+                return None;
+            }
+            let string = CFString::wrap_under_create_rule(value as CFStringRef);
+            let text = string.to_string();
+            if text.is_empty() { None } else { Some(text) }
+        }
+    }
+
+    fn ax_attribute_element(element: AXUIElementRef, attribute: &str) -> Option<AXUIElementRef> {
+        let value = ax_copy_attribute(element, attribute)?;
+        unsafe {
+            if CFGetTypeID(value) != ax_ui_element_type_id() {
+                CFRelease(value);
+                None
+            } else {
+                Some(value as AXUIElementRef)
+            }
+        }
+    }
+
+    fn ax_copy_attribute(element: AXUIElementRef, attribute: &str) -> Option<CFTypeRef> {
+        #[link(name = "ApplicationServices", kind = "framework")]
+        unsafe extern "C" {
+            fn AXUIElementCopyAttributeValue(
+                element: AXUIElementRef,
+                attribute: CFStringRef,
+                value: *mut CFTypeRef,
+            ) -> i32;
+        }
+
+        let attribute = CFString::new(attribute);
+        let mut value: CFTypeRef = ptr::null();
+        let result = unsafe {
+            AXUIElementCopyAttributeValue(element, attribute.as_concrete_TypeRef(), &mut value)
+        };
+        if result == AX_SUCCESS && !value.is_null() {
+            Some(value)
+        } else {
+            if !value.is_null() {
+                unsafe { CFRelease(value) };
+            }
+            None
+        }
+    }
+
+    fn ax_ui_element_type_id() -> CFTypeID {
+        #[link(name = "ApplicationServices", kind = "framework")]
+        unsafe extern "C" {
+            fn AXUIElementGetTypeID() -> CFTypeID;
+        }
+
+        unsafe { AXUIElementGetTypeID() }
+    }
+
+    fn frontmost_application() -> Option<FrontmostApplication> {
+        use objc2::msg_send;
+        use objc2::rc::autoreleasepool;
+        use objc2::runtime::AnyObject;
+
+        autoreleasepool(|_| unsafe {
+            let cls = objc2::runtime::AnyClass::get(c"NSWorkspace")?;
+            let workspace: *mut AnyObject = msg_send![cls, sharedWorkspace];
+            if workspace.is_null() {
+                return None;
+            }
+            let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
+            if app.is_null() {
+                return None;
+            }
+            let pid: i32 = msg_send![app, processIdentifier];
+            let bundle_id: *mut AnyObject = msg_send![app, bundleIdentifier];
+            let localized_name: *mut AnyObject = msg_send![app, localizedName];
+            let bundle_identifier = ns_string_to_string(bundle_id)
+                .or_else(|| ns_string_to_string(localized_name))
+                .unwrap_or_else(|| format!("pid:{pid}"));
+            Some(FrontmostApplication {
+                pid,
+                bundle_identifier,
+            })
+        })
     }
 
     impl CaptureSource for MacosCaptureSource {
@@ -295,6 +949,22 @@ mod native {
         })
     }
 
+    fn ns_string_to_string(value: *mut objc2::runtime::AnyObject) -> Option<String> {
+        if value.is_null() {
+            return None;
+        }
+        unsafe {
+            let utf8: *const u8 = objc2::msg_send![value, UTF8String];
+            if utf8.is_null() {
+                return None;
+            }
+            std::ffi::CStr::from_ptr(utf8 as *const _)
+                .to_str()
+                .ok()
+                .map(ToOwned::to_owned)
+        }
+    }
+
     // --- Vision OCR via objc2 ---
 
     fn run_vision_ocr(cg_image: &CGImage) -> ChronicleResult<String> {
@@ -465,7 +1135,10 @@ mod native {
 }
 
 #[cfg(target_os = "macos")]
-pub use native::MacosCaptureSource;
+pub use native::{
+    AxObserverNotification, AxObserverRuntime, MacosCaptureSource,
+    read_ax_observer_accessibility_capture,
+};
 
 #[cfg(not(target_os = "macos"))]
 mod stub {

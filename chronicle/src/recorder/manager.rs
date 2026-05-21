@@ -79,7 +79,9 @@ mod tests {
     use crate::ocr::ObservedTextExtractor;
     use crate::recorder::artifacts::ArtifactStore;
     use crate::screen::synthetic::SyntheticCaptureSource;
-    use crate::screen::{BrowserWindowObservation, CapturedFrame};
+    use crate::screen::{
+        AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation, CapturedFrame,
+    };
     use crate::time::Timestamp;
 
     use super::RecorderManager;
@@ -192,6 +194,7 @@ mod tests {
         text: &str,
         window: BrowserWindowObservation,
     ) -> CapturedFrame {
+        let windows = vec![window];
         CapturedFrame {
             display_id,
             frame_index: index,
@@ -199,7 +202,11 @@ mod tests {
             bytes: text.as_bytes().to_vec(),
             frame_extension: "jpg".to_string(),
             observed_text: text.to_string(),
-            windows: vec![window],
+            accessibility: AccessibilityCapture::from_windows(
+                &windows,
+                AccessibilityCaptureStatus::Ready,
+            ),
+            windows,
         }
     }
 }

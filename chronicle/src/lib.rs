@@ -2,6 +2,7 @@
 //!
 //! LLM providers plug into traits instead of owning the storage contract.
 
+pub mod audio;
 #[allow(dead_code)]
 pub(crate) mod codex_exec;
 pub mod config;
@@ -14,6 +15,7 @@ pub mod ocr;
 pub mod recorder;
 pub mod screen;
 pub mod time;
+pub mod transcript_inbox;
 
 pub use config::ChronicleConfig;
 pub use error::{ChronicleError, ChronicleResult};

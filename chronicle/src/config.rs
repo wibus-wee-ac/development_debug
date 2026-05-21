@@ -23,7 +23,7 @@ impl CaptureProvider {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChronicleConfig {
     pub storage_root: PathBuf,
     pub inbox_root: PathBuf,
@@ -37,6 +37,13 @@ pub struct ChronicleConfig {
     pub smoke: bool,
     pub daemon: bool,
     pub run_once: bool,
+    pub audio_diagnostics: bool,
+    pub audio_capture: bool,
+    pub audio_duration_ms: u64,
+    pub audio_segment_ms: u64,
+    pub audio_segment_interval_ms: u64,
+    pub audio_rms_threshold: f32,
+    pub ax_observer: bool,
 }
 
 impl ChronicleConfig {
@@ -80,6 +87,13 @@ impl ChronicleConfig {
         let mut smoke = false;
         let mut daemon = false;
         let mut run_once = false;
+        let mut audio_diagnostics = false;
+        let mut audio_capture = env_flag("CRADLE_CHRONICLE_AUDIO_CAPTURE");
+        let mut audio_duration_ms = 1_000;
+        let mut audio_segment_ms = 5_000;
+        let mut audio_segment_interval_ms = 60_000;
+        let mut audio_rms_threshold = 0.02;
+        let mut ax_observer = !env_flag("CRADLE_CHRONICLE_NO_AX_OBSERVER");
 
         let mut iterator = args.into_iter().map(Into::into).peekable();
         while let Some(arg) = iterator.next() {
@@ -87,6 +101,16 @@ impl ChronicleConfig {
                 smoke = true;
             } else if arg == "--daemon" {
                 daemon = true;
+            } else if arg == "--audio-diagnostics" {
+                audio_diagnostics = true;
+            } else if arg == "--audio-capture" {
+                audio_capture = true;
+            } else if arg == "--no-audio-capture" {
+                audio_capture = false;
+            } else if arg == "--ax-observer" {
+                ax_observer = true;
+            } else if arg == "--no-ax-observer" {
+                ax_observer = false;
             } else if arg == "--run-once" {
                 run_once = true;
             } else if let Some(value) = arg.strip_prefix("--storage-root=") {
@@ -162,6 +186,42 @@ impl ChronicleConfig {
                     )
                 })?;
                 max_interval_ms = parse_u64("--max-interval-ms", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--audio-duration-ms=") {
+                audio_duration_ms = parse_u64("--audio-duration-ms", value)?;
+            } else if arg == "--audio-duration-ms" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--audio-duration-ms requires a value".to_string(),
+                    )
+                })?;
+                audio_duration_ms = parse_u64("--audio-duration-ms", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--audio-segment-ms=") {
+                audio_segment_ms = parse_u64("--audio-segment-ms", value)?;
+            } else if arg == "--audio-segment-ms" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--audio-segment-ms requires a value".to_string(),
+                    )
+                })?;
+                audio_segment_ms = parse_u64("--audio-segment-ms", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--audio-segment-interval-ms=") {
+                audio_segment_interval_ms = parse_u64("--audio-segment-interval-ms", value)?;
+            } else if arg == "--audio-segment-interval-ms" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--audio-segment-interval-ms requires a value".to_string(),
+                    )
+                })?;
+                audio_segment_interval_ms = parse_u64("--audio-segment-interval-ms", &value)?;
+            } else if let Some(value) = arg.strip_prefix("--audio-rms-threshold=") {
+                audio_rms_threshold = parse_f32("--audio-rms-threshold", value)?;
+            } else if arg == "--audio-rms-threshold" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--audio-rms-threshold requires a value".to_string(),
+                    )
+                })?;
+                audio_rms_threshold = parse_f32("--audio-rms-threshold", &value)?;
             } else if arg == "--help" || arg == "-h" {
                 return Err(ChronicleError::InvalidArgument(usage()));
             } else {
@@ -191,12 +251,32 @@ impl ChronicleConfig {
             smoke,
             daemon,
             run_once,
+            audio_diagnostics,
+            audio_capture,
+            audio_duration_ms,
+            audio_segment_ms,
+            audio_segment_interval_ms,
+            audio_rms_threshold,
+            ax_observer,
         })
     }
 }
 
 pub fn usage() -> String {
-    "usage: cradle-chronicle (--smoke | --daemon) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--run-once]".to_string()
+    "usage: cradle-chronicle (--smoke | --daemon | --audio-diagnostics) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--audio-capture] [--no-audio-capture] [--ax-observer] [--no-ax-observer] [--audio-duration-ms <ms>] [--audio-segment-ms <ms>] [--audio-segment-interval-ms <ms>] [--audio-rms-threshold <value>] [--run-once]".to_string()
+}
+
+fn env_flag(name: &str) -> bool {
+    matches!(
+        env::var(name).ok().as_deref(),
+        Some("1")
+            | Some("true")
+            | Some("TRUE")
+            | Some("yes")
+            | Some("YES")
+            | Some("on")
+            | Some("ON")
+    )
 }
 
 fn parse_u32(name: &str, value: &str) -> ChronicleResult<u32> {
@@ -215,6 +295,19 @@ fn parse_u64(name: &str, value: &str) -> ChronicleResult<u64> {
     value
         .parse::<u64>()
         .map_err(|_| ChronicleError::InvalidArgument(format!("{name} must be an unsigned integer")))
+}
+
+fn parse_f32(name: &str, value: &str) -> ChronicleResult<f32> {
+    let parsed = value
+        .parse::<f32>()
+        .map_err(|_| ChronicleError::InvalidArgument(format!("{name} must be a number")))?;
+    if parsed.is_finite() && parsed >= 0.0 {
+        Ok(parsed)
+    } else {
+        Err(ChronicleError::InvalidArgument(format!(
+            "{name} must be a finite non-negative number"
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -264,6 +357,9 @@ mod tests {
 
         assert!(config.daemon);
         assert!(config.run_once);
+        assert!(!config.audio_diagnostics);
+        assert!(!config.audio_capture);
+        assert!(config.ax_observer);
         assert_eq!(config.inbox_root, PathBuf::from("/tmp/cradle-inbox"));
         assert_eq!(config.provider, CaptureProvider::Inbox);
         assert_eq!(config.poll_interval_ms, 25);
@@ -281,5 +377,49 @@ mod tests {
     fn rejects_zero_capture_limit() {
         let error = ChronicleConfig::from_args(["--capture-limit=0"]).unwrap_err();
         assert!(error.to_string().contains("greater than zero"));
+    }
+
+    #[test]
+    fn parses_audio_diagnostics_options() {
+        let config = ChronicleConfig::from_args([
+            "--audio-diagnostics",
+            "--audio-duration-ms",
+            "250",
+            "--audio-rms-threshold=0.05",
+        ])
+        .expect("config should parse");
+
+        assert!(config.audio_diagnostics);
+        assert_eq!(config.audio_duration_ms, 250);
+        assert_eq!(config.audio_rms_threshold, 0.05);
+    }
+
+    #[test]
+    fn parses_audio_capture_options() {
+        let config = ChronicleConfig::from_args([
+            "--daemon",
+            "--audio-capture",
+            "--no-ax-observer",
+            "--audio-segment-ms=750",
+            "--audio-segment-interval-ms",
+            "1250",
+            "--audio-rms-threshold",
+            "0.03",
+        ])
+        .expect("config should parse");
+
+        assert!(config.audio_capture);
+        assert!(!config.ax_observer);
+        assert_eq!(config.audio_segment_ms, 750);
+        assert_eq!(config.audio_segment_interval_ms, 1250);
+        assert_eq!(config.audio_rms_threshold, 0.03);
+    }
+
+    #[test]
+    fn parses_explicit_ax_observer_option() {
+        let config =
+            ChronicleConfig::from_args(["--daemon", "--ax-observer"]).expect("config should parse");
+
+        assert!(config.ax_observer);
     }
 }

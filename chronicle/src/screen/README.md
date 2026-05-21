@@ -5,7 +5,7 @@
 ## Files
 
 - `mod.rs`: 定义 `CaptureSource`、`CapturedFrame` 与 `BrowserWindowObservation`。
-- `macos.rs`: 使用 macOS CoreGraphics active display capture、CoreGraphics window inventory 与 Vision OCR 获取真实屏幕帧。
+- `macos.rs`: 使用 macOS CoreGraphics active display capture、CoreGraphics window inventory、Vision OCR、AX tree polling 与 AXObserver notification runtime 获取真实屏幕/UI evidence。
 - `inbox.rs`: 从外部进程写入的 inbox manifest 中读取 capture frame。
 - `synthetic.rs`: tests 与 smoke runs 使用的 deterministic synthetic capture source。
 - `privacy_filter.rs`: platform-neutral privacy-sensitive window detection。

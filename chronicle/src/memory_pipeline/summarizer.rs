@@ -118,6 +118,7 @@ mod tests {
 
     use crate::memory_pipeline::naming::MemoryWindow;
     use crate::recorder::artifacts::PersistedFrame;
+    use crate::screen::AccessibilityCapture;
     use crate::time::Timestamp;
 
     use super::{LocalSummaryWriter, SummaryRequest, SummaryWriter};
@@ -141,6 +142,8 @@ mod tests {
                 capture_path: root.join("1/segment/capture.json"),
                 ocr_path: root.join("1/segment/ocr.json"),
                 snapshot_path: root.join("1/segment/snapshot.json"),
+                accessibility_path: root.join("1/segment/accessibility.json"),
+                accessibility: AccessibilityCapture::unavailable("test"),
                 normalized_text: "Cradle Chronicle work".to_string(),
                 captured_at: Timestamp::from_seconds(1_779_125_791),
             }],

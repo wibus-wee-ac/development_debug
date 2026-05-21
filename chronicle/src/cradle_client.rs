@@ -4,7 +4,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::recorder::artifacts::PersistedFrame;
@@ -52,6 +52,21 @@ pub struct ChronicleSnapshotReport {
     pub ocr_path: String,
     pub snapshot_path: String,
     pub ocr_text: String,
+    pub accessibility: ChronicleAccessibilitySnapshotReport,
+}
+
+/// Accessibility/window-tree evidence captured alongside a screen snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleAccessibilitySnapshotReport {
+    pub source_id: String,
+    pub status: String,
+    pub provider: String,
+    pub accessibility_path: String,
+    pub text: String,
+    pub element_count: usize,
+    pub tree: serde_json::Value,
+    pub metadata: serde_json::Value,
 }
 
 impl ChronicleSnapshotReport {
@@ -67,6 +82,35 @@ impl ChronicleSnapshotReport {
             ocr_path: path_string(&frame.ocr_path),
             snapshot_path: path_string(&frame.snapshot_path),
             ocr_text: frame.normalized_text.clone(),
+            accessibility: ChronicleAccessibilitySnapshotReport {
+                source_id: format!("accessibility:{}", snapshot_source_id(frame)),
+                status: frame.accessibility.status.as_str().to_string(),
+                provider: frame.accessibility.provider.clone(),
+                accessibility_path: path_string(&frame.accessibility_path),
+                text: frame.accessibility.text.clone(),
+                element_count: frame.accessibility.elements.len(),
+                tree: serde_json::json!(
+                    frame
+                        .accessibility
+                        .elements
+                        .iter()
+                        .map(|element| {
+                            serde_json::json!({
+                                "role": element.role,
+                                "label": element.label,
+                                "value": element.value,
+                                "appBundleId": element.app_bundle_identifier,
+                                "windowId": element.window_id,
+                                "depth": element.depth,
+                                "path": element.path
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                ),
+                metadata: serde_json::json!({
+                    "artifactPath": path_string(&frame.accessibility_path)
+                }),
+            },
         }
     }
 }
@@ -83,6 +127,294 @@ pub struct ChronicleMemoryReport {
     pub summary_kind: String,
     pub source_snapshot_paths: Vec<String>,
     pub source_frame_paths: Vec<String>,
+}
+
+/// Source of a transcript report.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChronicleAudioTranscriptSource {
+    Asr,
+    Manual,
+    #[default]
+    Imported,
+}
+
+/// Lifecycle status of a transcript report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ChronicleAudioTranscriptStatus {
+    Recording,
+    Completed,
+    Imported,
+    Error,
+}
+
+impl ChronicleAudioTranscriptStatus {
+    fn default_for_source(source: ChronicleAudioTranscriptSource) -> Self {
+        match source {
+            ChronicleAudioTranscriptSource::Asr => Self::Completed,
+            ChronicleAudioTranscriptSource::Manual | ChronicleAudioTranscriptSource::Imported => {
+                Self::Imported
+            }
+        }
+    }
+}
+
+/// Segment confidence bounded to the Server contract range.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct ChronicleTranscriptConfidence(f32);
+
+impl ChronicleTranscriptConfidence {
+    pub fn new(value: f32) -> ChronicleResult<Self> {
+        if value.is_finite() && (0.0..=1.0).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err(ChronicleError::InvalidArgument(format!(
+                "transcript confidence must be between 0 and 1, got {value}"
+            )))
+        }
+    }
+
+    pub fn get(self) -> f32 {
+        self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for ChronicleTranscriptConfidence {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = f32::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+/// One speech/text segment in an externally produced audio transcript.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleAudioTranscriptSegmentReport {
+    pub start_ms: u64,
+    #[serde(default)]
+    pub end_ms: Option<u64>,
+    #[serde(default)]
+    pub speaker_label: Option<String>,
+    pub text: String,
+    #[serde(default)]
+    pub confidence: Option<ChronicleTranscriptConfidence>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default = "empty_json_object")]
+    pub metadata: serde_json::Value,
+}
+
+/// Transcript report sent after transcript evidence has been produced locally.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleAudioTranscriptReport {
+    pub source_id: String,
+    pub title: Option<String>,
+    pub source: ChronicleAudioTranscriptSource,
+    pub status: ChronicleAudioTranscriptStatus,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub language: Option<String>,
+    pub app_bundle_id: Option<String>,
+    pub window_title: Option<String>,
+    pub audio_path: Option<String>,
+    pub transcript_path: Option<String>,
+    pub segments: Vec<ChronicleAudioTranscriptSegmentReport>,
+    pub metadata: serde_json::Value,
+}
+
+/// Raw audio segment evidence written before VAD/ASR/speaker processing.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleAudioRawSegmentReport {
+    pub source_id: String,
+    pub recorded_at: String,
+    pub source: ChronicleAudioRawSegmentSource,
+    pub status: ChronicleAudioRawSegmentStatus,
+    pub audio_path: String,
+    pub metadata_path: String,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub sample_count: usize,
+    pub dropped_samples: usize,
+    pub duration_ms: u64,
+    pub rms: f32,
+    pub peak: f32,
+    pub active: bool,
+    pub vad_implemented: bool,
+    pub asr_implemented: bool,
+    pub speaker_labeling_implemented: bool,
+    pub metadata: serde_json::Value,
+}
+
+/// Origin of a raw audio segment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChronicleAudioRawSegmentSource {
+    Microphone,
+    System,
+    Mixed,
+}
+
+/// Server-side lifecycle state for raw audio segment evidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChronicleAudioRawSegmentStatus {
+    Captured,
+    Queued,
+    Processed,
+    Ignored,
+    Error,
+}
+
+impl ChronicleAudioRawSegmentReport {
+    pub fn validate(&self) -> ChronicleResult<()> {
+        if self.source_id.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment source_id must not be empty".to_string(),
+            ));
+        }
+        if self.recorded_at.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment recorded_at must not be empty".to_string(),
+            ));
+        }
+        if self.audio_path.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment audio_path must not be empty".to_string(),
+            ));
+        }
+        if self.metadata_path.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment metadata_path must not be empty".to_string(),
+            ));
+        }
+        if self.sample_rate == 0 {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment sample_rate must be positive".to_string(),
+            ));
+        }
+        if self.channels == 0 {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment channels must be positive".to_string(),
+            ));
+        }
+        if !self.rms.is_finite() || !(0.0..=1.0).contains(&self.rms) {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment rms must be between 0 and 1".to_string(),
+            ));
+        }
+        if !self.peak.is_finite() || !(0.0..=1.0).contains(&self.peak) {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio segment peak must be between 0 and 1".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for ChronicleAudioTranscriptReport {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawReport {
+            source_id: String,
+            #[serde(default)]
+            title: Option<String>,
+            #[serde(default)]
+            source: Option<ChronicleAudioTranscriptSource>,
+            #[serde(default)]
+            status: Option<ChronicleAudioTranscriptStatus>,
+            started_at: String,
+            #[serde(default)]
+            ended_at: Option<String>,
+            #[serde(default)]
+            language: Option<String>,
+            #[serde(default)]
+            app_bundle_id: Option<String>,
+            #[serde(default)]
+            window_title: Option<String>,
+            #[serde(default)]
+            audio_path: Option<String>,
+            #[serde(default)]
+            transcript_path: Option<String>,
+            segments: Vec<ChronicleAudioTranscriptSegmentReport>,
+            #[serde(default = "empty_json_object")]
+            metadata: serde_json::Value,
+        }
+
+        let raw = RawReport::deserialize(deserializer)?;
+        let source = raw.source.unwrap_or_default();
+        let status = raw
+            .status
+            .unwrap_or_else(|| ChronicleAudioTranscriptStatus::default_for_source(source));
+        Ok(Self {
+            source_id: raw.source_id,
+            title: raw.title,
+            source,
+            status,
+            started_at: raw.started_at,
+            ended_at: raw.ended_at,
+            language: raw.language,
+            app_bundle_id: raw.app_bundle_id,
+            window_title: raw.window_title,
+            audio_path: raw.audio_path,
+            transcript_path: raw.transcript_path,
+            segments: raw.segments,
+            metadata: raw.metadata,
+        })
+    }
+}
+
+impl ChronicleAudioTranscriptReport {
+    pub fn validate(&self) -> ChronicleResult<()> {
+        if self.source_id.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "transcript source_id must not be empty".to_string(),
+            ));
+        }
+        if self.started_at.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "transcript started_at must not be empty".to_string(),
+            ));
+        }
+        for (index, segment) in self.segments.iter().enumerate() {
+            if segment.text.trim().is_empty() {
+                return Err(ChronicleError::InvalidArgument(format!(
+                    "transcript segment {index} text must not be empty"
+                )));
+            }
+            if segment
+                .confidence
+                .is_some_and(|confidence| !confidence.get().is_finite())
+            {
+                return Err(ChronicleError::InvalidArgument(format!(
+                    "transcript segment {index} confidence must be finite"
+                )));
+            }
+            if segment
+                .end_ms
+                .is_some_and(|end_ms| end_ms < segment.start_ms)
+            {
+                return Err(ChronicleError::InvalidArgument(format!(
+                    "transcript segment {index} end_ms must be greater than or equal to start_ms"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+fn empty_json_object() -> serde_json::Value {
+    serde_json::json!({})
 }
 
 impl ChronicleMemoryReport {
@@ -201,6 +533,27 @@ impl CradleClient {
         self.post_json("/chronicle/memories", memory)
     }
 
+    /// Report a persisted audio transcript to Cradle Server.
+    ///
+    /// This is only the transport contract. Real audio capture, VAD, ASR, and
+    /// speaker labeling are separate runtime capabilities.
+    pub fn record_audio_transcript(
+        &self,
+        transcript: &ChronicleAudioTranscriptReport,
+    ) -> ChronicleResult<()> {
+        transcript.validate()?;
+        self.post_json("/chronicle/audio-transcripts", transcript)
+    }
+
+    /// Report raw audio segment evidence to Cradle Server.
+    pub fn record_audio_raw_segment(
+        &self,
+        segment: &ChronicleAudioRawSegmentReport,
+    ) -> ChronicleResult<()> {
+        segment.validate()?;
+        self.post_json("/chronicle/audio-raw-segments", segment)
+    }
+
     /// Check if Cradle Server is reachable.
     pub fn is_available(&self) -> bool {
         self.fetch_config().is_some()
@@ -254,9 +607,18 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::recorder::artifacts::PersistedFrame;
+    use crate::screen::{
+        AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation,
+    };
     use crate::time::Timestamp;
 
-    use super::{ChronicleMemoryReport, ChronicleSnapshotReport, CradleClient};
+    use super::{
+        ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource,
+        ChronicleAudioRawSegmentStatus, ChronicleAudioTranscriptReport,
+        ChronicleAudioTranscriptSegmentReport, ChronicleAudioTranscriptSource,
+        ChronicleAudioTranscriptStatus, ChronicleMemoryReport, ChronicleSnapshotReport,
+        ChronicleTranscriptConfidence, CradleClient,
+    };
 
     #[test]
     fn client_from_env_uses_default() {
@@ -291,6 +653,15 @@ mod tests {
         assert_eq!(json["capturedAt"], "2026-05-18T17-36-31Z");
         assert_eq!(json["ocrText"], "Cradle Chronicle visible text");
         assert_eq!(json["snapshotPath"], "/tmp/segment/snapshot.json");
+        assert_eq!(json["accessibility"]["status"], "ready");
+        assert_eq!(
+            json["accessibility"]["accessibilityPath"],
+            "/tmp/segment/accessibility.json"
+        );
+        assert_eq!(json["accessibility"]["elementCount"], 1);
+        assert_eq!(json["accessibility"]["tree"][0]["label"], "Cradle");
+        assert_eq!(json["accessibility"]["tree"][0]["depth"], 0);
+        assert_eq!(json["accessibility"]["tree"][0]["path"], "window:0");
     }
 
     #[test]
@@ -316,7 +687,182 @@ mod tests {
         assert_eq!(json["sourceFramePaths"][0], "/tmp/segment/frame-00003.jpg");
     }
 
+    #[test]
+    fn audio_transcript_report_serializes_server_contract() {
+        let report = ChronicleAudioTranscriptReport {
+            source_id: "meeting-source-1".to_string(),
+            title: Some("Chronicle planning".to_string()),
+            source: ChronicleAudioTranscriptSource::Imported,
+            status: ChronicleAudioTranscriptStatus::Completed,
+            started_at: "2026-05-21T10:30:00Z".to_string(),
+            ended_at: Some("2026-05-21T10:45:00Z".to_string()),
+            language: Some("en".to_string()),
+            app_bundle_id: Some("us.zoom.xos".to_string()),
+            window_title: Some("Chronicle planning".to_string()),
+            audio_path: None,
+            transcript_path: Some("/tmp/audio-transcripts/meeting-source-1.json".to_string()),
+            segments: vec![ChronicleAudioTranscriptSegmentReport {
+                start_ms: 0,
+                end_ms: Some(2500),
+                speaker_label: Some("Ada".to_string()),
+                text: "AudioTargetAlpha should become searchable.".to_string(),
+                confidence: Some(ChronicleTranscriptConfidence::new(0.94).unwrap()),
+                language: Some("en".to_string()),
+                metadata: serde_json::json!({
+                    "runtime": "external",
+                    "vadImplemented": false,
+                    "asrImplemented": false
+                }),
+            }],
+            metadata: serde_json::json!({
+                "kind": "audio-transcript",
+                "audioRuntime": "external",
+                "vadImplemented": false,
+                "asrImplemented": false,
+                "speakerLabelingImplemented": false
+            }),
+        };
+
+        let json = serde_json::to_value(&report).expect("audio transcript report should serialize");
+
+        assert_eq!(json["sourceId"], "meeting-source-1");
+        assert_eq!(json["startedAt"], "2026-05-21T10:30:00Z");
+        assert_eq!(
+            json["transcriptPath"],
+            "/tmp/audio-transcripts/meeting-source-1.json"
+        );
+        assert_eq!(json["segments"][0]["startMs"], 0);
+        assert_eq!(json["segments"][0]["speakerLabel"], "Ada");
+        assert_eq!(json["metadata"]["asrImplemented"], false);
+    }
+
+    #[test]
+    fn audio_transcript_source_and_status_variants_match_server_contract() {
+        let source_json = serde_json::to_value(ChronicleAudioTranscriptSource::Asr)
+            .expect("source should serialize");
+        let status_json = serde_json::to_value(ChronicleAudioTranscriptStatus::Recording)
+            .expect("status should serialize");
+
+        assert_eq!(source_json, "asr");
+        assert_eq!(status_json, "recording");
+        assert!(ChronicleTranscriptConfidence::new(1.01).is_err());
+        assert!(ChronicleTranscriptConfidence::new(f32::NAN).is_err());
+    }
+
+    #[test]
+    fn audio_transcript_report_rejects_reversed_segment_range() {
+        let report = ChronicleAudioTranscriptReport {
+            source_id: "meeting-source-1".to_string(),
+            title: None,
+            source: ChronicleAudioTranscriptSource::Imported,
+            status: ChronicleAudioTranscriptStatus::Completed,
+            started_at: "2026-05-21T10:30:00Z".to_string(),
+            ended_at: None,
+            language: None,
+            app_bundle_id: None,
+            window_title: None,
+            audio_path: None,
+            transcript_path: None,
+            segments: vec![ChronicleAudioTranscriptSegmentReport {
+                start_ms: 5000,
+                end_ms: Some(1000),
+                speaker_label: None,
+                text: "Invalid range".to_string(),
+                confidence: None,
+                language: None,
+                metadata: serde_json::json!({}),
+            }],
+            metadata: serde_json::json!({}),
+        };
+
+        assert!(report.validate().is_err());
+    }
+
+    #[test]
+    fn audio_raw_segment_report_serializes_server_contract() {
+        let report = audio_raw_segment_report();
+        let json = serde_json::to_value(&report).expect("raw audio segment should serialize");
+
+        assert_eq!(
+            json["sourceId"],
+            "audio:microphone:20260521T103000Z-microphone-segment"
+        );
+        assert_eq!(json["recordedAt"], "2026-05-21T10:30:00Z");
+        assert_eq!(json["source"], "microphone");
+        assert_eq!(json["status"], "captured");
+        assert_eq!(json["audioPath"], "/tmp/audio/segments/segment.wav");
+        assert_eq!(json["metadataPath"], "/tmp/audio/segments/segment.json");
+        assert_eq!(json["sampleRate"], 16_000);
+        assert_eq!(json["vadImplemented"], false);
+        assert_eq!(json["metadata"]["runtime"], "microphone-segment");
+    }
+
+    #[test]
+    fn audio_raw_segment_variants_match_server_contract() {
+        let source_json = serde_json::to_value(ChronicleAudioRawSegmentSource::Microphone)
+            .expect("source should serialize");
+        let status_json = serde_json::to_value(ChronicleAudioRawSegmentStatus::Captured)
+            .expect("status should serialize");
+
+        assert_eq!(source_json, "microphone");
+        assert_eq!(status_json, "captured");
+    }
+
+    #[test]
+    fn audio_raw_segment_report_rejects_invalid_fields() {
+        let mut report = audio_raw_segment_report();
+        report.audio_path = String::new();
+        assert!(report.validate().is_err());
+
+        let mut report = audio_raw_segment_report();
+        report.metadata_path = String::new();
+        assert!(report.validate().is_err());
+
+        let mut report = audio_raw_segment_report();
+        report.sample_rate = 0;
+        assert!(report.validate().is_err());
+
+        let mut report = audio_raw_segment_report();
+        report.rms = 1.1;
+        assert!(report.validate().is_err());
+
+        let mut report = audio_raw_segment_report();
+        report.peak = f32::NAN;
+        assert!(report.validate().is_err());
+    }
+
+    fn audio_raw_segment_report() -> ChronicleAudioRawSegmentReport {
+        ChronicleAudioRawSegmentReport {
+            source_id: "audio:microphone:20260521T103000Z-microphone-segment".to_string(),
+            recorded_at: "2026-05-21T10:30:00Z".to_string(),
+            source: ChronicleAudioRawSegmentSource::Microphone,
+            status: ChronicleAudioRawSegmentStatus::Captured,
+            audio_path: "/tmp/audio/segments/segment.wav".to_string(),
+            metadata_path: "/tmp/audio/segments/segment.json".to_string(),
+            sample_rate: 16_000,
+            channels: 1,
+            sample_count: 8_000,
+            dropped_samples: 2,
+            duration_ms: 500,
+            rms: 0.25,
+            peak: 0.75,
+            active: true,
+            vad_implemented: false,
+            asr_implemented: false,
+            speaker_labeling_implemented: false,
+            metadata: serde_json::json!({
+                "runtime": "microphone-segment",
+                "sourceSampleFormat": "f32"
+            }),
+        }
+    }
+
     fn persisted_frame() -> PersistedFrame {
+        let windows = vec![BrowserWindowObservation::new(
+            1,
+            "Cradle",
+            "app.cradle.desktop",
+        )];
         PersistedFrame {
             display_id: 7,
             frame_index: 3,
@@ -325,6 +871,11 @@ mod tests {
             capture_path: PathBuf::from("/tmp/segment/capture-00003.json"),
             ocr_path: PathBuf::from("/tmp/segment/ocr-00003.json"),
             snapshot_path: PathBuf::from("/tmp/segment/snapshot.json"),
+            accessibility_path: PathBuf::from("/tmp/segment/accessibility.json"),
+            accessibility: AccessibilityCapture::from_windows(
+                &windows,
+                AccessibilityCaptureStatus::Ready,
+            ),
             normalized_text: "Cradle Chronicle visible text".to_string(),
             captured_at: Timestamp::from_seconds(1_779_125_791),
         }

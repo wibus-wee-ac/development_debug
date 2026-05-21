@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::json::quote;
 use crate::ocr::OcrText;
-use crate::screen::CapturedFrame;
+use crate::screen::{AccessibilityCapture, CapturedFrame};
 use crate::time::Timestamp;
 
 #[derive(Debug, Clone)]
@@ -77,6 +77,15 @@ impl ArtifactStore {
         fs::write(&snapshot_path, snapshot_json(frame, ocr, &frame_name))
             .map_err(|source| ChronicleError::io_at(&snapshot_path, source))?;
 
+        let accessibility_name = format!("accessibility-{:05}.json", frame.frame_index);
+        let accessibility_path = segment_dir.join(&accessibility_name);
+        let accessibility_body = accessibility_json(&frame.accessibility);
+        fs::write(&accessibility_path, &accessibility_body)
+            .map_err(|source| ChronicleError::io_at(&accessibility_path, source))?;
+        let latest_accessibility_path = segment_dir.join("accessibility.json");
+        fs::write(&latest_accessibility_path, &accessibility_body)
+            .map_err(|source| ChronicleError::io_at(&latest_accessibility_path, source))?;
+
         Ok(PersistedFrame {
             display_id: frame.display_id,
             frame_index: frame.frame_index,
@@ -85,6 +94,8 @@ impl ArtifactStore {
             capture_path,
             ocr_path,
             snapshot_path,
+            accessibility_path,
+            accessibility: frame.accessibility.clone(),
             normalized_text: ocr.normalized_text.clone(),
             captured_at: frame.captured_at,
         })
@@ -100,6 +111,8 @@ pub struct PersistedFrame {
     pub capture_path: PathBuf,
     pub ocr_path: PathBuf,
     pub snapshot_path: PathBuf,
+    pub accessibility_path: PathBuf,
+    pub accessibility: AccessibilityCapture,
     pub normalized_text: String,
     pub captured_at: Timestamp,
 }
@@ -162,6 +175,28 @@ fn snapshot_json(frame: &CapturedFrame, ocr: &OcrText, frame_name: &str) -> Stri
     )
 }
 
+fn accessibility_json(accessibility: &AccessibilityCapture) -> String {
+    serde_json::json!({
+        "version": 1,
+        "status": accessibility.status.as_str(),
+        "provider": accessibility.provider,
+        "text": accessibility.text,
+        "elementCount": accessibility.elements.len(),
+        "elements": accessibility.elements.iter().map(|element| {
+            serde_json::json!({
+                "role": element.role,
+                "label": element.label,
+                "value": element.value,
+                "appBundleId": element.app_bundle_identifier,
+                "windowId": element.window_id,
+                "depth": element.depth,
+                "path": element.path
+            })
+        }).collect::<Vec<_>>()
+    })
+    .to_string()
+}
+
 fn sanitize_extension(extension: &str) -> String {
     let cleaned = extension
         .chars()
@@ -180,7 +215,9 @@ mod tests {
     use std::fs;
 
     use crate::ocr::OcrText;
-    use crate::screen::{BrowserWindowObservation, CapturedFrame};
+    use crate::screen::{
+        AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation, CapturedFrame,
+    };
     use crate::time::Timestamp;
 
     use super::ArtifactStore;
@@ -193,6 +230,7 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&root);
         let store = ArtifactStore::new(&root, Timestamp::from_seconds(1_779_125_791));
+        let windows = vec![BrowserWindowObservation::new(1, "Cradle", "app.cradle")];
         let frame = CapturedFrame {
             display_id: 5,
             frame_index: 42,
@@ -200,7 +238,11 @@ mod tests {
             bytes: b"image bytes".to_vec(),
             frame_extension: "jpg".to_string(),
             observed_text: "visible text".to_string(),
-            windows: vec![BrowserWindowObservation::new(1, "Cradle", "app.cradle")],
+            accessibility: AccessibilityCapture::from_windows(
+                &windows,
+                AccessibilityCaptureStatus::Ready,
+            ),
+            windows,
         };
         let ocr = OcrText {
             normalized_text: "visible text".to_string(),
@@ -214,14 +256,22 @@ mod tests {
         assert!(persisted.capture_path.exists());
         assert!(persisted.ocr_path.exists());
         assert!(persisted.snapshot_path.exists());
+        assert!(persisted.accessibility_path.exists());
         assert!(persisted.segment_dir.join("capture.json").exists());
         assert!(persisted.segment_dir.join("ocr.json").exists());
+        assert!(persisted.segment_dir.join("accessibility.json").exists());
         assert!(persisted.frame_path.ends_with("frame-00042.jpg"));
         assert!(persisted.capture_path.ends_with("capture-00042.json"));
         assert!(persisted.ocr_path.ends_with("ocr-00042.json"));
         let capture = fs::read_to_string(persisted.capture_path).expect("capture should read");
         assert!(capture.contains("\"display_id\": 5"));
         assert!(capture.contains("\"frame_index\": 42"));
+        let accessibility =
+            fs::read_to_string(persisted.accessibility_path).expect("accessibility should read");
+        assert!(accessibility.contains("\"status\":\"ready\""));
+        assert!(accessibility.contains("\"label\":\"Cradle\""));
+        assert!(accessibility.contains("\"depth\":0"));
+        assert!(accessibility.contains("\"path\":\"window:0\""));
 
         let _ = fs::remove_dir_all(&root);
     }

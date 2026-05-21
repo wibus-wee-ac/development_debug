@@ -3,7 +3,10 @@
 use std::collections::VecDeque;
 
 use crate::error::ChronicleResult;
-use crate::screen::{BrowserWindowObservation, CaptureSource, CapturedFrame};
+use crate::screen::{
+    AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation, CaptureSource,
+    CapturedFrame,
+};
 use crate::time::{Timestamp, timestamp_after_seconds};
 
 pub struct SyntheticCaptureSource {
@@ -32,6 +35,11 @@ impl SyntheticCaptureSource {
         let frames = (0..capture_limit)
             .map(|index| {
                 let text = seeds[index % seeds.len()].to_string();
+                let windows = vec![BrowserWindowObservation::new(
+                    100 + index as u32,
+                    "Cradle Chronicle Smoke",
+                    "app.cradle.desktop",
+                )];
                 CapturedFrame {
                     display_id,
                     frame_index: index as u64 + 1,
@@ -42,11 +50,11 @@ impl SyntheticCaptureSource {
                     bytes: text.as_bytes().to_vec(),
                     frame_extension: "jpg".to_string(),
                     observed_text: text,
-                    windows: vec![BrowserWindowObservation::new(
-                        100 + index as u32,
-                        "Cradle Chronicle Smoke",
-                        "app.cradle.desktop",
-                    )],
+                    accessibility: AccessibilityCapture::from_windows(
+                        &windows,
+                        AccessibilityCaptureStatus::Ready,
+                    ),
+                    windows,
                 }
             })
             .collect();

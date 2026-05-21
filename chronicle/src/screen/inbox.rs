@@ -4,7 +4,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::error::{ChronicleError, ChronicleResult};
-use crate::screen::{BrowserWindowObservation, CaptureSource, CapturedFrame};
+use crate::screen::{
+    AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation, CaptureSource,
+    CapturedFrame,
+};
 use crate::time::Timestamp;
 
 pub struct InboxCaptureSource {
@@ -98,6 +101,7 @@ fn read_manifest(manifest_path: &Path) -> ChronicleResult<CapturedFrame> {
         window = window.with_private_flag();
     }
 
+    let windows = vec![window];
     Ok(CapturedFrame {
         display_id,
         frame_index,
@@ -105,7 +109,11 @@ fn read_manifest(manifest_path: &Path) -> ChronicleResult<CapturedFrame> {
         bytes,
         frame_extension,
         observed_text,
-        windows: vec![window],
+        accessibility: AccessibilityCapture::from_windows(
+            &windows,
+            AccessibilityCaptureStatus::Ready,
+        ),
+        windows,
     })
 }
 

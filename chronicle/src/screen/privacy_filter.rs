@@ -49,12 +49,15 @@ impl PrivacyFilter {
 
 #[cfg(test)]
 mod tests {
-    use crate::screen::{BrowserWindowObservation, CapturedFrame};
+    use crate::screen::{
+        AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation, CapturedFrame,
+    };
     use crate::time::Timestamp;
 
     use super::PrivacyFilter;
 
     fn frame(window: BrowserWindowObservation) -> CapturedFrame {
+        let windows = vec![window];
         CapturedFrame {
             display_id: 1,
             frame_index: 1,
@@ -62,7 +65,11 @@ mod tests {
             bytes: b"frame".to_vec(),
             frame_extension: "jpg".to_string(),
             observed_text: "frame".to_string(),
-            windows: vec![window],
+            accessibility: AccessibilityCapture::from_windows(
+                &windows,
+                AccessibilityCaptureStatus::Ready,
+            ),
+            windows,
         }
     }
 

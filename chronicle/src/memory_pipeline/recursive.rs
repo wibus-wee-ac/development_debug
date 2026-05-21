@@ -65,6 +65,7 @@ mod tests {
     use crate::memory_pipeline::recursive::RecursiveSummarizer;
     use crate::memory_pipeline::summarizer::LocalSummaryWriter;
     use crate::recorder::artifacts::PersistedFrame;
+    use crate::screen::AccessibilityCapture;
     use crate::time::Timestamp;
 
     #[test]
@@ -83,6 +84,8 @@ mod tests {
             capture_path: PathBuf::from("/tmp/segment/capture.json"),
             ocr_path: PathBuf::from("/tmp/segment/ocr.json"),
             snapshot_path: PathBuf::from("/tmp/segment/snapshot.json"),
+            accessibility_path: PathBuf::from("/tmp/segment/accessibility.json"),
+            accessibility: AccessibilityCapture::unavailable("test"),
             normalized_text: "Cradle Chronicle phase one".to_string(),
             captured_at: Timestamp::from_seconds(1_779_125_791),
         };

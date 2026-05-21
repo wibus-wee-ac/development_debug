@@ -2,6 +2,7 @@
 
 use std::process::ExitCode;
 
+use cradle_chronicle::audio::record_microphone_diagnostics;
 use cradle_chronicle::config::{ChronicleConfig, usage};
 use cradle_chronicle::daemon;
 use cradle_chronicle::memory_pipeline::recursive::RecursiveSummarizer;
@@ -33,11 +34,35 @@ fn run() -> Result<String, ChronicleError> {
     if config.smoke {
         return run_smoke(config);
     }
+    if config.audio_diagnostics {
+        return run_audio_diagnostics(config);
+    }
     if config.daemon {
         return daemon::run(config);
     }
     Err(ChronicleError::InvalidArgument(
-        "Cradle Chronicle requires --smoke or --daemon".to_string(),
+        "Cradle Chronicle requires --smoke, --daemon, or --audio-diagnostics".to_string(),
+    ))
+}
+
+fn run_audio_diagnostics(config: ChronicleConfig) -> Result<String, ChronicleError> {
+    let report = record_microphone_diagnostics(
+        &config.storage_root,
+        config.audio_duration_ms,
+        config.audio_rms_threshold,
+    )?;
+    Ok(format!(
+        "cradle chronicle audio diagnostics completed: device={} sample_rate={} channels={} samples={} dropped={} rms={:.6} peak={:.6} active={} wav={} metadata={}",
+        report.device_name,
+        report.sample_rate,
+        report.channels,
+        report.sample_count,
+        report.dropped_samples,
+        report.activity.rms,
+        report.activity.peak,
+        report.activity.active,
+        report.artifact.wav_path.display(),
+        report.artifact.metadata_path.display()
     ))
 }
 

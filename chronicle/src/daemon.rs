@@ -7,8 +7,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::audio::{
+    AudioArtifactMetadata, RmsActivityGate, capture_microphone_samples,
+    write_audio_segment_artifact,
+};
 use crate::config::{CaptureProvider, ChronicleConfig};
-use crate::cradle_client::{ChronicleMemoryReport, ChronicleSnapshotReport, CradleClient};
+use crate::cradle_client::{
+    ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus,
+    ChronicleMemoryReport, ChronicleSnapshotReport, CradleClient,
+};
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::memory_pipeline::recursive::RecursiveSummarizer;
 use crate::memory_pipeline::summarizer::LocalSummaryWriter;
@@ -18,9 +25,12 @@ use crate::recorder::fingerprint::FrameFingerprint;
 use crate::recorder::sampler::AdaptiveSampler;
 use crate::screen::inbox::InboxCaptureSource;
 use crate::time::Timestamp;
+use crate::transcript_inbox::process_transcript_inbox_tick;
 
 #[cfg(target_os = "macos")]
-use crate::screen::macos::MacosCaptureSource;
+use crate::screen::macos::{
+    AxObserverRuntime, MacosCaptureSource, read_ax_observer_accessibility_capture,
+};
 
 use crate::RecorderManager;
 
@@ -55,6 +65,10 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
     if config.run_once {
         let report = capture_once(&config, 1)?;
         let client = CradleClient::from_env();
+        process_transcripts(&config.inbox_root, &client);
+        if config.audio_capture {
+            process_audio_segment(&config, &client);
+        }
         report_snapshots(&client, &report.persisted_frames);
         drop(lock);
         cleanup_pid_file(&config.storage_root);
@@ -88,9 +102,19 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
     let mut all_persisted: Vec<PersistedFrame> = Vec::new();
     let mut last_summary_time = Instant::now();
     let summary_interval = Duration::from_secs(600); // 10 minutes
+    let mut last_audio_segment_time: Option<Instant> = None;
     let mut is_idle = false;
+    #[cfg(target_os = "macos")]
+    let mut ax_observer = start_ax_observer(config);
 
     while !SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+        process_transcripts(&config.inbox_root, &client);
+        process_audio_segment_if_due(config, &client, &mut last_audio_segment_time);
+        #[cfg(target_os = "macos")]
+        refresh_ax_observer(config, &mut ax_observer);
+        #[cfg(target_os = "macos")]
+        process_ax_observer_events(config, &client, &ax_observer, &mut frame_index);
+
         // Check system idle
         let idle_seconds = system_idle_seconds();
         if idle_seconds >= config.idle_timeout_seconds && !is_idle {
@@ -173,6 +197,85 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
     Ok("cradle chronicle daemon stopped".to_string())
 }
 
+#[cfg(target_os = "macos")]
+fn start_ax_observer(config: &ChronicleConfig) -> Option<AxObserverRuntime> {
+    if config.provider != CaptureProvider::Macos || !config.ax_observer {
+        return None;
+    }
+    match AxObserverRuntime::start_for_frontmost_app() {
+        Ok(observer) => {
+            eprintln!(
+                "cradle chronicle AXObserver started: pid={} bundle={}",
+                observer.target_pid(),
+                observer.target_bundle_identifier()
+            );
+            Some(observer)
+        }
+        Err(error) => {
+            eprintln!("cradle chronicle AXObserver unavailable: {error}");
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn refresh_ax_observer(config: &ChronicleConfig, observer: &mut Option<AxObserverRuntime>) {
+    if config.provider != CaptureProvider::Macos || !config.ax_observer {
+        *observer = None;
+        return;
+    }
+    let changed = observer
+        .as_ref()
+        .is_none_or(AxObserverRuntime::frontmost_target_changed);
+    if !changed {
+        return;
+    }
+    if let Some(previous) = observer.take() {
+        eprintln!(
+            "cradle chronicle AXObserver target changed, stopping pid={} bundle={}",
+            previous.target_pid(),
+            previous.target_bundle_identifier()
+        );
+    }
+    *observer = start_ax_observer(config);
+}
+
+#[cfg(target_os = "macos")]
+fn process_ax_observer_events(
+    config: &ChronicleConfig,
+    client: &CradleClient,
+    observer: &Option<AxObserverRuntime>,
+    frame_index: &mut u64,
+) {
+    let Some(observer) = observer else {
+        return;
+    };
+    for event in observer.drain(4) {
+        let accessibility = read_ax_observer_accessibility_capture(&event);
+        match capture_macos_with_accessibility(config, *frame_index, accessibility) {
+            Ok(report) => {
+                *frame_index += 1;
+                if !report.persisted_frames.is_empty() {
+                    report_snapshots(client, &report.persisted_frames);
+                    eprintln!(
+                        "cradle chronicle AXObserver event captured: notification={} pid={} frames={} dropped_total={}",
+                        event.notification,
+                        event.pid,
+                        report.persisted_frames.len(),
+                        observer.dropped_count()
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "cradle chronicle AXObserver event capture error: notification={} pid={} error={}",
+                    event.notification, event.pid, error
+                );
+            }
+        }
+    }
+}
+
 fn capture_once(
     config: &ChronicleConfig,
     frame_index: u64,
@@ -201,6 +304,24 @@ fn capture_macos(
     let source = match config.display_id {
         Some(display_id) => MacosCaptureSource::capture(display_id, frame_index)?,
         None => MacosCaptureSource::capture_all(frame_index)?,
+    };
+    let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
+    manager.run_until_exhausted()
+}
+
+#[cfg(target_os = "macos")]
+fn capture_macos_with_accessibility(
+    config: &ChronicleConfig,
+    frame_index: u64,
+    accessibility: crate::screen::AccessibilityCapture,
+) -> ChronicleResult<crate::RecorderReport> {
+    let segment_started_at = Timestamp::now()?;
+    let store = ArtifactStore::new(&config.storage_root, segment_started_at);
+    let source = match config.display_id {
+        Some(display_id) => {
+            MacosCaptureSource::capture_with_accessibility(display_id, frame_index, accessibility)?
+        }
+        None => MacosCaptureSource::capture_all_with_accessibility(frame_index, accessibility)?,
     };
     let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
     manager.run_until_exhausted()
@@ -298,6 +419,158 @@ fn report_memory(client: &CradleClient, report: ChronicleMemoryReport) {
     if let Err(error) = client.record_memory(&report) {
         eprintln!("cradle chronicle memory report failed, keeping local memory: {error}");
     }
+}
+
+fn process_transcripts(inbox_root: &Path, client: &CradleClient) {
+    match process_transcript_inbox_tick(inbox_root, client) {
+        Ok(report) if report.scanned > 0 => {
+            eprintln!(
+                "cradle chronicle transcript inbox processed: scanned={} reported={} failed={}",
+                report.scanned, report.reported, report.failed
+            );
+        }
+        Ok(_) => {}
+        Err(error) => {
+            eprintln!("cradle chronicle transcript inbox error: {error}");
+        }
+    }
+}
+
+fn process_audio_segment_if_due(
+    config: &ChronicleConfig,
+    client: &CradleClient,
+    last_audio_segment_time: &mut Option<Instant>,
+) {
+    if !config.audio_capture {
+        return;
+    }
+    let interval = Duration::from_millis(config.audio_segment_interval_ms.max(100));
+    if !audio_segment_due(*last_audio_segment_time, interval) {
+        return;
+    }
+    process_audio_segment(config, client);
+    *last_audio_segment_time = Some(Instant::now());
+}
+
+fn audio_segment_due(last_audio_segment_time: Option<Instant>, interval: Duration) -> bool {
+    last_audio_segment_time.is_none_or(|last_capture| last_capture.elapsed() >= interval)
+}
+
+fn process_audio_segment(config: &ChronicleConfig, client: &CradleClient) {
+    match write_microphone_segment(config) {
+        Ok(report) => {
+            eprintln!(
+                "cradle chronicle audio segment written: samples={} dropped={} rms={:.6} peak={:.6} active={} wav={} metadata={}",
+                report.sample_count,
+                report.dropped_samples,
+                report.rms,
+                report.peak,
+                report.active,
+                report.wav_path.display(),
+                report.metadata_path.display()
+            );
+            report_audio_raw_segment(client, &report);
+        }
+        Err(error) => {
+            eprintln!("cradle chronicle audio segment error: {error}");
+        }
+    }
+}
+
+fn report_audio_raw_segment(client: &CradleClient, report: &AudioSegmentArtifactReport) {
+    let payload = ChronicleAudioRawSegmentReport {
+        source_id: audio_segment_source_id(&report.metadata_path),
+        recorded_at: report.recorded_at.clone(),
+        source: ChronicleAudioRawSegmentSource::Microphone,
+        status: ChronicleAudioRawSegmentStatus::Captured,
+        audio_path: artifact_path_text(&report.wav_path),
+        metadata_path: artifact_path_text(&report.metadata_path),
+        sample_rate: report.sample_rate,
+        channels: report.channels,
+        sample_count: report.sample_count,
+        dropped_samples: report.dropped_samples,
+        duration_ms: report.duration_ms,
+        rms: report.rms,
+        peak: report.peak,
+        active: report.active,
+        vad_implemented: false,
+        asr_implemented: false,
+        speaker_labeling_implemented: false,
+        metadata: serde_json::json!({
+            "runtime": "microphone-segment",
+            "sourceSampleFormat": report.source_sample_format,
+            "vadImplemented": false,
+            "asrImplemented": false,
+            "speakerLabelingImplemented": false
+        }),
+    };
+    if let Err(error) = client.record_audio_raw_segment(&payload) {
+        eprintln!(
+            "cradle chronicle raw audio segment report failed, keeping local artifacts: {error}"
+        );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct AudioSegmentArtifactReport {
+    recorded_at: String,
+    sample_rate: u32,
+    channels: u16,
+    source_sample_format: String,
+    sample_count: usize,
+    dropped_samples: usize,
+    duration_ms: u64,
+    rms: f32,
+    peak: f32,
+    active: bool,
+    wav_path: PathBuf,
+    metadata_path: PathBuf,
+}
+
+fn write_microphone_segment(
+    config: &ChronicleConfig,
+) -> ChronicleResult<AudioSegmentArtifactReport> {
+    let capture = capture_microphone_samples(config.audio_segment_ms)?;
+    let gate = RmsActivityGate::new(config.audio_rms_threshold);
+    let activity = gate.analyze(&capture.samples);
+    let metadata = AudioArtifactMetadata {
+        recorded_at: Timestamp::now()?,
+        sample_rate: capture.sample_rate,
+        channels: capture.channels,
+        source_sample_format: capture.source_sample_format,
+        sample_count: capture.samples.len(),
+        dropped_samples: capture.dropped_samples,
+        rms: activity.rms,
+        peak: activity.peak,
+        active: activity.active,
+    };
+    let artifact = write_audio_segment_artifact(&config.storage_root, &capture.samples, &metadata)?;
+    Ok(AudioSegmentArtifactReport {
+        recorded_at: metadata.recorded_at.filesystem(),
+        sample_rate: metadata.sample_rate,
+        channels: metadata.channels,
+        source_sample_format: metadata.source_sample_format,
+        sample_count: metadata.sample_count,
+        dropped_samples: metadata.dropped_samples,
+        duration_ms: capture.duration_ms,
+        rms: metadata.rms,
+        peak: metadata.peak,
+        active: metadata.active,
+        wav_path: artifact.wav_path,
+        metadata_path: artifact.metadata_path,
+    })
+}
+
+fn audio_segment_source_id(metadata_path: &Path) -> String {
+    let stem = metadata_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown");
+    format!("audio:microphone:{stem}")
+}
+
+fn artifact_path_text(path: &Path) -> String {
+    path.to_string_lossy().to_string()
 }
 
 // --- System idle detection ---
@@ -425,6 +698,7 @@ fn cleanup_pid_file(storage_root: &Path) {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::time::{Duration, Instant};
 
     use super::InstanceLock;
 
@@ -478,5 +752,16 @@ mod tests {
         assert!(!pid_path.exists());
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn audio_segment_due_respects_interval() {
+        let interval = Duration::from_millis(1_000);
+        let recent = Some(Instant::now());
+        let older = Some(Instant::now() - Duration::from_millis(1_500));
+
+        assert!(!super::audio_segment_due(recent, interval));
+        assert!(super::audio_segment_due(older, interval));
+        assert!(super::audio_segment_due(None, interval));
     }
 }
