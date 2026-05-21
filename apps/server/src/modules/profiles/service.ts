@@ -33,6 +33,70 @@ export interface UpsertProfileInput {
 
 // ── public API ──
 
+const EXTERNAL_PROFILE_MODEL_CONFIG_KEYS = new Set(['enabledModels', 'modelRegistryMappings'])
+
+function stableJson(value: unknown): string {
+  if (value === null) {
+    return 'null'
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return JSON.stringify(value)
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableJson(item)).join(',')}]`
+  }
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`
+  }
+  return JSON.stringify(String(value))
+}
+
+function parseProfileConfig(configJson: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(configJson) as unknown
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
+  }
+  catch {
+    return {}
+  }
+}
+
+function removeCradleOwnedModelConfig(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(config).filter(([key, value]) => !EXTERNAL_PROFILE_MODEL_CONFIG_KEYS.has(key) && value !== undefined),
+  )
+}
+
+function mergeExternalProfileModelConfig(currentConfigJson: string, requestedConfigJson: string): string {
+  const currentConfig = parseProfileConfig(currentConfigJson)
+  const requestedConfig = parseProfileConfig(requestedConfigJson)
+  const currentSourceConfig = removeCradleOwnedModelConfig(currentConfig)
+  const requestedSourceConfig = removeCradleOwnedModelConfig(requestedConfig)
+
+  if (stableJson(currentSourceConfig) !== stableJson(requestedSourceConfig)) {
+    throw new AppError({
+      code: 'profile_managed_by_external_source',
+      status: 409,
+      message: 'Profile is managed by an external provider source',
+    })
+  }
+
+  const merged = { ...currentConfig }
+  for (const key of EXTERNAL_PROFILE_MODEL_CONFIG_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(requestedConfig, key) && requestedConfig[key] !== undefined) {
+      merged[key] = requestedConfig[key]
+    }
+    else {
+      delete merged[key]
+    }
+  }
+
+  return JSON.stringify(merged)
+}
+
 export function listProfiles(): AgentProfile[] {
   return db().select().from(agentProfiles).orderBy(agentProfiles.name).all()
 }
@@ -68,13 +132,14 @@ function assertProfileEditable(profileId: string, next?: UpsertProfileInput): vo
   const normalizedCurrentCredential = current.credentialRef ?? null
   const normalizedNextCredential = next.credentialRef ? String(next.credentialRef) : null
   const sameIcon = next.iconSlug === undefined || current.iconSlug === (next.iconSlug ?? null)
-  const isEnabledOnlyChange = current.name === next.name
+  const mergedConfigJson = mergeExternalProfileModelConfig(current.configJson, next.configJson)
+  const isAllowedCradleOwnedChange = current.name === next.name
     && current.providerKind === next.providerKind
-    && current.configJson === next.configJson
     && normalizedCurrentCredential === normalizedNextCredential
     && sameIcon
 
-  if (isEnabledOnlyChange) {
+  if (isAllowedCradleOwnedChange) {
+    next.configJson = mergedConfigJson
     return
   }
 
@@ -127,12 +192,13 @@ export function upsertProfile(input: UpsertProfileInput): AgentProfile {
       })
     }
 
+    assertProfileEditable(input.id, input)
     return writeProfile({
       id: input.id,
       name: current.name,
       providerKind: current.providerKind,
       enabled: input.enabled,
-      configJson: current.configJson,
+      configJson: input.configJson,
       credentialRef: current.credentialRef,
       iconSlug: current.iconSlug,
     })
@@ -179,7 +245,14 @@ export async function updateCustomModels(
   profileId: string,
   models: Array<{ id: string, label?: string, capabilities?: ModelCapabilities }>,
 ): Promise<CustomModelEntry[]> {
-  assertProfileEditable(profileId)
+  if (!getProfile(profileId)) {
+    throw new AppError({
+      code: 'profile_not_found',
+      status: 404,
+      message: 'Profile not found',
+      details: { profileId },
+    })
+  }
   // Build descriptors for enrichment
   const descriptors = models.map(m => ({
     id: m.id,
@@ -219,7 +292,6 @@ export async function updateModelRegistryMapping(
   profileId: string,
   input: { modelId: string, registryModelId?: string, model?: ModelsDevModel },
 ): Promise<ModelRegistryMappingEntry[]> {
-  assertProfileEditable(profileId)
   const profile = getProfile(profileId)
   if (!profile) {
     return []

@@ -146,6 +146,68 @@ describe('external provider sources capability', () => {
         credentialRef: anthropicProfile!.credentialRef,
       }))
 
+      const updateCradleOwnedModelConfig = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Fixture Anthropic',
+          providerKind: 'anthropic',
+          enabled: true,
+          config: {
+            baseUrl: 'https://anthropic.example.test',
+            model: 'claude-test',
+            enabledModels: ['claude-sonnet-4-20250514'],
+          },
+          credentialRef: anthropicProfile!.credentialRef,
+        }),
+      }))
+      expect(updateCradleOwnedModelConfig.status).toBe(200)
+      expect(JSON.parse(((await updateCradleOwnedModelConfig.json()) as { configJson: string }).configJson)).toEqual(expect.objectContaining({
+        baseUrl: 'https://anthropic.example.test',
+        model: 'claude-test',
+        enabledModels: ['claude-sonnet-4-20250514'],
+      }))
+
+      const updateMapping = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}/model-registry-mappings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: 'vendor-sonnet',
+          model: {
+            id: 'claude-sonnet-4',
+            name: 'Claude Sonnet 4',
+            limit: { context: 200000, output: 64000 },
+            cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
+          },
+        }),
+      }))
+      expect(updateMapping.status).toBe(200)
+      expect(await updateMapping.json()).toEqual([
+        expect.objectContaining({
+          modelId: 'vendor-sonnet',
+          registryModelId: 'claude-sonnet-4',
+          model: expect.objectContaining({
+            cost: expect.objectContaining({ input: 3, output: 15 }),
+          }),
+        }),
+      ])
+
+      const customModels = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}/custom-models`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          models: [{
+            id: 'vendor-sonnet',
+            label: 'Vendor Sonnet',
+            capabilities: { contextWindow: 200000 },
+          }],
+        }),
+      }))
+      expect(customModels.status).toBe(200)
+      expect(await customModels.json()).toEqual([
+        expect.objectContaining({ id: 'vendor-sonnet', label: 'Vendor Sonnet' }),
+      ])
+
       const editMirroredProfile = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
@@ -159,6 +221,20 @@ describe('external provider sources capability', () => {
       }))
       expect(editMirroredProfile.status).toBe(409)
       expect((await editMirroredProfile.json()).code).toBe('profile_managed_by_external_source')
+
+      const refreshAfterModelConfig = await app.handle(new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, { method: 'POST' }))
+      expect(refreshAfterModelConfig.status).toBe(200)
+      const profileAfterRefreshRes = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`))
+      expect(profileAfterRefreshRes.status).toBe(200)
+      const profileAfterRefresh = await profileAfterRefreshRes.json() as { configJson: string, customModels: string }
+      const configAfterRefresh = JSON.parse(profileAfterRefresh.configJson) as { enabledModels?: string[], modelRegistryMappings?: unknown[] }
+      expect(configAfterRefresh.enabledModels).toEqual(['claude-sonnet-4-20250514'])
+      expect(configAfterRefresh.modelRegistryMappings).toEqual([
+        expect.objectContaining({ modelId: 'vendor-sonnet', registryModelId: 'claude-sonnet-4' }),
+      ])
+      expect(JSON.parse(profileAfterRefresh.customModels)).toEqual([
+        expect.objectContaining({ id: 'vendor-sonnet', label: 'Vendor Sonnet' }),
+      ])
 
       providers = [providers[0]]
       const missingRefresh = await app.handle(new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, { method: 'POST' }))

@@ -312,7 +312,6 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     sonnet: stringValue(env.ANTHROPIC_DEFAULT_SONNET_MODEL),
     opus: stringValue(env.ANTHROPIC_DEFAULT_OPUS_MODEL),
   }
-  const customModels = [...new Set(Object.values(modelAliases).filter((item): item is string => Boolean(item)))]
 
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
@@ -321,9 +320,6 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     providerKind: 'anthropic',
     config: {
       baseUrl,
-      model,
-      claudeAgent: { modelAliases },
-      customModels,
     },
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
@@ -365,9 +361,6 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
     providerKind: 'openai-compatible',
     config: {
       baseUrl,
-      model,
-      reasoningEffort,
-      apiMode: wireApi === 'responses' ? 'responses' : 'chat',
     },
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
@@ -397,8 +390,6 @@ function mapGeminiProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     providerKind: 'openai-compatible',
     config: {
       baseUrl,
-      model,
-      apiMode: apiFormat === 'openai_responses' ? 'responses' : 'chat',
     },
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,

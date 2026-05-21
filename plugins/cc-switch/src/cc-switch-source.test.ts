@@ -266,8 +266,8 @@ describe('CC Switch external provider source', () => {
           current: true,
           config: expect.objectContaining({
             baseUrl: 'https://anthropic-a.example.test',
-            model: 'claude-test',
           }),
+          metadata: expect.objectContaining({ model: 'claude-test' }),
           credential: expect.objectContaining({ value: 'test-anthropic-key' }),
         }),
         expect.objectContaining({
@@ -275,13 +275,16 @@ describe('CC Switch external provider source', () => {
           providerKind: 'openai-compatible',
           config: expect.objectContaining({
             baseUrl: 'https://openai.example.test/v1',
-            model: 'gpt-test',
-            reasoningEffort: 'high',
-            apiMode: 'responses',
           }),
+          metadata: expect.objectContaining({ model: 'gpt-test', apiFormat: 'openai_responses' }),
           credential: expect.objectContaining({ value: 'test-openai-key' }),
         }),
       ]))
+      for (const provider of snapshot.providers) {
+        expect(provider.config).not.toHaveProperty('model')
+        expect(provider.config).not.toHaveProperty('customModels')
+        expect(provider.config).not.toHaveProperty('modelRegistryMappings')
+      }
       expect(snapshot.providers.some(provider => provider.externalId.includes('gemini-native'))).toBe(false)
       expect(JSON.stringify(snapshot)).not.toContain('test-opencode-key')
       expect(snapshot.warnings).toEqual(expect.arrayContaining([

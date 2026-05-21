@@ -68,7 +68,7 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
 }
 
 export async function createServerApp(options: CreateServerAppOptions = {}) {
-  const { startBackgroundTasks = true } = options
+  const { startBackgroundTasks = process.env.NODE_ENV !== 'test' } = options
   const app = new Elysia({
     name: 'cradle.server.elysia',
     adapter: node(),

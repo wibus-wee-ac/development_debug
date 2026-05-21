@@ -307,7 +307,13 @@ function syncRecordRow(database: Tx, sourceKey: string, record: ExternalProvider
 function syncProfileProjection(database: Tx, sourceKey: string, record: ExternalProviderRecord): void {
   const profileId = deriveProfileId(sourceKey, record.externalId)
   const existingProfile = database.select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()
-  const enabled = existingProfile?.enabled ?? false
+  const enabled = existingProfile?.enabled ?? record.enabled ?? true
+  const existingConfig = existingProfile ? parseJson<Record<string, unknown>>(existingProfile.configJson, {}) : {}
+  const projectedConfig = {
+    ...record.config,
+    ...(Object.prototype.hasOwnProperty.call(existingConfig, 'enabledModels') ? { enabledModels: existingConfig.enabledModels } : {}),
+    ...(Object.prototype.hasOwnProperty.call(existingConfig, 'modelRegistryMappings') ? { modelRegistryMappings: existingConfig.modelRegistryMappings } : {}),
+  }
   const credentialRef = record.credential
       ? upsertSecretInDb(database, {
         id: deriveCredentialId(sourceKey, record.externalId),
@@ -322,7 +328,7 @@ function syncProfileProjection(database: Tx, sourceKey: string, record: External
     name: record.name,
     providerKind: record.providerKind,
     enabled,
-    configJson: JSON.stringify(record.config),
+    configJson: JSON.stringify(projectedConfig),
     credentialRef,
   }, database)
 
@@ -333,7 +339,12 @@ function syncProfileProjection(database: Tx, sourceKey: string, record: External
     externalRecordId: record.externalId,
     profileId,
     credentialRef,
-    sourceOwnedFieldsJson: JSON.stringify(['name', 'providerKind', 'configJson', 'credentialRef']),
+    sourceOwnedFieldsJson: JSON.stringify([
+      'name',
+      'providerKind',
+      ...Object.keys(record.config).toSorted().map(key => `configJson.${key}`),
+      'credentialRef',
+    ]),
     lastProjectedFingerprint: recordFingerprint(record),
     createdAt: now,
     updatedAt: now,

@@ -209,9 +209,6 @@ function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDeta
 }
 
 function getInitialEnabledModels(enabledModels: string[]): string[] {
-  if (enabledModels.length === 0) {
-    return [ALL_DISABLED_SENTINEL]
-  }
   return enabledModels
 }
 
@@ -592,11 +589,6 @@ export function ProfileDetailPanel({
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
-    if (isExternalProfile) {
-      dispatch({ type: 'save/set', state: 'idle' })
-      clearAutoSaveTimer()
-      return
-    }
     if (watchedSignature === savedSignatureRef.current || saveState === 'saving') {
       return
     }
@@ -615,7 +607,7 @@ export function ProfileDetailPanel({
         autoSaveTimerRef.current = null
       }
     }
-  }, [isExternalProfile, watchedSignature, saveState, clearAutoSaveTimer])
+  }, [watchedSignature, saveState, clearAutoSaveTimer])
 
   // ── Icon change handler ──
   const handleIconChange = useCallback((slug: string | null) => {
@@ -678,7 +670,7 @@ export function ProfileDetailPanel({
           readOnly={isExternalProfile}
         />
 
-        {supportsModels && !isExternalProfile && (
+        {supportsModels && (
           // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileModelsSection
             loading={modelsLoading}
@@ -692,7 +684,7 @@ export function ProfileDetailPanel({
           />
         )}
 
-        {supportsModels && !isExternalProfile && (
+        {supportsModels && (
           // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileCustomModelsSection profileId={profile.id} customModelsJson={profile.customModels} onSaved={onSaved} />
         )}
