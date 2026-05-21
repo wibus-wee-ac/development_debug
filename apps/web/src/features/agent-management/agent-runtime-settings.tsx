@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 
+import { useQuery } from '@tanstack/react-query'
 import {
   ChevronRightIcon,
   PlusIcon,
@@ -10,6 +11,7 @@ import {
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { getExternalProviderSourcesRecordsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import {
   Empty,
@@ -26,7 +28,6 @@ import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-vis
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ProviderKind } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
@@ -48,13 +49,6 @@ export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
 export interface DraftProvider {
   id: string
   presetId: string | null
-}
-
-interface ExternalProviderRecordView {
-  id: string
-  sourceKey: string
-  externalId: string
-  status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -84,20 +78,12 @@ export function AgentRuntimeSettings() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftProvider | null>(null)
   const [filter, setFilter] = useState('')
-  const [externalRecords, setExternalRecords] = useState<ExternalProviderRecordView[]>([])
+  const { data: externalRecords = [], refetch: refetchExternalRecords } = useQuery({
+    ...getExternalProviderSourcesRecordsOptions(),
+    retry: false,
+  })
 
   const externalProfileIds = useMemo(() => new Set(externalRecords.map(record => record.id)), [externalRecords])
-
-  const refetchExternalRecords = useCallback(() => {
-    fetch(`${getServerUrl()}/external-provider-sources/records`)
-      .then(res => res.ok ? res.json() : [])
-      .then((records: ExternalProviderRecordView[]) => setExternalRecords(Array.isArray(records) ? records : []))
-      .catch(() => setExternalRecords([]))
-  }, [])
-
-  useEffect(() => {
-    refetchExternalRecords()
-  }, [refetchExternalRecords])
 
   const visibleProfiles = useMemo(() => {
     if (!filter.trim()) {
