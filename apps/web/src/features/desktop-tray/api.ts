@@ -1,6 +1,6 @@
 import { getServerUrl } from '~/lib/electron'
 
-import type { TrayAwaitItem, TraySnapshot } from './types'
+import type { TrayAwaitItem } from './types'
 
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(`${getServerUrl()}${path}`, { cache: 'no-store' })
@@ -8,10 +8,6 @@ async function readJson<T>(path: string): Promise<T> {
     throw new Error(`Request failed: ${response.status}`)
   }
   return response.json() as Promise<T>
-}
-
-export function readTraySnapshot(): Promise<TraySnapshot> {
-  return readJson<TraySnapshot>('/desktop/tray')
 }
 
 export function readTrayAwaits(): Promise<TrayAwaitItem[]> {

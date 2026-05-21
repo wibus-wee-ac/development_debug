@@ -1,7 +1,4 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-
-import { app, BrowserWindow, ipcMain, nativeImage, screen, Tray } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from 'electron'
 
 export type TrayActionId =
   | 'open-app'
@@ -28,58 +25,94 @@ interface TrayManagerOptions {
   createMainWindow: () => Promise<BrowserWindow>
 }
 
-const POPOVER_WIDTH = 380
-const POPOVER_HEIGHT = 640
 const TRAY_ACTION_CHANNEL = 'desktop-tray:perform-action'
 const TRAY_PENDING_ACTIONS_CHANNEL = 'desktop-tray:consume-pending-actions'
+const TRAY_SNAPSHOT_PATH = '/desktop/tray'
 
 interface TrayActionRequest {
   actionId: TrayActionId
   payload?: unknown
 }
 
-function readIconPath(): string | null {
-  const candidates = [
-    join(process.resourcesPath ?? '', 'icon.png'),
-    join(process.resourcesPath ?? '', 'icon.icns'),
-    join(__dirname, '../../../../build/icon.png'),
-    join(__dirname, '../../../../resources/icon.png'),
-  ]
-
-  return candidates.find(candidate => candidate && existsSync(candidate)) ?? null
+interface TraySessionItem {
+  sessionId: string
+  title: string
+  workspaceName: string
+  runtimeKind: string
+  modelId: string | null
+  detail: string
 }
 
-function createTrayImage(): Electron.NativeImage {
-  const iconPath = readIconPath()
-  const image = iconPath
-    ? nativeImage.createFromPath(iconPath).resize({ width: 18, height: 18 })
-    : nativeImage.createEmpty()
-  image.setTemplateImage(process.platform === 'darwin')
+interface TrayMetric {
+  label: string
+  value: string
+  tone: 'neutral' | 'active' | 'warning' | 'danger'
+}
+
+interface TrayQuickAction {
+  id: TrayActionId
+  label: string
+  description: string
+  accelerator: string | null
+  badge: string | null
+  enabled: boolean
+}
+
+interface TraySnapshot {
+  metrics: TrayMetric[]
+  running: TraySessionItem[]
+  resident: TraySessionItem[]
+  quickActions: TrayQuickAction[]
+}
+
+const TRAY_ICON_SIZE = 18
+const MENU_ICON_SIZE = 10
+
+function createCircleImage(size: number, red: number, green: number, blue: number, alpha = 255): Electron.NativeImage {
+  const buffer = Buffer.alloc(size * size * 4, 0)
+  const center = size / 2
+  const radius = size / 2 - 1.5
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = x - center + 0.5
+      const dy = y - center + 0.5
+      if (Math.sqrt(dx * dx + dy * dy) <= radius) {
+        const idx = (y * size + x) * 4
+        buffer[idx] = red
+        buffer[idx + 1] = green
+        buffer[idx + 2] = blue
+        buffer[idx + 3] = alpha
+      }
+    }
+  }
+
+  return nativeImage.createFromBuffer(buffer, { width: size, height: size })
+}
+
+function createTrayImage(alpha = 255): Electron.NativeImage {
+  const image = createCircleImage(TRAY_ICON_SIZE, 0, 0, 0, alpha)
+  if (process.platform === 'darwin') {
+    image.setTemplateImage(true)
+  }
   return image
 }
 
-function getPopoverBounds(tray: Tray): Electron.Rectangle {
-  const trayBounds = tray.getBounds()
-  const display = screen.getDisplayNearestPoint({
-    x: Math.round(trayBounds.x + trayBounds.width / 2),
-    y: Math.round(trayBounds.y + trayBounds.height / 2),
-  })
-  const workArea = display.workArea
-  const x = Math.min(
-    Math.max(Math.round(trayBounds.x + trayBounds.width / 2 - POPOVER_WIDTH / 2), workArea.x + 8),
-    workArea.x + workArea.width - POPOVER_WIDTH - 8,
-  )
-  const opensDown = trayBounds.y < workArea.y + workArea.height / 2
-  const y = opensDown
-    ? Math.min(trayBounds.y + trayBounds.height + 6, workArea.y + workArea.height - POPOVER_HEIGHT - 8)
-    : Math.max(trayBounds.y - POPOVER_HEIGHT - 6, workArea.y + 8)
+function createMenuDotIcon(red: number, green: number, blue: number): Electron.NativeImage {
+  return createCircleImage(MENU_ICON_SIZE, red, green, blue)
+}
 
-  return {
-    x,
-    y: Math.round(y),
-    width: POPOVER_WIDTH,
-    height: POPOVER_HEIGHT,
+function createMetricIcon(tone: TrayMetric['tone']): Electron.NativeImage {
+  if (tone === 'active') {
+    return createMenuDotIcon(16, 185, 129)
   }
+  if (tone === 'warning') {
+    return createMenuDotIcon(245, 158, 11)
+  }
+  if (tone === 'danger') {
+    return createMenuDotIcon(239, 68, 68)
+  }
+  return createMenuDotIcon(115, 115, 115)
 }
 
 function isTrayActionId(value: unknown): value is TrayActionId {
@@ -106,7 +139,6 @@ function isTrayActionId(value: unknown): value is TrayActionId {
 
 export class TrayManager {
   private tray: Tray | null = null
-  private popoverWindow: BrowserWindow | null = null
   private pendingActionRequests: TrayActionRequest[] = []
   private readonly options: TrayManagerOptions
 
@@ -115,17 +147,24 @@ export class TrayManager {
   }
 
   initialize(): void {
+    console.log('Initializing TrayManager')
     if (this.tray) {
       return
     }
 
-    this.tray = new Tray(createTrayImage())
+    const trayImage = createTrayImage()
+    this.tray = new Tray(trayImage)
+    this.tray.setImage(trayImage)
+    this.tray.setPressedImage(createTrayImage(180))
     this.tray.setToolTip('Cradle')
+    this.tray.setIgnoreDoubleClickEvents(true)
+    this.updateTrayPresentation(null)
+    this.tray.setContextMenu(this.buildTrayMenu(null))
     this.tray.on('click', () => {
-      void this.togglePopover()
+      void this.openNativeMenu()
     })
     this.tray.on('right-click', () => {
-      void this.togglePopover()
+      void this.openNativeMenu()
     })
 
     ipcMain.handle(TRAY_ACTION_CHANNEL, async (_event, actionId: unknown, payload: unknown) => {
@@ -137,24 +176,17 @@ export class TrayManager {
     ipcMain.handle(TRAY_PENDING_ACTIONS_CHANNEL, () => this.pendingActionRequests.splice(0))
   }
 
-  async togglePopover(): Promise<void> {
-    if (this.popoverWindow && !this.popoverWindow.isDestroyed() && this.popoverWindow.isVisible()) {
-      this.popoverWindow.hide()
+  async openNativeMenu(): Promise<void> {
+    if (!this.tray) {
       return
     }
 
-    const popover = await this.createPopoverWindow()
-    if (this.tray) {
-      popover.setBounds(getPopoverBounds(this.tray), false)
-    }
-    popover.show()
-    popover.focus()
-  }
-
-  hidePopover(): void {
-    if (this.popoverWindow && !this.popoverWindow.isDestroyed()) {
-      this.popoverWindow.hide()
-    }
+    const snapshot = await this.readTraySnapshot()
+    this.updateTrayPresentation(snapshot)
+    this.updatePlatformNotification(snapshot)
+    const menu = this.buildTrayMenu(snapshot)
+    this.tray.setContextMenu(menu)
+    this.tray.popUpContextMenu(menu, this.readPopupPosition())
   }
 
   async performAction(actionId: TrayActionId, payload?: unknown): Promise<void> {
@@ -168,9 +200,9 @@ export class TrayManager {
       || previousMainWindow.isDestroyed()
       || previousMainWindow.webContents.isLoadingMainFrame()
     const mainWindow = await this.focusMainWindow()
-    this.hidePopover()
 
     if (actionId === 'open-app') {
+      this.refocusTrayNotificationArea()
       return
     }
 
@@ -179,15 +211,16 @@ export class TrayManager {
       this.pendingActionRequests.push(request)
     }
     mainWindow.webContents.send('desktop-tray:action-requested', request)
+    this.refocusTrayNotificationArea()
   }
 
   destroy(): void {
     ipcMain.removeHandler(TRAY_ACTION_CHANNEL)
     ipcMain.removeHandler(TRAY_PENDING_ACTIONS_CHANNEL)
     this.pendingActionRequests = []
-    if (this.popoverWindow && !this.popoverWindow.isDestroyed()) {
-      this.popoverWindow.destroy()
-      this.popoverWindow = null
+    this.tray?.closeContextMenu()
+    if (process.platform === 'win32') {
+      this.tray?.removeBalloon()
     }
     this.tray?.destroy()
     this.tray = null
@@ -208,57 +241,264 @@ export class TrayManager {
     return mainWindow
   }
 
-  private async createPopoverWindow(): Promise<BrowserWindow> {
-    if (this.popoverWindow && !this.popoverWindow.isDestroyed()) {
-      return this.popoverWindow
-    }
-
-    const popover = new BrowserWindow({
-      width: POPOVER_WIDTH,
-      height: POPOVER_HEIGHT,
-      minWidth: POPOVER_WIDTH,
-      minHeight: 420,
-      maxWidth: POPOVER_WIDTH,
-      maxHeight: 720,
-      frame: false,
-      resizable: false,
-      movable: false,
-      show: false,
-      skipTaskbar: true,
-      alwaysOnTop: true,
-      title: 'Cradle Tray',
-      webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        additionalArguments: [
-          `--server-url=${this.options.serverUrl}`,
-          '--surface=tray',
-        ],
-      },
-    })
-
-    popover.on('blur', () => {
-      if (!popover.webContents.isDevToolsOpened()) {
-        popover.hide()
+  private async readTraySnapshot(): Promise<TraySnapshot | null> {
+    try {
+      const response = await fetch(new URL(TRAY_SNAPSHOT_PATH, this.options.serverUrl))
+      if (!response.ok) {
+        return null
       }
-    })
-    popover.on('closed', () => {
-      this.popoverWindow = null
-    })
-
-    if (process.env.ELECTRON_RENDERER_URL) {
-      await popover.loadURL(`${process.env.ELECTRON_RENDERER_URL}?surface=tray`)
+      return await response.json() as TraySnapshot
     }
-    else {
-      await popover.loadFile(join(__dirname, '../renderer/index.html'), {
-        query: { surface: 'tray' },
+    catch {
+      return null
+    }
+  }
+
+  private buildTrayMenu(snapshot: TraySnapshot | null): Electron.Menu {
+    const quickActions = snapshot?.quickActions ?? []
+    const openAppAction = quickActions.find(action => action.id === 'open-app')
+    const newChatAction = quickActions.find(action => action.id === 'new-chat')
+    const searchAction = quickActions.find(action => action.id === 'global-search')
+    const secondaryActions = quickActions.filter(action => (
+      action.id !== 'open-app'
+      && action.id !== 'new-chat'
+      && action.id !== 'global-search'
+      && action.id !== 'quit'
+    ))
+
+    return Menu.buildFromTemplate([
+      {
+        id: 'header',
+        type: 'header',
+        label: this.buildHeaderLabel(snapshot),
+        sublabel: snapshot ? 'Native tray menu' : 'Native tray menu - offline',
+        enabled: false,
+        visible: true,
+      },
+      { type: 'separator' },
+      this.buildQuickActionMenuItem(openAppAction ?? {
+        id: 'open-app',
+        label: 'Open Cradle',
+        description: 'Bring the main desktop window forward.',
+        accelerator: null,
+        badge: null,
+        enabled: true,
+      }, snapshot),
+      this.buildQuickActionMenuItem(newChatAction ?? {
+        id: 'new-chat',
+        label: 'New Chat',
+        description: 'Start a fresh agent conversation.',
+        accelerator: 'CommandOrControl+N',
+        badge: null,
+        enabled: true,
+      }, snapshot),
+      this.buildQuickActionMenuItem(searchAction ?? {
+        id: 'global-search',
+        label: 'Search Threads',
+        description: 'Open the command palette for threads, files, and issues.',
+        accelerator: 'CommandOrControl+K',
+        badge: null,
+        enabled: true,
+      }, snapshot),
+      { type: 'separator' },
+      {
+        id: 'status',
+        type: 'submenu',
+        label: 'Status',
+        enabled: Boolean(snapshot),
+        visible: true,
+        submenu: this.buildMetricMenuItems(snapshot?.metrics ?? []),
+      },
+      {
+        id: 'running',
+        type: 'submenu',
+        label: this.buildSectionLabel('Running Agents', snapshot?.running.length ?? 0),
+        enabled: Boolean(snapshot),
+        visible: true,
+        submenu: this.buildSessionMenuItems(snapshot?.running ?? []),
+      },
+      {
+        id: 'resident',
+        type: 'submenu',
+        label: this.buildSectionLabel('Resident Chats', snapshot?.resident.length ?? 0),
+        enabled: Boolean(snapshot),
+        visible: true,
+        submenu: this.buildSessionMenuItems(snapshot?.resident ?? []),
+      },
+      { type: 'separator' },
+      {
+        id: 'actions',
+        type: 'submenu',
+        label: 'Actions',
+        enabled: secondaryActions.length > 0,
+        visible: true,
+        submenu: secondaryActions.length > 0
+          ? secondaryActions.map(action => this.buildQuickActionMenuItem(action, snapshot))
+          : [{ label: 'No actions', enabled: false }],
+      },
+      ...(snapshot
+        ? []
+        : [{
+            label: 'Tray data unavailable',
+            enabled: false,
+          }]),
+      {
+        id: 'quit',
+        label: 'Quit Cradle',
+        role: 'quit',
+        accelerator: 'CommandOrControl+Q',
+        registerAccelerator: true,
+        visible: true,
+      },
+    ])
+  }
+
+  private buildMetricMenuItems(items: TrayMetric[]): Electron.MenuItemConstructorOptions[] {
+    if (items.length === 0) {
+      return [{ label: 'Status unavailable', enabled: false }]
+    }
+
+    return items.map(item => ({
+      id: `metric-${item.label.toLowerCase().replaceAll(' ', '-')}`,
+      type: 'checkbox',
+      label: `${item.label}: ${item.value}`,
+      icon: createMetricIcon(item.tone),
+      checked: item.tone === 'active' || item.tone === 'warning' || item.tone === 'danger',
+      enabled: false,
+      visible: true,
+      toolTip: `${item.label} is ${item.value}`,
+    }))
+  }
+
+  private buildSessionMenuItems(items: TraySessionItem[]): Electron.MenuItemConstructorOptions[] {
+    if (items.length === 0) {
+      return [{ label: 'No items', enabled: false }]
+    }
+
+    return items.map(item => ({
+      id: `session-${item.sessionId}`,
+      type: 'normal',
+      label: item.title,
+      sublabel: item.workspaceName,
+      toolTip: item.detail,
+      enabled: true,
+      visible: true,
+      click: () => {
+        void this.performAction('open-chat', { sessionId: item.sessionId })
+      },
+    }))
+  }
+
+  private buildQuickActionMenuItem(
+    action: TrayQuickAction,
+    snapshot: TraySnapshot | null,
+  ): Electron.MenuItemConstructorOptions {
+    return {
+      id: action.id,
+      type: 'normal',
+      label: this.buildActionLabel(action),
+      sublabel: action.description,
+      accelerator: this.normalizeAccelerator(action.accelerator),
+      enabled: action.enabled,
+      visible: true,
+      registerAccelerator: Boolean(action.accelerator),
+      acceleratorWorksWhenHidden: false,
+      click: () => {
+        void this.performAction(action.id, this.readListActionPayload(action.id, snapshot))
+      },
+    }
+  }
+
+  private buildActionLabel(action: TrayQuickAction): string {
+    return action.badge ? `${action.label} (${action.badge})` : action.label
+  }
+
+  private buildSectionLabel(label: string, count: number): string {
+    return `${label} (${count})`
+  }
+
+  private buildHeaderLabel(snapshot: TraySnapshot | null): string {
+    if (!snapshot) {
+      return 'Cradle'
+    }
+    const running = snapshot.running.length
+    const resident = snapshot.resident.length
+    return `Cradle - ${running} running, ${resident} resident`
+  }
+
+  private normalizeAccelerator(accelerator: string | null): string | undefined {
+    if (!accelerator) {
+      return undefined
+    }
+    if (accelerator.startsWith('CommandOrControl+')) {
+      return accelerator
+    }
+    return accelerator.replaceAll('⌘', 'CommandOrControl+')
+  }
+
+  private updateTrayPresentation(snapshot: TraySnapshot | null): void {
+    if (!this.tray) {
+      return
+    }
+
+    const running = snapshot?.running.length ?? 0
+    const resident = snapshot?.resident.length ?? 0
+    this.tray.setToolTip(snapshot
+      ? `Cradle - ${running} running, ${resident} resident`
+      : 'Cradle')
+
+    if (process.platform === 'darwin') {
+      this.tray.setTitle(running > 0 ? String(running) : '')
+    }
+  }
+
+  private updatePlatformNotification(snapshot: TraySnapshot | null): void {
+    if (!this.tray || process.platform !== 'win32') {
+      return
+    }
+
+    if (!snapshot) {
+      this.tray.displayBalloon({
+        title: 'Cradle',
+        content: 'Tray data is unavailable.',
       })
+      return
     }
 
-    this.popoverWindow = popover
-    return popover
+    this.tray.removeBalloon()
+  }
+
+  private readPopupPosition(): Electron.Point | undefined {
+    if (!this.tray || process.platform !== 'win32') {
+      return undefined
+    }
+
+    const bounds = this.tray.getBounds()
+    return {
+      x: Math.round(bounds.x + bounds.width / 2),
+      y: Math.round(bounds.y + bounds.height),
+    }
+  }
+
+  private refocusTrayNotificationArea(): void {
+    if (!this.tray || process.platform !== 'win32') {
+      return
+    }
+    this.tray.focus()
+  }
+
+  private readListActionPayload(actionId: TrayActionId, snapshot: TraySnapshot | null): { sessionId: string } | undefined {
+    if (actionId === 'open-running') {
+      const firstRunning = snapshot?.running[0]
+      return firstRunning ? { sessionId: firstRunning.sessionId } : undefined
+    }
+
+    if (actionId === 'open-resident') {
+      const firstResident = snapshot?.resident[0]
+      return firstResident ? { sessionId: firstResident.sessionId } : undefined
+    }
+
+    return undefined
   }
 }
 

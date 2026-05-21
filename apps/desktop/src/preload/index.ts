@@ -11,7 +11,6 @@ const serverUrl = getArg('server-url') ?? 'http://127.0.0.1:21423'
 const sessionId = getArg('session-id')
 const isTearoff = getArg('tearoff') === 'true'
 const surface = getArg('surface')
-const isTray = surface === 'tray'
 
 // Expose a minimal, typesafe API to the renderer
 const cradleElectron = {
@@ -33,7 +32,6 @@ const cradleElectron = {
     sessionId,
     isTearoff,
     surface,
-    isTray,
     platform: process.platform as 'darwin' | 'win32' | 'linux',
     isElectron: true as const,
   },

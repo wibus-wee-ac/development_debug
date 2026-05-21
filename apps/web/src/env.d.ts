@@ -25,7 +25,6 @@ interface Window {
       sessionId: string | null
       isTearoff: boolean
       surface: string | null
-      isTray: boolean
       platform: 'darwin' | 'win32' | 'linux'
       isElectron: true
     }

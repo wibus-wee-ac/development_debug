@@ -16,7 +16,7 @@ Alma 的 Tray 包含 show app、Quick Chat、Activity Recorder 控制、recent d
 
 ## Cradle 当前状态
 
-Cradle 已有 tray popover，包含 quick actions、running/resident sessions、approvals、awaits、automation、workspaces、Chronicle、usage、plugins、settings、quit。Cradle 也有 Velopack 更新和 server fork，但还没有完整 global shortcut registry 与 lifecycle settings UI。
+Cradle 已有 native tray menu，包含 quick actions、running/resident sessions、approvals、awaits、automation、workspaces、Chronicle、usage、plugins、settings、quit。Cradle 也有 Velopack 更新和 server fork，但还没有完整 global shortcut registry 与 lifecycle settings UI。
 
 ## Owner / Namespace
 

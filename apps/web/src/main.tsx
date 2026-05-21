@@ -5,7 +5,6 @@ import * as ReactDOMClient from 'react-dom/client'
 import * as ReactJSXRuntime from 'react/jsx-runtime'
 
 import { App } from './app'
-import { TrayPopover } from './features/desktop-tray/tray-popover'
 import { DevtoolPage } from './features/devtool'
 import { initPerfMonitor } from './lib/perf-monitor'
 import { loadWebPlugins } from './lib/plugin-host'
@@ -30,22 +29,17 @@ const queryClient = new QueryClient({
 
 // Hash-based routing: #devtool renders the devtool page (Electron second window)
 const isDevtoolWindow = window.location.hash === '#devtool' || window.location.hash === '#/devtool'
-const isTraySurface = window.cradle?.env?.isTray === true || new URLSearchParams(window.location.search).get('surface') === 'tray'
 
 // Load web plugins before rendering
-if (!isTraySurface) {
-  await loadWebPlugins()
-}
+await loadWebPlugins()
 
 ReactDOMClient.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      {isTraySurface ? <TrayPopover /> : isDevtoolWindow ? <DevtoolPage /> : <App />}
+      {isDevtoolWindow ? <DevtoolPage /> : <App />}
     </QueryClientProvider>
   </React.StrictMode>,
 )
 
 // Non-blocking: initialize performance monitoring after render
-if (!isTraySurface) {
-  queueMicrotask(initPerfMonitor)
-}
+queueMicrotask(initPerfMonitor)

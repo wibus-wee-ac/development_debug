@@ -6,7 +6,7 @@
 
 - `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
 - `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager，并把 webview creation event 转发给 plugin loader。
-- `tray-manager.ts`：拥有 Electron tray icon、tray popover BrowserWindow、tray action IPC，以及主窗口聚焦/转发流程。
+- `tray-manager.ts`：拥有 Electron native tray icon、native tray menu、tray action IPC，以及主窗口聚焦/转发流程。
 - `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑；在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置。
 - `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接。
 - `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
