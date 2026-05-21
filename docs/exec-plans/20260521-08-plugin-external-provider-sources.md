@@ -25,6 +25,8 @@
 - [x] (2026-05-21 10:52Z) 增加 server fixture source tests，覆盖注册、refresh、projection、secret upsert、stale/missing、read-only guard 和 source error 保留旧 projection。
 - [x] (2026-05-21 10:52Z) 更新相关 README 与开发者文档，说明 plugin 只能提供 data source，不拥有 Cradle Provider UI。
 - [x] (2026-05-21 10:59Z) 修复两个验证阻塞点并完成宽验证：`pnpm typecheck`、`pnpm test`、`pnpm --filter @cradle/server test`、focused external-provider-sources test、plugin SDK typecheck 均通过。
+- [x] (2026-05-21 11:41Z) 新增第一个真实 external provider source plugin：`plugins/cc-switch`。它注册 `cc-switch` source，读取 CC Switch SQLite/JSON，返回 host-rendered snapshot，不贡献 Provider UI。
+- [x] (2026-05-21 11:45Z) 用 `plugins/cc-switch` 运行 host refresh 端到端测试，证明真实 plugin discovery 后可以通过 `/external-provider-sources/:sourceKey/refresh` 投影 fake CC Switch provider 到 read-only profile，并且 profile response 不暴露 fake secret。
 
 ## Surprises & Discoveries
 
@@ -76,9 +78,13 @@
   Rationale: 这些 routes 是 host-owned management API，还没有稳定 CLI UX。避免把本次 Plugin SDK/Host 升级扩大到 generated CLI artifacts；后续 CLI 可以在 API 语义稳定后单独设计。
   Date/Author: 2026-05-21 / Codex.
 
+- Decision: CC Switch adapter 作为 `plugins/cc-switch` 实现，而不是放入 `apps/server/src/modules/external-provider-sources`。
+  Rationale: Host 已拥有 profile/secret projection 和固定 UI；source-specific SQLite/JSON reader 属于外部 connector 责任。插件只返回固定 snapshot，符合 Wibus 对低复杂度 Plugin API 的要求。
+  Date/Author: 2026-05-21 / Codex.
+
 ## Outcomes & Retrospective
 
-第一版实现已完成。Cradle core 不内置 CC Switch source，Plugin 也不直接控制 Provider UI；server plugin 现在可以注册 fixed-shape external provider source，host 会把 snapshot 投影进 Cradle-owned `agent_profiles`、`agent_credentials` 和 external source tracking tables。Provider settings 使用固定 UI 展示 external source metadata，并禁用 source-owned edits。
+第一版 Host 能力已完成。Cradle core 不内置 CC Switch source，Plugin 也不直接控制 Provider UI；server plugin 现在可以注册 fixed-shape external provider source，host 会把 snapshot 投影进 Cradle-owned `agent_profiles`、`agent_credentials` 和 external source tracking tables。Provider settings 使用固定 UI 展示 external source metadata，并禁用 source-owned edits。后续新增的 `plugins/cc-switch` 是第一条真实 adapter，已完成 plugin-local reader/mapping/fake DB tests，并补齐 host discovery + refresh 端到端测试。CC Switch mirror 仍需扩展更新、删除、锁定和旧 schema 兼容验证。
 
 已验证 `pnpm --filter @cradle/plugin-sdk typecheck`、`pnpm --filter @cradle/server exec tsc --noEmit`、`pnpm --filter @cradle/server exec vitest run tests/external-provider-sources.test.ts`、`pnpm --filter @cradle/server test`、`pnpm --filter @cradle/web exec tsc --noEmit`、`pnpm typecheck` 和 `pnpm test` 均通过。
 
@@ -545,3 +551,5 @@ No new UI contribution API should be added for this feature. `packages/plugin-sd
 - 2026-05-21 09:37Z: Initial plan created after design discussion. The plan intentionally rejects plugin-controlled Provider UI and instead defines a fixed snapshot contract plus host-owned projection and fixed Cradle UI.
 - 2026-05-21 10:52Z: Implementation completed for SDK contract, server host registry, DB projection schema, routes, profile read-only guard, fixed Provider UI, fixture tests, and docs. Validation notes record the unrelated web typecheck and full server test blockers.
 - 2026-05-21 10:59Z: Validation blockers resolved with focused test-only fixes. Repo-wide `pnpm typecheck` and `pnpm test` now pass.
+- 2026-05-21 11:41Z: Added `plugins/cc-switch` as the first real external provider source adapter. It keeps Plugin API simple by returning standard snapshot data and leaves projection/UI ownership in Cradle host.
+- 2026-05-21 11:45Z: Added host integration coverage for the CC Switch plugin using a temporary fake CC Switch database and environment path overrides.

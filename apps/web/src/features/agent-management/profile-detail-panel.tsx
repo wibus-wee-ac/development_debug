@@ -759,7 +759,6 @@ function ProfileDetailHeader({
             size="sm"
             checked={profile.enabled}
             onCheckedChange={onToggle}
-            disabled={isExternalProfile}
           />
           <span className="text-[11px] font-medium text-muted-foreground">
             {profile.enabled ? 'Active' : 'Off'}
@@ -838,8 +837,8 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
         <SettingsRow label="Warnings" description="Snapshot warnings reported by the source">
           <div className="flex flex-col gap-1">
             {(source?.warnings ?? record?.warnings ?? []).length > 0
-              ? (source?.warnings ?? record?.warnings ?? []).map(warning => (
-                <div key={warning.code} className="text-[12px] text-muted-foreground">
+              ? (source?.warnings ?? record?.warnings ?? []).map((warning, index) => (
+                <div key={`${warning.code}-${index}`} className="text-[12px] text-muted-foreground">
                   {warning.severity}
                   {': '}
                   {warning.message}

@@ -25,6 +25,7 @@ import {
 import { desktop } from './modules/desktop'
 import { filesystem } from './modules/filesystem'
 import { externalProviderSources } from './modules/external-provider-sources'
+import { refreshAllExternalProviderSources } from './modules/external-provider-sources/service'
 import { git } from './modules/git'
 import { health } from './modules/health'
 import { issue } from './modules/issue'
@@ -117,6 +118,9 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {
+    void refreshAllExternalProviderSources().catch((error) => {
+      console.error('[external-provider-sources] Refresh failed:', error)
+    })
     void chronicleInitDaemon().catch((error) => {
       console.error('[chronicle] Daemon initialization failed:', error)
     })

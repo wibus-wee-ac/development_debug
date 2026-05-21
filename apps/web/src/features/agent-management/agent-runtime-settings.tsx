@@ -1,9 +1,10 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   ChevronRightIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
   ServerIcon,
   SparklesIcon,
@@ -11,7 +12,7 @@ import {
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { getExternalProviderSourcesRecordsOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getExternalProviderSourcesRecordsOptions, postExternalProviderSourcesRefreshMutation } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import {
   Empty,
@@ -24,6 +25,7 @@ import {
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
+import { toastManager } from '~/components/ui/toast'
 import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
@@ -83,6 +85,21 @@ export function AgentRuntimeSettings() {
     retry: false,
   })
 
+  const refreshExternalSources = useMutation({
+    ...postExternalProviderSourcesRefreshMutation(),
+    onSuccess: async () => {
+      await Promise.all([refetch(), refetchExternalRecords()])
+      toastManager.add({ type: 'success', title: 'External sources refreshed' })
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: 'error',
+        title: 'Refresh failed',
+        description: error instanceof Error ? error.message : 'External sources could not be refreshed',
+      })
+    },
+  })
+
   const externalProfileIds = useMemo(() => new Set(externalRecords.map(record => record.id)), [externalRecords])
 
   const visibleProfiles = useMemo(() => {
@@ -135,9 +152,6 @@ export function AgentRuntimeSettings() {
   }, [externalProfileIds, removeProfile])
 
   const handleToggleProfile = useCallback(async (profile: AgentProfile, enabled: boolean) => {
-    if (externalProfileIds.has(profile.id)) {
-      return
-    }
     await updateProfile.mutateAsync({
       id: profile.id,
       body: {
@@ -145,10 +159,10 @@ export function AgentRuntimeSettings() {
         providerKind: profile.providerKind,
         enabled,
         config: ProfileConfigJsonSchema.parse(profile.configJson),
-        credentialRef: profile.credentialRef ?? '',
+        credentialRef: profile.credentialRef ?? null,
       },
     })
-  }, [externalProfileIds, updateProfile])
+  }, [updateProfile])
 
   return (
     <div
@@ -166,23 +180,34 @@ export function AgentRuntimeSettings() {
             They become available across every agent and chat session.
           </p>
         </div>
-        <Button
-          data-testid="add-provider-btn"
-          size="sm"
-          onClick={startDraft}
-          disabled={!!draft}
-        >
-          <PlusIcon />
-          Add provider
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => refreshExternalSources.mutate({})}
+            disabled={refreshExternalSources.isPending}
+          >
+            <RefreshCwIcon className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')} />
+            Refresh sources
+          </Button>
+          <Button
+            data-testid="add-provider-btn"
+            size="sm"
+            onClick={startDraft}
+            disabled={!!draft}
+          >
+            <PlusIcon />
+            Add provider
+          </Button>
+        </div>
       </header>
 
       <Separator className="bg-foreground/6" />
 
       {/* Body — master-detail */}
-      <div className="grid flex-1 grid-cols-[260px_1fr] gap-0 overflow-hidden">
+      <div className="grid flex-1 grid-cols-[360px_1fr] gap-0 overflow-hidden">
         {/* ── Left rail ────────────────────────────────────────────────── */}
-        <aside className="flex flex-col gap-3 overflow-hidden py-4 pr-4 border-r border-foreground/6">
+        <aside className="flex flex-col gap-3 overflow-hidden py-4 pr-4 border-r border-foreground/6 overflow-y-auto">
           {/* Search */}
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />

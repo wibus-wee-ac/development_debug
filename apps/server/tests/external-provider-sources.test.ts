@@ -16,6 +16,8 @@ function makeTempDir(prefix: string): string {
 function restoreEnv(previous: {
   dataDir?: string
   credentialSecret?: string
+  pluginsDir?: string
+  externalPluginsDirs?: string
 }): void {
   if (previous.dataDir === undefined) {
     delete process.env.CRADLE_DATA_DIR
@@ -30,6 +32,20 @@ function restoreEnv(previous: {
   else {
     process.env.CRADLE_CREDENTIAL_SECRET = previous.credentialSecret
   }
+
+  if (previous.pluginsDir === undefined) {
+    delete process.env.CRADLE_PLUGINS_DIR
+  }
+  else {
+    process.env.CRADLE_PLUGINS_DIR = previous.pluginsDir
+  }
+
+  if (previous.externalPluginsDirs === undefined) {
+    delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+  }
+  else {
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = previous.externalPluginsDirs
+  }
 }
 
 describe('external provider sources capability', () => {
@@ -38,9 +54,13 @@ describe('external provider sources capability', () => {
     const previous = {
       dataDir: process.env.CRADLE_DATA_DIR,
       credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
+      pluginsDir: process.env.CRADLE_PLUGINS_DIR,
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
     }
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-test-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
 
     let providers: ExternalProviderRecord[] = [
       {
@@ -163,9 +183,13 @@ describe('external provider sources capability', () => {
     const previous = {
       dataDir: process.env.CRADLE_DATA_DIR,
       credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
+      pluginsDir: process.env.CRADLE_PLUGINS_DIR,
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
     }
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-error-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
 
     let shouldFail = false
 

@@ -306,6 +306,8 @@ function syncRecordRow(database: Tx, sourceKey: string, record: ExternalProvider
 
 function syncProfileProjection(database: Tx, sourceKey: string, record: ExternalProviderRecord): void {
   const profileId = deriveProfileId(sourceKey, record.externalId)
+  const existingProfile = database.select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()
+  const enabled = existingProfile?.enabled ?? false
   const credentialRef = record.credential
       ? upsertSecretInDb(database, {
         id: deriveCredentialId(sourceKey, record.externalId),
@@ -319,7 +321,7 @@ function syncProfileProjection(database: Tx, sourceKey: string, record: External
     id: profileId,
     name: record.name,
     providerKind: record.providerKind,
-    enabled: record.enabled ?? true,
+    enabled,
     configJson: JSON.stringify(record.config),
     credentialRef,
   }, database)
@@ -331,7 +333,7 @@ function syncProfileProjection(database: Tx, sourceKey: string, record: External
     externalRecordId: record.externalId,
     profileId,
     credentialRef,
-    sourceOwnedFieldsJson: JSON.stringify(['name', 'providerKind', 'enabled', 'configJson', 'credentialRef']),
+    sourceOwnedFieldsJson: JSON.stringify(['name', 'providerKind', 'configJson', 'credentialRef']),
     lastProjectedFingerprint: recordFingerprint(record),
     createdAt: now,
     updatedAt: now,

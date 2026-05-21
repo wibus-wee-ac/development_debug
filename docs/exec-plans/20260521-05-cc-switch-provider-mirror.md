@@ -21,8 +21,11 @@
 - [x] (2026-05-20 17:59Z) 写成可执行 Markdown 规格，覆盖完整 DB 表结构、provider 字段映射、同步机制、实现步骤、验证方式和恢复策略。
 - [x] (2026-05-20 18:15Z) 复核 CC Switch DAO 与 Cradle plugin host / plugin SDK，补充 CCDB 全量可镜像对象目录和 plugin/SDK 可行性判断。
 - [x] (2026-05-20 18:28Z) 扩展接口规格：`CcSwitchSnapshot` 现在覆盖 provider、MCP、prompt、skill、proxy、health、stream check、usage rollup、pricing 和 allowlisted settings；同时补齐 plugin-first 路线所需 host APIs。
-- [ ] 实现 Cradle 侧 mirror schema、reader、sync service、API 和 UI 展示。
-- [ ] 增加单元测试、集成测试和一个使用临时 CC Switch DB 的端到端同步场景。
+- [x] (2026-05-21 10:59Z) 通过 `docs/exec-plans/20260521-08-plugin-external-provider-sources.md` 完成 Plugin SDK / Host 架构升级：plugin 只提供 fixed-shape external provider snapshot，Cradle host 负责 profile/secret projection 和固定 UI。
+- [x] (2026-05-21 11:41Z) 新增 `plugins/cc-switch` server plugin，注册 `cc-switch` external provider source，默认只读 `~/.cc-switch/cc-switch.db` 与 `~/.cc-switch/settings.json`，并用 fake SQLite fixture 验证 Claude/Codex 映射和 current provider 优先级。
+- [x] (2026-05-21 11:45Z) 增加 `apps/server/tests/cc-switch-plugin.test.ts`，验证真实 plugin discovery 激活 `@cradle/cc-switch`、`GET /external-provider-sources` 发现 `CC Switch` source、refresh 临时 CC Switch DB 后投影 read-only profile 与 encrypted credential。
+- [x] (2026-05-21 11:45Z) 运行 `pnpm --filter @cradle/cc-switch build`、`pnpm --filter @cradle/cc-switch typecheck`、`pnpm exec vitest run plugins/cc-switch/src/cc-switch-source.test.ts`、`pnpm --filter @cradle/server exec vitest run tests/cc-switch-plugin.test.ts tests/external-provider-sources.test.ts` 均通过。
+- [ ] 扩展临时 CC Switch DB 到 host projection 的端到端测试，覆盖更新、删除/missing、DB 被锁、schema 较旧等场景。
 - [ ] 用真实或测试 CC Switch DB 验证新增、更新、删除、current 切换、DB 被锁、schema 较旧等场景。
 
 ## Surprises & Discoveries（发现）
@@ -77,6 +80,10 @@
   理由：这个能力必须写 `agent_profiles`、`agent_credentials` 和新增 mirror tracking tables，并要阻止原生 profile routes 修改 mirrored rows。当前 plugin SDK 没有这些 host-owned API，也没有持久 plugin storage 和 migration contract。用 plugin 直接 import Cradle internals 或自发调用本机 HTTP routes 会绕过 owner 边界，长期不可维护。
   日期 / 作者：2026-05-20 / Codex.
 
+- 决策：在补齐 `externalProviderSources` Host API 后，CC Switch reader 本身改为 plugin，而不是 Cradle core 专用 source。
+  理由：Wibus 明确希望必要时升级 Plugin 架构，让 plugin 只提供固定数据 shape，Cradle 固定 UI 与 host-owned projection 负责复杂语义。这样保留 Cradle 对 profile/secret/UI 的所有权，同时避免把 CC Switch 产品私有 reader 写进 core。
+  日期 / 作者：2026-05-21 / Codex.
+
 - 决策：CC Switch DB 中非 provider 对象分阶段镜像。第一版只把它们纳入 snapshot、status 和 metadata；只有当 Cradle 有明确 owner 和运行时消费路径时，才投影成一等对象。
   理由：MCP、skills、prompts、usage、pricing、proxy 都各自有不同生命周期。统一强行导入会混淆 ownership；只读 snapshot 能满足可见性和变化检测，同时为后续 owner-specific mirror 提供稳定输入。
   日期 / 作者：2026-05-20 / Codex.
@@ -87,7 +94,7 @@
 
 ## Outcomes & Retrospective（结果与复盘）
 
-调研阶段已完成，产物是这份可执行规格。还没有实现代码，也没有运行 Cradle 测试。后续工作应按本文新增 Cradle-owned mirror 模块、schema、reader、sync 和 UI 入口，再用临时 CC Switch DB 验证镜像语义。若后续希望把 CC Switch integration 发布为 plugin，应先补齐本文“Plugin / SDK feasibility”列出的 host APIs；在补齐前，plugin 只能承担独立观察面板或辅助 UI，不能承担 provider/profile 镜像的 source of truth。
+调研阶段已完成，产物是这份可执行规格。后续架构已按 `docs/exec-plans/20260521-08-plugin-external-provider-sources.md` 升级：Cradle core 提供 host-owned external provider source projection，CC Switch reader 作为 plugin source 提供 fixed-shape snapshot。当前新增的 `plugins/cc-switch` 已能用 fake SQLite DB 读取 Claude/Codex provider、应用本地 settings current provider 优先级，并返回 Cradle host 可投影的 snapshot。仍待验证的是：真实 server plugin discovery、host refresh 到 `agent_profiles` 的端到端路径、真实或测试 CC Switch DB 的新增/更新/删除/锁定/schema 兼容场景。
 
 ## Context and Orientation（上下文）
 
@@ -743,3 +750,5 @@ Provider mapper 应暴露纯函数：
 这些 host APIs 的验收标准是：plugin 不需要知道 `agent_profiles`、`agent_credentials`、Drizzle migrations 或 profile route internals；host 在 transaction 中更新 external source、profile、secret 和 snapshot mapping；core profile edit routes 能基于 host-owned metadata 阻止用户修改 mirrored profiles；web surface 能在 provider settings/profile list 中显示 badge、status 和 manual sync action。未满足这些条件前，CC Switch plugin 只能是 inspector，不是 mirror source of truth。
 
 Revision note: 初版调研规格基于 CC Switch 源码、真实本机 DB 结构只读检查和 Cradle provider/runtime schema 检查创建；随后补齐完整 CC Switch DB 表结构总览，并统一正文为中文；本次修订扩展 CCDB catalog snapshot interfaces、redaction 约束和 plugin-first host API 缺口，使文档能直接指导 provider mirror 与只读 CCDB inspector 两条实现路线。
+
+Revision note: 2026-05-21 11:41Z 修订记录 Plugin SDK / Host 已升级为 fixed-shape external provider source 架构，并新增 `plugins/cc-switch` 作为真实 CC Switch reader。旧的“core source 优先”决策保留为历史记录，但后续实施以 plugin source + host projection 为准。

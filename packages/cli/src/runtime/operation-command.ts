@@ -31,6 +31,19 @@ const CliValueSchemas = {
   ]),
 } satisfies Record<CliValueType, z.ZodTypeAny>
 
+function parseBooleanValue(value: unknown): boolean {
+  if (typeof value === 'boolean') {
+    return value
+  }
+  if (value === 'true') {
+    return true
+  }
+  if (value === 'false') {
+    return false
+  }
+  throw new Error('Expected a boolean')
+}
+
 function findSubcommand(parent: Command, name: string): Command | undefined {
   return parent.commands.find(command => command.name() === name)
 }
@@ -111,6 +124,9 @@ function setTarget(target: string, value: unknown, containers: {
 function parseValue(value: unknown, type: CliValueType | undefined): unknown {
   if (value === undefined) {
     return undefined
+  }
+  if (type === 'boolean') {
+    return parseBooleanValue(value)
   }
   return CliValueSchemas[type ?? 'string'].parse(value)
 }

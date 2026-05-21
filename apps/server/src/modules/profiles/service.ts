@@ -41,8 +41,40 @@ export function getProfile(id: string): AgentProfile | null {
   return db().select().from(agentProfiles).where(eq(agentProfiles.id, id)).get() ?? null
 }
 
-function assertProfileEditable(profileId: string): void {
+function assertProfileEditable(profileId: string, next?: UpsertProfileInput): void {
   if (!isExternalProfile(profileId)) {
+    return
+  }
+
+  if (!next) {
+    throw new AppError({
+      code: 'profile_managed_by_external_source',
+      status: 409,
+      message: 'Profile is managed by an external provider source',
+      details: { profileId },
+    })
+  }
+
+  const current = getProfile(profileId)
+  if (!current) {
+    throw new AppError({
+      code: 'profile_not_found',
+      status: 404,
+      message: 'Profile not found',
+      details: { profileId },
+    })
+  }
+
+  const normalizedCurrentCredential = current.credentialRef ?? null
+  const normalizedNextCredential = next.credentialRef ? String(next.credentialRef) : null
+  const sameIcon = next.iconSlug === undefined || current.iconSlug === (next.iconSlug ?? null)
+  const isEnabledOnlyChange = current.name === next.name
+    && current.providerKind === next.providerKind
+    && current.configJson === next.configJson
+    && normalizedCurrentCredential === normalizedNextCredential
+    && sameIcon
+
+  if (isEnabledOnlyChange) {
     return
   }
 
@@ -84,7 +116,29 @@ function writeProfile(input: UpsertProfileInput, database = db()): AgentProfile 
 }
 
 export function upsertProfile(input: UpsertProfileInput): AgentProfile {
-  assertProfileEditable(input.id)
+  if (isExternalProfile(input.id)) {
+    const current = getProfile(input.id)
+    if (!current) {
+      throw new AppError({
+        code: 'profile_not_found',
+        status: 404,
+        message: 'Profile not found',
+        details: { profileId: input.id },
+      })
+    }
+
+    return writeProfile({
+      id: input.id,
+      name: current.name,
+      providerKind: current.providerKind,
+      enabled: input.enabled,
+      configJson: current.configJson,
+      credentialRef: current.credentialRef,
+      iconSlug: current.iconSlug,
+    })
+  }
+
+  assertProfileEditable(input.id, input)
   return writeProfile(input)
 }
 

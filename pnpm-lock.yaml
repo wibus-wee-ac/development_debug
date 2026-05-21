@@ -1012,6 +1012,28 @@ importers:
         specifier: ^7.2.6
         version: 7.3.2(@types/node@25.8.0)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
 
+  plugins/cc-switch:
+    dependencies:
+      better-sqlite3:
+        specifier: ^12.9.0
+        version: 12.9.0
+      smol-toml:
+        specifier: ^1.6.1
+        version: 1.6.1
+    devDependencies:
+      '@cradle/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
+      '@types/node':
+        specifier: ^22.19.1
+        version: 22.19.17
+      vite:
+        specifier: ^7.2.6
+        version: 7.3.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0)
+
   plugins/system-info:
     devDependencies:
       '@cradle/plugin-sdk':
