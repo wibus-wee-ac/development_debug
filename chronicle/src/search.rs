@@ -1,7 +1,7 @@
 //! Semantic and keyword search over Chronicle memory.
 
 use crate::crystallizer::MemoryChunk;
-use crate::embedding::{cosine_similarity, Embedding, EmbeddingProvider};
+use crate::embedding::{Embedding, EmbeddingProvider, cosine_similarity};
 use crate::time::Timestamp;
 
 /// A search result with relevance score.
@@ -68,14 +68,14 @@ struct IndexedChunk {
 
 const STOP_WORDS: &[&str] = &[
     "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
-    "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can",
-    "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through",
-    "during", "before", "after", "and", "but", "or", "nor", "not", "so", "yet", "both",
-    "either", "neither", "each", "every", "all", "any", "few", "more", "most", "other",
-    "some", "such", "no", "only", "own", "same", "than", "too", "very", "just", "because",
-    "if", "then", "else", "when", "up", "out", "about", "it", "its", "this", "that", "these",
-    "those", "i", "me", "my", "we", "our", "you", "your", "he", "him", "his", "she", "her",
-    "they", "them", "their", "what", "which", "who", "whom", "how", "where", "why",
+    "do", "does", "did", "will", "would", "could", "should", "may", "might", "shall", "can", "to",
+    "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "through", "during",
+    "before", "after", "and", "but", "or", "nor", "not", "so", "yet", "both", "either", "neither",
+    "each", "every", "all", "any", "few", "more", "most", "other", "some", "such", "no", "only",
+    "own", "same", "than", "too", "very", "just", "because", "if", "then", "else", "when", "up",
+    "out", "about", "it", "its", "this", "that", "these", "those", "i", "me", "my", "we", "our",
+    "you", "your", "he", "him", "his", "she", "her", "they", "them", "their", "what", "which",
+    "who", "whom", "how", "where", "why",
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -193,8 +193,7 @@ impl SearchIndex {
                 let has_semantic = sem_score > 0.5; // above neutral
 
                 let score = if query_embedding.is_some() && !query_tokens.is_empty() {
-                    self.config.semantic_weight * sem_score
-                        + self.config.keyword_weight * kw_score
+                    self.config.semantic_weight * sem_score + self.config.keyword_weight * kw_score
                 } else if query_embedding.is_some() {
                     sem_score
                 } else {
@@ -224,7 +223,11 @@ impl SearchIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(self.config.max_results);
         results
     }
@@ -256,7 +259,11 @@ impl SearchIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(self.config.max_results);
         results
     }
@@ -286,7 +293,11 @@ impl SearchIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(self.config.max_results);
         results
     }
@@ -318,7 +329,11 @@ impl SearchIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(self.config.max_results);
         results
     }
@@ -350,7 +365,11 @@ impl SearchIndex {
             })
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         results.truncate(self.config.max_results);
         results
     }

@@ -50,7 +50,6 @@ pub enum TriageCategory {
     Unknown,
 }
 
-
 // ─── Agent ───────────────────────────────────────────────────────────────────
 
 pub struct TriageAgent {
@@ -75,8 +74,9 @@ impl TriageAgent {
         let request = build_request(segment);
         let url = format!("{}/chronicle/triage", self.base_url);
 
-        let json_body = serde_json::to_string(&request)
-            .map_err(|e| ChronicleError::Process(format!("failed to serialize triage request: {e}")))?;
+        let json_body = serde_json::to_string(&request).map_err(|e| {
+            ChronicleError::Process(format!("failed to serialize triage request: {e}"))
+        })?;
 
         let response = ureq::post(&url)
             .header("Content-Type", "application/json")
@@ -99,7 +99,10 @@ impl TriageAgent {
     }
 
     /// Batch triage multiple segments.
-    pub fn triage_batch(&self, segments: &[&ActivitySegment]) -> ChronicleResult<Vec<TriageResult>> {
+    pub fn triage_batch(
+        &self,
+        segments: &[&ActivitySegment],
+    ) -> ChronicleResult<Vec<TriageResult>> {
         segments.iter().map(|s| self.triage(s)).collect()
     }
 }
@@ -108,7 +111,8 @@ impl TriageAgent {
 
 /// Simple rule-based triage without LLM. Useful as a fast pre-filter.
 pub fn triage_locally(segment: &ActivitySegment) -> TriageResult {
-    let duration = segment.end_time.seconds_since_epoch() - segment.start_time.seconds_since_epoch();
+    let duration =
+        segment.end_time.seconds_since_epoch() - segment.start_time.seconds_since_epoch();
 
     // Idle segments < 60s → noise
     if segment.segment_type == SegmentType::Idle && duration < 60 {
@@ -132,11 +136,7 @@ pub fn triage_locally(segment: &ActivitySegment) -> TriageResult {
         };
     }
 
-    let app_lower = segment
-        .front_app
-        .as_deref()
-        .unwrap_or("")
-        .to_lowercase();
+    let app_lower = segment.front_app.as_deref().unwrap_or("").to_lowercase();
 
     // Meeting apps
     if is_meeting_app(&app_lower) {
@@ -281,7 +281,10 @@ mod tests {
             title: None,
             frame_count: 10,
             ocr_texts: ocr_texts.into_iter().map(|s| s.to_string()).collect(),
-            accessibility_texts: accessibility_texts.into_iter().map(|s| s.to_string()).collect(),
+            accessibility_texts: accessibility_texts
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 
@@ -311,7 +314,14 @@ mod tests {
 
     #[test]
     fn local_triage_meeting_app() {
-        let seg = make_segment(4, SegmentType::Meeting, Some("zoom.us"), 300, vec!["hi"], vec![]);
+        let seg = make_segment(
+            4,
+            SegmentType::Meeting,
+            Some("zoom.us"),
+            300,
+            vec!["hi"],
+            vec![],
+        );
         let result = triage_locally(&seg);
         assert!(result.worth_keeping);
         assert_eq!(result.category, TriageCategory::Meeting);
@@ -319,7 +329,14 @@ mod tests {
 
     #[test]
     fn local_triage_teams_meeting() {
-        let seg = make_segment(5, SegmentType::Work, Some("Microsoft Teams"), 600, vec!["chat"], vec![]);
+        let seg = make_segment(
+            5,
+            SegmentType::Work,
+            Some("Microsoft Teams"),
+            600,
+            vec!["chat"],
+            vec![],
+        );
         let result = triage_locally(&seg);
         assert!(result.worth_keeping);
         assert_eq!(result.category, TriageCategory::Meeting);
@@ -327,7 +344,14 @@ mod tests {
 
     #[test]
     fn local_triage_coding_app() {
-        let seg = make_segment(6, SegmentType::Work, Some("Code - VSCode"), 1800, vec!["fn main"], vec![]);
+        let seg = make_segment(
+            6,
+            SegmentType::Work,
+            Some("Code - VSCode"),
+            1800,
+            vec!["fn main"],
+            vec![],
+        );
         let result = triage_locally(&seg);
         assert!(result.worth_keeping);
         assert_eq!(result.category, TriageCategory::Coding);
@@ -335,7 +359,14 @@ mod tests {
 
     #[test]
     fn local_triage_xcode() {
-        let seg = make_segment(7, SegmentType::Work, Some("Xcode"), 900, vec!["import"], vec![]);
+        let seg = make_segment(
+            7,
+            SegmentType::Work,
+            Some("Xcode"),
+            900,
+            vec!["import"],
+            vec![],
+        );
         let result = triage_locally(&seg);
         assert!(result.worth_keeping);
         assert_eq!(result.category, TriageCategory::Coding);
@@ -343,7 +374,14 @@ mod tests {
 
     #[test]
     fn local_triage_browser() {
-        let seg = make_segment(8, SegmentType::Browsing, Some("Google Chrome"), 600, vec!["page"], vec![]);
+        let seg = make_segment(
+            8,
+            SegmentType::Browsing,
+            Some("Google Chrome"),
+            600,
+            vec!["page"],
+            vec![],
+        );
         let result = triage_locally(&seg);
         assert!(result.worth_keeping);
         assert_eq!(result.category, TriageCategory::Browsing);

@@ -124,8 +124,7 @@ impl SenseVoiceAsr {
         let num_frames = features.shape()[0] as i32;
 
         // 2. Reshape to [1, num_frames, 560] for batch dim
-        let speech = features
-            .insert_axis(ndarray::Axis(0));
+        let speech = features.insert_axis(ndarray::Axis(0));
 
         let lengths = Array1::from_vec(vec![num_frames]);
 
@@ -170,8 +169,8 @@ impl SenseVoiceAsr {
 /// Load tokens.txt vocabulary file.
 /// Format: each line is "token_id<space_or_tab>token_string" or "token_string<space_or_tab>token_id"
 fn load_tokens(path: &Path) -> ChronicleResult<Vec<String>> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| ChronicleError::io_at(path.to_path_buf(), e))?;
+    let content =
+        fs::read_to_string(path).map_err(|e| ChronicleError::io_at(path.to_path_buf(), e))?;
 
     let mut max_id: usize = 0;
     let mut entries: Vec<(usize, String)> = Vec::new();
@@ -220,14 +219,33 @@ fn load_tokens(path: &Path) -> ChronicleResult<Vec<String>> {
 
 /// Special tokens to skip during decoding.
 const SKIP_TOKENS: &[&str] = &[
-    "<blank>", "<sos>", "<eos>", "<pad>", "<unk>",
-    "<s>", "</s>", "<ctc_blank>", "⁇",
+    "<blank>",
+    "<sos>",
+    "<eos>",
+    "<pad>",
+    "<unk>",
+    "<s>",
+    "</s>",
+    "<ctc_blank>",
+    "⁇",
     // SenseVoice language/event tokens
-    "<|zh|>", "<|en|>", "<|ja|>", "<|ko|>", "<|yue|>",
-    "<|HAPPY|>", "<|SAD|>", "<|ANGRY|>", "<|NEUTRAL|>",
-    "<|BGM|>", "<|Speech|>", "<|Applause|>", "<|Laughter|>",
-    "<|NOISE|>", "<|nospeech|>",
-    "<|startoftext|>", "<|endoftext|>",
+    "<|zh|>",
+    "<|en|>",
+    "<|ja|>",
+    "<|ko|>",
+    "<|yue|>",
+    "<|HAPPY|>",
+    "<|SAD|>",
+    "<|ANGRY|>",
+    "<|NEUTRAL|>",
+    "<|BGM|>",
+    "<|Speech|>",
+    "<|Applause|>",
+    "<|Laughter|>",
+    "<|NOISE|>",
+    "<|nospeech|>",
+    "<|startoftext|>",
+    "<|endoftext|>",
     "<|beginoftext|>",
 ];
 
@@ -312,10 +330,7 @@ fn should_skip_token(token: &str) -> bool {
 
 /// Compute approximate confidence from logits via softmax on the argmax.
 fn compute_confidence(logits: &[f32], max_logit: f32) -> f32 {
-    let sum_exp: f64 = logits
-        .iter()
-        .map(|&x| ((x - max_logit) as f64).exp())
-        .sum();
+    let sum_exp: f64 = logits.iter().map(|&x| ((x - max_logit) as f64).exp()).sum();
     (1.0 / sum_exp as f32).clamp(0.0, 1.0)
 }
 
@@ -651,9 +666,7 @@ mod tests {
 
     #[test]
     fn test_fbank_with_context_shape() {
-        let samples: Vec<f32> = (0..16000)
-            .map(|i| (i as f32 * 0.01).sin() * 0.5)
-            .collect();
+        let samples: Vec<f32> = (0..16000).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
         let config = FbankConfig::default();
 
         let features = extract_fbank_with_context(&samples, &config).unwrap();
@@ -757,9 +770,18 @@ mod tests {
     #[test]
     fn test_join_tokens_sentencepiece() {
         let tokens = vec![
-            TokenInfo { token: "▁Hello".into(), confidence: 0.9 },
-            TokenInfo { token: "▁world".into(), confidence: 0.8 },
-            TokenInfo { token: "!".into(), confidence: 0.7 },
+            TokenInfo {
+                token: "▁Hello".into(),
+                confidence: 0.9,
+            },
+            TokenInfo {
+                token: "▁world".into(),
+                confidence: 0.8,
+            },
+            TokenInfo {
+                token: "!".into(),
+                confidence: 0.7,
+            },
         ];
         let text = join_tokens(&tokens);
         assert_eq!(text, "Hello world!");

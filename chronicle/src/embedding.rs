@@ -120,7 +120,11 @@ impl HashEmbeddingProvider {
         }
 
         // Normalize to unit vector
-        let norm: f64 = buckets.iter().map(|v| (*v as f64).powi(2)).sum::<f64>().sqrt();
+        let norm: f64 = buckets
+            .iter()
+            .map(|v| (*v as f64).powi(2))
+            .sum::<f64>()
+            .sqrt();
         if norm > 0.0 {
             for v in &mut buckets {
                 *v = (*v as f64 / norm) as f32;
@@ -195,8 +199,9 @@ impl EmbeddingProvider for RemoteEmbeddingProvider {
             ChronicleError::Process(format!("failed to read embedding response: {e}"))
         })?;
 
-        let resp: EmbeddingResponse = serde_json::from_str(&response_body)
-            .map_err(|e| ChronicleError::Process(format!("failed to parse embedding response: {e}")))?;
+        let resp: EmbeddingResponse = serde_json::from_str(&response_body).map_err(|e| {
+            ChronicleError::Process(format!("failed to parse embedding response: {e}"))
+        })?;
 
         let embeddings = resp
             .embeddings
@@ -230,7 +235,9 @@ pub struct OnnxEmbeddingProvider {
 
 impl OnnxEmbeddingProvider {
     pub fn new(model: crate::onnx::embedding::OnnxEmbeddingModel) -> Self {
-        Self { model: std::cell::RefCell::new(model) }
+        Self {
+            model: std::cell::RefCell::new(model),
+        }
     }
 }
 
@@ -296,7 +303,9 @@ mod tests {
     #[test]
     fn hash_provider_produces_unit_vectors() {
         let provider = HashEmbeddingProvider::default();
-        let e = provider.embed("some longer text for testing normalization").unwrap();
+        let e = provider
+            .embed("some longer text for testing normalization")
+            .unwrap();
         let norm = e.norm();
         assert!(
             (norm - 1.0).abs() < 1e-5,

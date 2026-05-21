@@ -1,6 +1,7 @@
 //! Pipeline Engine — orchestrates the full processing flow:
 //! Segmentation → Triage → Crystallization → Dedup → Storage.
 
+use crate::cradle_client::{DEFAULT_CRADLE_URL, cradle_base_url};
 use crate::crystallizer::{Crystallizer, CrystallizerConfig, MemoryChunk};
 use crate::dedup::{DedupConfig, DedupEngine, DedupVerdict};
 use crate::embedding::{EmbeddingProvider, HashEmbeddingProvider, RemoteEmbeddingProvider};
@@ -9,7 +10,6 @@ use crate::pii::{PiiConfig, PiiRedactor};
 use crate::recorder::artifacts::PersistedFrame;
 use crate::segmenter::{ActivitySegment, Segmenter, SegmenterConfig};
 use crate::triage::{TriageAgent, TriageResult, triage_locally};
-use crate::cradle_client::{cradle_base_url, DEFAULT_CRADLE_URL};
 
 // ─── Pipeline Stage ──────────────────────────────────────────────────────────
 
@@ -151,14 +151,18 @@ impl Pipeline {
             self.redact_segment_texts(&mut redacted_segment);
 
             // Crystallize
-            let response = self.crystallizer.crystallize(&redacted_segment, &triage_result)?;
+            let response = self
+                .crystallizer
+                .crystallize(&redacted_segment, &triage_result)?;
             let content = &response.summary;
 
             // Embed
             let embedding = self.embedding.embed(content)?;
 
             // Dedup
-            let verdict = self.dedup.check(content, Some(&embedding), segment.start_time);
+            let verdict = self
+                .dedup
+                .check(content, Some(&embedding), segment.start_time);
 
             match verdict {
                 DedupVerdict::New => {
@@ -219,8 +223,12 @@ impl Pipeline {
         let mut redacted_segment = segment.clone();
         self.redact_segment_texts(&mut redacted_segment);
 
-        self.crystallizer
-            .crystallize_to_chunk(&redacted_segment, &triage_result, self.embedding.as_ref(), &mut self.dedup)
+        self.crystallizer.crystallize_to_chunk(
+            &redacted_segment,
+            &triage_result,
+            self.embedding.as_ref(),
+            &mut self.dedup,
+        )
     }
 
     /// Take all produced chunks, leaving the internal buffer empty.
@@ -355,10 +363,7 @@ mod tests {
         let mut pipeline = Pipeline::new(config);
 
         // Create frames that will produce an idle segment (short, no useful text)
-        let frames = vec![
-            mock_frame(0, "", "", 1000),
-            mock_frame(1, "", "", 1005),
-        ];
+        let frames = vec![mock_frame(0, "", "", 1000), mock_frame(1, "", "", 1005)];
 
         let report = pipeline.process_frames(&frames).unwrap();
         // Segment has no text → triage_locally marks as noise

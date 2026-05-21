@@ -124,10 +124,11 @@ fn companion_file(model_path: &Path, relative_path: &str) -> ChronicleResult<Pat
     }
 
     // Fallback: sibling to model file
-    let fallback = model_path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join(Path::new(relative_path).file_name().unwrap_or(relative_path.as_ref()));
+    let fallback = model_path.parent().unwrap_or(Path::new(".")).join(
+        Path::new(relative_path)
+            .file_name()
+            .unwrap_or(relative_path.as_ref()),
+    );
 
     if fallback.exists() {
         return Ok(fallback);

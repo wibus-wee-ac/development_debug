@@ -17,6 +17,7 @@ pub enum ModelId {
     GlinerPii,
     OcrModel,
     EmbeddingModel,
+    SpeakerEmbeddingExtractor,
 }
 
 impl ModelId {
@@ -27,6 +28,10 @@ impl ModelId {
             ModelId::SenseVoiceAsr => ("audio-asr", "audio-asr/sensevoice/model.int8.onnx"),
             ModelId::GlinerPii => ("pii", "pii/gliner-pii-basemodel_fp16.onnx"),
             ModelId::EmbeddingModel => ("embedding", "embedding/model.onnx"),
+            ModelId::SpeakerEmbeddingExtractor => (
+                "speaker",
+                "speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx",
+            ),
             ModelId::OcrModel => ("ocr", "ocr/model.onnx"),
         }
     }
@@ -156,12 +161,17 @@ impl ModelManager {
             ModelId::SenseVoiceAsr,
             ModelId::GlinerPii,
             ModelId::EmbeddingModel,
+            ModelId::SpeakerEmbeddingExtractor,
             ModelId::OcrModel,
         ];
         all.iter()
             .filter_map(|&id| {
                 let path = self.model_path(id);
-                if path.exists() { Some((id, path)) } else { None }
+                if path.exists() {
+                    Some((id, path))
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -176,7 +186,18 @@ mod tests {
     fn model_path_returns_correct_path() {
         let mgr = ModelManager::new("/tmp/test-models");
         let path = mgr.model_path(ModelId::SileroVad);
-        assert_eq!(path, PathBuf::from("/tmp/test-models/audio-vad/silero_vad.onnx"));
+        assert_eq!(
+            path,
+            PathBuf::from("/tmp/test-models/audio-vad/silero_vad.onnx")
+        );
+
+        let speaker_path = mgr.model_path(ModelId::SpeakerEmbeddingExtractor);
+        assert_eq!(
+            speaker_path,
+            PathBuf::from(
+                "/tmp/test-models/speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
+            )
+        );
     }
 
     #[test]
@@ -210,5 +231,6 @@ mod tests {
         assert_eq!(ModelId::SenseVoiceAsr.category(), "audio-asr");
         assert_eq!(ModelId::GlinerPii.category(), "pii");
         assert_eq!(ModelId::EmbeddingModel.category(), "embedding");
+        assert_eq!(ModelId::SpeakerEmbeddingExtractor.category(), "speaker");
     }
 }

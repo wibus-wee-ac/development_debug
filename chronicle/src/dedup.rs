@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::embedding::{cosine_similarity, Embedding};
+use crate::embedding::{Embedding, cosine_similarity};
 use crate::time::Timestamp;
 
 // ---------------------------------------------------------------------------
@@ -179,7 +179,11 @@ impl DedupEngine {
         }
 
         // Evict oldest embeddings if over limit
-        let emb_count = self.entries.iter().filter(|e| e.embedding.is_some()).count();
+        let emb_count = self
+            .entries
+            .iter()
+            .filter(|e| e.embedding.is_some())
+            .count();
         if emb_count > self.config.max_stored_embeddings {
             // Remove embedding from oldest entries until under limit
             let to_remove = emb_count - self.config.max_stored_embeddings;

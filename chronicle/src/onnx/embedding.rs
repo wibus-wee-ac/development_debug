@@ -27,9 +27,8 @@ impl OnnxEmbeddingModel {
     pub fn new(model_path: &Path, tokenizer_path: &Path) -> ChronicleResult<Self> {
         let session = super::load_session(model_path)?;
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|e| {
-            ChronicleError::Process(format!("failed to load tokenizer: {e}"))
-        })?;
+        let tokenizer = Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| ChronicleError::Process(format!("failed to load tokenizer: {e}")))?;
 
         Ok(Self {
             session,
@@ -40,12 +39,17 @@ impl OnnxEmbeddingModel {
 
     /// Generate embedding for a single text.
     pub fn embed(&mut self, text: &str) -> ChronicleResult<Vec<f32>> {
-        let encoding = self.tokenizer.encode(text, true).map_err(|e| {
-            ChronicleError::Process(format!("tokenization failed: {e}"))
-        })?;
+        let encoding = self
+            .tokenizer
+            .encode(text, true)
+            .map_err(|e| ChronicleError::Process(format!("tokenization failed: {e}")))?;
 
         let ids: Vec<i64> = encoding.get_ids().iter().map(|&x| x as i64).collect();
-        let mask: Vec<i64> = encoding.get_attention_mask().iter().map(|&x| x as i64).collect();
+        let mask: Vec<i64> = encoding
+            .get_attention_mask()
+            .iter()
+            .map(|&x| x as i64)
+            .collect();
         let type_ids: Vec<i64> = encoding.get_type_ids().iter().map(|&x| x as i64).collect();
 
         let seq_len = ids.len();

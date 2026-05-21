@@ -85,15 +85,16 @@ pub fn detect_meeting(
     // Check for meeting URLs.
     for window in windows {
         if let Some(url) = &window.url
-            && MEETING_URL_PATTERNS.iter().any(|p| url.contains(p)) {
-                return MeetingDetection {
-                    is_meeting: true,
-                    meeting_app: Some(window.app_bundle_identifier.clone()),
-                    meeting_title: Some(window.name.clone()),
-                    confidence: MeetingConfidence::Medium,
-                    detected_at: now,
-                };
-            }
+            && MEETING_URL_PATTERNS.iter().any(|p| url.contains(p))
+        {
+            return MeetingDetection {
+                is_meeting: true,
+                meeting_app: Some(window.app_bundle_identifier.clone()),
+                meeting_title: Some(window.name.clone()),
+                confidence: MeetingConfidence::Medium,
+                detected_at: now,
+            };
+        }
     }
 
     // Check accessibility text for meeting keywords.

@@ -152,8 +152,10 @@ impl DreamEngine {
             for &idx in cluster_indices {
                 remove_indices.insert(idx);
             }
-            let cluster_chunks: Vec<MemoryChunk> =
-                cluster_indices.iter().map(|&i| self.chunks[i].clone()).collect();
+            let cluster_chunks: Vec<MemoryChunk> = cluster_indices
+                .iter()
+                .map(|&i| self.chunks[i].clone())
+                .collect();
             merged_chunks.push(merge_chunks(cluster_chunks));
         }
 
@@ -245,11 +247,7 @@ impl DreamEngine {
 
 /// Greedy clustering: assign each chunk to the first cluster where the average
 /// similarity exceeds `threshold`. Only returns clusters with 2+ members.
-fn find_merge_clusters(
-    chunks: &[MemoryChunk],
-    threshold: f64,
-    max_size: usize,
-) -> Vec<Vec<usize>> {
+fn find_merge_clusters(chunks: &[MemoryChunk], threshold: f64, max_size: usize) -> Vec<Vec<usize>> {
     let mut clusters: Vec<Vec<usize>> = Vec::new();
 
     for (i, chunk) in chunks.iter().enumerate() {
@@ -326,7 +324,11 @@ fn merge_chunks(cluster: Vec<MemoryChunk>) -> MemoryChunk {
         .iter()
         .flat_map(|c| c.knowledge_cards.iter())
         .collect();
-    all_cards.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    all_cards.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     for card in all_cards {
         if seen_content.insert(card.content.clone()) {
             knowledge_cards.push(card.clone());
@@ -334,11 +336,7 @@ fn merge_chunks(cluster: Vec<MemoryChunk>) -> MemoryChunk {
     }
 
     // Most recent timestamp.
-    let timestamp = cluster
-        .iter()
-        .map(|c| c.timestamp)
-        .max()
-        .unwrap();
+    let timestamp = cluster.iter().map(|c| c.timestamp).max().unwrap();
 
     // Average embedding if all have embeddings.
     let embedding = compute_merged_embedding(&cluster);

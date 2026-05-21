@@ -237,7 +237,10 @@ impl SlackScanner {
 
         let json_bytes = body.to_string();
         let mut resp = ureq::post(&url)
-            .header("Authorization", &format!("Bearer {}", self.config.bot_token))
+            .header(
+                "Authorization",
+                &format!("Bearer {}", self.config.bot_token),
+            )
             .header("Content-Type", "application/json; charset=utf-8")
             .config()
             .timeout_global(Some(REQUEST_TIMEOUT))
@@ -245,7 +248,9 @@ impl SlackScanner {
             .send(json_bytes.as_bytes())
             .map_err(|e| ChronicleError::Process(format!("Slack HTTP error: {e}")))?;
 
-        let resp_body = resp.body_mut().read_to_string()
+        let resp_body = resp
+            .body_mut()
+            .read_to_string()
             .map_err(|e| ChronicleError::Process(format!("Slack response read error: {e}")))?;
         let parsed: SlackPostMessageResponse = serde_json::from_str(&resp_body)
             .map_err(|e| ChronicleError::Process(format!("Slack response parse error: {e}")))?;
@@ -268,14 +273,19 @@ impl SlackScanner {
         );
 
         let mut resp = ureq::get(&url)
-            .header("Authorization", &format!("Bearer {}", self.config.bot_token))
+            .header(
+                "Authorization",
+                &format!("Bearer {}", self.config.bot_token),
+            )
             .config()
             .timeout_global(Some(REQUEST_TIMEOUT))
             .build()
             .call()
             .map_err(|e| ChronicleError::Process(format!("Slack HTTP error: {e}")))?;
 
-        let resp_body = resp.body_mut().read_to_string()
+        let resp_body = resp
+            .body_mut()
+            .read_to_string()
             .map_err(|e| ChronicleError::Process(format!("Slack response read error: {e}")))?;
         let parsed: SlackChannelsResponse = serde_json::from_str(&resp_body)
             .map_err(|e| ChronicleError::Process(format!("Slack response parse error: {e}")))?;
@@ -306,14 +316,19 @@ impl SlackScanner {
 
     fn get_json<T: serde::de::DeserializeOwned>(&self, url: &str) -> ChronicleResult<T> {
         let mut resp = ureq::get(url)
-            .header("Authorization", &format!("Bearer {}", self.config.bot_token))
+            .header(
+                "Authorization",
+                &format!("Bearer {}", self.config.bot_token),
+            )
             .config()
             .timeout_global(Some(REQUEST_TIMEOUT))
             .build()
             .call()
             .map_err(|e| ChronicleError::Process(format!("Slack HTTP error: {e}")))?;
 
-        let body = resp.body_mut().read_to_string()
+        let body = resp
+            .body_mut()
+            .read_to_string()
             .map_err(|e| ChronicleError::Process(format!("Slack response read error: {e}")))?;
         serde_json::from_str(&body)
             .map_err(|e| ChronicleError::Process(format!("Slack response parse error: {e}")))

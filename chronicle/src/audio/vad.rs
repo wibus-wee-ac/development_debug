@@ -63,8 +63,7 @@ impl EnergyVad {
         let frame_size = self.config.frame_size;
         let sample_rate = self.config.sample_rate as f64;
         let ms_per_sample = 1000.0 / sample_rate;
-        let max_silence_samples =
-            (self.config.max_silence_ms as f64 / ms_per_sample) as usize;
+        let max_silence_samples = (self.config.max_silence_ms as f64 / ms_per_sample) as usize;
 
         let mut state = VadState::Silence;
         let mut segments: Vec<SpeechSegment> = Vec::new();
@@ -180,7 +179,12 @@ impl EnergyVad {
 mod tests {
     use super::*;
 
-    fn generate_tone(sample_rate: u32, duration_ms: u64, frequency: f32, amplitude: f32) -> Vec<f32> {
+    fn generate_tone(
+        sample_rate: u32,
+        duration_ms: u64,
+        frequency: f32,
+        amplitude: f32,
+    ) -> Vec<f32> {
         let num_samples = (sample_rate as u64 * duration_ms / 1000) as usize;
         (0..num_samples)
             .map(|i| {
@@ -210,8 +214,16 @@ mod tests {
 
         let seg = &segments[0];
         // Speech should start around 500ms and end around 1500ms
-        assert!(seg.start_ms >= 450 && seg.start_ms <= 550, "start_ms={}", seg.start_ms);
-        assert!(seg.end_ms >= 1450 && seg.end_ms <= 1550, "end_ms={}", seg.end_ms);
+        assert!(
+            seg.start_ms >= 450 && seg.start_ms <= 550,
+            "start_ms={}",
+            seg.start_ms
+        );
+        assert!(
+            seg.end_ms >= 1450 && seg.end_ms <= 1550,
+            "end_ms={}",
+            seg.end_ms
+        );
         assert!(seg.energy > 0.0);
     }
 
@@ -229,7 +241,11 @@ mod tests {
         samples.extend(generate_silence(16000, 500));
 
         let segments = vad.detect(&samples);
-        assert!(segments.is_empty(), "short segment should be filtered: {:?}", segments);
+        assert!(
+            segments.is_empty(),
+            "short segment should be filtered: {:?}",
+            segments
+        );
     }
 
     #[test]

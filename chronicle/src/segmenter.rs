@@ -226,9 +226,7 @@ fn extract_front_app(frame: &PersistedFrame) -> Option<String> {
 }
 
 fn tokenize(text: &str) -> HashSet<String> {
-    text.split_whitespace()
-        .map(|w| w.to_lowercase())
-        .collect()
+    text.split_whitespace().map(|w| w.to_lowercase()).collect()
 }
 
 fn jaccard_similarity(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
@@ -248,10 +246,14 @@ fn infer_segment_type(front_app: &Option<String>) -> SegmentType {
         Some(app) if app.contains("zoom") || app.contains("meet") || app.contains("teams") => {
             SegmentType::Meeting
         }
-        Some(app) if app.contains("safari") || app.contains("chrome") || app.contains("firefox") => {
+        Some(app)
+            if app.contains("safari") || app.contains("chrome") || app.contains("firefox") =>
+        {
             SegmentType::Browsing
         }
-        Some(app) if app.contains("slack") || app.contains("discord") || app.contains("messages") => {
+        Some(app)
+            if app.contains("slack") || app.contains("discord") || app.contains("messages") =>
+        {
             SegmentType::Chat
         }
         Some(_) => SegmentType::Work,
@@ -264,7 +266,9 @@ fn infer_segment_type(front_app: &Option<String>) -> SegmentType {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen::{AccessibilityCapture, AccessibilityCaptureStatus, AccessibilityElementObservation};
+    use crate::screen::{
+        AccessibilityCapture, AccessibilityCaptureStatus, AccessibilityElementObservation,
+    };
     use std::path::PathBuf;
 
     fn make_frame(index: u64, seconds: u64, app: &str, text: &str) -> PersistedFrame {
@@ -314,7 +318,10 @@ mod tests {
         assert_eq!(segments.len(), 2);
         assert_eq!(segments[0].front_app.as_deref(), Some("com.apple.safari"));
         assert_eq!(segments[0].frame_count, 2);
-        assert_eq!(segments[1].front_app.as_deref(), Some("com.microsoft.vscode"));
+        assert_eq!(
+            segments[1].front_app.as_deref(),
+            Some("com.microsoft.vscode")
+        );
         assert_eq!(segments[1].frame_count, 2);
     }
 

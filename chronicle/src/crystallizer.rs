@@ -194,8 +194,10 @@ impl Crystallizer {
         triage: &TriageResult,
     ) -> CrystallizeRequest {
         let ocr_content = truncate_join(&segment.ocr_texts, self.config.max_ocr_chars);
-        let accessibility_content =
-            truncate_join(&segment.accessibility_texts, self.config.max_accessibility_chars);
+        let accessibility_content = truncate_join(
+            &segment.accessibility_texts,
+            self.config.max_accessibility_chars,
+        );
 
         let duration_seconds =
             segment.end_time.seconds_since_epoch() - segment.start_time.seconds_since_epoch();
@@ -217,7 +219,10 @@ impl Crystallizer {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /// Fallback summary when Cradle Server is offline.
-pub fn build_local_summary(segment: &ActivitySegment, triage: &TriageResult) -> CrystallizeResponse {
+pub fn build_local_summary(
+    segment: &ActivitySegment,
+    triage: &TriageResult,
+) -> CrystallizeResponse {
     let mut parts = Vec::new();
 
     if let Some(app) = &segment.front_app {
@@ -254,11 +259,7 @@ pub fn build_local_summary(segment: &ActivitySegment, triage: &TriageResult) -> 
 
 /// Generate a deterministic chunk ID from segment id + start timestamp.
 pub fn generate_chunk_id(segment: &ActivitySegment) -> String {
-    format!(
-        "chunk-{}-{}",
-        segment.id,
-        segment.start_time.compact()
-    )
+    format!("chunk-{}-{}", segment.id, segment.start_time.compact())
 }
 
 /// Join strings with newlines, truncating to max total chars.

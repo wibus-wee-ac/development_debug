@@ -179,7 +179,7 @@ impl AudioTranscriptionPipeline {
                         all_segments.push(tseg);
                     }
                 }
-                Ok(_) => {} // Empty result, skip
+                Ok(_) => {}  // Empty result, skip
                 Err(_) => {} // Graceful degradation
             }
         }
@@ -213,8 +213,7 @@ fn samples_to_le_bytes(samples: &[f32]) -> Vec<u8> {
 
 /// Simple base64 encoding (standard alphabet, with padding).
 fn base64_encode(data: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
     let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     let chunks = data.chunks(3);
@@ -291,7 +290,9 @@ impl<'a> LocalTranscriptionPipeline<'a> {
                         combined_text.push(' ');
                     }
                     combined_text.push_str(&result.text);
-                    total_confidence += result.tokens.iter()
+                    total_confidence += result
+                        .tokens
+                        .iter()
                         .map(|t| t.confidence as f64)
                         .sum::<f64>()
                         / result.tokens.len().max(1) as f64;

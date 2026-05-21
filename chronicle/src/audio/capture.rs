@@ -38,6 +38,38 @@ pub struct MicrophoneCaptureReport {
     pub dropped_samples: usize,
 }
 
+pub fn capture_system_audio_samples(duration_ms: u64) -> ChronicleResult<MicrophoneCaptureReport> {
+    let duration_ms = duration_ms.clamp(100, 30_000);
+    let host = cpal::default_host();
+    let device = select_system_audio_input_device(&host)?;
+    capture_from_input_device(device, duration_ms, "system-audio")
+}
+
+pub fn capture_mixed_audio_samples(duration_ms: u64) -> ChronicleResult<MicrophoneCaptureReport> {
+    let microphone = capture_microphone_samples(duration_ms)?;
+    let system = capture_system_audio_samples(duration_ms)?;
+    let max_len = microphone.samples.len().max(system.samples.len());
+    let mut samples = Vec::with_capacity(max_len);
+    for index in 0..max_len {
+        let microphone_sample = microphone.samples.get(index).copied().unwrap_or(0.0);
+        let system_sample = system.samples.get(index).copied().unwrap_or(0.0);
+        samples.push(((microphone_sample + system_sample) * 0.5).clamp(-1.0, 1.0));
+    }
+
+    Ok(MicrophoneCaptureReport {
+        device_name: format!("{} + {}", microphone.device_name, system.device_name),
+        sample_rate: microphone.sample_rate,
+        channels: 1,
+        source_sample_format: format!(
+            "mixed:{}+{}",
+            microphone.source_sample_format, system.source_sample_format
+        ),
+        duration_ms: microphone.duration_ms.max(system.duration_ms),
+        samples,
+        dropped_samples: microphone.dropped_samples + system.dropped_samples,
+    })
+}
+
 pub fn record_microphone_diagnostics(
     storage_root: impl AsRef<Path>,
     duration_ms: u64,
@@ -80,10 +112,18 @@ pub fn capture_microphone_samples(duration_ms: u64) -> ChronicleResult<Microphon
     let device = host
         .default_input_device()
         .ok_or_else(|| ChronicleError::Process("no default microphone input device".to_string()))?;
+    capture_from_input_device(device, duration_ms, "microphone")
+}
+
+fn capture_from_input_device(
+    device: cpal::Device,
+    duration_ms: u64,
+    source_label: &str,
+) -> ChronicleResult<MicrophoneCaptureReport> {
     let device_name = device
         .description()
         .map(|description| description.name().to_string())
-        .unwrap_or_else(|_| "unknown input".to_string());
+        .unwrap_or_else(|_| format!("unknown {source_label} input"));
     let supported_config = device.default_input_config().map_err(|source| {
         ChronicleError::Process(format!(
             "failed to read default microphone config: {source}"
@@ -246,6 +286,54 @@ pub fn capture_microphone_samples(duration_ms: u64) -> ChronicleResult<Microphon
         samples: buffer.samples().to_vec(),
         dropped_samples: buffer.dropped_samples(),
     })
+}
+
+fn select_system_audio_input_device(host: &cpal::Host) -> ChronicleResult<cpal::Device> {
+    if let Ok(requested_name) = std::env::var("CRADLE_CHRONICLE_SYSTEM_AUDIO_DEVICE") {
+        let requested_name = requested_name.trim().to_lowercase();
+        if !requested_name.is_empty() {
+            for device in host.input_devices().map_err(|source| {
+                ChronicleError::Process(format!(
+                    "failed to enumerate audio input devices: {source}"
+                ))
+            })? {
+                let name = device
+                    .description()
+                    .map(|description| description.name().to_lowercase())
+                    .unwrap_or_default();
+                if name.contains(&requested_name) {
+                    return Ok(device);
+                }
+            }
+            return Err(ChronicleError::Process(format!(
+                "system audio input device matching '{requested_name}' was not found"
+            )));
+        }
+    }
+
+    let system_markers = [
+        "blackhole",
+        "loopback",
+        "soundflower",
+        "monitor",
+        "system audio",
+        "background music",
+    ];
+    for device in host.input_devices().map_err(|source| {
+        ChronicleError::Process(format!("failed to enumerate audio input devices: {source}"))
+    })? {
+        let name = device
+            .description()
+            .map(|description| description.name().to_lowercase())
+            .unwrap_or_default();
+        if system_markers.iter().any(|marker| name.contains(marker)) {
+            return Ok(device);
+        }
+    }
+
+    Err(ChronicleError::Process(
+        "no system audio loopback input device found; set CRADLE_CHRONICLE_SYSTEM_AUDIO_DEVICE to a loopback capture device".to_string(),
+    ))
 }
 
 fn stream_error_handler(

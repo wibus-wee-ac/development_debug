@@ -87,9 +87,8 @@ impl SileroVad {
             )));
         }
 
-        let input = Array2::from_shape_vec((1, SILERO_CHUNK_SIZE), samples.to_vec()).map_err(
-            |e| ChronicleError::Process(format!("failed to create input tensor: {e}")),
-        )?;
+        let input = Array2::from_shape_vec((1, SILERO_CHUNK_SIZE), samples.to_vec())
+            .map_err(|e| ChronicleError::Process(format!("failed to create input tensor: {e}")))?;
 
         let sr = Array1::from_vec(vec![SILERO_SAMPLE_RATE as i64]);
 
@@ -142,10 +141,8 @@ impl SileroVad {
         let num_chunks = samples.len() / chunk_size;
         let samples_per_ms = sample_rate as f64 / 1000.0;
 
-        let min_speech_samples =
-            (self.config.min_speech_ms as f64 * samples_per_ms) as usize;
-        let min_silence_samples =
-            (self.config.min_silence_ms as f64 * samples_per_ms) as usize;
+        let min_speech_samples = (self.config.min_speech_ms as f64 * samples_per_ms) as usize;
+        let min_silence_samples = (self.config.min_silence_ms as f64 * samples_per_ms) as usize;
         let pad_samples = (self.config.speech_pad_ms as f64 * samples_per_ms) as usize;
 
         // State machine for segment detection.
@@ -174,13 +171,9 @@ impl SileroVad {
                     let end_sample = offset + chunk_size - silence_count;
                     let duration = end_sample.saturating_sub(speech_start);
                     if duration >= min_speech_samples {
-                        let seg_start =
-                            speech_start.saturating_sub(pad_samples);
-                        let seg_end =
-                            (end_sample + pad_samples).min(samples.len());
-                        let energy = compute_rms(
-                            &samples[speech_start..end_sample],
-                        );
+                        let seg_start = speech_start.saturating_sub(pad_samples);
+                        let seg_end = (end_sample + pad_samples).min(samples.len());
+                        let energy = compute_rms(&samples[speech_start..end_sample]);
                         segments.push(SpeechSegment {
                             start_sample: seg_start,
                             end_sample: seg_end,

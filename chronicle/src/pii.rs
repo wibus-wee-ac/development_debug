@@ -2,7 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 /// Types of PII that can be detected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -99,7 +98,6 @@ pub struct PiiRedactor {
     config: PiiConfig,
 }
 
-
 impl PiiRedactor {
     pub fn new(config: PiiConfig) -> Self {
         Self { config }
@@ -140,9 +138,10 @@ impl PiiRedactor {
         let mut deduped: Vec<PiiEntity> = Vec::new();
         for entity in entities {
             if let Some(last) = deduped.last()
-                && entity.start < last.end {
-                    continue; // overlapping, skip
-                }
+                && entity.start < last.end
+            {
+                continue; // overlapping, skip
+            }
             deduped.push(entity);
         }
 
@@ -206,7 +205,14 @@ fn detect_emails(text: &str) -> Vec<PiiEntity> {
 
         // Find local part (before @).
         let mut local_start = i;
-        while local_start > 0 && is_word_char(text[local_start - 1..local_start].chars().next().unwrap_or(' ')) {
+        while local_start > 0
+            && is_word_char(
+                text[local_start - 1..local_start]
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            )
+        {
             local_start -= 1;
         }
         if local_start == i {
@@ -215,7 +221,14 @@ fn detect_emails(text: &str) -> Vec<PiiEntity> {
 
         // Find domain part (after @).
         let mut domain_end = i + 1;
-        while domain_end < bytes.len() && is_domain_char(text[domain_end..domain_end + 1].chars().next().unwrap_or(' ')) {
+        while domain_end < bytes.len()
+            && is_domain_char(
+                text[domain_end..domain_end + 1]
+                    .chars()
+                    .next()
+                    .unwrap_or(' '),
+            )
+        {
             domain_end += 1;
         }
 
@@ -277,7 +290,11 @@ fn detect_phones(text: &str) -> Vec<PiiEntity> {
         }
 
         if digit_count >= 10 {
-            let end_byte = text.char_indices().nth(j).map(|(idx, _)| idx).unwrap_or(text.len());
+            let end_byte = text
+                .char_indices()
+                .nth(j)
+                .map(|(idx, _)| idx)
+                .unwrap_or(text.len());
             // Trim trailing separators.
             let trimmed = text[start_byte..end_byte].trim_end_matches(['-', ' ', '.', ')']);
             let actual_end = start_byte + trimmed.len();
@@ -330,7 +347,11 @@ fn detect_credit_cards(text: &str) -> Vec<PiiEntity> {
 
         // Credit cards are 13-19 digits, and typically have separators (to distinguish from random numbers).
         if (13..=19).contains(&digit_count) && has_separator {
-            let end_byte = text.char_indices().nth(j).map(|(idx, _)| idx).unwrap_or(text.len());
+            let end_byte = text
+                .char_indices()
+                .nth(j)
+                .map(|(idx, _)| idx)
+                .unwrap_or(text.len());
             let trimmed = text[start_byte..end_byte].trim_end_matches(['-', ' ']);
             let actual_end = start_byte + trimmed.len();
 
@@ -381,8 +402,14 @@ fn detect_api_keys(text: &str) -> Vec<PiiEntity> {
             let bytes = text.as_bytes();
             while end < bytes.len() {
                 let c = bytes[end];
-                if c == b' ' || c == b'\n' || c == b'\r' || c == b'\t'
-                    || c == b',' || c == b'"' || c == b'\'' || c == b';'
+                if c == b' '
+                    || c == b'\n'
+                    || c == b'\r'
+                    || c == b'\t'
+                    || c == b','
+                    || c == b'"'
+                    || c == b'\''
+                    || c == b';'
                 {
                     break;
                 }
@@ -557,7 +584,10 @@ mod tests {
     fn detects_api_keys() {
         let redactor = PiiRedactor::default();
         let entities = redactor.detect("Token: sk-abc123def456 and xoxb-something-here");
-        let api_keys: Vec<_> = entities.iter().filter(|e| e.pii_type == PiiType::ApiKey).collect();
+        let api_keys: Vec<_> = entities
+            .iter()
+            .filter(|e| e.pii_type == PiiType::ApiKey)
+            .collect();
         assert_eq!(api_keys.len(), 2);
         assert!(api_keys[0].text.starts_with("sk-"));
         assert!(api_keys[1].text.starts_with("xoxb-"));
@@ -621,7 +651,10 @@ mod tests {
         // An SSN embedded in what could look like a phone-ish sequence.
         let entities = redactor.detect("Number: 123-45-6789");
         // Should detect SSN (more specific pattern wins via ordering).
-        let ssns: Vec<_> = entities.iter().filter(|e| e.pii_type == PiiType::SocialSecurity).collect();
+        let ssns: Vec<_> = entities
+            .iter()
+            .filter(|e| e.pii_type == PiiType::SocialSecurity)
+            .collect();
         assert!(!ssns.is_empty());
     }
 }

@@ -112,9 +112,8 @@ impl GlinerPiiDetector {
     pub fn new(model_path: &Path, tokenizer_path: &Path) -> ChronicleResult<Self> {
         let session = super::load_session(model_path)?;
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path).map_err(|e| {
-            ChronicleError::Process(format!("failed to load tokenizer: {e}"))
-        })?;
+        let tokenizer = Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| ChronicleError::Process(format!("failed to load tokenizer: {e}")))?;
 
         Ok(Self {
             session,
@@ -136,9 +135,10 @@ impl GlinerPiiDetector {
             return Ok(Vec::new());
         }
 
-        let encoding = self.tokenizer.encode(text, true).map_err(|e| {
-            ChronicleError::Process(format!("tokenization failed: {e}"))
-        })?;
+        let encoding = self
+            .tokenizer
+            .encode(text, true)
+            .map_err(|e| ChronicleError::Process(format!("tokenization failed: {e}")))?;
 
         let ids = encoding.get_ids();
         let offsets = encoding.get_offsets();
@@ -181,15 +181,17 @@ impl GlinerPiiDetector {
         let text_lengths_arr = Array1::from_vec(text_lengths);
 
         // Try GLiNER-style inference (4 inputs).
-        let outputs = self.run_gliner(
-            &input_ids_arr,
-            &attention_mask_arr,
-            &word_mask_arr,
-            &text_lengths_arr,
-        ).or_else(|_| {
-            // Fallback: simpler NER model with only input_ids + attention_mask.
-            self.run_simple_ner(&input_ids_arr, &attention_mask_arr)
-        })?;
+        let outputs = self
+            .run_gliner(
+                &input_ids_arr,
+                &attention_mask_arr,
+                &word_mask_arr,
+                &text_lengths_arr,
+            )
+            .or_else(|_| {
+                // Fallback: simpler NER model with only input_ids + attention_mask.
+                self.run_simple_ner(&input_ids_arr, &attention_mask_arr)
+            })?;
 
         // Extract spans from output scores.
         let spans = self.extract_spans(&outputs, text, offsets, &word_mask, word_ids);
@@ -288,7 +290,9 @@ impl GlinerPiiDetector {
                 "input_ids" => input_ids_tensor,
                 "attention_mask" => attention_mask_tensor,
             ])
-            .map_err(|e| ChronicleError::Process(format!("ONNX inference (fallback) failed: {e}")))?;
+            .map_err(|e| {
+                ChronicleError::Process(format!("ONNX inference (fallback) failed: {e}"))
+            })?;
 
         let (shape, output_data) = outputs[0]
             .try_extract_tensor::<f32>()
@@ -391,7 +395,9 @@ impl GlinerPiiDetector {
 
         // Deduplicate overlapping spans: keep highest confidence.
         spans.sort_by(|a, b| {
-            a.start.cmp(&b.start).then(b.confidence.partial_cmp(&a.confidence).unwrap())
+            a.start
+                .cmp(&b.start)
+                .then(b.confidence.partial_cmp(&a.confidence).unwrap())
         });
         dedup_overlapping(&mut spans);
 
@@ -538,7 +544,9 @@ mod tests {
         ];
         // Pre-sort as extract_spans does.
         spans.sort_by(|a, b| {
-            a.start.cmp(&b.start).then(b.confidence.partial_cmp(&a.confidence).unwrap())
+            a.start
+                .cmp(&b.start)
+                .then(b.confidence.partial_cmp(&a.confidence).unwrap())
         });
         dedup_overlapping(&mut spans);
 

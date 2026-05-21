@@ -23,6 +23,34 @@ impl CaptureProvider {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AudioCaptureSource {
+    Microphone,
+    System,
+    Mixed,
+}
+
+impl AudioCaptureSource {
+    pub fn parse(s: &str) -> ChronicleResult<Self> {
+        match s {
+            "microphone" => Ok(Self::Microphone),
+            "system" => Ok(Self::System),
+            "mixed" => Ok(Self::Mixed),
+            other => Err(ChronicleError::InvalidArgument(format!(
+                "unsupported audio source: {other}"
+            ))),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Microphone => "microphone",
+            Self::System => "system",
+            Self::Mixed => "mixed",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChronicleConfig {
     pub storage_root: PathBuf,
@@ -39,6 +67,7 @@ pub struct ChronicleConfig {
     pub run_once: bool,
     pub audio_diagnostics: bool,
     pub audio_capture: bool,
+    pub audio_source: AudioCaptureSource,
     pub audio_duration_ms: u64,
     pub audio_segment_ms: u64,
     pub audio_segment_interval_ms: u64,
@@ -89,6 +118,11 @@ impl ChronicleConfig {
         let mut run_once = false;
         let mut audio_diagnostics = false;
         let mut audio_capture = env_flag("CRADLE_CHRONICLE_AUDIO_CAPTURE");
+        let mut audio_source = env::var("CRADLE_CHRONICLE_AUDIO_SOURCE")
+            .ok()
+            .map(|value| AudioCaptureSource::parse(&value))
+            .transpose()?
+            .unwrap_or(AudioCaptureSource::Microphone);
         let mut audio_duration_ms = 1_000;
         let mut audio_segment_ms = 5_000;
         let mut audio_segment_interval_ms = 60_000;
@@ -107,6 +141,13 @@ impl ChronicleConfig {
                 audio_capture = true;
             } else if arg == "--no-audio-capture" {
                 audio_capture = false;
+            } else if let Some(value) = arg.strip_prefix("--audio-source=") {
+                audio_source = AudioCaptureSource::parse(value)?;
+            } else if arg == "--audio-source" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument("--audio-source requires a value".to_string())
+                })?;
+                audio_source = AudioCaptureSource::parse(&value)?;
             } else if arg == "--ax-observer" {
                 ax_observer = true;
             } else if arg == "--no-ax-observer" {
@@ -253,6 +294,7 @@ impl ChronicleConfig {
             run_once,
             audio_diagnostics,
             audio_capture,
+            audio_source,
             audio_duration_ms,
             audio_segment_ms,
             audio_segment_interval_ms,
@@ -263,7 +305,7 @@ impl ChronicleConfig {
 }
 
 pub fn usage() -> String {
-    "usage: cradle-chronicle (--smoke | --daemon | --audio-diagnostics) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--audio-capture] [--no-audio-capture] [--ax-observer] [--no-ax-observer] [--audio-duration-ms <ms>] [--audio-segment-ms <ms>] [--audio-segment-interval-ms <ms>] [--audio-rms-threshold <value>] [--run-once]".to_string()
+    "usage: cradle-chronicle (--smoke | --daemon | --audio-diagnostics) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--audio-capture] [--no-audio-capture] [--audio-source microphone|system|mixed] [--ax-observer] [--no-ax-observer] [--audio-duration-ms <ms>] [--audio-segment-ms <ms>] [--audio-segment-interval-ms <ms>] [--audio-rms-threshold <value>] [--run-once]".to_string()
 }
 
 fn env_flag(name: &str) -> bool {
@@ -314,7 +356,7 @@ fn parse_f32(name: &str, value: &str) -> ChronicleResult<f32> {
 mod tests {
     use std::path::PathBuf;
 
-    use super::{CaptureProvider, ChronicleConfig};
+    use super::{AudioCaptureSource, CaptureProvider, ChronicleConfig};
 
     #[test]
     fn parses_storage_root_forms() {
@@ -359,6 +401,7 @@ mod tests {
         assert!(config.run_once);
         assert!(!config.audio_diagnostics);
         assert!(!config.audio_capture);
+        assert_eq!(config.audio_source, AudioCaptureSource::Microphone);
         assert!(config.ax_observer);
         assert_eq!(config.inbox_root, PathBuf::from("/tmp/cradle-inbox"));
         assert_eq!(config.provider, CaptureProvider::Inbox);
@@ -401,6 +444,8 @@ mod tests {
             "--audio-capture",
             "--no-ax-observer",
             "--audio-segment-ms=750",
+            "--audio-source",
+            "mixed",
             "--audio-segment-interval-ms",
             "1250",
             "--audio-rms-threshold",
@@ -409,6 +454,7 @@ mod tests {
         .expect("config should parse");
 
         assert!(config.audio_capture);
+        assert_eq!(config.audio_source, AudioCaptureSource::Mixed);
         assert!(!config.ax_observer);
         assert_eq!(config.audio_segment_ms, 750);
         assert_eq!(config.audio_segment_interval_ms, 1250);

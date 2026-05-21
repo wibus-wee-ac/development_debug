@@ -8,11 +8,12 @@ pub mod wav;
 
 pub use activity::{AudioActivityReport, BoundedPcmBuffer, RmsActivityGate};
 pub use asr::{
-    AsrConfig, AudioTranscriptionPipeline, RemoteAsr, TranscriptionResult, TranscriptionSegment,
+    AsrConfig, AudioTranscriptionPipeline, LocalTranscriptionPipeline, RemoteAsr,
+    TranscriptionResult, TranscriptionSegment,
 };
 pub use capture::{
     AudioDiagnosticsReport, MicrophoneCaptureReport, capture_microphone_samples,
-    record_microphone_diagnostics,
+    capture_mixed_audio_samples, capture_system_audio_samples, record_microphone_diagnostics,
 };
 pub use vad::{EnergyVad, SpeechSegment, VadConfig};
 pub use wav::{AudioArtifactMetadata, WavArtifact, write_audio_segment_artifact};

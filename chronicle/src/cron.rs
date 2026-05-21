@@ -73,10 +73,10 @@ impl CronScheduler {
         if !path.exists() {
             return Ok(());
         }
-        let data = std::fs::read_to_string(path)
-            .map_err(|e| ChronicleError::io_at(path.clone(), e))?;
-        self.jobs =
-            serde_json::from_str(&data).map_err(|e| ChronicleError::InvalidArgument(e.to_string()))?;
+        let data =
+            std::fs::read_to_string(path).map_err(|e| ChronicleError::io_at(path.clone(), e))?;
+        self.jobs = serde_json::from_str(&data)
+            .map_err(|e| ChronicleError::InvalidArgument(e.to_string()))?;
         Ok(())
     }
 

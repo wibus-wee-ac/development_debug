@@ -235,6 +235,19 @@ pub struct ChronicleAudioTranscriptReport {
     pub metadata: serde_json::Value,
 }
 
+/// Speaker profile evidence learned by the local speaker embedding runtime.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleSpeakerProfileReport {
+    pub display_name: String,
+    pub aliases: Vec<String>,
+    pub embedding: Option<Vec<f32>>,
+    pub embedding_model_id: Option<String>,
+    pub sample_count: u32,
+    pub last_seen_at: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
 /// Raw audio segment evidence written before VAD/ASR/speaker processing.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -259,6 +272,20 @@ pub struct ChronicleAudioRawSegmentReport {
     pub metadata: serde_json::Value,
 }
 
+/// Processing result for a previously reported raw audio segment.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleAudioRawSegmentProcessingResultReport {
+    pub status: Option<ChronicleAudioRawSegmentStatus>,
+    pub vad_status: Option<ChronicleAudioProcessingStatus>,
+    pub asr_status: Option<ChronicleAudioProcessingStatus>,
+    pub speaker_status: Option<ChronicleAudioProcessingStatus>,
+    pub transcript_source_id: Option<String>,
+    pub speaker_profile_ids: Vec<String>,
+    pub error_message: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
 /// Origin of a raw audio segment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -276,6 +303,16 @@ pub enum ChronicleAudioRawSegmentStatus {
     Queued,
     Processed,
     Ignored,
+    Error,
+}
+
+/// Server-side lifecycle state for audio processors attached to a raw segment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChronicleAudioProcessingStatus {
+    NotImplemented,
+    Pending,
+    Ready,
     Error,
 }
 
@@ -319,6 +356,61 @@ impl ChronicleAudioRawSegmentReport {
         if !self.peak.is_finite() || !(0.0..=1.0).contains(&self.peak) {
             return Err(ChronicleError::InvalidArgument(
                 "raw audio segment peak must be between 0 and 1".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl ChronicleAudioRawSegmentProcessingResultReport {
+    pub fn validate(&self) -> ChronicleResult<()> {
+        if self
+            .transcript_source_id
+            .as_ref()
+            .is_some_and(|source_id| source_id.trim().is_empty())
+        {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio processing transcript_source_id must not be empty when provided"
+                    .to_string(),
+            ));
+        }
+        if self
+            .speaker_profile_ids
+            .iter()
+            .any(|speaker_profile_id| speaker_profile_id.trim().is_empty())
+        {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio processing speaker_profile_ids must not contain empty values"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl ChronicleSpeakerProfileReport {
+    pub fn validate(&self) -> ChronicleResult<()> {
+        if self.display_name.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "speaker profile display_name must not be empty".to_string(),
+            ));
+        }
+        if self
+            .embedding
+            .as_ref()
+            .is_some_and(|embedding| embedding.is_empty())
+        {
+            return Err(ChronicleError::InvalidArgument(
+                "speaker profile embedding must not be empty when provided".to_string(),
+            ));
+        }
+        if self
+            .embedding
+            .as_ref()
+            .is_some_and(|embedding| embedding.iter().any(|value| !value.is_finite()))
+        {
+            return Err(ChronicleError::InvalidArgument(
+                "speaker profile embedding must contain only finite values".to_string(),
             ));
         }
         Ok(())
@@ -552,6 +644,15 @@ impl CradleClient {
         self.post_json("/chronicle/audio-transcripts", transcript)
     }
 
+    /// Report a speaker profile learned by the local speaker embedding runtime.
+    pub fn record_speaker_profile(
+        &self,
+        profile: &ChronicleSpeakerProfileReport,
+    ) -> ChronicleResult<()> {
+        profile.validate()?;
+        self.post_json("/chronicle/speaker-profiles", profile)
+    }
+
     /// Report raw audio segment evidence to Cradle Server.
     pub fn record_audio_raw_segment(
         &self,
@@ -561,11 +662,33 @@ impl CradleClient {
         self.post_json("/chronicle/audio-raw-segments", segment)
     }
 
+    /// Report processing status for a previously persisted raw audio segment.
+    pub fn record_audio_raw_segment_processing_result(
+        &self,
+        source_id: &str,
+        result: &ChronicleAudioRawSegmentProcessingResultReport,
+    ) -> ChronicleResult<()> {
+        if source_id.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "raw audio processing source_id must not be empty".to_string(),
+            ));
+        }
+        result.validate()?;
+        self.post_json(
+            &format!(
+                "/chronicle/audio-raw-segments/{}/processing-result",
+                encode_path_segment(source_id)
+            ),
+            result,
+        )
+    }
+
     /// Report a chat message (e.g. from Slack) to Cradle Server.
     pub fn record_chat_message(&self, payload: &serde_json::Value) -> ChronicleResult<()> {
         let url = format!("{}/chronicle/chat-message", self.base_url);
-        let json_body = serde_json::to_string(payload)
-            .map_err(|e| ChronicleError::Process(format!("failed to serialize chat message: {e}")))?;
+        let json_body = serde_json::to_string(payload).map_err(|e| {
+            ChronicleError::Process(format!("failed to serialize chat message: {e}"))
+        })?;
         ureq::post(&url)
             .header("Content-Type", "application/json")
             .config()
@@ -624,6 +747,18 @@ fn path_string(path: &Path) -> String {
     path.to_string_lossy().to_string()
 }
 
+fn encode_path_segment(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -635,11 +770,12 @@ mod tests {
     use crate::time::Timestamp;
 
     use super::{
+        ChronicleAudioProcessingStatus, ChronicleAudioRawSegmentProcessingResultReport,
         ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource,
         ChronicleAudioRawSegmentStatus, ChronicleAudioTranscriptReport,
         ChronicleAudioTranscriptSegmentReport, ChronicleAudioTranscriptSource,
         ChronicleAudioTranscriptStatus, ChronicleMemoryReport, ChronicleSnapshotReport,
-        ChronicleTranscriptConfidence, CradleClient,
+        ChronicleSpeakerProfileReport, ChronicleTranscriptConfidence, CradleClient,
     };
 
     #[test]
@@ -772,6 +908,57 @@ mod tests {
     }
 
     #[test]
+    fn speaker_profile_report_serializes_server_contract() {
+        let report = ChronicleSpeakerProfileReport {
+            display_name: "Ada".to_string(),
+            aliases: vec!["Ada Lovelace".to_string()],
+            embedding: Some(vec![0.1, -0.2, 0.3]),
+            embedding_model_id: Some("3dspeaker-campplus-zh-en-16k".to_string()),
+            sample_count: 2,
+            last_seen_at: Some("2026-05-21T10:40:00Z".to_string()),
+            metadata: serde_json::json!({
+                "source": "speaker-embedding-runtime",
+                "threshold": 0.6
+            }),
+        };
+
+        let json = serde_json::to_value(&report).expect("speaker profile should serialize");
+
+        assert_eq!(json["displayName"], "Ada");
+        assert_eq!(json["aliases"][0], "Ada Lovelace");
+        assert!((json["embedding"][1].as_f64().unwrap() + 0.2).abs() < 0.000_001);
+        assert_eq!(json["embeddingModelId"], "3dspeaker-campplus-zh-en-16k");
+        assert_eq!(json["sampleCount"], 2);
+        assert_eq!(json["lastSeenAt"], "2026-05-21T10:40:00Z");
+        assert_eq!(json["metadata"]["threshold"], 0.6);
+    }
+
+    #[test]
+    fn speaker_profile_report_rejects_invalid_embedding() {
+        let empty_name = ChronicleSpeakerProfileReport {
+            display_name: " ".to_string(),
+            aliases: vec![],
+            embedding: None,
+            embedding_model_id: None,
+            sample_count: 0,
+            last_seen_at: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(empty_name.validate().is_err());
+
+        let invalid_embedding = ChronicleSpeakerProfileReport {
+            display_name: "Ada".to_string(),
+            aliases: vec![],
+            embedding: Some(vec![f32::NAN]),
+            embedding_model_id: None,
+            sample_count: 0,
+            last_seen_at: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(invalid_embedding.validate().is_err());
+    }
+
+    #[test]
     fn audio_transcript_report_rejects_reversed_segment_range() {
         let report = ChronicleAudioTranscriptReport {
             source_id: "meeting-source-1".to_string(),
@@ -820,6 +1007,33 @@ mod tests {
     }
 
     #[test]
+    fn audio_raw_segment_processing_result_serializes_server_contract() {
+        let report = ChronicleAudioRawSegmentProcessingResultReport {
+            status: Some(ChronicleAudioRawSegmentStatus::Processed),
+            vad_status: Some(ChronicleAudioProcessingStatus::Ready),
+            asr_status: Some(ChronicleAudioProcessingStatus::Ready),
+            speaker_status: Some(ChronicleAudioProcessingStatus::Ready),
+            transcript_source_id: Some("meeting-source-1".to_string()),
+            speaker_profile_ids: vec!["speaker-profile-1".to_string()],
+            error_message: None,
+            metadata: serde_json::json!({
+                "runtime": "local-audio-pipeline"
+            }),
+        };
+
+        let json =
+            serde_json::to_value(&report).expect("raw audio processing result should serialize");
+
+        assert_eq!(json["status"], "processed");
+        assert_eq!(json["vadStatus"], "ready");
+        assert_eq!(json["asrStatus"], "ready");
+        assert_eq!(json["speakerStatus"], "ready");
+        assert_eq!(json["transcriptSourceId"], "meeting-source-1");
+        assert_eq!(json["speakerProfileIds"][0], "speaker-profile-1");
+        assert_eq!(json["metadata"]["runtime"], "local-audio-pipeline");
+    }
+
+    #[test]
     fn audio_raw_segment_variants_match_server_contract() {
         let source_json = serde_json::to_value(ChronicleAudioRawSegmentSource::Microphone)
             .expect("source should serialize");
@@ -828,6 +1042,33 @@ mod tests {
 
         assert_eq!(source_json, "microphone");
         assert_eq!(status_json, "captured");
+    }
+
+    #[test]
+    fn audio_raw_segment_processing_result_rejects_invalid_refs() {
+        let report = ChronicleAudioRawSegmentProcessingResultReport {
+            status: None,
+            vad_status: None,
+            asr_status: None,
+            speaker_status: None,
+            transcript_source_id: Some(" ".to_string()),
+            speaker_profile_ids: vec![],
+            error_message: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(report.validate().is_err());
+
+        let report = ChronicleAudioRawSegmentProcessingResultReport {
+            status: None,
+            vad_status: None,
+            asr_status: None,
+            speaker_status: None,
+            transcript_source_id: None,
+            speaker_profile_ids: vec!["".to_string()],
+            error_message: None,
+            metadata: serde_json::json!({}),
+        };
+        assert!(report.validate().is_err());
     }
 
     #[test]

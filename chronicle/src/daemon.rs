@@ -9,13 +9,17 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::audio::{
-    AudioArtifactMetadata, AudioTranscriptionPipeline, RmsActivityGate,
-    capture_microphone_samples, write_audio_segment_artifact,
+    AudioArtifactMetadata, AudioTranscriptionPipeline, LocalTranscriptionPipeline, RmsActivityGate,
+    TranscriptionResult, capture_microphone_samples, capture_mixed_audio_samples,
+    capture_system_audio_samples, write_audio_segment_artifact,
 };
-use crate::config::{CaptureProvider, ChronicleConfig};
+use crate::config::{AudioCaptureSource, CaptureProvider, ChronicleConfig};
 use crate::cradle_client::{
+    ChronicleAudioProcessingStatus, ChronicleAudioRawSegmentProcessingResultReport,
     ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus,
-    ChronicleMemoryReport, ChronicleSnapshotReport, CradleClient,
+    ChronicleAudioTranscriptReport, ChronicleAudioTranscriptSegmentReport,
+    ChronicleAudioTranscriptSource, ChronicleAudioTranscriptStatus, ChronicleMemoryReport,
+    ChronicleSnapshotReport, ChronicleTranscriptConfidence, CradleClient,
 };
 use crate::cron::{CronScheduler, CronTickResult, TaskKind, default_jobs};
 use crate::dream::{DreamConfig, DreamEngine, DreamMode};
@@ -28,8 +32,8 @@ use crate::pipeline::Pipeline;
 use crate::recorder::artifacts::{ArtifactStore, PersistedFrame};
 use crate::recorder::fingerprint::FrameFingerprint;
 use crate::recorder::sampler::AdaptiveSampler;
-use crate::screen::inbox::InboxCaptureSource;
 use crate::screen::BrowserWindowObservation;
+use crate::screen::inbox::InboxCaptureSource;
 use crate::slack::SlackScanner;
 use crate::time::Timestamp;
 use crate::transcript_inbox::process_transcript_inbox_tick;
@@ -73,8 +77,10 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
         let report = capture_once(&config, 1)?;
         let client = CradleClient::from_env();
         process_transcripts(&config.inbox_root, &client);
+        let onnx_runtime = crate::onnx::OnnxRuntime::new();
+        let local_transcription = LocalTranscriptionPipeline::new(&onnx_runtime);
         if config.audio_capture {
-            process_audio_segment(&config, &client);
+            process_audio_segment(&config, &client, &local_transcription);
         }
         report_snapshots(&client, &report.persisted_frames);
         drop(lock);
@@ -123,11 +129,12 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
         eprintln!("cradle chronicle cron load state error: {e}");
     }
     if cron.jobs().is_empty()
-        && let Ok(now) = Timestamp::now() {
-            for job in default_jobs(now) {
-                cron.add_job(job);
-            }
+        && let Ok(now) = Timestamp::now()
+    {
+        for job in default_jobs(now) {
+            cron.add_job(job);
         }
+    }
 
     let mut slack_scanner: Option<SlackScanner> = if env::var("SLACK_BOT_TOKEN").is_ok() {
         match SlackScanner::from_env() {
@@ -158,13 +165,18 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
     eprintln!("cradle chronicle onnx runtime initialized (models load on demand)");
 
     // Audio transcription pipeline: local ONNX (Silero VAD + SenseVoice ASR)
-    let _local_transcription = crate::audio::asr::LocalTranscriptionPipeline::new(&onnx_runtime);
+    let local_transcription = crate::audio::asr::LocalTranscriptionPipeline::new(&onnx_runtime);
     let _audio_pipeline = AudioTranscriptionPipeline::from_env();
     eprintln!("cradle chronicle audio transcription pipeline ready (local ONNX + remote fallback)");
 
     while !SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
         process_transcripts(&config.inbox_root, &client);
-        process_audio_segment_if_due(config, &client, &mut last_audio_segment_time);
+        process_audio_segment_if_due(
+            config,
+            &client,
+            &local_transcription,
+            &mut last_audio_segment_time,
+        );
         #[cfg(target_os = "macos")]
         refresh_ax_observer(config, &mut ax_observer);
         #[cfg(target_os = "macos")]
@@ -249,7 +261,12 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
 
         // Cron check
         if last_cron_check.elapsed() >= cron_interval {
-            process_cron_jobs(&mut cron, &mut pipeline, &all_persisted, &config.storage_root);
+            process_cron_jobs(
+                &mut cron,
+                &mut pipeline,
+                &all_persisted,
+                &config.storage_root,
+            );
             last_cron_check = Instant::now();
         }
 
@@ -548,7 +565,10 @@ fn process_pipeline(pipeline: &mut Pipeline, frames: &[PersistedFrame]) {
         Ok(report) => {
             eprintln!(
                 "cradle chronicle pipeline completed: segments={} kept={} chunks={} deduped={}",
-                report.segments_produced, report.segments_kept, report.chunks_produced, report.chunks_deduplicated
+                report.segments_produced,
+                report.segments_kept,
+                report.chunks_produced,
+                report.chunks_deduplicated
             );
         }
         Err(error) => {
@@ -557,7 +577,12 @@ fn process_pipeline(pipeline: &mut Pipeline, frames: &[PersistedFrame]) {
     }
 }
 
-fn process_cron_jobs(cron: &mut CronScheduler, pipeline: &mut Pipeline, frames: &[PersistedFrame], _storage_root: &Path) {
+fn process_cron_jobs(
+    cron: &mut CronScheduler,
+    pipeline: &mut Pipeline,
+    frames: &[PersistedFrame],
+    _storage_root: &Path,
+) {
     let now = match Timestamp::now() {
         Ok(t) => t,
         Err(_) => return,
@@ -581,7 +606,10 @@ fn process_cron_jobs(cron: &mut CronScheduler, pipeline: &mut Pipeline, frames: 
                     let chunks = pipeline.drain_chunks();
                     engine.load_chunks(chunks);
                     let report = engine.run(DreamMode::Archive, now);
-                    eprintln!("cradle chronicle dream-archive: archived={}", report.archived_count);
+                    eprintln!(
+                        "cradle chronicle dream-archive: archived={}",
+                        report.archived_count
+                    );
                     cron.mark_completed(&job_id, now, "ok");
                 }
                 Some(TaskKind::DreamMerge) => {
@@ -590,7 +618,10 @@ fn process_cron_jobs(cron: &mut CronScheduler, pipeline: &mut Pipeline, frames: 
                     let chunks = pipeline.drain_chunks();
                     engine.load_chunks(chunks);
                     let report = engine.run(DreamMode::Merge, now);
-                    eprintln!("cradle chronicle dream-merge: merged={}", report.merged_count);
+                    eprintln!(
+                        "cradle chronicle dream-merge: merged={}",
+                        report.merged_count
+                    );
                     cron.mark_completed(&job_id, now, "ok");
                 }
                 Some(TaskKind::DreamPrune) => {
@@ -599,7 +630,10 @@ fn process_cron_jobs(cron: &mut CronScheduler, pipeline: &mut Pipeline, frames: 
                     let chunks = pipeline.drain_chunks();
                     engine.load_chunks(chunks);
                     let report = engine.run(DreamMode::Prune, now);
-                    eprintln!("cradle chronicle dream-prune: pruned={}", report.pruned_count);
+                    eprintln!(
+                        "cradle chronicle dream-prune: pruned={}",
+                        report.pruned_count
+                    );
                     cron.mark_completed(&job_id, now, "ok");
                 }
                 Some(TaskKind::HealthCheck) => {
@@ -622,7 +656,10 @@ fn process_cron_jobs(cron: &mut CronScheduler, pipeline: &mut Pipeline, frames: 
 fn poll_slack(scanner: &mut SlackScanner, client: &CradleClient) {
     match scanner.poll_all() {
         Ok(messages) if !messages.is_empty() => {
-            eprintln!("cradle chronicle slack polled: {} new messages", messages.len());
+            eprintln!(
+                "cradle chronicle slack polled: {} new messages",
+                messages.len()
+            );
             for msg in &messages {
                 let report_body = serde_json::json!({
                     "sourceId": format!("slack:{}:{}", msg.channel_id, msg.timestamp),
@@ -662,6 +699,7 @@ fn process_transcripts(inbox_root: &Path, client: &CradleClient) {
 fn process_audio_segment_if_due(
     config: &ChronicleConfig,
     client: &CradleClient,
+    local_transcription: &LocalTranscriptionPipeline<'_>,
     last_audio_segment_time: &mut Option<Instant>,
 ) {
     if !config.audio_capture {
@@ -671,7 +709,7 @@ fn process_audio_segment_if_due(
     if !audio_segment_due(*last_audio_segment_time, interval) {
         return;
     }
-    process_audio_segment(config, client);
+    process_audio_segment(config, client, local_transcription);
     *last_audio_segment_time = Some(Instant::now());
 }
 
@@ -679,8 +717,12 @@ fn audio_segment_due(last_audio_segment_time: Option<Instant>, interval: Duratio
     last_audio_segment_time.is_none_or(|last_capture| last_capture.elapsed() >= interval)
 }
 
-fn process_audio_segment(config: &ChronicleConfig, client: &CradleClient) {
-    match write_microphone_segment(config) {
+fn process_audio_segment(
+    config: &ChronicleConfig,
+    client: &CradleClient,
+    local_transcription: &LocalTranscriptionPipeline<'_>,
+) {
+    match write_audio_segment(config) {
         Ok(report) => {
             eprintln!(
                 "cradle chronicle audio segment written: samples={} dropped={} rms={:.6} peak={:.6} active={} wav={} metadata={}",
@@ -693,6 +735,7 @@ fn process_audio_segment(config: &ChronicleConfig, client: &CradleClient) {
                 report.metadata_path.display()
             );
             report_audio_raw_segment(client, &report);
+            process_audio_transcription(client, &report, local_transcription);
         }
         Err(error) => {
             eprintln!("cradle chronicle audio segment error: {error}");
@@ -701,10 +744,11 @@ fn process_audio_segment(config: &ChronicleConfig, client: &CradleClient) {
 }
 
 fn report_audio_raw_segment(client: &CradleClient, report: &AudioSegmentArtifactReport) {
+    let source_id = audio_segment_source_id(report.source, &report.metadata_path);
     let payload = ChronicleAudioRawSegmentReport {
-        source_id: audio_segment_source_id(&report.metadata_path),
+        source_id: source_id.clone(),
         recorded_at: report.recorded_at.clone(),
-        source: ChronicleAudioRawSegmentSource::Microphone,
+        source: to_raw_segment_source(report.source),
         status: ChronicleAudioRawSegmentStatus::Captured,
         audio_path: artifact_path_text(&report.wav_path),
         metadata_path: artifact_path_text(&report.metadata_path),
@@ -716,14 +760,15 @@ fn report_audio_raw_segment(client: &CradleClient, report: &AudioSegmentArtifact
         rms: report.rms,
         peak: report.peak,
         active: report.active,
-        vad_implemented: false,
-        asr_implemented: false,
+        vad_implemented: true,
+        asr_implemented: true,
         speaker_labeling_implemented: false,
         metadata: serde_json::json!({
-            "runtime": "microphone-segment",
+            "runtime": "local-audio-segment",
+            "source": report.source.as_str(),
             "sourceSampleFormat": report.source_sample_format,
-            "vadImplemented": false,
-            "asrImplemented": false,
+            "vadImplemented": true,
+            "asrImplemented": true,
             "speakerLabelingImplemented": false
         }),
     };
@@ -734,8 +779,154 @@ fn report_audio_raw_segment(client: &CradleClient, report: &AudioSegmentArtifact
     }
 }
 
+fn process_audio_transcription(
+    client: &CradleClient,
+    report: &AudioSegmentArtifactReport,
+    local_transcription: &LocalTranscriptionPipeline<'_>,
+) {
+    let source_id = audio_segment_source_id(report.source, &report.metadata_path);
+    if !report.active {
+        report_audio_processing_result(
+            client,
+            &source_id,
+            ChronicleAudioRawSegmentStatus::Ignored,
+            None,
+            None,
+        );
+        return;
+    }
+
+    match local_transcription.process(&report.samples, report.sample_rate) {
+        Ok(result) if result.text.trim().is_empty() => {
+            report_audio_processing_result(
+                client,
+                &source_id,
+                ChronicleAudioRawSegmentStatus::Ignored,
+                None,
+                None,
+            );
+        }
+        Ok(result) => {
+            let transcript_source_id = format!("transcript:{source_id}");
+            let transcript = build_audio_transcript_report(&transcript_source_id, report, &result);
+            match client.record_audio_transcript(&transcript) {
+                Ok(()) => {
+                    report_audio_processing_result(
+                        client,
+                        &source_id,
+                        ChronicleAudioRawSegmentStatus::Processed,
+                        Some(transcript_source_id),
+                        None,
+                    );
+                }
+                Err(error) => {
+                    report_audio_processing_result(
+                        client,
+                        &source_id,
+                        ChronicleAudioRawSegmentStatus::Error,
+                        Some(transcript_source_id),
+                        Some(error.to_string()),
+                    );
+                }
+            }
+        }
+        Err(error) => {
+            report_audio_processing_result(
+                client,
+                &source_id,
+                ChronicleAudioRawSegmentStatus::Error,
+                None,
+                Some(error.to_string()),
+            );
+        }
+    }
+}
+
+fn build_audio_transcript_report(
+    source_id: &str,
+    report: &AudioSegmentArtifactReport,
+    result: &TranscriptionResult,
+) -> ChronicleAudioTranscriptReport {
+    let fallback_segment = ChronicleAudioTranscriptSegmentReport {
+        start_ms: 0,
+        end_ms: Some(result.duration_ms.max(report.duration_ms)),
+        speaker_label: None,
+        text: result.text.clone(),
+        confidence: ChronicleTranscriptConfidence::new(result.confidence as f32).ok(),
+        language: result.language.clone(),
+        metadata: serde_json::json!({ "runtime": "local-onnx-asr", "source": report.source.as_str() }),
+    };
+    let segments = if result.segments.is_empty() {
+        vec![fallback_segment]
+    } else {
+        result
+            .segments
+            .iter()
+            .map(|segment| ChronicleAudioTranscriptSegmentReport {
+                start_ms: segment.start_ms,
+                end_ms: Some(segment.end_ms),
+                speaker_label: segment.speaker_label.clone(),
+                text: segment.text.clone(),
+                confidence: ChronicleTranscriptConfidence::new(segment.confidence as f32).ok(),
+                language: result.language.clone(),
+                metadata: serde_json::json!({ "runtime": "local-onnx-asr", "source": report.source.as_str() }),
+            })
+            .collect()
+    };
+
+    ChronicleAudioTranscriptReport {
+        source_id: source_id.to_string(),
+        title: Some(format!("{} audio transcript", report.source.as_str())),
+        source: ChronicleAudioTranscriptSource::Asr,
+        status: ChronicleAudioTranscriptStatus::Completed,
+        started_at: report.recorded_at.clone(),
+        ended_at: Some(report.recorded_at.clone()),
+        language: result.language.clone(),
+        app_bundle_id: Some("cradle-chronicle-audio".to_string()),
+        window_title: Some(format!("Chronicle {} audio", report.source.as_str())),
+        audio_path: Some(artifact_path_text(&report.wav_path)),
+        transcript_path: None,
+        segments,
+        metadata: serde_json::json!({
+            "runtime": "local-onnx-asr",
+            "source": report.source.as_str(),
+            "rawSourceId": audio_segment_source_id(report.source, &report.metadata_path),
+            "sampleRate": report.sample_rate,
+            "rms": report.rms,
+            "peak": report.peak
+        }),
+    }
+}
+
+fn report_audio_processing_result(
+    client: &CradleClient,
+    source_id: &str,
+    status: ChronicleAudioRawSegmentStatus,
+    transcript_source_id: Option<String>,
+    error_message: Option<String>,
+) {
+    let result = ChronicleAudioRawSegmentProcessingResultReport {
+        status: Some(status),
+        vad_status: Some(ChronicleAudioProcessingStatus::Ready),
+        asr_status: Some(if error_message.is_some() {
+            ChronicleAudioProcessingStatus::Error
+        } else {
+            ChronicleAudioProcessingStatus::Ready
+        }),
+        speaker_status: Some(ChronicleAudioProcessingStatus::NotImplemented),
+        transcript_source_id,
+        speaker_profile_ids: Vec::new(),
+        error_message,
+        metadata: serde_json::json!({ "runtime": "local-onnx-asr" }),
+    };
+    if let Err(error) = client.record_audio_raw_segment_processing_result(source_id, &result) {
+        eprintln!("cradle chronicle raw audio processing result report failed: {error}");
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct AudioSegmentArtifactReport {
+    source: AudioCaptureSource,
     recorded_at: String,
     sample_rate: u32,
     channels: u16,
@@ -746,14 +937,17 @@ struct AudioSegmentArtifactReport {
     rms: f32,
     peak: f32,
     active: bool,
+    samples: Vec<f32>,
     wav_path: PathBuf,
     metadata_path: PathBuf,
 }
 
-fn write_microphone_segment(
-    config: &ChronicleConfig,
-) -> ChronicleResult<AudioSegmentArtifactReport> {
-    let capture = capture_microphone_samples(config.audio_segment_ms)?;
+fn write_audio_segment(config: &ChronicleConfig) -> ChronicleResult<AudioSegmentArtifactReport> {
+    let capture = match config.audio_source {
+        AudioCaptureSource::Microphone => capture_microphone_samples(config.audio_segment_ms)?,
+        AudioCaptureSource::System => capture_system_audio_samples(config.audio_segment_ms)?,
+        AudioCaptureSource::Mixed => capture_mixed_audio_samples(config.audio_segment_ms)?,
+    };
     let gate = RmsActivityGate::new(config.audio_rms_threshold);
     let activity = gate.analyze(&capture.samples);
     let metadata = AudioArtifactMetadata {
@@ -769,6 +963,7 @@ fn write_microphone_segment(
     };
     let artifact = write_audio_segment_artifact(&config.storage_root, &capture.samples, &metadata)?;
     Ok(AudioSegmentArtifactReport {
+        source: config.audio_source,
         recorded_at: metadata.recorded_at.filesystem(),
         sample_rate: metadata.sample_rate,
         channels: metadata.channels,
@@ -779,17 +974,26 @@ fn write_microphone_segment(
         rms: metadata.rms,
         peak: metadata.peak,
         active: metadata.active,
+        samples: capture.samples,
         wav_path: artifact.wav_path,
         metadata_path: artifact.metadata_path,
     })
 }
 
-fn audio_segment_source_id(metadata_path: &Path) -> String {
+fn audio_segment_source_id(source: AudioCaptureSource, metadata_path: &Path) -> String {
     let stem = metadata_path
         .file_stem()
         .and_then(|name| name.to_str())
         .unwrap_or("unknown");
-    format!("audio:microphone:{stem}")
+    format!("audio:{}:{stem}", source.as_str())
+}
+
+fn to_raw_segment_source(source: AudioCaptureSource) -> ChronicleAudioRawSegmentSource {
+    match source {
+        AudioCaptureSource::Microphone => ChronicleAudioRawSegmentSource::Microphone,
+        AudioCaptureSource::System => ChronicleAudioRawSegmentSource::System,
+        AudioCaptureSource::Mixed => ChronicleAudioRawSegmentSource::Mixed,
+    }
 }
 
 fn artifact_path_text(path: &Path) -> String {
