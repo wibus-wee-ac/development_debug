@@ -14,5 +14,5 @@
 - **settings-overlay-store.ts**: Settings feature-owned overlay state — records which tab currently hosts the settings overlay plus the active section selection; replaces layout-store ownership for settings UI state
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面
 - **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件
-- **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口
+- **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口，使用面向用户的中文导航标签
 - **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试

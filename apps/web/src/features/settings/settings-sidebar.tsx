@@ -11,12 +11,12 @@ interface SettingsNavItem {
 
 const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'appearance', label: '外观', icon: PaletteIcon },
-  { id: 'providers', label: 'Providers', icon: PlugIcon },
-  { id: 'agents', label: 'Agents', icon: BotIcon },
+  { id: 'providers', label: '模型服务', icon: PlugIcon },
+  { id: 'agents', label: '助手', icon: BotIcon },
   { id: 'jarvis', label: 'Jarvis', icon: MousePointer2Icon },
-  { id: 'chronicle', label: 'Chronicle', icon: ActivityIcon },
-  { id: 'skills', label: 'Skills', icon: SparklesIcon },
-  { id: 'desktop', label: 'Desktop', icon: DownloadIcon },
+  { id: 'chronicle', label: '记录', icon: ActivityIcon },
+  { id: 'skills', label: '技能', icon: SparklesIcon },
+  { id: 'desktop', label: '桌面端', icon: DownloadIcon },
 ]
 
 interface SettingsSidebarProps {
@@ -34,7 +34,7 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
           variant="ghost"
           size="icon-xs"
           onClick={onClose}
-          aria-label="Close settings"
+          aria-label="关闭设置"
         >
           <ArrowLeftIcon aria-hidden="true" />
         </Button>
