@@ -1,7 +1,3 @@
-// Input: CRADLE_LOG_LEVEL env var, CRADLE_LOG_FILE env var
-// Output: pino-based structured logger with optional file persistence
-// Position: server logging module
-
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -12,6 +8,13 @@ import type { LogLevel } from '../config/server-config'
 export interface LoggerFields {
   [key: string]: unknown
 }
+
+interface FlushableDestination extends pino.DestinationStream {
+  flush?: () => void
+  flushSync?: () => void
+}
+
+const fileDestinations: FlushableDestination[] = []
 
 function resolveLogFile(): string | null {
   const file = process.env.CRADLE_LOG_FILE?.trim()
@@ -36,7 +39,8 @@ function createStreams() {
       mkdirSync(dirname(logFile), { recursive: true })
     }
     catch { /* ignore */ }
-    const dest = pino.destination({ dest: logFile, sync: false })
+    const dest = pino.destination({ dest: logFile, sync: process.env.CRADLE_LOG_SYNC === '1' })
+    fileDestinations.push(dest)
     streams.push({ level, stream: dest })
     process.stderr.write(`[logger] file logging enabled: ${logFile}\n`)
   }
@@ -121,4 +125,13 @@ export function getLogger(): Logger {
 /** Create a child logger with bound context (e.g. requestId, module). */
 export function createChildLogger(bindings: LoggerFields): Logger {
   return new Logger(rootLogger.child(bindings))
+}
+
+/** Flush buffered log destinations before intentional process exits. */
+export function flushLogger(): void {
+  rootLogger.flush()
+  for (const dest of fileDestinations) {
+    dest.flush?.()
+    dest.flushSync?.()
+  }
 }

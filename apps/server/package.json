@@ -10,7 +10,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon",
-    "build": "vite build",
+    "build": "vite build && node scripts/sync-runtime-deps.mjs",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -45,6 +45,7 @@
     "pino": "^10.3.1",
     "reflect-metadata": "^0.2.2",
     "repomix": "^1.14.0",
+    "rrule": "^2.8.1",
     "simple-git": "^3.28.0",
     "tar": "^7.5.13",
     "tsyringe": "^4.10.0",

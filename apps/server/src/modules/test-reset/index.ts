@@ -10,15 +10,19 @@ import {
   agentProfiles,
   agents,
   agentSessions,
+  automationArtifacts,
+  automationDefinitions,
+  automationEvents,
+  automationRuns,
   backendCapabilitySnapshots,
   backendRuns,
   backendSessionBindings,
+  issueComments,
+  issueMilestones,
+  issueRelations,
+  issues,
+  issueStatuses,
   kanbanBoards,
-  kanbanIssueComments,
-  kanbanIssueRelations,
-  kanbanIssues,
-  kanbanMilestones,
-  kanbanStatuses,
   messages,
   observabilityEvents,
   observabilityIncidents,
@@ -30,17 +34,21 @@ import {
 import { sql } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-import { db } from '../../infra'
+import { db, getServerConfig } from '../../infra'
 import { abortAllRuns } from '../chat-runtime/service'
 
 const TABLES_IN_DELETION_ORDER = [
+  automationEvents,
+  automationArtifacts,
+  automationRuns,
+  automationDefinitions,
   agentActivities,
   agentSessions,
-  kanbanIssueRelations,
-  kanbanIssueComments,
-  kanbanIssues,
-  kanbanMilestones,
-  kanbanStatuses,
+  issueRelations,
+  issueComments,
+  issues,
+  issueMilestones,
+  issueStatuses,
   kanbanBoards,
   messages,
   usageLogs,
@@ -59,6 +67,26 @@ const TABLES_IN_DELETION_ORDER = [
   agentProfiles,
 ] as const
 
+function isPathInside(parentDir: string, childDir: string): boolean {
+  const relative = path.relative(parentDir, childDir)
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))
+}
+
+function resolveIsolatedHomeSkillsDir(): string | null {
+  const dataDir = getServerConfig().dataDir
+  if (!dataDir) {
+    return null
+  }
+
+  const resolvedDataDir = path.resolve(dataDir)
+  const resolvedHomeDir = path.resolve(os.homedir())
+  if (!isPathInside(resolvedDataDir, resolvedHomeDir)) {
+    return null
+  }
+
+  return path.join(resolvedHomeDir, '.cradle', 'skills')
+}
+
 export const testReset = new Elysia({
   prefix: '/test/reset',
   detail: { tags: ['test-reset'] },
@@ -76,11 +104,10 @@ export const testReset = new Elysia({
       d.run(sql`PRAGMA foreign_keys = ON`)
     }
 
-    // Clean up global skills on disk (not in DB)
-    const globalSkillsDir = path.join(os.homedir(), '.cradle', 'skills')
+    const isolatedHomeSkillsDir = resolveIsolatedHomeSkillsDir()
     try {
-      if (fs.existsSync(globalSkillsDir)) {
-        fs.rmSync(globalSkillsDir, { recursive: true, force: true })
+      if (isolatedHomeSkillsDir && fs.existsSync(isolatedHomeSkillsDir)) {
+        fs.rmSync(isolatedHomeSkillsDir, { recursive: true, force: true })
       }
     }
     catch { /* best effort */ }

@@ -1,7 +1,3 @@
-// Input: Elysia plugins and feature route modules
-// Output: Elysia server app — pure composition root
-// Position: apps/server/src explicit Elysia composition root
-
 import { cors } from '@elysiajs/cors'
 import { node } from '@elysiajs/node'
 import { Elysia } from 'elysia'
@@ -20,7 +16,12 @@ import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
 import { cleanup as chronicleCleanup } from './modules/chronicle/daemon-manager'
-import { initDaemon as chronicleInitDaemon } from './modules/chronicle/service'
+import {
+  initDaemon as chronicleInitDaemon,
+  startSlackBackgroundSync as chronicleStartSlackBackgroundSync,
+  stopSlackBackgroundSync as chronicleStopSlackBackgroundSync,
+} from './modules/chronicle/service'
+import { desktop } from './modules/desktop'
 import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
 import { health } from './modules/health'
@@ -99,6 +100,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(acp)
   app.use(chatRuntime)
   app.use(chronicle)
+  app.use(desktop)
   registerPtyRoutes(app)
   app.use(observability)
   app.use(issueAgent)
@@ -108,11 +110,12 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   // Plugin system — discover and activate server plugins
   await activateServerPlugins(app)
 
-  app.onStop([() => shutdownInfra(), () => chronicleCleanup()])
+  app.onStop([() => chronicleStopSlackBackgroundSync(), () => chronicleCleanup(), () => shutdownInfra()])
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {
     void chronicleInitDaemon()
+    chronicleStartSlackBackgroundSync()
   }
 
   registerOpenApiAlias(app)
