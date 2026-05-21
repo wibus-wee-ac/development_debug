@@ -45,7 +45,7 @@ import type {
   ChronicleStatus,
   MemoryEntry,
   TimelineEntry,
-} from './use-chronicle'
+} from './use-chronicle.ts'
 import {
   useChronicleAccessibilitySnapshots,
   useChronicleActivityPipelineActions,
@@ -66,7 +66,7 @@ import {
   useChronicleStatus,
   useChronicleTimeline,
   useRefreshChronicleQueries,
-} from './use-chronicle'
+} from './use-chronicle.ts'
 
 const MEMORY_SEARCH_LIMIT = 50
 
@@ -1127,7 +1127,7 @@ function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
               <img
                 src={frameUrl(displayEntry)}
                 alt={`Capture at ${formatDateTime(displayEntry.capturedAt)}`}
-                className="aspect-video w-full object-contain outline outline-1 -outline-offset-1 outline-white/10"
+                className="aspect-video w-full object-contain outline-solid outline-1 -outline-offset-1 outline-white/10"
               />
             )
           : (
@@ -1149,7 +1149,7 @@ function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
               ? displayEntry.channelName ?? displayEntry.windowTitle ?? 'Audio transcript'
               : displayEntry?.sourceType === 'message'
               ? displayEntry.channelName ? `#${displayEntry.channelName}` : displayEntry.channelId ?? 'Slack message'
-              : displayEntry?.appName ?? displayEntry?.windowTitle ?? 'Screen capture'}
+              : displayEntry?.appBundleId ?? displayEntry?.windowTitle ?? 'Screen capture'}
           </span>
           <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
             {formatDateTime(displayEntry?.capturedAt ?? selected.capturedAt)}
@@ -1312,7 +1312,7 @@ function ActivitySegmentCard({
           {formatActivitySegmentType(segment.segmentType)}
         </Badge>
       </div>
-      <p className="line-clamp-3 min-h-[3.75rem] text-[13px] leading-5 text-foreground">
+      <p className="line-clamp-3 min-h-15 text-[13px] leading-5 text-foreground">
         {segment.summary ?? 'This segment is collecting source evidence.'}
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
@@ -1544,7 +1544,7 @@ function KnowledgeCardList({ cards }: { cards: ChronicleKnowledgeCard[] }) {
             <span className="truncate text-[13px] font-medium text-foreground">{card.title}</span>
             <Badge variant="outline" className="ml-auto text-[11px]">{formatKnowledgeDimension(card.dimension)}</Badge>
           </div>
-          <p className="line-clamp-4 min-h-[5rem] text-[13px] leading-5 text-foreground">{card.content}</p>
+          <p className="line-clamp-4 min-h-20 text-[13px] leading-5 text-foreground">{card.content}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <Badge variant="secondary" className="text-[11px]">{formatKnowledgeCardType(card.cardType)}</Badge>
             <Badge variant="outline" className="text-[11px]">
@@ -1907,13 +1907,13 @@ function MemoryCard({ entry }: { entry: MemoryEntry }) {
       <p className="line-clamp-4 text-[13px] leading-5 text-foreground">{entry.content}</p>
       <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
         <span className="font-mono">{formatDateTime(entry.createdAt)}</span>
-        {entry.sourceCount !== null && (
-<span>
-{entry.sourceCount}
-{' '}
-sources
-</span>
-)}
+        {typeof entry.sourceCount === 'number' && (
+          <span>
+            {entry.sourceCount}
+            {' '}
+            sources
+          </span>
+        )}
       </div>
     </article>
   )
@@ -1924,7 +1924,9 @@ function getMemoryMatchLabel(entry: MemoryEntry): string {
     return 'Hybrid'
   }
   if (entry.matchKind === 'semantic') {
-    return entry.semanticScore !== null ? `Semantic ${entry.semanticScore.toFixed(2)}` : 'Semantic'
+    return typeof entry.semanticScore === 'number'
+      ? `Semantic ${entry.semanticScore.toFixed(2)}`
+      : 'Semantic'
   }
   return 'Keyword'
 }

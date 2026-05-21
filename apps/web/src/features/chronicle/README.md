@@ -4,27 +4,12 @@
 
 ## Files
 
-- `use-chronicle.ts`: React Query hooks 与窄兼容适配层，覆盖 Chronicle config、status、model resources reconcile/verify/install/remove、Slack message sources、Slack sync、Slack Events API config、accessibility evidence、raw audio segments、audio transcripts、activity segments、activity segment triage/summarization/crystallization actions、manual activity pipeline tick、knowledge cards、dream runs、pipeline runs、timeline、memories、Server-side memory search、match score normalization 与手动刷新。
+- `use-chronicle.ts`: React Query hooks 与 Chronicle canonical schema 对齐的 UI 数据层，覆盖 config、status、model resources reconcile/verify/install/remove、Slack message sources、Slack sync、Slack Events API config、accessibility evidence、raw audio segments、audio transcripts、activity segments、activity segment triage/summarization/crystallization actions、manual activity pipeline tick、knowledge cards、dream runs、pipeline runs、timeline、memories、Server-side memory search 与手动刷新。
 - `chronicle-settings.tsx`: Settings 页面实现，使用既有 settings rows、provider model picker、静态 Tailwind classes 与 Chronicle hooks，并提供独立 Background Audio opt-in 开关、Automatic Activity Pipeline 开关、accessibility evidence 列表、raw audio segment evidence 列表、activity segment triage/summarization/crystallization 操作、manual pipeline tick、knowledge cards 列表、dream merge dry-run 列表/触发、pipeline run 列表、Slack realtime mode 配置、Events API callback URL 与 runtime status 展示。
 
-## API Compatibility Boundary
+## API Boundary
 
-Server/DB 工作并行推进期间，部分生成的 Chronicle response types 仍是 `unknown`。`use-chronicle.ts` 是 Web 侧唯一的兼容边界，用于同时接受旧 file-backed response 与计划中的 DB-backed shapes：
-
-- Timeline arrays 可以来自 root、`entries`、`timeline` 或 `snapshots`。
-- Memory arrays and search results 可以来自 root、`entries`、`memories` 或 `results`。
-- Memory search results 可以带 `matchKind`、`keywordScore` 与 `semanticScore`；普通 memory list 中这些字段可以为空。
-- Model resource arrays 可以来自 root、`resources`、`modelResources` 或 `models`。
-- Slack message source arrays 可以来自 root、`sources` 或 `messageSources`，并可携带 `realtimeMode` 与 `signingSecretRef`。
-- Accessibility evidence arrays 可以来自 root、`accessibilitySnapshots`、`snapshots` 或 `entries`。
-- Raw audio segment arrays 可以来自 root、`segments`、`audioRawSegments` 或 `entries`。
-- Audio transcript arrays 可以来自 root、`transcripts`、`audioTranscripts` 或 `entries`。
-- Activity segment arrays 可以来自 root、`segments`、`activitySegments` 或 `entries`。
-- Pipeline run arrays 可以来自 root、`pipelineRuns`、`runs` 或 `entries`。
-- Knowledge card arrays 可以来自 root、`knowledgeCards`、`cards` 或 `entries`。
-- Dream run arrays 可以来自 root、`dreamRuns`、`runs` 或 `entries`。
-
-当 API generation 追上 Server schema 后，应保持 UI component 稳定，并收紧 `use-chronicle.ts` 中的 adapters，不要把 casts 扩散到 `chronicle-settings.tsx`。
+`use-chronicle.ts` 是 Web 侧唯一的 Chronicle API 边界：它假设 Server 按 canonical schema 返回数据（OpenAPI 生成 + 手写 fetch endpoints），并把结果整理成 Settings UI 需要的稳定类型。若 Server schema 变化，应更新 OpenAPI + 生成产物，再同步调整此文件；不要把 casts 或兼容逻辑扩散到 `chronicle-settings.tsx`。
 
 ## Ownership Notes
 

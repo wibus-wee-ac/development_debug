@@ -23,6 +23,13 @@ export interface ChronicleConfig {
   modelId: string
   workspaceId: string
   enabled: boolean
+  activityPipelineEnabled: boolean
+  activityPipelineIntervalMs: number
+  activityPipelineBatchSize: number
+  audioCaptureEnabled: boolean
+  audioSegmentMs: number
+  audioSegmentIntervalMs: number
+  audioRmsThreshold: number
   storageRoot: string
 }
 
@@ -40,6 +47,26 @@ export interface ChronicleStatus {
   totalSummaries: number
   totalMessages: number
   lastMessageAt: number | null
+  totalAccessibilitySnapshots: number
+  lastAccessibilitySnapshotAt: number | null
+  totalAudioTranscripts: number
+  lastAudioTranscriptAt: number | null
+  totalAudioRawSegments: number
+  lastAudioRawSegmentAt: number | null
+  totalActivitySegments: number
+  lastActivitySegmentAt: number | null
+  totalPipelineRuns: number
+  lastPipelineRunAt: number | null
+  totalKnowledgeCards: number
+  lastKnowledgeCardAt: number | null
+  totalDreamRuns: number
+  lastDreamRunAt: number | null
+  activityPipelineEnabled: boolean
+  activityPipelineRunning: boolean
+  activityPipelineIntervalMs: number
+  activityPipelineBatchSize: number
+  audioCaptureEnabled: boolean
+  audioRuntimeStatus: 'disabled' | 'armed' | 'unavailable'
   configuredModel: string | null
 }
 
@@ -76,6 +103,7 @@ export interface ChronicleModelResource {
 export interface ChronicleModelResourceInstallDraft {
   category: ChronicleModelResourceCategory
   source?: 'manifest' | 'local-files'
+  sourceRoot?: string | null
   files?: Array<{
     relativePath: string
     sourcePath: string
@@ -84,7 +112,7 @@ export interface ChronicleModelResourceInstallDraft {
 
 export interface TimelineEntry {
   id: string
-  sourceType: 'snapshot' | 'message'
+  sourceType?: 'snapshot' | 'message' | 'audio'
   capturedAt: string
   capturedAtUnix: number
   displayId: number
@@ -107,8 +135,182 @@ export interface MemoryEntry {
   createdAtUnix: number
   content: string
   modelId: string | null
+  matchKind?: 'keyword' | 'semantic' | 'hybrid' | null
+  keywordScore?: number | null
+  semanticScore?: number | null
   title?: string | null
   sourceCount?: number | null
+}
+
+export interface ChronicleAccessibilitySnapshot {
+  id: string
+  sourceId: string
+  snapshotId: string | null
+  capturedAt: string
+  capturedAtUnix: number
+  status: 'ready' | 'permission-denied' | 'unavailable' | 'error'
+  provider: string
+  appBundleId: string | null
+  windowTitle: string | null
+  elementCount: number
+  text: string | null
+  tree: unknown[]
+  metadata: Record<string, unknown>
+}
+
+export interface ChronicleAudioTranscriptSegment {
+  id: string
+  segmentIndex: number
+  startMs: number
+  endMs: number | null
+  speakerLabel: string | null
+  text: string
+  confidence: number | null
+  language: string | null
+}
+
+export interface ChronicleAudioTranscript {
+  id: string
+  sourceId: string
+  memoryId: string | null
+  title: string | null
+  source: 'asr' | 'manual' | 'imported'
+  status: 'recording' | 'completed' | 'imported' | 'error'
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  language: string | null
+  appBundleId: string | null
+  windowTitle: string | null
+  segmentCount: number
+  previewText: string
+  segments: ChronicleAudioTranscriptSegment[]
+}
+
+export interface ChronicleAudioRawSegment {
+  id: string
+  sourceId: string
+  recordedAt: string
+  recordedAtUnix: number
+  source: 'microphone' | 'system' | 'mixed'
+  status: 'captured' | 'queued' | 'processed' | 'ignored' | 'error'
+  audioPath: string
+  metadataPath: string
+  sampleRate: number
+  channels: number
+  sampleCount: number
+  droppedSamples: number
+  durationMs: number
+  rms: number
+  peak: number
+  active: boolean
+  vadStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  asrStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  speakerStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  metadata: Record<string, unknown>
+}
+
+export interface ChronicleActivitySegment {
+  id: string
+  sessionId: string
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string
+  endedAtUnix: number
+  durationSeconds: number
+  segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown'
+  frontApp: string | null
+  title: string | null
+  summary: string | null
+  sourceCounts: Record<string, number>
+  sourceRefs: Record<string, string[]>
+  pipelineStatus: 'collecting' | 'triaged' | 'summarized' | 'crystallized' | 'error'
+  isCrystallized: boolean
+  metadata: Record<string, unknown>
+}
+
+export interface ChroniclePipelineRun {
+  id: string
+  sessionId: string | null
+  segmentId: string | null
+  trigger: 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize'
+  stage: 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization'
+  status: 'queued' | 'running' | 'success' | 'error' | 'skipped'
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  errorMessage: string | null
+  snapshotsCount: number
+  messagesCount: number
+  audioTranscriptsCount: number
+  audioRawSegmentsCount: number
+  memoriesCount: number
+  segmentsCount: number
+  segmentIds: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface ChronicleKnowledgeCard {
+  id: string
+  title: string
+  content: string
+  cardType: 'fact' | 'insight' | 'decision' | 'task' | 'pattern'
+  dimension: 'technical' | 'business' | 'personal' | 'project' | 'general'
+  confidence: number
+  sourceMemoryIds: string[]
+  sourceSegmentIds: string[]
+  sourceChunkIds: string[]
+  tags: string[]
+  contentHash: string
+  version: number
+  status: 'active' | 'merged' | 'archived' | 'deleted'
+  mergedIntoId: string | null
+  pinned: boolean
+  metadata: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+  updatedAt: string
+  updatedAtUnix: number
+}
+
+export interface ChronicleDreamRun {
+  id: string
+  workspaceId: string | null
+  runType: 'archive' | 'merge' | 'prune' | 'restore' | 'dry-run'
+  status: 'running' | 'completed' | 'failed'
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  inputCount: number
+  outputCount: number
+  mergedCount: number
+  deletedCount: number
+  sourceKnowledgeIds: string[]
+  outputKnowledgeIds: string[]
+  config: Record<string, unknown>
+  result: Record<string, unknown>
+  errorMessage: string | null
+}
+
+export interface ChronicleActivityPipelineAction {
+  segment: ChronicleActivitySegment
+  run: ChroniclePipelineRun
+  memoryId: string | null
+  knowledgeCards?: ChronicleKnowledgeCard[]
+  status: 'success' | 'error' | 'skipped'
+  message: string
+}
+
+export interface ChronicleActivityPipelineTick {
+  checked: number
+  triaged: number
+  summarized: number
+  crystallized: number
+  skipped: number
+  errors: number
 }
 
 export interface ChronicleMessageSource {
@@ -120,17 +322,23 @@ export interface ChronicleMessageSource {
   teamId: string | null
   botTokenRef: string | null
   channelIds: string[]
+  realtimeMode: 'polling' | 'events-api' | 'socket-mode'
+  signingSecretRef: string | null
   status: 'idle' | 'syncing' | 'ready' | 'error' | 'disabled'
   lastSyncAt: number | null
   lastMessageAt: number | null
   lastError: string | null
+  createdAt: number
+  updatedAt: number
 }
 
 export interface ChronicleSlackSourceDraft {
   label: string
   token: string
+  signingSecret: string
   channelIds: string
   enabled: boolean
+  realtimeMode: 'polling' | 'events-api' | 'socket-mode'
 }
 
 export interface ChronicleSlackSyncResult {
@@ -302,8 +510,16 @@ async function fetchChronicleJson<T>(path: string, init?: RequestInit): Promise<
 }
 
 export const CHRONICLE_CONFIG_QUERY_KEY = getChronicleConfigQueryKey()
+const CHRONICLE_STATUS_QUERY_KEY = getChronicleStatusQueryKey()
 const CHRONICLE_MODEL_RESOURCES_QUERY_KEY = ['chronicle', 'model-resources'] as const
 const CHRONICLE_MESSAGE_SOURCES_QUERY_KEY = ['chronicle', 'message-sources'] as const
+const CHRONICLE_ACCESSIBILITY_SNAPSHOTS_QUERY_KEY = ['chronicle', 'accessibility-snapshots'] as const
+const CHRONICLE_AUDIO_TRANSCRIPTS_QUERY_KEY = ['chronicle', 'audio-transcripts'] as const
+const CHRONICLE_AUDIO_RAW_SEGMENTS_QUERY_KEY = ['chronicle', 'audio-raw-segments'] as const
+const CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY = ['chronicle', 'activity-segments'] as const
+const CHRONICLE_PIPELINE_RUNS_QUERY_KEY = ['chronicle', 'pipeline-runs'] as const
+const CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY = ['chronicle', 'knowledge-cards'] as const
+const CHRONICLE_DREAM_RUNS_QUERY_KEY = ['chronicle', 'dream-runs'] as const
 const CHRONICLE_TIMELINE_QUERY_KEY = getChronicleTimelineQueryKey()
 const CHRONICLE_MEMORIES_QUERY_KEY = getChronicleMemoriesQueryKey()
 const CHANNEL_ID_SPLIT_RE = /[\s,]+/
@@ -397,8 +613,10 @@ export function useChronicleModelResourceActions() {
   const { mutateAsync: installResource, isPending: installing } = useMutation({
     mutationFn: async (draft: ChronicleModelResourceInstallDraft) => {
       const hasFiles = (draft.files?.length ?? 0) > 0
+      const hasSourceRoot = typeof draft.sourceRoot === 'string' && draft.sourceRoot.trim().length > 0
       const payload = {
-        source: draft.source ?? (hasFiles ? 'local-files' : 'manifest'),
+        source: draft.source ?? (hasFiles || hasSourceRoot ? 'local-files' : 'manifest'),
+        sourceRoot: hasSourceRoot ? draft.sourceRoot : null,
         files: draft.files ?? [],
       }
       const data = await fetchChronicleJson<ChronicleModelResourceEntry>(
@@ -465,16 +683,35 @@ export function useChronicleSlackSourceActions() {
         .split(CHANNEL_ID_SPLIT_RE)
         .map(channelId => channelId.trim())
         .filter(Boolean)
-      const { data: secret } = await postSecrets({
+      const { data: tokenSecret } = await postSecrets({
         body: {
           kind: 'chronicle.slack.bot-token',
           label: draft.label,
           secret: draft.token,
         },
       })
-      const secretId = isRecord(secret) ? readString(secret.id) : null
-      if (!secretId) {
+      const botTokenRef = isRecord(tokenSecret) ? readString(tokenSecret.id) : null
+      if (!botTokenRef) {
         throw new Error('Slack token secret was not saved')
+      }
+
+      let signingSecretRef: string | null = null
+      if (draft.realtimeMode === 'events-api') {
+        const signingSecretValue = draft.signingSecret.trim()
+        if (!signingSecretValue) {
+          throw new Error('Slack signing secret is required for Events API')
+        }
+        const { data: signingSecret } = await postSecrets({
+          body: {
+            kind: 'chronicle.slack.signing-secret',
+            label: `${draft.label} signing secret`,
+            secret: signingSecretValue,
+          },
+        })
+        signingSecretRef = isRecord(signingSecret) ? readString(signingSecret.id) : null
+        if (!signingSecretRef) {
+          throw new Error('Slack signing secret was not saved')
+        }
       }
       return fetchChronicleJson<ChronicleMessageSource>('/chronicle/message-sources', {
         method: 'POST',
@@ -483,8 +720,10 @@ export function useChronicleSlackSourceActions() {
           platform: 'slack',
           label: draft.label,
           enabled: draft.enabled,
-          botTokenRef: secretId,
+          botTokenRef,
           channelIds,
+          realtimeMode: draft.realtimeMode,
+          signingSecretRef,
         }),
       })
     },
@@ -502,6 +741,163 @@ export function useChronicleSlackSourceActions() {
   })
 
   return { saveSource, syncSource, saving, syncing }
+}
+
+export function useChronicleAccessibilitySnapshots(limit = 20) {
+  const { data: snapshots = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_ACCESSIBILITY_SNAPSHOTS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChronicleAccessibilitySnapshot[]>(
+      `/chronicle/accessibility-snapshots?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { snapshots, loading, refetch }
+}
+
+export function useChronicleAudioTranscripts(limit = 20) {
+  const { data: transcripts = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_AUDIO_TRANSCRIPTS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChronicleAudioTranscript[]>(
+      `/chronicle/audio-transcripts?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { transcripts, loading, refetch }
+}
+
+export function useChronicleAudioRawSegments(limit = 20) {
+  const { data: segments = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_AUDIO_RAW_SEGMENTS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChronicleAudioRawSegment[]>(
+      `/chronicle/audio-raw-segments?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { segments, loading, refetch }
+}
+
+export function useChronicleActivitySegments(limit = 20) {
+  const { data: segments = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChronicleActivitySegment[]>(
+      `/chronicle/activity-segments?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { segments, loading, refetch }
+}
+
+export function useChroniclePipelineRuns(limit = 20) {
+  const { data: runs = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_PIPELINE_RUNS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChroniclePipelineRun[]>(
+      `/chronicle/pipeline-runs?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { runs, loading, refetch }
+}
+
+export function useChronicleKnowledgeCards(limit = 20) {
+  const { data: cards = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChronicleKnowledgeCard[]>(
+      `/chronicle/knowledge-cards?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { cards, loading, refetch }
+}
+
+export function useChronicleDreamRuns(limit = 20) {
+  const { data: runs = [], isLoading: loading, refetch } = useQuery({
+    queryKey: [...CHRONICLE_DREAM_RUNS_QUERY_KEY, limit],
+    queryFn: () => fetchChronicleJson<ChronicleDreamRun[]>(
+      `/chronicle/dream-runs?limit=${limit}`,
+    ),
+    refetchInterval: 10_000,
+  })
+
+  return { runs, loading, refetch }
+}
+
+export function useChronicleDreamActions() {
+  const queryClient = useQueryClient()
+
+  const { mutateAsync: startDreamDryRun, isPending: startingDryRun } = useMutation({
+    mutationFn: async () => fetchChronicleJson<ChronicleDreamRun>('/chronicle/dream-runs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dryRun: true, runType: 'dry-run' }),
+    }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: CHRONICLE_DREAM_RUNS_QUERY_KEY })
+      void queryClient.invalidateQueries({ queryKey: CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY })
+    },
+  })
+
+  return { startDreamDryRun, startingDryRun }
+}
+
+export function useChronicleActivityPipelineActions() {
+  const queryClient = useQueryClient()
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_PIPELINE_RUNS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_MEMORIES_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_STATUS_QUERY_KEY })
+  }
+
+  const { mutateAsync: triageSegment, isPending: triaging } = useMutation({
+    mutationFn: async (segmentId: string) => fetchChronicleJson<ChronicleActivityPipelineAction>(
+      `/chronicle/activity-segments/${encodeURIComponent(segmentId)}/triage`,
+      { method: 'POST' },
+    ),
+    onSuccess: invalidate,
+  })
+
+  const { mutateAsync: summarizeSegment, isPending: summarizing } = useMutation({
+    mutationFn: async (segmentId: string) => fetchChronicleJson<ChronicleActivityPipelineAction>(
+      `/chronicle/activity-segments/${encodeURIComponent(segmentId)}/summarize`,
+      { method: 'POST' },
+    ),
+    onSuccess: invalidate,
+  })
+
+  const { mutateAsync: crystallizeSegment, isPending: crystallizing } = useMutation({
+    mutationFn: async (segmentId: string) => fetchChronicleJson<ChronicleActivityPipelineAction>(
+      `/chronicle/activity-segments/${encodeURIComponent(segmentId)}/crystallize`,
+      { method: 'POST' },
+    ),
+    onSuccess: invalidate,
+  })
+
+  const { mutateAsync: runPipelineTick, isPending: ticking } = useMutation({
+    mutationFn: async () => fetchChronicleJson<ChronicleActivityPipelineTick>(
+      '/chronicle/activity-pipeline/tick',
+      { method: 'POST' },
+    ),
+    onSuccess: invalidate,
+  })
+
+  return {
+    triageSegment,
+    summarizeSegment,
+    crystallizeSegment,
+    runPipelineTick,
+    triaging,
+    summarizing,
+    crystallizing,
+    ticking,
+  }
 }
 
 export function useChronicleTimeline(limit = 50) {
@@ -548,10 +944,17 @@ export function useRefreshChronicleQueries() {
   const queryClient = useQueryClient()
 
   return () => {
-    void queryClient.invalidateQueries({ queryKey: getChronicleConfigQueryKey() })
-    void queryClient.invalidateQueries({ queryKey: getChronicleStatusQueryKey() })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_CONFIG_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_STATUS_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_MODEL_RESOURCES_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_MESSAGE_SOURCES_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_ACCESSIBILITY_SNAPSHOTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_AUDIO_TRANSCRIPTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_AUDIO_RAW_SEGMENTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_PIPELINE_RUNS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_DREAM_RUNS_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_TIMELINE_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_MEMORIES_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: ['chronicle', 'memories', 'search'] })
