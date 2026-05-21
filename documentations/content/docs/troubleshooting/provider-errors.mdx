@@ -1,0 +1,60 @@
+---
+title: Provider errors
+description: Troubleshoot provider health, model discovery, credentials, endpoint, and runtime compatibility.
+---
+
+Provider 错误通常会影响 New Chat、Composer、Issue agents 和 Automation。先确认 provider profile 可用，再检查 model 和 runtime。
+
+## Overview
+
+Cradle 通过 provider routes 进行 health check、model discovery、model cache 和 lookup。错误可能来自凭据、endpoint、网络、provider 类型或 model 不支持当前 runtime。
+
+## Quick checks
+
+1. 打开 Settings。
+2. 进入 Providers。
+3. 检查 profile 是否启用。
+4. 运行 health check。
+5. 刷新 model list。
+6. 回到 New Chat 重新选择 provider 和 model。
+
+## Common causes
+
+| Code or symptom | Likely cause | Recovery |
+| --- | --- | --- |
+| `provider_not_available` | 当前 server catalog 没有这个 `providerKind` | 选择 Settings 中可用 provider，或确认 provider integration 已注册。 |
+| `invalid_provider_input` | `secretRef`、`profileId` 等字段为空字符串 | 删除空白值，重新保存 provider profile。 |
+| `secret_not_configured` | `CRADLE_CREDENTIAL_SECRET` 未配置，server 无法管理 secrets | 配置 `CRADLE_CREDENTIAL_SECRET` 并重启 server。 |
+| `invalid_provider_request` | Provider request 缺少当前 provider 需要的 config | 回到 Settings，补齐 base URL、API key、project 或其他 provider-specific 字段。 |
+| `provider_models_unavailable` | 上游 model discovery 失败 | 检查网络、endpoint、token 和 provider 状态；必要时添加 custom model。 |
+| Health check fails | Invalid token, endpoint, or secret reference | 更新凭据和 endpoint，重新运行 health check。 |
+| No models | Discovery unsupported, upstream failed, or cache empty | 手动刷新 model list；如果 profile 有 custom models，会与上游结果合并。 |
+| Chat fails after send | Runtime/model mismatch | 更换 runtime 或 model，并查看 Observability 是否有 `TURN_STREAM_FAILED`。 |
+| No usage data | Provider does not return usage | 查看 [Usage](../operations/usage.mdx) 限制，不要把它当作账单缺失。 |
+
+## Verify from API or CLI
+
+如果 UI 不能定位问题，可以直接检查 provider routes：
+
+```bash
+cradle provider health-check --help
+cradle provider models --help
+```
+
+API surfaces：
+
+- `POST /providers/health-check`
+- `POST /providers/models`
+- `GET /providers/:profileId/models-cache`
+- `POST /providers/model-lookup`
+- `POST /providers/model-search`
+
+`model-lookup` 和 `model-search` 是 HTTP surfaces；是否有 CLI command 以当前 OpenAPI metadata 为准。
+
+## Limits
+
+不同 provider 的凭据格式和可用 model 不同。本文不列具体 provider preset 的完整字段，以当前 Settings UI 为准。
+
+## Next steps
+
+阅读 [Providers](../agents/providers.mdx)、[Models](../agents/models.mdx) 和 [Usage](../operations/usage.mdx)。

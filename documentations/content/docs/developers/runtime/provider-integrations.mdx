@@ -1,0 +1,56 @@
+---
+title: Provider integrations
+description: Owner boundaries for providers, profiles, model registry, and chat runtime providers.
+---
+
+Runtime integration 分为 provider metadata、profile configuration 和 chat execution。保持这些 owner 分离：provider/profile configuration 不是 agent authorship，chat-runtime execution 也不是 profile storage。
+
+## Owner
+
+- `providers` owns provider metadata, model discovery, health checks, model lookup/search and cache projections.
+- `profiles` owns saved runtime profiles, custom models, icons and model registry mappings.
+- `chat-runtime` owns turn execution, streaming, cancellation, usage persistence and provider orchestration.
+- `agent-identity` owns user-visible persona and author semantics.
+
+## Namespace
+
+- Provider routes：`/providers/models`, `/providers/health-check`, `/providers/model-lookup`, `/providers/model-search`
+- Provider cache route：`/providers/:profileId/models-cache`
+- Profile routes：`/profiles`, `/profiles/:id`, `/profiles/:id/custom-models`
+- Chat runtime routes：`/chat/sessions/:sessionId/response`, `/chat/sessions/:sessionId/cancel`
+- CLI groups：`cradle provider ...`, `cradle profile ...`, `cradle chat ...`
+
+Runtime kinds observed in database/runtime evidence include `standard`, `claude-agent`, `codex`, `jar-core`, `acp-chat` and `cli-tui`.
+
+## Lifecycle
+
+1. User or config creates provider/profile state.
+2. Provider module validates metadata and discovers models.
+3. Profile module stores runtime preferences and custom mappings.
+4. Chat runtime selects provider implementation for a session turn.
+5. Runtime streams deltas or records failure.
+6. Usage and observability projections record execution evidence.
+
+## Integration contract
+
+Provider integrations should document:
+
+- required secrets or local dependencies。
+- model discovery and cache invalidation。
+- health-check failure semantics。
+- streaming support and fallback behavior。
+- usage accounting source。
+- which fields belong to profile configuration versus agent identity。
+
+## Validation
+
+```bash
+cd apps/server
+pnpm test -- sdk-providers
+pnpm test -- chat-runtime
+pnpm typecheck
+```
+
+## Limits
+
+Exact provider config fields and environment variables must be verified from current provider config schemas and UI settings code before publishing setup examples. This page only defines owner boundaries and lifecycle.

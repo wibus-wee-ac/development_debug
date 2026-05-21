@@ -1,0 +1,36 @@
+---
+title: Models
+description: Select, search, and understand model discovery and model cache in Cradle.
+---
+
+Model 决定 agent 的生成能力、上下文窗口、工具支持和成本可见性。Cradle 通过 provider routes 获取和缓存模型信息。
+
+## Overview
+
+Models 通常来自 provider discovery，也可能通过 provider-specific lookup 或 search 选择。不同 provider 对 thinking、tool metadata、context size 和 pricing 的支持不同。
+
+## 选择 model
+
+在 New Chat 或 Composer toolbar 中选择 provider 后，再选择 model。若列表缺失，回到 Settings 的 Providers 区域刷新或检查健康状态。
+
+## 决策因素
+
+- 上下文窗口是否足够。
+- 是否支持工具调用。
+- 是否支持 streaming。
+- 是否能提供 token usage。
+- 是否有可用 pricing estimate。
+
+## Limits
+
+Pricing estimate 只适用于 Cradle 能识别的 model 和价格数据。未知 model 不应显示为精确账单。
+
+## Troubleshooting
+
+- Model 不存在：刷新 provider model cache。
+- Model 可选但运行失败：检查 provider 是否支持当前 runtime 的工具调用方式。
+- Token indicator 不准确：确认 provider 是否返回 usage metadata。
+
+## Next steps
+
+阅读 [Runtime kinds](./runtime-kinds.mdx) 和 [Usage](../operations/usage.mdx)。

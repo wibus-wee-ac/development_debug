@@ -1,0 +1,91 @@
+---
+title: Browser Use plugin
+description: Developer contract for the Browser Use plugin, MCP tools, desktop socket, and in-app browser automation.
+---
+
+Browser Use 是 first-party plugin。它把 Cradle desktop 的 in-app browser 暴露给 agent runtime，核心 contract 是 MCP tools 加 desktop socket，而不是任意外部浏览器控制。
+
+## Owner
+
+`plugins/browser-use` owns the plugin package, MCP server, protocol, desktop socket server, browser command mapping, and `SKILL.md` trigger description. Cradle desktop host owns webview creation and Electron lifecycle.
+
+## Namespace
+
+| Surface | Namespace |
+| --- | --- |
+| Plugin package | `plugins/browser-use` |
+| Skill file | `plugins/browser-use/SKILL.md` |
+| Socket override | `BROWSER_BACKEND_SOCKET` |
+| Default socket | `browser-backend.sock` under Electron `userDataPath` |
+| Protocol commands | `navigate`, `screenshot`, `click`, `type`, `get_text`, `tabs_list`, `tabs_new`, `tabs_close`, `eval`, `scroll`, `hover`, `dom_snapshot`, `wait_for_selector`, `keyboard` |
+
+## MCP tools
+
+| Tool | Command type | Notes |
+| --- | --- | --- |
+| `browser_navigate` | `navigate` | Requires URL, optional `tabId`. |
+| `browser_screenshot` | `screenshot` | Returns PNG image content. |
+| `browser_click` | `click` | Uses CSS selector. |
+| `browser_type` | `type` | Uses CSS selector and text. |
+| `browser_get_text` | `get_text` | Reads page text or selector text. |
+| `browser_tabs_list` | `tabs_list` | Lists current browser tabs. |
+| `browser_tabs_new` | `tabs_new` | Opens a new tab and optional URL. |
+| `browser_tabs_close` | `tabs_close` | Closes tab by `tabId`. |
+| `browser_eval` | `eval` | Evaluates JavaScript expression. |
+| `browser_scroll` | `scroll` | Supports `up`, `down`, `left`, `right`. |
+| `browser_hover` | `hover` | Uses CSS selector. |
+| `browser_dom_snapshot` | `dom_snapshot` | Returns accessibility tree nodes. |
+| `browser_wait_for_selector` | `wait_for_selector` | Default wait is `5000` ms. |
+| `browser_keyboard` | `keyboard` | Supports key and modifier array. |
+
+## Desktop lifecycle
+
+1. Desktop plugin activates.
+2. Plugin creates `browser-backend.sock`.
+3. Plugin listens for webview creation and stores available tabs.
+4. Plugin writes `BROWSER_BACKEND_SOCKET` through shared config.
+5. MCP server connects to the socket and sends framed JSON commands.
+6. Desktop layer maps commands to CDP or webview operations.
+7. Deactivation detaches debuggers, clears registry, closes socket, and removes stale socket file.
+
+## Protocol
+
+The protocol uses a 4-byte little-endian length prefix followed by UTF-8 JSON. Responses use:
+
+```ts
+type BrowserResponse<T> =
+  | { id: string; ok: true; data: T }
+  | { id: string; ok: false; error: string }
+```
+
+Each MCP command has a 30 second timeout in the MCP client.
+
+## Validation
+
+Run plugin tests:
+
+```bash
+cd plugins/browser-use
+pnpm test
+```
+
+Manual validation:
+
+1. Start Cradle desktop.
+2. Open browser panel.
+3. Confirm plugin desktop layer is active in Devtools Plugins.
+4. Confirm MCP tools are visible to the agent runtime.
+5. Run `browser_tabs_list`.
+6. Run `browser_dom_snapshot` on a visible page.
+
+## Limits
+
+- Controls Cradle in-app browser only.
+- Requires Cradle desktop and available webview.
+- No network interception or request mocking.
+- No dedicated cookie/storage manipulation tool.
+- Treat `browser_eval` as privileged behavior.
+
+## Related pages
+
+Read [Desktop plugin API](./desktop-api.mdx), [Web plugin API](./web-api.mdx), and [Browser use](../../agents/browser-use.mdx).

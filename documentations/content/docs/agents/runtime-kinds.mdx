@@ -1,0 +1,32 @@
+---
+title: Runtime kinds
+description: Distinguish provider-backed, CLI TUI, ACP, and other agent runtime boundaries.
+---
+
+Runtime kind 决定 Cradle 如何执行 agent 任务。它影响工具调用、slash commands、streaming、approval 和可委派能力。
+
+## Overview
+
+Cradle 的 UI 会在 New Chat 或 Composer toolbar 中暴露 runtime selector。Provider-backed runtime 适合标准模型调用；CLI TUI 和 ACP 等 runtime 可能有自己的交互和能力边界。
+
+## 选择 runtime
+
+| Runtime kind | 适用场景 |
+| --- | --- |
+| Provider-backed | Chat、Issue agent、常规工具调用 |
+| CLI TUI | 需要接入命令行 agent 的会话 |
+| ACP | 需要接入 Agent Client Protocol 的 runtime |
+
+## Limits
+
+- 不是所有 runtime 都支持 Issue delegation。
+- Slash commands 可能是 runtime-native。
+- Approval 语义可能随工具包装层变化。
+
+## Troubleshooting
+
+如果某个 runtime 不支持当前任务，换用 provider-backed runtime，并检查 provider 与 model 是否可用。
+
+## Next steps
+
+阅读 [Providers](./providers.mdx) 和 [Issue agents](../kanban/issue-agents.mdx)。

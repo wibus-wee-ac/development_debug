@@ -1,0 +1,41 @@
+---
+title: First chat
+description: Create the first agent session with a workspace, runtime, provider, and model.
+---
+
+Chat session 是 Cradle 中与 agent 协作的主要界面。每段 session 绑定 workspace，并通过 runtime profile 调用具体 provider 和 model。
+
+## Overview
+
+创建 Chat 前，先确认你已经有 workspace，并且 Settings 中至少有一个可用 provider。New Chat 页面会让你选择 workspace、runtime、provider、model，并输入第一条消息。
+
+## 创建 session
+
+1. 打开 `New Chat`。
+2. 选择 workspace。
+3. 选择 runtime kind。
+4. 选择 provider 和 model。
+5. 输入任务并发送。
+
+发送后，Cradle 会创建 session，并打开对应 Chat tab。
+
+## 发送前检查
+
+- workspace 是否是正确项目目录。
+- provider health 是否正常。
+- model 是否来自当前 provider 的可用列表或缓存。
+- runtime kind 是否支持你要使用的能力。
+
+## 运行中行为
+
+Chat 支持 streaming、cancel、virtualized history、approval cards、await banner、file mentions、slash commands 和 token usage indicator。不同 runtime 的原生命令能力可能不同，不应把一个 runtime 的 slash command 当成全局能力。
+
+## Troubleshooting
+
+- Provider 不可用：阅读 [Provider errors](../troubleshooting/provider-errors.mdx)。
+- 需要批准工具调用：阅读 [审批](../chat/approvals.mdx)。
+- 想停止当前响应：在 Composer 中使用 stop/cancel 控制。
+
+## Next steps
+
+阅读 [Chat overview](../chat/overview.mdx) 和 [Composer](../chat/composer.mdx)。

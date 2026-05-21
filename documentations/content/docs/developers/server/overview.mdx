@@ -1,0 +1,65 @@
+---
+title: Server overview
+description: Server composition root, module ownership, background work, and plugin activation contracts.
+---
+
+Cradle server 是 Elysia app。它组合 HTTP foundation、OpenAPI、业务 modules、PTY routes、Chronicle background work 和 server plugin host。开发 server 能力时，先确定 owner 和 namespace，再决定 route、schema、CLI metadata 和 persistence。
+
+## Owner
+
+`apps/server` 拥有 HTTP composition、request context、module mounting、plugin activation 和 server-side lifecycle。具体业务语义由 module owner 管，例如 `session`、`chat-runtime`、`issue`、`automation`、`chronicle`。
+
+`packages/db` 拥有 schema exports 和 migration artifacts。server module 可以读写自己 owner 下的 tables；跨 owner 读取需要显式用途，跨 owner 写入需要目标 owner 的 API。
+
+## Namespace
+
+常见 namespace 形态：
+
+- HTTP route prefix，例如 `/sessions`、`/chat/sessions/:sessionId`、`/automations`。
+- database schema module，例如 `packages/db/src/schema/chat.ts`。
+- generated CLI command group，例如 `cradle session`、`cradle automation`。
+- plugin route segment，例如 `/api/plugins/{routeSegment}`。
+
+历史表名不等于当前语义 owner。已知例子是 issue 数据仍可能使用 `kanban_*` 历史 table name，但 Issue owner 管 issue semantics，Kanban owner 只管 board/view configuration。
+
+## Lifecycle
+
+Server 启动时按 composition root 装配能力：
+
+1. 注册 HTTP foundation：request id、logging、CORS、error mapping、validation。
+2. 暴露 OpenAPI 和 docs routes。
+3. 挂载业务 modules，每个 module 维护自己的 route prefix 和 model/service 边界。
+4. 启动 background work，例如 Chronicle orchestration。
+5. 激活 server plugins，并把 plugin routes 挂在 `/api/plugins/{routeSegment}`。
+6. 在 `NODE_ENV=test` 下启用测试专用 reset route。
+
+## Interfaces
+
+稳定入口按页面拆分：
+
+- HTTP foundation：[HTTP foundation](./http-foundation.mdx)
+- Module map：[Server modules](./modules.mdx)
+- OpenAPI：[OpenAPI](../api/openapi.mdx)
+- Generated CLI：[Generated CLI](../cli/generated-cli.mdx)
+
+## Validation
+
+在 server scope 内验证：
+
+```bash
+cd apps/server
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+如果只改 OpenAPI metadata，还需要重新生成 CLI 并检查 generated diff：
+
+```bash
+cd packages/cli
+pnpm gen:cli
+```
+
+## Limits
+
+本文档不把所有 route 展开成完整 reference。完整 route shape 应以当前 OpenAPI document 和 module tests 为准。HTTP-only routes 不应假设有 CLI command，除非 route metadata 明确包含 `x-cradle-cli`。

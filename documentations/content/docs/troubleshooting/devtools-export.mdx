@@ -1,0 +1,73 @@
+---
+title: Devtools export
+description: Export observability bundles and collect session, run, provider, and workspace diagnostics.
+---
+
+Devtools export 是提交复杂问题时最有用的诊断材料。它可以把 events、incidents 和运行上下文打包给维护者分析。
+
+## Overview
+
+Observability 面板支持按 session、run、code 和 severity 查看事件。导出 bundle 前先尽量复现问题，这样事件时间线更完整。
+
+## 导出前准备
+
+记录：
+
+- Workspace path。
+- Session ID。
+- Run ID。
+- Provider。
+- Model。
+- 复现步骤。
+- 期望行为和实际行为。
+
+## 导出
+
+1. 打开 Devtools。
+2. 进入 Observability。
+3. 过滤相关时间段或 session。
+4. 导出 bundle。
+5. 附上复现步骤。
+
+## Codes to inspect
+
+| Code | Meaning | First recovery |
+| --- | --- | --- |
+| `CHAT_EMPTY_OUTPUT_COMPLETION` | 最近 completion 输出为空；多次出现会生成 incident | 检查 provider、model、prompt 和 streaming path。 |
+| `TURN_STREAM_FAILED` | Chat turn streaming failed | 查看 provider error、network、runtime logs 和 session ID。 |
+| `DOMAIN_EVENT_HANDLER_FAILED` | Domain event handler failed | 查看 incident source、handler name 和相关 module。 |
+| `PROVIDER_EMPTY_EVENT_STREAM` | Provider event stream 为空 | 检查 provider streaming capability 和 selected model。 |
+| `invalid_observability_input` | Observability query 参数非法 | 修正 `limit`、`since`、`until`、`severity` 或 `status`。 |
+
+## Useful filters
+
+| Filter | When to use |
+| --- | --- |
+| `chatSessionId` | Chat、Issue agent 或 session await 问题。 |
+| `runId` | Automation run 或 long-running agent run 问题。 |
+| `code` | 已知错误码复现。 |
+| `severity` | 只看 `warn`、`error` 或 `fatal`。 |
+| `since` / `until` | 限定复现窗口。 |
+
+## API and CLI surfaces
+
+```bash
+cradle observability events --help
+cradle observability incidents --help
+cradle observability export --help
+```
+
+HTTP surfaces：
+
+- `GET /observability/events`
+- `GET /observability/incidents`
+- `POST /observability/flush`
+- `GET /observability/export`
+
+## Security
+
+Bundle 可能包含路径、错误消息、运行标识和部分上下文。分享前确认没有敏感信息。
+
+## Next steps
+
+阅读 [Observability](../operations/observability.mdx) 和 [Devtools](../operations/devtools.mdx)。

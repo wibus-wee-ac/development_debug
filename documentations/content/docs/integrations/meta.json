@@ -1,0 +1,5 @@
+{
+  "title": "Integrations",
+  "icon": "Cable",
+  "pages": ["overview", "slack-bridge", "browser-panel", "plugins", "system-info"]
+}

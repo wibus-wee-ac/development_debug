@@ -1,0 +1,5 @@
+{
+  "title": "Agents",
+  "icon": "Bot",
+  "pages": ["overview", "providers", "models", "runtime-kinds", "skills", "browser-use"]
+}

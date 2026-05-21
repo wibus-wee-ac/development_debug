@@ -1,0 +1,71 @@
+---
+title: Database ownership
+description: Cradle Drizzle schema, table owners, cross-namespace reads, and forbidden writes.
+---
+
+Database ownership 是语义 ownership。Schema file、table prefix 或历史 table name 不能覆盖当前 module owner。新增 column、table 或 query 前，先确认谁负责 migrations、compatibility 和 write semantics。
+
+## Owner
+
+`packages/db` owns shared database exports, Drizzle schema barrels and migration artifacts. Domain owners own their data semantics:
+
+- `shared workspace` owns workspace-level shared records.
+- `identity` owns agent identity and user-visible persona records.
+- `chat` owns sessions, messages, usage and runtime projections.
+- `runtime` owns runtime execution support records.
+- `issue` owns issue semantics, even when historical table names contain `kanban`.
+- `kanban` owns board and view configuration.
+- `issue-agent` owns delegation sessions and activity records.
+- `automation` owns automation definitions, runs and artifacts.
+- `session-await` owns durable wait records.
+- `chronicle` owns server-side memory and timeline projections.
+- `observability` owns event and incident projections.
+
+## Namespace
+
+- Package entry：`@cradle/db`
+- Path helpers：`@cradle/db/paths`
+- Schema root：`packages/db/src/schema/**`
+- Schema barrel：`packages/db/src/schema/index.ts`
+- Migration root：`packages/db/drizzle/**`
+
+Cross-namespace reads are allowed when the reader has a clear projection purpose. Cross-namespace writes are forbidden unless the target owner exposes a service/API for that write.
+
+## Lifecycle
+
+1. Domain owner proposes schema change.
+2. Owner updates Drizzle schema in the correct schema module.
+3. Owner creates migration artifact.
+4. Owner updates tests that prove upgrade and read/write behavior.
+5. Owner updates module docs and developer docs if public contract changes.
+6. Consumers read through owner APIs or documented read models.
+
+## Ownership checklist
+
+- Which module owns compatibility for this data?
+- Which namespace will receive writes?
+- Which modules may read it?
+- Is a historical name hiding a newer semantic owner?
+- What migration path protects existing data?
+- What tests prove the migration and runtime behavior?
+
+## Validation
+
+```bash
+cd apps/server
+pnpm test -- database
+pnpm test
+```
+
+For package-level migration behavior, run the tests present in `packages/db/package.json` or targeted test files such as:
+
+```bash
+cd packages/db
+pnpm test
+```
+
+Only use commands that exist in the package at the time of the change.
+
+## Limits
+
+`packages/db/package.json` did not provide confirmed migration generation scripts in the coverage handoff. Do not document a generation command until the owner confirms the canonical workflow.

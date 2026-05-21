@@ -1,0 +1,71 @@
+---
+title: Plugin examples
+description: How Browser Use and System Info demonstrate server, desktop, web, MCP, and skill boundaries.
+---
+
+Bundled plugins 用来展示 plugin boundaries，不是绕过 ownership 的许可。用它们理解 route segments、capability registration 和 layer-specific behavior。
+
+完整 contract 已拆到独立页面：
+
+- [Browser Use plugin](./browser-use.mdx)
+- [System Info plugin](./system-info.mdx)
+- [Web plugin API](./web-api.mdx)
+- [Desktop plugin API](./desktop-api.mdx)
+
+## Browser Use
+
+Owner：`plugins/browser-use`
+
+Namespace：
+
+- Package namespace：`plugins/browser-use/**`
+- Desktop deployment only, based on current evidence。
+- MCP tools such as `browser_navigate`, `browser_screenshot`, `browser_click`, `browser_type`, `browser_get_text`, `browser_dom_snapshot`, `browser_eval`。
+- Skill source：`plugins/browser-use/SKILL.md`
+
+Lifecycle：
+
+1. Desktop layer connects to Cradle in-app browser.
+2. Server or MCP layer exposes browser automation tools.
+3. Tool call targets active or requested browser tab.
+4. Screenshot, DOM snapshot and input actions return tool results.
+
+Limits：
+
+- It controls Cradle in-app browser surfaces, not arbitrary external browser automation unless a future owner explicitly extends that contract.
+- CDP or browser socket details should be treated as plugin implementation details unless exposed through documented tools.
+
+## System Info
+
+Owner：`plugins/system-info`
+
+Namespace：
+
+- Server route：`GET /api/plugins/system-info/info`
+- Web panel：`system-info-panel`
+- Web command：`system-info.show`
+
+Lifecycle：
+
+1. Server layer registers the info route.
+2. Web layer registers panel and command.
+3. User opens panel or command from Cradle UI.
+4. Web layer reads the plugin route and renders system data.
+
+Limits：
+
+- This is a compact example of server plus web registration.
+- Treat its local type shape as illustrative unless it is aligned with current `WebPluginContext` exports.
+
+## Validation
+
+```bash
+cd plugins/browser-use
+pnpm test
+```
+
+For `system-info`, use the package scripts present in `plugins/system-info/package.json`.
+
+## Next steps
+
+从 [Plugin SDK](./sdk-overview.mdx) 理解 manifest 和 ownership，再进入 [Server plugin API](./server-api.mdx)、[Web plugin API](./web-api.mdx) 和 [Desktop plugin API](./desktop-api.mdx)。

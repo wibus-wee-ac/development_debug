@@ -1,0 +1,9 @@
+{
+  "title": "Server",
+  "icon": "Server",
+  "pages": [
+    "overview",
+    "http-foundation",
+    "modules"
+  ]
+}

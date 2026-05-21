@@ -1,13 +1,40 @@
 ---
-title: Hello World
-description: Your first document
+title: Cradle docs
+description: Product, admin, operations, and developer documentation for Cradle.
 ---
 
-Welcome to the docs! You can start writing documents in `/content/docs`.
+Cradle 是本地优先的 agent workspace。你可以从桌面端启动本地服务，在 Web workspace 中组织项目、会话、Issue、自动化、记忆和集成。
 
-## What is Next?
+## Overview
 
 <Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.dev" />
+  <Card title="快速开始" href="/docs/getting-started/overview" />
+  <Card title="第一个工作区" href="/docs/getting-started/first-workspace" />
+  <Card title="Chat 与 Composer" href="/docs/chat/overview" />
+  <Card title="Providers 与 Models" href="/docs/agents/providers" />
 </Cards>
+
+Cradle 的文档按任务域组织，而不是按仓库目录组织。普通用户从工作区和 Chat 开始，管理员从 Providers、审批和设置开始，本地运维者从 Devtools、Chronicle、Slack bridge 和故障处理开始。
+
+## 常用入口
+
+- 打开桌面端并确认本地服务：阅读 [桌面端启动](./getting-started/desktop-app.mdx)。
+- 添加项目目录并建立 workspace：阅读 [创建第一个工作区](./getting-started/first-workspace.mdx)。
+- 配置模型提供商：阅读 [配置 Providers](./agents/providers.mdx) 和 [选择 Models](./agents/models.mdx)。
+- 使用 Chat、文件提及和 slash commands：阅读 [Composer](./chat/composer.mdx)。
+- 把 Issue 委派给 agent：阅读 [Issue agents](./kanban/issue-agents.mdx)。
+- 查看自动化运行、产物和失败：阅读 [Automation runs](./automation/runs-and-artifacts.mdx)。
+- 配置本地记忆管线：阅读 [Chronicle](./chronicle/overview.mdx)。
+- 连接 Slack human-in-the-loop：阅读 [Slack bridge](./integrations/slack-bridge.mdx)。
+
+## 管理与排障
+
+Cradle 的复杂能力通常跨越 Web UI、本地 server、桌面 runtime 和插件层。遇到问题时，优先从 [故障处理入口](./troubleshooting/index.mdx) 开始，再进入具体页面。
+
+<Callout type="info">
+文档只描述当前仓库证据支持的行为。未确认的发布渠道、云同步能力、未来 UI 和外部托管能力不会作为已发布功能描述。
+</Callout>
+
+## Next steps
+
+从 [快速开始](./getting-started/overview.mdx) 了解整体路径，或直接进入 [Workspace](./workspace/overview.mdx) 查看日常工作界面。

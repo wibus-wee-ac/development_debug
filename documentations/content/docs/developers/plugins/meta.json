@@ -1,0 +1,14 @@
+{
+  "title": "Plugins",
+  "icon": "Plug",
+  "pages": [
+    "sdk-overview",
+    "lifecycle",
+    "server-api",
+    "web-api",
+    "desktop-api",
+    "browser-use",
+    "system-info",
+    "examples"
+  ]
+}

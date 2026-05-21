@@ -1,0 +1,5 @@
+{
+  "title": "Chronicle",
+  "icon": "History",
+  "pages": ["overview", "setup", "memories", "troubleshooting"]
+}

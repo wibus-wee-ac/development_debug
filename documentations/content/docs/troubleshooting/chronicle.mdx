@@ -1,0 +1,54 @@
+---
+title: Chronicle troubleshooting
+description: Troubleshoot Chronicle capture, resources, timeline, memory search, and model issues.
+---
+
+Chronicle 故障通常来自本地权限、资源、model 或 pipeline 状态。先检查 Settings 中的 Chronicle status。
+
+## Overview
+
+Chronicle 是本地 capture 和 memory pipeline。它可能受系统权限、resource 安装、OCR、privacy filtering、dedup 和 summarization model 影响。
+
+## Quick checks
+
+- Capture 是否开启。
+- 系统权限是否允许 capture。
+- Resource 是否可用。
+- Model 是否可用。
+- Timeline 是否更新。
+- Memory search 是否返回结果。
+
+## Status table
+
+优先读取 Settings 中的 Chronicle status，或直接检查 `GET /chronicle/status`。这个 response 暴露 `available`、`running`、`pid`、`lastCaptureAt`、`lastSummaryAt`、`lastErrorAt`、`lastError`、`lastExitCode`、`lastExitAt`、`totalSnapshots`、`totalSummaries`、`totalMessages`、`lastMessageAt` 和 `configuredModel`。
+
+| Status or message | Meaning | Inspect | Recovery |
+| --- | --- | --- | --- |
+| `available=false` | Chronicle 没有同时满足 enabled config 和 profile selection | Settings 中的 Chronicle toggle、profile 和 model | 打开 Chronicle，选择可用 profile；再刷新 `GET /chronicle/status` |
+| `running=false` | Server 认为 daemon process 不在运行 | `pid`、`lastExitAt`、`lastExitCode` | 关闭再打开 Chronicle，或重启 desktop app 触发 daemon lifecycle |
+| `lastExitCode` is not `null` | daemon 曾退出，可能是 capture、storage 或 provider failure | `lastExitAt`、daemon stderr、desktop/server logs | 按 `lastError` 或 stderr message 处理；保留 logs 后再重启 |
+| `lastError` | 最近一条 Chronicle event 的 `status=error` message | Observability 中同一时间的 Chronicle event | 按 message 定位 model、profile、daemon 或 ingest 问题 |
+| `Chronicle daemon failed to start` | Server 调用 daemon start 返回 failure | Chronicle binary 是否存在、storage root 是否可写、server logs | 修复 binary/path/storage 后切换 Chronicle off/on |
+| `[Chronicle error - no API key available for profile]` | Summary route 找到 profile，但没有可用 API key | Provider profile、credential reference、model selection | 补全 API key 或切换到有 credential 的 profile |
+| `[Chronicle error - Chronicle is not enabled]` | Summary request 到达 server，但 Chronicle config disabled | Settings 中的 Chronicle toggle | 打开 Chronicle 后重新生成 summary |
+| `totalSnapshots=0` | daemon 还没有成功 ingest snapshot | `running`、`lastCaptureAt`、Screen Recording permission、daemon stderr | 授权 capture；确认 storage root 可写；等待下一轮 capture |
+| `totalSummaries=0` | 已有 capture 但 memory summary 没有写入或上报 | `totalSnapshots`、`lastSummaryAt`、`configuredModel`、provider profile | 修复 model/API key；等待 10 minute window 或重新触发 summary |
+| `macOS capture is only available on macOS` | 当前平台不能使用 macOS capture provider | 当前 platform、Chronicle provider config | 在非-macOS 环境使用 inbox provider 或关闭 capture |
+| `macOS capture provider is only available on macOS` | daemon 使用了不支持的平台 provider | provider config、daemon stderr | 切换 provider，或在 macOS 上运行 capture |
+| `CGDisplayCreateImage returned null. Grant Screen Recording permission.` | macOS Screen Recording permission 缺失或未生效 | System Settings 中的 Screen Recording permission | 授权后完全重启 desktop app |
+| `another Chronicle instance is already running (lock held)` | storage root 已有运行中的 Chronicle instance 持有 lock | daemon pid、`codex_chronicle.lock`、process list | 保留正在运行的 instance，或先正常停止重复 instance |
+| `another Chronicle instance is already running (lock file exists)` | 非-unix 平台或 stale lock file 阻止启动 | lock file 和 process list | 确认没有运行中的 daemon 后，再清理 stale lock |
+| `cradle chronicle capture error: ...` | daemon capture loop 抛出错误 | daemon stderr、Screen Recording permission、display/provider config | 按错误后缀修复 permission、display 或 storage |
+| `cradle chronicle summary error: ...` | daemon capture 成功，但 summary 写入或 remote summary 失败 | `configuredModel`、provider profile、server `/chronicle/summarize` response | 修复 model/API key；必要时查看 local memory artifact |
+
+## Timeline and memory checks
+
+如果 `totalSnapshots>0` 但 timeline 为空，检查 `lastCaptureAt` 和 `/chronicle/timeline`；这通常是 ingest 或 UI 查询问题。如果 `totalSnapshots>0` 且 `totalSummaries=0`，先按 summary rows 排查 provider/profile，而不是重新安装 capture resource。
+
+## Limits
+
+macOS Screen Recording permission、daemon lifecycle 和 resource installation 的细节需要按当前平台验证。
+
+## Next steps
+
+阅读 [Chronicle setup](../chronicle/setup.mdx) 和 [Observability](../operations/observability.mdx)。

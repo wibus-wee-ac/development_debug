@@ -1,0 +1,76 @@
+---
+title: Plugin SDK
+description: Manifest, layers, capabilities, permissions, and namespace ownership for the Cradle plugin SDK.
+---
+
+Cradle plugin 是 owner-scoped extension。Plugin 可以注册 server routes、MCP tools、skills、web panels、commands 和 desktop hooks，但它必须用自己的 capability identity 和 namespace 表达语义。
+
+## Owner
+
+Plugin package owner 拥有 manifest metadata、capabilities、permissions、upgrade compatibility 和 plugin-local data。Cradle plugin host 拥有 discovery、validation、descriptor、route segment、layer state 和 capability registry。
+
+Plugin 不拥有 Cradle core tables。需要写 core state 时，必须调用 core owner 的 API。
+
+## Namespace
+
+Manifest fields live under package metadata:
+
+```json
+{
+  "cradle": {
+    "server": "./dist/server.js",
+    "web": "./dist/web.js",
+    "desktop": "./dist/desktop.js",
+    "capabilities": [],
+    "permissions": []
+  }
+}
+```
+
+Host-derived namespace:
+
+- Route segment：`/api/plugins/{routeSegment}`
+- Web bundle：`/api/plugins/:name/web.mjs`
+- Capability identity：owner-prefixed capability IDs
+- Discovery env：`CRADLE_PLUGINS_DIR`, `CRADLE_EXTERNAL_PLUGINS_DIRS`
+
+## Lifecycle
+
+1. Discover plugin package.
+2. Validate manifest metadata and trust source.
+3. Build host descriptor.
+4. Activate server layer, web layer or desktop layer when available.
+5. Register capabilities.
+6. Execute plugin hooks/routes/tools.
+7. Deactivate or upgrade layer when host lifecycle changes.
+
+## Capability contract
+
+Plugin capabilities should state:
+
+- purpose and user-visible behavior。
+- required permissions。
+- data read/write namespace。
+- events emitted or consumed。
+- cleanup behavior。
+- failure behavior and observability path。
+
+## Validation
+
+```bash
+cd packages/plugin-sdk
+pnpm typecheck
+```
+
+For bundled plugins:
+
+```bash
+cd plugins/browser-use
+pnpm test
+```
+
+Use actual plugin package scripts when they differ.
+
+## Limits
+
+Current evidence does not prove persistent plugin storage semantics end to end. Docs should describe `storage` as host-provided storage capability and avoid promising durability until implementation and tests confirm it.

@@ -1,0 +1,62 @@
+---
+title: OpenAPI
+description: Cradle OpenAPI document, Scalar UI, route metadata, and generated CLI boundaries.
+---
+
+OpenAPI 是 server route、interactive docs 和 generated CLI 的共同契约。它不是附属文档；新增或修改 public route 时，应同步维护 schema、examples、operation metadata 和 CLI placement。
+
+## Owner
+
+`apps/server/src/http/openapi.ts` 拥有 OpenAPI exposure。每个 server module 拥有自己的 operation semantics、request schema、response schema、error cases 和 `x-cradle-cli` metadata。
+
+CLI generator 只消费 OpenAPI，它不应该成为修正 route 语义的地方。
+
+## Namespace
+
+- Docs UI：`/docs`
+- Canonical document：`/openapi.json`
+- Alias document：`/docs/openapi.json`
+- CLI metadata：`x-cradle-cli`
+
+`x-cradle-cli` belongs to the route owner. 如果 command group、verb、description 或 output shape 不对，应回到 server route metadata 修正，然后重新生成 CLI。
+
+## Lifecycle
+
+1. Module 定义 route schema、operation details 和 examples。
+2. OpenAPI plugin 聚合 server app 的 public operations。
+3. `/docs` 使用 same document 渲染 API UI。
+4. CLI generator 拉取 live OpenAPI document。
+5. Generator 写入 `packages/cli/src/commands/generated/**`。
+6. Runtime 根据 generated command metadata 发起 HTTP request。
+
+## Authoring contract
+
+新增 public route 时至少检查：
+
+- operation name 能被人类和 CLI 用户理解。
+- request body、path params、query params 都有 schema。
+- response shape 包含成功和错误路径。
+- destructive operation 有明确 method 和 confirmation expectation。
+- owner namespace 不把写入放到外部 namespace。
+- 如果需要 CLI，metadata 使用稳定 command group。
+
+## Validation
+
+检查 OpenAPI route：
+
+```bash
+cd apps/server
+pnpm test -- openapi
+pnpm typecheck
+```
+
+检查 CLI drift：
+
+```bash
+cd packages/cli
+pnpm gen:cli
+```
+
+## Limits
+
+有些 routes 是 HTTP-only，例如部分 provider lookup、Chronicle、PTY 或 WebSocket surface。不要因为 route 出现在 OpenAPI 中就承诺存在 CLI command。CLI 只以 `x-cradle-cli` metadata 为准。

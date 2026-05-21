@@ -1,0 +1,28 @@
+---
+title: Integrations overview
+description: Manage Slack bridge, browser panel, browser-use plugin, and Cradle plugin surfaces.
+---
+
+Integrations 把 Cradle 连接到外部工具或扩展 runtime。每个集成都有自己的 owner、权限和故障边界。
+
+## Overview
+
+当前用户文档覆盖 Slack bridge、browser panel、browser-use plugin 和 plugin surfaces。开发者向的 plugin SDK 不在本分区内。
+
+## 集成矩阵
+
+| Integration | Owner | Use |
+| --- | --- | --- |
+| Slack bridge | `apps/zhi-slack-bridge` | Human-in-the-loop Slack thread |
+| Browser panel | Desktop/Web UI | Electron webview browsing |
+| Browser-use plugin | Desktop plugin runtime | Agent browser automation |
+| Plugins panel | Devtools | Diagnose registered plugin layers |
+| System Info | `plugins/system-info` | Inspect host OS and Node.js runtime information |
+
+## Permissions
+
+集成通常会访问外部系统、网页内容或本地 runtime。启用前确认凭据、scope 和信任来源。
+
+## Next steps
+
+阅读 [Slack bridge](./slack-bridge.mdx)、[Browser panel](./browser-panel.mdx)、[Plugins](./plugins.mdx) 和 [System Info](./system-info.mdx)。

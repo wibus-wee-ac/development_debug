@@ -1,0 +1,31 @@
+---
+title: Files
+description: Browse local project files in a workspace and use paths as chat context.
+---
+
+文件树把本地项目目录暴露给 workspace。你可以浏览目录，也可以在 Composer 中提及文件或拖放路径，让 agent 获得更准确的上下文。
+
+## Overview
+
+文件能力围绕当前 workspace 的根目录工作。Cradle 不把任意外部目录自动并入 workspace；当你需要跨目录上下文时，先确认 workspace 范围是否正确。
+
+## 使用文件上下文
+
+- 在文件树中浏览项目结构。
+- 在 Composer 中使用 file mentions。
+- 将 workspace 路径拖入 Composer。
+- 对较大的上下文使用 pack codebase。
+
+## 权限与安全
+
+文件读取受本地系统权限影响。若目录不可读，Cradle 无法替你绕过系统权限。
+
+## Troubleshooting
+
+- 文件不显示：确认 workspace 根目录正确，并检查本地权限。
+- Composer mention 找不到路径：使用更具体的文件名或从文件树进入。
+- Agent 理解上下文不完整：改用 [Pack codebase](./pack-codebase.mdx) 提供更明确的代码包。
+
+## Next steps
+
+阅读 [Pack codebase](./pack-codebase.mdx) 和 [Composer](../chat/composer.mdx)。

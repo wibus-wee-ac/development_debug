@@ -1,0 +1,61 @@
+---
+title: Generated CLI
+description: How OpenAPI metadata generates Cradle CLI commands and generated file ownership.
+---
+
+Cradle CLI 的 canonical generated surface 来自 `packages/cli/**`。开发者不应手改 generated command 文件来改变 public contract；应修改 server route metadata 后重新生成。
+
+## Owner
+
+`packages/cli/scripts/generate-cli.ts` 拥有生成流程。Server module owner 拥有 command placement 和 semantic wording，因为这些信息来自 OpenAPI `x-cradle-cli` metadata。
+
+`packages/cli/src/runtime/**` 拥有 request projection、flag parsing、formatting、exit behavior 和 Commander registration。
+
+## Namespace
+
+- Generated files：`packages/cli/src/commands/generated/**`
+- Runtime files：`packages/cli/src/runtime/**`
+- Binary：`cradle`
+- Generated skill docs：`resources/skills/cradle-cli/SKILL.md`
+- Server URL flag：`--server`
+- Server URL env：`CRADLE_SERVER_URL`
+- Session provenance env：`CRADLE_CHAT_SESSION_ID`
+
+`src/cli/**` 仍需要 owner 决策。当前 developer docs 把 `packages/cli/**` 作为 canonical generated CLI，不把 `src/cli/**` 描述为稳定入口。
+
+## Lifecycle
+
+1. Server route 定义 OpenAPI operation 和 `x-cradle-cli`。
+2. Server 运行并暴露 `/openapi.json`。
+3. Generator 读取 OpenAPI document。
+4. Generator 写入 generated command modules。
+5. Runtime 注册 command tree。
+6. User command 转成 HTTP request。
+7. Runtime 按 selected output format 输出结果。
+
+## Command contract
+
+Generated commands 应稳定处理：
+
+- path params、query params 和 request body flags。
+- boolean、array 和 JSON-like values。
+- `--format auto|json|pretty|table|ndjson`。
+- `--json [fields]`。
+- stdout 用于 machine-readable output。
+- stderr 用于 diagnostics。
+- non-zero exit code 表示 command failure。
+
+## Validation
+
+```bash
+cd packages/cli
+pnpm gen:cli
+pnpm test
+pnpm typecheck
+```
+
+如果只改 server metadata，也要检查 generated diff 是否只触及预期 command group。
+
+## Limits
+
+CLI 不拥有 API semantics。它也不应把 secret value 写入日志或 shell history。对于没有 generated command 的 HTTP-only route，应在 API docs 中标注 HTTP-only，而不是手动补 generated file。

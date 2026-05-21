@@ -1,0 +1,44 @@
+---
+title: Desktop server troubleshooting
+description: Troubleshoot the local server, blank Web UI, route failures, and plugin runtime.
+---
+
+Desktop server 故障会影响大部分产品能力。先判断是整个 server 不可用，还是某个模块单独失败。
+
+## Overview
+
+桌面端负责启动本地 server 子进程，并在退出时停止它。Web workspace、providers、Git、Chronicle 和 automation 都通过 server routes 工作。
+
+## Quick checks
+
+1. 重启 desktop app。
+2. 打开 Devtools。
+3. 查看 Server Health。
+4. 查看 Observability 是否有 incident。
+5. 查看 Plugins 面板是否显示 desktop layer。
+
+## Message table
+
+按你实际看到的 dialog、desktop log 或 Server Health 文案定位。先做可逆恢复；如果同一 message 重复出现，再导出 Devtools data。
+
+| Observable message or status | Likely cause | Recovery | Verify |
+| --- | --- | --- | --- |
+| `The Cradle server has stopped unexpectedly.` | Server child process crashed after desktop already started it | 在 dialog 中选择 `Restart App`，或关闭后重新打开 desktop app | Server Health 显示 `Status`，Web workspace route 恢复 |
+| `Exit code: ...` | Server process exited with a non-zero code, or exited before desktop could classify the module failure | 记录 exit code，重启 desktop app；如果再次出现，导出 Devtools data | Devtools export 包含 desktop logs、server stderr 和 health snapshot |
+| `[desktop] Server process exited unexpectedly (code=..., signal=...)` | Server process received an unexpected exit or signal | 等待 desktop 自动 restart；不要同时启动第二个 packaged app | 后续 log 出现 `[desktop] Restarting server (attempt .../3)...` 或 Server Health 恢复 |
+| `[desktop] Server restart failed:` | 自动 restart 后 `/health` 仍不可用，或 forked server 无法再次启动 | 关闭 desktop app，确认没有残留 Cradle server process，再重新打开 | Server Health 不再显示 fetch error；desktop log 出现 `[desktop] Server started on ...` |
+| `Server failed to start within ...ms` | Server process 存在但 `/health` 在 timeout 内没有 ready | 重启 desktop app；如果开发环境中出现，确认 server entry、port 和 data dir 可写 | Devtools Server Health 能读取 `status`、`uptime` 和 memory rows |
+| `Failed to fetch server health: HTTP ...` | `/health` route 返回非-2xx，server 可达但健康检查失败 | 打开 Observability，查找同一时间的 incident；按 HTTP status 定位 server module | Server Health 下次轮询清除 error |
+| `Failed to fetch server health: TypeError...` | Web layer 无法连到 `SERVER_BASE`，通常是 server 未启动、port 失效或 desktop bridge 未注入 | 重启 desktop app；如果只影响 plugin command，再检查 Plugins panel | Server Health 从 error view 变成 health table |
+
+## When to export
+
+出现 crash dialog、`[desktop] Server restart failed:`、连续三次 restart，或 Server Health 持续显示 `Failed to fetch server health:` 时，导出 Devtools data。导出前先不要删除 data dir；这些日志是区分 server crash、route failure 和 desktop bridge failure 的证据。
+
+## Limits
+
+端口、日志路径和 packaged app 行为以当前构建配置为准。本文不承诺固定安装路径。
+
+## Next steps
+
+阅读 [Desktop server](../operations/desktop-server.mdx) 和 [Devtools export](./devtools-export.mdx)。

@@ -1,0 +1,54 @@
+---
+title: Migrations
+description: Drizzle migration artifacts, journal integrity, baseline history, and validation contracts.
+---
+
+Migration files 是兼容性 artifact，不是格式化输出。应把它们视为 local workspace 和 server state 的 durability contract。
+
+## Owner
+
+`packages/db` owns migration layout and schema export compatibility. Each domain owner owns the migration content for its tables.
+
+## Namespace
+
+- SQL migrations：`packages/db/drizzle/*.sql`
+- Drizzle journal：`packages/db/drizzle/meta/_journal.json`
+- Snapshots：`packages/db/drizzle/meta/*.json`
+- Schema source：`packages/db/src/schema/**`
+
+## Lifecycle
+
+1. Update Drizzle schema.
+2. Generate or author migration using the repository-approved command.
+3. Review SQL for owner namespace and destructive behavior.
+4. Keep journal and snapshots in sync.
+5. Add or update migration tests.
+6. Run server database lifecycle tests.
+
+## Review contract
+
+Every migration review should ask:
+
+- Does the migration write only to the owner namespace?
+- Does it preserve existing local data?
+- Does it have a rollback or recovery story if it is destructive?
+- Does it keep derived read models separate from canonical tables?
+- Does it update tests and docs for public behavior changes?
+
+## Validation
+
+```bash
+cd apps/server
+pnpm test -- database
+```
+
+If `packages/db` exposes package tests, run them too:
+
+```bash
+cd packages/db
+pnpm test
+```
+
+## Limits
+
+This page intentionally avoids naming a migration generation command because the confirmed package evidence did not expose one. Use the current repo owner-approved command, then update this page when it is stable.

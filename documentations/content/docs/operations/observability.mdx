@@ -1,0 +1,35 @@
+---
+title: Observability
+description: Use events, incidents, severity, session, and run dimensions to debug Cradle.
+---
+
+Observability 用于理解 Cradle 本地 server 和 runtime 发生了什么。它适合管理员、调试者和需要提交问题报告的用户。
+
+## Overview
+
+Cradle 的 observability 能力围绕 events、incidents、session、run、code 和 severity。Devtools 可导出诊断 bundle，帮助复现和定位问题。
+
+## 查看事件
+
+打开 Devtools 的 Observability 面板，按这些维度过滤：
+
+- Session。
+- Run。
+- Code。
+- Severity。
+- Time range。
+
+## 使用场景
+
+- Provider 失败但 UI 只显示通用错误。
+- Automation run 失败。
+- Issue agent 停止或无输出。
+- Chronicle pipeline 状态异常。
+
+## Limits
+
+Observability 是本地诊断工具，不是托管监控平台。保留时间、导出格式和事件覆盖范围以当前 server 实现为准。
+
+## Next steps
+
+阅读 [Devtools](./devtools.mdx) 和 [Devtools export](../troubleshooting/devtools-export.mdx)。

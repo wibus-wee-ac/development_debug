@@ -1,0 +1,17 @@
+{
+  "title": "Cradle",
+  "pages": [
+    "index",
+    "getting-started",
+    "workspace",
+    "chat",
+    "agents",
+    "kanban",
+    "automation",
+    "chronicle",
+    "integrations",
+    "operations",
+    "developers",
+    "troubleshooting"
+  ]
+}

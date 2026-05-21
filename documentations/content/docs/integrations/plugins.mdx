@@ -1,0 +1,55 @@
+---
+title: Plugins
+description: Inspect Cradle plugin discovery, server, web, desktop layers, panels, and commands.
+---
+
+Plugins 扩展 Cradle 的 UI 和 runtime。用户和管理员主要通过 Devtools 的 Plugins 面板诊断注册状态。
+
+## Overview
+
+Cradle plugin discovery 可以涉及 server、web 和 desktop layers。Plugin 可能注册 panels、commands、server routes、MCP tools、skills 或 desktop hooks。
+
+## 查看 plugin
+
+1. 打开 Devtools。
+2. 进入 Plugins。
+3. 查看每个 plugin 的 layer。
+4. 检查注册的 panel 和 command。
+5. 对照当前任务确认 plugin 是否启用。
+
+## Layer map
+
+| Layer | 常见能力 | 排查重点 |
+| --- | --- | --- |
+| Server | Scoped routes, MCP servers, skills, hooks, events | Route 是否挂载、capability 是否注册、server 日志是否有 activation error。 |
+| Web | Panels, commands, local storage | Panel 是否出现、command 是否可执行、前端 route 是否能调用 plugin API。 |
+| Desktop | Webview hooks, local resources, shared config | Desktop layer 是否 active、本地 socket 或 resource 是否清理、shared config 是否传到 server。 |
+
+## First-party plugins
+
+| Plugin | What to check | Docs |
+| --- | --- | --- |
+| `browser-use` | Desktop layer、MCP tools、`BROWSER_BACKEND_SOCKET`、browser tab availability | [Browser use](../agents/browser-use.mdx) |
+| `system-info` | `GET /api/plugins/system-info/info`、`system-info-panel`、`system-info.show` | [System Info](./system-info.mdx) |
+
+## Trust
+
+只启用你信任的 plugin 来源。Plugin 可能接触本地文件、浏览器上下文、server routes 或 agent tools。
+
+## Troubleshooting
+
+| Symptom | Likely cause | Recovery |
+| --- | --- | --- |
+| Plugin 不出现在 Devtools | Discovery path 未配置或 manifest 无效 | 检查 plugin package 和 discovery env，例如 `CRADLE_PLUGINS_DIR`。 |
+| Server route 404 | Server layer 未激活或 route segment 不匹配 | 在 Plugins 面板确认 server layer，检查 `/api/plugins/{routeSegment}`。 |
+| Panel 不显示 | Web layer 未注册 panel 或 bundle 加载失败 | 查看 Plugins 面板中的 web layer 和 browser console。 |
+| Command 无效 | Command ID 未注册或 execute 抛错 | 在 Plugins 面板确认 command，并查看 plugin logger。 |
+| Desktop 能力缺失 | Desktop layer 未激活或本地 resource 未创建 | 检查 desktop layer、shared config 和本地 socket/resource。 |
+
+## Limits
+
+本页是用户和管理员视角。开发 plugin SDK、manifest 和发布流程属于 developer docs，不在当前写入范围内。
+
+## Next steps
+
+阅读 [Devtools](../operations/devtools.mdx)、[Browser use](../agents/browser-use.mdx) 和 [Plugin SDK](../developers/plugins/sdk-overview.mdx)。

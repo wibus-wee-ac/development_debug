@@ -1,0 +1,38 @@
+---
+title: Chat overview
+description: Understand Cradle chat sessions, streaming responses, approvals, awaits, and workspace context.
+---
+
+Chat 是 Cradle 与 agent 协作的主界面。每段 session 绑定 workspace，并通过所选 runtime、provider 和 model 执行任务。
+
+## Overview
+
+Chat view 显示消息历史、streaming 状态、thinking 或 error 状态、approval cards、await banner 和 Composer。较长历史会以虚拟列表展示，减少界面负担。
+
+## 使用 Chat
+
+1. 从 New Chat 创建 session，或从 workspace sidebar 打开已有 session。
+2. 在 Composer 输入任务。
+3. 使用 file mentions 或拖放路径补充上下文。
+4. 在需要时批准工具调用。
+5. 观察 streaming 输出，必要时 cancel。
+
+## Session 运行时
+
+Session 的行为取决于 runtime kind。Provider-backed runtime、CLI TUI runtime、ACP runtime 或其他 runtime 可能支持不同的 command、tool 和 metadata。
+
+## Limits
+
+- Slash commands 可能来自 runtime capabilities，不应假设所有 runtime 都支持同一组命令。
+- Thinking、context metadata 和 token usage indicator 取决于 provider 与 model 能力。
+- Cancel 只影响当前 active run，不等于删除 session。
+
+## Troubleshooting
+
+- 响应失败：先查看 provider health 和 model 是否可用。
+- 工具调用卡住：检查是否有待处理 approval。
+- 等待外部条件：查看 session await banner 或 await panel。
+
+## Next steps
+
+阅读 [Composer](./composer.mdx)、[审批](./approvals.mdx) 和 [Session awaits](./session-awaits.mdx)。

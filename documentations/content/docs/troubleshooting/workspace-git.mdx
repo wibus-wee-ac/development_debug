@@ -1,0 +1,54 @@
+---
+title: Workspace Git troubleshooting
+description: Troubleshoot non-Git directories, branch status, fetch, commit graph, and permissions.
+---
+
+Git 问题通常局限在当前 workspace。Chat 和文件能力可能仍然可用。
+
+## Overview
+
+Cradle 当前可确认的 Git UI 覆盖 branch status、branch picker、fetch all prune、commit graph 和 non-git error。不要用本页推断未确认的 push、pull、commit 或 stash 能力。
+
+## Quick checks
+
+- Workspace path 是否正确。
+- 目录是否包含 `.git`。
+- 当前用户是否能读取 `.git`。
+- 网络是否能访问 remote。
+- Branch picker 是否能列出分支。
+
+## Common causes
+
+| Code or symptom | Likely cause | Recovery |
+| --- | --- | --- |
+| `workspace_not_found` | Sidebar 或 tab 引用了不存在的 workspace ID | 回到 Home，重新选择 workspace；必要时重新导入目录。 |
+| `git_repository_unavailable` | 目录不是 Git repo、`.git` 不可读、Git command 失败或 remote 不可访问 | 确认目录包含 `.git`，当前用户可读，终端中 `git status` 能成功。 |
+| UI shows `不是 Git 仓库或无权限` | `getStatus()` route 抛出 Git 错误 | 选择 Git repository 目录，或修复文件权限。 |
+| Branch missing | Remote 尚未 fetch 或 branch 不在本地/remote 列表中 | 点击 fetch，或在终端确认 remote。 |
+| Empty graph | 当前 history 不可读或没有 commit | 在终端运行 `git log --oneline` 验证。 |
+| Fetch hangs or fails | Remote network/auth failure | 在终端运行 `git fetch --all --prune`，修复凭据或网络。 |
+
+## Verify from API or CLI
+
+当前可验证 Git surfaces：
+
+```bash
+cradle workspace git status --help
+cradle workspace git branches --help
+cradle workspace git graph --help
+cradle workspace git fetch --help
+```
+
+HTTP surfaces：
+
+- `GET /workspaces/:id/git/status`
+- `GET /workspaces/:id/git/branches`
+- `GET /workspaces/:id/git/remotes`
+- `GET /workspaces/:id/git/graph`
+- `POST /workspaces/:id/git/checkout`
+- `POST /workspaces/:id/git/branches`
+- `POST /workspaces/:id/git/fetch`
+
+## Next steps
+
+阅读 [Git workspace](../workspace/git.mdx)，或查看 [Devtools](../operations/devtools.mdx)。

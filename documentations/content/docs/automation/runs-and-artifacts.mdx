@@ -1,0 +1,34 @@
+---
+title: Runs and artifacts
+description: Inspect automation runs, status, links, artifacts, and failure records.
+---
+
+Run history 是排查 automation 的主要入口。每次 run 都应能帮助你回答：它何时触发、是否成功、产生了什么、失败在哪里。
+
+## Overview
+
+Automation dashboard 和 server routes 支持查看 runs、links 和 artifacts。Home 中的占位 pending 或 artifact 数据不应被视为真实运行记录。
+
+## 查看 run
+
+检查这些字段：
+
+- Run status。
+- Trigger source。
+- Started time。
+- Finished time。
+- Error message。
+- Artifacts。
+- Related links。
+
+## 处理失败
+
+先确认 run 是否有 provider、approval、workspace 或权限错误。再进入相关页面排查。
+
+## Limits
+
+Artifact 类型和保留策略以 automation service 当前实现为准。不要把 artifact 当成长期归档系统，除非当前配置明确支持。
+
+## Next steps
+
+阅读 [Observability](../operations/observability.mdx) 和 [Devtools export](../troubleshooting/devtools-export.mdx)。

@@ -1,0 +1,64 @@
+---
+title: Automation and agents
+description: Lifecycle contracts for durable automation, issue agents, session await, approvals, and observability.
+---
+
+Cradle 的 automation 是用户可见的 agent work，不是隐藏的 background script。每个自动化动作都需要 owner、visible state、retry/idempotency story、approval boundary 和 inspection path。
+
+## Owner
+
+- `automation` owns durable definitions, runs, schedules and artifacts.
+- `issue-agent` owns delegation sessions, activities, rerun and stop behavior.
+- `session-await` owns durable waits that resume sessions from time or external conditions.
+- `approval` owns pending approval lifecycle and response stream.
+- `observability` owns event and incident projections used to inspect automation behavior.
+- `chat-runtime` owns actual chat turn execution when automation invokes a model.
+
+## Namespace
+
+- Automation routes：`/automations`, `/automations/:id/run`, `/automations/:id/runs`, `/automations/runs/:runId/artifacts`
+- Issue agent routes：`/issues/:id/delegation`, `/issues/:id/agent-sessions`, `/issue-agent-sessions/:agentSessionId/activities`
+- Session await routes：`/session-awaits`, `/session-awaits/:id/cancel`, `/session-awaits/:id/trigger`, `/session-awaits/:id/summary`
+- Approval routes：`/approvals`, `/approvals/stream`, `/approvals/:approvalId/respond`
+- Observability routes：`/observability/events`, `/observability/incidents`, `/observability/export`
+- CLI groups：`cradle automation ...`, `cradle issue ...`, `cradle issue-agent-session ...`, `cradle session await-...`, `cradle approval ...`
+
+## Lifecycle
+
+1. Define trigger and owner namespace.
+2. Persist automation or delegation record.
+3. Start run or agent session.
+4. Emit visible activity state.
+5. Request approval before sensitive work when policy requires it.
+6. Execute chat-runtime turn or local action.
+7. Persist artifacts, activities and observability events.
+8. Complete, fail, cancel, rerun or wait.
+
+## Contract requirements
+
+Every automation surface should document:
+
+- trigger source and dedupe key。
+- idempotency behavior。
+- retry policy and terminal failure state。
+- approval gate。
+- user-visible activity state。
+- artifact ownership。
+- observability query path。
+
+## Validation
+
+```bash
+cd apps/server
+pnpm test -- automation
+pnpm test -- issue-agent
+pnpm test -- session-await
+pnpm test -- approval
+pnpm test -- observability
+```
+
+Run the full server suite when route interactions change.
+
+## Limits
+
+Session await GitHub conditions should not be described as complete branch protection semantics. They are resume conditions owned by `session-await`, not a replacement for GitHub policy ownership.

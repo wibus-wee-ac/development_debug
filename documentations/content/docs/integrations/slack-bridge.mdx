@@ -1,0 +1,180 @@
+---
+title: Slack bridge
+description: Use Zhi Slack Bridge to route agent questions through Slack threads.
+---
+
+Slack bridge 把 agent 的 `zhi` tool call 发送到 Slack thread，并等待人类回复。它是 `apps/zhi-slack-bridge` 中的独立 MCP human-in-the-loop bridge，不是 Cradle Web Settings 的内置 Slack 页面。
+
+## Overview
+
+Bridge 由三部分组成：
+
+- MCP server：通过 stdio 暴露 `zhi` tool。
+- Bridge server：通过 Unix socket 接收 tool call，并管理 pending calls。
+- Slack bot：通过 Socket Mode 创建 thread、接收 thread reply，并把回复返回给 agent。
+
+每次 `zhi` 调用都会创建新的 Slack thread。收到回复后，bridge 会丢弃这次 pending mapping。唯一持久状态是绑定的 Slack channel。
+
+## Create the Slack app
+
+在 Slack API 控制台创建 app：
+
+1. 打开 `https://api.slack.com/apps`。
+2. 选择 `Create New App`。
+3. 使用 `From scratch`。
+4. 选择 workspace。
+
+启用 Socket Mode：
+
+1. 进入 `Socket Mode`。
+2. 打开 Socket Mode。
+3. 创建 App-Level Token。
+4. 添加 scope：`connections:write`。
+5. 保存 `xapp-...` token，作为 `SLACK_APP_TOKEN`。
+
+配置 bot token scopes：
+
+| Scope | 用途 |
+| --- | --- |
+| `chat:write` | 创建 root message 和 thread replies。 |
+| `commands` | 接收 `/zhi` slash command。 |
+| `channels:history` | 读取 public channel thread replies。 |
+| `groups:history` | 读取 private channel thread replies，需要私有频道时启用。 |
+| `reactions:write` | 收到回复后添加确认 reaction；缺失时不影响主流程。 |
+
+安装或重新安装 app 后，保存 `xoxb-...` token，作为 `SLACK_BOT_TOKEN`。
+
+## Register commands and events
+
+创建 slash command：
+
+| Field | Value |
+| --- | --- |
+| Command | `/zhi` |
+| Request URL | Socket Mode 不使用；可以填占位 URL。 |
+| Short description | `Manage Zhi agent bridge` |
+| Usage hint | `[bind|unbind|status]` |
+
+开启 event subscriptions，并订阅：
+
+- `message.channels`
+- `message.groups`，仅私有频道需要。
+
+从 `Basic Information` 复制 signing secret，作为 `SLACK_SIGNING_SECRET`。
+
+最后在 Slack channel 中邀请 bot：
+
+```text
+/invite @Zhi Bridge
+```
+
+## Configure the bridge
+
+在 `apps/zhi-slack-bridge/.env` 写入：
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-level-token
+SLACK_SIGNING_SECRET=your-signing-secret
+
+ZHI_SOCKET_PATH=/tmp/zhi-bridge.sock
+ZHI_DATA_DIR=~/.zhi-slack-bridge
+```
+
+`ZHI_SOCKET_PATH` 默认是 `/tmp/zhi-bridge.sock`。MCP client 和 bridge server 必须使用同一个 socket path。
+
+## Start the bridge
+
+开发环境：
+
+```bash
+cd apps/zhi-slack-bridge
+pnpm dev
+```
+
+生产构建：
+
+```bash
+cd apps/zhi-slack-bridge
+pnpm build
+pnpm start
+```
+
+启动成功后，进程会打印 socket path，并等待 `zhi` calls。
+
+## Configure the MCP client
+
+把 MCP server 加到 agent host 配置中：
+
+```json
+{
+  "mcpServers": {
+    "zhi-slack": {
+      "command": "node",
+      "args": ["/path/to/apps/zhi-slack-bridge/dist/mcp-server.js"],
+      "env": {
+        "ZHI_SOCKET_PATH": "/tmp/zhi-bridge.sock"
+      }
+    }
+  }
+}
+```
+
+如果使用开发构建路径，`args` 必须指向实际生成的 `mcp-server.js`。
+
+## Bind a channel
+
+在目标 Slack channel 中运行：
+
+```text
+/zhi bind
+```
+
+查看状态：
+
+```text
+/zhi status
+```
+
+解绑当前 channel：
+
+```text
+/zhi unbind
+```
+
+`/zhi status` 会显示当前绑定 channel 和等待中的 `zhi` 调用数量。
+
+## Verify the flow
+
+1. 启动 bridge server。
+2. 确认 Slack bot 已进入目标 channel。
+3. 执行 `/zhi bind`。
+4. 在 agent runtime 中触发 `zhi` tool call。
+5. 确认 Slack 出现新的 thread。
+6. 在 thread 中回复。
+7. 确认 agent 收到回复并继续执行。
+
+如果 tool call 一直等待，先运行 `/zhi status`。Pending calls 默认不超时，会一直等到有人回复或 bridge 进程关闭。
+
+## Data and ownership
+
+Slack bridge 只持久化 channel binding。Pending call mapping 保存在内存中，收到回复后立即删除。Long messages 会继续作为 thread replies 发送，因此主流程不依赖 Slack file-upload scopes。
+
+## Troubleshooting
+
+| Symptom | Likely cause | Recovery |
+| --- | --- | --- |
+| `Missing required env var` | `.env` 缺少 `SLACK_BOT_TOKEN`、`SLACK_APP_TOKEN` 或 `SLACK_SIGNING_SECRET` | 补齐变量并重启 bridge。 |
+| Slack 没有 thread | Socket Mode 未开启、token 错误或 bot 未加入 channel | 检查 Socket Mode、重新安装 app、执行 `/invite`。 |
+| `/zhi bind` 无响应 | Slash command 未注册或 `commands` scope 缺失 | 重新配置 slash command 并 reinstall app。 |
+| Thread 回复没有返回 agent | 缺少 `message.channels` 或 `message.groups` event | 添加 event subscription 并保存。 |
+| Agent 找不到 `zhi` tool | MCP client config 未加载或 socket path 不一致 | 检查 MCP config 中 `command`、`args` 和 `ZHI_SOCKET_PATH`。 |
+| Tool call 一直等待 | Thread 中还没有人类回复 | 在对应 thread 回复，或取消 agent run。 |
+
+## Limits
+
+生产部署、secret storage 和 timeout policy 需要按你的运行环境设计。当前 bridge 默认没有 pending-call timeout。
+
+## Next steps
+
+阅读 [Slack bridge troubleshooting](../troubleshooting/slack-bridge.mdx) 和 [Approvals](../chat/approvals.mdx)。

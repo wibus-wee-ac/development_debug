@@ -1,0 +1,48 @@
+---
+title: Getting started
+description: Start Cradle with a desktop app, local workspace, provider, and first chat.
+---
+
+Cradle 把本地项目目录、agent runtime、Chat、Issue、自动化和记忆放在同一个 workspace 中。推荐从桌面端启动，因为桌面端负责本地 server、插件 runtime、窗口状态和更新状态。
+
+## Overview
+
+第一次使用时只需要完成四件事：
+
+1. 启动桌面端。
+2. 添加一个本地项目目录作为 workspace。
+3. 在 Settings 中配置 provider 和 model。
+4. 创建第一段 Chat，并让 agent 在当前 workspace 上工作。
+
+## 启动路径
+
+桌面端会启动本地 server，并打开 Web workspace。Web UI 负责 home tab、workspace sidebar、Chat、Kanban、Automation、Chronicle 和 Settings。
+
+如果你只是在浏览文档，先记住三个入口：
+
+- `Home`：查看 workspace、最近会话和常用动作。
+- `New Chat`：选择 workspace、runtime、provider 和 model。
+- `Settings`：配置外观、providers、agents、skills、Chronicle 和 desktop updates。
+
+## 配置最小环境
+
+进入 Settings 后，先完成 provider 配置。Cradle 的 Chat、Issue agent 和 automation 都依赖可用的 runtime profile。
+
+配置后，在 New Chat 中选择：
+
+- workspace。
+- runtime kind。
+- provider。
+- model。
+
+如果当前 runtime 需要额外凭据或不支持某些能力，界面会通过 provider health、model discovery 或运行时错误暴露问题。
+
+## 常见边界
+
+- Home 中的某些 pending run 或 artifact 展示可能来自界面占位数据，不应视为完整后端能力。
+- Git 面板当前可文档化的能力是状态、分支、fetch 和提交图，不应假设 push、pull、commit 或 stash 已经可用。
+- Slack bridge 是独立 app，不是 Web Settings 中的内置 Slack 页面。
+
+## Next steps
+
+继续阅读 [桌面端启动](./desktop-app.mdx)，然后创建 [第一个工作区](./first-workspace.mdx)。

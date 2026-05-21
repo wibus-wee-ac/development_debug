@@ -1,0 +1,5 @@
+{
+  "title": "Chat",
+  "icon": "MessageSquare",
+  "pages": ["overview", "composer", "approvals", "session-awaits"]
+}

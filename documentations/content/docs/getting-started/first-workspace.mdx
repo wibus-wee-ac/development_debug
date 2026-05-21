@@ -1,0 +1,42 @@
+---
+title: First workspace
+description: Add a local project directory and connect it to sidebar, files, Git, and chat.
+---
+
+Workspace 是 Cradle 中围绕一个本地项目目录组织工作的单位。Chat、Kanban、Git、文件树、pack codebase 和 automation 都会引用 workspace 上下文。
+
+## Overview
+
+从 Home 添加 workspace 后，sidebar 会显示 workspace group。你可以在其中打开 Chat session、Kanban、文件树和相关工具。
+
+## 添加 workspace
+
+1. 打开 Home。
+2. 选择添加 workspace 的入口。
+3. 选择本地项目目录。
+4. 等待 workspace 出现在 sidebar。
+
+添加后，Cradle 会把该目录作为后续 Chat、Git 和文件操作的上下文。
+
+## 使用 workspace sidebar
+
+Workspace sidebar 用于在同一个项目内切换：
+
+- sessions。
+- Kanban board。
+- 文件和目录。
+- workspace 搜索。
+- plugin surfaces。
+- settings entry。
+
+会话可以重命名、pin、导出或删除。删除前确认你不再需要该 session 历史。
+
+## 限制
+
+- 非 Git 目录仍可作为 workspace 使用，但 Git panel 会显示非仓库状态。
+- 文件权限、路径权限和系统沙箱会影响文件树与 pack codebase。
+- 当前文档不假设 remote workspace 或云同步能力。
+
+## Next steps
+
+继续创建 [第一段 Chat](./first-chat.mdx)，或查看 [文件与目录](../workspace/files.mdx)。

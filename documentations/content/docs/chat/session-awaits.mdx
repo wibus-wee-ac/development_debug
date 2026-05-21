@@ -1,0 +1,30 @@
+---
+title: Session awaits
+description: Let chat wait for external conditions such as GitHub CI or reviews.
+---
+
+Session await 用于把 agent run 暂停在外部条件上。当前可确认的来源包括 GitHub CI 和 GitHub review 状态。
+
+## Overview
+
+当 session 正在等待外部条件时，Chat 会显示 await banner 或 await panel。用户可以查看等待来源、当前状态和摘要信息。
+
+## 使用场景
+
+- 等待 GitHub CI 完成。
+- 等待 GitHub review 反馈。
+- 在外部条件满足后恢复后续工作。
+
+## 配置前提
+
+GitHub token、repo 权限和 private repo 支持需要按当前环境配置验证。本文不假设所有仓库和权限模型都已覆盖。
+
+## Troubleshooting
+
+- CI 状态不更新：检查 GitHub token 和 repo 权限。
+- Review 状态为空：确认目标 pull request 可访问。
+- Chat 没有恢复：查看 await panel 的当前状态，并检查 run 是否已取消。
+
+## Next steps
+
+阅读 [Workspace Git](../workspace/git.mdx) 和 [Devtools export](../troubleshooting/devtools-export.mdx)。

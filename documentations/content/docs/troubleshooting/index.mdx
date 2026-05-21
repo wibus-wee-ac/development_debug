@@ -1,0 +1,43 @@
+---
+title: Troubleshooting
+description: Start debugging provider, workspace, desktop server, Chronicle, Slack bridge, and Devtools issues.
+---
+
+遇到问题时，先确认故障属于哪个边界：Web UI、本地 server、provider、workspace、plugin、Chronicle 或外部集成。
+
+## Overview
+
+Cradle 是本地优先的多层应用。一个症状可能来自桌面端、server route、runtime provider、workspace 文件权限或 plugin layer。排障时先做低风险检查，再收集诊断信息。
+
+## Quick checks
+
+- Desktop app 是否仍在运行。
+- Server Health 是否正常。
+- 当前 workspace 是否可访问。
+- Provider health 是否正常。
+- 是否有待处理 approval。
+- Devtools Observability 是否记录 error 或 incident。
+
+## 常见入口
+
+<Cards>
+  <Card title="Provider errors" href="/docs/troubleshooting/provider-errors" />
+  <Card title="Workspace Git" href="/docs/troubleshooting/workspace-git" />
+  <Card title="Desktop server" href="/docs/troubleshooting/desktop-server" />
+  <Card title="Chronicle" href="/docs/troubleshooting/chronicle" />
+</Cards>
+
+## 收集诊断
+
+排查复杂问题时，记录：
+
+- Cradle app version 或当前 commit。
+- Workspace path。
+- Provider 和 model。
+- Session ID 或 run ID。
+- Devtools export bundle。
+- 可复现步骤。
+
+## Next steps
+
+从最接近症状的页面开始。如果不确定，先打开 [Devtools export](./devtools-export.mdx)。

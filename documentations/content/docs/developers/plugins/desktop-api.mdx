@@ -1,0 +1,64 @@
+---
+title: Desktop plugin API
+description: DesktopPluginContext contracts for webview hooks, browser tabs, shared config, and Electron main ownership.
+---
+
+Desktop plugin API 运行在 Electron main process 边界。它适合接入本地能力、browser webview lifecycle 和 desktop-only resources。
+
+## Owner
+
+`packages/plugin-sdk/src/desktop.ts` owns public desktop plugin context types. Desktop plugin package owns its behavior and cleanup. Cradle desktop host owns Electron lifecycle, window state, renderer bridge, and shared config propagation.
+
+## Context
+
+`DesktopPluginContext` exposes:
+
+| API | Contract |
+| --- | --- |
+| `userDataPath` | Electron user data directory for desktop-owned runtime files. |
+| `onWebviewCreated(handler)` | Subscribe to new webview creation. Handler receives raw `WebContents` and `tabId`. |
+| `requestBrowserTab(url?)` | Ask renderer to create a visible browser panel tab. |
+| `activateBrowserTab(tabId)` | Ask renderer to show an existing browser tab. |
+| `getActiveBrowserTab()` | Ask renderer for the visible browser tab. |
+| `setSharedConfig(key, value)` | Propagate desktop config to server through host-managed shared config. |
+| `logger` | Plugin-scoped desktop logger. |
+| `manifest` | Plugin manifest metadata. |
+
+## Namespace
+
+Desktop plugins should keep local files under plugin-owned paths inside `userDataPath` or another explicitly owned directory. They should not write into Cradle core database files directly.
+
+Shared config keys must be stable and plugin-owned. `browser-use` currently uses `BROWSER_BACKEND_SOCKET` to share the socket path with its MCP server.
+
+## Lifecycle
+
+1. Desktop host discovers plugin manifest.
+2. Host activates desktop entry.
+3. Plugin subscribes to desktop events or creates local resources.
+4. Plugin serves requests through desktop APIs, sockets, or shared config.
+5. Plugin `deactivate()` releases listeners, sockets, debuggers, file handles, or timers.
+
+## Example: browser-use
+
+`plugins/browser-use/src/desktop.ts` starts a Unix socket server at `browser-backend.sock`, listens for webview creation, registers webviews, and detaches debuggers on deactivation.
+
+The plugin also calls:
+
+```ts
+ctx.setSharedConfig('BROWSER_BACKEND_SOCKET', socketPath)
+```
+
+This lets the MCP server discover the desktop socket without hardcoding a platform path.
+
+## Validation
+
+Validate desktop plugins by checking:
+
+- Desktop layer appears in Devtools Plugins.
+- Deactivation cleans local resources.
+- Shared config reaches the server-side component that needs it.
+- Browser or filesystem actions are gated by user-visible trust and approval paths where needed.
+
+## Limits
+
+Desktop plugin APIs are powerful. Treat local file access, webview automation, command execution, and secrets as privileged behavior. Document every permission and cleanup path before shipping a plugin.

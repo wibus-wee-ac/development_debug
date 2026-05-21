@@ -1,0 +1,95 @@
+---
+title: Browser use
+description: Distinguish the Cradle browser panel from agent browser automation in the desktop plugin runtime.
+---
+
+Browser use 有两层：用户可见的 browser panel，以及 agent 通过 `plugins/browser-use` 调用的 MCP tools。两者都依赖 Cradle desktop 的 embedded browser，不是外部浏览器自动化。
+
+## Overview
+
+Browser panel 是 Electron `<webview>` UI。用户可以打开网页、切换 tab、刷新、后退、前进，并让桌面端追踪 webview。
+
+Browser Use plugin 是 desktop plugin runtime 承载的自动化层。它通过 Unix socket 连接 desktop backend，再用 Chrome DevTools Protocol 对 Cradle in-app browser 执行真实输入事件。
+
+## Tool families
+
+当前 plugin 暴露这些 MCP tools：
+
+| Family | Tools | 用途 |
+| --- | --- | --- |
+| Navigation | `browser_navigate` | 导航当前 tab 或指定 tab。 |
+| Read | `browser_get_text`, `browser_dom_snapshot`, `browser_screenshot` | 读取页面文本、accessibility tree 或 PNG screenshot。 |
+| Interaction | `browser_click`, `browser_type`, `browser_hover`, `browser_scroll`, `browser_keyboard` | 使用 CSS selector、键盘或滚动操作页面。 |
+| JavaScript | `browser_eval` | 在页面上下文执行 JavaScript expression。 |
+| Tabs | `browser_tabs_list`, `browser_tabs_new`, `browser_tabs_close` | 列出、新建和关闭 browser tabs。 |
+| Waiting | `browser_wait_for_selector` | 等待 selector 出现，默认 timeout 是 `5000` ms。 |
+
+## Typical workflow
+
+让 agent 操作页面时，推荐按这个顺序：
+
+1. 使用 `browser_tabs_new` 或 `browser_navigate` 打开 URL。
+2. 使用 `browser_wait_for_selector` 等待关键元素。
+3. 使用 `browser_dom_snapshot` 或 `browser_get_text` 理解页面。
+4. 使用 `browser_click`、`browser_type`、`browser_scroll` 或 `browser_keyboard` 操作页面。
+5. 使用 `browser_screenshot` 或 `browser_get_text` 验证结果。
+
+示例序列：
+
+```text
+browser_tabs_new -> url: "https://example.com/login"
+browser_wait_for_selector -> selector: "input[name=email]"
+browser_type -> selector: "input[name=email]", text: "user@example.com"
+browser_type -> selector: "input[name=password]", text: "secret"
+browser_click -> selector: "button[type=submit]"
+browser_wait_for_selector -> selector: ".dashboard"
+```
+
+## Permissions and trust
+
+Browser automation 可以读取网页内容、输入文本、点击元素、执行 JavaScript 和截图。启用 plugin 前确认来源可信，并避免让 agent 访问敏感站点，除非当前会话确实需要。
+
+Selectors 使用标准 CSS selector。点击和输入通过 CDP Input domain 发送真实事件，会触发页面 listener。
+
+## Runtime contract
+
+Desktop plugin 会在 Electron `userDataPath` 下创建 `browser-backend.sock`，并把 socket path 通过 shared config 暴露给 server side MCP process。默认 socket path 按平台不同：
+
+| Platform | Default socket path |
+| --- | --- |
+| macOS | `~/Library/Application Support/Cradle/browser-backend.sock` |
+| Linux | `~/.config/Cradle/browser-backend.sock` |
+| Windows | `%APPDATA%/Cradle/browser-backend.sock` |
+
+可以用 `BROWSER_BACKEND_SOCKET` 覆盖 MCP server 使用的 socket path。
+
+## Verify registration
+
+1. 启动 Cradle desktop。
+2. 打开 browser panel。
+3. 打开 Devtools。
+4. 进入 Plugins 面板。
+5. 确认 `browser-use` desktop layer 已激活。
+6. 在 agent runtime 中确认 MCP tool list 包含 `browser_navigate` 和 `browser_dom_snapshot`。
+
+## Failure modes
+
+| Symptom | Likely cause | Recovery |
+| --- | --- | --- |
+| `Connection closed` | Desktop socket 关闭或 app 退出 | 重启 Cradle desktop。 |
+| `No webview available` | Browser panel 没有可用 tab | 打开 browser panel 或新建 tab。 |
+| `Tab ... not found` | 传入的 `tabId` 已关闭 | 调用 `browser_tabs_list` 获取当前 tabs。 |
+| `Command timed out after 30s` | 页面阻塞、selector 不出现或 socket 无响应 | 缩小 selector、增加 wait、刷新页面或重启 desktop。 |
+| Selector 操作无效 | CSS selector 不匹配或元素不可编辑 | 用 `browser_dom_snapshot` 或 `browser_get_text` 重新定位。 |
+
+## Limits
+
+- 只控制 Cradle in-app browser。
+- 需要 Cradle desktop app 运行。
+- 不提供网络拦截或 request mocking。
+- Cookie 和 storage 没有专用 tool；如确需调试，只能通过 `browser_eval` 操作页面上下文。
+- Screenshots 当前是 PNG。
+
+## Next steps
+
+阅读 [Browser panel](../integrations/browser-panel.mdx)、[Plugins](../integrations/plugins.mdx) 和 [Browser Use developer example](../developers/plugins/browser-use.mdx)。

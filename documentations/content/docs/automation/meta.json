@@ -1,0 +1,5 @@
+{
+  "title": "Automation",
+  "icon": "Workflow",
+  "pages": ["overview", "runs-and-artifacts", "rrule-triggers"]
+}

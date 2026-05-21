@@ -1,0 +1,61 @@
+---
+title: Desktop integration
+description: Boundaries for Electron desktop, local server, filesystem, browser tabs, deep links, and approvals.
+---
+
+Desktop integration 是 local trust boundary。它连接 Electron、local server、workspace filesystem、browser tab automation 和 user approvals，应与 remote API authentication 分开处理。
+
+## Owner
+
+Desktop app owns local OS integration, Electron lifecycle, trusted local channel and user-mediated access to local resources. Server modules own HTTP semantics. Plugins own plugin-local capabilities, but desktop host owns when those capabilities can touch browser tabs or local resources.
+
+## Namespace
+
+- Workspace files：`/workspaces/:id/files`
+- Filesystem browse：`/filesystem/browse`
+- PTY routes：`/terminal-sessions/**`
+- Plugin desktop entry：`cradle.desktop`
+- Browser Use desktop layer：`plugins/browser-use/src/desktop.ts`
+- Approval routes：`/approvals`, `/approvals/stream`, `/approvals/:approvalId/respond`
+
+## Lifecycle
+
+1. Desktop starts or connects to local server.
+2. User selects workspace or local resource.
+3. Server module validates operation under workspace/filesystem namespace.
+4. Desktop capability requests approval when operation is sensitive.
+5. Plugin or runtime executes local action.
+6. Result is recorded through module state, observability or plugin response.
+
+## Security contract
+
+Desktop-facing docs should name:
+
+- local filesystem access boundary。
+- command or PTY execution boundary。
+- browser tab access boundary。
+- secret handling boundary。
+- approval requirement。
+- user-visible failure and cancellation state。
+
+## Validation
+
+Use module tests for server-visible contracts:
+
+```bash
+cd apps/server
+pnpm test -- workspace
+pnpm test -- pty
+pnpm test -- approval
+```
+
+Use plugin tests for plugin-owned desktop behavior:
+
+```bash
+cd plugins/browser-use
+pnpm test
+```
+
+## Limits
+
+This page does not define remote API auth. It also does not promise full web/desktop plugin loader behavior beyond SDK and server evidence. Verify app-side loader code before documenting detailed desktop plugin lifecycle guarantees.

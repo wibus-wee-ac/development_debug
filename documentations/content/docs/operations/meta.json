@@ -1,0 +1,5 @@
+{
+  "title": "Operations",
+  "icon": "Settings",
+  "pages": ["settings", "observability", "devtools", "usage", "desktop-server"]
+}

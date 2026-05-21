@@ -1,0 +1,72 @@
+---
+title: Testing
+description: Developer validation entry points for server, CLI, plugin, database, and docs changes.
+---
+
+Run the smallest test that proves the changed contract, then run the owner package checks before handing work off. Do not use root-level command assumptions unless the package script is verified.
+
+## Server
+
+```bash
+cd apps/server
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Use targeted tests while iterating:
+
+```bash
+cd apps/server
+pnpm test -- openapi
+pnpm test -- chat-runtime
+pnpm test -- automation
+```
+
+## CLI
+
+```bash
+cd packages/cli
+pnpm gen:cli
+pnpm test
+pnpm typecheck
+```
+
+Generated command diffs should follow server OpenAPI metadata changes. Manual edits under `packages/cli/src/commands/generated/**` need extra review.
+
+## Plugins
+
+```bash
+cd packages/plugin-sdk
+pnpm typecheck
+```
+
+For bundled plugins, use each package scripts:
+
+```bash
+cd plugins/browser-use
+pnpm test
+```
+
+## Database
+
+```bash
+cd apps/server
+pnpm test -- database
+```
+
+If a database package exposes tests, run them from `packages/db`. Do not invent migration generation commands without checking the current package scripts.
+
+## Docs
+
+```bash
+cd documentations
+pnpm types:check
+pnpm build
+```
+
+`pnpm types:check` runs `fumadocs-mdx`, `next typegen` and `tsc --noEmit`. It can update generated documentation artifacts, so keep generated diffs separate from content edits.
+
+## Limits
+
+This page documents verified package-level scripts from available evidence. If a package changes scripts, update this page in the same change that modifies the workflow.

@@ -1,0 +1,5 @@
+{
+  "title": "Kanban",
+  "icon": "Kanban",
+  "pages": ["overview", "issue-detail", "issue-agents"]
+}

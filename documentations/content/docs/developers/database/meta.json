@@ -1,0 +1,8 @@
+{
+  "title": "Database",
+  "icon": "Database",
+  "pages": [
+    "ownership",
+    "migrations"
+  ]
+}

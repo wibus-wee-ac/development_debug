@@ -1,0 +1,30 @@
+---
+title: Chronicle overview
+description: Use local context capture, OCR, artifacts, and memory pipeline for Cradle memory.
+---
+
+Chronicle 是 Cradle 的本地上下文与记忆能力。它围绕 screen capture、OCR、artifact、privacy filtering、dedup 和 memory summarization 工作。
+
+## Overview
+
+Chronicle 的目标是把本地活动整理成可检索的时间线和 memory。它不是云同步记忆服务，也不应被描述为跨设备托管能力。
+
+## 主要流程
+
+1. 本地 capture 收集上下文。
+2. OCR 或解析器生成 artifact。
+3. Privacy filtering 处理敏感内容。
+4. Dedup 减少重复。
+5. Memory pipeline 生成摘要和可搜索 memory。
+
+## 在 Settings 中使用
+
+Settings 的 Chronicle 区域可以管理 capture 开关、model selection、status、resources、timeline 和 memory search。
+
+## Privacy
+
+Chronicle 处理本地上下文，启用前应确认你接受 capture 范围。当前文档不承诺绝对隐私过滤保证；具体行为以 Chronicle pipeline 实现和配置为准。
+
+## Next steps
+
+阅读 [Setup](./setup.mdx)、[Memories](./memories.mdx) 和 [Chronicle troubleshooting](./troubleshooting.mdx)。

@@ -1,0 +1,44 @@
+---
+title: Developer overview
+description: Developer documentation organized by owner, namespace, lifecycle, and verifiable contracts.
+---
+
+Cradle 的开发者文档按能力 owner 组织。每个页面回答同一组问题：谁拥有语义，写入哪个 namespace，生命周期如何推进，哪些 route 或 command 是稳定入口，如何验证，哪些边界不能越过。
+
+## 核心原则
+
+Cradle 可以读取其他产品或生态的 namespace 来保持兼容，但不能把写入语义放到不属于 Cradle 的 namespace。跨 namespace 写入必须由目标 owner 提供明确 API，否则视为禁止模式。
+
+这个原则适用于 server module、plugin、database schema、generated CLI、automation 和 desktop integration。文档中的 owner 不是目录名装饰，而是迁移、兼容、错误处理和权限边界的责任归属。
+
+## 阅读路径
+
+- [Server overview](./server/overview.mdx)：理解 Elysia app、HTTP foundation 和 module ownership。
+- [OpenAPI](./api/openapi.mdx)：理解 `/docs`、`/openapi.json` 和 `x-cradle-cli` 的契约。
+- [Generated CLI](./cli/generated-cli.mdx)：理解 OpenAPI 如何生成 `cradle` commands。
+- [Plugin SDK](./plugins/sdk-overview.mdx)：理解 plugin manifest、layers、capabilities 和 lifecycle。
+- [Database ownership](./database/ownership.mdx)：理解 Drizzle schema、migration owner 和跨 namespace 读写边界。
+- [Runtime providers](./runtime/provider-integrations.mdx)：理解 provider/profile/runtime 的分层。
+- [Automation and agents](./automation/agents.mdx)：理解 durable automation、issue agents、session await 和可见状态。
+- [Desktop integration](./desktop/integration.mdx)：理解 Electron 本地通道、filesystem、browser tab 和 approval 边界。
+- [Testing](./contributing/testing.mdx)：理解 server、CLI、plugin 和 docs 的验证入口。
+
+## Contract shape
+
+每个能力页都应尽量列出：
+
+- `Owner`：语义、兼容、迁移、错误语义的负责方。
+- `Namespace`：持久化路径、database tables、route prefix 或 capability identity。
+- `Lifecycle`：registration、activation、execution、cleanup、upgrade 或 migration。
+- `Interfaces`：HTTP routes、WebSocket routes、CLI commands、environment variables。
+- `Validation`：测试、typecheck、build 或人工检查。
+- `Limits`：已知非目标、未确认项、HTTP-only surface、in-memory surface。
+
+## Current uncertainty
+
+这些点需要按代码或 owner 决策继续确认，本文档不会把它们写成稳定事实：
+
+- `src/cli/**` 是否仍是支持入口；当前开发者文档以 `packages/cli/**` 为 canonical generated CLI。
+- plugin storage 当前证据存在持久化表述与 in-memory 实现差异；本文档只承诺当前 host 暴露 `storage` capability，不承诺持久性。
+- web 和 desktop plugin loader 的完整 lifecycle 需要结合 app 代码继续验证；本文档只描述已由 SDK 和 server host 证据支持的边界。
+- database migration generation command 未在 `packages/db/package.json` 中确认；本文档只记录 migration artifacts 和验证方向。

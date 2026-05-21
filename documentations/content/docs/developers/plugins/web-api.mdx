@@ -1,0 +1,79 @@
+---
+title: Web plugin API
+description: WebPluginContext contracts for panels, commands, local storage, and plugin-scoped logging.
+---
+
+Web plugin API 让 plugin 在 Cradle renderer 中注册 panel 和 command。它适合用户可见的 UI surface，不适合直接写 core database。
+
+## Owner
+
+`packages/plugin-sdk/src/web.ts` owns public types. Web plugin package owns its panels, commands, storage keys, display text, and compatibility. Cradle web host owns where registered surfaces appear.
+
+## Context
+
+`WebPluginContext` exposes:
+
+| API | Contract |
+| --- | --- |
+| `registerPanel(panel)` | 注册 workspace panel，返回 `Disposable`。 |
+| `registerCommand(cmd)` | 注册 command palette 或快捷键入口，返回 `Disposable`。 |
+| `storage` | Plugin-scoped local storage，提供 `get`、`set`、`delete`。 |
+| `logger` | Plugin-scoped logger。 |
+
+Panel registration shape:
+
+```ts
+interface PanelRegistration {
+  id: string
+  title: string
+  icon?: ComponentType<{ className?: string }> | string
+  component: ComponentType<PanelProps>
+  location?: 'main' | 'sidebar' | 'bottom'
+  order?: number
+}
+```
+
+Command registration shape:
+
+```ts
+interface CommandRegistration {
+  id: string
+  title: string
+  icon?: ComponentType<{ className?: string }> | string
+  keybinding?: string
+  execute(): void | Promise<void>
+}
+```
+
+## Namespace
+
+Use plugin-owned IDs:
+
+- Panel ID：`{pluginName}.{panelName}` 或稳定的 plugin-local ID。
+- Command ID：`{pluginName}.{commandName}`。
+- Storage keys：plugin-owned keys only。
+
+不要把 web plugin storage 当作 Cradle preference store。需要修改 Cradle core state 时，调用对应 owner API。
+
+## Lifecycle
+
+1. Host loads web entry.
+2. Plugin `activate(ctx)` registers panels and commands.
+3. User opens panel or command.
+4. Plugin renders UI and calls allowed server/plugin routes.
+5. Plugin optionally implements `deactivate()`.
+
+## Validation
+
+对 web plugin，至少验证：
+
+- panel appears in Plugins or target UI surface。
+- command is registered and executable。
+- storage keys remain plugin-scoped。
+- route calls use documented plugin or core APIs。
+
+`plugins/system-info/src/web.tsx` 是当前可验证示例。
+
+## Limits
+
+Web plugin code runs in renderer context. It should not assume direct access to Electron main APIs unless desktop plugin or host API explicitly exposes a bridge。

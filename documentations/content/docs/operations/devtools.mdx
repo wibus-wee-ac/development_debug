@@ -1,0 +1,32 @@
+---
+title: Devtools
+description: Open the Cradle Devtool window for observability, server health, memory, tabs, and plugins.
+---
+
+Devtools 是 Cradle 的本地诊断界面。它适合排查 server、plugins、tabs、memory 和 runtime 问题。
+
+## Overview
+
+Devtool window 可通过 app 的 devtool 入口打开。它包含 Observability、Server Health、Memory、Tabs 和 Plugins 等面板。
+
+## 面板用途
+
+| Panel | Use |
+| --- | --- |
+| Observability | 查看 events 和 incidents |
+| Server Health | 查看本地 server 健康状态 |
+| Memory | 查看内存相关诊断 |
+| Tabs | 查看 tab shell 状态 |
+| Plugins | 查看 server、web、desktop plugin layers |
+
+## Plugin diagnostics
+
+Plugins 面板可帮助你确认 plugin 是否注册了 panel、command 或 layer。排查 browser-use plugin 时先看这里。
+
+## Limits
+
+Devtools 面向诊断，不是普通任务入口。不要把内部面板中的实验字段当成稳定用户 API。
+
+## Next steps
+
+阅读 [Observability](./observability.mdx) 和 [Plugins](../integrations/plugins.mdx)。

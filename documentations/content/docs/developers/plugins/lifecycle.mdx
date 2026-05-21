@@ -1,0 +1,57 @@
+---
+title: Plugin lifecycle
+description: Plugin host discovery, activation, route mounting, capability projection, and cleanup contracts.
+---
+
+Plugin lifecycle 属于 host。Plugin code 拥有自身行为，但发现、校验、挂载、暴露和停用由 host 负责。
+
+## Owner
+
+`apps/server/src/plugins/**` owns server plugin host lifecycle. `packages/plugin-sdk/**` owns public context types and helper contracts.
+
+## Namespace
+
+- Plugin registry API：`GET /api/plugins`
+- Web module API：`GET /api/plugins/:name/web.mjs`
+- Server route prefix：`/api/plugins/{routeSegment}`
+- Runtime registry：server-owned descriptor and layer state
+
+Route collision is a host concern. Plugin authors should choose stable package names and avoid assuming they can claim core route prefixes.
+
+## Lifecycle states
+
+The host lifecycle can be read as:
+
+1. Discovery from configured plugin directories.
+2. Manifest validation and source classification.
+3. Descriptor creation.
+4. Layer activation for server, web and desktop entries.
+5. Capability registration for MCP, skills, hooks and events.
+6. Runtime execution.
+7. Deactivation, reload or upgrade.
+
+## Event and hook boundaries
+
+Server plugins can use host-provided context for:
+
+- scoped Elysia app routes。
+- MCP server registration。
+- skill registration。
+- `hooks.onBeforeQuery` and `hooks.onAfterResponse`。
+- event bus `events.on` and `events.emit`。
+- logger and shared config。
+- storage capability, with persistence caveat noted in [Plugin SDK](./sdk-overview.mdx)。
+
+## Validation
+
+```bash
+cd apps/server
+pnpm test -- runtime-registry
+pnpm test
+```
+
+Lifecycle tests should verify descriptor shape, route segment derivation, collisions, activation failure and capability cleanup.
+
+## Limits
+
+Desktop and web loader lifecycle should be verified against app-side code before documenting detailed activation guarantees. This page only states the server host and SDK contracts supported by current evidence.

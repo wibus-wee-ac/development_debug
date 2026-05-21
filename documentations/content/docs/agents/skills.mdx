@@ -1,0 +1,38 @@
+---
+title: Skills
+description: Manage agent skills read or imported by Cradle and understand namespace ownership.
+---
+
+Skills 为 agent 提供可复用的任务指导、工作流或工具说明。Cradle 可以读取外部 agent skills namespace，但写入和生命周期应由 Cradle 自己的 namespace 承担。
+
+## Overview
+
+Settings 的 Skills 区域用于查看 global skills、workspace 或 agent scoped inventory，并支持 fetch/import workflow。
+
+## Namespace ownership
+
+Cradle 可以读取兼容的外部 skills 数据，例如用户目录下的 agent skills。Cradle 不应写入其他产品拥有的 namespace。导入、缓存或管理状态应落在 Cradle 自己拥有的位置。
+
+## 导入 skills
+
+1. 打开 Settings。
+2. 进入 Skills。
+3. 查看当前 inventory。
+4. 使用 import 或 fetch workflow。
+5. 确认 skill 出现在目标 scope。
+
+## Limits
+
+- Skill 是否对某个 runtime 生效，取决于 runtime 如何消费 skills。
+- 外部 namespace 的文件生命周期不由 Cradle 控制。
+- Import destination 的精确路径以当前 server skills store 为准。
+
+## Troubleshooting
+
+- Skill 不显示：刷新 inventory，并确认来源路径可读。
+- Skill 导入后未生效：检查当前 session 的 runtime 和 scope。
+- 外部 skill 被修改：重新 fetch 或 import，避免假设自动同步。
+
+## Next steps
+
+阅读 [Agents overview](./overview.mdx) 和 [Browser use](./browser-use.mdx)。

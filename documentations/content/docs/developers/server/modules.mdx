@@ -1,0 +1,78 @@
+---
+title: Server modules
+description: Server module owner, namespace, route, and command coverage matrix.
+---
+
+Server module 是 Cradle 后端语义的最小 owner 单元。每个 module 至少拥有 route prefix、request/response schema、service boundary、tests、OpenAPI metadata；如果它有持久化状态，还应拥有对应 database schema 和 migration policy。
+
+## Ownership rules
+
+- `Session` 拥有会话 CRUD、messages、markdown export 和 linked issue 关系。
+- `Chat Runtime` 拥有 turn execution、streaming、cancellation、usage persistence 和 provider orchestration。
+- `Agent Identity` 拥有用户可见 AI persona，不能与 provider profile 混用。
+- `Issue` 拥有 issue semantics、comments、relations、context refs 和 delegation markers。
+- `Kanban` 只拥有 board/view configuration。
+- `Automation` 拥有 durable automation definitions、runs 和 artifacts；chat turn execution 仍归 `chat-runtime`。
+- `Chronicle` server 拥有 Cradle DB/API projection 和 summary orchestration；Rust daemon 拥有 local capture 和 artifacts。
+- `Skills` 可以读取标准 `.agents/skills` 兼容目录，但 Cradle-owned writes 必须落在 Cradle namespace。
+
+## Module map
+
+| Owner | Primary namespace | HTTP surface | CLI surface |
+| --- | --- | --- | --- |
+| Health | `/health` | `GET /health` | `cradle health` |
+| Preferences | `/preferences` | `/preferences/chat`, `/preferences/jarvis` | `cradle preferences ...` |
+| Workspace | `/workspaces` | workspace CRUD, resolve, files | `cradle workspace ...` |
+| Filesystem | `/filesystem` | browse, favorites | HTTP-first |
+| Git | `/workspaces/:id/git` | status, branches, remotes, graph, checkout, fetch | `cradle workspace git ...` |
+| Pack Codebase | `/workspaces/:id/pack` | repomix packing | `cradle workspace pack` |
+| Session | `/sessions` | CRUD, messages, export, linked issue | `cradle session ...` |
+| Chat Runtime | `/chat/sessions/:sessionId` | response SSE, capabilities, messages, cancel | `cradle chat messages`, `cradle chat cancel` |
+| Providers | `/providers` | models, health check, lookup, search, cache | `cradle provider ...` |
+| Profiles | `/profiles` | profiles, icon, custom models, registry mappings | `cradle profile ...` |
+| Agent Identity | `/agents` | agent CRUD | `cradle agent ...` |
+| Secrets | `/secrets` | masked list, delete | `cradle secret ...` |
+| Approvals | `/approvals` | pending approvals, stream, respond | `cradle approval ...` |
+| ACP | `/acp` | registry, agents, installation, audit | `cradle acp ...` |
+| Skills | `/skills` | inventory, document, import, export, fetch source | `cradle skill ...` |
+| Issue | `/issues` | statuses, milestones, issues, comments, relations, context refs | `cradle issue ...` |
+| Kanban | `/kanban/boards` | board/view config | `cradle board ...` |
+| Issue Agent | `/issues/:id/delegation`, `/issue-agent-sessions` | delegation, activities, rerun, stop | `cradle issue-agent-session ...` |
+| Workflow Rules | `/workflow-rules/:workspaceId` | list, get, save, delete | `cradle workflow-rule ...` |
+| Automation | `/automations` | definitions, enable, disable, run, artifacts | `cradle automation ...` |
+| Session Await | `/session-awaits` | waits, cancel, trigger, summary, live status | `cradle session await-...` |
+| Chronicle | `/chronicle` | config, snapshots, memories, status, resources, timeline | HTTP-first |
+| PTY | `/terminal-sessions` | PTY lifecycle and WebSocket protocol | HTTP/WebSocket-first |
+| Observability | `/observability` | events, incidents, export, flush | `cradle observability ...` |
+| Usage | `/usage` | daily, summary, stats, session, cost | `cradle usage ...` |
+| Search | `/search/threads` | thread search | `cradle search threads` |
+
+## Lifecycle for a new module
+
+1. Pick owner and namespace before choosing route names.
+2. Add schema/model/service boundaries under `apps/server/src/modules/{module}`.
+3. Add OpenAPI schemas and examples close to the route implementation.
+4. Add `x-cradle-cli` only for commands intended to be generated.
+5. Add tests that cover success, validation failure, owner boundary and persistence if applicable.
+6. Update module README and developer docs when the public contract changes.
+
+## Validation
+
+Use source files over stale README inventories when they disagree:
+
+```bash
+cd apps/server
+pnpm test
+pnpm typecheck
+```
+
+For route and command drift:
+
+```bash
+cd packages/cli
+pnpm gen:cli
+```
+
+## Limits
+
+This page is a map, not a full reference. Exact payload fields, SSE event names and WebSocket frames must be verified from OpenAPI, route source and tests before publishing examples.

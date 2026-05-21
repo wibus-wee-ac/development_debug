@@ -1,0 +1,36 @@
+---
+title: Agents overview
+description: Configure Cradle agent runtimes, providers, models, skills, and browser automation boundaries.
+---
+
+Agents 是 Cradle 执行任务的运行单元。它们通过 runtime kind 连接 provider、model、tools、skills 和 workspace context。
+
+## Overview
+
+管理员通常先配置 providers 和 models，再决定 runtime kind 与 agent identity。普通用户在 New Chat 或 Issue detail 中选择可用 agent。
+
+## 核心对象
+
+| Object | Purpose |
+| --- | --- |
+| Runtime kind | 决定 agent 如何执行任务 |
+| Provider | 提供模型或运行接口 |
+| Model | 当前任务使用的模型 |
+| Agent identity | 代表可委派或可选择的 agent 配置 |
+| Skill | 为 agent 提供可复用指导或能力说明 |
+
+## 推荐顺序
+
+1. 配置 provider。
+2. 检查 provider health。
+3. 刷新或搜索 model。
+4. 选择 runtime kind。
+5. 在 Chat 或 Issue 中使用 agent。
+
+## Limits
+
+不是所有 agent identity 都能被委派给 Issue agent。遇到 `issue_agent_agent_not_supported` 这类错误时，换用 provider-backed agent。
+
+## Next steps
+
+阅读 [Providers](./providers.mdx)、[Models](./models.mdx) 和 [Runtime kinds](./runtime-kinds.mdx)。

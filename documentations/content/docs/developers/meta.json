@@ -1,0 +1,16 @@
+{
+  "title": "Developers",
+  "icon": "Code",
+  "pages": [
+    "overview",
+    "server",
+    "api",
+    "cli",
+    "plugins",
+    "database",
+    "runtime",
+    "automation",
+    "desktop",
+    "contributing"
+  ]
+}

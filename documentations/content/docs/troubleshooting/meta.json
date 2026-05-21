@@ -1,0 +1,5 @@
+{
+  "title": "Troubleshooting",
+  "icon": "LifeBuoy",
+  "pages": ["index", "provider-errors", "workspace-git", "desktop-server", "chronicle", "slack-bridge", "devtools-export"]
+}
