@@ -85,10 +85,108 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
     params: t.Object({ sourceId: t.String({ minLength: 1 }) }),
     response: { 200: ChronicleModel.slackSyncResponse },
   })
+  .post('/message-sources/:sourceId/slack/events', async ({ params, request, headers }) => {
+    const result = await Chronicle.handleSlackEvents(params.sourceId, {
+      rawBody: await request.text(),
+      signature: headers['x-slack-signature'] ?? null,
+      timestamp: headers['x-slack-request-timestamp'] ?? null,
+    })
+    if (result.challenge) {
+      return new Response(result.challenge, {
+        headers: { 'content-type': 'text/plain' },
+      })
+    }
+    return new Response(JSON.stringify(result), {
+      headers: { 'content-type': 'application/json' },
+    })
+  }, {
+    detail: { summary: 'Receive Slack Events API callbacks for a Chronicle source', tags: ['chronicle'] },
+    params: t.Object({ sourceId: t.String({ minLength: 1 }) }),
+    parse: 'none',
+  })
   .get('/messages', ({ query }) => Chronicle.listMessages(query.limit), {
     detail: { summary: 'List Chronicle message events', tags: ['chronicle'] },
     query: t.Object({ limit: t.Optional(t.Number({ default: 50 })) }),
     response: { 200: t.Array(ChronicleModel.messageEntry) },
+  })
+  .get('/audio-transcripts', ({ query }) => Chronicle.listAudioTranscripts(query.limit), {
+    detail: { summary: 'List Chronicle audio transcripts', tags: ['chronicle'] },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.audioTranscript) },
+  })
+  .post('/audio-transcripts', ({ body }) => Chronicle.recordAudioTranscript(body), {
+    detail: { summary: 'Ingest a Chronicle audio transcript report', tags: ['chronicle'] },
+    body: ChronicleModel.audioTranscriptReportBody,
+    response: { 200: ChronicleModel.audioTranscript },
+  })
+  .get('/audio-raw-segments', ({ query }) => Chronicle.listAudioRawSegments(query.limit), {
+    detail: { summary: 'List Chronicle raw audio segment artifacts', tags: ['chronicle'] },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.audioRawSegment) },
+  })
+  .post('/audio-raw-segments', ({ body }) => Chronicle.recordAudioRawSegment(body), {
+    detail: { summary: 'Ingest a Chronicle raw audio segment artifact report', tags: ['chronicle'] },
+    body: ChronicleModel.audioRawSegmentReportBody,
+    response: { 200: ChronicleModel.audioRawSegment },
+  })
+  .get('/accessibility-snapshots', ({ query }) => Chronicle.listAccessibilitySnapshots(query.limit), {
+    detail: { summary: 'List Chronicle accessibility evidence snapshots', tags: ['chronicle'] },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.accessibilitySnapshot) },
+  })
+  .get('/activity-segments', ({ query }) => Chronicle.listActivitySegments(query.limit), {
+    detail: { summary: 'List Chronicle activity segments', tags: ['chronicle'] },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.activitySegment) },
+  })
+  .post('/activity-segments/:segmentId/triage', ({ params }) => Chronicle.triageActivitySegment(params.segmentId), {
+    detail: { summary: 'Run Chronicle activity segment triage', tags: ['chronicle'] },
+    params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
+    response: { 200: ChronicleModel.activityPipelineAction },
+  })
+  .post('/activity-segments/:segmentId/summarize', ({ params }) => Chronicle.summarizeActivitySegment(params.segmentId), {
+    detail: { summary: 'Run Chronicle activity segment summarization', tags: ['chronicle'] },
+    params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
+    response: { 200: ChronicleModel.activityPipelineAction },
+  })
+  .post('/activity-segments/:segmentId/crystallize', ({ params }) => Chronicle.crystallizeActivitySegment(params.segmentId), {
+    detail: { summary: 'Run Chronicle activity segment knowledge crystallization', tags: ['chronicle'] },
+    params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
+    response: { 200: ChronicleModel.activityPipelineAction },
+  })
+  .post('/activity-pipeline/tick', () => Chronicle.runActivityPipelineTick(), {
+    detail: { summary: 'Run one Chronicle automatic activity pipeline tick', tags: ['chronicle'] },
+    response: { 200: ChronicleModel.activityPipelineTickResponse },
+  })
+  .get('/pipeline-runs', ({ query }) => Chronicle.listPipelineRuns(query.limit), {
+    detail: { summary: 'List Chronicle activity pipeline runs', tags: ['chronicle'] },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.pipelineRun) },
+  })
+  .get('/knowledge-cards', ({ query }) => Chronicle.listKnowledgeCards({
+    limit: query.limit,
+    dimension: query.dimension,
+    cardType: query.type,
+    includeDeleted: query.includeDeleted,
+  }), {
+    detail: { summary: 'List Chronicle knowledge cards', tags: ['chronicle'] },
+    query: ChronicleModel.knowledgeCardsQuery,
+    response: { 200: t.Array(ChronicleModel.knowledgeCard) },
+  })
+  .get('/knowledge-cards/:knowledgeId/versions', ({ params }) => Chronicle.listKnowledgeVersions(params.knowledgeId), {
+    detail: { summary: 'List Chronicle knowledge card versions', tags: ['chronicle'] },
+    params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
+    response: { 200: t.Array(ChronicleModel.knowledgeVersion) },
+  })
+  .get('/dream-runs', ({ query }) => Chronicle.listDreamRuns(query.limit), {
+    detail: { summary: 'List Chronicle dream merge runs', tags: ['chronicle'] },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.dreamRun) },
+  })
+  .post('/dream-runs', ({ body }) => Chronicle.startDreamRun(body), {
+    detail: { summary: 'Start a Chronicle dream merge run', tags: ['chronicle'] },
+    body: ChronicleModel.dreamStartBody,
+    response: { 200: ChronicleModel.dreamRun },
   })
   .get('/timeline', ({ query }) => Chronicle.getTimeline(query.limit), {
     detail: { summary: 'Get recent Chronicle captures', tags: ['chronicle'] },

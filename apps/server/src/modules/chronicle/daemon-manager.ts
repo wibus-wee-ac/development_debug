@@ -8,6 +8,35 @@ import { getServerConfig } from '../../infra'
 let chronicleProcess: ChildProcess | null = null
 let lastExitCode: number | null = null
 let lastExitAt: number | null = null
+let currentOptions: ChronicleDaemonOptions | null = null
+let pendingRestartOptions: ChronicleDaemonOptions | null = null
+
+export interface ChronicleDaemonOptions {
+  storageRoot: string
+  audioCaptureEnabled: boolean
+  audioSegmentMs: number
+  audioSegmentIntervalMs: number
+  audioRmsThreshold: number
+}
+
+export function createDaemonArgs(options: ChronicleDaemonOptions): string[] {
+  const args = ['--daemon', '--storage-root', options.storageRoot]
+  if (options.audioCaptureEnabled) {
+    args.push(
+      '--audio-capture',
+      '--audio-segment-ms',
+      String(options.audioSegmentMs),
+      '--audio-segment-interval-ms',
+      String(options.audioSegmentIntervalMs),
+      '--audio-rms-threshold',
+      String(options.audioRmsThreshold),
+    )
+  }
+  else {
+    args.push('--no-audio-capture')
+  }
+  return args
+}
 
 function findChronicleBinary(): string {
   const candidates = [
@@ -32,6 +61,8 @@ export function getDaemonInfo() {
     pid: chronicleProcess?.pid ?? null,
     lastExitCode,
     lastExitAt,
+    audioCaptureEnabled: isRunning() ? currentOptions?.audioCaptureEnabled ?? false : false,
+    restartPending: pendingRestartOptions !== null,
   }
 }
 
@@ -50,17 +81,19 @@ export function getDaemonResources(): { running: boolean, pid: number | null, rs
   }
 }
 
-export function startDaemon(storageRoot: string): boolean {
+export function startDaemon(options: ChronicleDaemonOptions): boolean {
   if (isRunning()) return true
 
   const binary = findChronicleBinary()
   const cradleUrl = process.env.CRADLE_URL ?? buildServerUrl()
+  const args = createDaemonArgs(options)
 
   try {
-    chronicleProcess = spawn(binary, ['--daemon', '--storage-root', storageRoot], {
+    chronicleProcess = spawn(binary, args, {
       env: {
         ...process.env,
         CRADLE_URL: cradleUrl,
+        CRADLE_CHRONICLE_AUDIO_CAPTURE: options.audioCaptureEnabled ? '1' : '0',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
@@ -70,17 +103,25 @@ export function startDaemon(storageRoot: string): boolean {
       lastExitCode = code
       lastExitAt = Date.now()
       chronicleProcess = null
+      currentOptions = null
+      if (pendingRestartOptions) {
+        const nextOptions = pendingRestartOptions
+        pendingRestartOptions = null
+        startDaemon(nextOptions)
+      }
     })
 
     chronicleProcess.on('error', (err) => {
       console.error('[chronicle-daemon] spawn error:', err.message)
       chronicleProcess = null
+      currentOptions = null
     })
 
     chronicleProcess.stderr?.on('data', (data: Buffer) => {
       console.error('[chronicle-daemon]', data.toString().trimEnd())
     })
 
+    currentOptions = options
     return true
   }
   catch (err) {
@@ -89,7 +130,21 @@ export function startDaemon(storageRoot: string): boolean {
   }
 }
 
+export function restartDaemon(options: ChronicleDaemonOptions): boolean {
+  if (!isRunning()) {
+    return startDaemon(options)
+  }
+  pendingRestartOptions = options
+  stopCurrentDaemon()
+  return true
+}
+
 export function stopDaemon(): void {
+  pendingRestartOptions = null
+  stopCurrentDaemon()
+}
+
+function stopCurrentDaemon(): void {
   if (!chronicleProcess) return
 
   chronicleProcess.kill('SIGTERM')

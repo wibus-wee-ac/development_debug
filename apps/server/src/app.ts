@@ -18,6 +18,7 @@ import { chronicle } from './modules/chronicle'
 import { cleanup as chronicleCleanup } from './modules/chronicle/daemon-manager'
 import {
   initDaemon as chronicleInitDaemon,
+  stopActivityPipelineScheduler as chronicleStopActivityPipelineScheduler,
   startSlackBackgroundSync as chronicleStartSlackBackgroundSync,
   stopSlackBackgroundSync as chronicleStopSlackBackgroundSync,
 } from './modules/chronicle/service'
@@ -110,7 +111,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   // Plugin system — discover and activate server plugins
   await activateServerPlugins(app)
 
-  app.onStop([() => chronicleStopSlackBackgroundSync(), () => chronicleCleanup(), () => shutdownInfra()])
+  app.onStop([() => chronicleStopActivityPipelineScheduler(), () => chronicleStopSlackBackgroundSync(), () => chronicleCleanup(), () => shutdownInfra()])
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {

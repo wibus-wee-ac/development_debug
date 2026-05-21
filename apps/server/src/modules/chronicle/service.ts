@@ -1,19 +1,34 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createReadStream, readFileSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 
-import { generateText } from 'ai'
+import { generateText, type LanguageModel } from 'ai'
 import {
+  chronicleAccessibilitySnapshots,
+  chronicleActivitySegments,
+  chronicleActivitySessions,
+  chronicleAudioRawSegments,
+  chronicleAudioSegments,
+  chronicleAudioTranscripts,
+  chronicleDreamCandidates,
+  chronicleDreamRuns,
   chronicleEvents,
+  chronicleKnowledgeCards,
+  chronicleKnowledgeSources,
+  chronicleKnowledgeVersions,
   chronicleMemories,
+  chronicleMemoryChunks,
+  chronicleMemoryEmbeddings,
+  chronicleMemoryKeywords,
   chronicleMessages,
   chronicleMessageSources,
   chronicleModelResources,
+  chroniclePipelineRuns,
   chronicleSnapshots,
 } from '@cradle/db'
-import { desc, eq, or, sql } from 'drizzle-orm'
+import { count, desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
@@ -30,6 +45,13 @@ interface ChronicleConfig {
   modelId: string
   workspaceId: string
   enabled: boolean
+  activityPipelineEnabled: boolean
+  activityPipelineIntervalMs: number
+  activityPipelineBatchSize: number
+  audioCaptureEnabled: boolean
+  audioSegmentMs: number
+  audioSegmentIntervalMs: number
+  audioRmsThreshold: number
   storageRoot: string
 }
 
@@ -38,6 +60,13 @@ const defaultConfig: ChronicleConfig = {
   modelId: '',
   workspaceId: '',
   enabled: false,
+  activityPipelineEnabled: true,
+  activityPipelineIntervalMs: 120_000,
+  activityPipelineBatchSize: 3,
+  audioCaptureEnabled: false,
+  audioSegmentMs: 5_000,
+  audioSegmentIntervalMs: 60_000,
+  audioRmsThreshold: 0.02,
   storageRoot: resolve(homedir(), '.cradle', 'chronicle'),
 }
 
@@ -49,11 +78,51 @@ const ProfileConfigSchema = z.object({
   apiMode: z.enum(['responses', 'chat-completions']).optional(),
 })
 
+const SlackSourceConfigSchema = z.object({
+  realtimeMode: z.enum(['polling', 'events-api', 'socket-mode']).optional(),
+  signingSecretRef: z.string().nullable().optional(),
+})
+
 const SLACK_SYNC_INTERVAL_MS = 60_000
+const ACTIVITY_PIPELINE_MIN_INTERVAL_MS = 30_000
+const ACTIVITY_PIPELINE_MAX_INTERVAL_MS = 3_600_000
+const ACTIVITY_PIPELINE_MIN_BATCH_SIZE = 1
+const ACTIVITY_PIPELINE_MAX_BATCH_SIZE = 20
+const SLACK_SIGNATURE_VERSION = 'v0'
+const SLACK_SIGNATURE_TOLERANCE_SECONDS = 300
+const MEMORY_CHUNK_MAX_CHARS = 1_800
+const MEMORY_SEARCH_MAX_TERMS = 12
+const MEMORY_TOKEN_MIN_LENGTH = 2
+const MEMORY_EMBEDDING_DIMENSIONS = 64
+const MEMORY_EMBEDDING_MODEL_ID = 'chronicle-lexical'
+const MEMORY_EMBEDDING_MODEL_VERSION = 'v1'
+const MEMORY_SEMANTIC_SCORE_WEIGHT = 12
+const MEMORY_SEMANTIC_MIN_SCORE = 0.28
+const ACTIVITY_IDLE_BOUNDARY_SECONDS = 10 * 60
+const ACTIVITY_MAX_SEGMENT_SECONDS = 30 * 60
+const ACTIVITY_SESSION_GAP_SECONDS = 6 * 60 * 60
+
+type ChronicleDb = ReturnType<typeof db>
+type ChronicleTx = Parameters<Parameters<ChronicleDb['transaction']>[0]>[0]
 
 type ModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding'
 type ModelResourceStatus = 'available' | 'missing' | 'installing' | 'installed' | 'error'
 type SlackSyncTrigger = 'manual' | 'background'
+type SlackRealtimeMode = 'polling' | 'events-api' | 'socket-mode'
+type ActivitySegmentType = 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown'
+type ActivityPipelineTrigger = 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize'
+type ActivityPipelineStage = 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization'
+type ActivityPipelineRunStatus = 'queued' | 'running' | 'success' | 'error' | 'skipped'
+type KnowledgeCardType = 'fact' | 'insight' | 'decision' | 'task' | 'pattern'
+type KnowledgeDimension = 'technical' | 'business' | 'personal' | 'project' | 'general'
+type KnowledgeCardStatus = 'active' | 'merged' | 'archived' | 'deleted'
+type DreamRunType = 'archive' | 'merge' | 'prune' | 'restore' | 'dry-run'
+type DreamRunStatus = 'running' | 'completed' | 'failed'
+
+interface SlackSourceConfig {
+  realtimeMode: SlackRealtimeMode
+  signingSecretRef: string | null
+}
 
 interface ModelResourceFileManifest {
   path: string
@@ -86,6 +155,67 @@ interface ModelResourceFileCheck {
   actualSha256?: string
 }
 
+interface MemorySearchScore {
+  keywordScore: number
+  semanticScore: number
+}
+
+interface ChronicleLanguageModelContext {
+  model: LanguageModel
+  modelId: string
+  profileId: string
+}
+
+interface ActivitySegmentContext {
+  segment: typeof chronicleActivitySegments.$inferSelect
+  sourceRefs: Record<string, string[]>
+  evidenceText: string
+  evidenceCounts: Record<string, number>
+}
+
+interface ActivityTriageResult {
+  keep: boolean
+  reason: string
+  segmentType: ActivitySegmentType
+  title: string | null
+  priority: 'low' | 'normal' | 'high'
+}
+
+interface ActivitySummaryResult {
+  title: string
+  summary: string
+  keyPoints: string[]
+  entities: string[]
+  followUps: string[]
+}
+
+interface CrystallizedKnowledgeCardDraft {
+  title: string
+  content: string
+  cardType: KnowledgeCardType
+  dimension: KnowledgeDimension
+  confidenceBps: number
+  tags: string[]
+  stableKey: string
+}
+
+interface ActivityCrystallizationResult {
+  summary: string
+  knowledgeCards: CrystallizedKnowledgeCardDraft[]
+  rejectedCount: number
+}
+
+interface DreamMergeCandidateDraft {
+  workspaceId: string | null
+  sourceKnowledgeIds: string[]
+  proposedTitle: string
+  proposedContent: string
+  proposedCardType: KnowledgeCardType
+  proposedDimension: KnowledgeDimension
+  score: number
+  reason: string
+}
+
 export interface ModelResourceEntry {
   id: string
   category: ModelResourceCategory
@@ -106,11 +236,15 @@ export interface ModelResourceLocalFileInput {
 
 export interface ModelResourceInstallInput {
   source?: 'manifest' | 'local-files'
+  sourceRoot?: string | null
   files?: ModelResourceLocalFileInput[]
 }
 
 let slackSyncTimer: ReturnType<typeof setInterval> | null = null
 let slackSyncRunning = false
+let activityPipelineTimer: ReturnType<typeof setInterval> | null = null
+let activityPipelineRunning = false
+let memorySearchIndexReconciledDbPath: string | null = null
 const activeSlackSyncs = new Set<string>()
 
 const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest> = {
@@ -134,6 +268,8 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
     files: [{
       path: 'audio-vad/silero_vad.onnx',
       sourceUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx',
+      sha256: '9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6',
+      sizeBytes: 643_854,
       required: true,
     }],
     metadata: { requiredFor: ['audio-transcription'] },
@@ -175,18 +311,18 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
     version: 'local-onnx',
     runtime: 'onnx',
     required: false,
-    message: 'Place a text embedding ONNX model and tokenizer files to enable semantic search and deduplication.',
+    message: 'Place a text embedding ONNX model and tokenizer files for future neural memory ranking. Current search uses Chronicle lexical vectors.',
     files: [
       { path: 'embedding/model.onnx', required: true },
       { path: 'embedding/tokenizer.json', required: true },
     ],
-    metadata: { requiredFor: ['semantic-search', 'deduplication'], distance: 'cosine' },
+    metadata: { requiredFor: ['neural-memory-ranking'], currentRuntime: 'chronicle-lexical', distance: 'cosine' },
   },
 }
 
 export interface TimelineEntry {
   id: string
-  sourceType: 'snapshot' | 'message'
+  sourceType: 'snapshot' | 'message' | 'audio'
   capturedAt: string
   capturedAtUnix: number
   displayId: number
@@ -195,7 +331,7 @@ export interface TimelineEntry {
   ocrText: string | null
   appBundleId: string | null
   windowTitle: string | null
-  platform?: 'slack' | null
+  platform?: 'slack' | 'audio' | null
   channelId?: string | null
   channelName?: string | null
   userName?: string | null
@@ -209,6 +345,9 @@ export interface MemoryEntry {
   createdAtUnix: number
   content: string
   modelId: string | null
+  matchKind: 'keyword' | 'semantic' | 'hybrid' | null
+  keywordScore: number | null
+  semanticScore: number | null
 }
 
 export interface ChronicleStatus {
@@ -225,7 +364,146 @@ export interface ChronicleStatus {
   totalSummaries: number
   totalMessages: number
   lastMessageAt: number | null
+  totalAccessibilitySnapshots: number
+  lastAccessibilitySnapshotAt: number | null
+  totalAudioTranscripts: number
+  lastAudioTranscriptAt: number | null
+  totalAudioRawSegments: number
+  lastAudioRawSegmentAt: number | null
+  totalActivitySegments: number
+  lastActivitySegmentAt: number | null
+  totalPipelineRuns: number
+  lastPipelineRunAt: number | null
+  totalKnowledgeCards: number
+  lastKnowledgeCardAt: number | null
+  totalDreamRuns: number
+  lastDreamRunAt: number | null
+  activityPipelineEnabled: boolean
+  activityPipelineRunning: boolean
+  activityPipelineIntervalMs: number
+  activityPipelineBatchSize: number
+  audioCaptureEnabled: boolean
+  audioRuntimeStatus: 'disabled' | 'armed' | 'unavailable'
   configuredModel: string | null
+}
+
+export interface ActivitySegmentEntry {
+  id: string
+  sessionId: string
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string
+  endedAtUnix: number
+  durationSeconds: number
+  segmentType: ActivitySegmentType
+  frontApp: string | null
+  title: string | null
+  summary: string | null
+  sourceCounts: Record<string, number>
+  sourceRefs: Record<string, string[]>
+  pipelineStatus: 'collecting' | 'triaged' | 'summarized' | 'crystallized' | 'error'
+  isCrystallized: boolean
+  metadata: Record<string, unknown>
+}
+
+export interface PipelineRunEntry {
+  id: string
+  sessionId: string | null
+  segmentId: string | null
+  trigger: ActivityPipelineTrigger
+  stage: 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization'
+  status: 'queued' | 'running' | 'success' | 'error' | 'skipped'
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  errorMessage: string | null
+  snapshotsCount: number
+  messagesCount: number
+  audioTranscriptsCount: number
+  audioRawSegmentsCount: number
+  memoriesCount: number
+  segmentsCount: number
+  segmentIds: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface ActivityPipelineActionResult {
+  segment: ActivitySegmentEntry
+  run: PipelineRunEntry
+  memoryId: string | null
+  knowledgeCards?: KnowledgeCardEntry[]
+  status: 'success' | 'error' | 'skipped'
+  message: string
+}
+
+export interface KnowledgeCardEntry {
+  id: string
+  title: string
+  content: string
+  cardType: KnowledgeCardType
+  dimension: KnowledgeDimension
+  confidence: number
+  sourceMemoryIds: string[]
+  sourceSegmentIds: string[]
+  sourceChunkIds: string[]
+  tags: string[]
+  contentHash: string
+  version: number
+  status: KnowledgeCardStatus
+  mergedIntoId: string | null
+  pinned: boolean
+  metadata: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+  updatedAt: string
+  updatedAtUnix: number
+}
+
+export interface KnowledgeVersionEntry {
+  id: string
+  knowledgeId: string
+  version: number
+  title: string
+  content: string
+  cardType: KnowledgeCardType
+  dimension: KnowledgeDimension
+  confidence: number
+  sourceMemoryIds: string[]
+  sourceSegmentIds: string[]
+  sourceChunkIds: string[]
+  tags: string[]
+  metadata: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+}
+
+export interface DreamRunEntry {
+  id: string
+  workspaceId: string | null
+  runType: DreamRunType
+  status: DreamRunStatus
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  inputCount: number
+  outputCount: number
+  mergedCount: number
+  deletedCount: number
+  sourceKnowledgeIds: string[]
+  outputKnowledgeIds: string[]
+  config: Record<string, unknown>
+  result: Record<string, unknown>
+  errorMessage: string | null
+}
+
+export interface DreamRunInput {
+  runType?: DreamRunType
+  dryRun?: boolean
+  limit?: number
+  similarityThreshold?: number
+  applyMerge?: boolean
 }
 
 export interface MessageSourceEntry {
@@ -237,6 +515,8 @@ export interface MessageSourceEntry {
   teamId: string | null
   botTokenRef: string | null
   channelIds: string[]
+  realtimeMode: SlackRealtimeMode
+  signingSecretRef: string | null
   status: 'idle' | 'syncing' | 'ready' | 'error' | 'disabled'
   lastSyncAt: number | null
   lastMessageAt: number | null
@@ -253,6 +533,8 @@ export interface MessageSourceInput {
   teamId?: string | null
   botTokenRef?: string | null
   channelIds: string[]
+  realtimeMode?: SlackRealtimeMode
+  signingSecretRef?: string | null
 }
 
 export interface MessageSourcePatchInput {
@@ -262,6 +544,8 @@ export interface MessageSourcePatchInput {
   teamId?: string | null
   botTokenRef?: string | null
   channelIds?: string[]
+  realtimeMode?: SlackRealtimeMode
+  signingSecretRef?: string | null
 }
 
 export interface MessageEntry {
@@ -278,6 +562,149 @@ export interface MessageEntry {
   permalink: string | null
 }
 
+export interface SlackEventsInput {
+  rawBody: string
+  signature: string | null
+  timestamp: string | null
+}
+
+export interface SlackEventsResult {
+  sourceId: string
+  status: 'ok' | 'ignored'
+  ingested: number
+  message: string
+  challenge?: string
+}
+
+export interface AudioTranscriptSegmentInput {
+  startMs: number
+  endMs?: number | null
+  speakerLabel?: string | null
+  text: string
+  confidence?: number | null
+  language?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface AudioTranscriptReportInput {
+  sourceId: string
+  title?: string | null
+  source?: 'asr' | 'manual' | 'imported'
+  status?: 'recording' | 'completed' | 'imported' | 'error'
+  startedAt: string
+  endedAt?: string | null
+  language?: string | null
+  appBundleId?: string | null
+  windowTitle?: string | null
+  audioPath?: string | null
+  transcriptPath?: string | null
+  segments: AudioTranscriptSegmentInput[]
+  metadata?: Record<string, unknown>
+}
+
+export interface AudioTranscriptSegmentEntry {
+  id: string
+  segmentIndex: number
+  startMs: number
+  endMs: number | null
+  speakerLabel: string | null
+  text: string
+  confidence: number | null
+  language: string | null
+}
+
+export interface AudioTranscriptEntry {
+  id: string
+  sourceId: string
+  memoryId: string | null
+  title: string | null
+  source: 'asr' | 'manual' | 'imported'
+  status: 'recording' | 'completed' | 'imported' | 'error'
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  language: string | null
+  appBundleId: string | null
+  windowTitle: string | null
+  segmentCount: number
+  previewText: string
+  segments: AudioTranscriptSegmentEntry[]
+}
+
+export interface AudioRawSegmentReportInput {
+  sourceId: string
+  recordedAt: string
+  source?: 'microphone' | 'system' | 'mixed'
+  status?: 'captured' | 'queued' | 'processed' | 'ignored' | 'error'
+  audioPath: string
+  metadataPath: string
+  sampleRate: number
+  channels: number
+  sampleCount: number
+  droppedSamples?: number
+  durationMs?: number
+  rms: number
+  peak: number
+  active: boolean
+  vadImplemented?: boolean
+  asrImplemented?: boolean
+  speakerLabelingImplemented?: boolean
+  metadata?: Record<string, unknown>
+}
+
+export interface AudioRawSegmentEntry {
+  id: string
+  sourceId: string
+  recordedAt: string
+  recordedAtUnix: number
+  source: 'microphone' | 'system' | 'mixed'
+  status: 'captured' | 'queued' | 'processed' | 'ignored' | 'error'
+  audioPath: string
+  metadataPath: string
+  sampleRate: number
+  channels: number
+  sampleCount: number
+  droppedSamples: number
+  durationMs: number
+  rms: number
+  peak: number
+  active: boolean
+  vadStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  asrStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  speakerStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  metadata: Record<string, unknown>
+}
+
+export interface AccessibilitySnapshotReportInput {
+  sourceId: string
+  status?: 'ready' | 'permission-denied' | 'unavailable' | 'error'
+  provider?: string
+  accessibilityPath?: string | null
+  text?: string | null
+  elementCount?: number
+  appBundleId?: string | null
+  windowTitle?: string | null
+  tree?: unknown[]
+  metadata?: Record<string, unknown>
+}
+
+export interface AccessibilitySnapshotEntry {
+  id: string
+  sourceId: string
+  snapshotId: string | null
+  capturedAt: string
+  capturedAtUnix: number
+  status: 'ready' | 'permission-denied' | 'unavailable' | 'error'
+  provider: string
+  appBundleId: string | null
+  windowTitle: string | null
+  elementCount: number
+  text: string | null
+  tree: unknown[]
+  metadata: Record<string, unknown>
+}
+
 export interface ChronicleSnapshotReportInput {
   sourceId: string
   displayId: number
@@ -291,6 +718,7 @@ export interface ChronicleSnapshotReportInput {
   ocrText?: string
   appBundleId?: string
   windowTitle?: string
+  accessibility?: AccessibilitySnapshotReportInput
   metadata?: Record<string, unknown>
 }
 
@@ -322,6 +750,17 @@ export async function getConfig(): Promise<ChronicleConfig> {
       modelId: readString(parsed.modelId) ?? defaultConfig.modelId,
       workspaceId: readString(parsed.workspaceId) ?? defaultConfig.workspaceId,
       enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : defaultConfig.enabled,
+      activityPipelineEnabled: typeof parsed.activityPipelineEnabled === 'boolean'
+        ? parsed.activityPipelineEnabled
+        : defaultConfig.activityPipelineEnabled,
+      activityPipelineIntervalMs: readPositiveNumber(parsed.activityPipelineIntervalMs) ?? defaultConfig.activityPipelineIntervalMs,
+      activityPipelineBatchSize: readPositiveNumber(parsed.activityPipelineBatchSize) ?? defaultConfig.activityPipelineBatchSize,
+      audioCaptureEnabled: typeof parsed.audioCaptureEnabled === 'boolean'
+        ? parsed.audioCaptureEnabled
+        : defaultConfig.audioCaptureEnabled,
+      audioSegmentMs: readPositiveNumber(parsed.audioSegmentMs) ?? defaultConfig.audioSegmentMs,
+      audioSegmentIntervalMs: readPositiveNumber(parsed.audioSegmentIntervalMs) ?? defaultConfig.audioSegmentIntervalMs,
+      audioRmsThreshold: readNonNegativeNumber(parsed.audioRmsThreshold) ?? defaultConfig.audioRmsThreshold,
       storageRoot: readString(parsed.storageRoot) ?? defaultConfig.storageRoot,
     }
   }
@@ -336,10 +775,43 @@ async function saveConfig(config: ChronicleConfig): Promise<void> {
   await writeFile(filePath, JSON.stringify(config, null, 2), 'utf8')
 }
 
+function toDaemonOptions(config: ChronicleConfig): DaemonManager.ChronicleDaemonOptions {
+  return {
+    storageRoot: config.storageRoot,
+    audioCaptureEnabled: config.audioCaptureEnabled,
+    audioSegmentMs: config.audioSegmentMs,
+    audioSegmentIntervalMs: config.audioSegmentIntervalMs,
+    audioRmsThreshold: config.audioRmsThreshold,
+  }
+}
+
+function daemonLaunchConfigChanged(previous: ChronicleConfig, next: ChronicleConfig): boolean {
+  return previous.storageRoot !== next.storageRoot
+    || previous.audioCaptureEnabled !== next.audioCaptureEnabled
+    || previous.audioSegmentMs !== next.audioSegmentMs
+    || previous.audioSegmentIntervalMs !== next.audioSegmentIntervalMs
+    || previous.audioRmsThreshold !== next.audioRmsThreshold
+}
+
+function getAudioRuntimeStatus(
+  config: ChronicleConfig,
+  daemonInfo: ReturnType<typeof DaemonManager.getDaemonInfo>,
+): ChronicleStatus['audioRuntimeStatus'] {
+  if (!config.enabled || !config.audioCaptureEnabled) {
+    return 'disabled'
+  }
+  return daemonInfo.running && daemonInfo.audioCaptureEnabled ? 'armed' : 'unavailable'
+}
+
 export async function updateConfig(config: ChronicleConfig): Promise<ChronicleConfig> {
   const previous = await getConfig()
   const next = {
     ...config,
+    activityPipelineIntervalMs: clampNumber(config.activityPipelineIntervalMs, ACTIVITY_PIPELINE_MIN_INTERVAL_MS, ACTIVITY_PIPELINE_MAX_INTERVAL_MS, defaultConfig.activityPipelineIntervalMs),
+    activityPipelineBatchSize: Math.floor(clampNumber(config.activityPipelineBatchSize, ACTIVITY_PIPELINE_MIN_BATCH_SIZE, ACTIVITY_PIPELINE_MAX_BATCH_SIZE, defaultConfig.activityPipelineBatchSize)),
+    audioSegmentMs: clampNumber(config.audioSegmentMs, 100, 30_000, defaultConfig.audioSegmentMs),
+    audioSegmentIntervalMs: clampNumber(config.audioSegmentIntervalMs, 100, 3_600_000, defaultConfig.audioSegmentIntervalMs),
+    audioRmsThreshold: clampNumber(config.audioRmsThreshold, 0, 1, defaultConfig.audioRmsThreshold),
     storageRoot: resolve(config.storageRoot || defaultConfig.storageRoot),
   }
   await saveConfig(next)
@@ -347,21 +819,42 @@ export async function updateConfig(config: ChronicleConfig): Promise<ChronicleCo
     type: 'config',
     status: 'success',
     message: next.enabled ? 'Chronicle enabled' : 'Chronicle disabled',
-    attrs: { storageRoot: next.storageRoot, profileId: next.profileId, modelId: next.modelId },
+    attrs: {
+      storageRoot: next.storageRoot,
+      profileId: next.profileId,
+      modelId: next.modelId,
+      activityPipelineEnabled: next.activityPipelineEnabled,
+      activityPipelineIntervalMs: next.activityPipelineIntervalMs,
+      activityPipelineBatchSize: next.activityPipelineBatchSize,
+      audioCaptureEnabled: next.audioCaptureEnabled,
+      audioSegmentMs: next.audioSegmentMs,
+      audioSegmentIntervalMs: next.audioSegmentIntervalMs,
+      audioRmsThreshold: next.audioRmsThreshold,
+    },
   })
 
   if (next.enabled && !previous.enabled) {
-    const started = DaemonManager.startDaemon(next.storageRoot)
+    const started = DaemonManager.startDaemon(toDaemonOptions(next))
     recordEvent({
       type: 'daemon',
       status: started ? 'success' : 'error',
       message: started ? 'Chronicle daemon start requested' : 'Chronicle daemon failed to start',
     })
   }
+  else if (next.enabled && daemonLaunchConfigChanged(previous, next)) {
+    const started = DaemonManager.restartDaemon(toDaemonOptions(next))
+    recordEvent({
+      type: 'daemon',
+      status: started ? 'success' : 'error',
+      message: started ? 'Chronicle daemon restart requested' : 'Chronicle daemon failed to restart',
+    })
+  }
   else if (!next.enabled && previous.enabled) {
     DaemonManager.stopDaemon()
     recordEvent({ type: 'daemon', status: 'success', message: 'Chronicle daemon stop requested' })
   }
+
+  restartActivityPipelineScheduler(next)
 
   return next
 }
@@ -373,19 +866,67 @@ export async function summarize(body: {
   sourceArtifactPaths?: string[]
 }): Promise<{ summary: string, memoryId: string | null, status: 'success' | 'error' }> {
   const config = await getConfig()
+  const modelContext = resolveChronicleLanguageModelContext(config)
+  if (typeof modelContext === 'string') {
+    recordEvent({ type: 'summarize', status: 'error', message: modelContext })
+    return { summary: `[Chronicle error - ${modelContext}]`, memoryId: null, status: 'error' }
+  }
+
+  try {
+    const result = await generateText({
+      model: modelContext.model,
+      prompt: body.prompt,
+      maxRetries: 1,
+      timeout: 120_000,
+    })
+    const usage = normalizeLanguageModelUsage(result.usage)
+    const memory = recordMemory({
+      sourceId: `summary:${Date.now()}:${randomUUID()}`,
+      windowType: body.windowType,
+      createdAt: new Date().toISOString(),
+      content: result.text,
+      summaryKind: 'llm',
+      sourceSnapshotPaths: body.sourceArtifactPaths ?? [],
+      metadata: { prompt: body.prompt },
+    }, {
+      prompt: body.prompt,
+      modelId: modelContext.modelId,
+      profileId: modelContext.profileId,
+      usage,
+      sourceSnapshotIds: body.sourceSnapshotIds ?? [],
+    })
+    recordEvent({
+      type: 'summarize',
+      status: 'success',
+      message: 'Chronicle summary generated',
+      memoryId: memory.id,
+      attrs: { modelId: modelContext.modelId, profileId: modelContext.profileId, usage },
+    })
+    return { summary: result.text, memoryId: memory.id, status: 'success' }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    recordEvent({
+      type: 'summarize',
+      status: 'error',
+      message,
+      attrs: { modelId: modelContext.modelId, profileId: modelContext.profileId },
+    })
+    return { summary: `[Chronicle error - ${message}]`, memoryId: null, status: 'error' }
+  }
+}
+
+function resolveChronicleLanguageModelContext(config: ChronicleConfig): ChronicleLanguageModelContext | string {
   const failure = validateSummaryConfig(config)
   if (failure) {
-    recordEvent({ type: 'summarize', status: 'error', message: failure })
-    return { summary: `[Chronicle error - ${failure}]`, memoryId: null, status: 'error' }
+    return failure
   }
 
   const profile = Profiles.getProfile(config.profileId)!
   const parsedConfig = parseConfigWith(profile.configJson, ProfileConfigSchema)
   const apiKey = resolveProfileApiKey(profile.credentialRef, parsedConfig.apiKey)
   if (!apiKey) {
-    const message = 'no API key available for profile'
-    recordEvent({ type: 'summarize', status: 'error', message, attrs: { profileId: config.profileId } })
-    return { summary: `[Chronicle error - ${message}]`, memoryId: null, status: 'error' }
+    return 'no API key available for profile'
   }
 
   const modelId = config.modelId || parsedConfig.modelId || parsedConfig.model || 'gpt-4o-mini'
@@ -397,52 +938,20 @@ export async function summarize(body: {
     modelId,
     apiMode: parsedConfig.apiMode,
   })
+  return { model, modelId, profileId: config.profileId }
+}
 
-  try {
-    const result = await generateText({
-      model,
-      prompt: body.prompt,
-      maxRetries: 1,
-      timeout: 120_000,
-    })
-    const usage = {
-      promptTokens: result.usage.inputTokens ?? 0,
-      completionTokens: result.usage.outputTokens ?? 0,
-      totalTokens: result.usage.totalTokens ?? (result.usage.inputTokens ?? 0) + (result.usage.outputTokens ?? 0),
-    }
-    const memory = recordMemory({
-      sourceId: `summary:${Date.now()}:${randomUUID()}`,
-      windowType: body.windowType,
-      createdAt: new Date().toISOString(),
-      content: result.text,
-      summaryKind: 'llm',
-      sourceSnapshotPaths: body.sourceArtifactPaths ?? [],
-      metadata: { prompt: body.prompt },
-    }, {
-      prompt: body.prompt,
-      modelId,
-      profileId: config.profileId,
-      usage,
-      sourceSnapshotIds: body.sourceSnapshotIds ?? [],
-    })
-    recordEvent({
-      type: 'summarize',
-      status: 'success',
-      message: 'Chronicle summary generated',
-      memoryId: memory.id,
-      attrs: { modelId, profileId: config.profileId, usage },
-    })
-    return { summary: result.text, memoryId: memory.id, status: 'success' }
-  }
-  catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    recordEvent({
-      type: 'summarize',
-      status: 'error',
-      message,
-      attrs: { modelId, profileId: config.profileId },
-    })
-    return { summary: `[Chronicle error - ${message}]`, memoryId: null, status: 'error' }
+function normalizeLanguageModelUsage(usage: {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+} | undefined): { promptTokens: number, completionTokens: number, totalTokens: number } {
+  const promptTokens = usage?.inputTokens ?? 0
+  const completionTokens = usage?.outputTokens ?? 0
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage?.totalTokens ?? promptTokens + completionTokens,
   }
 }
 
@@ -458,6 +967,16 @@ export async function getStatus(): Promise<ChronicleStatus> {
     .get()
   const snapshotCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_snapshots`)?.count ?? 0
   const memoryCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_memories`)?.count ?? 0
+  const accessibilitySnapshotCount = db()
+    .select({ value: count() })
+    .from(chronicleAccessibilitySnapshots)
+    .get()?.value ?? 0
+  const audioTranscriptCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_transcripts`)?.count ?? 0
+  const audioRawSegmentCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_raw_segments`)?.count ?? 0
+  const activitySegmentCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_activity_segments`)?.count ?? 0
+  const pipelineRunCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_pipeline_runs`)?.count ?? 0
+  const knowledgeCardCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_knowledge_cards WHERE status != 'deleted'`)?.count ?? 0
+  const dreamRunCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_dream_runs`)?.count ?? 0
 
   return {
     available: config.enabled && !!config.profileId,
@@ -473,6 +992,26 @@ export async function getStatus(): Promise<ChronicleStatus> {
     totalSummaries: memoryCount,
     totalMessages: db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_messages`)?.count ?? 0,
     lastMessageAt: db().select({ messageAt: chronicleMessages.messageAt }).from(chronicleMessages).orderBy(desc(chronicleMessages.messageAt)).limit(1).get()?.messageAt ?? null,
+    totalAccessibilitySnapshots: accessibilitySnapshotCount,
+    lastAccessibilitySnapshotAt: db().select({ capturedAt: chronicleAccessibilitySnapshots.capturedAt }).from(chronicleAccessibilitySnapshots).orderBy(desc(chronicleAccessibilitySnapshots.capturedAt)).limit(1).get()?.capturedAt ?? null,
+    totalAudioTranscripts: audioTranscriptCount,
+    lastAudioTranscriptAt: db().select({ startedAt: chronicleAudioTranscripts.startedAt }).from(chronicleAudioTranscripts).orderBy(desc(chronicleAudioTranscripts.startedAt)).limit(1).get()?.startedAt ?? null,
+    totalAudioRawSegments: audioRawSegmentCount,
+    lastAudioRawSegmentAt: db().select({ recordedAt: chronicleAudioRawSegments.recordedAt }).from(chronicleAudioRawSegments).orderBy(desc(chronicleAudioRawSegments.recordedAt)).limit(1).get()?.recordedAt ?? null,
+    totalActivitySegments: activitySegmentCount,
+    lastActivitySegmentAt: db().select({ startedAt: chronicleActivitySegments.startedAt }).from(chronicleActivitySegments).orderBy(desc(chronicleActivitySegments.startedAt)).limit(1).get()?.startedAt ?? null,
+    totalPipelineRuns: pipelineRunCount,
+    lastPipelineRunAt: db().select({ startedAt: chroniclePipelineRuns.startedAt }).from(chroniclePipelineRuns).orderBy(desc(chroniclePipelineRuns.startedAt)).limit(1).get()?.startedAt ?? null,
+    totalKnowledgeCards: knowledgeCardCount,
+    lastKnowledgeCardAt: db().select({ updatedAt: chronicleKnowledgeCards.updatedAt }).from(chronicleKnowledgeCards).orderBy(desc(chronicleKnowledgeCards.updatedAt)).limit(1).get()?.updatedAt ?? null,
+    totalDreamRuns: dreamRunCount,
+    lastDreamRunAt: db().select({ startedAt: chronicleDreamRuns.startedAt }).from(chronicleDreamRuns).orderBy(desc(chronicleDreamRuns.startedAt)).limit(1).get()?.startedAt ?? null,
+    activityPipelineEnabled: config.activityPipelineEnabled,
+    activityPipelineRunning,
+    activityPipelineIntervalMs: config.activityPipelineIntervalMs,
+    activityPipelineBatchSize: config.activityPipelineBatchSize,
+    audioCaptureEnabled: config.audioCaptureEnabled,
+    audioRuntimeStatus: getAudioRuntimeStatus(config, daemonInfo),
     configuredModel: await getConfiguredModel(config),
   }
 }
@@ -484,8 +1023,9 @@ export function getDaemonResources() {
 export async function initDaemon(): Promise<void> {
   const config = await getConfig()
   if (config.enabled) {
-    DaemonManager.startDaemon(config.storageRoot)
+    DaemonManager.startDaemon(toDaemonOptions(config))
   }
+  restartActivityPipelineScheduler(config)
 }
 
 export function startSlackBackgroundSync(): void {
@@ -508,6 +1048,107 @@ export function stopSlackBackgroundSync(): void {
   slackSyncTimer = null
   slackSyncRunning = false
   activeSlackSyncs.clear()
+}
+
+export function stopActivityPipelineScheduler(): void {
+  if (!activityPipelineTimer) {
+    return
+  }
+  clearInterval(activityPipelineTimer)
+  activityPipelineTimer = null
+  activityPipelineRunning = false
+}
+
+export function restartActivityPipelineScheduler(config?: ChronicleConfig): void {
+  stopActivityPipelineScheduler()
+  const current = config ?? syncConfig()
+  if (!current.enabled || !current.activityPipelineEnabled) {
+    return
+  }
+  void runActivityPipelineTick()
+  activityPipelineTimer = setInterval(() => {
+    void runActivityPipelineTick()
+  }, current.activityPipelineIntervalMs)
+}
+
+export async function runActivityPipelineTick(): Promise<{
+  checked: number
+  triaged: number
+  summarized: number
+  crystallized: number
+  skipped: number
+  errors: number
+}> {
+  if (activityPipelineRunning) {
+    return { checked: 0, triaged: 0, summarized: 0, crystallized: 0, skipped: 0, errors: 0 }
+  }
+
+  activityPipelineRunning = true
+  try {
+    const config = await getConfig()
+    if (!config.enabled || !config.activityPipelineEnabled) {
+      return { checked: 0, triaged: 0, summarized: 0, crystallized: 0, skipped: 0, errors: 0 }
+    }
+    const segments = db()
+      .select()
+      .from(chronicleActivitySegments)
+      .where(sql`${chronicleActivitySegments.pipelineStatus} IN ('collecting', 'triaged', 'summarized', 'error') AND ${chronicleActivitySegments.isCrystallized} = 0`)
+      .orderBy(chronicleActivitySegments.startedAt)
+      .limit(config.activityPipelineBatchSize)
+      .all()
+    let triaged = 0
+    let summarized = 0
+    let crystallized = 0
+    let skipped = 0
+    let errors = 0
+    for (const segment of segments) {
+      try {
+        const result = await advanceActivitySegmentPipeline(segment.id)
+        if (result.status === 'error') {
+          errors += 1
+        }
+        else if (result.status === 'skipped') {
+          skipped += 1
+        }
+        if (result.run.stage === 'triage') {
+          triaged += 1
+        }
+        else if (result.run.stage === 'summarization') {
+          summarized += 1
+        }
+        else if (result.run.stage === 'crystallization') {
+          crystallized += 1
+        }
+      }
+      catch (error) {
+        errors += 1
+        recordEvent({
+          type: 'activity',
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+          attrs: { segmentId: segment.id, stage: 'activity-pipeline-scheduler' },
+        })
+      }
+    }
+    return { checked: segments.length, triaged, summarized, crystallized, skipped, errors }
+  }
+  finally {
+    activityPipelineRunning = false
+  }
+}
+
+async function advanceActivitySegmentPipeline(segmentId: string): Promise<ActivityPipelineActionResult> {
+  const segment = db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()
+  if (!segment) {
+    throw new AppError({ code: 'chronicle_activity_segment_not_found', status: 404, message: 'Chronicle activity segment not found' })
+  }
+  if (segment.pipelineStatus === 'collecting' || segment.pipelineStatus === 'error') {
+    return triageActivitySegment(segmentId)
+  }
+  if (segment.pipelineStatus === 'triaged') {
+    return summarizeActivitySegment(segmentId)
+  }
+  return crystallizeActivitySegment(segmentId)
 }
 
 export async function runSlackSyncTick(): Promise<{ checked: number, synced: number, errors: number }> {
@@ -583,8 +1224,30 @@ export function getTimeline(limit = 50): TimelineEntry[] {
       channelName: row.channelName,
       userName: row.userName,
     }))
+  const audioTranscripts = db()
+    .select()
+    .from(chronicleAudioTranscripts)
+    .orderBy(desc(chronicleAudioTranscripts.startedAt))
+    .limit(limit)
+    .all()
+    .map(row => ({
+      id: row.id,
+      sourceType: 'audio' as const,
+      capturedAt: new Date(row.startedAt * 1000).toISOString(),
+      capturedAtUnix: row.startedAt,
+      displayId: 0,
+      segmentDir: '',
+      framePath: '',
+      ocrText: buildAudioTranscriptPreview(row.id),
+      appBundleId: row.appBundleId ?? 'audio',
+      windowTitle: row.title ?? row.windowTitle ?? 'Audio transcript',
+      platform: 'audio' as const,
+      channelId: null,
+      channelName: row.title,
+      userName: null,
+    }))
 
-  return [...snapshots, ...messages]
+  return [...snapshots, ...messages, ...audioTranscripts]
     .sort((left, right) => right.capturedAtUnix - left.capturedAtUnix)
     .slice(0, limit)
 }
@@ -596,26 +1259,78 @@ export function getMemories(limit = 20): MemoryEntry[] {
     .orderBy(desc(chronicleMemories.createdAt))
     .limit(limit)
     .all()
-    .map(toMemoryEntry)
+    .map(row => toMemoryEntry(row))
 }
 
 export function searchMemories(query: string, limit = 20): MemoryEntry[] {
+  reconcileMemorySearchIndex()
   const needle = query.trim()
   if (!needle) {
     return getMemories(limit)
   }
-  return db()
+  const terms = tokenizeMemoryText(needle).slice(0, MEMORY_SEARCH_MAX_TERMS)
+  if (terms.length === 0) {
+    return []
+  }
+
+  const keywordRows = db()
+    .select()
+    .from(chronicleMemoryKeywords)
+    .where(inArray(chronicleMemoryKeywords.term, terms))
+    .all()
+
+  const scoreByMemoryId = new Map<string, MemorySearchScore>()
+  for (const row of keywordRows) {
+    const phraseBoost = terms.includes(row.term) ? 1 : 0
+    const current = scoreByMemoryId.get(row.memoryId) ?? { keywordScore: 0, semanticScore: 0 }
+    current.keywordScore += row.occurrences * row.weight + phraseBoost
+    scoreByMemoryId.set(row.memoryId, current)
+  }
+
+  const queryVector = buildLexicalEmbeddingVector(needle)
+  const embeddingRows = db()
+    .select()
+    .from(chronicleMemoryEmbeddings)
+    .where(eq(chronicleMemoryEmbeddings.status, 'ready'))
+    .all()
+
+  for (const row of embeddingRows) {
+    const vector = parseEmbeddingVector(row.vectorJson, row.dimensions)
+    if (!vector) {
+      continue
+    }
+    const semanticScore = cosineSimilarity(queryVector, vector)
+    if (semanticScore < MEMORY_SEMANTIC_MIN_SCORE) {
+      continue
+    }
+    const current = scoreByMemoryId.get(row.memoryId) ?? { keywordScore: 0, semanticScore: 0 }
+    current.semanticScore = Math.max(current.semanticScore, semanticScore)
+    scoreByMemoryId.set(row.memoryId, current)
+  }
+
+  if (scoreByMemoryId.size === 0) {
+    return []
+  }
+
+  const rows = db()
     .select()
     .from(chronicleMemories)
-    .where(or(
-      sql`instr(lower(${chronicleMemories.content}), lower(${needle})) > 0`,
-      sql`instr(lower(coalesce(${chronicleMemories.prompt}, '')), lower(${needle})) > 0`,
-      sql`instr(lower(${chronicleMemories.metadataJson}), lower(${needle})) > 0`,
-    ))
-    .orderBy(desc(chronicleMemories.createdAt))
-    .limit(limit)
+    .where(inArray(chronicleMemories.id, [...scoreByMemoryId.keys()]))
     .all()
-    .map(toMemoryEntry)
+
+  const normalizedNeedle = canonicalizeMemoryContent(needle)
+  return rows
+    .map(row => ({
+      row,
+      match: scoreByMemoryId.get(row.id) ?? { keywordScore: 0, semanticScore: 0 },
+      score: buildCombinedMemorySearchScore(
+        scoreByMemoryId.get(row.id) ?? { keywordScore: 0, semanticScore: 0 },
+        canonicalizeMemoryContent(row.content).includes(normalizedNeedle),
+      ),
+    }))
+    .sort((left, right) => right.score - left.score || right.row.createdAt - left.row.createdAt)
+    .slice(0, limit)
+    .map(({ row, match }) => toMemoryEntry(row, match))
 }
 
 export async function getModelResources(): Promise<ModelResourceEntry[]> {
@@ -672,7 +1387,7 @@ export async function verifyModelResource(
     db().update(chronicleModelResources).set({
       status: 'missing',
       displayName: manifest.displayName,
-      path: rootRelativeModelPath(firstModelPath),
+      path: null,
       version: manifest.version,
       message: `Missing ${missingRequired.length} required model file${missingRequired.length === 1 ? '' : 's'}.`,
       sizeBytes: presentSizeBytes,
@@ -738,11 +1453,12 @@ export async function installModelResource(
 
   const source = input.source ?? 'manifest'
   const localFiles = input.files ?? []
-  if (source === 'local-files' && localFiles.length === 0) {
+  const sourceRoot = normalizeNullableString(input.sourceRoot)
+  if (source === 'local-files' && localFiles.length === 0 && !sourceRoot) {
     throw new AppError({
       code: 'chronicle_model_resource_source_missing',
       status: 400,
-      message: 'Local model resource install requires files',
+      message: 'Local model resource install requires files or sourceRoot',
     })
   }
   if (source === 'manifest') {
@@ -773,11 +1489,11 @@ export async function installModelResource(
       await mkdir(dirname(targetPath), { recursive: true })
 
       if (source === 'local-files') {
-        const resolvedSource = await resolveModelResourceLocalSource(localFiles, file)
+        const resolvedSource = await resolveModelResourceLocalSource(localFiles, sourceRoot, file, manifest.files.length)
         await copyFile(resolvedSource, tempPath)
       }
       else {
-        await downloadToFile(file.sourceUrl!, tempPath)
+        await downloadModelResourceFile(file, tempPath)
       }
 
       await verifyStagedModelFile(file, tempPath)
@@ -858,6 +1574,10 @@ export function listMessageSources(): MessageSourceEntry[] {
 export function createMessageSource(input: MessageSourceInput): MessageSourceEntry {
   const now = currentUnixSeconds()
   const id = randomUUID()
+  const sourceConfig = buildSlackSourceConfig({
+    realtimeMode: input.realtimeMode,
+    signingSecretRef: input.signingSecretRef,
+  })
   db().insert(chronicleMessageSources).values({
     id,
     platform: input.platform,
@@ -867,7 +1587,7 @@ export function createMessageSource(input: MessageSourceInput): MessageSourceEnt
     teamId: normalizeNullableString(input.teamId),
     botTokenRef: normalizeNullableString(input.botTokenRef),
     channelIdsJson: JSON.stringify(normalizeChannelIds(input.channelIds)),
-    configJson: '{}',
+    configJson: JSON.stringify(sourceConfig),
     status: input.enabled ? 'idle' : 'disabled',
     createdAt: now,
     updatedAt: now,
@@ -887,6 +1607,10 @@ export function updateMessageSource(sourceId: string, input: MessageSourcePatchI
     throw new AppError({ code: 'chronicle_message_source_not_found', status: 404, message: 'Chronicle message source not found' })
   }
   const nextEnabled = input.enabled ?? existing.enabled
+  const nextConfig = mergeSlackSourceConfig(existing.configJson, {
+    realtimeMode: input.realtimeMode,
+    signingSecretRef: input.signingSecretRef,
+  })
   db().update(chronicleMessageSources).set({
     label: input.label ?? existing.label,
     enabled: nextEnabled,
@@ -894,6 +1618,7 @@ export function updateMessageSource(sourceId: string, input: MessageSourcePatchI
     teamId: input.teamId === undefined ? existing.teamId : normalizeNullableString(input.teamId),
     botTokenRef: input.botTokenRef === undefined ? existing.botTokenRef : normalizeNullableString(input.botTokenRef),
     channelIdsJson: input.channelIds === undefined ? existing.channelIdsJson : JSON.stringify(normalizeChannelIds(input.channelIds)),
+    configJson: JSON.stringify(nextConfig),
     status: nextEnabled ? existing.status === 'disabled' ? 'idle' : existing.status : 'disabled',
     updatedAt: currentUnixSeconds(),
   }).where(eq(chronicleMessageSources.id, sourceId)).run()
@@ -921,6 +1646,2018 @@ export function listMessages(limit = 50): MessageEntry[] {
     .map(toMessageEntry)
 }
 
+export function listAudioTranscripts(limit = 20): AudioTranscriptEntry[] {
+  return db()
+    .select()
+    .from(chronicleAudioTranscripts)
+    .orderBy(desc(chronicleAudioTranscripts.startedAt))
+    .limit(limit)
+    .all()
+    .map(row => toAudioTranscriptEntry(row))
+}
+
+export function listAudioRawSegments(limit = 20): AudioRawSegmentEntry[] {
+  return db()
+    .select()
+    .from(chronicleAudioRawSegments)
+    .orderBy(desc(chronicleAudioRawSegments.recordedAt))
+    .limit(limit)
+    .all()
+    .map(toAudioRawSegmentEntry)
+}
+
+export function listAccessibilitySnapshots(limit = 20): AccessibilitySnapshotEntry[] {
+  return db()
+    .select()
+    .from(chronicleAccessibilitySnapshots)
+    .orderBy(desc(chronicleAccessibilitySnapshots.capturedAt))
+    .limit(limit)
+    .all()
+    .map(toAccessibilitySnapshotEntry)
+}
+
+export function listActivitySegments(limit = 20): ActivitySegmentEntry[] {
+  return db()
+    .select()
+    .from(chronicleActivitySegments)
+    .orderBy(desc(chronicleActivitySegments.startedAt))
+    .limit(limit)
+    .all()
+    .map(toActivitySegmentEntry)
+}
+
+export function listPipelineRuns(limit = 20): PipelineRunEntry[] {
+  return db()
+    .select()
+    .from(chroniclePipelineRuns)
+    .orderBy(desc(chroniclePipelineRuns.startedAt))
+    .limit(limit)
+    .all()
+    .map(toPipelineRunEntry)
+}
+
+export function listKnowledgeCards(input: {
+  limit?: number
+  dimension?: KnowledgeDimension
+  cardType?: KnowledgeCardType
+  includeDeleted?: boolean
+} = {}): KnowledgeCardEntry[] {
+  return db()
+    .select()
+    .from(chronicleKnowledgeCards)
+    .orderBy(desc(chronicleKnowledgeCards.updatedAt))
+    .limit(Math.max(1, Math.min(input.limit ?? 50, 200)))
+    .all()
+    .filter(row => input.includeDeleted || row.status !== 'deleted')
+    .filter(row => !input.dimension || row.dimension === input.dimension)
+    .filter(row => !input.cardType || row.cardType === input.cardType)
+    .map(toKnowledgeCardEntry)
+}
+
+export function listKnowledgeVersions(knowledgeId: string): KnowledgeVersionEntry[] {
+  return db()
+    .select()
+    .from(chronicleKnowledgeVersions)
+    .where(eq(chronicleKnowledgeVersions.knowledgeId, knowledgeId))
+    .orderBy(desc(chronicleKnowledgeVersions.version))
+    .all()
+    .map(toKnowledgeVersionEntry)
+}
+
+export function listDreamRuns(limit = 20): DreamRunEntry[] {
+  return db()
+    .select()
+    .from(chronicleDreamRuns)
+    .orderBy(desc(chronicleDreamRuns.startedAt))
+    .limit(Math.max(1, Math.min(limit, 100)))
+    .all()
+    .map(toDreamRunEntry)
+}
+
+export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
+  const dryRun = input.dryRun !== false && input.applyMerge !== true
+  const runType: DreamRunType = dryRun ? 'dry-run' : input.runType ?? 'merge'
+  const threshold = clampNumber(input.similarityThreshold, 0.1, 1, 0.76)
+  const limit = Math.max(2, Math.min(input.limit ?? 80, 300))
+  const now = currentUnixSeconds()
+  const runId = randomUUID()
+  db().insert(chronicleDreamRuns).values({
+    id: runId,
+    workspaceId: null,
+    runType,
+    status: 'running',
+    startedAt: now,
+    endedAt: null,
+    inputCount: 0,
+    outputCount: 0,
+    mergedCount: 0,
+    deletedCount: 0,
+    sourceKnowledgeIdsJson: '[]',
+    outputKnowledgeIdsJson: '[]',
+    configJson: JSON.stringify({
+      dryRun,
+      runType,
+      limit,
+      similarityThreshold: threshold,
+      vectorMode: 'chronicle-lexical/v1',
+    }),
+    resultJson: '{}',
+    errorMessage: null,
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+
+  try {
+    const cards = db()
+      .select()
+      .from(chronicleKnowledgeCards)
+      .orderBy(desc(chronicleKnowledgeCards.updatedAt))
+      .limit(limit)
+      .all()
+      .filter(card => card.status === 'active')
+    const candidates = buildDreamMergeCandidates(cards, threshold)
+    const result = db().transaction((tx) => {
+      const outputKnowledgeIds: string[] = []
+      for (const candidate of candidates) {
+        let outputKnowledgeId: string | null = null
+        if (!dryRun) {
+          outputKnowledgeId = applyDreamMergeCandidate(tx, candidate, runId, now)
+          outputKnowledgeIds.push(outputKnowledgeId)
+        }
+        tx.insert(chronicleDreamCandidates).values({
+          id: randomUUID(),
+          runId,
+          workspaceId: candidate.workspaceId,
+          candidateType: 'merge',
+          scoreBps: ratioToBps(candidate.score),
+          sourceKnowledgeIdsJson: JSON.stringify(candidate.sourceKnowledgeIds),
+          proposedTitle: candidate.proposedTitle,
+          proposedContent: candidate.proposedContent,
+          proposedCardType: candidate.proposedCardType,
+          proposedDimension: candidate.proposedDimension,
+          outputKnowledgeId,
+          status: outputKnowledgeId ? 'applied' : 'proposed',
+          reason: candidate.reason,
+          metadataJson: JSON.stringify({ vectorMode: 'chronicle-lexical/v1' }),
+          createdAt: now,
+          updatedAt: now,
+        }).run()
+      }
+      const sourceKnowledgeIds = uniqueStrings(candidates.flatMap(candidate => candidate.sourceKnowledgeIds))
+      tx.update(chronicleDreamRuns).set({
+        status: 'completed',
+        endedAt: now,
+        inputCount: cards.length,
+        outputCount: dryRun ? candidates.length : outputKnowledgeIds.length,
+        mergedCount: dryRun ? 0 : outputKnowledgeIds.length,
+        deletedCount: 0,
+        sourceKnowledgeIdsJson: JSON.stringify(sourceKnowledgeIds),
+        outputKnowledgeIdsJson: JSON.stringify(outputKnowledgeIds),
+        resultJson: JSON.stringify({
+          dryRun,
+          vectorMode: 'chronicle-lexical/v1',
+          candidateCount: candidates.length,
+          candidates: candidates.slice(0, 50),
+        }),
+        updatedAt: now,
+      }).where(eq(chronicleDreamRuns.id, runId)).run()
+      return tx.select().from(chronicleDreamRuns).where(eq(chronicleDreamRuns.id, runId)).get()!
+    })
+    recordEvent({
+      type: 'activity',
+      status: 'success',
+      message: dryRun ? 'Chronicle dream merge dry run completed' : 'Chronicle dream merge completed',
+      attrs: { runId, candidateCount: candidates.length, dryRun },
+    })
+    return toDreamRunEntry(result)
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const endedAt = currentUnixSeconds()
+    db().update(chronicleDreamRuns).set({
+      status: 'failed',
+      endedAt,
+      errorMessage: message,
+      updatedAt: endedAt,
+    }).where(eq(chronicleDreamRuns.id, runId)).run()
+    recordEvent({ type: 'activity', status: 'error', message, attrs: { runId, stage: 'dream-run' } })
+    return toDreamRunEntry(db().select().from(chronicleDreamRuns).where(eq(chronicleDreamRuns.id, runId)).get()!)
+  }
+}
+
+export async function triageActivitySegment(segmentId: string): Promise<ActivityPipelineActionResult> {
+  const context = getActivitySegmentContext(segmentId)
+  const evidenceHash = buildActivityEvidenceHash(context)
+  const sourceKey = `activity-segment:${segmentId}:triage:${evidenceHash}`
+  const completed = getCompletedActivityPipelineRun(sourceKey, context.segment.id)
+  if (completed) {
+    return completed
+  }
+  const now = currentUnixSeconds()
+  const run = upsertActivityPipelineRun({
+    sourceKey,
+    segment: context.segment,
+    stage: 'triage',
+    status: 'running',
+    startedAt: now,
+    metadata: { evidenceCounts: context.evidenceCounts, evidenceHash },
+  })
+  const config = await getConfig()
+  const modelContext = resolveChronicleLanguageModelContext(config)
+  if (typeof modelContext === 'string') {
+    return failActivityPipelineRun(context.segment.id, run.id, 'triage', modelContext)
+  }
+
+  try {
+    const prompt = buildActivityTriagePrompt(context)
+    const result = await generateText({
+      model: modelContext.model,
+      prompt,
+      maxRetries: 1,
+      timeout: 120_000,
+    })
+    const triage = parseActivityTriageResult(result.text)
+    const endedAt = currentUnixSeconds()
+    const metadata = {
+      ...parseJson<Record<string, unknown>>(context.segment.metadataJson, {}),
+      triage: {
+        keep: triage.keep,
+        reason: triage.reason,
+        priority: triage.priority,
+        modelId: modelContext.modelId,
+        profileId: modelContext.profileId,
+        evidenceHash,
+        completedAt: endedAt,
+      },
+    }
+    db().update(chronicleActivitySegments).set({
+      segmentType: triage.segmentType,
+      title: triage.title ?? context.segment.title,
+      pipelineStatus: 'triaged',
+      metadataJson: JSON.stringify(metadata),
+      updatedAt: endedAt,
+    }).where(eq(chronicleActivitySegments.id, context.segment.id)).run()
+
+    db().update(chroniclePipelineRuns).set({
+      status: triage.keep ? 'success' : 'skipped',
+      endedAt,
+      errorMessage: null,
+      triageResultsJson: JSON.stringify({
+        ...triage,
+        rawText: result.text,
+        usage: normalizeLanguageModelUsage(result.usage),
+      }),
+      metadataJson: JSON.stringify({
+        evidenceCounts: context.evidenceCounts,
+        evidenceHash,
+        modelId: modelContext.modelId,
+        profileId: modelContext.profileId,
+      }),
+      updatedAt: endedAt,
+    }).where(eq(chroniclePipelineRuns.id, run.id)).run()
+
+    recordEvent({
+      type: 'activity',
+      status: triage.keep ? 'success' : 'info',
+      message: triage.keep ? 'Chronicle activity segment triaged' : 'Chronicle activity segment skipped by triage',
+      attrs: { segmentId: context.segment.id, runId: run.id, reason: triage.reason },
+    })
+
+    return {
+      segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, context.segment.id)).get()!),
+      run: toPipelineRunEntry(db().select().from(chroniclePipelineRuns).where(eq(chroniclePipelineRuns.id, run.id)).get()!),
+      memoryId: null,
+      status: triage.keep ? 'success' : 'skipped',
+      message: triage.reason,
+    }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return failActivityPipelineRun(context.segment.id, run.id, 'triage', message)
+  }
+}
+
+export async function summarizeActivitySegment(segmentId: string): Promise<ActivityPipelineActionResult> {
+  const triageResult = await triageActivitySegment(segmentId)
+  if (triageResult.status === 'error') {
+    return triageResult
+  }
+  if (triageResult.status === 'skipped') {
+    return triageResult
+  }
+
+  const context = getActivitySegmentContext(segmentId)
+  const evidenceHash = buildActivityEvidenceHash(context)
+  const sourceKey = `activity-segment:${segmentId}:summarization:${evidenceHash}`
+  const completed = getCompletedActivityPipelineRun(sourceKey, context.segment.id)
+  if (completed) {
+    return completed
+  }
+  const now = currentUnixSeconds()
+  const run = upsertActivityPipelineRun({
+    sourceKey,
+    segment: context.segment,
+    stage: 'summarization',
+    status: 'running',
+    startedAt: now,
+    metadata: { evidenceCounts: context.evidenceCounts, evidenceHash },
+  })
+  const config = await getConfig()
+  const modelContext = resolveChronicleLanguageModelContext(config)
+  if (typeof modelContext === 'string') {
+    return failActivityPipelineRun(context.segment.id, run.id, 'summarization', modelContext)
+  }
+
+  try {
+    const prompt = buildActivitySummaryPrompt(context)
+    const result = await generateText({
+      model: modelContext.model,
+      prompt,
+      maxRetries: 1,
+      timeout: 120_000,
+    })
+    const summary = parseActivitySummaryResult(result.text)
+    const usage = normalizeLanguageModelUsage(result.usage)
+    const memory = recordMemory({
+      sourceId: `activity-segment:${segmentId}:summary`,
+      windowType: '10min',
+      createdAt: new Date(context.segment.endedAt * 1000).toISOString(),
+      content: buildActivitySummaryMemoryContent(context, summary),
+      summaryKind: 'llm',
+      metadata: {
+        source: 'activity-segment-summary',
+        segmentId,
+        title: summary.title,
+        keyPoints: summary.keyPoints,
+        entities: summary.entities,
+        followUps: summary.followUps,
+      },
+    }, {
+      prompt,
+      modelId: modelContext.modelId,
+      profileId: modelContext.profileId,
+      usage,
+      sourceSnapshotIds: context.sourceRefs.snapshotIds ?? [],
+      skipActivityAssignment: true,
+    })
+    const endedAt = currentUnixSeconds()
+    const metadata = {
+      ...parseJson<Record<string, unknown>>(context.segment.metadataJson, {}),
+      summarization: {
+        memoryId: memory.id,
+        modelId: modelContext.modelId,
+        profileId: modelContext.profileId,
+        evidenceHash,
+        completedAt: endedAt,
+      },
+    }
+    db().update(chronicleActivitySegments).set({
+      title: summary.title || context.segment.title,
+      summary: summary.summary,
+      pipelineStatus: 'summarized',
+      metadataJson: JSON.stringify(metadata),
+      updatedAt: endedAt,
+    }).where(eq(chronicleActivitySegments.id, context.segment.id)).run()
+    db().update(chroniclePipelineRuns).set({
+      status: 'success',
+      endedAt,
+      errorMessage: null,
+      memoryIdsJson: JSON.stringify([memory.id]),
+      memoriesCount: 1,
+      summaryResultsJson: JSON.stringify({
+        ...summary,
+        memoryId: memory.id,
+        rawText: result.text,
+        usage,
+      }),
+      metadataJson: JSON.stringify({
+        evidenceCounts: context.evidenceCounts,
+        evidenceHash,
+        modelId: modelContext.modelId,
+        profileId: modelContext.profileId,
+      }),
+      updatedAt: endedAt,
+    }).where(eq(chroniclePipelineRuns.id, run.id)).run()
+    recordEvent({
+      type: 'activity',
+      status: 'success',
+      message: 'Chronicle activity segment summarized',
+      memoryId: memory.id,
+      attrs: { segmentId, runId: run.id, modelId: modelContext.modelId },
+    })
+    return {
+      segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, context.segment.id)).get()!),
+      run: toPipelineRunEntry(db().select().from(chroniclePipelineRuns).where(eq(chroniclePipelineRuns.id, run.id)).get()!),
+      memoryId: memory.id,
+      status: 'success',
+      message: 'Activity segment summarized',
+    }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return failActivityPipelineRun(context.segment.id, run.id, 'summarization', message)
+  }
+}
+
+export async function crystallizeActivitySegment(segmentId: string): Promise<ActivityPipelineActionResult> {
+  const currentSegment = db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()
+  if (!currentSegment) {
+    throw new AppError({ code: 'chronicle_activity_segment_not_found', status: 404, message: 'Chronicle activity segment not found' })
+  }
+  if (!currentSegment.summary && currentSegment.pipelineStatus !== 'crystallized') {
+    const summaryResult = await summarizeActivitySegment(segmentId)
+    if (summaryResult.status !== 'success') {
+      return summaryResult
+    }
+  }
+
+  const context = getActivitySegmentContext(segmentId)
+  const evidenceHash = buildActivityCrystallizationEvidenceHash(context)
+  const sourceKey = `activity-segment:${segmentId}:crystallization:${evidenceHash}`
+  const completed = getCompletedCrystallizationRun(sourceKey, context.segment.id)
+  if (completed) {
+    return completed
+  }
+
+  const now = currentUnixSeconds()
+  const run = upsertActivityPipelineRun({
+    sourceKey,
+    segment: context.segment,
+    stage: 'crystallization',
+    status: 'running',
+    startedAt: now,
+    metadata: { evidenceCounts: context.evidenceCounts, evidenceHash },
+  })
+  const config = await getConfig()
+  const modelContext = resolveChronicleLanguageModelContext(config)
+  if (typeof modelContext === 'string') {
+    return failActivityPipelineRun(context.segment.id, run.id, 'crystallization', modelContext)
+  }
+
+  try {
+    const prompt = buildActivityCrystallizationPrompt(context)
+    const result = await generateText({
+      model: modelContext.model,
+      prompt,
+      maxRetries: 1,
+      timeout: 120_000,
+    })
+    const parsed = parseActivityCrystallizationResult(result.text)
+    const usage = normalizeLanguageModelUsage(result.usage)
+    const endedAt = currentUnixSeconds()
+    const memoryIds = getActivityCrystallizationMemoryIds(context)
+
+    const cards = db().transaction((tx) => {
+      const writtenCards: Array<typeof chronicleKnowledgeCards.$inferSelect> = []
+      const versionIds: string[] = []
+
+      for (const draft of parsed.knowledgeCards) {
+        const written = upsertKnowledgeCardFromDraft(tx, {
+          draft,
+          context,
+          runId: run.id,
+          modelId: modelContext.modelId,
+          profileId: modelContext.profileId,
+          evidenceHash,
+          memoryIds,
+          now: endedAt,
+        })
+        writtenCards.push(written.card)
+        versionIds.push(written.versionId)
+      }
+
+      const metadata = {
+        ...parseJson<Record<string, unknown>>(context.segment.metadataJson, {}),
+        crystallization: {
+          knowledgeCardIds: writtenCards.map(card => card.id),
+          modelId: modelContext.modelId,
+          profileId: modelContext.profileId,
+          evidenceHash,
+          completedAt: endedAt,
+        },
+      }
+      tx.update(chronicleActivitySegments).set({
+        pipelineStatus: writtenCards.length > 0 ? 'crystallized' : context.segment.pipelineStatus,
+        isCrystallized: writtenCards.length > 0,
+        metadataJson: JSON.stringify(metadata),
+        updatedAt: endedAt,
+      }).where(eq(chronicleActivitySegments.id, context.segment.id)).run()
+      tx.update(chroniclePipelineRuns).set({
+        status: writtenCards.length > 0 ? 'success' : 'skipped',
+        endedAt,
+        errorMessage: null,
+        memoryIdsJson: JSON.stringify(memoryIds),
+        memoriesCount: memoryIds.length,
+        segmentIdsJson: JSON.stringify([context.segment.id]),
+        segmentsCount: 1,
+        summaryResultsJson: JSON.stringify({
+          summary: parsed.summary,
+          knowledgeCardIds: writtenCards.map(card => card.id),
+          versionIds,
+          rejectedCount: parsed.rejectedCount,
+          rawText: result.text.slice(0, 16_000),
+          usage,
+        }),
+        metadataJson: JSON.stringify({
+          evidenceCounts: context.evidenceCounts,
+          evidenceHash,
+          modelId: modelContext.modelId,
+          profileId: modelContext.profileId,
+          promptHash: hashText(prompt),
+          promptVersion: 'chronicle-crystallization-v1',
+        }),
+        updatedAt: endedAt,
+      }).where(eq(chroniclePipelineRuns.id, run.id)).run()
+
+      return writtenCards.map(toKnowledgeCardEntry)
+    })
+
+    recordEvent({
+      type: 'activity',
+      status: cards.length > 0 ? 'success' : 'info',
+      message: cards.length > 0 ? 'Chronicle activity segment crystallized' : 'Chronicle activity segment produced no knowledge cards',
+      attrs: { segmentId, runId: run.id, knowledgeCardIds: cards.map(card => card.id) },
+    })
+
+    return {
+      segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, context.segment.id)).get()!),
+      run: toPipelineRunEntry(db().select().from(chroniclePipelineRuns).where(eq(chroniclePipelineRuns.id, run.id)).get()!),
+      memoryId: memoryIds[0] ?? null,
+      knowledgeCards: cards,
+      status: cards.length > 0 ? 'success' : 'skipped',
+      message: cards.length > 0 ? 'Activity segment crystallized' : 'No durable knowledge cards were produced',
+    }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return failActivityPipelineRun(context.segment.id, run.id, 'crystallization', message)
+  }
+}
+
+function getCompletedActivityPipelineRun(
+  sourceKey: string,
+  segmentId: string,
+): ActivityPipelineActionResult | null {
+  const run = db()
+    .select()
+    .from(chroniclePipelineRuns)
+    .where(eq(chroniclePipelineRuns.sourceKey, sourceKey))
+    .get()
+  if (!run || (run.status !== 'success' && run.status !== 'skipped')) {
+    return null
+  }
+  const memoryIds = parseJson<string[]>(run.memoryIdsJson, [])
+  return {
+    segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()!),
+    run: toPipelineRunEntry(run),
+    memoryId: memoryIds[0] ?? null,
+    status: run.status,
+    message: run.status === 'skipped' ? 'Activity segment was already skipped' : 'Activity pipeline result already exists',
+  }
+}
+
+function getCompletedCrystallizationRun(
+  sourceKey: string,
+  segmentId: string,
+): ActivityPipelineActionResult | null {
+  const run = db()
+    .select()
+    .from(chroniclePipelineRuns)
+    .where(eq(chroniclePipelineRuns.sourceKey, sourceKey))
+    .get()
+  if (!run || (run.status !== 'success' && run.status !== 'skipped')) {
+    return null
+  }
+  const result = parseJson<Record<string, unknown>>(run.summaryResultsJson, {})
+  const knowledgeCardIds = readStringList(result.knowledgeCardIds)
+  const cards = knowledgeCardIds.length === 0
+    ? []
+    : db()
+        .select()
+        .from(chronicleKnowledgeCards)
+        .where(inArray(chronicleKnowledgeCards.id, knowledgeCardIds))
+        .all()
+        .map(toKnowledgeCardEntry)
+  const memoryIds = parseJson<string[]>(run.memoryIdsJson, [])
+  return {
+    segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()!),
+    run: toPipelineRunEntry(run),
+    memoryId: memoryIds[0] ?? null,
+    knowledgeCards: cards,
+    status: run.status,
+    message: run.status === 'skipped' ? 'Activity crystallization produced no cards' : 'Activity crystallization result already exists',
+  }
+}
+
+function getActivitySegmentContext(segmentId: string): ActivitySegmentContext {
+  const segment = db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()
+  if (!segment) {
+    throw new AppError({ code: 'chronicle_activity_segment_not_found', status: 404, message: 'Chronicle activity segment not found' })
+  }
+  const sourceRefs = parseJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+  const evidenceText = [
+    `Segment: ${segment.title ?? 'Untitled activity'}`,
+    `Type: ${segment.segmentType}`,
+    `Window: ${segment.frontApp ?? 'unknown'} / ${segment.title ?? 'unknown'}`,
+    `Time: ${new Date(segment.startedAt * 1000).toISOString()} - ${new Date(segment.endedAt * 1000).toISOString()}`,
+    `Existing summary: ${segment.summary ?? ''}`,
+    buildSnapshotEvidenceText(sourceRefs.snapshotIds ?? []),
+    buildAccessibilityEvidenceText(sourceRefs.accessibilitySnapshotIds ?? []),
+    buildSlackEvidenceText(sourceRefs.messageIds ?? []),
+    buildAudioTranscriptEvidenceText(sourceRefs.audioTranscriptIds ?? []),
+    buildAudioRawEvidenceText(sourceRefs.audioRawSegmentIds ?? []),
+    buildMemoryEvidenceText(sourceRefs.memoryIds ?? []),
+  ].filter(section => section.trim().length > 0).join('\n\n')
+
+  return {
+    segment,
+    sourceRefs,
+    evidenceText,
+    evidenceCounts: countActivitySourceRefs(sourceRefs),
+  }
+}
+
+function buildSnapshotEvidenceText(snapshotIds: string[]): string {
+  const ids = uniqueStrings(snapshotIds)
+  if (ids.length === 0) {
+    return ''
+  }
+  return db()
+    .select()
+    .from(chronicleSnapshots)
+    .where(inArray(chronicleSnapshots.id, ids))
+    .orderBy(chronicleSnapshots.capturedAt)
+    .all()
+    .map(row => [
+      `[Snapshot ${new Date(row.capturedAt * 1000).toISOString()}]`,
+      `App: ${row.appBundleId ?? 'unknown'}`,
+      `Title: ${row.windowTitle ?? 'unknown'}`,
+      `OCR: ${row.ocrText ?? ''}`,
+    ].join('\n'))
+    .join('\n\n')
+}
+
+function buildAccessibilityEvidenceText(accessibilitySnapshotIds: string[]): string {
+  const ids = uniqueStrings(accessibilitySnapshotIds)
+  if (ids.length === 0) {
+    return ''
+  }
+  return db()
+    .select()
+    .from(chronicleAccessibilitySnapshots)
+    .where(inArray(chronicleAccessibilitySnapshots.id, ids))
+    .orderBy(chronicleAccessibilitySnapshots.capturedAt)
+    .all()
+    .map(row => [
+      `[Accessibility ${new Date(row.capturedAt * 1000).toISOString()}]`,
+      `Status: ${row.status}`,
+      `Provider: ${row.provider}`,
+      `Text: ${row.text ?? ''}`,
+    ].join('\n'))
+    .join('\n\n')
+}
+
+function buildSlackEvidenceText(messageIds: string[]): string {
+  const ids = uniqueStrings(messageIds)
+  if (ids.length === 0) {
+    return ''
+  }
+  return db()
+    .select()
+    .from(chronicleMessages)
+    .where(inArray(chronicleMessages.id, ids))
+    .orderBy(chronicleMessages.messageAt)
+    .all()
+    .map(row => `[Slack ${row.channelName ?? row.channelId} ${new Date(row.messageAt * 1000).toISOString()}] ${row.userName ?? row.userId ?? 'unknown'}: ${row.text}`)
+    .join('\n')
+}
+
+function buildAudioTranscriptEvidenceText(audioTranscriptIds: string[]): string {
+  const ids = uniqueStrings(audioTranscriptIds)
+  if (ids.length === 0) {
+    return ''
+  }
+  return db()
+    .select()
+    .from(chronicleAudioTranscripts)
+    .where(inArray(chronicleAudioTranscripts.id, ids))
+    .orderBy(chronicleAudioTranscripts.startedAt)
+    .all()
+    .map(row => [
+      `[Audio Transcript ${new Date(row.startedAt * 1000).toISOString()}]`,
+      `Title: ${row.title ?? row.windowTitle ?? 'Untitled transcript'}`,
+      `Text: ${buildAudioTranscriptPreview(row.id)}`,
+    ].join('\n'))
+    .join('\n\n')
+}
+
+function buildAudioRawEvidenceText(audioRawSegmentIds: string[]): string {
+  const ids = uniqueStrings(audioRawSegmentIds)
+  if (ids.length === 0) {
+    return ''
+  }
+  return db()
+    .select()
+    .from(chronicleAudioRawSegments)
+    .where(inArray(chronicleAudioRawSegments.id, ids))
+    .orderBy(chronicleAudioRawSegments.recordedAt)
+    .all()
+    .map(row => [
+      `[Raw Audio ${new Date(row.recordedAt * 1000).toISOString()}]`,
+      `Source: ${row.source}`,
+      `Active: ${row.active}`,
+      `Duration: ${row.durationMs}ms`,
+      `RMS: ${bpsToRatio(row.rmsBps)}`,
+    ].join('\n'))
+    .join('\n\n')
+}
+
+function buildMemoryEvidenceText(memoryIds: string[]): string {
+  const ids = uniqueStrings(memoryIds)
+  if (ids.length === 0) {
+    return ''
+  }
+  return db()
+    .select()
+    .from(chronicleMemories)
+    .where(inArray(chronicleMemories.id, ids))
+    .orderBy(chronicleMemories.createdAt)
+    .all()
+    .map(row => `[Memory ${new Date(row.createdAt * 1000).toISOString()} ${row.source}] ${row.content}`)
+    .join('\n\n')
+}
+
+function buildActivityEvidenceHash(context: ActivitySegmentContext): string {
+  return hashText(JSON.stringify({
+    segmentId: context.segment.id,
+    startedAt: context.segment.startedAt,
+    endedAt: context.segment.endedAt,
+    sourceRefs: normalizeActivityEvidenceRefs(context.sourceRefs),
+    sourceVersions: buildActivityEvidenceSourceVersions(context.sourceRefs),
+  })).slice(0, 24)
+}
+
+function buildActivityCrystallizationEvidenceHash(context: ActivitySegmentContext): string {
+  return hashText(JSON.stringify({
+    activityEvidenceHash: buildActivityEvidenceHash(context),
+    summaryMemoryVersions: buildActivityCrystallizationMemoryVersions(context),
+  })).slice(0, 24)
+}
+
+function buildActivityCrystallizationMemoryVersions(context: ActivitySegmentContext): Array<{ id: string, updatedAt: number }> {
+  const memoryIds = getActivityCrystallizationMemoryIds(context)
+  if (memoryIds.length === 0) {
+    return []
+  }
+  return db()
+    .select({ id: chronicleMemories.id, updatedAt: chronicleMemories.updatedAt })
+    .from(chronicleMemories)
+    .where(inArray(chronicleMemories.id, memoryIds))
+    .all()
+    .sort(compareActivityEvidenceVersion)
+}
+
+function getActivityCrystallizationMemoryIds(context: ActivitySegmentContext): string[] {
+  const metadata = parseJson<Record<string, unknown>>(context.segment.metadataJson, {})
+  const summarization = isRecord(metadata.summarization) ? metadata.summarization : {}
+  return uniqueStrings([
+    ...readStringList(context.sourceRefs.memoryIds),
+    ...(readString(summarization.memoryId) ? [readString(summarization.memoryId)!] : []),
+  ])
+}
+
+function normalizeActivityEvidenceRefs(sourceRefs: Record<string, string[]>): Record<string, string[]> {
+  const entries: Array<[string, string[]]> = Object.entries(sourceRefs)
+    .map(([key, values]) => [key, uniqueStrings(values).sort()])
+  return Object.fromEntries(entries.sort(([left], [right]) => left.localeCompare(right)))
+}
+
+function buildActivityEvidenceSourceVersions(sourceRefs: Record<string, string[]>): Record<string, Array<{ id: string, updatedAt: number }>> {
+  return {
+    snapshotIds: readActivityEvidenceVersions('snapshotIds', sourceRefs.snapshotIds ?? []),
+    accessibilitySnapshotIds: readActivityEvidenceVersions('accessibilitySnapshotIds', sourceRefs.accessibilitySnapshotIds ?? []),
+    messageIds: readActivityEvidenceVersions('messageIds', sourceRefs.messageIds ?? []),
+    audioTranscriptIds: readActivityEvidenceVersions('audioTranscriptIds', sourceRefs.audioTranscriptIds ?? []),
+    audioRawSegmentIds: readActivityEvidenceVersions('audioRawSegmentIds', sourceRefs.audioRawSegmentIds ?? []),
+    memoryIds: readActivityEvidenceVersions('memoryIds', sourceRefs.memoryIds ?? []),
+  }
+}
+
+function readActivityEvidenceVersions(
+  kind: 'snapshotIds' | 'accessibilitySnapshotIds' | 'messageIds' | 'audioTranscriptIds' | 'audioRawSegmentIds' | 'memoryIds',
+  ids: string[],
+): Array<{ id: string, updatedAt: number }> {
+  const uniqueIds = uniqueStrings(ids)
+  if (uniqueIds.length === 0) {
+    return []
+  }
+  if (kind === 'snapshotIds') {
+    return db().select({ id: chronicleSnapshots.id, updatedAt: chronicleSnapshots.updatedAt }).from(chronicleSnapshots).where(inArray(chronicleSnapshots.id, uniqueIds)).all().sort(compareActivityEvidenceVersion)
+  }
+  if (kind === 'accessibilitySnapshotIds') {
+    return db().select({ id: chronicleAccessibilitySnapshots.id, updatedAt: chronicleAccessibilitySnapshots.updatedAt }).from(chronicleAccessibilitySnapshots).where(inArray(chronicleAccessibilitySnapshots.id, uniqueIds)).all().sort(compareActivityEvidenceVersion)
+  }
+  if (kind === 'messageIds') {
+    return db().select({ id: chronicleMessages.id, updatedAt: chronicleMessages.updatedAt }).from(chronicleMessages).where(inArray(chronicleMessages.id, uniqueIds)).all().sort(compareActivityEvidenceVersion)
+  }
+  if (kind === 'audioTranscriptIds') {
+    return db().select({ id: chronicleAudioTranscripts.id, updatedAt: chronicleAudioTranscripts.updatedAt }).from(chronicleAudioTranscripts).where(inArray(chronicleAudioTranscripts.id, uniqueIds)).all().sort(compareActivityEvidenceVersion)
+  }
+  if (kind === 'audioRawSegmentIds') {
+    return db().select({ id: chronicleAudioRawSegments.id, updatedAt: chronicleAudioRawSegments.updatedAt }).from(chronicleAudioRawSegments).where(inArray(chronicleAudioRawSegments.id, uniqueIds)).all().sort(compareActivityEvidenceVersion)
+  }
+  return db().select({ id: chronicleMemories.id, updatedAt: chronicleMemories.updatedAt }).from(chronicleMemories).where(inArray(chronicleMemories.id, uniqueIds)).all().sort(compareActivityEvidenceVersion)
+}
+
+function compareActivityEvidenceVersion(
+  left: { id: string, updatedAt: number },
+  right: { id: string, updatedAt: number },
+): number {
+  return left.id.localeCompare(right.id)
+}
+
+function upsertActivityPipelineRun(input: {
+  sourceKey: string
+  segment: typeof chronicleActivitySegments.$inferSelect
+  stage: ActivityPipelineStage
+  status: ActivityPipelineRunStatus
+  startedAt: number
+  metadata: Record<string, unknown>
+}): typeof chroniclePipelineRuns.$inferSelect {
+  const now = currentUnixSeconds()
+  const sourceRefs = parseJson<Record<string, string[]>>(input.segment.sourceRefsJson, {})
+  const values = {
+    sessionId: input.segment.sessionId,
+    segmentId: input.segment.id,
+    workspaceId: input.segment.workspaceId,
+    trigger: input.stage === 'summarization' ? 'summarize' as const : 'manual' as const,
+    sourceKey: input.sourceKey,
+    stage: input.stage,
+    status: input.status,
+    startedAt: input.startedAt,
+    endedAt: null,
+    errorMessage: null,
+    snapshotIdsJson: JSON.stringify(sourceRefs.snapshotIds ?? []),
+    messageIdsJson: JSON.stringify(sourceRefs.messageIds ?? []),
+    audioTranscriptIdsJson: JSON.stringify(sourceRefs.audioTranscriptIds ?? []),
+    audioRawSegmentIdsJson: JSON.stringify(sourceRefs.audioRawSegmentIds ?? []),
+    memoryIdsJson: JSON.stringify(sourceRefs.memoryIds ?? []),
+    segmentIdsJson: JSON.stringify([input.segment.id]),
+    snapshotsCount: sourceRefs.snapshotIds?.length ?? 0,
+    messagesCount: sourceRefs.messageIds?.length ?? 0,
+    audioTranscriptsCount: sourceRefs.audioTranscriptIds?.length ?? 0,
+    audioRawSegmentsCount: sourceRefs.audioRawSegmentIds?.length ?? 0,
+    memoriesCount: sourceRefs.memoryIds?.length ?? 0,
+    segmentsCount: 1,
+    metadataJson: JSON.stringify(input.metadata),
+    updatedAt: now,
+  }
+  const existing = db()
+    .select()
+    .from(chroniclePipelineRuns)
+    .where(eq(chroniclePipelineRuns.sourceKey, input.sourceKey))
+    .get()
+  if (existing) {
+    db().update(chroniclePipelineRuns).set(values).where(eq(chroniclePipelineRuns.id, existing.id)).run()
+    return db().select().from(chroniclePipelineRuns).where(eq(chroniclePipelineRuns.id, existing.id)).get()!
+  }
+  const id = randomUUID()
+  db().insert(chroniclePipelineRuns).values({
+    id,
+    ...values,
+    triageResultsJson: '{}',
+    summaryResultsJson: '{}',
+    createdAt: now,
+  }).run()
+  return db().select().from(chroniclePipelineRuns).where(eq(chroniclePipelineRuns.id, id)).get()!
+}
+
+function failActivityPipelineRun(
+  segmentId: string,
+  runId: string,
+  stage: ActivityPipelineStage,
+  message: string,
+): ActivityPipelineActionResult {
+  const endedAt = currentUnixSeconds()
+  db().update(chronicleActivitySegments).set({
+    pipelineStatus: 'error',
+    updatedAt: endedAt,
+  }).where(eq(chronicleActivitySegments.id, segmentId)).run()
+  db().update(chroniclePipelineRuns).set({
+    status: 'error',
+    endedAt,
+    errorMessage: message,
+    updatedAt: endedAt,
+  }).where(eq(chroniclePipelineRuns.id, runId)).run()
+  recordEvent({
+    type: 'activity',
+    status: 'error',
+    message,
+    attrs: { segmentId, runId, stage },
+  })
+  return {
+    segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()!),
+    run: toPipelineRunEntry(db().select().from(chroniclePipelineRuns).where(eq(chroniclePipelineRuns.id, runId)).get()!),
+    memoryId: null,
+    status: 'error',
+    message,
+  }
+}
+
+function buildActivityTriagePrompt(context: ActivitySegmentContext): string {
+  return [
+    'You are Cradle Chronicle triage. Decide whether this desktop activity segment is worth keeping as long-term memory.',
+    'Return only compact JSON with keys: keep boolean, reason string, segmentType one of work|meeting|browsing|chat|audio|idle|unknown, title string|null, priority one of low|normal|high.',
+    'Keep useful project work, decisions, meetings, Slack coordination, debugging, and concrete user intent. Skip idle, empty, duplicated, or privacy-sensitive noise.',
+    '',
+    context.evidenceText.slice(0, 16_000),
+  ].join('\n')
+}
+
+function buildActivitySummaryPrompt(context: ActivitySegmentContext): string {
+  return [
+    'You are Cradle Chronicle crystallization. Turn this activity segment into a concise structured memory for future agent search.',
+    'Return only compact JSON with keys: title string, summary string, keyPoints string[], entities string[], followUps string[].',
+    'Prefer factual details, decisions, artifacts, blockers, file names, channels, and next actions. Do not invent missing facts.',
+    '',
+    context.evidenceText.slice(0, 20_000),
+  ].join('\n')
+}
+
+function buildActivityCrystallizationPrompt(context: ActivitySegmentContext): string {
+  return [
+    'You are Cradle Chronicle knowledge crystallization. Convert this activity segment into durable knowledge cards for future agent search.',
+    'Return only compact JSON with keys: summary string, knowledgeCards array, rejectedCount number.',
+    'Each knowledgeCards item must contain: title string, content string, type one of fact|insight|decision|task|pattern, dimension one of technical|business|personal|project|general, confidence number between 0 and 1, tags string[], stableKey string.',
+    'Use stableKey as a short deterministic identity for the same future fact. Prefer project/file/decision nouns over timestamps. Do not invent missing facts.',
+    '',
+    context.evidenceText.slice(0, 24_000),
+  ].join('\n')
+}
+
+function parseActivityTriageResult(text: string): ActivityTriageResult {
+  const parsed = parseJsonFromModelText(text)
+  const keep = typeof parsed.keep === 'boolean'
+    ? parsed.keep
+    : !/\b(skip|discard|noise|idle)\b/i.test(text)
+  const segmentType = readActivitySegmentType(parsed.segmentType)
+  const priority = parsed.priority === 'low' || parsed.priority === 'high' ? parsed.priority : 'normal'
+  return {
+    keep,
+    reason: readString(parsed.reason) ?? (keep ? 'Useful activity evidence' : 'No useful activity evidence'),
+    segmentType,
+    title: readString(parsed.title) ?? null,
+    priority,
+  }
+}
+
+function parseActivitySummaryResult(text: string): ActivitySummaryResult {
+  const parsed = parseJsonFromModelText(text)
+  const summary = readString(parsed.summary) ?? text.trim()
+  return {
+    title: readString(parsed.title) ?? 'Activity summary',
+    summary,
+    keyPoints: readStringList(parsed.keyPoints),
+    entities: readStringList(parsed.entities),
+    followUps: readStringList(parsed.followUps),
+  }
+}
+
+function parseActivityCrystallizationResult(text: string): ActivityCrystallizationResult {
+  const parsed = parseJsonFromModelText(text)
+  const cardsInput = Array.isArray(parsed.knowledgeCards) ? parsed.knowledgeCards : []
+  const knowledgeCards = cardsInput.map((item, index) => parseCrystallizedKnowledgeCardDraft(item, index))
+  if (knowledgeCards.length === 0 && cardsInput.length > 0) {
+    throw new Error('Chronicle crystallization returned no valid knowledge cards')
+  }
+  return {
+    summary: boundedString(readString(parsed.summary) ?? '', 4_000),
+    knowledgeCards,
+    rejectedCount: Math.max(0, Math.floor(readFiniteNumber(parsed.rejectedCount) ?? 0)),
+  }
+}
+
+function parseCrystallizedKnowledgeCardDraft(value: unknown, index: number): CrystallizedKnowledgeCardDraft {
+  if (!isRecord(value)) {
+    throw new Error(`Chronicle knowledge card ${index} must be an object`)
+  }
+  const title = boundedString(readString(value.title)?.trim() ?? '', 240)
+  const content = boundedString(readString(value.content)?.trim() ?? '', 4_000)
+  if (!title || !content) {
+    throw new Error(`Chronicle knowledge card ${index} requires title and content`)
+  }
+  const cardType = readKnowledgeCardType(readString(value.type) ?? readString(value.cardType))
+  const dimension = readKnowledgeDimension(readString(value.dimension))
+  const confidence = readFiniteNumber(value.confidence)
+  const tags = uniqueStrings(readStringList(value.tags).map(tag => boundedString(tag.trim(), 64)).filter(Boolean)).slice(0, 12)
+  const fallbackStableKey = hashText(`${dimension}:${cardType}:${canonicalizeMemoryContent(title)}:${canonicalizeMemoryContent(content).slice(0, 256)}`).slice(0, 32)
+  const stableKey = boundedString((readString(value.stableKey) ?? fallbackStableKey).trim(), 160) || fallbackStableKey
+  return {
+    title,
+    content,
+    cardType,
+    dimension,
+    confidenceBps: ratioToBps(confidence ?? 1),
+    tags,
+    stableKey,
+  }
+}
+
+function parseJsonFromModelText(text: string): Record<string, unknown> {
+  const trimmed = text.trim()
+  const direct = parseJson<Record<string, unknown>>(trimmed, {})
+  if (Object.keys(direct).length > 0) {
+    return direct
+  }
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    return parseJson<Record<string, unknown>>(trimmed.slice(start, end + 1), {})
+  }
+  return {}
+}
+
+function buildActivitySummaryMemoryContent(context: ActivitySegmentContext, summary: ActivitySummaryResult): string {
+  const parts = [
+    `Activity: ${summary.title}`,
+    '',
+    summary.summary,
+  ]
+  if (summary.keyPoints.length > 0) {
+    parts.push('', 'Key points:', ...summary.keyPoints.map(point => `- ${point}`))
+  }
+  if (summary.followUps.length > 0) {
+    parts.push('', 'Follow-ups:', ...summary.followUps.map(item => `- ${item}`))
+  }
+  if (summary.entities.length > 0) {
+    parts.push('', `Entities: ${summary.entities.join(', ')}`)
+  }
+  parts.push('', `Source segment: ${context.segment.id}`)
+  return parts.join('\n').trim()
+}
+
+function upsertKnowledgeCardFromDraft(
+  tx: ChronicleTx,
+  input: {
+    draft: CrystallizedKnowledgeCardDraft
+    context: ActivitySegmentContext
+    runId: string
+    modelId: string
+    profileId: string
+    evidenceHash: string
+    memoryIds: string[]
+    now: number
+  },
+): { card: typeof chronicleKnowledgeCards.$inferSelect, versionId: string } {
+  const contentHash = hashText(canonicalizeMemoryContent(`${input.draft.title}\n${input.draft.content}`))
+  const existing = tx
+    .select()
+    .from(chronicleKnowledgeCards)
+    .where(eq(chronicleKnowledgeCards.stableKey, input.draft.stableKey))
+    .all()
+    .find(row => row.workspaceId === input.context.segment.workspaceId && row.status !== 'deleted')
+  const sourceSegmentIds = uniqueStrings([
+    ...(existing ? parseJson<string[]>(existing.sourceSegmentIdsJson, []) : []),
+    input.context.segment.id,
+  ])
+  const sourceMemoryIds = uniqueStrings([
+    ...(existing ? parseJson<string[]>(existing.sourceMemoryIdsJson, []) : []),
+    ...input.memoryIds,
+  ])
+  const sourceChunkIds = existing ? parseJson<string[]>(existing.sourceChunkIdsJson, []) : []
+  const tags = uniqueStrings([
+    ...(existing ? parseJson<string[]>(existing.tagsJson, []) : []),
+    ...input.draft.tags,
+  ]).slice(0, 24)
+  const previousMetadata = existing ? parseJson<Record<string, unknown>>(existing.metadataJson, {}) : {}
+  const metadata = {
+    ...previousMetadata,
+    stableKey: input.draft.stableKey,
+    lastEvidenceHash: input.evidenceHash,
+    lastPipelineRunId: input.runId,
+    lastModelId: input.modelId,
+    lastProfileId: input.profileId,
+    updatedBy: 'activity-crystallization',
+  }
+
+  let knowledgeId = existing?.id ?? randomUUID()
+  let version = existing?.version ?? 0
+  const materialChanged = !existing
+    || existing.title !== input.draft.title
+    || existing.content !== input.draft.content
+    || existing.cardType !== input.draft.cardType
+    || existing.dimension !== input.draft.dimension
+    || existing.confidenceBps !== input.draft.confidenceBps
+    || existing.contentHash !== contentHash
+
+  if (!existing) {
+    version = 1
+    tx.insert(chronicleKnowledgeCards).values({
+      id: knowledgeId,
+      workspaceId: input.context.segment.workspaceId,
+      title: input.draft.title,
+      content: input.draft.content,
+      cardType: input.draft.cardType,
+      dimension: input.draft.dimension,
+      confidenceBps: input.draft.confidenceBps,
+      sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
+      sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
+      sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
+      tagsJson: JSON.stringify(tags),
+      stableKey: input.draft.stableKey,
+      contentHash,
+      version,
+      status: 'active',
+      mergedIntoId: null,
+      pinned: false,
+      sortOrder: 0,
+      metadataJson: JSON.stringify(metadata),
+      createdAt: input.now,
+      updatedAt: input.now,
+    }).run()
+  }
+  else if (materialChanged) {
+    version = existing.version + 1
+    tx.update(chronicleKnowledgeCards).set({
+      title: input.draft.title,
+      content: input.draft.content,
+      cardType: input.draft.cardType,
+      dimension: input.draft.dimension,
+      confidenceBps: input.draft.confidenceBps,
+      sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
+      sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
+      sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
+      tagsJson: JSON.stringify(tags),
+      contentHash,
+      version,
+      status: 'active',
+      metadataJson: JSON.stringify(metadata),
+      updatedAt: input.now,
+    }).where(eq(chronicleKnowledgeCards.id, existing.id)).run()
+  }
+  else {
+    knowledgeId = existing.id
+    version = existing.version
+    tx.update(chronicleKnowledgeCards).set({
+      sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
+      sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
+      sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
+      tagsJson: JSON.stringify(tags),
+      metadataJson: JSON.stringify(metadata),
+      updatedAt: input.now,
+    }).where(eq(chronicleKnowledgeCards.id, existing.id)).run()
+  }
+
+  const versionId = getOrCreateKnowledgeVersion(tx, {
+    knowledgeId,
+    version,
+    title: input.draft.title,
+    content: input.draft.content,
+    cardType: input.draft.cardType,
+    dimension: input.draft.dimension,
+    confidenceBps: input.draft.confidenceBps,
+    sourceMemoryIds,
+    sourceSegmentIds,
+    sourceChunkIds,
+    tags,
+    metadata: {
+      evidenceHash: input.evidenceHash,
+      pipelineRunId: input.runId,
+      modelId: input.modelId,
+      profileId: input.profileId,
+      materialChanged,
+    },
+    now: input.now,
+  })
+  insertKnowledgeSources(tx, {
+    knowledgeId,
+    versionId,
+    context: input.context,
+    runId: input.runId,
+    memoryIds: input.memoryIds,
+    evidenceHash: input.evidenceHash,
+    now: input.now,
+  })
+
+  return {
+    card: tx.select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()!,
+    versionId,
+  }
+}
+
+function getOrCreateKnowledgeVersion(
+  tx: ChronicleTx,
+  input: {
+    knowledgeId: string
+    version: number
+    title: string
+    content: string
+    cardType: KnowledgeCardType
+    dimension: KnowledgeDimension
+    confidenceBps: number
+    sourceMemoryIds: string[]
+    sourceSegmentIds: string[]
+    sourceChunkIds: string[]
+    tags: string[]
+    metadata: Record<string, unknown>
+    now: number
+  },
+): string {
+  const existing = tx
+    .select({ id: chronicleKnowledgeVersions.id })
+    .from(chronicleKnowledgeVersions)
+    .where(sql`${chronicleKnowledgeVersions.knowledgeId} = ${input.knowledgeId} AND ${chronicleKnowledgeVersions.version} = ${input.version}`)
+    .get()
+  if (existing) {
+    return existing.id
+  }
+  const id = randomUUID()
+  tx.insert(chronicleKnowledgeVersions).values({
+    id,
+    knowledgeId: input.knowledgeId,
+    version: input.version,
+    title: input.title,
+    content: input.content,
+    cardType: input.cardType,
+    dimension: input.dimension,
+    confidenceBps: input.confidenceBps,
+    sourceMemoryIdsJson: JSON.stringify(input.sourceMemoryIds),
+    sourceSegmentIdsJson: JSON.stringify(input.sourceSegmentIds),
+    sourceChunkIdsJson: JSON.stringify(input.sourceChunkIds),
+    tagsJson: JSON.stringify(input.tags),
+    metadataJson: JSON.stringify(input.metadata),
+    createdAt: input.now,
+  }).run()
+  return id
+}
+
+function insertKnowledgeSources(
+  tx: ChronicleTx,
+  input: {
+    knowledgeId: string
+    versionId: string
+    context: ActivitySegmentContext
+    runId: string
+    memoryIds: string[]
+    evidenceHash: string
+    now: number
+  },
+): void {
+  const sources = [
+    { sourceKind: 'activity' as const, evidenceType: 'activity-segment', evidenceId: input.context.segment.id, memoryId: null as string | null },
+    ...input.memoryIds.map(memoryId => ({ sourceKind: 'memory' as const, evidenceType: 'memory', evidenceId: memoryId, memoryId })),
+  ]
+  for (const source of sources) {
+    const exists = tx
+      .select({ id: chronicleKnowledgeSources.id })
+      .from(chronicleKnowledgeSources)
+      .where(sql`${chronicleKnowledgeSources.knowledgeId} = ${input.knowledgeId} AND ${chronicleKnowledgeSources.versionId} = ${input.versionId} AND ${chronicleKnowledgeSources.evidenceType} = ${source.evidenceType} AND ${chronicleKnowledgeSources.evidenceId} = ${source.evidenceId}`)
+      .get()
+    if (exists) {
+      continue
+    }
+    tx.insert(chronicleKnowledgeSources).values({
+      id: randomUUID(),
+      knowledgeId: input.knowledgeId,
+      versionId: input.versionId,
+      segmentId: input.context.segment.id,
+      memoryId: source.memoryId,
+      memoryChunkId: null,
+      pipelineRunId: input.runId,
+      sourceKind: source.sourceKind,
+      evidenceType: source.evidenceType,
+      evidenceId: source.evidenceId,
+      metadataJson: JSON.stringify({ evidenceHash: input.evidenceHash }),
+      createdAt: input.now,
+      updatedAt: input.now,
+    }).run()
+  }
+}
+
+function buildDreamMergeCandidates(
+  cards: Array<typeof chronicleKnowledgeCards.$inferSelect>,
+  threshold: number,
+): DreamMergeCandidateDraft[] {
+  const candidates: DreamMergeCandidateDraft[] = []
+  const used = new Set<string>()
+  for (const card of cards) {
+    if (used.has(card.id)) {
+      continue
+    }
+    const cardVector = buildLexicalEmbeddingVector(`${card.title}\n${card.content}`)
+    const matches = cards
+      .filter(candidate => candidate.id !== card.id
+        && !used.has(candidate.id)
+        && candidate.workspaceId === card.workspaceId
+        && candidate.dimension === card.dimension
+        && candidate.status === 'active')
+      .map((candidate) => {
+        const score = cosineSimilarity(cardVector, buildLexicalEmbeddingVector(`${candidate.title}\n${candidate.content}`))
+        return { card: candidate, score }
+      })
+      .filter(match => match.score >= threshold)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 3)
+    if (matches.length === 0) {
+      continue
+    }
+    const group = [card, ...matches.map(match => match.card)]
+    for (const item of group) {
+      used.add(item.id)
+    }
+    const bestScore = matches[0]?.score ?? threshold
+    candidates.push({
+      workspaceId: card.workspaceId,
+      sourceKnowledgeIds: group.map(item => item.id),
+      proposedTitle: chooseDreamMergedTitle(group),
+      proposedContent: group.map(item => item.content.trim()).filter(Boolean).join('\n\n'),
+      proposedCardType: chooseDreamMergedCardType(group),
+      proposedDimension: card.dimension,
+      score: bestScore,
+      reason: `Lexical similarity ${bestScore.toFixed(3)} using chronicle-lexical/v1`,
+    })
+  }
+  return candidates
+}
+
+function applyDreamMergeCandidate(
+  tx: ChronicleTx,
+  candidate: DreamMergeCandidateDraft,
+  runId: string,
+  now: number,
+): string {
+  const sourceCards = tx
+    .select()
+    .from(chronicleKnowledgeCards)
+    .where(inArray(chronicleKnowledgeCards.id, candidate.sourceKnowledgeIds))
+    .all()
+  const sourceMemoryIds = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.sourceMemoryIdsJson, [])))
+  const sourceSegmentIds = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.sourceSegmentIdsJson, [])))
+  const sourceChunkIds = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.sourceChunkIdsJson, [])))
+  const tags = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.tagsJson, []))).slice(0, 24)
+  const stableKey = `dream-merge:${hashText(candidate.sourceKnowledgeIds.slice().sort().join('|')).slice(0, 32)}`
+  const contentHash = hashText(canonicalizeMemoryContent(`${candidate.proposedTitle}\n${candidate.proposedContent}`))
+  const outputId = randomUUID()
+
+  tx.insert(chronicleKnowledgeCards).values({
+    id: outputId,
+    workspaceId: candidate.workspaceId,
+    title: candidate.proposedTitle,
+    content: candidate.proposedContent,
+    cardType: candidate.proposedCardType,
+    dimension: candidate.proposedDimension,
+    confidenceBps: Math.max(1, Math.min(10_000, ratioToBps(candidate.score))),
+    sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
+    sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
+    sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
+    tagsJson: JSON.stringify(tags),
+    stableKey,
+    contentHash,
+    version: 1,
+    status: 'active',
+    mergedIntoId: null,
+    pinned: false,
+    sortOrder: 0,
+    metadataJson: JSON.stringify({
+      source: 'dream-merge',
+      runId,
+      mergedFromIds: candidate.sourceKnowledgeIds,
+      vectorMode: 'chronicle-lexical/v1',
+    }),
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+
+  tx.insert(chronicleKnowledgeVersions).values({
+    id: randomUUID(),
+    knowledgeId: outputId,
+    version: 1,
+    title: candidate.proposedTitle,
+    content: candidate.proposedContent,
+    cardType: candidate.proposedCardType,
+    dimension: candidate.proposedDimension,
+    confidenceBps: Math.max(1, Math.min(10_000, ratioToBps(candidate.score))),
+    sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
+    sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
+    sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
+    tagsJson: JSON.stringify(tags),
+    metadataJson: JSON.stringify({
+      source: 'dream-merge',
+      runId,
+      mergedFromIds: candidate.sourceKnowledgeIds,
+    }),
+    createdAt: now,
+  }).run()
+
+  for (const source of sourceCards) {
+    tx.update(chronicleKnowledgeCards).set({
+      version: source.version + 1,
+      status: 'merged',
+      mergedIntoId: outputId,
+      updatedAt: now,
+      metadataJson: JSON.stringify({
+        ...parseJson<Record<string, unknown>>(source.metadataJson, {}),
+        mergedByRunId: runId,
+        mergedIntoId: outputId,
+      }),
+    }).where(eq(chronicleKnowledgeCards.id, source.id)).run()
+    tx.insert(chronicleKnowledgeVersions).values({
+      id: randomUUID(),
+      knowledgeId: source.id,
+      version: source.version + 1,
+      title: source.title,
+      content: source.content,
+      cardType: source.cardType,
+      dimension: source.dimension,
+      confidenceBps: source.confidenceBps,
+      sourceMemoryIdsJson: source.sourceMemoryIdsJson,
+      sourceSegmentIdsJson: source.sourceSegmentIdsJson,
+      sourceChunkIdsJson: source.sourceChunkIdsJson,
+      tagsJson: source.tagsJson,
+      metadataJson: JSON.stringify({
+        source: 'dream-merge-mark-merged',
+        runId,
+        mergedIntoId: outputId,
+      }),
+      createdAt: now,
+    }).run()
+  }
+
+  return outputId
+}
+
+function chooseDreamMergedTitle(cards: Array<typeof chronicleKnowledgeCards.$inferSelect>): string {
+  return cards
+    .slice()
+    .sort((left, right) => right.confidenceBps - left.confidenceBps || left.title.length - right.title.length)[0]
+    ?.title ?? 'Merged knowledge'
+}
+
+function chooseDreamMergedCardType(cards: Array<typeof chronicleKnowledgeCards.$inferSelect>): KnowledgeCardType {
+  const priority: KnowledgeCardType[] = ['decision', 'task', 'insight', 'pattern', 'fact']
+  return priority.find(type => cards.some(card => card.cardType === type)) ?? 'fact'
+}
+
+interface ActivityAssignmentInput {
+  trigger: ActivityPipelineTrigger
+  workspaceId: string | null
+  occurredAt: number
+  segmentType: ActivitySegmentType
+  frontApp: string | null
+  title: string | null
+  summary?: string | null
+  refs: Partial<Record<'snapshotIds' | 'messageIds' | 'audioTranscriptIds' | 'audioRawSegmentIds' | 'memoryIds' | 'accessibilitySnapshotIds', string[]>>
+  metadata?: Record<string, unknown>
+}
+
+function assignActivityEvidence(input: ActivityAssignmentInput): { sessionId: string, segmentId: string } {
+  const now = currentUnixSeconds()
+  return db().transaction((tx) => {
+    const session = findActivitySession(tx, input.workspaceId, input.occurredAt, now, input)
+    const candidate = findActivitySegmentCandidate(tx, session.id, input)
+    const shouldAppend = !!candidate
+    const segmentId = shouldAppend && candidate ? candidate.id : randomUUID()
+    const sourceRefs = mergeActivitySourceRefs(candidate?.sourceRefsJson, input.refs)
+    const sourceCounts = countActivitySourceRefs(sourceRefs)
+    const metadata = {
+      ...(candidate ? parseJson<Record<string, unknown>>(candidate.metadataJson, {}) : {}),
+      ...(input.metadata ?? {}),
+    }
+    const startedAt = candidate && shouldAppend ? Math.min(candidate.startedAt, input.occurredAt) : input.occurredAt
+    const endedAt = candidate && shouldAppend ? Math.max(candidate.endedAt, input.occurredAt) : input.occurredAt
+    const startSnapshotId = candidate?.startSnapshotId ?? firstSourceRef(sourceRefs.snapshotIds) ?? null
+    const endSnapshotId = lastSourceRef(sourceRefs.snapshotIds) ?? candidate?.endSnapshotId ?? null
+
+    if (candidate && shouldAppend) {
+      tx.update(chronicleActivitySegments).set({
+        startSnapshotId,
+        endSnapshotId,
+        startedAt,
+        endedAt,
+        segmentType: chooseActivitySegmentType(candidate.segmentType, input.segmentType),
+        frontApp: input.frontApp ?? candidate.frontApp,
+        title: input.title ?? candidate.title,
+        summary: input.summary ?? candidate.summary,
+        sourceCountsJson: JSON.stringify(sourceCounts),
+        sourceRefsJson: JSON.stringify(sourceRefs),
+        metadataJson: JSON.stringify(metadata),
+        updatedAt: now,
+      }).where(eq(chronicleActivitySegments.id, candidate.id)).run()
+    }
+    else {
+      tx.insert(chronicleActivitySegments).values({
+        id: segmentId,
+        sessionId: session.id,
+        workspaceId: input.workspaceId,
+        startSnapshotId,
+        endSnapshotId,
+        startedAt: input.occurredAt,
+        endedAt: input.occurredAt,
+        segmentType: input.segmentType,
+        frontApp: input.frontApp,
+        title: input.title,
+        summary: input.summary ?? null,
+        sourceCountsJson: JSON.stringify(sourceCounts),
+        sourceRefsJson: JSON.stringify(sourceRefs),
+        metadataJson: JSON.stringify(metadata),
+        pipelineStatus: 'collecting',
+        isCrystallized: false,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+    }
+
+    recordSegmentationRun(tx, input, session.id, segmentId, now)
+
+    refreshActivitySession(tx, session.id, now)
+    return { sessionId: session.id, segmentId }
+  })
+}
+
+function recordSegmentationRun(
+  tx: ChronicleTx,
+  input: ActivityAssignmentInput,
+  sessionId: string,
+  segmentId: string,
+  now: number,
+): void {
+  const sourceKey = buildPipelineSourceKey(input)
+  const existing = tx
+    .select({ id: chroniclePipelineRuns.id })
+    .from(chroniclePipelineRuns)
+    .where(eq(chroniclePipelineRuns.sourceKey, sourceKey))
+    .get()
+  const values = {
+    sessionId,
+    segmentId,
+    workspaceId: input.workspaceId,
+    trigger: input.trigger,
+    sourceKey,
+    stage: 'segmentation' as const,
+    status: 'running' as const,
+    startedAt: input.occurredAt,
+    endedAt: null,
+    errorMessage: null,
+    snapshotIdsJson: JSON.stringify(input.refs.snapshotIds ?? []),
+    messageIdsJson: JSON.stringify(input.refs.messageIds ?? []),
+    audioTranscriptIdsJson: JSON.stringify(input.refs.audioTranscriptIds ?? []),
+    audioRawSegmentIdsJson: JSON.stringify(input.refs.audioRawSegmentIds ?? []),
+    memoryIdsJson: JSON.stringify(input.refs.memoryIds ?? []),
+    segmentIdsJson: JSON.stringify([segmentId]),
+    snapshotsCount: input.refs.snapshotIds?.length ?? 0,
+    messagesCount: input.refs.messageIds?.length ?? 0,
+    audioTranscriptsCount: input.refs.audioTranscriptIds?.length ?? 0,
+    audioRawSegmentsCount: input.refs.audioRawSegmentIds?.length ?? 0,
+    memoriesCount: input.refs.memoryIds?.length ?? 0,
+    segmentsCount: 1,
+    triageResultsJson: '{}',
+    summaryResultsJson: '{}',
+    metadataJson: JSON.stringify({
+      ...(input.metadata ?? {}),
+      pendingStages: ['triage', 'summarization', 'crystallization'],
+    }),
+    updatedAt: now,
+  }
+
+  if (existing) {
+    tx.update(chroniclePipelineRuns).set(values).where(eq(chroniclePipelineRuns.id, existing.id)).run()
+    return
+  }
+
+  tx.insert(chroniclePipelineRuns).values({
+    id: randomUUID(),
+    ...values,
+    createdAt: now,
+  }).run()
+}
+
+function buildPipelineSourceKey(input: ActivityAssignmentInput): string {
+  const parts = [
+    ...readStringList(input.refs.snapshotIds).map(id => `snapshot:${id}`),
+    ...readStringList(input.refs.messageIds).map(id => `message:${id}`),
+    ...readStringList(input.refs.audioTranscriptIds).map(id => `audio-transcript:${id}`),
+    ...readStringList(input.refs.audioRawSegmentIds).map(id => `audio-raw:${id}`),
+    ...readStringList(input.refs.memoryIds).map(id => `memory:${id}`),
+    ...readStringList(input.refs.accessibilitySnapshotIds).map(id => `accessibility:${id}`),
+  ].sort()
+  return `${input.trigger}:${parts.join('|') || `${input.workspaceId ?? 'global'}:${input.occurredAt}`}`
+}
+
+function findActivitySession(
+  tx: ChronicleTx,
+  workspaceId: string | null,
+  occurredAt: number,
+  now: number,
+  input: ActivityAssignmentInput,
+): typeof chronicleActivitySessions.$inferSelect {
+  const existing = tx
+    .select()
+    .from(chronicleActivitySessions)
+    .where(workspaceId === null
+      ? sql`${chronicleActivitySessions.workspaceId} IS NULL`
+      : eq(chronicleActivitySessions.workspaceId, workspaceId))
+    .all()
+    .find(session => occurredAt >= session.startedAt - ACTIVITY_SESSION_GAP_SECONDS
+      && occurredAt <= (session.endedAt ?? session.startedAt) + ACTIVITY_SESSION_GAP_SECONDS)
+
+  if (existing) {
+    return existing
+  }
+
+  const id = randomUUID()
+  tx.insert(chronicleActivitySessions).values({
+    id,
+    workspaceId,
+    startedAt: occurredAt,
+    endedAt: occurredAt,
+    frontApp: input.frontApp,
+    title: input.title,
+    segmentCount: 0,
+    snapshotCount: 0,
+    messageCount: 0,
+    audioTranscriptCount: 0,
+    audioRawSegmentCount: 0,
+    accessibilitySnapshotCount: 0,
+    durationSeconds: 0,
+    isMeeting: input.segmentType === 'meeting',
+    meetingTitle: input.segmentType === 'meeting' ? input.title : null,
+    metadataJson: JSON.stringify({ createdFrom: input.trigger }),
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+  return tx.select().from(chronicleActivitySessions).where(eq(chronicleActivitySessions.id, id)).get()!
+}
+
+function findActivitySegmentCandidate(
+  tx: ChronicleTx,
+  sessionId: string,
+  input: ActivityAssignmentInput,
+): typeof chronicleActivitySegments.$inferSelect | undefined {
+  return tx
+    .select()
+    .from(chronicleActivitySegments)
+    .where(input.workspaceId === null
+      ? sql`${chronicleActivitySegments.sessionId} = ${sessionId} AND ${chronicleActivitySegments.workspaceId} IS NULL`
+      : sql`${chronicleActivitySegments.sessionId} = ${sessionId} AND ${chronicleActivitySegments.workspaceId} = ${input.workspaceId}`)
+    .orderBy(desc(chronicleActivitySegments.startedAt))
+    .all()
+    .find(segment => canAppendActivitySegment(segment, input))
+}
+
+function canAppendActivitySegment(
+  candidate: typeof chronicleActivitySegments.$inferSelect,
+  input: ActivityAssignmentInput,
+): boolean {
+  if (input.occurredAt < candidate.startedAt || input.occurredAt < candidate.endedAt) {
+    return false
+  }
+  const gapSeconds = input.occurredAt - candidate.endedAt
+  if (gapSeconds > ACTIVITY_IDLE_BOUNDARY_SECONDS) {
+    return false
+  }
+  if (input.occurredAt - candidate.startedAt > ACTIVITY_MAX_SEGMENT_SECONDS) {
+    return false
+  }
+  return normalizeActivityBoundary(candidate.frontApp) === normalizeActivityBoundary(input.frontApp)
+    && normalizeActivityBoundary(candidate.title) === normalizeActivityBoundary(input.title)
+}
+
+function chooseActivitySegmentType(current: ActivitySegmentType, next: ActivitySegmentType): ActivitySegmentType {
+  if (current === next) {
+    return current
+  }
+  if (current === 'unknown') {
+    return next
+  }
+  if (next === 'unknown') {
+    return current
+  }
+  if (current === 'meeting' || next === 'meeting') {
+    return 'meeting'
+  }
+  if (current === 'chat' || next === 'chat') {
+    return 'chat'
+  }
+  if (current === 'audio' || next === 'audio') {
+    return 'audio'
+  }
+  return 'work'
+}
+
+function refreshActivitySession(tx: ChronicleTx, sessionId: string, now: number): void {
+  const segments = tx.select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.sessionId, sessionId)).all()
+  if (segments.length === 0) {
+    return
+  }
+
+  const startedAt = Math.min(...segments.map(segment => segment.startedAt))
+  const endedAt = Math.max(...segments.map(segment => segment.endedAt))
+  const counts = segments.reduce((accumulator, segment) => {
+    const sourceCounts = parseJson<Record<string, number>>(segment.sourceCountsJson, {})
+    accumulator.snapshotCount += readCount(sourceCounts.snapshotIds)
+    accumulator.messageCount += readCount(sourceCounts.messageIds)
+    accumulator.audioTranscriptCount += readCount(sourceCounts.audioTranscriptIds)
+    accumulator.audioRawSegmentCount += readCount(sourceCounts.audioRawSegmentIds)
+    accumulator.accessibilitySnapshotCount += readCount(sourceCounts.accessibilitySnapshotIds)
+    return accumulator
+  }, {
+    snapshotCount: 0,
+    messageCount: 0,
+    audioTranscriptCount: 0,
+    audioRawSegmentCount: 0,
+    accessibilitySnapshotCount: 0,
+  })
+  const first = segments.reduce((left, right) => left.startedAt <= right.startedAt ? left : right)
+  const hasMeeting = segments.some(segment => segment.segmentType === 'meeting')
+
+  tx.update(chronicleActivitySessions).set({
+    startedAt,
+    endedAt,
+    frontApp: first.frontApp,
+    title: first.title,
+    segmentCount: segments.length,
+    snapshotCount: counts.snapshotCount,
+    messageCount: counts.messageCount,
+    audioTranscriptCount: counts.audioTranscriptCount,
+    audioRawSegmentCount: counts.audioRawSegmentCount,
+    accessibilitySnapshotCount: counts.accessibilitySnapshotCount,
+    durationSeconds: Math.max(0, endedAt - startedAt),
+    isMeeting: hasMeeting,
+    meetingTitle: hasMeeting ? segments.find(segment => segment.segmentType === 'meeting')?.title ?? null : null,
+    updatedAt: now,
+  }).where(eq(chronicleActivitySessions.id, sessionId)).run()
+}
+
+function mergeActivitySourceRefs(
+  currentJson: string | undefined,
+  next: ActivityAssignmentInput['refs'],
+): Record<string, string[]> {
+  const current = parseJson<Record<string, unknown>>(currentJson ?? '{}', {})
+  const merged: Record<string, string[]> = {}
+  for (const key of ['snapshotIds', 'messageIds', 'audioTranscriptIds', 'audioRawSegmentIds', 'memoryIds', 'accessibilitySnapshotIds']) {
+    merged[key] = uniqueStrings([
+      ...readStringList(current[key]),
+      ...readStringList(next[key as keyof ActivityAssignmentInput['refs']]),
+    ])
+  }
+  return merged
+}
+
+function countActivitySourceRefs(sourceRefs: Record<string, string[]>): Record<string, number> {
+  return Object.fromEntries(Object.entries(sourceRefs).map(([key, values]) => [key, values.length]))
+}
+
+function firstSourceRef(values: string[] | undefined): string | null {
+  return values && values.length > 0 ? values[0] : null
+}
+
+function lastSourceRef(values: string[] | undefined): string | null {
+  return values && values.length > 0 ? values[values.length - 1] : null
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(value => value.length > 0))]
+}
+
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
+}
+
+function readCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+}
+
+function normalizeActivityBoundary(value: string | null): string {
+  return (value ?? '').trim().toLowerCase()
+}
+
+export function recordAudioRawSegment(input: AudioRawSegmentReportInput): AudioRawSegmentEntry {
+  const config = syncConfig()
+  const now = currentUnixSeconds()
+  const recordedAt = readRequiredAudioRawSegmentTimestamp(input.recordedAt)
+  const existing = db()
+    .select()
+    .from(chronicleAudioRawSegments)
+    .where(eq(chronicleAudioRawSegments.sourceId, input.sourceId))
+    .get()
+  const id = existing?.id ?? randomUUID()
+  const durationMs = input.durationMs ?? estimateAudioDurationMs(input.sampleCount, input.sampleRate)
+  const metadata = {
+    ...(input.metadata ?? {}),
+    vadImplemented: input.vadImplemented ?? false,
+    asrImplemented: input.asrImplemented ?? false,
+    speakerLabelingImplemented: input.speakerLabelingImplemented ?? false,
+  }
+  const values = {
+    sourceId: input.sourceId,
+    workspaceId: config.workspaceId || null,
+    recordedAt,
+    source: input.source ?? 'microphone',
+    status: input.status ?? 'captured',
+    audioPath: toRootRelative(config.storageRoot, input.audioPath),
+    metadataPath: toRootRelative(config.storageRoot, input.metadataPath),
+    sampleRate: Math.floor(input.sampleRate),
+    channels: Math.floor(input.channels),
+    sampleCount: Math.floor(input.sampleCount),
+    droppedSamples: Math.floor(input.droppedSamples ?? 0),
+    durationMs,
+    rmsBps: ratioToBps(input.rms),
+    peakBps: ratioToBps(input.peak),
+    active: input.active,
+    vadStatus: input.vadImplemented ? 'pending' as const : 'not-implemented' as const,
+    asrStatus: input.asrImplemented ? 'pending' as const : 'not-implemented' as const,
+    speakerStatus: input.speakerLabelingImplemented ? 'pending' as const : 'not-implemented' as const,
+    metadataJson: JSON.stringify(metadata),
+    updatedAt: now,
+  }
+
+  if (existing) {
+    db().update(chronicleAudioRawSegments).set(values).where(eq(chronicleAudioRawSegments.id, id)).run()
+  }
+  else {
+    db().insert(chronicleAudioRawSegments).values({
+      id,
+      ...values,
+      createdAt: now,
+    }).run()
+  }
+
+  recordEvent({
+    type: 'audio',
+    status: values.status === 'error' ? 'error' : 'success',
+    message: 'Chronicle raw audio segment ingested',
+    attrs: {
+      sourceId: input.sourceId,
+      rawSegmentId: id,
+      active: input.active,
+      durationMs,
+      audioPath: values.audioPath,
+    },
+  })
+  if (!existing) {
+    assignActivityEvidence({
+      trigger: 'audio-raw',
+      workspaceId: config.workspaceId || null,
+      occurredAt: recordedAt,
+      segmentType: 'audio',
+      frontApp: input.source ?? 'microphone',
+      title: input.active ? 'Audio activity' : 'Audio quiet segment',
+      refs: { audioRawSegmentIds: [id] },
+      metadata: {
+        source: 'audio-raw-segment',
+        rawSourceId: input.sourceId,
+        active: input.active,
+        status: values.status,
+      },
+    })
+  }
+  return toAudioRawSegmentEntry(db().select().from(chronicleAudioRawSegments).where(eq(chronicleAudioRawSegments.id, id)).get()!)
+}
+
+export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioTranscriptEntry {
+  const config = syncConfig()
+  const now = currentUnixSeconds()
+  const startedAt = readRequiredAudioTimestamp(input.startedAt, 'startedAt')
+  const endedAt = input.endedAt ? readRequiredAudioTimestamp(input.endedAt, 'endedAt') : null
+  if (endedAt !== null && endedAt < startedAt) {
+    throw new AppError({
+      code: 'chronicle_audio_transcript_time_range_invalid',
+      status: 400,
+      message: 'Audio transcript endedAt must be greater than or equal to startedAt',
+    })
+  }
+  validateAudioTranscriptSegments(input.segments)
+  const status = input.status ?? (input.source === 'asr' ? 'completed' : 'imported')
+  const source = input.source ?? 'imported'
+  const existing = db()
+    .select()
+    .from(chronicleAudioTranscripts)
+    .where(eq(chronicleAudioTranscripts.sourceId, input.sourceId))
+    .get()
+  const transcriptId = existing?.id ?? randomUUID()
+  const transcriptText = buildAudioTranscriptMemoryContent({
+    title: input.title ?? null,
+    startedAt,
+    segments: input.segments,
+  })
+  const sourcePaths = [
+    input.audioPath ? toRootRelative(config.storageRoot, input.audioPath) : null,
+    input.transcriptPath ? toRootRelative(config.storageRoot, input.transcriptPath) : null,
+  ].filter((path): path is string => !!path)
+
+  db().transaction((tx) => {
+    if (existing) {
+      tx.update(chronicleAudioTranscripts).set({
+        workspaceId: config.workspaceId || null,
+        title: normalizeNullableString(input.title),
+        source,
+        status,
+        startedAt,
+        endedAt,
+        language: normalizeNullableString(input.language),
+        appBundleId: normalizeNullableString(input.appBundleId),
+        windowTitle: normalizeNullableString(input.windowTitle),
+        audioPath: input.audioPath ? toRootRelative(config.storageRoot, input.audioPath) : null,
+        transcriptPath: input.transcriptPath ? toRootRelative(config.storageRoot, input.transcriptPath) : null,
+        metadataJson: JSON.stringify(input.metadata ?? {}),
+        updatedAt: now,
+      }).where(eq(chronicleAudioTranscripts.id, transcriptId)).run()
+      tx.delete(chronicleAudioSegments).where(eq(chronicleAudioSegments.transcriptId, transcriptId)).run()
+    }
+    else {
+      tx.insert(chronicleAudioTranscripts).values({
+        id: transcriptId,
+        sourceId: input.sourceId,
+        workspaceId: config.workspaceId || null,
+        memoryId: null,
+        title: normalizeNullableString(input.title),
+        source,
+        status,
+        startedAt,
+        endedAt,
+        language: normalizeNullableString(input.language),
+        appBundleId: normalizeNullableString(input.appBundleId),
+        windowTitle: normalizeNullableString(input.windowTitle),
+        audioPath: input.audioPath ? toRootRelative(config.storageRoot, input.audioPath) : null,
+        transcriptPath: input.transcriptPath ? toRootRelative(config.storageRoot, input.transcriptPath) : null,
+        metadataJson: JSON.stringify(input.metadata ?? {}),
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+    }
+
+    for (const [segmentIndex, segment] of input.segments.entries()) {
+      tx.insert(chronicleAudioSegments).values({
+        id: randomUUID(),
+        transcriptId,
+        segmentIndex,
+        startMs: Math.floor(segment.startMs),
+        endMs: segment.endMs === undefined || segment.endMs === null ? null : Math.floor(segment.endMs),
+        speakerLabel: normalizeNullableString(segment.speakerLabel),
+        text: segment.text,
+        confidenceBps: segment.confidence === undefined || segment.confidence === null
+          ? null
+          : Math.round(Math.max(0, Math.min(1, segment.confidence)) * 10_000),
+        language: normalizeNullableString(segment.language) ?? normalizeNullableString(input.language),
+        metadataJson: JSON.stringify(segment.metadata ?? {}),
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+    }
+  })
+
+  const memory = recordMemory({
+    sourceId: `audio-transcript:${input.sourceId}`,
+    windowType: '10min',
+    createdAt: new Date(startedAt * 1000).toISOString(),
+    content: transcriptText,
+    summaryKind: 'imported',
+    sourceFramePaths: sourcePaths,
+    metadata: {
+      source: 'audio-transcript',
+      transcriptId,
+      transcriptSourceId: input.sourceId,
+      title: input.title ?? null,
+      transcriptStatus: status,
+      language: input.language ?? null,
+      segmentCount: input.segments.length,
+      ...(input.metadata ?? {}),
+    },
+  }, { skipActivityAssignment: true })
+
+  db().update(chronicleAudioTranscripts).set({
+    memoryId: memory.id,
+    updatedAt: now,
+  }).where(eq(chronicleAudioTranscripts.id, transcriptId)).run()
+
+  recordEvent({
+    type: 'audio',
+    status: status === 'error' ? 'error' : 'success',
+    message: 'Chronicle audio transcript ingested',
+    memoryId: memory.id,
+    attrs: { sourceId: input.sourceId, transcriptId, segmentCount: input.segments.length, status },
+  })
+  if (!existing) {
+    assignActivityEvidence({
+      trigger: 'audio-transcript',
+      workspaceId: config.workspaceId || null,
+      occurredAt: startedAt,
+      segmentType: 'meeting',
+      frontApp: normalizeNullableString(input.appBundleId) ?? 'audio',
+      title: normalizeNullableString(input.title) ?? normalizeNullableString(input.windowTitle) ?? 'Audio transcript',
+      summary: transcriptText.slice(0, 500),
+      refs: { audioTranscriptIds: [transcriptId], memoryIds: [memory.id] },
+      metadata: {
+        source: 'audio-transcript',
+        transcriptSourceId: input.sourceId,
+        transcriptStatus: status,
+        segmentCount: input.segments.length,
+      },
+    })
+  }
+  return toAudioTranscriptEntry(db().select().from(chronicleAudioTranscripts).where(eq(chronicleAudioTranscripts.id, transcriptId)).get()!)
+}
+
 export async function syncSlackSource(
   sourceId: string,
   trigger: SlackSyncTrigger = 'manual',
@@ -935,6 +3672,132 @@ export async function syncSlackSource(
   }
   finally {
     activeSlackSyncs.delete(sourceId)
+  }
+}
+
+export async function handleSlackEvents(
+  sourceId: string,
+  input: SlackEventsInput,
+): Promise<SlackEventsResult> {
+  const source = db().select().from(chronicleMessageSources).where(eq(chronicleMessageSources.id, sourceId)).get()
+  if (!source) {
+    throw new AppError({ code: 'chronicle_message_source_not_found', status: 404, message: 'Chronicle message source not found' })
+  }
+  if (source.platform !== 'slack') {
+    throw new AppError({ code: 'chronicle_message_source_unsupported', status: 400, message: 'Only Slack message sources can receive Slack events' })
+  }
+
+  const sourceConfig = readSlackSourceConfig(source.configJson)
+  if (sourceConfig.realtimeMode !== 'events-api') {
+    throw new AppError({
+      code: 'chronicle_slack_events_disabled',
+      status: 400,
+      message: 'Slack Events API is not enabled for this Chronicle source',
+    })
+  }
+  if (!sourceConfig.signingSecretRef) {
+    throw new AppError({
+      code: 'chronicle_slack_signing_secret_missing',
+      status: 400,
+      message: 'Slack signing secret is not configured',
+    })
+  }
+
+  const signingSecret = readSecret(sourceConfig.signingSecretRef)
+  verifySlackSignature({
+    rawBody: input.rawBody,
+    signature: input.signature,
+    timestamp: input.timestamp,
+    signingSecret,
+  })
+
+  const payload = parseSlackEventsPayload(input.rawBody)
+  if (payload.type === 'url_verification') {
+    const challenge = readString(payload.challenge)
+    if (!challenge) {
+      throw new AppError({
+        code: 'chronicle_slack_challenge_missing',
+        status: 400,
+        message: 'Slack URL verification challenge is missing',
+      })
+    }
+    return {
+      sourceId: source.id,
+      status: 'ok',
+      ingested: 0,
+      message: 'Slack URL verification accepted',
+      challenge,
+    }
+  }
+
+  if (!source.enabled) {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Chronicle message source is disabled' }
+  }
+  if (payload.type !== 'event_callback') {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack event type ignored' }
+  }
+
+  const event = isRecord(payload.event) ? payload.event : null
+  if (!event) {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack event payload missing' }
+  }
+  const eventType = readString(event.type)
+  if (eventType !== 'message' && eventType !== 'app_mention') {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack event subtype ignored' }
+  }
+  const subtype = readString(event.subtype)
+  if (subtype && subtype !== 'bot_message') {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack message subtype ignored' }
+  }
+
+  const channelId = readString(event.channel)
+  const messageTs = readString(event.ts)
+  const text = readString(event.text) ?? ''
+  if (!channelId || !messageTs || !text.trim()) {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack message event missing required fields' }
+  }
+
+  const channelIds = parseJson<string[]>(source.channelIdsJson, [])
+  if (!channelIds.includes(channelId)) {
+    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack channel is outside Chronicle allowlist' }
+  }
+
+  const teamId = readString(payload.team_id) ?? source.teamId
+  const inserted = recordSlackMessage({
+    sourceId: source.id,
+    workspaceId: source.workspaceId,
+    teamId,
+    channelId,
+    channelName: readString(event.channel_name) ?? null,
+    userId: readString(event.user) ?? readString(event.bot_id) ?? null,
+    userName: readString(event.username) ?? null,
+    text,
+    messageTs,
+    threadId: readString(event.thread_ts) ?? messageTs,
+    permalink: null,
+    raw: payload,
+  })
+  const now = currentUnixSeconds()
+  const messageAt = slackTsToUnix(messageTs)
+  db().update(chronicleMessageSources).set({
+    teamId,
+    status: 'ready',
+    lastMessageAt: Math.max(source.lastMessageAt ?? 0, messageAt),
+    lastError: null,
+    updatedAt: now,
+  }).where(eq(chronicleMessageSources.id, source.id)).run()
+  recordEvent({
+    type: 'message',
+    status: 'success',
+    message: inserted ? 'Chronicle Slack event ingested' : 'Chronicle Slack event deduplicated',
+    attrs: { sourceId: source.id, channelId, messageTs, inserted },
+  })
+
+  return {
+    sourceId: source.id,
+    status: 'ok',
+    ingested: inserted ? 1 : 0,
+    message: inserted ? 'Slack event ingested' : 'Slack event already ingested',
   }
 }
 
@@ -1031,6 +3894,7 @@ export function recordSnapshot(input: ChronicleSnapshotReportInput) {
   const now = currentUnixSeconds()
   const capturedAt = parseTimestamp(input.capturedAt) ?? now
   const existing = db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.sourceId, input.sourceId)).get()
+  const id = existing?.id ?? randomUUID()
   const values = {
     sourceId: input.sourceId,
     workspaceId: config.workspaceId || null,
@@ -1054,19 +3918,104 @@ export function recordSnapshot(input: ChronicleSnapshotReportInput) {
 
   if (existing) {
     db().update(chronicleSnapshots).set(values).where(eq(chronicleSnapshots.id, existing.id)).run()
-    return db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, existing.id)).get()!
+  }
+  else {
+    db().insert(chronicleSnapshots).values({ id, ...values, createdAt: now }).run()
+    recordEvent({
+      type: 'snapshot',
+      status: 'success',
+      message: 'Chronicle snapshot ingested',
+      snapshotId: id,
+      attrs: { sourceId: input.sourceId, framePath: values.framePath },
+    })
+  }
+  let accessibilitySnapshotId: string | null = null
+  if (input.accessibility) {
+    accessibilitySnapshotId = recordAccessibilitySnapshot(input.accessibility, {
+      snapshotId: id,
+      workspaceId: config.workspaceId || null,
+      capturedAt,
+      storageRoot: config.storageRoot,
+      appBundleId: input.appBundleId ?? null,
+      windowTitle: input.windowTitle ?? null,
+    })
+  }
+  if (!existing) {
+    assignActivityEvidence({
+      trigger: 'snapshot',
+      workspaceId: config.workspaceId || null,
+      occurredAt: capturedAt,
+      segmentType: inferScreenActivitySegmentType(input.appBundleId ?? null, input.windowTitle ?? null),
+      frontApp: input.appBundleId ?? null,
+      title: input.windowTitle ?? null,
+      summary: input.ocrText ?? input.accessibility?.text ?? null,
+      refs: {
+        snapshotIds: [id],
+        accessibilitySnapshotIds: accessibilitySnapshotId ? [accessibilitySnapshotId] : [],
+      },
+      metadata: {
+        source: 'snapshot',
+        sourceId: input.sourceId,
+        displayId: input.displayId,
+        framePath: values.framePath,
+      },
+    })
+  }
+  return db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, id)).get()!
+}
+
+function recordAccessibilitySnapshot(
+  input: AccessibilitySnapshotReportInput,
+  context: {
+    snapshotId: string
+    workspaceId: string | null
+    capturedAt: number
+    storageRoot: string
+    appBundleId: string | null
+    windowTitle: string | null
+  },
+): string {
+  const now = currentUnixSeconds()
+  const existing = db()
+    .select()
+    .from(chronicleAccessibilitySnapshots)
+    .where(eq(chronicleAccessibilitySnapshots.sourceId, input.sourceId))
+    .get()
+  const id = existing?.id ?? randomUUID()
+  const artifactPath = input.accessibilityPath
+    ? toRootRelative(context.storageRoot, input.accessibilityPath)
+    : null
+  const metadata = {
+    ...(input.metadata ?? {}),
+    ...(artifactPath ? { artifactPath } : {}),
+  }
+  const values = {
+    sourceId: input.sourceId,
+    snapshotId: context.snapshotId,
+    workspaceId: context.workspaceId,
+    capturedAt: context.capturedAt,
+    status: input.status ?? 'ready',
+    provider: input.provider ?? 'macos-accessibility',
+    appBundleId: normalizeNullableString(input.appBundleId) ?? context.appBundleId,
+    windowTitle: normalizeNullableString(input.windowTitle) ?? context.windowTitle,
+    elementCount: Math.max(0, Math.floor(input.elementCount ?? 0)),
+    text: normalizeNullableString(input.text),
+    treeJson: JSON.stringify(input.tree ?? []),
+    metadataJson: JSON.stringify(metadata),
+    updatedAt: now,
   }
 
-  const id = randomUUID()
-  db().insert(chronicleSnapshots).values({ id, ...values, createdAt: now }).run()
-  recordEvent({
-    type: 'snapshot',
-    status: 'success',
-    message: 'Chronicle snapshot ingested',
-    snapshotId: id,
-    attrs: { sourceId: input.sourceId, framePath: values.framePath },
-  })
-  return db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, id)).get()!
+  if (existing) {
+    db().update(chronicleAccessibilitySnapshots).set(values).where(eq(chronicleAccessibilitySnapshots.id, id)).run()
+  }
+  else {
+    db().insert(chronicleAccessibilitySnapshots).values({
+      id,
+      ...values,
+      createdAt: now,
+    }).run()
+  }
+  return id
 }
 
 export function recordMemory(
@@ -1077,12 +4026,17 @@ export function recordMemory(
     profileId?: string
     usage?: { promptTokens: number, completionTokens: number, totalTokens: number }
     sourceSnapshotIds?: string[]
+    skipActivityAssignment?: boolean
   } = {},
 ) {
+  reconcileMemorySearchIndex()
   const config = syncConfig()
   const now = currentUnixSeconds()
   const createdAt = parseTimestamp(input.createdAt) ?? now
+  const canonicalContent = canonicalizeMemoryContent(input.content)
+  const contentHash = hashText(canonicalContent)
   const existing = db().select().from(chronicleMemories).where(eq(chronicleMemories.sourceId, input.sourceId)).get()
+  const duplicate = findDuplicateMemory(contentHash, canonicalContent, existing?.id)
   const sourceSnapshotIds = options.sourceSnapshotIds ?? findSnapshotIdsByPaths(input.sourceSnapshotPaths ?? [])
   const sourcePaths = [...new Set([
     ...(input.memoryPath ? [toRootRelative(config.storageRoot, input.memoryPath)] : []),
@@ -1091,6 +4045,7 @@ export function recordMemory(
   ])]
   const values = {
     sourceId: input.sourceId,
+    contentHash,
     workspaceId: config.workspaceId || null,
     type: input.windowType,
     source: input.summaryKind,
@@ -1107,12 +4062,65 @@ export function recordMemory(
   }
 
   if (existing) {
-    db().update(chronicleMemories).set(values).where(eq(chronicleMemories.id, existing.id)).run()
-    return db().select().from(chronicleMemories).where(eq(chronicleMemories.id, existing.id)).get()!
+    if (duplicate) {
+      const merged = db().transaction((tx) => {
+        const row = mergeDuplicateMemory(tx, duplicate, {
+          sourceId: input.sourceId,
+          sourcePaths,
+          sourceSnapshotIds,
+          now,
+          contentHash,
+        })
+        tx.delete(chronicleMemories).where(eq(chronicleMemories.id, existing.id)).run()
+        return row
+      })
+      recordEvent({
+        type: 'memory',
+        status: 'info',
+        message: 'Chronicle memory duplicate merged',
+        memoryId: merged.id,
+        attrs: { sourceId: input.sourceId, duplicateOfSourceId: duplicate.sourceId, contentHash, removedMemoryId: existing.id },
+      })
+      assignMemoryToActivity(input, merged.id, createdAt, config.workspaceId || null, options)
+      return merged
+    }
+
+    const updated = db().transaction((tx) => {
+      tx.update(chronicleMemories).set(values).where(eq(chronicleMemories.id, existing.id)).run()
+      const updated = tx.select().from(chronicleMemories).where(eq(chronicleMemories.id, existing.id)).get()!
+      syncMemorySearchIndex(tx, updated)
+      return updated
+    })
+    assignMemoryToActivity(input, updated.id, createdAt, config.workspaceId || null, options)
+    return updated
+  }
+
+  if (duplicate) {
+    const merged = db().transaction((tx) => mergeDuplicateMemory(tx, duplicate, {
+      sourceId: input.sourceId,
+      sourcePaths,
+      sourceSnapshotIds,
+      now,
+      contentHash,
+    }))
+    recordEvent({
+      type: 'memory',
+      status: 'info',
+      message: 'Chronicle memory duplicate merged',
+      memoryId: duplicate.id,
+      attrs: { sourceId: input.sourceId, duplicateOfSourceId: duplicate.sourceId, contentHash },
+    })
+    assignMemoryToActivity(input, merged.id, createdAt, config.workspaceId || null, options)
+    return merged
   }
 
   const id = randomUUID()
-  db().insert(chronicleMemories).values({ id, ...values }).run()
+  const inserted = db().transaction((tx) => {
+    tx.insert(chronicleMemories).values({ id, ...values }).run()
+    const row = tx.select().from(chronicleMemories).where(eq(chronicleMemories.id, id)).get()!
+    syncMemorySearchIndex(tx, row)
+    return row
+  })
   recordEvent({
     type: 'memory',
     status: 'success',
@@ -1120,7 +4128,57 @@ export function recordMemory(
     memoryId: id,
     attrs: { sourceId: input.sourceId, source: input.summaryKind },
   })
-  return db().select().from(chronicleMemories).where(eq(chronicleMemories.id, id)).get()!
+  assignMemoryToActivity(input, inserted.id, createdAt, config.workspaceId || null, options)
+  return inserted
+}
+
+function assignMemoryToActivity(
+  input: ChronicleMemoryReportInput,
+  memoryId: string,
+  createdAt: number,
+  workspaceId: string | null,
+  options: { skipActivityAssignment?: boolean },
+): void {
+  if (options.skipActivityAssignment) {
+    return
+  }
+  assignActivityEvidence({
+    trigger: 'memory',
+    workspaceId,
+    occurredAt: createdAt,
+    segmentType: 'work',
+    frontApp: readString(input.metadata?.appBundleId) ?? null,
+    title: readString(input.metadata?.title) ?? null,
+    summary: input.content.slice(0, 500),
+    refs: { memoryIds: [memoryId] },
+    metadata: {
+      source: 'memory',
+      sourceId: input.sourceId,
+      summaryKind: input.summaryKind,
+      windowType: input.windowType,
+    },
+  })
+}
+
+function inferScreenActivitySegmentType(appBundleId: string | null, windowTitle: string | null): ActivitySegmentType {
+  const haystack = `${appBundleId ?? ''} ${windowTitle ?? ''}`.toLowerCase()
+  if (haystack.includes('zoom') || haystack.includes('meet') || haystack.includes('teams')) {
+    return 'meeting'
+  }
+  if (haystack.includes('slack') || haystack.includes('discord')) {
+    return 'chat'
+  }
+  if (haystack.includes('browser') || haystack.includes('safari') || haystack.includes('chrome') || haystack.includes('firefox')) {
+    return 'browsing'
+  }
+  return appBundleId || windowTitle ? 'work' : 'unknown'
+}
+
+function readActivitySegmentType(value: unknown): ActivitySegmentType {
+  if (value === 'work' || value === 'meeting' || value === 'browsing' || value === 'chat' || value === 'audio' || value === 'idle') {
+    return value
+  }
+  return 'unknown'
 }
 
 export async function getFrameImageBySnapshot(snapshotId: string): Promise<Response | null> {
@@ -1146,6 +4204,17 @@ function syncConfig(): ChronicleConfig {
       modelId: readString(parsed.modelId) ?? defaultConfig.modelId,
       workspaceId: readString(parsed.workspaceId) ?? defaultConfig.workspaceId,
       enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : defaultConfig.enabled,
+      activityPipelineEnabled: typeof parsed.activityPipelineEnabled === 'boolean'
+        ? parsed.activityPipelineEnabled
+        : defaultConfig.activityPipelineEnabled,
+      activityPipelineIntervalMs: readPositiveNumber(parsed.activityPipelineIntervalMs) ?? defaultConfig.activityPipelineIntervalMs,
+      activityPipelineBatchSize: readPositiveNumber(parsed.activityPipelineBatchSize) ?? defaultConfig.activityPipelineBatchSize,
+      audioCaptureEnabled: typeof parsed.audioCaptureEnabled === 'boolean'
+        ? parsed.audioCaptureEnabled
+        : defaultConfig.audioCaptureEnabled,
+      audioSegmentMs: readPositiveNumber(parsed.audioSegmentMs) ?? defaultConfig.audioSegmentMs,
+      audioSegmentIntervalMs: readPositiveNumber(parsed.audioSegmentIntervalMs) ?? defaultConfig.audioSegmentIntervalMs,
+      audioRmsThreshold: readNonNegativeNumber(parsed.audioRmsThreshold) ?? defaultConfig.audioRmsThreshold,
       storageRoot: readString(parsed.storageRoot) ?? defaultConfig.storageRoot,
     }
   }
@@ -1183,6 +4252,7 @@ function getMessageSourceEntry(sourceId: string): MessageSourceEntry {
 }
 
 function toMessageSourceEntry(row: typeof chronicleMessageSources.$inferSelect): MessageSourceEntry {
+  const sourceConfig = readSlackSourceConfig(row.configJson)
   return {
     id: row.id,
     platform: row.platform,
@@ -1192,6 +4262,8 @@ function toMessageSourceEntry(row: typeof chronicleMessageSources.$inferSelect):
     teamId: row.teamId,
     botTokenRef: row.botTokenRef,
     channelIds: parseJson<string[]>(row.channelIdsJson, []),
+    realtimeMode: sourceConfig.realtimeMode,
+    signingSecretRef: sourceConfig.signingSecretRef,
     status: row.status,
     lastSyncAt: row.lastSyncAt,
     lastMessageAt: row.lastMessageAt,
@@ -1215,6 +4287,242 @@ function toMessageEntry(row: typeof chronicleMessages.$inferSelect): MessageEntr
     messageAtUnix: row.messageAt,
     permalink: row.permalink,
   }
+}
+
+function toAudioRawSegmentEntry(row: typeof chronicleAudioRawSegments.$inferSelect): AudioRawSegmentEntry {
+  return {
+    id: row.id,
+    sourceId: row.sourceId,
+    recordedAt: new Date(row.recordedAt * 1000).toISOString(),
+    recordedAtUnix: row.recordedAt,
+    source: row.source,
+    status: row.status,
+    audioPath: row.audioPath,
+    metadataPath: row.metadataPath,
+    sampleRate: row.sampleRate,
+    channels: row.channels,
+    sampleCount: row.sampleCount,
+    droppedSamples: row.droppedSamples,
+    durationMs: row.durationMs,
+    rms: bpsToRatio(row.rmsBps),
+    peak: bpsToRatio(row.peakBps),
+    active: row.active,
+    vadStatus: row.vadStatus,
+    asrStatus: row.asrStatus,
+    speakerStatus: row.speakerStatus,
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+  }
+}
+
+function toAccessibilitySnapshotEntry(row: typeof chronicleAccessibilitySnapshots.$inferSelect): AccessibilitySnapshotEntry {
+  const tree = parseJson<unknown>(row.treeJson, [])
+  return {
+    id: row.id,
+    sourceId: row.sourceId,
+    snapshotId: row.snapshotId,
+    capturedAt: new Date(row.capturedAt * 1000).toISOString(),
+    capturedAtUnix: row.capturedAt,
+    status: row.status,
+    provider: row.provider,
+    appBundleId: row.appBundleId,
+    windowTitle: row.windowTitle,
+    elementCount: row.elementCount,
+    text: row.text,
+    tree: Array.isArray(tree) ? tree : [],
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+  }
+}
+
+function toActivitySegmentEntry(row: typeof chronicleActivitySegments.$inferSelect): ActivitySegmentEntry {
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    startedAt: new Date(row.startedAt * 1000).toISOString(),
+    startedAtUnix: row.startedAt,
+    endedAt: new Date(row.endedAt * 1000).toISOString(),
+    endedAtUnix: row.endedAt,
+    durationSeconds: Math.max(0, row.endedAt - row.startedAt),
+    segmentType: row.segmentType,
+    frontApp: row.frontApp,
+    title: row.title,
+    summary: row.summary,
+    sourceCounts: parseJson<Record<string, number>>(row.sourceCountsJson, {}),
+    sourceRefs: parseJson<Record<string, string[]>>(row.sourceRefsJson, {}),
+    pipelineStatus: row.pipelineStatus,
+    isCrystallized: row.isCrystallized,
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+  }
+}
+
+function toPipelineRunEntry(row: typeof chroniclePipelineRuns.$inferSelect): PipelineRunEntry {
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    segmentId: row.segmentId,
+    trigger: row.trigger,
+    stage: row.stage,
+    status: row.status,
+    startedAt: new Date(row.startedAt * 1000).toISOString(),
+    startedAtUnix: row.startedAt,
+    endedAt: row.endedAt === null ? null : new Date(row.endedAt * 1000).toISOString(),
+    endedAtUnix: row.endedAt,
+    errorMessage: row.errorMessage,
+    snapshotsCount: row.snapshotsCount,
+    messagesCount: row.messagesCount,
+    audioTranscriptsCount: row.audioTranscriptsCount,
+    audioRawSegmentsCount: row.audioRawSegmentsCount,
+    memoriesCount: row.memoriesCount,
+    segmentsCount: row.segmentsCount,
+    segmentIds: parseJson<string[]>(row.segmentIdsJson, []),
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+  }
+}
+
+function toKnowledgeCardEntry(row: typeof chronicleKnowledgeCards.$inferSelect): KnowledgeCardEntry {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    cardType: row.cardType,
+    dimension: row.dimension,
+    confidence: bpsToRatio(row.confidenceBps),
+    sourceMemoryIds: parseJson<string[]>(row.sourceMemoryIdsJson, []),
+    sourceSegmentIds: parseJson<string[]>(row.sourceSegmentIdsJson, []),
+    sourceChunkIds: parseJson<string[]>(row.sourceChunkIdsJson, []),
+    tags: parseJson<string[]>(row.tagsJson, []),
+    contentHash: row.contentHash,
+    version: row.version,
+    status: row.status,
+    mergedIntoId: row.mergedIntoId,
+    pinned: row.pinned,
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+    updatedAt: new Date(row.updatedAt * 1000).toISOString(),
+    updatedAtUnix: row.updatedAt,
+  }
+}
+
+function toKnowledgeVersionEntry(row: typeof chronicleKnowledgeVersions.$inferSelect): KnowledgeVersionEntry {
+  return {
+    id: row.id,
+    knowledgeId: row.knowledgeId,
+    version: row.version,
+    title: row.title,
+    content: row.content,
+    cardType: row.cardType,
+    dimension: row.dimension,
+    confidence: bpsToRatio(row.confidenceBps),
+    sourceMemoryIds: parseJson<string[]>(row.sourceMemoryIdsJson, []),
+    sourceSegmentIds: parseJson<string[]>(row.sourceSegmentIdsJson, []),
+    sourceChunkIds: parseJson<string[]>(row.sourceChunkIdsJson, []),
+    tags: parseJson<string[]>(row.tagsJson, []),
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+  }
+}
+
+function toDreamRunEntry(row: typeof chronicleDreamRuns.$inferSelect): DreamRunEntry {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    runType: row.runType,
+    status: row.status,
+    startedAt: new Date(row.startedAt * 1000).toISOString(),
+    startedAtUnix: row.startedAt,
+    endedAt: row.endedAt === null ? null : new Date(row.endedAt * 1000).toISOString(),
+    endedAtUnix: row.endedAt,
+    inputCount: row.inputCount,
+    outputCount: row.outputCount,
+    mergedCount: row.mergedCount,
+    deletedCount: row.deletedCount,
+    sourceKnowledgeIds: parseJson<string[]>(row.sourceKnowledgeIdsJson, []),
+    outputKnowledgeIds: parseJson<string[]>(row.outputKnowledgeIdsJson, []),
+    config: parseJson<Record<string, unknown>>(row.configJson, {}),
+    result: parseJson<Record<string, unknown>>(row.resultJson, {}),
+    errorMessage: row.errorMessage,
+  }
+}
+
+function toAudioTranscriptEntry(row: typeof chronicleAudioTranscripts.$inferSelect): AudioTranscriptEntry {
+  const segments = db()
+    .select()
+    .from(chronicleAudioSegments)
+    .where(eq(chronicleAudioSegments.transcriptId, row.id))
+    .orderBy(chronicleAudioSegments.segmentIndex)
+    .all()
+    .map(toAudioSegmentEntry)
+
+  return {
+    id: row.id,
+    sourceId: row.sourceId,
+    memoryId: row.memoryId,
+    title: row.title,
+    source: row.source,
+    status: row.status,
+    startedAt: new Date(row.startedAt * 1000).toISOString(),
+    startedAtUnix: row.startedAt,
+    endedAt: row.endedAt === null ? null : new Date(row.endedAt * 1000).toISOString(),
+    endedAtUnix: row.endedAt,
+    language: row.language,
+    appBundleId: row.appBundleId,
+    windowTitle: row.windowTitle,
+    segmentCount: segments.length,
+    previewText: segments.map(segment => segment.text).join(' ').slice(0, 500),
+    segments,
+  }
+}
+
+function toAudioSegmentEntry(row: typeof chronicleAudioSegments.$inferSelect): AudioTranscriptSegmentEntry {
+  return {
+    id: row.id,
+    segmentIndex: row.segmentIndex,
+    startMs: row.startMs,
+    endMs: row.endMs,
+    speakerLabel: row.speakerLabel,
+    text: row.text,
+    confidence: row.confidenceBps === null ? null : row.confidenceBps / 10_000,
+    language: row.language,
+  }
+}
+
+function buildAudioTranscriptPreview(transcriptId: string): string {
+  return db()
+    .select({ text: chronicleAudioSegments.text })
+    .from(chronicleAudioSegments)
+    .where(eq(chronicleAudioSegments.transcriptId, transcriptId))
+    .orderBy(chronicleAudioSegments.segmentIndex)
+    .limit(4)
+    .all()
+    .map(row => row.text)
+    .join(' ')
+}
+
+function buildAudioTranscriptMemoryContent(input: {
+  title: string | null
+  startedAt: number
+  segments: AudioTranscriptSegmentInput[]
+}): string {
+  const heading = input.title?.trim()
+    ? `Meeting transcript: ${input.title.trim()}`
+    : `Meeting transcript: ${new Date(input.startedAt * 1000).toISOString()}`
+  const body = input.segments
+    .map((segment) => {
+      const speaker = segment.speakerLabel?.trim() || 'Speaker'
+      const start = formatDurationMs(segment.startMs)
+      return `[${start}] ${speaker}: ${segment.text.trim()}`
+    })
+    .filter(line => line.length > 0)
+    .join('\n')
+  return `${heading}\n\n${body}`.trim()
+}
+
+function formatDurationMs(value: number): string {
+  const totalSeconds = Math.max(0, Math.floor(value / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
 function updateMessageSourceStatus(
@@ -1244,6 +4552,38 @@ function failSlackSync(
   return { sourceId, status: 'error', ingested: 0, message }
 }
 
+function readSlackSourceConfig(configJson: string): SlackSourceConfig {
+  const parsed = SlackSourceConfigSchema.safeParse(parseJson<unknown>(configJson, {}))
+  if (!parsed.success) {
+    return { realtimeMode: 'polling', signingSecretRef: null }
+  }
+  return buildSlackSourceConfig(parsed.data)
+}
+
+function buildSlackSourceConfig(input: {
+  realtimeMode?: SlackRealtimeMode
+  signingSecretRef?: string | null
+}): SlackSourceConfig {
+  return {
+    realtimeMode: input.realtimeMode ?? 'polling',
+    signingSecretRef: normalizeNullableString(input.signingSecretRef),
+  }
+}
+
+function mergeSlackSourceConfig(
+  configJson: string,
+  patch: {
+    realtimeMode?: SlackRealtimeMode
+    signingSecretRef?: string | null
+  },
+): SlackSourceConfig {
+  const current = readSlackSourceConfig(configJson)
+  return buildSlackSourceConfig({
+    realtimeMode: patch.realtimeMode ?? current.realtimeMode,
+    signingSecretRef: patch.signingSecretRef === undefined ? current.signingSecretRef : patch.signingSecretRef,
+  })
+}
+
 function normalizeChannelIds(channelIds: string[]): string[] {
   return [...new Set(channelIds.map(channelId => channelId.trim()).filter(Boolean))]
 }
@@ -1261,6 +4601,71 @@ interface SlackApiResponse<T> {
   error?: string
   messages?: T[]
   channel?: { id?: string, name?: string, is_channel?: boolean, is_group?: boolean, is_im?: boolean }
+}
+
+function verifySlackSignature(input: {
+  rawBody: string
+  signature: string | null
+  timestamp: string | null
+  signingSecret: string
+}): void {
+  if (!input.signature || !input.timestamp) {
+    throw new AppError({
+      code: 'chronicle_slack_signature_missing',
+      status: 401,
+      message: 'Slack signature headers are required',
+    })
+  }
+
+  const timestampSeconds = Number(input.timestamp)
+  if (!Number.isFinite(timestampSeconds)) {
+    throw new AppError({
+      code: 'chronicle_slack_timestamp_invalid',
+      status: 401,
+      message: 'Slack request timestamp is invalid',
+    })
+  }
+
+  const now = currentUnixSeconds()
+  if (Math.abs(now - timestampSeconds) > SLACK_SIGNATURE_TOLERANCE_SECONDS) {
+    throw new AppError({
+      code: 'chronicle_slack_timestamp_stale',
+      status: 401,
+      message: 'Slack request timestamp is outside the accepted window',
+    })
+  }
+
+  const base = `${SLACK_SIGNATURE_VERSION}:${input.timestamp}:${input.rawBody}`
+  const expected = `${SLACK_SIGNATURE_VERSION}=${createHmac('sha256', input.signingSecret).update(base).digest('hex')}`
+  if (!safeEqualText(input.signature, expected)) {
+    throw new AppError({
+      code: 'chronicle_slack_signature_invalid',
+      status: 401,
+      message: 'Slack signature is invalid',
+    })
+  }
+}
+
+function safeEqualText(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left)
+  const rightBuffer = Buffer.from(right)
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
+}
+
+function parseSlackEventsPayload(rawBody: string): Record<string, unknown> {
+  const parsed = parseJson<unknown>(rawBody, null)
+  if (!isRecord(parsed)) {
+    throw new AppError({
+      code: 'chronicle_slack_payload_invalid',
+      status: 400,
+      message: 'Slack event payload must be a JSON object',
+    })
+  }
+  return parsed
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function fetchSlackHistory(token: string, channelId: string, oldestUnix: number | null): Promise<Record<string, unknown>[]> {
@@ -1366,7 +4771,7 @@ function recordSlackMessage(input: {
   }).run()
 
   const channelLabel = input.channelName ? `#${input.channelName}` : input.channelId
-  recordMemory({
+  const memory = recordMemory({
     sourceId: `slack:${input.sourceId}:${externalMessageId}`,
     windowType: '10min',
     createdAt: new Date(messageAt * 1000).toISOString(),
@@ -1378,6 +4783,23 @@ function recordSlackMessage(input: {
       sourceId: input.sourceId,
       channelId: input.channelId,
       channelName: input.channelName,
+      messageTs: input.messageTs,
+    },
+  }, { skipActivityAssignment: true })
+  assignActivityEvidence({
+    trigger: 'message',
+    workspaceId: input.workspaceId,
+    occurredAt: messageAt,
+    segmentType: 'chat',
+    frontApp: 'slack',
+    title: input.channelName ?? input.channelId,
+    summary: input.text.slice(0, 500),
+    refs: { messageIds: [id], memoryIds: [memory.id] },
+    metadata: {
+      source: 'slack',
+      sourceId: input.sourceId,
+      externalMessageId,
+      channelId: input.channelId,
       messageTs: input.messageTs,
     },
   })
@@ -1406,7 +4828,7 @@ async function getConfiguredModel(config: ChronicleConfig): Promise<string | nul
 }
 
 function recordEvent(input: {
-  type: 'config' | 'daemon' | 'snapshot' | 'memory' | 'summarize' | 'model-resource' | 'message'
+  type: 'config' | 'daemon' | 'snapshot' | 'memory' | 'summarize' | 'model-resource' | 'message' | 'audio' | 'activity'
   status: 'info' | 'success' | 'warning' | 'error'
   message: string
   snapshotId?: string
@@ -1439,7 +4861,7 @@ function seedModelResources(): void {
       category: manifest.category,
       status,
       displayName: manifest.displayName,
-      path: manifest.files[0]?.path ?? null,
+      path: null,
       version: manifest.version,
       message: manifest.message,
       sizeBytes: 0,
@@ -1583,29 +5005,58 @@ function assertManifestInstallAllowed(manifest: ModelResourceManifest): void {
 
 async function resolveModelResourceLocalSource(
   files: ModelResourceLocalFileInput[],
+  sourceRoot: string | null,
   manifestFile: ModelResourceFileManifest,
+  manifestFileCount: number,
 ): Promise<string> {
   const direct = files.find(file => file.relativePath === manifestFile.path)
-  const fallbackName = manifestFile.path.split('/').at(-1)
+  const fallbackName = basename(manifestFile.path)
   const byName = fallbackName ? files.find(file => file.relativePath === fallbackName) : undefined
   const sourcePath = normalizeNullableString((direct ?? byName)?.sourcePath)
-  if (!sourcePath) {
-    throw new AppError({
-      code: 'chronicle_model_resource_file_missing',
-      status: 400,
-      message: `Missing source file for ${manifestFile.path}`,
-    })
+  if (sourcePath) {
+    return assertLocalModelSourceFile(sourcePath, manifestFile.path)
   }
+
+  if (sourceRoot) {
+    const root = resolve(sourceRoot)
+    const rootStats = await stat(root).catch(() => null)
+    if (rootStats?.isFile() && manifestFileCount === 1) {
+      return root
+    }
+    if (rootStats?.isDirectory()) {
+      const relativeCandidate = resolve(root, manifestFile.path)
+      if (await isFile(relativeCandidate)) {
+        return relativeCandidate
+      }
+      const basenameCandidate = resolve(root, basename(manifestFile.path))
+      if (await isFile(basenameCandidate)) {
+        return basenameCandidate
+      }
+    }
+  }
+
+  throw new AppError({
+    code: 'chronicle_model_resource_file_missing',
+    status: 400,
+    message: `Missing source file for ${manifestFile.path}`,
+  })
+}
+
+async function assertLocalModelSourceFile(sourcePath: string, manifestPath: string): Promise<string> {
   const resolved = resolve(sourcePath)
   const stats = await stat(resolved).catch(() => null)
   if (!stats?.isFile()) {
     throw new AppError({
       code: 'chronicle_model_resource_source_invalid',
       status: 400,
-      message: `Model source file does not exist: ${manifestFile.path}`,
+      message: `Model source file does not exist: ${manifestPath}`,
     })
   }
   return resolved
+}
+
+async function isFile(path: string): Promise<boolean> {
+  return !!(await stat(path).catch(() => null))?.isFile()
 }
 
 async function verifyStagedModelFile(file: ModelResourceFileManifest, path: string): Promise<void> {
@@ -1635,6 +5086,23 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest('hex')
 }
 
+async function downloadModelResourceFile(file: ModelResourceFileManifest, targetPath: string): Promise<void> {
+  const urls = [file.sourceUrl, ...(file.fallbackUrls ?? [])].filter((url): url is string => !!url)
+  let lastError: unknown = null
+  for (const url of urls) {
+    try {
+      await downloadToFile(url, targetPath)
+      return
+    }
+    catch (error) {
+      lastError = error
+      await rm(targetPath, { force: true }).catch(() => {})
+    }
+  }
+  const message = lastError instanceof Error ? lastError.message : 'no source URL'
+  throw new Error(`Model resource download failed for ${file.path}: ${message}`)
+}
+
 async function downloadToFile(sourceUrl: string, targetPath: string): Promise<void> {
   const parsed = new URL(sourceUrl)
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
@@ -1645,7 +5113,7 @@ async function downloadToFile(sourceUrl: string, targetPath: string): Promise<vo
     })
   }
   const response = await fetch(sourceUrl)
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     throw new Error(`Model resource download failed: ${response.status}`)
   }
   const bytes = new Uint8Array(await response.arrayBuffer())
@@ -1678,7 +5146,20 @@ async function readFrameImage(relativeOrAbsolutePath: string): Promise<Response 
   }
 }
 
-function toMemoryEntry(row: typeof chronicleMemories.$inferSelect): MemoryEntry {
+function toMemoryEntry(
+  row: typeof chronicleMemories.$inferSelect,
+  match?: MemorySearchScore,
+): MemoryEntry {
+  const keywordScore = match?.keywordScore ?? 0
+  const semanticScore = match?.semanticScore ?? 0
+  const matchKind = keywordScore > 0 && semanticScore > 0
+    ? 'hybrid'
+    : semanticScore > 0
+      ? 'semantic'
+      : keywordScore > 0
+        ? 'keyword'
+        : null
+
   return {
     id: row.id,
     type: row.type,
@@ -1687,7 +5168,313 @@ function toMemoryEntry(row: typeof chronicleMemories.$inferSelect): MemoryEntry 
     createdAtUnix: row.createdAt,
     content: row.content,
     modelId: row.modelId,
+    matchKind,
+    keywordScore: matchKind ? Number(keywordScore.toFixed(4)) : null,
+    semanticScore: matchKind ? Number(semanticScore.toFixed(4)) : null,
   }
+}
+
+function reconcileMemorySearchIndex(): void {
+  const currentDbPath = getServerConfig().dbPath
+  if (memorySearchIndexReconciledDbPath === currentDbPath) {
+    return
+  }
+  const memories = db().select().from(chronicleMemories).all()
+  db().transaction((tx) => {
+    for (const memory of memories) {
+      const contentHash = memory.contentHash ?? hashText(canonicalizeMemoryContent(memory.content))
+      const chunkExists = tx
+        .select({ id: chronicleMemoryChunks.id })
+        .from(chronicleMemoryChunks)
+        .where(eq(chronicleMemoryChunks.memoryId, memory.id))
+        .limit(1)
+        .get()
+      const keywordExists = tx
+        .select({ id: chronicleMemoryKeywords.id })
+        .from(chronicleMemoryKeywords)
+        .where(eq(chronicleMemoryKeywords.memoryId, memory.id))
+        .limit(1)
+        .get()
+      const embeddingExists = tx
+        .select({ id: chronicleMemoryEmbeddings.id })
+        .from(chronicleMemoryEmbeddings)
+        .where(eq(chronicleMemoryEmbeddings.memoryId, memory.id))
+        .limit(1)
+        .get()
+      const nextMemory = memory.contentHash === contentHash
+        ? memory
+        : { ...memory, contentHash }
+
+      if (memory.contentHash !== contentHash) {
+        tx.update(chronicleMemories).set({
+          contentHash,
+          updatedAt: Math.max(memory.updatedAt, currentUnixSeconds()),
+        }).where(eq(chronicleMemories.id, memory.id)).run()
+      }
+      if (!chunkExists || !keywordExists || !embeddingExists) {
+        syncMemorySearchIndex(tx, nextMemory)
+      }
+    }
+  })
+  memorySearchIndexReconciledDbPath = currentDbPath
+}
+
+function findDuplicateMemory(
+  contentHash: string,
+  canonicalContent: string,
+  excludeMemoryId?: string,
+): typeof chronicleMemories.$inferSelect | null {
+  return db()
+    .select()
+    .from(chronicleMemories)
+    .where(eq(chronicleMemories.contentHash, contentHash))
+    .all()
+    .find(row => row.id !== excludeMemoryId && canonicalizeMemoryContent(row.content) === canonicalContent)
+    ?? null
+}
+
+function mergeDuplicateMemory(
+  tx: ChronicleTx,
+  duplicate: typeof chronicleMemories.$inferSelect,
+  input: {
+    sourceId: string
+    sourcePaths: string[]
+    sourceSnapshotIds: string[]
+    now: number
+    contentHash: string
+  },
+): typeof chronicleMemories.$inferSelect {
+  const mergedSourceIds = [...new Set([
+    ...readStringArrayFromMetadata(duplicate.metadataJson, 'duplicateSourceIds'),
+    input.sourceId,
+  ])]
+  const mergedSourcePaths = [...new Set([
+    ...parseJson<string[]>(duplicate.sourcePathsJson, []),
+    ...input.sourcePaths,
+  ])]
+  const mergedSourceSnapshotIds = [...new Set([
+    ...parseJson<string[]>(duplicate.sourceSnapshotIdsJson, []),
+    ...input.sourceSnapshotIds,
+  ])]
+  const metadata = {
+    ...parseJson<Record<string, unknown>>(duplicate.metadataJson, {}),
+    duplicateSourceIds: mergedSourceIds,
+    duplicateLastSeenAt: input.now,
+  }
+  tx.update(chronicleMemories).set({
+    contentHash: input.contentHash,
+    sourceSnapshotIdsJson: JSON.stringify(mergedSourceSnapshotIds),
+    sourcePathsJson: JSON.stringify(mergedSourcePaths),
+    metadataJson: JSON.stringify(metadata),
+    updatedAt: input.now,
+  }).where(eq(chronicleMemories.id, duplicate.id)).run()
+  const merged = tx.select().from(chronicleMemories).where(eq(chronicleMemories.id, duplicate.id)).get()!
+  syncMemorySearchIndex(tx, merged)
+  return merged
+}
+
+function syncMemorySearchIndex(tx: ChronicleTx, memory: typeof chronicleMemories.$inferSelect): void {
+  const now = currentUnixSeconds()
+  tx.delete(chronicleMemoryKeywords).where(eq(chronicleMemoryKeywords.memoryId, memory.id)).run()
+  tx.delete(chronicleMemoryEmbeddings).where(eq(chronicleMemoryEmbeddings.memoryId, memory.id)).run()
+  tx.delete(chronicleMemoryChunks).where(eq(chronicleMemoryChunks.memoryId, memory.id)).run()
+
+  const chunks = splitMemoryContent(memory.content)
+  for (const [chunkIndex, chunkContent] of chunks.entries()) {
+    const chunkId = randomUUID()
+    const contentTerms = countTerms(tokenizeMemoryText(chunkContent))
+    const promptTerms = countTerms(tokenizeMemoryText(memory.prompt ?? ''))
+    const metadataTerms = countTerms(tokenizeMemoryText(memory.metadataJson))
+    const tokenCount = [...contentTerms.values()].reduce((sum, count) => sum + count, 0)
+
+    tx.insert(chronicleMemoryChunks).values({
+      id: chunkId,
+      memoryId: memory.id,
+      chunkIndex,
+      content: chunkContent,
+      contentHash: hashText(canonicalizeMemoryContent(chunkContent)),
+      tokenCount,
+      embeddingStatus: 'missing',
+      embeddingModelId: null,
+      metadataJson: JSON.stringify({
+        source: 'chronicle-memory',
+        contentHash: memory.contentHash,
+      }),
+      createdAt: now,
+      updatedAt: now,
+    }).run()
+
+    insertMemoryKeywords(tx, memory.id, chunkId, 'content', contentTerms, 3, now)
+    insertMemoryKeywords(tx, memory.id, chunkId, 'prompt', promptTerms, 2, now)
+    insertMemoryKeywords(tx, memory.id, chunkId, 'metadata', metadataTerms, 1, now)
+    insertMemoryEmbedding(tx, memory.id, chunkId, chunkContent, now)
+  }
+}
+
+function insertMemoryEmbedding(
+  tx: ChronicleTx,
+  memoryId: string,
+  chunkId: string,
+  content: string,
+  now: number,
+): void {
+  const vector = buildLexicalEmbeddingVector(content)
+  const vectorJson = JSON.stringify(vector)
+  tx.insert(chronicleMemoryEmbeddings).values({
+    id: randomUUID(),
+    memoryId,
+    chunkId,
+    modelId: MEMORY_EMBEDDING_MODEL_ID,
+    modelVersion: MEMORY_EMBEDDING_MODEL_VERSION,
+    dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    vectorJson,
+    vectorHash: hashText(vectorJson),
+    status: 'ready',
+    metadataJson: JSON.stringify({
+      provider: 'chronicle-lexical',
+      runtime: 'deterministic-local',
+    }),
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+}
+
+function insertMemoryKeywords(
+  tx: ChronicleTx,
+  memoryId: string,
+  chunkId: string,
+  source: 'content' | 'prompt' | 'metadata',
+  terms: Map<string, number>,
+  weight: number,
+  createdAt: number,
+): void {
+  for (const [term, occurrences] of terms) {
+    tx.insert(chronicleMemoryKeywords).values({
+      id: randomUUID(),
+      memoryId,
+      chunkId,
+      term,
+      source,
+      occurrences,
+      weight,
+      createdAt,
+    }).run()
+  }
+}
+
+function splitMemoryContent(content: string): string[] {
+  const trimmed = content.trim()
+  if (!trimmed) {
+    return ['']
+  }
+  const chunks: string[] = []
+  for (let offset = 0; offset < trimmed.length; offset += MEMORY_CHUNK_MAX_CHARS) {
+    chunks.push(trimmed.slice(offset, offset + MEMORY_CHUNK_MAX_CHARS))
+  }
+  return chunks
+}
+
+function canonicalizeMemoryContent(content: string): string {
+  return content
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function hashText(text: string): string {
+  return createHash('sha256').update(text).digest('hex')
+}
+
+function tokenizeMemoryText(text: string): string[] {
+  const normalized = canonicalizeMemoryContent(text)
+  const matches = normalized.match(/[\p{L}\p{N}_-]+/gu) ?? []
+  return matches
+    .map(term => term.replace(/^[-_]+|[-_]+$/g, ''))
+    .filter(term => term.length >= MEMORY_TOKEN_MIN_LENGTH)
+}
+
+function countTerms(terms: string[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const term of terms) {
+    counts.set(term, (counts.get(term) ?? 0) + 1)
+  }
+  return counts
+}
+
+function buildCombinedMemorySearchScore(match: MemorySearchScore, phraseContained: boolean): number {
+  const phraseBoost = phraseContained ? 100 : 0
+  return phraseBoost + match.keywordScore + match.semanticScore * MEMORY_SEMANTIC_SCORE_WEIGHT
+}
+
+function buildLexicalEmbeddingVector(text: string): number[] {
+  const vector = Array.from({ length: MEMORY_EMBEDDING_DIMENSIONS }, () => 0)
+  for (const term of tokenizeMemoryText(text)) {
+    vector[stableTermIndex(`term:${term}`)] += 1
+    for (const trigram of termTrigrams(term)) {
+      vector[stableTermIndex(`tri:${trigram}`)] += 0.35
+    }
+  }
+  return normalizeVector(vector)
+}
+
+function termTrigrams(term: string): string[] {
+  if (term.length <= 3) {
+    return [term]
+  }
+  const trigrams: string[] = []
+  for (let index = 0; index <= term.length - 3; index += 1) {
+    trigrams.push(term.slice(index, index + 3))
+  }
+  return trigrams
+}
+
+function stableTermIndex(term: string): number {
+  const digest = createHash('sha256').update(term).digest()
+  return digest.readUInt32BE(0) % MEMORY_EMBEDDING_DIMENSIONS
+}
+
+function normalizeVector(vector: number[]): number[] {
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0))
+  if (norm === 0) {
+    return vector
+  }
+  return vector.map(value => Number((value / norm).toFixed(6)))
+}
+
+function parseEmbeddingVector(vectorJson: string, dimensions: number): number[] | null {
+  const parsed = parseJson<unknown>(vectorJson, null)
+  if (!Array.isArray(parsed) || parsed.length !== dimensions) {
+    return null
+  }
+  const vector = parsed.map(value => typeof value === 'number' && Number.isFinite(value) ? value : null)
+  return vector.every(value => value !== null) ? vector as number[] : null
+}
+
+function cosineSimilarity(left: number[], right: number[]): number {
+  if (left.length !== right.length || left.length === 0) {
+    return 0
+  }
+  let dot = 0
+  let leftNorm = 0
+  let rightNorm = 0
+  for (let index = 0; index < left.length; index += 1) {
+    const leftValue = left[index] ?? 0
+    const rightValue = right[index] ?? 0
+    dot += leftValue * rightValue
+    leftNorm += leftValue * leftValue
+    rightNorm += rightValue * rightValue
+  }
+  if (leftNorm === 0 || rightNorm === 0) {
+    return 0
+  }
+  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
+}
+
+function readStringArrayFromMetadata(metadataJson: string, key: string): string[] {
+  const metadata = parseJson<Record<string, unknown>>(metadataJson, {})
+  const value = metadata[key]
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
 function findSnapshotIdsByPaths(paths: string[]): string[] {
@@ -1703,16 +5490,111 @@ function findSnapshotIdsByPaths(paths: string[]): string[] {
 }
 
 function parseTimestamp(value: string): number | null {
-  const asDate = Date.parse(value.replace(/(\d{2})-(\d{2})-(\d{2})Z$/, '$1:$2:$3Z'))
+  const normalized = value.trim()
+  if (!normalized) {
+    return null
+  }
+  const asDate = Date.parse(normalized.replace(/(\d{2})-(\d{2})-(\d{2})Z$/, '$1:$2:$3Z'))
   if (!Number.isNaN(asDate)) {
     return Math.floor(asDate / 1000)
   }
-  const asNumber = Number(value)
+  const asNumber = Number(normalized)
   return Number.isFinite(asNumber) ? Math.floor(asNumber) : null
+}
+
+function readRequiredAudioTimestamp(value: string, field: 'startedAt' | 'endedAt'): number {
+  const parsed = parseTimestamp(value)
+  if (parsed !== null) {
+    return parsed
+  }
+  throw new AppError({
+    code: 'chronicle_audio_transcript_timestamp_invalid',
+    status: 400,
+    message: `Audio transcript ${field} must be a valid timestamp`,
+  })
+}
+
+function readRequiredAudioRawSegmentTimestamp(value: string): number {
+  const parsed = parseTimestamp(value)
+  if (parsed !== null) {
+    return parsed
+  }
+  throw new AppError({
+    code: 'chronicle_audio_raw_segment_timestamp_invalid',
+    status: 400,
+    message: 'Audio raw segment recordedAt must be a valid timestamp',
+  })
+}
+
+function estimateAudioDurationMs(sampleCount: number, sampleRate: number): number {
+  if (!Number.isFinite(sampleCount) || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return 0
+  }
+  return Math.round((Math.max(0, sampleCount) / sampleRate) * 1000)
+}
+
+function ratioToBps(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.round(Math.max(0, Math.min(1, value)) * 10_000)
+}
+
+function bpsToRatio(value: number): number {
+  return Number((value / 10_000).toFixed(4))
+}
+
+function validateAudioTranscriptSegments(segments: AudioTranscriptSegmentInput[]): void {
+  for (const [index, segment] of segments.entries()) {
+    if (segment.endMs !== undefined && segment.endMs !== null && segment.endMs < segment.startMs) {
+      throw new AppError({
+        code: 'chronicle_audio_transcript_segment_range_invalid',
+        status: 400,
+        message: `Audio transcript segment ${index} endMs must be greater than or equal to startMs`,
+      })
+    }
+  }
 }
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
+}
+
+function boundedString(value: string, maxLength: number): string {
+  return value.length <= maxLength ? value : value.slice(0, maxLength)
+}
+
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function readKnowledgeCardType(value: string | undefined): KnowledgeCardType {
+  if (value === 'insight' || value === 'decision' || value === 'task' || value === 'pattern') {
+    return value
+  }
+  return 'fact'
+}
+
+function readKnowledgeDimension(value: string | undefined): KnowledgeDimension {
+  if (value === 'technical' || value === 'business' || value === 'personal' || value === 'project') {
+    return value
+  }
+  return 'general'
+}
+
+function readPositiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+function readNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback
+  }
+  return Math.min(max, Math.max(min, value))
 }
 
 function parseJson<T>(value: string, fallback: T): T {

@@ -27,7 +27,8 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **pty.test.ts**: session-owned cli-tui terminal runtime, terminal resource snapshots, HTTP control routes, and cleanup.
 - **pty-websocket.test.ts**: PTY WebSocket live channel, reconnect, delete-session teardown, and cli-tui session ownership semantics.
 - **codex-session-capture.test.ts**: Codex CLI JSONL metadata capture rules for cli-tui resume bindings.
-- **chronicle.test.ts**: Chronicle DB-backed snapshot/memory ingest, source deduplication, snapshot frame serving, local model resource status, memory search, and summarize error event persistence.
+- **chronicle.test.ts**: Chronicle DB-backed snapshot/accessibility/memory ingest, source deduplication, snapshot frame serving, local model resource status, memory search, audio evidence contracts, Slack ingest, activity pipeline tick progression, and summarize error event persistence.
+- **chronicle-daemon-manager.test.ts**: Chronicle Rust daemon launch argument construction for opt-in microphone segment capture.
 - **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.
 - **workflow-rules.test.ts**: workflow-rules HTTP CRUD + filesystem ownership.
 - **profiles.test.ts**: profile CRUD, secret masking, provider metadata endpoints, and Available Model registry mapping persistence.
