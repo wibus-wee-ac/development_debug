@@ -43,7 +43,7 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
           to="plugin-panel"
           params={{ panelId: panel.id }}
           className={cn(
-            'flex h-7 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm transition-colors',
+            'flex h-7 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm',
             'hover:bg-fill cursor-pointer',
             activePluginPanelId === panel.id && 'bg-fill text-foreground',
             activePluginPanelId !== panel.id && 'text-muted-foreground',
@@ -52,7 +52,7 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
           <PuzzleIcon className="size-3.5 shrink-0" />
           <span
             className={cn(
-              'min-w-0 flex-1 truncate transition-opacity duration-[120ms]',
+              'min-w-0 flex-1 truncate',
               collapsed ? 'opacity-0' : 'opacity-100',
             )}
           >

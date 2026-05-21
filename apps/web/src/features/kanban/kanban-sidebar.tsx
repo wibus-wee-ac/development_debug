@@ -211,7 +211,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
   return (
     <div
       className={cn(
-        'group flex items-center rounded-lg transition-colors mx-1',
+        'group flex items-center rounded-lg mx-1',
         isActive ? 'bg-accent/80' : 'hover:bg-accent/50',
       )}
       data-testid={`kanban-board-${board.id}`}
@@ -244,7 +244,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
 
       <Menu>
         <MenuTrigger
-          className="shrink-0 flex size-6 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:bg-accent/80 hover:text-foreground transition-all mr-1"
+          className="shrink-0 flex size-6 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 group-hover:opacity-100 hover:bg-accent/80 hover:text-foreground mr-1"
           data-testid={`kanban-board-menu-trigger-${board.id}`}
         >
           <MoreHorizontalIcon className="size-3" />
@@ -288,7 +288,7 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
         <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">看板</span>
         <button
           onClick={() => setIsCreating(true)}
-          className="size-5 flex items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
+          className="size-5 flex items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
           data-testid="kanban-add-board-btn"
         >
           <PlusIcon className="size-3" />

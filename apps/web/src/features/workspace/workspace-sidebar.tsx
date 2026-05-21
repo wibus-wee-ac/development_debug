@@ -293,7 +293,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       className={cn(
-        'group flex min-w-0 w-full items-center rounded-lg text-left text-xs transition-colors hover:bg-accent/50',
+        'group flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50',
         !isRenaming && 'cursor-grab active:cursor-grabbing',
         isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
@@ -338,7 +338,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
                 render={(
                   <button
                     type="button"
-                    className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-[background-color,color,opacity] hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+                    className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
                     onClick={e => e.stopPropagation()}
                     aria-label="会话菜单"
                   />
@@ -390,7 +390,7 @@ function WorkspaceGroup({
 
   return (
     <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`}>
-      <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50 transition-colors">
+      <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50">
         <button
           type="button"
           onClick={toggleExpanded}
@@ -419,7 +419,7 @@ function WorkspaceGroup({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                className="opacity-0 group-hover:opacity-100 transition-opacity -mr-1"
+                className="opacity-0 group-hover:opacity-100 -mr-1"
                 onClick={e => e.stopPropagation()}
               />
             )}
@@ -505,7 +505,7 @@ interface NavItemProps {
 }
 
 function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dataTestId }: NavItemProps) {
-  const className = 'group flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 transition-colors hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
+  const className = 'group flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
   const iconNode = (
     <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
       {icon}
@@ -528,7 +528,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
         )}
       <span
         className={cn(
-          'flex-1 overflow-hidden text-left whitespace-nowrap transition-opacity duration-[120ms]',
+          'flex-1 overflow-hidden text-left whitespace-nowrap',
           collapsed ? 'opacity-0' : 'opacity-100',
         )}
       >
@@ -537,7 +537,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
       {shortcut && (
         <span
           className={cn(
-            'shrink-0 overflow-hidden font-mono text-[10px] text-muted-foreground/40 whitespace-nowrap transition-opacity duration-[120ms]',
+            'shrink-0 overflow-hidden font-mono text-[10px] text-muted-foreground/40 whitespace-nowrap',
             collapsed ? 'opacity-0' : 'opacity-0 group-hover:opacity-100',
           )}
         >

@@ -50,7 +50,7 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
             onClick={() => onSetSection(id)}
             data-testid={`settings-nav-${id}`}
             className={cn(
-              'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs transition-colors',
+              'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs',
               activeSection === id
                 ? 'bg-accent text-accent-foreground font-medium'
                 : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
