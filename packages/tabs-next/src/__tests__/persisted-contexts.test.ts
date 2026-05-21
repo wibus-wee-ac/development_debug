@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: persisted tabs-next localStorage payloads
-// Output: regression coverage for persisted context repair
-// Position: Restore hygiene tests for @cradle/tabs-next
 
 import { beforeEach, describe, expect, it } from 'vitest'
 

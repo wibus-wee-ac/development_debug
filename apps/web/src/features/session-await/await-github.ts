@@ -1,7 +1,3 @@
-// Input: git remote URLs and lightweight git status metadata
-// Output: helpers that detect GitHub repositories and derive await defaults
-// Position: session-await feature support code for human-created GitHub CI awaits
-
 import type { GitStatus } from '~/lib/types'
 
 interface GitRemote {

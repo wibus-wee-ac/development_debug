@@ -1,7 +1,3 @@
-// Input: provider configuration semantics shared across server modules
-// Output: canonical Zod schemas for provider/profile config payloads
-// Position: apps/server cross-module typed config helpers
-
 import { z } from 'zod'
 
 export const acpChatConfigSchema = z.object({

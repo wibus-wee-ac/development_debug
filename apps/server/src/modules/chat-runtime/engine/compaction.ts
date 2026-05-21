@@ -1,7 +1,4 @@
 // Auto-compaction: detect context overflow and compact messages via sliding window or summarization
-// Input: ModelMessage array, usage from previous steps, context limit
-// Output: Compacted ModelMessage array when overflow detected
-// Position: apps/server/src/modules/chat-runtime/engine/compaction.ts
 
 import type { LanguageModel, ModelMessage } from 'ai'
 import { generateText } from 'ai'

@@ -1,9 +1,3 @@
-<!--
-Output: Git capability spec for server migration.
-Input: Legacy git IPC service, renderer git hooks, and real-user E2E expectations.
-Position: apps/server/specs/capabilities git spec.
--->
-
 # Capability: Git
 
 ## User / System Goal

@@ -1,7 +1,3 @@
-// Input: ProviderModelPicker, selected composer runtime state
-// Output: ProviderModelSelector — composer toolbar adapter for the shared provider/model picker
-// Position: Composer-specific state adapter around the reusable provider/model selector core
-
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'

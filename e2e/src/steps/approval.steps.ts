@@ -1,7 +1,3 @@
-// Input: Cucumber step bindings, Playwright assertions, CradleWorld helpers
-// Output: Approval flow E2E step definitions covering approval card visibility and user actions
-// Position: E2E step layer for approval.feature
-
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

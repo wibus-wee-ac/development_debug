@@ -1,7 +1,3 @@
-// Input: filesystem, YAML parser, and scope path helpers
-// Output: filesystem-backed skills inventory, CRUD, and import/export operations
-// Position: apps/server/src/modules/skills/skills.store.ts
-
 import fs from 'node:fs'
 import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'

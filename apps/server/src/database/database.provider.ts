@@ -1,7 +1,3 @@
-// Input: DatabaseConfig + @cradle/db schema
-// Output: drizzle database singleton
-// Position: server database provider
-
 import { dbSchema } from '@cradle/db'
 import Database from 'better-sqlite3'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'

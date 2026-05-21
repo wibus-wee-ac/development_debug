@@ -1,15 +1,10 @@
-<!--
-Output: Session-await web feature inventory.
-Input: Session await API query hooks, GitHub remotes/status data, and live status projections.
-Position: Renderer UI for creating and inspecting chat session awaits.
--->
-
 # Session Await Feature
 
 Renderer-owned UI for chat session awaits in the right aside. The feature lets a user create GitHub checks or review awaits for the active session and inspect live status for pending awaits.
 
 ## Files
 
+- **awaits-overview.tsx**: Full-tab overview of pending awaits from the Desktop read-only projection.
 - **await-panel.tsx**: Await panel, GitHub composer, source cards, check/status tree rendering, and PR review status rendering.
 - **await-github.ts**: GitHub repository detection and target parsing helpers for human-created awaits.
 - **await-github.test.ts**: Regression coverage for GitHub repo detection, target parsing, and PR-number inference.

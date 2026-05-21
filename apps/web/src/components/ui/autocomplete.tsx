@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: Base UI autocomplete primitives, shared Input and ScrollArea wrappers, cn helper
-// Output: Autocomplete primitive wrappers aligned with the app's input and popup styling
-// Position: Shared UI primitive layer for searchable pickers and command-style inputs
 
 'use client'
 

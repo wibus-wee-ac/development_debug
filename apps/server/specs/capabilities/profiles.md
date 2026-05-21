@@ -1,9 +1,3 @@
-<!--
-Output: Profiles capability spec for server migration.
-Input: Saved runtime profile lifecycle and session cleanup semantics.
-Position: apps/server/specs/capabilities profiles spec.
--->
-
 # Capability: Profiles
 
 ## User / System Goal

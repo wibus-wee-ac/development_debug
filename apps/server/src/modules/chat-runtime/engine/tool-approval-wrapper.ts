@@ -1,7 +1,3 @@
-// Input: AI SDK ToolSet + approval service context
-// Output: Wrapped ToolSet with approval gates
-// Position: apps/server/src/modules/chat-runtime/engine/tool-approval-wrapper.ts
-
 import type { Tool, ToolSet } from 'ai'
 
 import * as ApprovalService from '../../approval/service'

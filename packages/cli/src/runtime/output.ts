@@ -1,7 +1,3 @@
-// Input: command result payloads and output preferences
-// Output: stdout rendering for JSON, tables, and acknowledgements
-// Position: packages/cli runtime presentation helper
-
 import type { TableUserConfig } from 'table'
 import { getBorderCharacters, table } from 'table'
 

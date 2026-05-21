@@ -1,7 +1,3 @@
-// Input: provider config input, secret store, and env fallback
-// Output: shared utilities for SDK-backed provider metadata/runtime implementations
-// Position: apps/server/src/modules/providers/provider-base.ts
-
 import { z } from 'zod'
 
 export const BaseProviderConfig = z.object({
@@ -30,6 +26,14 @@ export const CodexConfigSchema = BaseProviderConfig.extend({
 })
 
 export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
+  claudeAgent: z.object({
+    modelAliases: z.object({
+      haiku: z.string().optional(),
+      sonnet: z.string().optional(),
+      opus: z.string().optional(),
+    }).optional(),
+    subagentModel: z.string().optional(),
+  }).optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk']).optional(),
   allowDangerouslySkipPermissions: z.boolean().optional(),
   skills: z.union([z.literal('all'), z.array(z.string())]).optional(),

@@ -9,6 +9,7 @@
 ## Files
 
 - **appearance-settings.tsx**: 外观设置页，负责主题切换
+- **desktop-update-settings.tsx**: Desktop 更新设置页，通过 Electron preload / IPC 管理 Velopack 更新状态、检查、下载与应用。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型
 - **settings-overlay-store.ts**: Settings feature-owned overlay state — records which tab currently hosts the settings overlay plus the active section selection; replaces layout-store ownership for settings UI state
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面

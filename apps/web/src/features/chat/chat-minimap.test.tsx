@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, ChatMinimap, React 19 ref prop
-// Output: Regression coverage for minimap imperative scroll progress updates
-// Position: Chat feature test guarding ChatMinimap handle wiring used by ChatView
 
 import type { UIMessage } from 'ai'
 import { act, createRef } from 'react'

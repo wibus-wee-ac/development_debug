@@ -1,7 +1,3 @@
-// Input: React
-// Output: ShortcutContext + ShortcutContextValue type
-// Position: Shared context for shortcut registration between provider and hook
-
 import { createContext } from 'react'
 
 import type { ShortcutDefinition } from './shortcut-utils'

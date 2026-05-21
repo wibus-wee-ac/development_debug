@@ -1,7 +1,3 @@
-// Input: requestJson runtime HTTP helper
-// Output: tests for generated-command HTTP transport behavior
-// Position: packages/cli runtime test suite
-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { requestJson } from './http-client'

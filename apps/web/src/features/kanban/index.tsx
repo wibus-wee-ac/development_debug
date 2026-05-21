@@ -1,7 +1,3 @@
-// Input: boardId, workspaceId, selectedIssueId, onSelectIssue
-// Output: Main kanban view with toolbar + board/list layout + peek panel
-// Position: Entry point for the kanban feature UI
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CreateIssueDialog } from './create-issue-dialog'

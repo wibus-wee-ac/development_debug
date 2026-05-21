@@ -1,7 +1,3 @@
-// Input: issueId, workspaceId, onClose, onOpenDetail
-// Output: Compact floating peek card for quick issue preview
-// Position: Upper-right floating card triggered by Space key in kanban views
-
 import { StaticRender } from '@cradle/streamdown'
 import { XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'

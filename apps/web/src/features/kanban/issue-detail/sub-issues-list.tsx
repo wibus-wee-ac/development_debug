@@ -1,7 +1,3 @@
-// Input: Parent issue id, workspace id, status options, and kanban issue hooks
-// Output: SubIssuesList component for listing and creating child issues
-// Position: Kanban issue detail subview for sub-issue composition
-
 import { PlusIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 

@@ -1,7 +1,3 @@
-// Input: persisted Electron window bounds and current display work areas
-// Output: visible BrowserWindow bounds restored on a valid display work area
-// Position: apps/desktop/src/main/window-state.ts
-
 import { readFileSync } from 'node:fs'
 
 export interface WindowBounds {

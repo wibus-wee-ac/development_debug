@@ -1,7 +1,3 @@
-// Input: temporary Codex session JSONL trees
-// Output: unit coverage for conservative Codex CLI session-id capture
-// Position: apps/server/tests coverage for PTY-owned Codex resume discovery
-
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'

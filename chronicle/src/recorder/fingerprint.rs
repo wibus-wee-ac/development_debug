@@ -1,8 +1,4 @@
 //! Frame fingerprinting and adjacent-frame deduplication.
-//!
-//! Input: frame bytes and OCR text.
-//! Output: stable fingerprints used to skip repeated frames.
-//! Position: recorder optimization that does not affect artifact schema.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FrameFingerprint {
@@ -20,7 +16,11 @@ impl FrameFingerprint {
         let head = &bytes[..bytes.len().min(SAMPLE_SIZE)];
         let tail = &bytes[bytes.len().saturating_sub(SAMPLE_SIZE)..];
 
-        for byte in head.iter().chain(tail.iter()).chain(normalized_text.as_bytes()) {
+        for byte in head
+            .iter()
+            .chain(tail.iter())
+            .chain(normalized_text.as_bytes())
+        {
             hash ^= u64::from(*byte);
             hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
         }

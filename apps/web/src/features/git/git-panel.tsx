@@ -1,7 +1,3 @@
-// Input: useGitGraph, useGitStatus, computeGraphLayout, GitGraphRow, BranchPicker, postWorkspacesByIdGitFetch, VList from virtua
-// Output: GitPanel — full git panel with branch status bar, fetch button, and virtualized commit graph with infinite scroll
-// Position: Rendered inside right-aside "Git" tab; consumes HTTP git API
-
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'

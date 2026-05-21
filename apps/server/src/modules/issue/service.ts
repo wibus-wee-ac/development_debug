@@ -1,7 +1,3 @@
-// Input: Issue persistence tables, actor context, and workflow request data
-// Output: Issue workflow semantics, provenance recording, and server-resolved comment author views
-// Position: Issue module domain service used by HTTP routes and related capability modules
-
 import { randomUUID } from 'node:crypto'
 
 import type { Issue, IssueComment, IssueMilestone, IssueRelation, IssueStatus, Workspace } from '@cradle/db'

@@ -1,7 +1,3 @@
-// Input: remote ACP registry JSON over fetch
-// Output: registry fetch + supported distribution helpers
-// Position: apps/server/src/modules/acp/acp.registry.ts
-
 export const ACP_REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json'
 
 export interface BinaryTarget {

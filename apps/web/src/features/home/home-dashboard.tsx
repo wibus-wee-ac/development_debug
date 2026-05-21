@@ -1,7 +1,3 @@
-// Input: useWorkspaces, useSessions (per workspace), automation queries, GlobalSearchDialog
-// Output: HomeDashboard — scenario-driven dashboard hub
-// Position: Main content for the home tab; no composer, no chat entry point
-
 import { Link } from '@cradle/tabs-next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import {

@@ -1,7 +1,3 @@
-// Input: ProviderKind type
-// Output: Provider preset catalog for LLM connection setup
-// Position: Data layer for provider setup
-
 import type { ProviderKind } from '~/lib/types'
 
 export interface ProviderPreset {

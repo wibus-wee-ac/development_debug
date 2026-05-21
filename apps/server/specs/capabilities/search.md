@@ -1,9 +1,3 @@
-<!--
-Output: Search capability spec for server migration.
-Input: Legacy thread search behavior and search dialog expectations.
-Position: apps/server/specs/capabilities search spec.
--->
-
 # Capability: Search
 
 ## User / System Goal

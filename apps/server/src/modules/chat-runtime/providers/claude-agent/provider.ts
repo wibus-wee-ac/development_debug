@@ -1,7 +1,3 @@
-// Input: Claude Agent SDK, provider config helpers, and credential reader
-// Output: claude-agent chat runtime provider for unified server chat execution
-// Position: apps/server/src/modules/chat-runtime/providers/claude-agent/provider.ts
-
 import { randomUUID } from 'node:crypto'
 
 import type { CanUseTool, Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'

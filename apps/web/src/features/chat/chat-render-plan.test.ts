@@ -1,7 +1,3 @@
-// Input: Vitest assertions and chat render-plan helpers
-// Output: Regression coverage for tool grouping and execution fold boundaries
-// Position: Chat feature unit test for MessageBubble render-plan semantics
-
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 

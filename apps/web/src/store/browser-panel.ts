@@ -1,7 +1,3 @@
-// Input: zustand
-// Output: useBrowserPanelStore hook for browser panel tab state
-// Position: Renderer store for the built-in browser panel (Electron-only feature)
-
 import { create } from 'zustand'
 
 export interface BrowserTab {

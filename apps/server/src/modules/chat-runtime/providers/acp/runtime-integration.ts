@@ -1,7 +1,3 @@
-// Input: ACP connection manager plus server approval/session/chat services
-// Output: bridges ACP permission and title callbacks into server-owned business modules
-// Position: apps/server chat-runtime ACP integration layer
-
 import * as Approval from '../../../approval/service'
 import * as Session from '../../../session/service'
 import * as ChatRuntime from '../../service'

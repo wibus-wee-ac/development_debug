@@ -1,7 +1,3 @@
-// Input: Node path utilities and module URL
-// Output: Absolute migration folder path for @cradle/db
-// Position: Path helpers for consumers that run migrations
-
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

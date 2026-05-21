@@ -1,9 +1,3 @@
-<!--
-Output: Pack-codebase module inventory.
-Input: PackCodebaseModule, controller, service, engine.
-Position: apps/server/src/modules/pack-codebase
--->
-
 # Pack Codebase Module
 
 Workspace-owned HTTP packing capability backed by `repomix`.

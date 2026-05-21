@@ -1,7 +1,3 @@
-// Input: agent and session config JSON payloads
-// Output: typed runtime config helpers for CLI TUI launch ownership
-// Position: cross-module helper that normalizes agent-owned and session-owned runtime config
-
 import { z } from 'zod'
 
 export const cliTuiLaunchSpecSchema = z.object({

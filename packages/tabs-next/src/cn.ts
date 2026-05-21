@@ -1,7 +1,3 @@
-// Input: clsx values and tailwind-merge
-// Output: cn utility for stable static class composition
-// Position: Internal styling helper for tabs-next components
-
 import type { ClassValue } from 'clsx'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'

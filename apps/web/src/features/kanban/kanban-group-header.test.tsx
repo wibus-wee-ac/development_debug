@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked motion primitives, and KanbanGroupHeader
-// Output: Regression tests for Kanban group header action accessibility
-// Position: Kanban feature test guarding list group header controls
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

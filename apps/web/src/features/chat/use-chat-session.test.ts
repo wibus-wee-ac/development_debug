@@ -1,7 +1,3 @@
-// Input: Vitest assertions plus passive chat snapshot helpers from use-chat-session
-// Output: Regression tests for chat reload/reconnect status derivation and visible-state precedence
-// Position: Chat feature unit test locking passive snapshot behavior after mid-stream page refresh
-
 import { describe, expect, it, vi } from 'vitest'
 
 import {

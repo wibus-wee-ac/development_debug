@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked query client/server URL, and AgentPromptInput
-// Output: Regression tests for issue agent prompt send button accessibility and request wiring
-// Position: Kanban issue detail test guarding agent prompt input action semantics
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

@@ -1,7 +1,3 @@
-// Input: Workflow Rules workspace-detail UI, settings-based Provider/Agent creation flow, and SQLite lookup helpers
-// Output: End-to-end step definitions for workflow-rules.feature covering global + agent-scoped rules via real UI journeys
-// Position: E2E workflow-rules automation bridging workspace detail interactions and settings flows without filesystem-level assertions
-
 import { writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 

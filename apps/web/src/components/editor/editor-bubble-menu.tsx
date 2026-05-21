@@ -1,7 +1,3 @@
-// Input: @tiptap/react/menus BubbleMenu, editor instance
-// Output: EditorBubbleMenu — floating toolbar on text selection
-// Position: UI component for inline formatting in workspace-detail editor
-
 import type { Editor } from '@tiptap/core'
 import { BubbleMenu } from '@tiptap/react/menus'
 import {

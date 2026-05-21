@@ -1,7 +1,3 @@
-// Input: Mock LLM server HTTP endpoint, Claude Agent SDK message mapper
-// Output: mock-claude-agent chat runtime provider for debugging subagent nesting
-// Position: apps/server/src/modules/chat-runtime/providers/mock-claude-agent/provider.ts
-
 import { randomUUID } from 'node:crypto'
 
 import type { UIMessageChunk } from 'ai'

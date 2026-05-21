@@ -1,12 +1,6 @@
-<!--
-Output: Kanban feature inventory and ownership notes.
-Input: Issue board, list, detail, and agent delegation UI components.
-Position: apps/web/src/features/kanban feature guide.
--->
-
 # Kanban
 
-Kanban owns issue board/list/detail UI, issue metadata editing, and issue-agent delegation controls.
+Kanban renders board/list/detail views over Issue-owned workspace data. Issue metadata, comments, relations, statuses, milestones, and delegation controls call the Issue and Issue Agent capabilities rather than making Kanban the data owner.
 
 ## Files
 
@@ -32,5 +26,5 @@ Kanban owns issue board/list/detail UI, issue metadata editing, and issue-agent 
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Shared visual and metadata helpers such as priority labels, label parsing, icons, and avatars.
 - **status-manager.tsx**: Status management UI with accessible inline rename, delete, and reorder controls.
-- **use-kanban.ts**: TanStack Query hooks for issue, status, milestone, relation, comment, and delegation operations.
+- **use-kanban.ts**: TanStack Query hooks for Kanban boards plus Issue-owned status, milestone, relation, comment, and delegation operations.
 - **use-view-config.ts**: Local view configuration state for board/list display options.

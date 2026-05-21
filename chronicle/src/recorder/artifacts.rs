@@ -1,8 +1,4 @@
 //! Artifact storage for Cradle Chronicle recordings.
-//!
-//! Input: accepted frames and OCR text.
-//! Output: frame bytes, OCR JSON, capture JSON, and latest snapshot JSON.
-//! Position: durable storage contract consumed by memory generation and future UI.
 
 use std::fs;
 use std::path::{Path, PathBuf};

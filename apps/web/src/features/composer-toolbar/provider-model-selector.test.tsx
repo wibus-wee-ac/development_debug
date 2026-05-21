@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, ProviderModelSelector, per-profile model map
-// Output: Regression tests for provider-owned model lists in composer toolbar menus
-// Position: Composer Toolbar test guarding provider hover model ownership
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

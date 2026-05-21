@@ -1,7 +1,3 @@
-// Input: session/profile/workspace ownership plus PTY runtime commands
-// Output: PTY control semantics for chat sessions, shell leases, and WebSocket live-channel entrypoints
-// Position: apps/server/src/modules/pty business owner that coordinates runtime, timeline, and socket adapters
-
 import type { Workspace } from '@cradle/db'
 import { sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'

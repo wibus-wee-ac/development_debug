@@ -1,7 +1,3 @@
-// Input: Cucumber steps, Playwright assertions, temp skill fixtures, SQLite lookups, and real Settings provider/agent creation flow
-// Output: End-to-end step definitions for global/workspace/agent skills management through visible UI journeys
-// Position: Skills feature automation bridging native directory picker mocks, renderer interactions, and minimal setup lookups
-
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

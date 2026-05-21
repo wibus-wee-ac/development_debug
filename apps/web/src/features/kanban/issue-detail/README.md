@@ -1,9 +1,3 @@
-<!--
-Output: Kanban issue detail subview inventory and ownership notes.
-Input: Issue detail panels, agent session controls, relation and property editors.
-Position: apps/web/src/features/kanban/issue-detail feature guide.
--->
-
 # Kanban Issue Detail
 
 Issue detail owns focused subviews for editing issue metadata, reading activity, managing relations and sub-issues, and interacting with delegated agent sessions.

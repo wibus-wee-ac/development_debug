@@ -1,9 +1,3 @@
-<!--
-Output: Elysia HTTP infrastructure inventory.
-Input: Request-id, error mapping, OpenAPI plugin setup, and runtime-context bridging.
-Position: apps/server/src/http
--->
-
 # HTTP
 
 Cross-cutting Elysia HTTP infrastructure for the new explicit server composition path.

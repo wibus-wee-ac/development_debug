@@ -1,7 +1,3 @@
-// Input: agent identity HTTP endpoints
-// Output: integration tests for agent CRUD, filters, and avatar policy
-// Position: apps/server/tests
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

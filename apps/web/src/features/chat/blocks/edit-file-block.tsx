@@ -1,7 +1,3 @@
-// Input: File path, old content, new content for rendering a file edit diff
-// Output: Flat collapsible row — file stats inline, diff only on expand
-// Position: apps/web/src/features/chat/blocks/edit-file-block.tsx
-
 import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
 import { MultiFileDiff } from '@pierre/diffs/react'
 import { ChevronRightIcon, Columns2Icon, FilePenLineIcon, Rows3Icon } from 'lucide-react'

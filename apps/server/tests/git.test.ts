@@ -1,7 +1,3 @@
-// Input: git HTTP endpoints
-// Output: integration tests for workspace-owned git status, branches, graph, branch creation, checkout, and errors
-// Position: apps/server/tests
-
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -1,8 +1,4 @@
 //! Synthetic capture source for tests and smoke validation.
-//!
-//! Input: deterministic text snippets.
-//! Output: captured frames that exercise the full Chronicle pipeline.
-//! Position: non-platform source used until native capture implementations are added.
 
 use std::collections::VecDeque;
 

@@ -1,7 +1,3 @@
-// Input: useAgents, useAgentProfiles, useAgentModelMap hooks; Agent/AgentProfile/CreateAgentInput types; SkillManager; AlertDialog; motion/react
-// Output: AgentDetailPage — profile-card identity zone + auto-saving config + private skills. Create and edit unified.
-// Position: Rendered by AgentList in both create and edit modes
-
 import { ArrowLeftIcon, CheckIcon, DicesIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'

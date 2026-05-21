@@ -1,7 +1,3 @@
-// Input: sessionId, workspaceId, kanban hooks, and tab navigation
-// Output: IssueAsidePanel showing the issue linked to the active chat session
-// Position: Right aside tab content for chat-to-issue context
-
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircle2Icon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useMemo, useState } from 'react'

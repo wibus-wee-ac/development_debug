@@ -1,9 +1,3 @@
-<!--
-Output: Providers capability spec for server migration.
-Input: Provider metadata health checks, model discovery, and optional profile-linked audit capture.
-Position: apps/server/specs/capabilities providers spec.
--->
-
 # Capability: Providers
 
 ## User / System Goal

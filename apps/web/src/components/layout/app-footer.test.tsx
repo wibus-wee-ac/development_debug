@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked Jarvis layout dependencies, and AppFooter
-// Output: Regression tests for AppFooter Jarvis session tab controls
-// Position: Layout component test guarding footer session activation and close semantics
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

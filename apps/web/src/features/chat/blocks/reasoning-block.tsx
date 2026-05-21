@@ -1,7 +1,3 @@
-// Input: Reasoning/thinking text and streaming state
-// Output: A collapsible brain-icon block rendering thinking content via Streamdown
-// Position: apps/web/src/features/chat/blocks/reasoning-block.tsx
-
 import { Streamdown } from '@cradle/streamdown'
 import { AnimatePresence, m } from 'motion/react'
 import { useId, useState } from 'react'

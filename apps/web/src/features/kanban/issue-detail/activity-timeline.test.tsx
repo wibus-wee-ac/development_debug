@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked kanban comment hooks, and ActivityTimeline
-// Output: Regression tests for activity icon semantics and comment submission wiring
-// Position: Kanban issue detail test guarding activity timeline accessibility and mutation behavior
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

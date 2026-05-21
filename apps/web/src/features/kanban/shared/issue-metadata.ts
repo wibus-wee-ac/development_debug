@@ -1,7 +1,3 @@
-// Input: kanban issue metadata fields stored as primitives or JSON text
-// Output: typed helpers for labels and priority display options
-// Position: shared kanban metadata utilities used by board, detail, and create flows
-
 import type { IssuePriority } from '../use-kanban'
 
 export const priorityOptions: { value: IssuePriority, label: string }[] = [

@@ -1,7 +1,3 @@
-// Input: CommandDialog/cmdk, useThreadSearch, ipc (kanban.searchIssues, workspace.listFiles), useCradleNavigation, layout store
-// Output: GlobalSearchDialog — unified command palette searching threads, files, issues, and commands
-// Position: Primary search entry point triggered by ⌘K
-
 import { useQuery } from '@tanstack/react-query'
 import {
   ArrowDownIcon,
@@ -18,7 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getKanbanIssuesSearch, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { getIssuesSearch, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import {
   Command,
   CommandDialog,
@@ -131,7 +127,7 @@ function useIssueSearch(query: string, enabled: boolean) {
   const { data = [], isFetching } = useQuery({
     queryKey: ['search-issues', trimmed],
     queryFn: async () => {
-      const { data } = await getKanbanIssuesSearch({ query: { q: trimmed, limit: '10' } })
+      const { data } = await getIssuesSearch({ query: { q: trimmed, limit: '10' } })
       return (data ?? []) as Array<{ id: string, title: string, priority: string, workspaceId?: string }>
     },
     enabled: enabled && !!trimmed,

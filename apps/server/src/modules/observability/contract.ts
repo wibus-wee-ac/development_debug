@@ -1,7 +1,3 @@
-// Input: shared observability type contracts from @cradle/ipc and node crypto UUID
-// Output: canonical observability event helpers, code constants, and dedupe-key builder
-// Position: apps/server observability contract used by producers and HTTP query surfaces
-
 import { randomUUID } from 'node:crypto'
 
 import type {

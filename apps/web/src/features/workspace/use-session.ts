@@ -1,7 +1,3 @@
-// Input: generated API SDK, TanStack Query
-// Output: useSessions hook
-// Position: Data-fetching hooks for session feature under workspace
-
 import { useQuery } from '@tanstack/react-query'
 
 import { getSessions } from '~/api-gen/sdk.gen'

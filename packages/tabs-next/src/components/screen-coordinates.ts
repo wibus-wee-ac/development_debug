@@ -1,7 +1,3 @@
-// Input: DOM events and window bounds
-// Output: helpers for tear-off screen coordinate detection
-// Position: Shared utility for draggable tab interactions
-
 export interface ScreenCoordinates {
   screenX: number
   screenY: number

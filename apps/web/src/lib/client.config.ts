@@ -1,7 +1,3 @@
-// Input: VITE_SERVER_URL env var, Electron preload, or default to localhost:21423
-// Output: configured fetch client for apps/server API
-// Position: apps/web/src/lib/client.config.ts — runtime config consumed by hey-api generated client
-
 import type { createConfig } from '../api-gen/client'
 import { createClient } from '../api-gen/client'
 import { getServerUrl } from './electron'

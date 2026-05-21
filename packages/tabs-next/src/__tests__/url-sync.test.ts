@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: tabs-next URL sync and jsdom history events
-// Output: regression coverage for browser history restoration semantics
-// Position: URL projection tests for @cradle/tabs-next
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

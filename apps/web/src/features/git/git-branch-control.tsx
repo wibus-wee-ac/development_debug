@@ -1,7 +1,3 @@
-// Input: useGitStatus hook, BranchPicker, CreateBranchDialog, lucide icons
-// Output: GitBranchControl — compact branch display + ahead/behind badges for the AppHeader breadcrumb
-// Position: Rendered by chat route as the third breadcrumb segment; shows branch + opens BranchPicker on click
-
 import { CloudIcon, GitBranchIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'

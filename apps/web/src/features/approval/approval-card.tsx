@@ -1,11 +1,7 @@
-// Input: useSessionApprovalRequests hook, PendingApproval data
-// Output: Inline approval card rendered inside chat message area
-// Position: Renderer approval feature — user-facing approval interaction component
-
 import { CheckIcon, XIcon } from 'lucide-react'
 
 import type { ApprovalRequestedPayload } from '~/lib/contracts/approval-events'
-import { cn } from '~/lib/utils'
+import { cn } from '~/lib/cn'
 
 import { useSessionApprovalRequests } from './use-approval'
 
@@ -14,7 +10,7 @@ interface ApprovalCardProps {
   onRespond: (approvalId: string, decision: 'approved' | 'rejected', selectedOptionId: string) => void
 }
 
-function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
+export function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
   const allowOnceOption = approval.options.find(o => o.description === 'allow_once')
   const allowAlwaysOption = approval.options.find(o => o.description === 'allow_always')
   const rejectOption = approval.options.find(o => o.description === 'reject_once' || o.description === 'reject_always')

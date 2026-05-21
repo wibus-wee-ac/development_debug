@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, LayoutSlotsProvider, LayoutSlotsContext
-// Output: Regression coverage for active layout slot projection
-// Position: Layout component test guarding shell slot ownership when tabs change
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { useContext, useEffect } from 'react'

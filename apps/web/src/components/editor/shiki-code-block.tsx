@@ -1,7 +1,3 @@
-// Input: @tiptap/extension-code-block, @tiptap/pm, @tiptap/react, shiki
-// Output: ShikiCodeBlock — Tiptap code block extension with Shiki syntax highlighting + language selector
-// Position: Extension for the markdown-editor component
-
 import CodeBlock from '@tiptap/extension-code-block'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'

@@ -1,9 +1,3 @@
-<!--
-Output: Usage tracking capability spec for server migration.
-Input: Legacy usage IPC analytics and usage_logs schema.
-Position: apps/server/specs/capabilities usage tracking spec.
--->
-
 # Capability: Usage Tracking
 
 ## User / System Goal

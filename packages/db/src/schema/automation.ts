@@ -1,7 +1,3 @@
-// Input: shared schema helpers, chat/control-plane tables, identity tables, and sqlite column builders
-// Output: Automation definition, run, artifact, and event tables plus inferred row types
-// Position: Automation persistence schema owned by the generic Agent-authored automation namespace
-
 import { index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { backendRuns } from './backend-control-plane'

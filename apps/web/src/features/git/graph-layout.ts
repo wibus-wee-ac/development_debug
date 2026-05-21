@@ -1,7 +1,3 @@
-// Input: GitGraphCommit[] from @main/ipc-types
-// Output: computeGraphLayout — pure function assigning each commit a lane + SVG segment metadata
-// Position: Core graph layout logic for git-panel; no React dependencies
-
 import type { GitGraphCommit } from '~/lib/types'
 
 // Colors for branch lanes (cycles if more than 8 lanes)

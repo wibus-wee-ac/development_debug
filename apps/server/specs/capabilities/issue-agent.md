@@ -1,9 +1,3 @@
-<!--
-Output: Issue-agent capability spec for server migration.
-Input: Legacy issue delegation runtime, kanban issue detail UX, and server-first chat runtime ownership.
-Position: apps/server/specs/capabilities issue-agent spec.
--->
-
 # Capability: Issue Agent
 
 ## User / System Goal
@@ -20,10 +14,10 @@ Position: apps/server/specs/capabilities issue-agent spec.
 
 ## Target API (Slice 1)
 
-- `GET /kanban/issues/:issueId/delegation`
-- `POST /kanban/issues/:issueId/delegation`
-- `DELETE /kanban/issues/:issueId/delegation`
-- `GET /kanban/issues/:issueId/agent-sessions`
+- `GET /issues/:issueId/delegation`
+- `POST /issues/:issueId/delegation`
+- `DELETE /issues/:issueId/delegation`
+- `GET /issues/:issueId/agent-sessions`
 - `GET /issue-agent-sessions/:agentSessionId/activities`
 - `POST /issue-agent-sessions/:agentSessionId/rerun`
 
@@ -33,7 +27,7 @@ Position: apps/server/specs/capabilities issue-agent spec.
   - `IssueAgentController`: HTTP 参数校验
   - `IssueAgentService`: delegation 语义、rerun/undelegate 边界、后台 watcher 编排
   - `IssueAgentStore`: DB-backed issue/session/activity/current-delegation query model
-- 不把 delegation 文案重新写入 kanban comments；activity timeline 由 issue-agent 自己拥有。
+- Delegation state is exposed through Issue-owned route paths while issue-agent owns the delegation/session/activity semantics.
 - 不复制 chat runtime provider 逻辑；统一调用既有 `Session` + `ChatRuntimeService`。
 
 ## Test Plan

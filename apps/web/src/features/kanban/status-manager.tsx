@@ -1,7 +1,3 @@
-// Input: Board ID, statuses list
-// Output: Status configuration panel with add/edit/delete/reorder
-// Position: Toggled panel inside kanban board view
-
 import type { DragEndEvent } from '@dnd-kit/core'
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'

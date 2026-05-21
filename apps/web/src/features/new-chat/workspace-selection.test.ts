@@ -1,7 +1,3 @@
-// Input: Vitest test helpers, workspace selection utility
-// Output: Regression tests for preferred workspace selection on the launcher page
-// Position: New-chat feature unit test for homepage workspace preselection logic
-
 import { describe, expect, it } from 'vitest'
 
 import { resolveSelectedWorkspaceId } from './workspace-selection'

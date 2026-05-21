@@ -1,7 +1,3 @@
-// Input: Web Crypto randomUUID, @opentelemetry/api SpanStatusCode and context, superjson
-// Output: Shared IPC event types, trace envelope helpers, and payload serialization utilities
-// Position: Cross-process observability primitives for the shared IPC package
-
 import {
   context as otelContext,
   propagation,

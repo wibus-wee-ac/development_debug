@@ -1,7 +1,3 @@
-// Input: session-await rows with GitHub PR review filters
-// Output: GitHub PR review source and live review projection
-// Position: GitHub review source adapter owned by session-await
-
 import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
 import {
   fetchPullRequest,

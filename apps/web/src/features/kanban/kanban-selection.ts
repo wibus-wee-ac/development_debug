@@ -1,7 +1,3 @@
-// Input: Visible issue ids, current selection state, and selection gestures
-// Output: Pure helpers for Kanban multi-selection range and toggle behavior
-// Position: Kanban selection model shared by board/list keyboard and pointer handlers
-
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import type { ViewConfig } from './use-view-config'

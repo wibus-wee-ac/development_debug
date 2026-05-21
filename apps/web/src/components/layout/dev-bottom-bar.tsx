@@ -1,7 +1,3 @@
-// Input: lucide icons, window.location, electron helpers
-// Output: DevBottomBar — dev-only slim footer with hard-reload and current URL display
-// Position: Bottom chrome of AppLayout, rendered only in dev mode
-
 import { MonitorIcon, RefreshCwIcon } from 'lucide-react'
 
 import { isElectron } from '~/lib/electron'

@@ -1,7 +1,3 @@
-// Input: automation HTTP routes and DB-backed chat runtime seams
-// Output: integration coverage for automation CRUD, RRULE scheduling, run-now linkage, and artifacts
-// Position: apps/server/tests
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -1,7 +1,3 @@
-// Input: FileTree, GitPanel, IssueAsidePanel, GitBranchControl, workspaceId prop, sessionId prop, motion/react
-// Output: RightAside component — tabbed right aside panel with File Tree, Git, and Issue tabs
-// Position: Slot content for AppLayout aside prop; shown when asideOpen=true
-
 import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
 import { m } from 'motion/react'

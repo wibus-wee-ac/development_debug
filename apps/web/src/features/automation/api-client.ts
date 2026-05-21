@@ -1,7 +1,3 @@
-// Input: fetch, server URL, automation endpoint assumptions
-// Output: Small automation API client boundary for UI registry/viewer
-// Position: Replace with generated SDK calls once automation OpenAPI output exists
-
 import { getServerUrl } from '~/lib/electron'
 
 import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun } from './types'

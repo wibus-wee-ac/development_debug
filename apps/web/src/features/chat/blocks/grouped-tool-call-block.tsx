@@ -1,7 +1,3 @@
-// Input: Array of same-kind ToolCallItems from chat-render-plan grouping
-// Output: Compact grouped display with vertical line connector and per-item status
-// Position: apps/web/src/features/chat/blocks/grouped-tool-call-block.tsx
-
 import {
   BotIcon,
   CheckCircle2Icon,

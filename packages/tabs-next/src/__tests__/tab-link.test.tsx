@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, tabs-next provider, route definitions
-// Output: Regression tests for Link anchor and tab navigation semantics
-// Position: Component-level coverage for @cradle/tabs-next navigation links
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'

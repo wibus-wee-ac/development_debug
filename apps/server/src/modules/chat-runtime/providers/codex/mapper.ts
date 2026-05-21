@@ -1,7 +1,3 @@
-// Input: Codex SDK ThreadEvent and item types
-// Output: Codex thread event -> UIMessageChunk mapper
-// Position: apps/server/src/modules/chat-runtime/providers/codex/mapper.ts
-
 import type {
   AgentMessageItem,
   CommandExecutionItem,

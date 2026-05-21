@@ -1,8 +1,4 @@
 //! OCR abstraction for Cradle Chronicle.
-//!
-//! Input: captured frames from the screen module.
-//! Output: normalized text that can be persisted and summarized.
-//! Position: replaceable boundary for platform OCR, Tesseract, or plugin text feeds.
 
 use crate::error::ChronicleResult;
 use crate::screen::CapturedFrame;

@@ -1,7 +1,3 @@
-// Input: shared schema helpers, workspace and identity tables, and sqlite column builders
-// Output: Issue-owned workflow, issue, comment, and relation tables plus inferred row types
-// Position: Issue persistence schema module scoped by workspace and consumed by Issue, issue-agent, chat, and Kanban views
-
 import { index, int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { agents } from './identity'

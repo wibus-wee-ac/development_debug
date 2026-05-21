@@ -1,7 +1,3 @@
-// Input: Langfuse credentials from environment
-// Output: @langfuse/tracing setup for LLM observability
-// Position: apps/server/src/langfuse.ts — import in index.ts before app creation
-
 import { LangfuseSpanProcessor } from '@langfuse/otel'
 import { setLangfuseTracerProvider } from '@langfuse/tracing'
 import { trace } from '@opentelemetry/api'

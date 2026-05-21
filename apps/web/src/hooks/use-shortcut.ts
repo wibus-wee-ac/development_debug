@@ -1,7 +1,3 @@
-// Input: ShortcutContext, ShortcutDefinition
-// Output: useShortcut hook for registering keyboard shortcuts
-// Position: Hook for components to register shortcuts with ShortcutProvider
-
 import { use, useEffect, useRef } from 'react'
 
 import { ShortcutContext } from '~/lib/shortcut-context'

@@ -1,7 +1,3 @@
-// Input: Vitest assertions, chat stream events, and mocked chat store state
-// Output: Regression tests for per-stream seq ordering/deduplication across main and subagent messages
-// Position: Chat feature unit test locking snapshot + sequenced delta accumulation semantics
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ChatStreamingHandler } from './chat-streaming-handler'

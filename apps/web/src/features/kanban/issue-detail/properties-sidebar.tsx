@@ -1,7 +1,3 @@
-// Input: Kanban issue metadata, status/milestone lists, agent hooks, and update callback
-// Output: PropertiesSidebar component for issue detail metadata editing
-// Position: Kanban issue detail subview for status, priority, labels, milestones, relations, and delegation
-
 import { BotIcon, PlusIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 

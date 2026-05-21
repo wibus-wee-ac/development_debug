@@ -1,9 +1,3 @@
-<!--
-Output: Observability capability spec for server migration.
-Input: Legacy observability service/store/rules/exporter, chat-runtime failure semantics, and shared IPC observability contracts.
-Position: apps/server/specs/capabilities observability spec.
--->
-
 # Capability: Observability
 
 ## User / System Goal

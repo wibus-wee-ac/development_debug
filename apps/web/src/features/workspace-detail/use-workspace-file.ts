@@ -1,7 +1,3 @@
-// Input: generated API SDK, TanStack Query
-// Output: useWorkspaceFile — hook for reading/writing workspace text files
-// Position: Data hook for workspace-detail feature
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getWorkspacesByIdFilesContent, putWorkspacesByIdFilesContent } from '~/api-gen/sdk.gen'

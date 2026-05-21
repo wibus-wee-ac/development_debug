@@ -1,7 +1,3 @@
-// Input: getUsageDaily, getUsageSummary, getUsageStats + cost endpoints
-// Output: UsageDashboard — token usage overview with heatmap, sparkline, cost breakdown
-// Position: Feature page component for /usage route
-
 import { useEffect, useState } from 'react'
 
 import { getUsageCostDaily, getUsageCostSummary, getUsageDaily, getUsageStats, getUsageSummary } from '~/api-gen/sdk.gen'

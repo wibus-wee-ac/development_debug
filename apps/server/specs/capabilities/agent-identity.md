@@ -1,9 +1,3 @@
-<!--
-Output: Agent identity capability spec for server migration.
-Input: Legacy AgentService IPC behavior and identity schema.
-Position: apps/server/specs/capabilities agent identity spec.
--->
-
 # Capability: Agent Identity
 
 ## Superpowers Used

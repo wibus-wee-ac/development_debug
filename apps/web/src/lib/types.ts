@@ -1,7 +1,3 @@
-// Input: @cradle/db schema types and manual type definitions
-// Output: Consolidated frontend type surface for apps/web
-// Position: apps/web/src/lib/types.ts — shared type definitions for the web app
-
 import type { KanbanIssueComment as DbKanbanIssueComment } from '@cradle/db'
 
 // ── DB entity types (from @cradle/db — import type only, erased by bundler) ──

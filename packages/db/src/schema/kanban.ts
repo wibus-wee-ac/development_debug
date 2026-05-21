@@ -1,7 +1,3 @@
-// Input: shared schema helpers and sqlite column builders
-// Output: Kanban board view table and inferred row types
-// Position: Kanban persistence schema module for board/view configuration only
-
 import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { textPk, timestamps, workspaces } from './shared'

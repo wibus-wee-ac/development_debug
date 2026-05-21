@@ -1,7 +1,3 @@
-// Input: LayoutCommit from graph-layout, LANE_COLORS constants
-// Output: GitGraphRow — memoized single-line row (Fork-style): SVG graph | badges + message | sha·time
-// Position: List item for VList in git-panel; expensive so wrapped in React.memo
-
 import { memo, useMemo } from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'

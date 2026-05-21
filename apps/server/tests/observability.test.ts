@@ -1,7 +1,3 @@
-// Input: observability HTTP endpoints and chat-runtime failure instrumentation
-// Output: integration tests for event persistence, incident rules, and bundle export
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

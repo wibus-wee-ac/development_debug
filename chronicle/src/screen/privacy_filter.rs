@@ -1,8 +1,4 @@
 //! Privacy-sensitive window filtering for captured frames.
-//!
-//! Input: observed window titles, bundle identifiers, URLs, and private flags.
-//! Output: exclusion decisions before artifacts are persisted.
-//! Position: recorder safety gate matching the Chronicle draft privacy boundary.
 
 use crate::screen::{BrowserWindowObservation, CapturedFrame};
 
@@ -72,7 +68,7 @@ mod tests {
 
     #[test]
     fn excludes_chrome_incognito() {
-        let filter = PrivacyFilter::default();
+        let filter = PrivacyFilter;
         let window = BrowserWindowObservation::new(1, "Search (Incognito)", "com.google.Chrome");
 
         assert!(filter.should_exclude_frame(&frame(window)));
@@ -80,7 +76,7 @@ mod tests {
 
     #[test]
     fn excludes_google_meet_by_url() {
-        let filter = PrivacyFilter::default();
+        let filter = PrivacyFilter;
         let window = BrowserWindowObservation::new(1, "Team Call", "com.google.Chrome")
             .with_url("https://meet.google.com/abc-defg-hij");
 
@@ -89,7 +85,7 @@ mod tests {
 
     #[test]
     fn allows_regular_cradle_window() {
-        let filter = PrivacyFilter::default();
+        let filter = PrivacyFilter;
         let window = BrowserWindowObservation::new(1, "Cradle", "app.cradle.desktop");
 
         assert!(!filter.should_exclude_frame(&frame(window)));

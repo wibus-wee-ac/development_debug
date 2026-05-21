@@ -1,7 +1,3 @@
-// Input: xterm Terminal instance
-// Output: attachMacKeyboardHandler() — registers macOS shortcut → ANSI escape sequence mappings
-// Position: Utility called once after terminal.open() in TuiView and ShellView
-
 import type { Terminal } from '@xterm/xterm'
 
 /**

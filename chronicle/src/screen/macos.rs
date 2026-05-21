@@ -1,8 +1,4 @@
 //! macOS native capture source for Cradle Chronicle.
-//!
-//! Input: CoreGraphics window list, CGDisplay capture, Vision OCR via objc2 FFI.
-//! Output: real PNG screen frames with recognized text.
-//! Position: standalone macOS production provider; no Electron or subprocess dependency.
 
 #[cfg(target_os = "macos")]
 mod native {

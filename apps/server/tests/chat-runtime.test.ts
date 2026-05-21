@@ -1,7 +1,3 @@
-// Input: chat runtime HTTP endpoints
-// Output: integration tests for chat runs, message hydration, usage writes, search hits, and abort behavior
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

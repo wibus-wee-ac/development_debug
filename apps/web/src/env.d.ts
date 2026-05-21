@@ -24,6 +24,8 @@ interface Window {
       serverUrl: string
       sessionId: string | null
       isTearoff: boolean
+      surface: string | null
+      isTray: boolean
       platform: 'darwin' | 'win32' | 'linux'
       isElectron: true
     }
@@ -31,6 +33,14 @@ interface Window {
       minimize: () => Promise<unknown>
       maximize: () => Promise<unknown>
       close: () => Promise<unknown>
+    }
+    desktopUpdate: {
+      onStatusChanged: (handler: (status: unknown) => void) => () => void
+    }
+    desktopTray: {
+      performAction: (actionId: string, payload?: unknown) => Promise<unknown>
+      consumePendingActionRequests: () => Promise<unknown>
+      onActionRequested: (handler: (request: unknown) => void) => () => void
     }
     /** @deprecated Legacy subscribe API — prefer ipc */
     subscribe?: (topic: string, listener: (...args: unknown[]) => void) => () => void

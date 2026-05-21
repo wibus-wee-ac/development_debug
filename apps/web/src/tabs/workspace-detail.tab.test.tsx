@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, Vitest mocks, workspace-detail tab definition
-// Output: Regression test for workspace-detail tab label synchronization
-// Position: Tabs unit test ensuring workspace tabs adopt workspace names after data loads
 
 import { render, waitFor } from '@testing-library/react'
 import type { ComponentType } from 'react'

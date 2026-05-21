@@ -1,7 +1,3 @@
-// Input: LayoutSlotsContext from layout-slots-context
-// Output: useLayoutSlotsCtx + useRegisterLayoutSlots hooks
-// Position: Shared hook layer; consumed by tab content components and AppLayout
-
 import { use, useEffect } from 'react'
 
 import type { LayoutSlots } from './layout-slots-context'

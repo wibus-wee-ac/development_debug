@@ -1,7 +1,3 @@
-// Input: vitest test helpers, ThreadSearchHit type, groupHitsByWorkspace utility
-// Output: Regression tests for grouped autocomplete collection shape
-// Position: Search feature unit test for workspace-grouped thread search data
-
 import { describe, expect, it } from 'vitest'
 
 import type { ThreadSearchHit } from '~/lib/types'

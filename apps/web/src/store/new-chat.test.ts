@@ -1,7 +1,3 @@
-// Input: Vitest helpers and the new-chat Zustand store
-// Output: Regression tests for idempotent new-chat preference updates
-// Position: Renderer store unit test for new-chat persisted preferences
-
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useNewChatStore } from './new-chat'

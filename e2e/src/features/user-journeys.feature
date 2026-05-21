@@ -1,7 +1,4 @@
 # language: zh-CN
-# Input: Shared workspace, chat, and kanban E2E steps plus deterministic mock LLM setup
-# Output: First-run user journeys covering initial workspace import, first chat, first board, and first issue creation
-# Position: High-priority journey coverage for the product's first-use value path
 @cradle
 功能: 首次用户旅程
 

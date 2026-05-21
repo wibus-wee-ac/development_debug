@@ -1,7 +1,3 @@
-// Input: shared schema helpers, chat/control-plane tables, and sqlite column builders
-// Output: Observability event/incident tables and inferred row types
-// Position: Local observability persistence schema owned by Cradle observability namespace
-
 import { index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { backendRuns } from './backend-control-plane'

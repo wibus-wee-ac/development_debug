@@ -1,8 +1,4 @@
 //! Recorder orchestration for Cradle Chronicle.
-//!
-//! Input: capture source, OCR extractor, privacy filter, and artifact store.
-//! Output: persisted frames and a recorder report.
-//! Position: main capture pipeline used by the CLI and future host integrations.
 
 use std::collections::HashMap;
 

@@ -1,7 +1,3 @@
-// Input: All composer toolbar modules
-// Output: Public API barrel export for the unified composer toolbar feature
-// Position: Feature entry point
-
 export { CliTuiAgentSelector } from './cli-tui-agent-selector'
 export { ComposerToolbar } from './composer-toolbar'
 export { ProviderModelMenu } from './provider-model-menu'

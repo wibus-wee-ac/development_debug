@@ -1,7 +1,3 @@
-// Input: Issue id, relation query/mutation hooks, and popover primitives
-// Output: RelationManager component for listing and removing issue relations
-// Position: Kanban issue detail subview for relation metadata controls
-
 import { LinkIcon, PlusIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 

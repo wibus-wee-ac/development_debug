@@ -1,7 +1,3 @@
-// Input: Claude Agent SDK message types
-// Output: Claude SDK message -> UIMessageChunk mapper
-// Position: apps/server/src/modules/chat-runtime/providers/claude-agent/mapper.ts
-
 import { randomUUID } from 'node:crypto'
 
 import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'

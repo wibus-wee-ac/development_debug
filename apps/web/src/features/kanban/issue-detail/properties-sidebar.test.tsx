@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked menu/popover dependencies, and PropertiesSidebar
-// Output: Regression tests for issue detail properties label editing accessibility
-// Position: Kanban issue detail test guarding labels add trigger semantics and update wiring
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'

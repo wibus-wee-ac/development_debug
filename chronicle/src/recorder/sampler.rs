@@ -1,8 +1,4 @@
 //! Adaptive sampling for Cradle Chronicle capture intervals.
-//!
-//! Input: frame fingerprints from consecutive captures.
-//! Output: recommended next capture interval based on visual activity.
-//! Position: recorder optimization that adjusts polling frequency dynamically.
 
 use crate::recorder::fingerprint::FrameFingerprint;
 
@@ -44,8 +40,8 @@ impl AdaptiveSampler {
             self.consecutive_changes += 1;
             // High activity: decrease interval toward min
             if self.consecutive_changes >= 2 {
-                self.current_interval_ms = (self.current_interval_ms * 3 / 4)
-                    .max(self.min_interval_ms);
+                self.current_interval_ms =
+                    (self.current_interval_ms * 3 / 4).max(self.min_interval_ms);
                 println!(
                     "chronicle observed recent user input; pulling next display sample forward (interval={}ms)",
                     self.current_interval_ms
@@ -56,8 +52,8 @@ impl AdaptiveSampler {
             self.consecutive_duplicates += 1;
             // Low activity: increase interval toward max
             if self.consecutive_duplicates >= 2 {
-                self.current_interval_ms = (self.current_interval_ms * 3 / 2)
-                    .min(self.max_interval_ms);
+                self.current_interval_ms =
+                    (self.current_interval_ms * 3 / 2).min(self.max_interval_ms);
                 println!(
                     "chronicle capture was slow; backing off display sampling (interval={}ms)",
                     self.current_interval_ms
@@ -75,7 +71,8 @@ impl AdaptiveSampler {
 
     /// Reset to default interval (e.g. after resuming from idle).
     pub fn reset(&mut self, default_interval_ms: u64) {
-        self.current_interval_ms = default_interval_ms.clamp(self.min_interval_ms, self.max_interval_ms);
+        self.current_interval_ms =
+            default_interval_ms.clamp(self.min_interval_ms, self.max_interval_ms);
         self.consecutive_duplicates = 0;
         self.consecutive_changes = 0;
     }

@@ -1,9 +1,3 @@
-<!--
-Output: Shared server helper inventory.
-Input: Cross-module utilities that are not owned by a single business capability.
-Position: apps/server/src/helpers guide.
--->
-
 # Server Helpers
 
 Helpers in this directory are app-owned utilities used by multiple server modules. They should stay small and avoid owning business semantics.

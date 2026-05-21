@@ -1,7 +1,3 @@
-// Input: none
-// Output: Shared observability event and incident contracts for devtool and IPC bridges
-// Position: Cross-process type contract for Cradle local observability signals
-
 export type ObservabilitySeverity = 'debug' | 'info' | 'warn' | 'error' | 'fatal'
 
 export type ObservabilityCategory = 'chat' | 'provider' | 'event-bus' | 'ipc' | 'system' | 'performance'

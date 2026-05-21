@@ -1,7 +1,3 @@
-// Input: provider profile config and model descriptors
-// Output: shared model visibility helpers for provider-backed model pickers
-// Position: Agent Runtime data semantics for the "default all models visible" rule
-
 import type { ModelDescriptor } from '~/lib/types'
 
 export const ALL_MODELS_DISABLED_SENTINEL = '__all_disabled__'

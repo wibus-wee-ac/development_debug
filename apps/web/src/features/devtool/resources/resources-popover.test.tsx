@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked resource endpoints, ResourcesPopover helpers
-// Output: Regression tests for resource snapshot warning behavior
-// Position: Unit and component coverage for the devtool resources popover
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

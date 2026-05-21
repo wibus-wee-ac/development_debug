@@ -1,7 +1,3 @@
-// Input: Elysia validation errors and feature-owned validation profiles
-// Output: normalized validation envelopes and OpenAPI-friendly error schemas
-// Position: apps/server/src/http shared validation utilities
-
 import type { ValidationError } from 'elysia'
 import { t } from 'elysia'
 

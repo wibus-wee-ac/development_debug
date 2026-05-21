@@ -1,7 +1,3 @@
-// Input: JSON payloads exchanged over the PTY WebSocket live channel
-// Output: Shared PTY WebSocket protocol types and parsing helpers for tui views
-// Position: Transport contract for apps/web/src/features/tui
-
 export type PtyClientEvent
   = | { type: 'input', data: string }
     | { type: 'resize', cols: number, rows: number }

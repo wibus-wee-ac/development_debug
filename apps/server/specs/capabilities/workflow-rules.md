@@ -1,9 +1,3 @@
-<!--
-Output: Workflow rules capability spec for server migration.
-Input: Legacy workflow-rules behavior and server ownership requirements.
-Position: apps/server/specs/capabilities workflow rules spec.
--->
-
 # Capability: Workflow Rules
 
 ## Superpowers Used

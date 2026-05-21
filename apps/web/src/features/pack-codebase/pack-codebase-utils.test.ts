@@ -1,7 +1,3 @@
-// Input: Vitest, pack-codebase utility helpers
-// Output: Regression coverage for scope path parsing and include formatting
-// Position: Pack-codebase feature unit tests for dialog helper behavior
-
 import { describe, expect, it } from 'vitest'
 
 import { formatTokens, mergeScopePaths, pathsToInclude, pathsToIncludeFromDraft, splitScopePathInput } from './pack-codebase-utils'

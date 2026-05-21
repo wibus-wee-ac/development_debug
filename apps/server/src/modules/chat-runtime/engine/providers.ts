@@ -1,5 +1,4 @@
 // AI SDK provider factory — creates LanguageModel instances from provider config
-// Position: apps/server/src/modules/chat-runtime/engine/providers.ts
 
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'

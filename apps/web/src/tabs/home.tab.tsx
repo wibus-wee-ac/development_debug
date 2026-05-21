@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs-next, HomeDashboard component
-// Output: home tab definition
-// Position: Tab type for the home/dashboard page
 
 import { defineTab } from '@cradle/tabs-next'
 import { HomeIcon } from 'lucide-react'

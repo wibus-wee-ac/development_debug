@@ -1,9 +1,3 @@
-<!--
-Output: Skills capability spec for server migration.
-Input: Legacy filesystem-backed skills behavior and HTTP management needs.
-Position: apps/server/specs/capabilities skills spec.
--->
-
 # Capability: Skills
 
 ## User / System Goal

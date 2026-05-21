@@ -1,7 +1,3 @@
-// Input: local/git skill sources and filesystem traversal
-// Output: fetched skill discovery sessions for import workflow
-// Position: apps/server/src/modules/skills/skill-source.store.ts
-
 import fs from 'node:fs'
 import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import os from 'node:os'

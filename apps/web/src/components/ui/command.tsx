@@ -1,7 +1,3 @@
-// Input: cmdk primitives, Dialog primitive, design-system tokens
-// Output: Command palette primitives for searchable action/result lists
-// Position: components/ui design-system primitive for command-style search surfaces
-
 import { Command as CommandPrimitive } from 'cmdk'
 import { CheckIcon, SearchIcon } from 'lucide-react'
 import * as React from 'react'

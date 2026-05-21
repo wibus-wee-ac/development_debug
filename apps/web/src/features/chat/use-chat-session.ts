@@ -1,7 +1,3 @@
-// Input: useChatStore, ChatStreamingHandler, sse-chat-transport, server HTTP API
-// Output: useChatSession — hook bridging store + transport for a single chat session
-// Position: Feature hook for chat feature; manages lifecycle of streaming + passive observation
-
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef } from 'react'

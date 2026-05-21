@@ -1,7 +1,3 @@
-// Input: StatusCategory
-// Output: SVG status indicator colored by category
-// Position: Shared icon component for kanban status visualization
-
 import { cn } from '~/lib/cn'
 
 import type { StatusCategory } from '../use-view-config'

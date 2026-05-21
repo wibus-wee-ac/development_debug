@@ -1,7 +1,3 @@
-// Input: Vitest, directory selection helpers
-// Output: Regression coverage for custom directory browser keyboard selection logic
-// Position: Filesystem feature unit tests for browser fallback directory picker behavior
-
 import { describe, expect, it } from 'vitest'
 
 import { selectDirectoryByOffset } from './directory-browser-dialog'

@@ -1,7 +1,3 @@
-# Input: Git tag or manual version, Desktop build secrets, Velopack CLI
-# Output: Electron unpacked app, Velopack release feed, and GitHub Release assets
-# Position: GitHub Actions workflow for Desktop Velopack distribution
-
 name: Release Desktop Velopack
 
 on:

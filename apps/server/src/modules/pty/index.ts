@@ -1,7 +1,3 @@
-// Input: PTY control requests and WebSocket live-channel connections
-// Output: Elysia PTY capability routes for chat and shell terminals
-// Position: apps/server/src/modules/pty route surface for PTY ownership semantics
-
 import type { Elysia } from 'elysia'
 
 import { PtyModel } from './model'

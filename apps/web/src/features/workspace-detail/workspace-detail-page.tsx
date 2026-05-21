@@ -1,7 +1,3 @@
-// Input: useWorkspaceFile, MarkdownEditor, lazy panels, workspace data, git status, sessions
-// Output: WorkspaceDetailPage — Linear-style scrollable tab project view with directly editable editor
-// Position: Feature component for the workspace-detail tab
-
 import { Link } from '@cradle/tabs-next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {

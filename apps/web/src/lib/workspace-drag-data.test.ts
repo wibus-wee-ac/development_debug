@@ -1,7 +1,3 @@
-// Input: Vitest and browser DataTransfer
-// Output: Regression tests for workspace file drag payload serialization
-// Position: Shared renderer drag/drop protocol tests for workspace file paths
-
 import { describe, expect, it } from 'vitest'
 
 import {

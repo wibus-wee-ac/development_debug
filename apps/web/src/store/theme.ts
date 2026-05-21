@@ -1,7 +1,3 @@
-// Input: zustand, zustand/middleware
-// Output: useThemeStore hook with theme preference (light/dark/system)
-// Position: Global theme state store, consumed by root route and settings UI
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 

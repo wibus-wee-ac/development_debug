@@ -1,9 +1,3 @@
-<!--
-Output: approval module file inventory.
-Input: approval HTTP/controller/service/types.
-Position: apps/server/src/modules/approval index.
--->
-
 # Approval Module
 
 Provides an in-memory pending approval registry with HTTP endpoints for create/list/respond flows.

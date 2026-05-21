@@ -1,7 +1,3 @@
-// Input: UIMessage reasoning parts, Streamdown renderer
-// Output: ReasoningBlock — ambient thinking trace, minimal chrome
-// Position: Sub-component of message bubble for rendering reasoning/thinking parts
-
 import { Streamdown } from '@cradle/streamdown'
 import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'

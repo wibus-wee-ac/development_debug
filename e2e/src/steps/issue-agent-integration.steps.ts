@@ -1,7 +1,3 @@
-// Input: Cucumber issue-agent step bindings, Playwright assertions, and chat/kanban UI anchors
-// Output: Issue delegation step definitions covering agent assignment, completion, and undelegation flows
-// Position: E2E step layer covering issue-agent-integration.feature delegated issue scenarios
-
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

@@ -1,7 +1,3 @@
-// Input: MentionPanel, Button from UI, workspace file listing
-// Output: Composer — rich input with @ path autocomplete and inline send/stop
-// Position: Core input component for chat feature, used in both NewChatHome and ChatView
-
 import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useReducer, useRef } from 'react'

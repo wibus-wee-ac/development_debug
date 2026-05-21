@@ -1,7 +1,3 @@
-// Input: AI SDK UIMessageChunk values from runtime providers
-// Output: UIMessage snapshot projector and sequenced chat delta events
-// Position: Backend-only adapter between provider chunk streams and Cradle message persistence/transport
-
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { AppError } from '../../errors/app-error'

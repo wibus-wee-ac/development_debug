@@ -1,7 +1,3 @@
-// Input: label string
-// Output: Compact colored label chip
-// Position: Shared display component for issue labels
-
 import { cn } from '~/lib/cn'
 
 export function LabelChip({ label, className }: { label: string, className?: string }) {

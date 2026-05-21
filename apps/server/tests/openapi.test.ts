@@ -1,7 +1,3 @@
-// Input: OpenAPI JSON endpoint from createConfiguredApp
-// Output: integration test for generated OpenAPI paths and DTO-backed component schemas
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -67,12 +63,16 @@ describe('openapi capability', () => {
       expect(document.paths['/chat/sessions/{sessionId}/cancel']?.post).toBeTruthy()
       expect(document.paths['/chat/runs/{runId}']).toBeUndefined()
       expect(document.paths['/kanban/issues/{id}/move']).toBeUndefined()
+      expect(document.paths['/kanban/issues/{id}']).toBeUndefined()
+      expect(document.paths['/issues/{id}']).toBeTruthy()
+      expect(document.paths['/issues/statuses']).toBeTruthy()
       expect(document.paths['/acp/agents/{agentId}/installation']?.put).toBeTruthy()
       expect(document.paths['/acp/agents/{agentId}/installation']?.delete).toBeTruthy()
       expect(document.paths['/acp/agents/{agentId}/install']).toBeUndefined()
       expect(document.paths['/acp/agents/{agentId}/cancel-install']).toBeUndefined()
-      expect(document.paths['/kanban/issues/{id}/delegation']).toBeTruthy()
-      expect(document.paths['/kanban/issues/{id}/agent-sessions']).toBeTruthy()
+      expect(document.paths['/kanban/issues/{id}/delegation']).toBeUndefined()
+      expect(document.paths['/issues/{id}/delegation']).toBeTruthy()
+      expect(document.paths['/issues/{id}/agent-sessions']).toBeTruthy()
       expect(document.paths['/issue-agent/issues/{issueId}/delegation']).toBeUndefined()
       expect(document.paths['/issue-agent-sessions/{agentSessionId}/activities']).toBeTruthy()
       expect(document.paths['/providers/models']?.post?.requestBody).toBeTruthy()

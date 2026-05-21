@@ -1,7 +1,3 @@
-// Input: OpenAI-compatible profile config, credential reader, AI SDK execution engine
-// Output: openai-compatible chat runtime provider powered by Vercel AI SDK
-// Position: apps/server/src/modules/chat-runtime/providers/openai-compatible/provider.ts
-
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { lookupContextWindow } from '../../../providers/model-info-registry'

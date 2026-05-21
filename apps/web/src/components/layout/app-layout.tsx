@@ -1,7 +1,3 @@
-// Input: ResizeHandle, layout store, motion/react, page slot props, DevBottomBar, useGlobalEventListeners, useLayoutSlotsCtx
-// Output: AppLayout component — content area layout (header + main + aside + panel)
-// Position: Core layout component; sidebar is rendered separately in __root.tsx
-
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'

@@ -1,7 +1,3 @@
-// Input: Issues, statuses, view config, event handlers
-// Output: Horizontal scrollable board with DnD columns
-// Position: Board layout component for kanban view
-
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import {
   DndContext,

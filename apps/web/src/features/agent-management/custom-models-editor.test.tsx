@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked provider model lookup API, CustomModelsEditor
-// Output: Regression coverage for custom model action labels and add-model fallback behavior
-// Position: Agent Management feature test for provider custom model editing UI
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

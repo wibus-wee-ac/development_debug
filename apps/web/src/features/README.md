@@ -1,5 +1,3 @@
-<!-- Once this directory changes, update this README.md -->
-
 # features
 
 Domain-specific feature modules.
@@ -11,6 +9,7 @@ Components, hooks, and utilities specific to a feature live together.
 - **workspace/**: Workspace management — sidebar listing, directory picker, session grouping
 - **chat/**: Chat view, composer, snapshot hydration, and sequenced SSE delta transport for the server-owned chat runtime
 - **search/**: Global thread search — command-palette dialog backed by jieba tokenization on the main process
+- **desktop-tray/**: Electron tray popover surface and main-window tray action bridge
 - **settings/**: Application settings — theme switching, user preferences dialog
 - **skills/**: Filesystem-backed skills management — shared inventory/editor UIs for global settings, workspace detail, and per-agent selection
 - **ipc-devtool/**: Developer-only IPC observability panel rendered in the second (`/devtool`) BrowserWindow

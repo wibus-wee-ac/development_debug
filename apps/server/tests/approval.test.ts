@@ -1,7 +1,3 @@
-// Input: approval HTTP endpoints
-// Output: integration tests for pending approval registry lifecycle and input validation
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

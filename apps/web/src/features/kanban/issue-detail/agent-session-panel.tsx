@@ -1,7 +1,3 @@
-// Input: Issue id, workspace id, agent session hooks, and activity rendering components
-// Output: AgentSessionPanel component for issue-scoped agent session controls and activity
-// Position: Kanban issue detail subview for delegated agent session interaction
-
 import { Link } from '@cradle/tabs-next'
 import { ExternalLinkIcon, SquareIcon } from 'lucide-react'
 import { useMemo } from 'react'

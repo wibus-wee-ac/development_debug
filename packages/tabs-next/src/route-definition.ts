@@ -1,7 +1,3 @@
-// Input: route definition config
-// Output: defineTab helper and location utilities
-// Position: Route-owner registration layer for tabs-next
-
 import type { TabLocation, TabParams, TabRouteDefinition } from './types'
 
 export function defineTab<

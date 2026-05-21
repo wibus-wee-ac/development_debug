@@ -1,7 +1,3 @@
-// Input: Codex CLI session JSONL metadata files and Cradle PTY launch context
-// Output: Conservative Codex session-id discovery for cli-tui resume bindings
-// Position: apps/server/src/modules/pty helper owned by the PTY capability
-
 import { createReadStream } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'

@@ -1,7 +1,3 @@
-// Input: chat session id and renderer server URL
-// Output: Feature-owned request helper for runtime-native slash command capabilities
-// Position: Chat feature data boundary for composer command discovery
-
 import { getServerUrl } from '~/lib/electron'
 
 const SERVER_BASE = getServerUrl()

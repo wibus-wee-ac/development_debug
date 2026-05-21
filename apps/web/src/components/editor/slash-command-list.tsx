@@ -1,7 +1,3 @@
-// Input: SlashCommandItem type from slash-command
-// Output: SlashCommandList React component for the dropdown
-// Position: UI component rendered by slash-command extension via ReactRenderer
-
 import {
   CodeIcon,
   Heading1Icon,

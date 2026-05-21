@@ -1,7 +1,3 @@
-// Input: canonical observability event stream and recent in-memory history
-// Output: pure incident rule evaluation results without side effects
-// Position: server observability rule module
-
 import type { ObservabilitySeverity } from '@cradle/ipc'
 
 import type { ObservabilityEvent, ObservabilityIncident } from './contract'

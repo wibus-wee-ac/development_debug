@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library and Composer slash command props
-// Output: Regression tests for native Claude SDK slash command insertion and send-through
-// Position: Chat composer unit tests for runtime command discovery UI
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

@@ -1,7 +1,3 @@
-// Input: none
-// Output: canonical approval request/response contracts and zod schemas for the server approval module
-// Position: apps/server/src/modules/approval shared types
-
 import { z } from 'zod'
 
 export const approvalOptionSchema = z.object({

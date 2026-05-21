@@ -1,7 +1,3 @@
-// Input: chatSessionId + server HTTP API
-// Output: SSE chat delta stream helpers and run event emitter
-// Position: apps/web/src/features/chat/sse-chat-transport.ts
-
 import type { ChatStreamEvent } from './chat-delta-events'
 
 // ── Per-session run event emitter ───────────────────────────

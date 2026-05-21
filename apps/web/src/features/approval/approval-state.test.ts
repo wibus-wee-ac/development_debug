@@ -1,7 +1,3 @@
-// Input: Vitest, pending approval state helpers
-// Output: Regression coverage for approval SSE state transitions
-// Position: Approval feature unit tests for renderer pending approval collection logic
-
 import { describe, expect, it } from 'vitest'
 
 import type { ApprovalRequestedPayload } from '~/lib/contracts/approval-events'

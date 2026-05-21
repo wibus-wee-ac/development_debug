@@ -1,7 +1,3 @@
-// Input: Menu, Button, enabled CLI TUI agents
-// Output: Agent-first selector used when the composer runtime is CLI TUI
-// Position: Composer toolbar specialization for runtime-sensitive CLI TUI launching
-
 import { SquareTerminalIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'

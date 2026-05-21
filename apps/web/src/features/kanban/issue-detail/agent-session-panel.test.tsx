@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked agent session hooks, and AgentSessionPanel
-// Output: Regression tests for issue agent session action accessibility and stop wiring
-// Position: Kanban issue detail test guarding agent session action semantics
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

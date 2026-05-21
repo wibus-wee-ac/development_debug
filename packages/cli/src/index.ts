@@ -1,7 +1,4 @@
 #!/usr/bin/env tsx
-// Input: commander root command, generated command registry, CLI runtime context
-// Output: Cradle CLI executable entry point
-// Position: packages/cli public binary entry
 
 import { Command } from 'commander'
 

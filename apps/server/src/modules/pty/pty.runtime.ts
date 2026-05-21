@@ -1,7 +1,3 @@
-// Input: node-pty pseudo-terminal spawn configuration, lifecycle actions, and process table sampling
-// Output: transport-neutral PTY runtime registry with output/exit hooks and resource snapshots
-// Position: apps/server/src/modules/pty runtime owner for session/shell PTYs
-
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 

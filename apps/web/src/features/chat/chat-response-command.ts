@@ -1,7 +1,3 @@
-// Input: chat session id, response request body, renderer server URL
-// Output: Feature-owned command for starting a chat response POST request
-// Position: Shared request boundary for chat response startup across chat entry points
-
 import type { PostChatSessionsBySessionIdResponseData } from '~/api-gen/types.gen'
 import { getServerUrl } from '~/lib/electron'
 

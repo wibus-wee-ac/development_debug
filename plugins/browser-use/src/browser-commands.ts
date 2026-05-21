@@ -1,7 +1,3 @@
-// Input: Browser command parameters and selector strings
-// Output: Shared CDP helper expressions and payload builders for browser-use desktop backends
-// Position: Pure helper module used by the browser-use Electron desktop plugin and tests
-
 export type ScrollDirection = 'up' | 'down' | 'left' | 'right'
 export type KeyEventType = 'keyDown' | 'keyUp'
 

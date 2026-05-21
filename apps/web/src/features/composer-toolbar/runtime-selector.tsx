@@ -1,7 +1,3 @@
-// Input: Menu, RuntimeKind options, provider icons
-// Output: RuntimeSelector — pill button for Agent Runtime kind with icons
-// Position: Separate selector in the composer toolbar (rarely changed)
-
 import { ChevronDownIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'

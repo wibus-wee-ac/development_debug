@@ -1,7 +1,3 @@
-// Input: session runtime config JSON helpers
-// Output: coverage for cli-tui launch config plus captured Codex session binding persistence
-// Position: apps/server/tests coverage for cross-module runtime config helpers
-
 import { describe, expect, it } from 'vitest'
 
 import {

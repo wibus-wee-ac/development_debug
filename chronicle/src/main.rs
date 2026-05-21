@@ -1,8 +1,4 @@
 //! CLI entry point for Cradle Chronicle.
-//!
-//! Input: smoke, daemon, storage-root, and inbox-root CLI flags.
-//! Output: local Chronicle artifacts and memory files.
-//! Position: binary wrapper around the library pipeline and desktop daemon bridge.
 
 use std::process::ExitCode;
 

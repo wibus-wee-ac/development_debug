@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked CapsuleComposer dependencies, and CapsuleComposer
-// Output: Regression tests for capsule composer send button accessibility and callback wiring
-// Position: Workspace detail feature test guarding the overview capsule composer action
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

@@ -1,7 +1,3 @@
-// Input: Claude Agent provider and plugin MCP registry
-// Output: focused tests for Claude Agent SDK query option projection
-// Position: Verifies plugin MCP servers and model alias settings reach Claude Agent SDK query options
-
 import type { AgentProfile } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'

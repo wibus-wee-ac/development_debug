@@ -1,8 +1,4 @@
 //! Binary smoke validation for Cradle Chronicle.
-//!
-//! Input: the compiled `cradle-chronicle` binary.
-//! Output: real artifacts and memory files in a temporary storage root.
-//! Position: end-to-end test for the first shippable Chronicle path.
 
 use std::fs;
 use std::process::Command;

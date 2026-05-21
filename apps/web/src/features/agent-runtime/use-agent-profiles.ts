@@ -1,7 +1,3 @@
-// Input: generated API SDK, TanStack Query
-// Output: useAgentProfiles hook — lists and mutates unified Agent Runtime profiles
-// Position: Data hook for Agent Runtime profile selection in the New Chat flow
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { deleteProfilesById, getProfiles, putProfilesById } from '~/api-gen/sdk.gen'

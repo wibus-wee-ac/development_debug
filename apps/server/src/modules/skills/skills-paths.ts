@@ -1,7 +1,3 @@
-// Input: process cwd and OS home directory
-// Output: skills root resolution across builtin, standard .agents, Cradle-only, workspace, and agent scopes
-// Position: apps/server/src/modules/skills/skills-paths.ts
-
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -28,7 +24,7 @@ export function resolveScopeRoot(scope: SkillScope, context: SkillContext): stri
       if (!context.workspacePath) {
         throw new Error('workspacePath is required for workspace skills')
       }
-      return path.join(context.workspacePath, '.agents', 'skills')
+      return path.join(context.workspacePath, ...CRADLE_DIR_PARTS, 'skills')
     case 'agent':
       if (!context.agentId) {
         throw new Error('agentId is required for agent skills')

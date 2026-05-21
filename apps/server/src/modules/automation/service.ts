@@ -1,7 +1,3 @@
-// Input: Automation DB tables plus session/chat-runtime services
-// Output: Automation CRUD, scheduled enqueue, and run-now orchestration
-// Position: Automation module business service
-
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 

@@ -1,7 +1,3 @@
-// Input: pack-codebase HTTP endpoint, dialog/switch/button ui components
-// Output: PackCodebaseDialog — configurable dialog for packing workspace into clipboard
-// Position: Feature UI component for pack-codebase; triggered from workspace sidebar or file tree context menu
-
 import {
   CheckIcon,
   ClipboardCopyIcon,
@@ -183,11 +179,17 @@ function PackCodebaseDialogContent({
   return (
     <div className="space-y-5 py-1">
       {state.status === 'done' && state.result && (
-        <div className="flex items-start gap-3 rounded-lg bg-muted/60 px-4 py-3">
+        <div
+          className="flex items-start gap-3 rounded-lg bg-muted/60 px-4 py-3"
+          data-testid="pack-codebase-success"
+        >
           <CheckIcon className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-400" />
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">已复制到剪贴板</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p
+              className="mt-0.5 text-xs text-muted-foreground"
+              data-testid="pack-codebase-result-summary"
+            >
               {state.result.totalFiles}
               {' 个文件 · '}
               {formatTokens(state.result.totalTokens)}
@@ -304,6 +306,7 @@ function PackCodebaseDialogContent({
             onBlur={() => addPath(state.pathInput)}
             placeholder={state.scopePaths.length === 0 ? 'src/renderer, packages/ipc …' : ''}
             rows={2}
+            data-testid="pack-codebase-scope-input"
             className="min-h-8 min-w-24 flex-1 resize-none bg-transparent font-mono text-xs leading-relaxed outline-none placeholder:text-muted-foreground/40"
           />
         </div>
@@ -318,6 +321,7 @@ function PackCodebaseDialogContent({
           placeholder="**/*.test.ts,docs/**"
           value={state.ignore}
           onChange={e => dispatch({ type: 'set-ignore', ignore: e.target.value })}
+          data-testid="pack-codebase-ignore-input"
           className="h-8 font-mono text-xs"
         />
       </div>
@@ -329,6 +333,7 @@ function PackCodebaseDialogContent({
                 variant="outline"
                 className="flex-1"
                 onClick={() => dispatch({ type: 'reset-status' })}
+                data-testid="pack-codebase-reset-btn"
               >
                 重新配置
               </Button>
@@ -338,6 +343,7 @@ function PackCodebaseDialogContent({
                 className="flex-1"
                 onClick={handlePack}
                 disabled={state.status === 'packing'}
+                data-testid="pack-codebase-submit-btn"
               >
                 {state.status === 'packing'
                   ? (
@@ -370,7 +376,7 @@ export function PackCodebaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" showCloseButton>
+      <DialogContent className="max-w-md" showCloseButton data-testid="pack-codebase-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <PackageIcon className="size-4 text-muted-foreground" />

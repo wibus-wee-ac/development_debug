@@ -1,7 +1,3 @@
-// Input: ThreadSearchHit from @main/ipc-types
-// Output: GroupedSearchHits type and groupHitsByWorkspace helper for Base UI autocomplete collections
-// Position: Search feature utility shared by dialog rendering and tests
-
 import type { ThreadSearchHit } from '~/lib/types'
 
 export interface GroupedSearchHits {

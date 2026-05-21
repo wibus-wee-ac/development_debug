@@ -1,9 +1,3 @@
-<!--
-Output: Health module inventory.
-Input: Health Elysia plugin.
-Position: apps/server/src/modules/health
--->
-
 # Health Module
 
 HTTP health check endpoints.

@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked kanban hooks, and IssueAsidePanel
-// Output: Regression tests for chat linked issue rendering and link actions
-// Position: Kanban feature test guarding the right aside issue surface
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, Vitest mocks, WorkspaceSidebar component
-// Output: Renderer interaction tests for workspace sidebar header behavior
-// Position: Workspace feature regression test for navigation vs collapse semantics
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

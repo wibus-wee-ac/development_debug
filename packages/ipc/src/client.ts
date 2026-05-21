@@ -1,7 +1,3 @@
-// Input: renderer ipc.invoke transport, shared trace/event helpers
-// Output: createIpcProxy renderer helper with optional IPC devtool instrumentation
-// Position: Shared renderer-side IPC entry point used by app code and future devtools
-
 import {
   captureCallerStack,
   createObservedEvent,

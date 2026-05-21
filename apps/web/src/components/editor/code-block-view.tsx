@@ -1,7 +1,3 @@
-// Input: @tiptap/react NodeViewWrapper/NodeViewContent
-// Output: CodeBlockView — React NodeView for Tiptap code block with language selector
-// Position: NodeView component used by ShikiCodeBlock extension
-
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
 import { useMemo, useState } from 'react'

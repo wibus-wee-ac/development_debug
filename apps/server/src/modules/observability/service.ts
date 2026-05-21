@@ -1,7 +1,3 @@
-// Input: observability contract, rules, exporter, and @cradle/db tables
-// Output: plain exported functions for event capture, incident projection, query, and export
-// Position: apps/server/src/modules/observability/service.ts
-
 import type { ObservabilityEventRow, ObservabilityIncidentRow } from '@cradle/db'
 import { observabilityEvents, observabilityIncidents } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'

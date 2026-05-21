@@ -1,7 +1,3 @@
-// Input: @cradle/tabs-next debug stream from the app window
-// Output: Zustand mirror of tabs-next runtime debug state for the devtool
-// Position: Devtool tabs panel state bridge
-
 import type { DebugApi, DebugState } from '@cradle/tabs-next'
 import {
   DEBUG_CHANNEL_NAME,

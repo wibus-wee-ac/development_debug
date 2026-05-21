@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React hook test harness, mocked query client, and useChatSession lifecycle
-// Output: Regression tests for session binding invalidation and stop cancellation state ownership
-// Position: Chat feature regression test for token/contextWindow cache refresh and local stop-state release
 
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

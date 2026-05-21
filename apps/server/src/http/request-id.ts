@@ -1,7 +1,3 @@
-// Input: incoming request headers
-// Output: x-request-id response header + requestId in derive for the Elysia path
-// Position: apps/server/src/http request-id plugin
-
 import { randomUUID } from 'node:crypto'
 
 import { Elysia } from 'elysia'

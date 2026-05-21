@@ -1,7 +1,3 @@
-// Input: name string
-// Output: Avatar circle with initial letter or fallback icon
-// Position: Shared display component for assignee avatars
-
 import { UserIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'

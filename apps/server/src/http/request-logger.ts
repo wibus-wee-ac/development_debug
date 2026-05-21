@@ -1,7 +1,3 @@
-// Input: incoming HTTP requests
-// Output: structured JSON log line per request with timing
-// Position: apps/server/src/http request logger plugin
-
 import { Elysia } from 'elysia'
 
 import { createChildLogger } from '../logging/logger'

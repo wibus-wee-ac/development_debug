@@ -1,7 +1,3 @@
-// Input: chat/session/agent rows and message snapshot text
-// Output: minimal turn context resolver for system prompt and chat history
-// Position: apps/server/src/modules/chat-runtime/chat-turn-context.ts
-
 import { agents, messages, sessions } from '@cradle/db'
 import { and, eq, isNull } from 'drizzle-orm'
 

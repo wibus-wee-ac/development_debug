@@ -1,7 +1,3 @@
-// Input: generated API SDK, generated queryOptions helpers, TanStack Query, git types
-// Output: useGitStatus / useGitBranches / useGitRemotes / useGitGraph hooks + query key builders for invalidation
-// Position: Feature hooks for git panel and git branch control; renderer-side data layer
-
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import {

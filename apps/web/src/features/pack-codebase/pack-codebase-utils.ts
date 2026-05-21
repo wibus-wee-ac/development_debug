@@ -1,7 +1,3 @@
-// Input: Pack-codebase path and token values
-// Output: Pure helpers for include patterns and display labels
-// Position: Utility layer owned by the pack-codebase feature
-
 const SCOPE_PATH_SEPARATOR = /[,\n]+/
 
 export function splitScopePathInput(input: string): string[] {

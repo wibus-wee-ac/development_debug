@@ -1,7 +1,3 @@
-// Input: Group name, count, collapse state, create callback
-// Output: Collapsible group header row for list view
-// Position: List view group separator
-
 import { ChevronRightIcon, PlusIcon } from 'lucide-react'
 import { m } from 'motion/react'
 

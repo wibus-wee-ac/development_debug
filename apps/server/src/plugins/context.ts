@@ -1,5 +1,6 @@
 import type { PluginManifest } from '@cradle/plugin-sdk'
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
+import { createChildLogger } from '../logging/logger'
 import { createPluginEventBus } from './event-bus'
 import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
 import { registerPluginMcpServer } from './mcp-registry'
@@ -10,11 +11,12 @@ export function createServerPluginContext(
   manifest: PluginManifest,
   app: unknown,
 ): ServerPluginContext {
+  const pluginLogger = createChildLogger({ module: 'plugin', plugin: manifest.name })
   const logger = {
-    info: (msg: string, ...args: unknown[]) => console.log(`[plugin:${manifest.name}]`, msg, ...args),
-    warn: (msg: string, ...args: unknown[]) => console.warn(`[plugin:${manifest.name}]`, msg, ...args),
-    error: (msg: string, ...args: unknown[]) => console.error(`[plugin:${manifest.name}]`, msg, ...args),
-    debug: (msg: string, ...args: unknown[]) => console.debug(`[plugin:${manifest.name}]`, msg, ...args),
+    info: (msg: string, ...args: unknown[]) => pluginLogger.info(msg, { args }),
+    warn: (msg: string, ...args: unknown[]) => pluginLogger.warn(msg, { args }),
+    error: (msg: string, ...args: unknown[]) => pluginLogger.error(msg, { args }),
+    debug: (msg: string, ...args: unknown[]) => pluginLogger.debug(msg, { args }),
   }
 
   // Build shared config from env vars (CRADLE_PLUGIN_* prefix)

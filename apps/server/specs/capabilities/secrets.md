@@ -1,9 +1,3 @@
-<!--
-Output: Secrets capability spec for server migration.
-Input: Generic encrypted secret storage and masked metadata projection.
-Position: apps/server/specs/capabilities secrets spec.
--->
-
 # Capability: Secrets
 
 ## User / System Goal

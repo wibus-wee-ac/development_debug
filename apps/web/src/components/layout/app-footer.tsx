@@ -1,7 +1,3 @@
-// Input: Button, cn utility, JarvisPopover, JarvisUiStore
-// Output: AppFooter — slim global status footer bar mirroring the AppHeader chrome pattern
-// Position: Bottom chrome of AppLayout's center column; always rendered, no slot props
-
 import { MousePointer2Icon, XIcon } from 'lucide-react'
 import * as React from 'react'
 

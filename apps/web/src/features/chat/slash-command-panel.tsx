@@ -1,7 +1,3 @@
-// Input: Runtime-native slash command list, query text, keyboard events
-// Output: SlashCommandPanel — fuzzy command picker above the composer
-// Position: Sub-component of Composer for Claude Agent SDK slash command discovery
-
 import { Fzf } from 'fzf'
 import { CommandIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

@@ -1,7 +1,3 @@
-// Input: Vitest, PTY WebSocket protocol parser
-// Output: Regression coverage for renderer-side PTY server event parsing
-// Position: TUI feature unit tests for WebSocket message boundary handling
-
 import { describe, expect, it } from 'vitest'
 
 import { parsePtyServerEvent } from './pty-protocol'

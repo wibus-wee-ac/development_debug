@@ -1,7 +1,3 @@
-// Input: window.cradle (injected by Electron preload)
-// Output: Electron environment detection + native API wrappers
-// Position: apps/web/src/lib/electron.ts
-
 import { createIpcProxy } from '@cradle/ipc/client'
 
 /**
@@ -83,9 +79,45 @@ interface WindowServiceMethods {
   getOpenSessions: () => Promise<string[]>
 }
 
+export interface DesktopUpdateAsset {
+  PackageId: string
+  Version: string
+  Type: string
+  FileName: string
+  Size: number
+  NotesMarkdown: string
+  NotesHtml: string
+}
+
+export interface DesktopUpdateInfo {
+  TargetFullRelease: DesktopUpdateAsset
+  BaseRelease?: DesktopUpdateAsset
+  DeltasToTarget: DesktopUpdateAsset[]
+  IsDowngrade: boolean
+}
+
+export interface DesktopUpdateStatus {
+  unsupported: boolean
+  currentVersion: string
+  isCheckingForUpdates: boolean
+  isDownloadingUpdate: boolean
+  downloadingProgress: number
+  updateDownloaded: boolean
+  updateInfo: DesktopUpdateInfo | null
+  errorMessage: string | null
+}
+
+interface DesktopUpdateServiceMethods {
+  getStatus: () => Promise<DesktopUpdateStatus>
+  checkForUpdates: () => Promise<DesktopUpdateStatus>
+  downloadUpdate: () => Promise<DesktopUpdateStatus>
+  applyUpdate: () => Promise<void>
+}
+
 interface CradleIpcServices {
   native: NativeServiceMethods
   window: WindowServiceMethods
+  desktopUpdate: DesktopUpdateServiceMethods
 }
 
 /**
@@ -95,3 +127,11 @@ interface CradleIpcServices {
 export const nativeIpc = createIpcProxy<CradleIpcServices>(
   window.cradle?.ipc ?? null,
 )
+
+export function subscribeDesktopUpdateStatus(
+  handler: (status: DesktopUpdateStatus) => void,
+): () => void {
+  return window.cradle?.desktopUpdate.onStatusChanged((status) => {
+    handler(status as DesktopUpdateStatus)
+  }) ?? (() => {})
+}

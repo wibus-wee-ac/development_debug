@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked NewChatPage dependencies, and NewChatPage
-// Output: Regression tests for new chat composer icon button accessibility
-// Position: New Chat feature test guarding composer button names and send wiring
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement } from 'react'

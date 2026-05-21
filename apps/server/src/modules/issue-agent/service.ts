@@ -14,7 +14,7 @@ import { parseJsonStringArray } from '../../helpers/json-text'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import * as ChatRuntime from '../chat-runtime/service'
-import * as Kanban from '../kanban/service'
+import * as Issue from '../issue/service'
 import * as Session from '../session/service'
 import * as WorkflowRules from '../workflow-rules/service'
 
@@ -130,7 +130,7 @@ function createActivity(input: {
 
 function requireIssue(issueId: string) {
   try {
-    return Kanban.getIssue(issueId)
+    return Issue.getIssue(issueId)
   }
   catch {
     throw new AppError({
@@ -412,10 +412,10 @@ export async function delegateIssue(input: { issueId: string, agentId: string, a
     })
   }
 
-  Kanban.updateIssueDelegation(input.issueId, { agentId: agent.id, agentProfileId: agent.agentProfileId })
+  Issue.updateIssueDelegation(input.issueId, { agentId: agent.id, agentProfileId: agent.agentProfileId })
 
   // Add system comment to activity timeline
-  Kanban.addComment({ issueId: input.issueId, content: `Delegated to ${agent.name}`, authorKind: 'system.delegated' })
+  Issue.addComment({ issueId: input.issueId, content: `Delegated to ${agent.name}`, authorKind: 'system.delegated' })
 
   const session = createDelegationSession({
     issueId: input.issueId,
@@ -468,10 +468,10 @@ export async function undelegateIssue(issueId: string): Promise<void> {
     updateAgentSessionStatus(state.agentSessionId, 'stopped')
   }
 
-  Kanban.updateIssueDelegation(issueId, null)
+  Issue.updateIssueDelegation(issueId, null)
 
   // Add system comment to activity timeline
-  Kanban.addComment({ issueId, content: 'Delegation removed', authorKind: 'system.undelegated' })
+  Issue.addComment({ issueId, content: 'Delegation removed', authorKind: 'system.undelegated' })
 
   createActivity({
     agentSessionId: state.agentSessionId,

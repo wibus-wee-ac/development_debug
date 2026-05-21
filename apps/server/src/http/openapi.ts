@@ -1,7 +1,3 @@
-// Input: Elysia app instance + TypeBox/Elysia.t schemas
-// Output: OpenAPI/Scalar routes for the Elysia path
-// Position: apps/server/src/http openapi plugin setup
-
 import { openapi } from '@elysia/openapi'
 import type { AnyElysia } from 'elysia'
 

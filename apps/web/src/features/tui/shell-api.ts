@@ -1,7 +1,3 @@
-// Input: generated REST SDK for shell PTY lifecycle
-// Output: Functions for shell session lifecycle (start, stop)
-// Position: API layer extracted from shell-view so HTTP ownership stays limited to explicit resource lifecycle
-
 import {
   deleteTerminalSessionsShellByPtyId,
   postTerminalSessionsShellStart,

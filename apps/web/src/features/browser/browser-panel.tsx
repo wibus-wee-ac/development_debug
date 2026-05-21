@@ -1,7 +1,3 @@
-// Input: useBrowserPanelStore, <webview> tag
-// Output: BrowserPanel component — embedded browser with tabs, navigation, script injection
-// Position: apps/web/src/features/browser/browser-panel.tsx
-
 import { ArrowLeftIcon, ArrowRightIcon, GlobeIcon, PlusIcon, RefreshCwIcon, XIcon } from 'lucide-react'
 import { createElement } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'

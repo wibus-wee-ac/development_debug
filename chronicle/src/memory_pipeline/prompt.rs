@@ -1,8 +1,4 @@
 //! Prompt construction for Chronicle memory writing.
-//!
-//! Input: persisted frame evidence and child summaries.
-//! Output: anti-injection guarded memory-writing prompt.
-//! Position: safety boundary before local or LLM-backed summary writers.
 
 use crate::recorder::artifacts::PersistedFrame;
 

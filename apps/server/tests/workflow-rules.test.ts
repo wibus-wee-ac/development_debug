@@ -1,7 +1,3 @@
-// Input: workflow-rules HTTP endpoints
-// Output: integration tests for workflow-rules CRUD and filesystem ownership
-// Position: apps/server/tests
-
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

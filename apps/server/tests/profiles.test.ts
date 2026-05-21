@@ -1,7 +1,3 @@
-// Input: profiles, secrets, and providers HTTP endpoints
-// Output: integration tests for profile CRUD, provider metadata, and secret masking
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

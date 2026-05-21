@@ -1,7 +1,3 @@
-// Input: React children (label, description, control), tooltip primitives
-// Output: SettingsRow — left-right row component for Linear-style settings
-// Position: Shared layout primitive for settings pages
-
 import { InfoIcon } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'

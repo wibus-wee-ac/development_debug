@@ -1,7 +1,3 @@
-// Input: ACP SDK client connection, process manager, timeline mapper, and filesystem helpers
-// Output: server-owned ACP connection/session/prompt manager for chat-runtime
-// Position: apps/server chat-runtime ACP live runtime transport boundary
-
 import { promises as fsp } from 'node:fs'
 
 import type {

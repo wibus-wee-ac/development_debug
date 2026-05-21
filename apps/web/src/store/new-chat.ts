@@ -1,7 +1,3 @@
-// Input: zustand, zustand/middleware
-// Output: useNewChatStore hook for persisted composer preferences (runtime, agent, profile, model, thinking)
-// Position: Renderer store for cross-session new-chat page state
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 

@@ -1,7 +1,3 @@
-// Input: document CSS variables from styles.css (--background, --foreground, etc.)
-// Output: getAppTerminalTheme() — reads computed CSS vars at runtime to produce an xterm ITheme
-// Position: Shared theme helper for TuiView and ShellView; replaces static github-theme constants
-
 import type { ITheme } from '@xterm/xterm'
 
 function cssVar(name: string): string {

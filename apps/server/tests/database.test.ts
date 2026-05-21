@@ -1,7 +1,3 @@
-// Input: DbAccessor + migrations
-// Output: database module integration test
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

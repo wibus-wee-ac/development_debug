@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab, usePluginStore
-// Output: plugin-panel tab definition — renders a plugin's registered panel
-// Position: Tab type for dynamically-loaded plugin panels
 
 import { defineTab } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'

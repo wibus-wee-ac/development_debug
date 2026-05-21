@@ -1,7 +1,3 @@
-// Input: DailyUsage[] data from IPC
-// Output: UsageHeatmap — smooth rounded GitHub-style contribution heatmap
-// Position: Core visual component of the usage dashboard
-
 import { memo, useMemo, useRef, useState } from 'react'
 
 interface DailyUsage {

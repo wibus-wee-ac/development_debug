@@ -1,7 +1,3 @@
-// Input: tabs-next store and route definitions
-// Output: regression tests for navigation-context tab lifecycle
-// Position: Unit coverage for @cradle/tabs-next core semantics
-
 import { describe, expect, it } from 'vitest'
 
 import { defineTab } from '../route-definition'

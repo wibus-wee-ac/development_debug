@@ -1,7 +1,3 @@
-// Input: Tool call metadata including name, state, input/output data
-// Output: A classified tool call display with structured input/output previews
-// Position: apps/web/src/features/chat/blocks/tool-call-block.tsx
-
 import {
   BotIcon,
   CheckCircle2Icon,

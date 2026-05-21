@@ -1,7 +1,3 @@
-// Input: Array of file paths that were read during tool execution
-// Output: A grouped display of file read operations with staggered animation
-// Position: apps/web/src/features/chat/blocks/read-files-block.tsx
-
 import { useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
 import { cn } from '~/lib/cn'

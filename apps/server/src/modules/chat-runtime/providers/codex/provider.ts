@@ -1,7 +1,3 @@
-// Input: Codex SDK, provider config helpers, and observability service
-// Output: codex chat runtime provider for unified server chat execution
-// Position: apps/server/src/modules/chat-runtime/providers/codex/provider.ts
-
 import { randomUUID } from 'node:crypto'
 import { unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

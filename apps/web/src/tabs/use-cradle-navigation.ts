@@ -1,7 +1,3 @@
-// Input: useTabNavigation from @cradle/tabs-next, useCradleTabStore
-// Output: useCradleNavigation hook — wraps tab ops (store is source of truth, no URL sync)
-// Position: App-level hook for tab navigation
-
 import { useTabNavigation } from '@cradle/tabs-next'
 import { useCallback } from 'react'
 

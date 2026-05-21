@@ -1,7 +1,3 @@
-// Input: Preferred workspace id from routing, local selection state, workspace list
-// Output: resolveSelectedWorkspaceId utility for launcher workspace selection
-// Position: New-chat feature helper that keeps homepage workspace selection stable across navigation
-
 interface WorkspaceIdentity {
   id: string
 }

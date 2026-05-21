@@ -1,7 +1,3 @@
-// Input: Cucumber Git E2E bindings, Playwright assertions, temp workspace helpers, and local git CLI
-// Output: Git-focused end-to-end step definitions covering real workspace import, header branch control, branch creation/switch, and commit graph rendering
-// Position: E2E step layer for git.feature; drives the packaged Electron UI end-to-end without writing app business state directly
-
 import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'

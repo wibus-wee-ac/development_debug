@@ -22,6 +22,7 @@ The server follows the repository convention of **technical primitives + busines
 - `health`
 - `database`
 - `workspace`
+- `automation`
 - `approval`
 - `acp`
 - `session`
@@ -49,6 +50,8 @@ The server follows the repository convention of **technical primitives + busines
 - `CRADLE_HOST`: bind host
 - `CRADLE_PORT`: bind port
 - `CRADLE_LOG_LEVEL`: logger level
+- `CRADLE_LOG_FILE`: explicit server log file path
+- `CRADLE_LOG_SYNC`: set to `1` to write the file log synchronously during crash diagnostics
 - `CRADLE_CREDENTIAL_SECRET`: secret used to encrypt server-owned secrets
 
 ## Commands
@@ -56,7 +59,7 @@ The server follows the repository convention of **technical primitives + busines
 - `pnpm dev`: start nodemon development server
 - `pnpm test`: run Vitest suite
 - `pnpm typecheck`: run TypeScript type-check
-- `pnpm build`: build the server bundle
+- `pnpm build`: build the server bundle, copy external runtime packages into `dist/node_modules`, and write the runtime manifest used by desktop native rebuilds
 
 ## Elysia migration status
 

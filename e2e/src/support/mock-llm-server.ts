@@ -1,9 +1,6 @@
-// Input: Node HTTP primitives plus configurable mock response behavior for OpenAI-compatible chat endpoints
-// Output: MockLlmServer with scenario-safe lifecycle, deterministic failure modes, tool calls, and request logging
-// Position: E2E support fixture providing a controllable local LLM provider for Electron end-to-end scenarios
-
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { createServer } from 'node:http'
+import type { Socket } from 'node:net'
 
 export interface MockLlmRequestLogEntry {
   method: string
@@ -73,6 +70,7 @@ export interface MockLlmServerOptions {
 
 export class MockLlmServer {
   private server: Server | null = null
+  private sockets = new Set<Socket>()
   private port = 0
   private responseText: string
   private readonly responseTexts: string[] | null
@@ -81,7 +79,6 @@ export class MockLlmServer {
   private readonly errorStatusCode: number
   private readonly errorMessage: string
   private readonly toolCalls: MockToolCall[]
-  // @ts-expect-error Reserved for future tool validation in tests
   private readonly _tools: MockToolDefinition[]
   private readonly models: Array<{ id: string, owned_by?: string }>
   private readonly reasoningText: string | null
@@ -113,6 +110,12 @@ export class MockLlmServer {
 
     return new Promise((resolve, reject) => {
       this.server = createServer((req, res) => this.handleRequest(req, res))
+      this.server.on('connection', (socket) => {
+        this.sockets.add(socket)
+        socket.on('close', () => {
+          this.sockets.delete(socket)
+        })
+      })
       this.server.listen(0, '127.0.0.1', () => {
         const addr = this.server!.address()
         if (typeof addr === 'object' && addr) {
@@ -130,14 +133,42 @@ export class MockLlmServer {
   /** Stop the server */
   async stop(): Promise<void> {
     return new Promise((resolve) => {
-      if (this.server) {
-        const activeServer = this.server
-        this.server = null
-        this.port = 0
-        activeServer.close(() => resolve())
-      }
-      else {
+      if (!this.server) {
         resolve()
+        return
+      }
+
+      const activeServer = this.server
+      this.server = null
+      this.port = 0
+
+      let settled = false
+      let timeout: NodeJS.Timeout | null = null
+      const finish = () => {
+        if (settled) {
+          return
+        }
+        settled = true
+        if (timeout) {
+          clearTimeout(timeout)
+        }
+        resolve()
+      }
+
+      timeout = setTimeout(() => {
+        activeServer.closeAllConnections?.()
+        for (const socket of this.sockets) {
+          socket.destroy()
+        }
+        this.sockets.clear()
+        finish()
+      }, 1000)
+
+      try {
+        activeServer.close(finish)
+      }
+      catch {
+        finish()
       }
     })
   }

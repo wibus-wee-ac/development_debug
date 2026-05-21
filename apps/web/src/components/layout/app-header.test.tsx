@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked layout stores, AppHeader
-// Output: Regression tests for AppHeader chrome toggle accessibility
-// Position: Layout component test guarding shell control semantics
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

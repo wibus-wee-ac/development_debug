@@ -1,7 +1,3 @@
-// Input: DOM theme classes, devicePixelRatio
-// Output: HalftoneArt, FlowField, GridWave, SineRipple, RainDots, ConnectionMesh, SpotlightGradient, DitheredGradientDecoration
-// Position: Universal UI canvas art primitives for decorative panel backgrounds
-
 import { cn } from '~/lib/cn'
 import { useCallback, useEffect, useRef } from 'react'
 

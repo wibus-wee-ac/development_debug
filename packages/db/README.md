@@ -1,9 +1,3 @@
-<!--
-Output: DB schema package inventory for Cradle.
-Input: Drizzle schema modules and migration artifacts.
-Position: packages/db package index.
--->
-
 # @cradle/db
 
 Schema and migration artifacts for Cradle server persistence.

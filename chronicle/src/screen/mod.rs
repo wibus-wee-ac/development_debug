@@ -1,8 +1,4 @@
 //! Capture source abstractions for Cradle Chronicle.
-//!
-//! Input: platform capture APIs, browser/plugin feeds, or synthetic frames.
-//! Output: normalized captured frames for recorder processing.
-//! Position: input boundary; storage and memory modules do not depend on platform APIs.
 
 pub mod inbox;
 pub mod macos;

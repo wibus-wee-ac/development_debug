@@ -1,9 +1,3 @@
-<!--
-Output: Database module inventory.
-Input: DatabaseModule, providers, migrations.
-Position: apps/server/src/database
--->
-
 # Database Module
 
 SQLite lifecycle for the server runtime (connect → set runtime pragmas → migrate → provide).

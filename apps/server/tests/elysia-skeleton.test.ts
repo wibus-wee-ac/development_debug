@@ -1,7 +1,3 @@
-// Input: parallel Elysia app factory
-// Output: migration-skeleton verification for health, preferences, and OpenAPI exposure
-// Position: apps/server/tests Elysia spike suite
-
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

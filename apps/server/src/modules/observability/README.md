@@ -1,9 +1,3 @@
-<!--
-Output: observability module file inventory.
-Input: observability HTTP/controller/service/store/contracts.
-Position: apps/server/src/modules/observability index.
--->
-
 # Observability Module
 
 Provides canonical observability event capture, incident projection, queue-backed persistence, and HTTP query/export surfaces.

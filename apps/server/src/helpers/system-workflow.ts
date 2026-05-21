@@ -1,7 +1,3 @@
-// Input: filesystem path resolution
-// Output: cached system-workflow.md content
-// Position: apps/server/src/helpers/system-workflow.ts
-
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 

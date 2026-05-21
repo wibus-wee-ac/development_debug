@@ -1,7 +1,3 @@
-// Input: Board list, workspace list, tab navigation
-// Output: Flat kanban boards section with Linear-style popover creation
-// Position: Section component used inside WorkspaceSidebar
-
 import { Link } from '@cradle/tabs-next'
 import {
   LayoutDashboardIcon,

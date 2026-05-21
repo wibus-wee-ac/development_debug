@@ -1,7 +1,3 @@
-// Input: session capability HTTP endpoints
-// Output: integration tests for session CRUD, messages, and export
-// Position: apps/server/tests
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

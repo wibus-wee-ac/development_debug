@@ -1,8 +1,4 @@
-// Input: skills HTTP endpoints
-// Output: integration tests for skills inventory, CRUD, import/export, and fetch-source flows
-// Position: apps/server/tests
-
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -119,6 +115,9 @@ describe('skills capability', () => {
       expect(workspaceEntry).toEqual(expect.objectContaining({ active: true, shadowedBy: null }))
       expect(agentEntry).toEqual(expect.objectContaining({ active: true, shadowedBy: null }))
       expect(legacyEntry).toEqual(expect.objectContaining({ active: true }))
+      expect(workspaceEntry?.rootDir).toBe(join(workspaceRoot, '.cradle', 'skills'))
+      expect(workspaceEntry?.skillDir).toBe(join(workspaceRoot, '.cradle', 'skills', 'shared-skill'))
+      expect(existsSync(join(workspaceRoot, '.agents', 'skills'))).toBe(false)
 
       const getWorkspaceDoc = await app.handle(new Request('http://localhost/skills/document?scope=workspace&name=shared-skill&workspaceId=workspace-1'))
       expect(getWorkspaceDoc.status).toBe(200)
@@ -144,10 +143,14 @@ describe('skills capability', () => {
         }),
       }))
       expect(updateWorkspace.status).toBe(200)
-      expect(await updateWorkspace.json()).toEqual(expect.objectContaining({
+      const updatedWorkspace = await updateWorkspace.json() as SkillInventoryEntry
+      expect(updatedWorkspace).toEqual(expect.objectContaining({
         name: 'workspace-tools',
         description: 'Workspace renamed',
+        rootDir: join(workspaceRoot, '.cradle', 'skills'),
+        skillDir: join(workspaceRoot, '.cradle', 'skills', 'workspace-tools'),
       }))
+      expect(existsSync(join(workspaceRoot, '.agents', 'skills'))).toBe(false)
 
       const exportAgent = await app.handle(new Request('http://localhost/skills/export', {
         method: 'POST',

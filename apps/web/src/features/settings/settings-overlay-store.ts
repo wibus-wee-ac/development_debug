@@ -1,7 +1,3 @@
-// Input: zustand
-// Output: useSettingsOverlayStore hook for settings feature overlay state
-// Position: Settings feature-owned UI state separated from shell layout ownership
-
 import { create } from 'zustand'
 
 interface SettingsOverlayState {

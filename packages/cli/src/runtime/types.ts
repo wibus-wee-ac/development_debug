@@ -1,7 +1,3 @@
-// Input: generated command modules and runtime helpers
-// Output: shared type contracts for command specs and execution context
-// Position: packages/cli runtime boundary
-
 export type CliHttpMethod = 'delete' | 'get' | 'patch' | 'post' | 'put'
 
 export type CliValueType = 'boolean' | 'json' | 'number' | 'string' | 'string[]'

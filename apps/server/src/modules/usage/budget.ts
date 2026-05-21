@@ -1,7 +1,3 @@
-// Input: current cost figures, budget config
-// Output: budget check results (pure functions, no side effects)
-// Position: apps/server/src/modules/usage/budget.ts
-
 export interface BudgetConfig {
   maxCostPerTurn?: number
   maxCostPerDay?: number

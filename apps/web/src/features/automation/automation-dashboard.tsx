@@ -1,7 +1,3 @@
-// Input: automation query hooks
-// Output: AutomationDashboard registry/viewer for definitions, latest state, runs, links, and artifacts
-// Position: Feature-owned UI surface embedded from Home until a dedicated tab exists
-
 import {
   ArrowLeftIcon,
   BotIcon,

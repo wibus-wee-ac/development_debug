@@ -1,7 +1,3 @@
-// Input: generated API SDK, thread-search normalizer, TanStack Query, debounced query string
-// Output: useThreadSearch — React Query hook with 150ms debounce, returns ranked UI-safe ThreadSearchHit[]
-// Position: Feature hook for search dialog; renderer-side view layer, no orchestration
-
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 

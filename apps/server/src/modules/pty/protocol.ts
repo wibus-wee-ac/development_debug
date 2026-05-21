@@ -1,7 +1,3 @@
-// Input: PTY live-channel client/server message definitions
-// Output: transport-neutral TypeScript protocol types for PTY WebSocket channels
-// Position: apps/server/src/modules/pty shared protocol contract between runtime, timeline, and socket adapters
-
 export interface PtyExitState {
   exitCode: number | null
   signal: string | null

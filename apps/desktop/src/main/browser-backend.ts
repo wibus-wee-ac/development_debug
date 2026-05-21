@@ -1,7 +1,3 @@
-// Input: Electron webContents, net (Node), fs
-// Output: Browser Backend — Unix Domain Socket server that handles CDP commands for webview control
-// Position: apps/desktop/src/main/browser-backend.ts
-
 import { existsSync, unlinkSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'

@@ -1,7 +1,3 @@
-// Input: useNewChatStore, useAgentProfiles, useAgentModels, useAgents, ComposerContext
-// Output: useComposerState — unified state hook for all composer contexts
-// Position: Replaces duplicated useReducer logic across NewChat and Capsule composers
-
 import { useMemo, useState } from 'react'
 
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'

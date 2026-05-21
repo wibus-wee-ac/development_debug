@@ -1,7 +1,3 @@
-// Input: Approval event payloads from the SSE stream
-// Output: Pure pending-approval collection helpers
-// Position: Approval feature state helpers used by use-approval
-
 import type { ApprovalRequestedPayload } from '~/lib/contracts/approval-events'
 
 export function mergePendingApprovals(

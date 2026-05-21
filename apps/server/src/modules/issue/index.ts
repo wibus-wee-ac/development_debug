@@ -1,7 +1,3 @@
-// Input: Issue HTTP requests and server runtime actor context
-// Output: Elysia routes for issue workflow, comments, relations, delegation, and CLI metadata
-// Position: Issue module route boundary mounted by the server app
-
 import { Elysia, t } from 'elysia'
 
 import { resolveActorContext } from '../../http/actor-context'

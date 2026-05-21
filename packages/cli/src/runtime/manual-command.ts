@@ -1,7 +1,3 @@
-// Input: Commander command tree
-// Output: local manual command for generated and runtime commands
-// Position: packages/cli runtime documentation command
-
 import type { Command } from 'commander'
 
 interface ManualTarget {

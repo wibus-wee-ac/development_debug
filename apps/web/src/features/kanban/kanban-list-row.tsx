@@ -1,7 +1,3 @@
-// Input: KanbanIssue, statuses, milestones, display properties
-// Output: Ultra-compact list row (32px height)
-// Position: List view row component
-
 import { BotIcon, CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'

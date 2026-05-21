@@ -1,7 +1,3 @@
-// Input: React context, shortcut-utils types
-// Output: ShortcutProvider component
-// Position: Core infrastructure — wraps app to enable centralized keyboard shortcut handling
-
 import * as React from 'react'
 
 import { ShortcutContext } from './shortcut-context'

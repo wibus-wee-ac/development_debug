@@ -1,7 +1,3 @@
-// Input: zustand, zustand/middleware, @cradle/streamdown types
-// Output: useStreamdownStore hook with streaming render preferences
-// Position: Global store for Streamdown animation/rendering settings
-
 import type { AnimationPresetName } from '@cradle/streamdown'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'

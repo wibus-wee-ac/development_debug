@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked overlay primitives, and KanbanToolbar
-// Output: Regression tests for Kanban toolbar icon-only action accessibility
-// Position: Kanban feature test guarding toolbar action names and layout callbacks
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

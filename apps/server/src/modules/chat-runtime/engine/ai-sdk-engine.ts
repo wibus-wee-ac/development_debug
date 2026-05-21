@@ -1,6 +1,5 @@
 // AI SDK Engine — unified agent execution using Vercel AI SDK streamText
 // Yields UIMessageChunk directly — no intermediate timeline abstraction
-// Position: apps/server/src/modules/chat-runtime/engine/ai-sdk-engine.ts
 
 import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream, stepCountIs, streamText } from 'ai'

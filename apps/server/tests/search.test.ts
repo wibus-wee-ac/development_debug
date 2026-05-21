@@ -1,7 +1,3 @@
-// Input: search HTTP endpoints
-// Output: integration tests for thread search over titles and assistant message text
-// Position: apps/server/tests
-
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

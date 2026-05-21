@@ -1,7 +1,3 @@
-// Input: Group metadata, issues array, related metadata, display properties
-// Output: Single droppable column for the board view
-// Position: Column component used inside kanban board layout
-
 import { useDroppable } from '@dnd-kit/core'
 import { PlusIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'

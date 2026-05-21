@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library and AgentActivityItem activity rows
-// Output: Regression tests for agent activity icon semantics and elicitation option rendering
-// Position: Kanban issue detail test guarding agent session activity item rendering
 
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'

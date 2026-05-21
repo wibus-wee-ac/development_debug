@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: mocked agent/profile/model hooks and useComposerState
-// Output: Regression tests for persisted composer selection semantics
-// Position: Composer Toolbar test guarding state ownership across runtime/profile/model choices
 
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

@@ -1,9 +1,3 @@
-<!--
-Output: Session capability spec for server migration.
-Input: Legacy SessionService IPC behavior and chat/session schema.
-Position: apps/server/specs/capabilities session spec.
--->
-
 # Capability: Session
 
 ## Superpowers Used

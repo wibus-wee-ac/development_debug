@@ -1,9 +1,3 @@
-<!--
-Output: Database capability spec for server migration.
-Input: Existing database module lifecycle and migration behavior.
-Position: apps/server/specs/capabilities database spec.
--->
-
 # Capability: Database
 
 ## User / System Goal

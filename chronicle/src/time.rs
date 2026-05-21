@@ -1,8 +1,4 @@
 //! UTC timestamp helpers for artifact and memory names.
-//!
-//! Input: `SystemTime` values from capture and smoke runs.
-//! Output: compact and filesystem-safe UTC strings.
-//! Position: dependency-free replacement for date formatting in this first crate.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

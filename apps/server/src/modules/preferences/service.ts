@@ -1,7 +1,3 @@
-// Input: server config + file system
-// Output: chat preferences read/write
-// Position: apps/server/src/modules/preferences/service.ts
-
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 

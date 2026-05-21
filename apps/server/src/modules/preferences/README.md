@@ -1,9 +1,3 @@
-<!--
-Output: Preferences module inventory.
-Input: Server-owned preference HTTP routes and persistence helpers.
-Position: apps/server/src/modules/preferences
--->
-
 # Preferences Module
 
 Server-owned preference read/write endpoints.

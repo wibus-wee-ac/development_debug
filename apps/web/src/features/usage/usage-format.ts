@@ -1,7 +1,3 @@
-// Input: Numeric usage and cost values
-// Output: Formatting helpers for usage dashboard labels
-// Position: Pure helper module owned by the usage feature
-
 export function formatTokens(value: number): string {
   if (value >= 1_000_000) {
     return `${(value / 1_000_000).toFixed(1)}M`

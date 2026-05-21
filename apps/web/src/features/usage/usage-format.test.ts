@@ -1,7 +1,3 @@
-// Input: Vitest, usage formatting helpers
-// Output: Regression coverage for usage dashboard numeric labels
-// Position: Usage feature unit tests for display formatting
-
 import { describe, expect, it } from 'vitest'
 
 import { formatTokens, formatUsd } from './usage-format'

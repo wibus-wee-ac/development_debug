@@ -1,7 +1,3 @@
-// Input: tabs-next store context, dnd-kit events, route capabilities
-// Output: draggable tab bar with activation, closing, and tear-off hooks
-// Position: Visual control surface for tab navigation contexts
-
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { closestCenter, DndContext, MouseSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'

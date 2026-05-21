@@ -1,7 +1,3 @@
-// Input: React, input-otp primitives, cn helper, lucide MinusIcon
-// Output: InputOTP family of styled OTP field wrappers and slots
-// Position: Shared UI primitive for one-time-password and verification-code inputs
-
 import { cn } from '~/lib/cn'
 import { OTPInput, OTPInputContext } from 'input-otp'
 import { MinusIcon } from 'lucide-react'

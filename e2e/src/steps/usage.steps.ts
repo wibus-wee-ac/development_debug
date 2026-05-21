@@ -1,7 +1,3 @@
-// Input: Cucumber usage dashboard steps and Playwright assertions
-// Output: Usage dashboard E2E steps covering empty state, visible summary values, and heatmap tooltip behavior
-// Position: Focused step layer for usage/cost dashboard user journeys through the real sidebar entrypoint
-
 import type { DataTable } from '@cucumber/cucumber'
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'

@@ -1,7 +1,3 @@
-// Input: ServerConfig
-// Output: dbPath and dataDir for SQLite
-// Position: server database config
-
 import type { ServerConfig } from '../config/server-config'
 
 export interface DatabaseOptions {

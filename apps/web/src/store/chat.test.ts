@@ -1,7 +1,3 @@
-// Input: Vitest assertions and chat Zustand store
-// Output: Regression tests for chat message reference stability
-// Position: Renderer store unit test locking snapshot structural sharing behavior
-
 import type { UIMessage } from 'ai'
 import { beforeEach, describe, expect, it } from 'vitest'
 

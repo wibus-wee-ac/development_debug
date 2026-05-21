@@ -1,8 +1,4 @@
 //! Daemon mode for Cradle Chronicle.
-//!
-//! Input: ChronicleConfig with daemon settings.
-//! Output: continuous capture with adaptive sampling, idle detection, and lock management.
-//! Position: top-level orchestrator between config, recorder, and system state.
 
 use std::fs;
 use std::io::Write;
@@ -12,6 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::config::{CaptureProvider, ChronicleConfig};
+use crate::cradle_client::{ChronicleMemoryReport, ChronicleSnapshotReport, CradleClient};
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::memory_pipeline::recursive::RecursiveSummarizer;
 use crate::memory_pipeline::summarizer::LocalSummaryWriter;
@@ -57,6 +54,8 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
 
     if config.run_once {
         let report = capture_once(&config, 1)?;
+        let client = CradleClient::from_env();
+        report_snapshots(&client, &report.persisted_frames);
         drop(lock);
         cleanup_pid_file(&config.storage_root);
         return Ok(format!(
@@ -79,6 +78,7 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
 }
 
 fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
+    let client = CradleClient::from_env();
     let mut sampler = AdaptiveSampler::new(
         config.poll_interval_ms,
         config.min_interval_ms,
@@ -113,6 +113,8 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
             Ok(report) => {
                 frame_index += 1;
                 if !report.persisted_frames.is_empty() {
+                    report_snapshots(&client, &report.persisted_frames);
+
                     // Feed adaptive sampler with fingerprint from captured frame
                     let fp = FrameFingerprint::from_parts(
                         &format!("frame-{frame_index}").into_bytes(),
@@ -218,9 +220,9 @@ fn run_summary(config: &ChronicleConfig, persisted: &[PersistedFrame]) -> Chroni
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let memories_dir = store.memories_dir();
+    let client = CradleClient::from_env();
 
     // Try Cradle Server for LLM-backed summarization
-    let client = crate::cradle_client::CradleClient::from_env();
     if let Some(remote_config) = client.fetch_config()
         && remote_config.enabled
     {
@@ -242,6 +244,17 @@ fn run_summary(config: &ChronicleConfig, persisted: &[PersistedFrame]) -> Chroni
                     "cradle chronicle LLM memory written: {}",
                     output_path.display()
                 );
+                report_memory(
+                    &client,
+                    ChronicleMemoryReport::from_summary(
+                        "10min",
+                        segment_started_at.filesystem(),
+                        &output_path,
+                        summary,
+                        "llm",
+                        persisted,
+                    ),
+                );
                 return Ok(());
             }
             Err(e) => {
@@ -258,7 +271,33 @@ fn run_summary(config: &ChronicleConfig, persisted: &[PersistedFrame]) -> Chroni
         "cradle chronicle local memory written: {}",
         summary.output_path.display()
     );
+    report_memory(
+        &client,
+        ChronicleMemoryReport::from_summary(
+            "10min",
+            segment_started_at.filesystem(),
+            &summary.output_path,
+            summary.markdown,
+            "local",
+            persisted,
+        ),
+    );
     Ok(())
+}
+
+fn report_snapshots(client: &CradleClient, persisted: &[PersistedFrame]) {
+    for frame in persisted {
+        let report = ChronicleSnapshotReport::from_persisted_frame(frame);
+        if let Err(error) = client.record_snapshot(&report) {
+            eprintln!("cradle chronicle snapshot report failed, keeping local artifacts: {error}");
+        }
+    }
+}
+
+fn report_memory(client: &CradleClient, report: ChronicleMemoryReport) {
+    if let Err(error) = client.record_memory(&report) {
+        eprintln!("cradle chronicle memory report failed, keeping local memory: {error}");
+    }
 }
 
 // --- System idle detection ---

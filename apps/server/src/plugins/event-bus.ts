@@ -1,8 +1,10 @@
 import type { Disposable } from '@cradle/plugin-sdk'
+import { createChildLogger } from '../logging/logger'
 
 type Handler = (data: unknown) => void
 
 const listeners = new Map<string, Set<Handler>>()
+const logger = createChildLogger({ module: 'plugin-event-bus' })
 
 export function emitPluginEvent(event: string, data: unknown): void {
   const handlers = listeners.get(event)
@@ -11,7 +13,7 @@ export function emitPluginEvent(event: string, data: unknown): void {
     try {
       handler(data)
     } catch (err) {
-      console.error(`[plugin-event-bus] Error in handler for '${event}':`, err)
+      logger.error('plugin event handler failed', { event, err })
     }
   }
 }

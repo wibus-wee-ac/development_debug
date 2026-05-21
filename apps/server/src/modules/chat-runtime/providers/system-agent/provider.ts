@@ -1,7 +1,3 @@
-// Input: jar-core agent runtime, provider config, credential reader
-// Output: system-agent chat runtime provider wrapping @hijarvis/jar-core via executeIngressCommand
-// Position: apps/server/src/modules/chat-runtime/providers/system-agent/provider.ts
-
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 

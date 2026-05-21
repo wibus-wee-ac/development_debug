@@ -1,7 +1,3 @@
-// Input: KanbanView, useBoard, useIssue, useTabsContext
-// Output: KanbanBoardTabContent — tab content adapter driving issue view from tab params
-// Position: Tab content adapter for kanban board
-
 import { useTabsContext } from '@cradle/tabs-next'
 import { LayoutDashboardIcon } from 'lucide-react'
 import { useCallback, useEffect } from 'react'

@@ -1,7 +1,3 @@
-// Input: provider profile config JSON and model registry mapping payloads
-// Output: normalized Available Model -> models.dev mapping entries
-// Position: provider-owned model metadata mapping helpers
-
 import type { ModelRegistryMappingEntry, ModelsDevModel } from './model-info-registry'
 
 export const MODEL_REGISTRY_MAPPINGS_CONFIG_KEY = 'modelRegistryMappings'

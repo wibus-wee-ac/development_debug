@@ -1,7 +1,3 @@
-// Input: drizzle-orm sqlite schema builders
-// Output: Shared schema helpers plus the workspace table and inferred types
-// Position: Shared persistence primitives used by context-specific schema modules
-
 import { sql } from 'drizzle-orm'
 import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 

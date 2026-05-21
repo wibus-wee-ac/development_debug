@@ -1,7 +1,3 @@
-// Input: Cucumber tab-management steps, Playwright assertions, and CradleWorld scenario state storage
-// Output: Tab management step definitions with deterministic count deltas and active-state assertions
-// Position: E2E step layer covering tab-management.feature interactions without sleep-based waits
-
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

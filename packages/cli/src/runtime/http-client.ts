@@ -1,7 +1,3 @@
-// Input: operation method/path/query/body and server URL
-// Output: typed JSON HTTP request result or a CLI-friendly error
-// Position: packages/cli runtime transport helper
-
 import type { CliHttpMethod } from './types'
 
 const PATH_PARAM_RE = /\{([^}]+)\}/g

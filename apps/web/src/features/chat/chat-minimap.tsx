@@ -1,7 +1,3 @@
-// Input: UIMessage[], scroll metrics, onScrollToIndex, onScrollTo
-// Output: ChatMinimap — barcode-style minimap with horizontal ticks per message
-// Position: Overlay component pinned to the right edge of the chat scroll area
-
 import type { UIMessage } from 'ai'
 import type { Ref } from 'react'
 import { memo, useCallback, useImperativeHandle, useMemo, useReducer, useRef } from 'react'

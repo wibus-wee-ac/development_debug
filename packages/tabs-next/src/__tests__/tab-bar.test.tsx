@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, tabs-next provider, mocked dnd-kit boundary
-// Output: regression coverage for TabBar accessibility and listener cleanup
-// Position: Component-level tests for @cradle/tabs-next chrome controls
 
 import { fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'

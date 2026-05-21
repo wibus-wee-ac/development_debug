@@ -1,6 +1,3 @@
-// Input: Provider kind / preset id
-// Output: SVG icon components for each provider (paths from @lobehub/icons)
-// Position: Visual assets for agent-runtime-settings UI
 /* eslint-disable react-refresh/only-export-components */
 
 import type { ComponentProps } from 'react'

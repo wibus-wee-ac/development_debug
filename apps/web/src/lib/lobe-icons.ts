@@ -1,7 +1,3 @@
-// Input: @lobehub/icons-static-png package, lobe-icons-toc.json manifest
-// Output: Icon metadata access and PNG URL utilities
-// Position: Lobe Icons integration layer
-
 import tocData from '~/assets/lobe-icons-toc.json'
 
 export interface LobeIconEntry {

@@ -1,9 +1,3 @@
-<!--
-Output: Session-await server module inventory and GitHub source contract.
-Input: Elysia routes, durable session await rows, poller source adapters, and GitHub REST API projections.
-Position: Server-owned await/resume runtime for chat sessions.
--->
-
 # Session Await Module
 
 `session-await` owns durable waits that can resume an existing chat session when an external condition becomes true. The module owns await lifecycle, polling, cancellation, manual trigger, summary projection, and source adapter registration.

@@ -1,7 +1,3 @@
-// Input: error code + status
-// Output: typed application error
-// Position: server error utilities
-
 export class AppError extends Error {
   readonly code: string
   readonly status: number

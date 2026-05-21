@@ -1,8 +1,4 @@
 //! Recursive memory summarization orchestration.
-//!
-//! Input: persisted frame batches and earlier child summaries.
-//! Output: phase-one and phase-two Chronicle memory files.
-//! Position: window scheduler boundary; callers decide timing, this module owns window semantics.
 
 use std::path::PathBuf;
 

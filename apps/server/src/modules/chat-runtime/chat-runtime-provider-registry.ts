@@ -1,7 +1,3 @@
-// Input: credential-backed runtime store and concrete runtime implementations
-// Output: runtime registry for chat-runtime module
-// Position: apps/server/src/modules/chat-runtime/chat-runtime-provider-registry.ts
-
 import fs from 'node:fs'
 import path from 'node:path'
 

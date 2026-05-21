@@ -1,7 +1,3 @@
-// Input: kanban and issue HTTP endpoints
-// Output: integration tests for board views, issue core loop, and comments core loop
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

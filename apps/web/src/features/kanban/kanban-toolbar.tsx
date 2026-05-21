@@ -1,7 +1,3 @@
-// Input: ViewConfig, FilterState, callbacks
-// Output: Compact toolbar with icon pill buttons
-// Position: Kanban toolbar component
-
 import {
   ColumnsIcon,
   FilterIcon,

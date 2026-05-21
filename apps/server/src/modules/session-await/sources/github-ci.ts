@@ -1,7 +1,3 @@
-// Input: session-await rows with GitHub CI filters
-// Output: GitHub check/status aggregation source and live status projection
-// Position: GitHub CI source adapter owned by session-await
-
 import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
 import {
   fetchCheckRuns,

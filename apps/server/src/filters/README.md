@@ -1,9 +1,3 @@
-<!--
-Output: Exception filter inventory.
-Input: Error normalization filters.
-Position: apps/server/src/filters
--->
-
 # Filters
 
 Exception filters for the server request pipeline.

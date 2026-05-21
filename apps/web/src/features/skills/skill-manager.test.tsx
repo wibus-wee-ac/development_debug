@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked skills hooks, SkillManager
-// Output: Regression tests for skill detail action accessibility
-// Position: Skills feature test guarding detail action semantics
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

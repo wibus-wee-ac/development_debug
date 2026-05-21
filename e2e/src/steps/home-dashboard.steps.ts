@@ -1,7 +1,3 @@
-// Input: Cucumber step bindings, Playwright assertions, CradleWorld helpers
-// Output: Home dashboard E2E step definitions covering dashboard visibility and recent session navigation
-// Position: E2E step layer for home-dashboard.feature
-
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

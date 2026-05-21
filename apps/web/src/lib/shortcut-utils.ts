@@ -1,7 +1,3 @@
-// Input: ShortcutDefinition type
-// Output: matchesShortcut, formatShortcut utility functions
-// Position: Pure utility functions for keyboard shortcut matching and formatting
-
 type ShortcutModifiers = {
   meta?: boolean
   ctrl?: boolean

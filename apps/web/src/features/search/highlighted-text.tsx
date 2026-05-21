@@ -1,7 +1,3 @@
-// Input: MatchRange type from main, React node composition
-// Output: HighlightedText — renders text with match ranges wrapped in <mark>
-// Position: Feature primitive for search feature; composable into any matched-text UI
-
 import type { ReactElement } from 'react'
 import { Fragment } from 'react'
 

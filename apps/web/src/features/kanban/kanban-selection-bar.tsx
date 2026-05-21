@@ -1,7 +1,3 @@
-// Input: Selected Kanban issues, status options, and clear-selection callback
-// Output: Floating bulk action bar for selected issues
-// Position: Kanban-owned multi-selection action surface
-
 import { CheckIcon, CircleDashedIcon, FlagIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useMemo } from 'react'

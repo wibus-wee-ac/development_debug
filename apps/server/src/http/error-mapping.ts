@@ -1,7 +1,3 @@
-// Input: thrown AppError or unknown exception
-// Output: normalized JSON error responses for the Elysia path
-// Position: apps/server/src/http error mapping plugin
-
 import type { ErrorHandler } from 'elysia'
 import { Elysia } from 'elysia'
 

@@ -1,7 +1,3 @@
-// Input: Cucumber step bindings, Playwright assertions, CradleWorld helpers
-// Output: Model/Agent selection E2E step definitions covering agent picker and send-with-agent flows
-// Position: E2E step layer for model-selection.feature
-
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

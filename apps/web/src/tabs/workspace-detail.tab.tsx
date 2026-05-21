@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab/useTabsContext from @cradle/tabs-next, WorkspaceDetailPage component, workspace SDK query
-// Output: workspace-detail tab definition
-// Position: Tab type for workspace detail page
 
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'

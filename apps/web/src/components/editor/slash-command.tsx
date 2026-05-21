@@ -1,7 +1,3 @@
-// Input: @tiptap/suggestion, @tiptap/core, @tiptap/react
-// Output: SlashCommand extension for block-type command menu
-// Position: Tiptap extension for / command menu in workspace-detail editor
-
 import type { Editor, Range } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
 import { ReactRenderer } from '@tiptap/react'

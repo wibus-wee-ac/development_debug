@@ -1,7 +1,3 @@
-// Input: HTTP terminal APIs, PTY WebSocket live channel, xterm Terminal + FitAddon + WebglAddon, app CSS theme vars
-// Output: TuiView — live terminal rendering for cli-tui sessions
-// Position: Session view rendered when session.agent resolves to a CliAgent
-//
 // Lifecycle: PTY runs in the server independently of this component.
 // On mount: call startOrAttach (starts new or reuses existing), then connect PTY socket.
 //           Buffer replay comes via the socket snapshot event.

@@ -1,7 +1,3 @@
-// Input: vitest test helpers and thread-search normalizers
-// Output: Regression tests for UI-safe normalization of IPC search payloads
-// Position: Search feature unit test for renderer-side thread search data coercion
-
 import { describe, expect, it } from 'vitest'
 
 import { normalizeThreadSearchHit, normalizeThreadSearchHits } from './thread-search-normalize'

@@ -1,7 +1,3 @@
-// Input: generated API SDK, TanStack Query
-// Output: useAgents hook — lists, creates, updates, and deletes Agent identity entities
-// Position: Data hook for Agent identity management in Settings and Chat flows
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { deleteAgentsById, getAgents, patchAgentsById, postAgents } from '~/api-gen/sdk.gen'

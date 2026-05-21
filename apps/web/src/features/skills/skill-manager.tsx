@@ -1,7 +1,3 @@
-// Input: skill inventory/doc hooks, workspace directory picker IPC, coss UI primitives
-// Output: Left-right split skills management UI — list + detail pane, with source-based import
-// Position: Shared presentation layer for filesystem skill CRUD, import/export, and layered inventory browsing
-
 import {
   BotIcon,
   DownloadIcon,

@@ -1,7 +1,3 @@
-// Input: UIMessage from ai, subagent message store, Streamdown renderer, block components, motion
-// Output: MessageBubble — animated message with parts rendering, grouping, and execution-phase folding
-// Position: Core display component in chat feature for rendering individual messages
-
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'

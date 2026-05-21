@@ -1,7 +1,3 @@
-// Input: URL, RequestInit, retry options
-// Output: fetchWithRetry — fetch wrapper with exponential backoff retry for transient failures
-// Position: apps/server/src/lib/fetch-retry.ts
-
 export interface FetchRetryOptions {
   /** Max number of retries. Default 3. */
   maxRetries?: number

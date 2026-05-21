@@ -1,7 +1,3 @@
-// Input: ProviderModelMenu, selected provider/model/thinking state
-// Output: ProviderModelPicker — unified trigger and cascading menu for model selection surfaces
-// Position: Shared picker used by composer toolbar and Jarvis settings
-
 import { CpuIcon } from 'lucide-react'
 import { useMemo } from 'react'
 

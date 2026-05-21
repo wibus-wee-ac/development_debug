@@ -1,11 +1,9 @@
-// Input: Chronicle config (enabled, storageRoot)
-// Output: spawn/kill chronicle daemon, track PID, expose running status
-// Position: apps/server/src/modules/chronicle/daemon-manager.ts
-
 import type { ChildProcess } from 'node:child_process'
 import { execSync, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+
+import { getServerConfig } from '../../infra'
 
 let chronicleProcess: ChildProcess | null = null
 let lastExitCode: number | null = null
@@ -56,9 +54,14 @@ export function startDaemon(storageRoot: string): boolean {
   if (isRunning()) return true
 
   const binary = findChronicleBinary()
+  const cradleUrl = process.env.CRADLE_URL ?? buildServerUrl()
 
   try {
     chronicleProcess = spawn(binary, ['--daemon', '--storage-root', storageRoot], {
+      env: {
+        ...process.env,
+        CRADLE_URL: cradleUrl,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
     })
@@ -101,4 +104,12 @@ export function stopDaemon(): void {
 
 export function cleanup(): void {
   stopDaemon()
+}
+
+function buildServerUrl(): string {
+  const config = getServerConfig()
+  const host = config.host.includes(':') && !config.host.startsWith('[')
+    ? `[${config.host}]`
+    : config.host
+  return `http://${host}:${config.port}`
 }

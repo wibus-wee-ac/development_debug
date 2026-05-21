@@ -1,7 +1,4 @@
 # language: zh-CN
-# Input: GlobalSearchDialog 真实入口与共享聊天/工作区步骤
-# Output: 线程搜索的标题命中与消息片段命中端到端回归
-# Position: Search roadmap 的聚焦 E2E 覆盖
 
 @cradle
 功能: 全局搜索中的线程搜索

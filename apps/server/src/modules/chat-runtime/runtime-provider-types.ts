@@ -1,7 +1,3 @@
-// Input: runtime kind definitions and chat runtime contract
-// Output: runtime types for chat-runtime module
-// Position: apps/server/src/modules/chat-runtime/runtime-provider-types.ts
-
 import type { AgentProfile } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 

@@ -1,7 +1,3 @@
-// Input: useChatSession hook, MessageBubble, Composer, ScrollArea, Virtualizer (virtua)
-// Output: ChatView — virtualized chat view: only renders visible messages, instant-to-bottom scroll
-// Position: Primary chat feature view — does NOT own message sending lifecycle
-
 import { useQuery } from '@tanstack/react-query'
 // Per-message wrapper that subscribes to generating state from the store.
 // This ensures only truly-generating messages get streaming=true — not passive/stale state.

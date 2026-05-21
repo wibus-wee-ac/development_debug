@@ -1,7 +1,3 @@
-// Input: useComposerState, ComposerToolbar, workspaces, sessions, HTTP client, motion
-// Output: NewChatPage — premium task Composer inspired by Linear/Vercel/Devin design language
-// Position: Feature component for the /new-chat route
-
 import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUpIcon,

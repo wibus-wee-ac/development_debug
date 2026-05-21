@@ -1,13 +1,10 @@
-// Input: section prop (string), settings section components
-// Output: SettingsContent component — renders active settings section in main area
-// Position: Main content area rendered by AppLayout when isSettings=true
-
 import { AgentList } from '~/features/agent-management/agent-list'
 import { AgentRuntimeSettings } from '~/features/agent-management/agent-runtime-settings'
 import { ChronicleSettings } from '~/features/chronicle/chronicle-settings'
 import { GlobalSkillsSettings } from '~/features/skills/global-skills-settings'
 
 import { AppearanceSettings } from './appearance-settings'
+import { DesktopUpdateSettings } from './desktop-update-settings'
 import { JarvisSettings } from './jarvis-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
@@ -17,6 +14,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   jarvis: JarvisSettings,
   chronicle: ChronicleSettings,
   skills: GlobalSkillsSettings,
+  desktop: DesktopUpdateSettings,
 }
 
 interface SettingsContentProps {

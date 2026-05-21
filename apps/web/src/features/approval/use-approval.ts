@@ -1,7 +1,3 @@
-// Input: SSE approval stream, HTTP approval API
-// Output: useApprovalRequests hook for subscribing to pending approval lifecycle
-// Position: Renderer approval feature — real-time approval state management
-
 import { useCallback, useSyncExternalStore } from 'react'
 
 import { postApprovalsByApprovalIdRespond } from '~/api-gen'

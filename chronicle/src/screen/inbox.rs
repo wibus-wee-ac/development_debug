@@ -1,8 +1,4 @@
 //! Inbox-backed capture source for Cradle desktop integration.
-//!
-//! Input: manifest files and capture assets written by the Electron main process.
-//! Output: captured frames that can be processed by the recorder pipeline.
-//! Position: cross-platform runtime bridge between Electron capture APIs and Rust Chronicle.
 
 use std::fs;
 use std::path::{Path, PathBuf};

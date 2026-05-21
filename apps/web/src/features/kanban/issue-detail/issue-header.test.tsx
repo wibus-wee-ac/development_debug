@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked menu primitives, and IssueHeader
-// Output: Regression tests for issue header action accessibility and callback wiring
-// Position: Kanban issue detail test guarding header navigation and action semantics
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

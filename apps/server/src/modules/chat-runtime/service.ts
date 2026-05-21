@@ -80,6 +80,14 @@ interface ActiveRun {
   cancelRequested?: boolean
 }
 
+export interface ActiveRunSummary {
+  runId: string
+  sessionId: string
+  messageId: string
+  agentProfileId: string
+  modelId: string | null
+}
+
 interface SubagentProjectionRecord {
   context: SubagentMessageContext
   projection: MessageProjection
@@ -275,6 +283,16 @@ function startRun(input: { sessionId: string, messageId: string, origin: 'user' 
 
 export function getRun(runId: string): BackendRun | undefined {
   return db().select().from(backendRuns).where(eq(backendRuns.id, runId)).get()
+}
+
+export function listActiveRunSummaries(): ActiveRunSummary[] {
+  return [...activeRuns.values()].map(run => ({
+    runId: run.runId,
+    sessionId: run.sessionId,
+    messageId: run.messageId,
+    agentProfileId: run.agentProfileId,
+    modelId: run.modelId,
+  }))
 }
 
 function persistMessageSnapshot(input: {

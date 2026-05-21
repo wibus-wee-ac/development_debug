@@ -1,7 +1,3 @@
-// Input: React context, ResizeObserver
-// Output: Layout geometry contract exposing measured center-column and footer bounds
-// Position: Layout-owned explicit geometry boundary consumed by overlay features such as Jarvis
-
 import * as React from 'react'
 
 type LayoutRect = {

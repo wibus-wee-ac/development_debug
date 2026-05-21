@@ -1,8 +1,5 @@
 import { execSync } from 'node:child_process'
 
-// Input: GitHub REST API endpoints and optional GH_TOKEN/GITHUB_TOKEN/gh auth
-// Output: shared GitHub API helpers for session-await source adapters
-// Position: session-await GitHub integration boundary
 
 let cachedToken: string | null | undefined
 

@@ -1,7 +1,3 @@
-// Input: React context and tabs-next store types
-// Output: TabsContext plus consumer hook
-// Position: Runtime dependency injection for tab store and route registry
-
 import { createContext, use } from 'react'
 import type { StoreApi, UseBoundStore } from 'zustand'
 

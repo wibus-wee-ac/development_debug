@@ -1,7 +1,4 @@
 # language: zh-CN
-# Input: Usage Dashboard 真实入口与共享聊天/工作区步骤
-# Output: Usage Dashboard 空状态与可见汇总指标的真实使用旅程回归
-# Position: Usage/cost dashboard 首批端到端验收覆盖
 
 @cradle
 功能: Usage Dashboard

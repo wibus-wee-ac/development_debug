@@ -1,7 +1,3 @@
-// Input: process.env
-// Output: validated server config
-// Position: server config module
-
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 

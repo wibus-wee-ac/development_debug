@@ -1,7 +1,3 @@
-// Input: generated operation command modules
-// Output: registration entry for all generated CLI commands
-// Position: packages/cli generated command barrel
-
 import type { Command } from 'commander'
 
 import { register as registerAcpAgentCancelInstall } from './acp/agent/cancel-install'

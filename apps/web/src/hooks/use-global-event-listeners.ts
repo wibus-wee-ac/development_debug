@@ -1,7 +1,3 @@
-// Input: layout store, settings overlay store, session activity store, chat run events, and tab store
-// Output: useGlobalEventListeners hook — registers shell shortcuts plus global unread/session activity ownership
-// Position: Called once at the AppLayout level; centralises app-shell side effects for the main window
-
 import { useEffect } from 'react'
 
 import { onAnyChatRunEvent } from '~/features/chat/sse-chat-transport'

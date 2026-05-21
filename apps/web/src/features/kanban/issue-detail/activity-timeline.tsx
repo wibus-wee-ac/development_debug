@@ -1,7 +1,3 @@
-// Input: Issue id, kanban comment hooks, and comment author metadata
-// Output: ActivityTimeline component for displaying issue activity and adding comments
-// Position: Kanban issue detail subview for comment history and activity updates
-
 import { GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 

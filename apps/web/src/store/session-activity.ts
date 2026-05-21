@@ -1,7 +1,3 @@
-// Input: zustand
-// Output: useSessionActivityStore — tracks sessions that have received new responses while not viewed
-// Position: Global UI state store, consumed by AppLayout (listener) and WorkspaceSidebar (indicator)
-
 import { create } from 'zustand'
 
 interface SessionActivityState {

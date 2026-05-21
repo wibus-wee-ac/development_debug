@@ -1,8 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
 
-// Input: tabs-next context, React Activity, route registry
-// Output: TabRenderer with pluggable render policies
-// Position: Runtime renderer for active and retained tab navigation contexts
 
 import { Activity, Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
 

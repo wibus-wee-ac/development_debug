@@ -1,7 +1,3 @@
-// Input: observability service queries
-// Output: portable observability bundle for local debugging and incident sharing
-// Position: apps/server observability exporter used by HTTP methods
-
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 
 import type { ObservabilityEvent, ObservabilityIncident } from './contract'

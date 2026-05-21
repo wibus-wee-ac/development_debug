@@ -1,7 +1,3 @@
-// Input: pack-codebase HTTP endpoint
-// Output: integration tests for server-side repomix packing
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

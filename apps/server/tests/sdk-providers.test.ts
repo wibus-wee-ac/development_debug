@@ -1,7 +1,3 @@
-// Input: unified chat runtime endpoints with Claude Agent and Codex SDK-backed providers
-// Output: integration tests for provider metadata and unified chat execution beyond openai-compatible
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -277,6 +273,133 @@ describe('sdk-backed providers in unified chat runtime', () => {
         promptTokens: 9,
         completionTokens: 4,
         totalTokens: 13,
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('applies Claude Agent SDK model aliases from agent settings to chat runs', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+
+    sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
+      {
+        type: 'assistant',
+        session_id: 'claude-agent-settings-session',
+        message: {
+          content: [{ type: 'text', text: 'Agent configured' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-agent-settings-session',
+        usage: { input_tokens: 3, output_tokens: 2 },
+      },
+    ]))
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({ id: 'workspace-agent-settings', name: 'Workspace Agent Settings', path: workspaceRoot }).run()
+
+      const credentialRes = await app.handle(new Request('http://localhost/secrets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'anthropic',
+          label: 'Anthropic key',
+          secret: 'sk-ant-agent-settings',
+        }),
+      }))
+      expect(credentialRes.status).toBe(200)
+      const credential = await credentialRes.json() as { id: string }
+
+      const profileRes = await app.handle(new Request('http://localhost/profiles/profile-agent-settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Anthropic',
+          providerKind: 'anthropic',
+          enabled: true,
+          config: { model: 'claude-sonnet-4-20250514' },
+          credentialRef: credential.id,
+        }),
+      }))
+      expect(profileRes.status).toBe(200)
+
+      const agentRes = await app.handle(new Request('http://localhost/agents', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Claude Alias Agent',
+          avatarStyle: 'bottts-neutral',
+          avatarSeed: 'alias-seed',
+          agentProfileId: 'profile-agent-settings',
+          modelId: 'claude-sonnet-4-20250514',
+          runtimeKind: 'claude-agent',
+          configJson: JSON.stringify({
+            claudeAgent: {
+              modelAliases: {
+                haiku: 'claude-haiku-4-5',
+                sonnet: 'claude-sonnet-4-5',
+                opus: 'claude-opus-4-5',
+              },
+            },
+          }),
+        }),
+      }))
+      expect(agentRes.status).toBe(200)
+      const agent = await agentRes.json() as { id: string }
+
+      const sessionRes = await app.handle(new Request('http://localhost/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: 'session-agent-settings',
+          workspaceId: 'workspace-agent-settings',
+          title: 'Agent settings session',
+          agentId: agent.id,
+        }),
+      }))
+      expect(sessionRes.status).toBe(200)
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-agent-settings/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Use agent settings' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      await waitForMessageStatus(app, 'session-agent-settings', 'complete')
+
+      const call = sdkMocks.claudeQuery.mock.calls[0]?.[0] as {
+        options?: { env?: Record<string, string> }
+      } | undefined
+      expect(call?.options?.env).toEqual(expect.objectContaining({
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-4-5',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-4-5',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-4-5',
       }))
     }
     finally {

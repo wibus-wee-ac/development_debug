@@ -1,7 +1,3 @@
-// Input: Automation RRULE trigger snapshots
-// Output: Recurrence parsing and due occurrence helpers
-// Position: Automation module scheduling helper, backed by the rrule package
-
 import * as rrulePackage from 'rrule'
 import type { rrulestr as parseRRuleString } from 'rrule'
 

@@ -1,7 +1,3 @@
-// Input: loadServerConfig env vars
-// Output: server config validation tests
-// Position: apps/server/tests
-
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

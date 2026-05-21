@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: Agent detail runtime config helpers
-// Output: parser and serializer contracts for saved agent settings
-// Position: apps/web/src/features/agent-management unit tests
 
 import { describe, expect, it } from 'vitest'
 

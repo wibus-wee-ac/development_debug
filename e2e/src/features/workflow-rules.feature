@@ -1,7 +1,4 @@
 # language: zh-CN
-# Input: Workspace detail Workflow 标签与 Settings 中的 Provider/Agent 创建 UI
-# Output: Workflow Rules 的真实 UI E2E 覆盖，覆盖全局规则与 Agent 专属规则的保存、scope 切换与重开后的可见结果
-# Position: Workflow Rules 端到端用户旅程定义
 
 @cradle
 功能: Workflow Rules 管理

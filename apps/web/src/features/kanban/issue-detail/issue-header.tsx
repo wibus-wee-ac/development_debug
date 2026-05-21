@@ -1,7 +1,3 @@
-// Input: Current issue, optional status, and issue detail action callbacks
-// Output: IssueHeader component for navigation, breadcrumbs, and destructive issue actions
-// Position: Kanban issue detail header subview
-
 import { ArrowLeftIcon, ChevronRightIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'

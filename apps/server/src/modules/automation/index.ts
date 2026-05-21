@@ -1,7 +1,3 @@
-// Input: Automation service and TypeBox schemas
-// Output: Elysia routes for Agent-authored automation APIs
-// Position: Automation module HTTP route owner
-
 import { Elysia, t } from 'elysia'
 
 import { AutomationModel } from './model'

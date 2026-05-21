@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, tabs-next provider, route definitions
-// Output: Regression tests for current-tab navigation helper semantics
-// Position: Hook-level coverage for app-facing tabs-next navigation behavior
 
 import { act, render } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'

@@ -1,7 +1,3 @@
-// Input: Mocked Electron ipcMain plus IpcService/createServices from the shared IPC package
-// Output: Unit test proving createServices accepts pre-built service instances for explicit composition-root injection
-// Position: Package-level regression guard for instance-based IPC wiring support
-
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServices, IpcMethod, IpcService } from './base'

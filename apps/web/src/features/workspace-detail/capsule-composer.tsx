@@ -1,7 +1,3 @@
-// Input: useComposerState, ComposerToolbar, useWorkspaceFiles, MentionPanel, ipc
-// Output: CapsuleComposer — floating pill-to-expanded composer for workspace overview
-// Position: Sub-component of WorkspaceDetailPage
-
 import {
   Loader2Icon,
   SendHorizonalIcon,

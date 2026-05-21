@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library and ToolCallBlock tool IO examples
-// Output: Regression coverage for Edit File previews and terminal command/output expansion
-// Position: Chat tool block tests for structured tool rendering behavior
 
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'

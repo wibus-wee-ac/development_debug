@@ -1,9 +1,8 @@
-// Input: all tab definitions, createTabStore from @cradle/tabs-next
-// Output: cradleRegistry (tab type map), useCradleTabStore (bound store)
-// Position: Central registry connecting tab types to the store
-
 import { createTabStore } from '@cradle/tabs-next'
 
+import { approvalsTab } from './approvals.tab'
+import { awaitsTab } from './awaits.tab'
+import { automationTab } from './automation.tab'
 import { chatTab } from './chat.tab'
 import { homeTab } from './home.tab'
 import { kanbanBoardTab } from './kanban-board.tab'
@@ -16,6 +15,9 @@ export const cradleRegistry = {
   'home': homeTab,
   'chat': chatTab,
   'new-chat': newChatTab,
+  'approvals': approvalsTab,
+  'awaits': awaitsTab,
+  'automation': automationTab,
   'kanban-board': kanbanBoardTab,
   'workspace-detail': workspaceDetailTab,
   'usage': usageTab,

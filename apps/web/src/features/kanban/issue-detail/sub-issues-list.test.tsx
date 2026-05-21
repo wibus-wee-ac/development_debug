@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked kanban hooks, and SubIssuesList
-// Output: Regression tests for sub-issue creation action semantics and payload wiring
-// Position: Kanban issue detail test guarding sub-issue create controls
 
 import type { KanbanStatus } from '~/lib/types'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'

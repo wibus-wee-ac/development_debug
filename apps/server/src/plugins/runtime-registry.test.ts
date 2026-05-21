@@ -1,7 +1,3 @@
-// Input: Server plugin runtime registry helpers and synthetic plugin manifests
-// Output: Unit coverage for plugin identity, source, route, and capability projection
-// Position: Focused tests for the governed plugin descriptor model
-
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PluginManifest } from '@cradle/plugin-sdk'
 import {

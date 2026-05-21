@@ -1,7 +1,3 @@
-// Input: UIMessage tool part metadata and raw tool input/output values
-// Output: Tool UI classification helpers for chat rendering
-// Position: Chat feature adapter between AI SDK dynamic-tool parts and visual tool blocks
-
 export type ToolState
   = | 'input-streaming'
     | 'input-available'

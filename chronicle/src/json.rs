@@ -1,8 +1,4 @@
 //! Small JSON helpers for Chronicle artifact files.
-//!
-//! Input: strings and scalar values produced by the recorder.
-//! Output: JSON-safe string fragments.
-//! Position: local alternative to serde while this crate remains dependency-free.
 
 pub fn quote(value: &str) -> String {
     let mut output = String::with_capacity(value.len() + 2);

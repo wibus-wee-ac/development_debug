@@ -1,7 +1,3 @@
-// Input: Cucumber keyboard shortcut scenarios, Playwright assertions, and CradleWorld shell helpers
-// Output: E2E step definitions covering app-shell, layout, and tab shortcuts through real keyboard input
-// Position: E2E step layer for keyboard-shortcuts.feature
-
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 

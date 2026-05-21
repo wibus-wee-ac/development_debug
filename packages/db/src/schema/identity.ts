@@ -1,7 +1,3 @@
-// Input: shared schema helpers and sqlite column builders
-// Output: Agent identity and credential tables plus inferred row types
-// Position: Identity-layer schema module used by chat, runtime, and issue-agent contexts
-
 import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { textPk, timestamps } from './shared'

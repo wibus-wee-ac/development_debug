@@ -1,7 +1,3 @@
-// Input: shared schema helpers, identity tables, Issue table, and sqlite column builders
-// Output: Chat/session/message/usage tables and inferred row types
-// Position: Chat persistence schema module used by chat, search, and linked-session flows
-
 import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { agentProfiles, agents } from './identity'

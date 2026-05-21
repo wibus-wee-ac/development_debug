@@ -1,9 +1,3 @@
-<!--
-Input: apps/web design-system primitives, AGENTS.md component placement rules
-Output: Ownership and placement boundaries for components/ui
-Position: apps/web/src/components/ui/README.md
--->
-
 # components/ui
 
 `components/ui` 归属 web design-system primitive 层。这里的组件应该是跨功能、低业务语义、可组合的基础 UI building blocks，例如 `Button`、`Input`、`Dialog`、`Tabs`、`Tooltip`、`Menu`、`Progress`。

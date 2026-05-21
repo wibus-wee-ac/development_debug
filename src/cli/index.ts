@@ -1,7 +1,4 @@
 #!/usr/bin/env tsx
-// Input: Commander.js, rpc-client.ts
-// Output: CLI entry point with workspace/issue/board/status subcommands
-// Position: Standalone Node.js CLI for controlling Cradle via Unix domain socket
 
 import { Command } from 'commander'
 

@@ -1,7 +1,3 @@
-// Input: store getState, renderer state accessors
-// Output: window.__CRADLE_TABS_DEBUG__ API and cross-window debug stream
-// Position: Dev-only runtime introspection for tabs-next
-
 import type { TabContextState, TabInstance, TabRenderPolicy } from './types'
 
 export const DEBUG_CHANNEL_NAME = 'cradle:tabs-next-debug'

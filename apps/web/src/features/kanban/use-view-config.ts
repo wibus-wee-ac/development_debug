@@ -1,7 +1,3 @@
-// Input: workspaceId, localStorage
-// Output: View configuration state hook for kanban layout, grouping, sorting, filtering
-// Position: State layer for kanban view preferences
-
 import { useCallback, useEffect, useState } from 'react'
 
 export type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'

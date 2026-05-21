@@ -1,8 +1,4 @@
 //! Runtime configuration for Cradle Chronicle.
-//!
-//! Input: CLI flags, environment variables, and defaults.
-//! Output: a typed configuration used by the recorder, daemon, and smoke command.
-//! Position: boundary between CLI parsing and library code.
 
 use std::env;
 use std::path::PathBuf;

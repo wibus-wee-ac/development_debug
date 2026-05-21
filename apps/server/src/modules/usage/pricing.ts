@@ -1,7 +1,3 @@
-// Input: model ID
-// Output: estimated cost per token
-// Position: apps/server/src/modules/usage/pricing.ts
-
 /** USD per 1M tokens */
 interface ModelPricing {
   input: number

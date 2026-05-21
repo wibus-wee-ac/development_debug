@@ -1,7 +1,3 @@
-// Input: preferences HTTP endpoints
-// Output: integration tests for server-owned chat preference defaults and persistence
-// Position: apps/server/tests
-
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

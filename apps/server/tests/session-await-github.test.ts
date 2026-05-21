@@ -1,7 +1,3 @@
-// Input: mocked GitHub REST API responses and session-await GitHub source adapters
-// Output: regression coverage for GitHub checks/statuses and PR review awaits
-// Position: server session-await GitHub source test suite
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SessionAwait } from '../src/modules/session-await/types'

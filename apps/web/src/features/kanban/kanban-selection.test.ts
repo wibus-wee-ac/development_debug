@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: Kanban selection helper functions
-// Output: Regression tests for range and toggle selection semantics
-// Position: Kanban feature test guarding Linear-style multi-selector behavior
 
 import { describe, expect, it } from 'vitest'
 

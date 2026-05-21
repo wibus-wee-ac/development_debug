@@ -1,7 +1,3 @@
-// Input: Cucumber step bindings, Playwright assertions, deterministic mock LLM responses, and shared UI helpers
-// Output: Chat-focused E2E step definitions covering visible chat journeys, session menu actions, reasoning/tool-call UI, and stream lifecycle
-// Position: E2E step layer for chat.feature, focused on user-visible chat behavior rather than backend persistence contracts
-
 import type { DataTable } from '@cucumber/cucumber'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'

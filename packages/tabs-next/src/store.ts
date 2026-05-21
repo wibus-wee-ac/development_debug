@@ -1,7 +1,3 @@
-// Input: zustand, route registry, persisted tab descriptors
-// Output: createTabStore with multi-location tab contexts and compatibility actions
-// Position: Core runtime state for @cradle/tabs-next
-
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 

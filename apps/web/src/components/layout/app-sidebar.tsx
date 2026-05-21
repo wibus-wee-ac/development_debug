@@ -1,7 +1,3 @@
-// Input: WorkspaceSidebar, SettingsSidebar, layout store, useShortcut, motion/react, tab store
-// Output: AppSidebar — persistent collapsible sidebar with drill-in for settings
-// Position: Rendered at app root; persists across tab changes
-
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback } from 'react'
 

@@ -1,7 +1,3 @@
-// Input: workspace path + relative paths
-// Output: safe file listing + text read/write
-// Position: apps/server/src/modules/workspace/files.ts
-
 import { readFile, writeFile } from 'node:fs/promises'
 import { basename, join, resolve, sep } from 'node:path'
 

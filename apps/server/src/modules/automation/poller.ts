@@ -1,7 +1,3 @@
-// Input: Automation service enqueue and execution functions
-// Output: A small poller seam for scheduled automation dispatch
-// Position: Automation module scheduling orchestration
-
 import * as Automation from './service'
 
 const DEFAULT_INTERVAL_MS = 30_000

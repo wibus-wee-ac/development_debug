@@ -1,8 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
 
-// Input: workspaceId prop, REST API, useAgents, MarkdownEditor, Avatar
-// Output: WorkspaceWorkflowRules — workflow rules editor scoped to a workspace (Tiptap Markdown)
-// Position: Tab content within the workspace detail page
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'

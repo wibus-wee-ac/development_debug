@@ -1,7 +1,3 @@
-// Input: children (string), maxLines (number), className
-// Output: TruncatedText — inline-style line-clamp with conditional Tooltip if text overflows
-// Position: Universal UI primitive in components/ui/
-
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { useLayoutEffect, useRef, useState } from 'react'

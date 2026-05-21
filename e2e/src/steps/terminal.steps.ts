@@ -1,7 +1,3 @@
-// Input: Cucumber terminal journey steps, shared chat/workspace setup state, and Playwright keyboard assertions
-// Output: Bottom-shell E2E steps that validate the user-visible PTY panel against a real workspace path
-// Position: E2E step layer for terminal.feature, focused on shell panel value rather than PTY internals
-
 import { createHash } from 'node:crypto'
 
 import { Then, When } from '@cucumber/cucumber'

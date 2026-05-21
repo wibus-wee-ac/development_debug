@@ -1,7 +1,3 @@
-// Input: tabs-next context
-// Output: programmatic tab navigation helpers
-// Position: Compatibility hook over the route-context store
-
 import { useCallback } from 'react'
 
 import { useTabsContext } from '../context'

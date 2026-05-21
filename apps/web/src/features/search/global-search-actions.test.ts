@@ -1,7 +1,3 @@
-// Input: Vitest mocks, global search action helpers
-// Output: Regression coverage for file search result selection behavior
-// Position: Search feature unit tests for command palette actions
-
 import { describe, expect, it, vi } from 'vitest'
 
 import { selectFileSearchResult } from './global-search-actions'

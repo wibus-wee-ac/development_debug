@@ -1,7 +1,3 @@
-// Input: E2E server lifecycle management
-// Output: Start/stop isolated server + web app instances for E2E tests
-// Position: e2e/src/support — global hooks for test infrastructure
-
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -16,9 +12,41 @@ function killProcessGroup(proc: ChildProcess, signal: NodeJS.Signals) {
       process.kill(-proc.pid, signal)
     }
   }
- catch {
+  catch {
     // Process may already be dead
   }
+}
+
+async function stopProcessGroup(proc: ChildProcess | null, timeoutMs: number): Promise<void> {
+  if (!proc) {
+    return
+  }
+  if (proc.exitCode !== null || proc.signalCode !== null) {
+    return
+  }
+
+  killProcessGroup(proc, 'SIGTERM')
+
+  await new Promise<void>((resolve) => {
+    let settled = false
+    let timeout: NodeJS.Timeout | null = null
+    const finish = () => {
+      if (settled) {
+        return
+      }
+      settled = true
+      if (timeout) {
+        clearTimeout(timeout)
+      }
+      resolve()
+    }
+
+    proc.once('exit', finish)
+    timeout = setTimeout(() => {
+      killProcessGroup(proc, 'SIGKILL')
+      finish()
+    }, timeoutMs)
+  })
 }
 
 const ROOT = resolve(__dirname, '..', '..', '..')
@@ -71,75 +99,90 @@ BeforeAll({ timeout: 120_000 }, async () => {
   }
 
   const dataDir = mkdtempSync(join(tmpdir(), 'cradle-e2e-data-'))
+  const homeDir = join(dataDir, 'home')
   // Use a random port to avoid conflicts with dev server
   const serverPort = 21400 + Math.floor(Math.random() * 99)
 
-  const serverProcess = spawn('npx', ['vite-node', 'src/index.ts'], {
-    cwd: join(ROOT, 'apps', 'server'),
-    env: {
-      ...process.env,
-      CRADLE_DATA_DIR: dataDir,
-      CRADLE_PORT: String(serverPort),
-      CRADLE_HOST: '127.0.0.1',
-      CRADLE_CREDENTIAL_SECRET: 'e2e-test-secret',
-      CRADLE_MOCK_LLM_URL: 'http://127.0.0.1:1', // Placeholder — actual URL set per-profile config.baseUrl
-      NODE_ENV: 'test',
-    },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: true,
-  })
-
-  serverProcess.stdout?.on('data', (chunk: Buffer) => {
-    if (process.env.CRADLE_E2E_VERBOSE) {
-      process.stderr.write(`[server] ${chunk.toString()}`)
-    }
-  })
-  serverProcess.stderr?.on('data', (chunk: Buffer) => {
-    if (process.env.CRADLE_E2E_VERBOSE) {
-      process.stderr.write(`[server:err] ${chunk.toString()}`)
-    }
-  })
-
-  const serverUrl = `http://127.0.0.1:${serverPort}`
-  await waitForReady(`${serverUrl}/health`, 'Managed E2E Server')
-
-  // eslint-disable-next-line no-console
-  console.log(`[e2e] Managed server started at ${serverUrl} (data: ${dataDir})`)
-
-  // Start a web dev server pointing to the managed API server
+  let serverProcess: ChildProcess | null = null
   let webProcess: ChildProcess | null = null
-  let webUrl: string | null = null
 
-  if (!process.env.CRADLE_WEB_URL) {
-    const webPort = serverPort + 100 // e.g. 21449 -> 21549
-    webProcess = spawn('npx', ['vite', '--port', String(webPort), '--strictPort'], {
-      cwd: join(ROOT, 'apps', 'web'),
+  try {
+    serverProcess = spawn('npx', ['vite-node', 'src/index.ts'], {
+      cwd: join(ROOT, 'apps', 'server'),
       env: {
         ...process.env,
-        VITE_SERVER_URL: serverUrl,
+        CRADLE_DATA_DIR: dataDir,
+        CRADLE_PORT: String(serverPort),
+        CRADLE_HOST: '127.0.0.1',
+        CRADLE_CREDENTIAL_SECRET: 'e2e-test-secret',
+        CRADLE_MOCK_LLM_URL: 'http://127.0.0.1:1', // Placeholder — actual URL set per-profile config.baseUrl
+        HOME: homeDir,
+        NODE_ENV: 'test',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     })
 
-    webProcess.stdout?.on('data', (chunk: Buffer) => {
+    serverProcess.stdout?.on('data', (chunk: Buffer) => {
       if (process.env.CRADLE_E2E_VERBOSE) {
-        process.stderr.write(`[web] ${chunk.toString()}`)
+        process.stderr.write(`[server] ${chunk.toString()}`)
       }
     })
-    webProcess.stderr?.on('data', (chunk: Buffer) => {
+    serverProcess.stderr?.on('data', (chunk: Buffer) => {
       if (process.env.CRADLE_E2E_VERBOSE) {
-        process.stderr.write(`[web:err] ${chunk.toString()}`)
+        process.stderr.write(`[server:err] ${chunk.toString()}`)
       }
     })
 
-    webUrl = `http://localhost:${webPort}`
-    await waitForReady(webUrl, 'Managed E2E Web', 30_000)
+    const serverUrl = `http://127.0.0.1:${serverPort}`
+    await waitForReady(`${serverUrl}/health`, 'Managed E2E Server')
+
     // eslint-disable-next-line no-console
-    console.log(`[e2e] Managed web dev server started at ${webUrl}`)
-  }
+    console.log(`[e2e] Managed server started at ${serverUrl} (data: ${dataDir})`)
 
-  instance = { serverProcess, webProcess, dataDir, serverUrl, webUrl }
+    // Start a web dev server pointing to the managed API server
+    let webUrl: string | null = null
+
+    if (!process.env.CRADLE_WEB_URL) {
+      const webPort = serverPort + 100 // e.g. 21449 -> 21549
+      webProcess = spawn('npx', ['vite', '--port', String(webPort), '--strictPort'], {
+        cwd: join(ROOT, 'apps', 'web'),
+        env: {
+          ...process.env,
+          VITE_SERVER_URL: serverUrl,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+      })
+
+      webProcess.stdout?.on('data', (chunk: Buffer) => {
+        if (process.env.CRADLE_E2E_VERBOSE) {
+          process.stderr.write(`[web] ${chunk.toString()}`)
+        }
+      })
+      webProcess.stderr?.on('data', (chunk: Buffer) => {
+        if (process.env.CRADLE_E2E_VERBOSE) {
+          process.stderr.write(`[web:err] ${chunk.toString()}`)
+        }
+      })
+
+      webUrl = `http://localhost:${webPort}`
+      await waitForReady(webUrl, 'Managed E2E Web', 30_000)
+      // eslint-disable-next-line no-console
+      console.log(`[e2e] Managed web dev server started at ${webUrl}`)
+    }
+
+    instance = { serverProcess, webProcess, dataDir, serverUrl, webUrl }
+  }
+  catch (error) {
+    await stopProcessGroup(webProcess, 3000)
+    await stopProcessGroup(serverProcess, 5000)
+    try {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+    catch { /* best effort */ }
+    throw error
+  }
 })
 
 AfterAll({ timeout: 15_000 }, async () => {
@@ -149,26 +192,8 @@ AfterAll({ timeout: 15_000 }, async () => {
 
   const { serverProcess, webProcess, dataDir } = instance
 
-  if (webProcess) {
-    killProcessGroup(webProcess, 'SIGTERM')
-    await new Promise<void>((resolve) => {
-      webProcess.on('exit', () => resolve())
-      setTimeout(() => {
-        killProcessGroup(webProcess, 'SIGKILL')
-        resolve()
-      }, 3000)
-    })
-  }
-
-  killProcessGroup(serverProcess, 'SIGTERM')
-
-  await new Promise<void>((resolve) => {
-    serverProcess.on('exit', () => resolve())
-    setTimeout(() => {
-      killProcessGroup(serverProcess, 'SIGKILL')
-      resolve()
-    }, 5000)
-  })
+  await stopProcessGroup(webProcess, 3000)
+  await stopProcessGroup(serverProcess, 5000)
 
   try {
     rmSync(dataDir, { recursive: true, force: true })

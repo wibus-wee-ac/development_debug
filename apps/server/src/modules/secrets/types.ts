@@ -1,7 +1,3 @@
-// Input: secret metadata contracts and supported kinds
-// Output: shared secret API shapes for secrets module
-// Position: apps/server/src/modules/secrets/types.ts
-
 export type SecretKind = string
 
 export interface SecretMetadata {

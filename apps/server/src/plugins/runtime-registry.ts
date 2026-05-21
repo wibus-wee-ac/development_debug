@@ -1,7 +1,3 @@
-// Input: Plugin manifests discovered by the server plugin loader.
-// Output: Host-owned plugin descriptors, layer states, and capability records.
-// Position: Server-side governance projection for plugin discovery and activation.
-
 import {
   derivePluginCapabilityId,
   derivePluginRouteSegment,

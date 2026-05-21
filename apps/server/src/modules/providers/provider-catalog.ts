@@ -1,7 +1,3 @@
-// Input: provider request config, secret reader, and provider metadata HTTP fetches
-// Output: provider metadata registry for LLM connection health and model discovery
-// Position: apps/server/src/modules/providers/provider-catalog.ts
-
 import { AppError } from '../../errors/app-error'
 import {
   BaseProviderConfig,

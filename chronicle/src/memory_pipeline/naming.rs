@@ -1,8 +1,4 @@
 //! Chronicle memory file naming.
-//!
-//! Input: capture timestamp, time window, and description text.
-//! Output: filesystem-safe memory filename.
-//! Position: stable contract for files under `memories/`.
 
 use crate::time::Timestamp;
 

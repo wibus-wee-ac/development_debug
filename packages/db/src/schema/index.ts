@@ -1,7 +1,3 @@
-// Input: Context-specific schema modules
-// Output: Canonical schema export surface for Drizzle initialization and typed table imports
-// Position: Schema barrel that preserves the existing import path while splitting ownership by module
-
 export * from './acp'
 export * from './automation'
 export * from './backend-control-plane'

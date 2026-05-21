@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked git hooks, GitPanel and BranchPicker
-// Output: Regression tests for Git fetch/create control accessibility
-// Position: Git feature test guarding icon-only control semantics
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

@@ -1,7 +1,3 @@
-// Input: Vitest and GitHub await helper fixtures
-// Output: Regression coverage for GitHub remote detection and await defaults
-// Position: Session-await feature unit test for human-created GitHub CI awaits
-
 import { describe, expect, it } from 'vitest'
 
 import type { GitStatus } from '~/lib/types'

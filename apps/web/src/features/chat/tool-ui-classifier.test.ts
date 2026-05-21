@@ -1,7 +1,3 @@
-// Input: Vitest assertions and chat tool UI classifier helpers
-// Output: Regression coverage for Claude Agent and AI SDK tool rendering categories
-// Position: Chat feature unit test for tool IO classification
-
 import { describe, expect, it } from 'vitest'
 
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'

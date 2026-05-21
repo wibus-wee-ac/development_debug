@@ -1,9 +1,3 @@
-<!--
-Output: Inventory for saved runtime profile lifecycle.
-Input: User-owned provider configuration profiles and profile deletion semantics.
-Position: apps/server/src/modules/profiles module guide.
--->
-
 # profiles
 
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.

@@ -1,7 +1,3 @@
-// Input: PTY HTTP control routes plus real WebSocket live-channel routes
-// Output: integration tests for chat/shell PTY WebSocket behavior, reconnect, cleanup, and lease expiry
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'

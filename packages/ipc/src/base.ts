@@ -1,7 +1,3 @@
-// Input: AsyncLocalStorage, Electron ipcMain, OpenTelemetry trace API, shared event helpers
-// Output: Main-process IPC registration, trace-aware handler context, and observer integration
-// Position: Shared main-process IPC framework for all service methods
-
 import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { context as otelContext, trace } from '@opentelemetry/api'

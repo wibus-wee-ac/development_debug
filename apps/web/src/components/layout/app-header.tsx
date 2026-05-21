@@ -1,7 +1,3 @@
-// Input: Button, useLayoutStore, mingcute icons, @cradle/tabs-next TabBar, cradleRegistry, Tooltip
-// Output: AppHeader — slim header with capsule tabs and panel toggles
-// Position: Top chrome of AppLayout's center column; doubles as a macOS window-drag region
-
 import type { TabBarCustomization, TabInstance } from '@cradle/tabs-next'
 import { TabBar } from '@cradle/tabs-next'
 import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'

@@ -1,7 +1,3 @@
-// Input: request runtime context headers and session persistence
-// Output: server-owned actor context for mutation provenance
-// Position: apps/server/src/http shared runtime identity resolver
-
 import { sessions } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 

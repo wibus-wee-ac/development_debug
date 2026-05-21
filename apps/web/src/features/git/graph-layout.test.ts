@@ -1,7 +1,3 @@
-// Input: Vitest, GitGraphCommit fixtures, computeGraphLayout
-// Output: Regression coverage for git graph lane assignment and merge line metadata
-// Position: Git feature unit test for pure commit graph layout logic
-
 import { describe, expect, it } from 'vitest'
 
 import type { GitGraphCommit } from '~/lib/types'

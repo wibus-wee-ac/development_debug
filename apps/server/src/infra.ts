@@ -1,7 +1,3 @@
-// Input: environment variables
-// Output: lazily-initialized app-level infrastructure singletons
-// Position: apps/server/src — the single composition root for shared infra
-
 import type { dbSchema } from '@cradle/db'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 

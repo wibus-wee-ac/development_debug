@@ -1,7 +1,3 @@
-// Input: workspaceId, defaultStatusId, open state, onClose callback
-// Output: Floating modal-style create issue panel (Linear-inspired)
-// Position: Panel for creating new kanban issues
-
 import { ChevronRightIcon, MaximizeIcon, PaperclipIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'

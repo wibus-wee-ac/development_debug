@@ -1,9 +1,3 @@
-<!--
-Output: apps/server test inventory.
-Input: Vitest suites for server foundation and capabilities.
-Position: apps/server/tests index.
--->
-
 # Server Tests
 
 Profile/provider integration suites now exercise typed `config` objects at HTTP boundaries instead of opaque `configJson` strings, keeping the test surface aligned with OpenAPI-facing request schemas.
@@ -33,6 +27,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **pty.test.ts**: session-owned cli-tui terminal runtime, terminal resource snapshots, HTTP control routes, and cleanup.
 - **pty-websocket.test.ts**: PTY WebSocket live channel, reconnect, delete-session teardown, and cli-tui session ownership semantics.
 - **codex-session-capture.test.ts**: Codex CLI JSONL metadata capture rules for cli-tui resume bindings.
+- **chronicle.test.ts**: Chronicle DB-backed snapshot/memory ingest, source deduplication, snapshot frame serving, local model resource status, memory search, and summarize error event persistence.
 - **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.
 - **workflow-rules.test.ts**: workflow-rules HTTP CRUD + filesystem ownership.
 - **profiles.test.ts**: profile CRUD, secret masking, provider metadata endpoints, and Available Model registry mapping persistence.
@@ -43,3 +38,4 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **usage.test.ts**: usage analytics daily totals, summary, streak stats, and per-session totals.
 - **search.test.ts**: thread search over titles, user content, and assistant plain-text cache derived from `messages.content`.
 - **pack-codebase.test.ts**: workspace-owned repomix packing over HTTP and structured validation errors.
+- **test-reset.test.ts**: test-only reset route cleanup boundaries, including isolated HOME skills safety.

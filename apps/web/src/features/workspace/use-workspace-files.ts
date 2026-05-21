@@ -1,7 +1,3 @@
-// Input: generated API SDK, TanStack Query
-// Output: useWorkspaceFiles — returns file list for @ mention feature
-// Position: Data-fetching hook for workspace file listing
-
 import { useQuery } from '@tanstack/react-query'
 
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'

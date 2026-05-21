@@ -3,6 +3,7 @@ import { basename, delimiter, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Elysia } from 'elysia'
 import type { PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
+import { createChildLogger } from '../logging/logger'
 import { createServerPluginContext } from './context'
 import { discoverPluginPackages, type DiscoveredPluginPackage } from './discovery'
 import {
@@ -19,6 +20,7 @@ import { validatePluginModule } from './validation'
 
 // Store deactivation functions for shutdown
 const activePlugins = new Map<string, { deactivate?: () => void | Promise<void> }>()
+const logger = createChildLogger({ module: 'plugins' })
 
 interface PluginDiscoverySource {
   pluginsDir: string
@@ -104,11 +106,11 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
 
       activePlugins.set(manifest.name, { deactivate: mod.deactivate as (() => void | Promise<void>) | undefined })
       setPluginLayerState(manifest.name, 'server', 'active')
-      console.log(`[plugins] activated: ${manifest.name}`)
+      logger.info('plugin activated', { plugin: manifest.name })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setPluginLayerState(manifest.name, 'server', 'failed', message)
-      console.error(`[plugins] failed to activate ${manifest.name}:`, err)
+      logger.error('plugin activation failed', { plugin: manifest.name, err })
     }
   }
 
@@ -137,7 +139,7 @@ export async function deactivateAllPlugins(): Promise<void> {
     try {
       await plugin.deactivate?.()
     } catch (err) {
-      console.error(`[plugins] error deactivating ${name}:`, err)
+      logger.error('plugin deactivation failed', { plugin: name, err })
     }
   }
   activePlugins.clear()

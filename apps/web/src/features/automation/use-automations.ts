@@ -1,7 +1,3 @@
-// Input: Automation API client, TanStack Query
-// Output: Query hooks for automation definitions, runs, artifacts, and run-now mutation
-// Position: Data boundary for automation feature and Home projection
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { listAutomationArtifacts, listAutomationDefinitions, listAutomationRuns, runAutomationNow } from './api-client'

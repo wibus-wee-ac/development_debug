@@ -1,7 +1,3 @@
-// Input: zustand persist middleware plus browser localStorage availability
-// Output: Safe JSON storage for persisted renderer stores with an in-memory fallback outside the browser
-// Position: Renderer state persistence infrastructure used by Zustand stores
-
 import type { StateStorage } from 'zustand/middleware'
 import { createJSONStorage } from 'zustand/middleware'
 

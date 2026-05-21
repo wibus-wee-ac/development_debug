@@ -1,7 +1,3 @@
-// Input: chooseMountedTabIds pure renderer policy helper
-// Output: tests for single and Activity pool retention
-// Position: Unit coverage for tabs-next render policy
-
 import { describe, expect, it } from 'vitest'
 
 import { chooseMountedTabIds } from '../components/tab-renderer'

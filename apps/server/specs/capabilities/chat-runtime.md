@@ -1,9 +1,3 @@
-<!--
-Output: Chat runtime capability spec for server migration.
-Input: Legacy chat engine, backend control-plane, and HTTP streaming requirements.
-Position: apps/server/specs/capabilities chat-runtime spec.
--->
-
 # Capability: Chat Runtime
 
 ## User / System Goal

@@ -1,7 +1,3 @@
-// Input: workspace capability HTTP endpoints
-// Output: integration tests for workspace CRUD + file safety
-// Position: apps/server/tests
-
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'

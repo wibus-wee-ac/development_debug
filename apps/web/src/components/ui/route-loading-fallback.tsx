@@ -1,7 +1,3 @@
-// Input: lucide-react Loader2Icon
-// Output: RouteLoadingFallback — minimal spinner for lazy route pending states
-// Position: Shared UI component used as pendingComponent in lazy routes
-
 import { LoaderCircleIcon } from 'lucide-react'
 
 export function RouteLoadingFallback() {

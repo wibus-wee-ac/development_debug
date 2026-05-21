@@ -1,7 +1,3 @@
-// Input: ACP SessionUpdate notifications
-// Output: UIMessageChunk for the server chat-runtime
-// Position: apps/server chat-runtime ACP chunk normalization boundary
-
 import { randomUUID } from 'node:crypto'
 
 import type {

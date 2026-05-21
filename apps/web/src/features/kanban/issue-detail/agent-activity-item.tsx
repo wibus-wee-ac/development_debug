@@ -1,7 +1,3 @@
-// Input: Agent activity event data from issue-agent session history
-// Output: AgentActivityItem component for rendering one session activity row
-// Position: Kanban issue detail agent session activity feed item
-
 import { WrenchIcon } from 'lucide-react'
 
 import type { AgentActivity } from '~/lib/types'

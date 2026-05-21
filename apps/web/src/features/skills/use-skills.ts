@@ -1,7 +1,3 @@
-// Input: generated API SDK, TanStack Query
-// Output: Hooks for listing skill inventory, loading skill documents, mutating filesystem-backed skills, and fetching/importing from remote sources
-// Position: Data layer for the skills management feature
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {

@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked relation hooks, and RelationManager
-// Output: Regression tests for issue relation action accessibility and delete wiring
-// Position: Kanban issue detail test guarding relation add/remove action semantics
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

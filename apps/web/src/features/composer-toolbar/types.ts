@@ -1,7 +1,3 @@
-// Input: RuntimeKind from lib/types
-// Output: ComposerToolbar type definitions
-// Position: Shared type definitions for the unified composer toolbar feature
-
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 export type ComposerContext = 'new-chat' | 'capsule' | 'chat'

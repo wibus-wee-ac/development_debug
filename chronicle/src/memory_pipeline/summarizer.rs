@@ -1,8 +1,4 @@
 //! Summary writers for Chronicle memory files.
-//!
-//! Input: persisted frames and a memory prompt.
-//! Output: Markdown memory files.
-//! Position: replaceable boundary for local smoke summaries or future LLM sessions.
 
 use std::fs;
 use std::path::{Path, PathBuf};

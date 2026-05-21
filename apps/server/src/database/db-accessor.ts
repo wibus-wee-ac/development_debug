@@ -1,7 +1,3 @@
-// Input: DbProvider
-// Output: db accessor
-// Position: server database accessor
-
 import type { dbSchema } from '@cradle/db'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 

@@ -1,7 +1,3 @@
-// Input: profile API and providers API, profileId/profile list
-// Output: hooks that fetch visible models for provider-backed agent profiles
-// Position: Data hook for model selection in the New Chat flow
-
 import { useQueries, useQuery } from '@tanstack/react-query'
 
 import { getProfilesById, getProvidersByProfileIdModelsCache, postProvidersModels } from '~/api-gen/sdk.gen'

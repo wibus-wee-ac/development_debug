@@ -133,7 +133,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `acp` | 9 | Manage ACP agent installation and registry state. | `cradle man acp` |
 | `agent` | 5 | Manage Cradle agent identities. | `cradle man agent` |
 | `approval` | 2 | Inspect and respond to pending approvals. | `cradle man approval` |
-| `automation` | 13 | Generated Cradle CLI module. | `cradle man automation` |
+| `automation` | 13 | Manage scheduled automations, runs, and artifacts. | `cradle man automation` |
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
 | `chat` | 2 | Control chat runtime commands. | `cradle man chat` |
 | `health` | 1 | Check server health. | `cradle man health` |
@@ -152,4 +152,3 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `workspace` | 17 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
-

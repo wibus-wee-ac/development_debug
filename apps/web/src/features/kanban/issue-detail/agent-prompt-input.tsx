@@ -1,7 +1,3 @@
-// Input: Agent session id/status, prompt text, query client, and server URL
-// Output: AgentPromptInput component for sending follow-up prompts to an issue agent session
-// Position: Issue detail subview used by AgentSessionPanel
-
 import { useQueryClient } from '@tanstack/react-query'
 import { SendIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'

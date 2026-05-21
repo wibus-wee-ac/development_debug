@@ -1,7 +1,3 @@
-// Input: store, registry, children
-// Output: TabsProvider component
-// Position: Provider boundary for @cradle/tabs-next
-
 import type { ReactNode } from 'react'
 import type { StoreApi, UseBoundStore } from 'zustand'
 

@@ -1,7 +1,3 @@
-// Input: zustand, zustand/middleware
-// Output: useLayoutStore hook for persisted panel and sidebar layout state
-// Position: Renderer global UI layout store used across the application shell
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 

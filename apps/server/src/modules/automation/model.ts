@@ -1,7 +1,3 @@
-// Input: Elysia TypeBox helpers
-// Output: HTTP schema contract for the automation module
-// Position: Automation module API model surface
-
 import { t } from 'elysia'
 
 const runtimeKindSchema = t.Union([

@@ -1,7 +1,3 @@
-// Input: Generated API SDK, TanStack Query
-// Output: Query hooks and mutations for Kanban boards, statuses, milestones, issues, comments, and relations
-// Position: Data layer for the Kanban feature; all HTTP calls go through these hooks
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {

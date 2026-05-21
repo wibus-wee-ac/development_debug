@@ -1,7 +1,3 @@
-// Input: persisted TabInstance state plus the set of session/workspace ids that still exist in SQLite
-// Output: Reconciled tab state with dangling chat/workspace tabs removed and active tab repaired
-// Position: Renderer tab-state hygiene helper used during startup hydration
-
 import type { TabInstance } from '@cradle/tabs-next'
 
 interface ReconcilePersistedTabsInput {

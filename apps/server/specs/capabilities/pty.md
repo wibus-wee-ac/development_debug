@@ -1,9 +1,3 @@
-<!--
-Output: PTY capability spec for server migration.
-Input: Legacy PTY manager, CLI-TUI provider, session cleanup hook, and TUI renderer expectations.
-Position: apps/server/specs/capabilities pty spec.
--->
-
 # Capability: PTY
 
 ## User / System Goal

@@ -1,7 +1,3 @@
-// Input: net module, os/path for socket path resolution
-// Output: rpcCall function for JSON-RPC 2.0 communication over Unix domain socket
-// Position: CLI utility — RPC transport layer for Cradle socket server
-
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'

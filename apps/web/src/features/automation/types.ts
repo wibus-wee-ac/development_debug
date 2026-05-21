@@ -1,7 +1,3 @@
-// Input: Automation API JSON payloads
-// Output: Local UI-facing automation contracts until generated API types exist
-// Position: Owned by automation feature; swap with api-gen types after OpenAPI generation
-
 export type AutomationRunStatus = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled' | 'skipped'
 
 export interface AutomationTrigger {

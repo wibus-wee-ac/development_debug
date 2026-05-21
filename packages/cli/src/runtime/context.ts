@@ -1,7 +1,3 @@
-// Input: root CLI options and runtime HTTP transport
-// Output: per-command context with workspace resolution helpers
-// Position: packages/cli runtime execution context
-
 import { requestJson } from './http-client'
 import type { CliHttpMethod, CommandContext } from './types'
 

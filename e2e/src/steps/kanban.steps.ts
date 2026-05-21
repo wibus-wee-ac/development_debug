@@ -1,7 +1,3 @@
-// Input: Cucumber step bindings, Playwright locators, and minimal scenario state helpers
-// Output: Kanban CRUD step definitions focused on visible board, issue, comment, move, edit, delete, and search workflows
-// Position: E2E step layer for kanban.feature, centered on user-visible board and issue outcomes
-
 import type { DataTable } from '@cucumber/cucumber'
 import { Given, Then, When } from '@cucumber/cucumber'
 import type { Locator } from '@playwright/test'

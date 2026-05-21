@@ -1,7 +1,3 @@
-// Input: Velopack native updater and Electron app lifecycle
-// Output: Desktop-owned update manager state, commands, and status events
-// Position: apps/desktop/src/main/update-manager.ts
-
 import type { UpdateInfo } from 'velopack'
 import { EventEmitter } from 'node:events'
 

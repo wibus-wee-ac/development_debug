@@ -1,7 +1,3 @@
-// Input: ACP registry agent metadata plus Node fetch/fs/archive helpers
-// Output: install/uninstall helpers for ACP server management plane
-// Position: apps/server/src/modules/acp/acp.installer.ts
-
 import { createWriteStream, promises as fsp } from 'node:fs'
 import { isAbsolute, join, normalize, sep } from 'node:path'
 

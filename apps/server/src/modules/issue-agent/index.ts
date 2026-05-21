@@ -7,9 +7,9 @@ export const issueAgent = new Elysia({
   detail: { tags: ['issue-agent'] },
 })
 
-  // ── kanban issue delegation ──
+  // ── issue delegation ──
 
-  .get('/kanban/issues/:id/delegation', ({ params }) =>
+  .get('/issues/:id/delegation', ({ params }) =>
     IssueAgent.getDelegation(params.id), {
     detail: {
       'summary': 'Get delegation state',
@@ -21,7 +21,7 @@ export const issueAgent = new Elysia({
     response: { 200: IssueAgentModel.delegationState },
   })
 
-  .post('/kanban/issues/:id/delegation', ({ params, body }) =>
+  .post('/issues/:id/delegation', ({ params, body }) =>
     IssueAgent.delegateIssue({
       issueId: params.id,
       agentId: body.agentId,
@@ -38,7 +38,7 @@ export const issueAgent = new Elysia({
     response: { 200: IssueAgentModel.sessionView },
   })
 
-  .delete('/kanban/issues/:id/delegation', async ({ params }) => {
+  .delete('/issues/:id/delegation', async ({ params }) => {
     await IssueAgent.undelegateIssue(params.id)
     return { ok: true as const }
   }, {
@@ -52,7 +52,7 @@ export const issueAgent = new Elysia({
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
 
-  .get('/kanban/issues/:id/agent-sessions', ({ params }) =>
+  .get('/issues/:id/agent-sessions', ({ params }) =>
     IssueAgent.listSessions(params.id), {
     detail: {
       'summary': 'List agent sessions',

@@ -13,7 +13,12 @@ NODE_BUILT_IN_MODULES.push(...NODE_BUILT_IN_MODULES.map(m => `node:${m}`))
 const SERVER_EXTERNALS = new Set([
   ...NODE_BUILT_IN_MODULES,
   '@node-rs/jieba',
-  '@node-rs/jieba/dict',
+  '@node-rs/jieba-darwin-arm64',
+  'better-sqlite3',
+  'bindings',
+  'file-uri-to-path',
+  'node-addon-api',
+  'node-pty',
 ])
 
 export default defineConfig({
@@ -24,7 +29,7 @@ export default defineConfig({
   esbuild: false,
   ssr: {
     noExternal: true,
-    external: ['@node-rs/jieba', '@node-rs/jieba/dict'],
+    external: ['@node-rs/jieba'],
   },
   build: {
     ssr: true,

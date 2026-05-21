@@ -1,7 +1,3 @@
-// Input: zustand, persist
-// Output: useJarvisUiStore hook for Jarvis feature UI state
-// Position: System-agent feature-owned UI state separated from shell layout ownership
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 

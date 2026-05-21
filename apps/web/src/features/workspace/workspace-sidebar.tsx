@@ -1,7 +1,3 @@
-// Input: useWorkspaces, useSessions hooks, workspace/session types, UI primitives, tab navigation
-// Output: WorkspaceSidebar component with top nav, workspace groups and session items
-// Position: Main sidebar feature component for workspace navigation (uses tab system)
-
 import { Link } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -437,7 +433,10 @@ function WorkspaceGroup({
               <FolderOpenIcon />
               在 Finder 中打开
             </MenuItem>
-            <MenuItem onClick={() => setPackOpen(true)}>
+            <MenuItem
+              data-testid={`workspace-pack-codebase-${workspace.id}`}
+              onClick={() => setPackOpen(true)}
+            >
               <PackageIcon />
               复制代码库
             </MenuItem>

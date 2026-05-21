@@ -1,7 +1,3 @@
-// Input: Chat delta events from the server SSE stream
-// Output: Types and pure delta application helpers for UIMessage snapshots
-// Position: Chat feature protocol adapter for message-level live updates
-
 import type { UIMessage } from 'ai'
 
 type MessagePart = UIMessage['parts'][number]

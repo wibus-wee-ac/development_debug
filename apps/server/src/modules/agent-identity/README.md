@@ -1,9 +1,3 @@
-<!--
-Output: Agent identity module inventory.
-Input: AgentIdentityModule, service, store, and controller.
-Position: apps/server/src/modules/agent-identity.
--->
-
 # Agent Identity Module
 
 Agent CRUD, filtered list queries, agent-profile ownership, and avatar URL policy.

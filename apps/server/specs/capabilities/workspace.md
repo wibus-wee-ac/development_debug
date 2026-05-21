@@ -1,9 +1,3 @@
-<!--
-Output: Workspace capability spec for server migration.
-Input: Legacy workspace feature behavior and IPC usage.
-Position: apps/server/specs/capabilities workspace spec.
--->
-
 # Capability: Workspace
 
 ## Superpowers Used

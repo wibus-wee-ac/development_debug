@@ -1,7 +1,3 @@
-// Input: KanbanIssue, display properties, related metadata, click handler
-// Output: Draggable card for board view
-// Position: Board card component used inside kanban columns
-
 import { useDraggable } from '@dnd-kit/core'
 import { CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'

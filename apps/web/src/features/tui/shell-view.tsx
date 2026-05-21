@@ -1,7 +1,3 @@
-// Input: HTTP shell APIs, PTY WebSocket live channel, xterm Terminal + full addon suite, app CSS theme vars
-// Output: ShellView — interactive shell terminal for the bottom panel
-// Position: Rendered as the bottom panel for chat sessions; ptyId is panel-scoped
-
 import '@xterm/xterm/css/xterm.css'
 
 import { ClipboardAddon } from '@xterm/addon-clipboard'

@@ -1,7 +1,3 @@
-// Input: @cradle/ipc IpcService/IpcMethod, Electron dialog/shell APIs, WindowManager, DesktopUpdateManager
-// Output: Native IPC services for Electron-only features
-// Position: apps/desktop/src/main/native-services.ts
-
 import { createServices, IpcMethod, IpcService } from '@cradle/ipc'
 import { dialog, shell } from 'electron'
 

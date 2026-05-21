@@ -1,7 +1,3 @@
-// Input: unified chat runtime HTTP endpoints with mocked ACP SDK + subprocess layer
-// Output: integration tests for ACP chat execution, approvals, title sync, and usage writes
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

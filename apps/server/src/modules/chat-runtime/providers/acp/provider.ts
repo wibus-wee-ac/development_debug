@@ -1,7 +1,3 @@
-// Input: ACP connection manager and chat-runtime provider contracts
-// Output: ACP Chat provider bound to the unified server `/chat` runtime
-// Position: apps/server chat-runtime ACP provider implementation
-
 import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../engine/ai-sdk-engine'

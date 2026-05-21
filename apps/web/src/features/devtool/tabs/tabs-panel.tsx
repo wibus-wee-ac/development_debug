@@ -1,7 +1,3 @@
-// Input: tabs-next debug state mirrored by useTabsDebugStore
-// Output: Devtool panel for tab runtime state, render policy, and debug metrics
-// Position: Tabs diagnostics view inside the /devtool window
-
 import type { DebugMetrics, DebugSnapshot, TabRenderPolicy } from '@cradle/tabs-next'
 import { useEffect } from 'react'
 

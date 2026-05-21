@@ -1,7 +1,3 @@
-// Input: Search result selection dependencies for GlobalSearchDialog
-// Output: Small action helpers that keep command result behavior testable
-// Position: Search feature action layer for command palette result selection
-
 type OpenTab = (type: string, params?: Record<string, string | undefined>) => unknown
 type WriteText = (value: string) => Promise<void>
 

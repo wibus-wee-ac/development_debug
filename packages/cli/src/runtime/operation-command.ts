@@ -1,7 +1,3 @@
-// Input: generated operation specs and Commander root command
-// Output: nested CLI commands bound to Cradle HTTP operations
-// Position: packages/cli runtime command registration layer
-
 import { Command } from 'commander'
 
 import { getCommandContext } from './context'
@@ -23,6 +19,7 @@ function describeGroup(name: string): string | undefined {
     'acp': 'Manage ACP agents',
     'agent': 'Manage Cradle agents',
     'approval': 'Manage pending approvals',
+    'automation': 'Manage scheduled automations',
     'board': 'Manage kanban boards',
     'branch': 'Manage git branches',
     'chat': 'Manage chat runtime commands',
@@ -99,7 +96,16 @@ function parseValue(value: unknown, type: CliValueType | undefined): unknown {
     return parsed
   }
   if (type === 'boolean') {
-    return Boolean(value)
+    if (typeof value === 'boolean') {
+      return value
+    }
+    if (value === 'true') {
+      return true
+    }
+    if (value === 'false') {
+      return false
+    }
+    throw new TypeError(`Expected a boolean, received ${String(value)}`)
   }
   if (type === 'string[]') {
     if (Array.isArray(value)) {
@@ -158,16 +164,22 @@ export function registerOperationCommand(root: Command, spec: CliOperationSpec):
 
   for (const flag of spec.flags ?? []) {
     const optionName = toKebabCase(flag.name)
-    const long = flag.type === 'boolean' ? `--${optionName}` : `--${optionName} <value>`
-    const option = long
     const description = flag.values?.length
       ? `${flag.description ?? ''}${flag.description ? ' ' : ''}Allowed: ${flag.values.join(', ')}`
       : flag.description
+    const option = flag.type === 'boolean' && flag.required
+      ? `--${optionName} <value>`
+      : flag.type === 'boolean'
+        ? `--${optionName}`
+        : `--${optionName} <value>`
     if (flag.required) {
       leaf.requiredOption(option, description)
     }
     else {
       leaf.option(option, description)
+      if (flag.type === 'boolean') {
+        leaf.option(`--no-${optionName}`, description)
+      }
     }
   }
 

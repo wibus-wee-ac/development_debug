@@ -1,7 +1,3 @@
-// Input: Menu primitives, provider icons, agent profiles, model descriptors
-// Output: ProviderModelMenu — reusable Provider > Model > Thinking cascading menu content
-// Position: Shared selector core used by composer toolbar and settings surfaces
-
 import { BrainIcon, CheckIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 

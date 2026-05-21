@@ -1,7 +1,3 @@
-// Input: Cucumber scenario names
-// Output: Deterministic helpers for scenario-safe artifact names
-// Position: Shared pure utilities for E2E world/hooks without direct Playwright coupling
-
 import { join } from 'node:path'
 
 const WHITESPACE_RE = /\s+/g

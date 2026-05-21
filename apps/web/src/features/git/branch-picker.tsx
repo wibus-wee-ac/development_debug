@@ -1,7 +1,3 @@
-// Input: useGitBranches, git SDK, useQueryClient, coss Popover primitives, lucide icons
-// Output: BranchPicker — popover listing local + remote branches with inline branch creation (VS Code style)
-// Position: Used by GitBranchControl as the branch-switching overlay
-
 import { useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,

@@ -1,7 +1,3 @@
-// Input: Jarvis preferences, agent profiles, provider-owned model map
-// Output: JarvisSettings — settings page for the workspace-aware system assistant
-// Position: Settings section rendered for the Jarvis navigation item
-
 import { useMemo } from 'react'
 
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'

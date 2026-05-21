@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-# Input: Cradle SQLite database path and optional filters (code/session/run/time window).
-# Output: Human-readable summaries or JSON bundle from observability/timeline tables.
-# Position: Skill-local deterministic debug utility for local observability forensics.
 
 from __future__ import annotations
 
@@ -442,4 +439,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

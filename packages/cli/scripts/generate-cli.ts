@@ -1,7 +1,3 @@
-// Input: apps/server OpenAPI document with x-cradle-cli metadata
-// Output: generated TypeScript command modules under packages/cli/src/commands/generated
-// Position: packages/cli code generation script
-
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -64,6 +60,7 @@ const moduleDescriptions: Record<string, string> = {
   'acp': 'Manage ACP agent installation and registry state.',
   'agent': 'Manage Cradle agent identities.',
   'approval': 'Inspect and respond to pending approvals.',
+  'automation': 'Manage scheduled automations, runs, and artifacts.',
   'board': 'Manage Kanban boards.',
   'chat': 'Control chat runtime commands.',
   'health': 'Check server health.',
@@ -187,11 +184,7 @@ function renderCommandModule(spec: CliOperationSpec): string {
   const runtimeImport = `${runtimePrefix}runtime/operation-command`
   const typeImport = `${runtimePrefix}runtime/types`
 
-  return `// Input: generated OpenAPI CLI operation metadata
-// Output: ${spec.command.join(' ')} command registration
-// Position: packages/cli generated command module
-
-import { registerOperationCommand } from '${runtimeImport}'
+  return `import { registerOperationCommand } from '${runtimeImport}'
 import type { CliOperationSpec } from '${typeImport}'
 import type { Command } from 'commander'
 
@@ -211,11 +204,7 @@ function renderIndex(imports: Array<{ importName: string, relativePath: string }
     .map(item => `  ${item.importName}(program)`)
     .join('\n')
 
-  return `// Input: generated operation command modules
-// Output: registration entry for all generated CLI commands
-// Position: packages/cli generated command barrel
-
-import type { Command } from 'commander'
+  return `import type { Command } from 'commander'
 
 ${importLines}
 

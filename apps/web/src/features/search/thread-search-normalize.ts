@@ -1,7 +1,3 @@
-// Input: ThreadSearchHit and MatchRange types from @main/ipc-types
-// Output: Normalizers that coerce IPC search payloads into UI-safe thread search hits
-// Position: Search feature boundary utility between IPC responses and renderer components
-
 import type { MatchRange, ThreadSearchHit, ThreadSearchSnippet } from '~/lib/types'
 
 const FALLBACK_WORKSPACE_ID = 'unknown-workspace'

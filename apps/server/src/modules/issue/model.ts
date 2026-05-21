@@ -1,7 +1,3 @@
-// Input: Elysia TypeBox schema builders
-// Output: Issue module request and response schemas for HTTP, OpenAPI, and CLI generation
-// Position: Issue module contract surface consumed by route handlers and generated clients
-
 import { t } from 'elysia'
 
 const priorityEnum = t.Union([

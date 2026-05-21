@@ -1,7 +1,3 @@
-// Input: chat delta events from SSE stream, useChatStore
-// Output: ChatStreamingHandler — accumulates sequenced part deltas into UIMessage in the store
-// Position: Bridge between SSE transport ReadableStream and Zustand store state
-
 import type { UIMessage } from 'ai'
 
 import { useChatStore } from '~/store/chat'

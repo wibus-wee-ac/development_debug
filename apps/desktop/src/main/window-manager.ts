@@ -1,7 +1,3 @@
-// Input: BrowserWindow management, session tracking
-// Output: WindowManager — create/manage/tearoff session windows
-// Position: apps/desktop/src/main/window-manager.ts
-
 import { join } from 'node:path'
 
 import { BrowserWindow } from 'electron'

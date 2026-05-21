@@ -1,7 +1,3 @@
-// Input: fetch from https://models.dev/api.json
-// Output: best-effort model metadata enrichment
-// Position: apps/server/src/modules/providers/model-info-registry.ts
-
 import { kvCache } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 

@@ -1,7 +1,3 @@
-// Input: ACP profile config JSON
-// Output: normalized ACP runtime launch config for server-owned chat execution
-// Position: apps/server chat-runtime ACP provider config boundary
-
 import { acpChatConfigSchema } from '../../../../helpers/provider-config-schemas'
 
 export type AcpDistributionType = 'binary' | 'npx' | 'uvx'

@@ -1,7 +1,3 @@
-// Input: shared schema helpers, chat tables, identity tables, and sqlite column builders
-// Output: Backend binding/run/capability tables plus inferred row types
-// Position: Control-plane persistence schema owned by Cradle's backend session model
-
 import { index, int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { messages, sessions } from './chat'

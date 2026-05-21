@@ -1,7 +1,3 @@
-// Input: model visibility helpers
-// Output: regression coverage for provider model visibility semantics
-// Position: Agent Runtime unit test for default-all model visibility
-
 import { describe, expect, it } from 'vitest'
 
 import type { ModelDescriptor } from '~/lib/types'

@@ -1,7 +1,3 @@
-// Input: zustand, subscribeWithSelector, UIMessage types
-// Output: useChatStore — Zustand store managing per-session messages and per-message streaming state
-// Position: Core data layer for chat feature, replaces @ai-sdk/react useChat state management
-
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'

@@ -1,7 +1,3 @@
-// Input: socket path + PTY live channel callbacks
-// Output: Shared PTY WebSocket adapter with reconnect, ping, and input/resize send helpers
-// Position: Transport layer shared by TuiView and ShellView
-
 import { getServerWebSocketUrl } from '~/lib/electron'
 
 import type { PtyClientEvent, PtyErrorEvent, PtyExitEvent, PtyOutputEvent, PtySnapshotEvent } from './pty-protocol'

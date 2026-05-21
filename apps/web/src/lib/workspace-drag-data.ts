@@ -1,7 +1,3 @@
-// Input: DataTransfer instances from workspace file tree drag/drop interactions
-// Output: Helpers for serializing and reading Cradle workspace file drag payloads
-// Position: Shared renderer drag/drop protocol between workspace file tree, chat, and TUI
-
 import { join, normalize } from 'pathe'
 
 const WORKSPACE_FILE_DRAG_MIME = 'application/x-cradle-workspace-file+json'

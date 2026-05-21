@@ -1,7 +1,3 @@
-// Input: Elysia error handler + AppError
-// Output: AppError response normalization test
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

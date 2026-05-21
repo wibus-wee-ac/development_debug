@@ -1,7 +1,3 @@
-// Input: Drizzle 0015 migration SQL and a pre-migration SQLite messages table
-// Output: Regression test proving 0015 replays into valid message_json snapshots
-// Position: Root-level DB migration replay verification for the message snapshot rewrite
-
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

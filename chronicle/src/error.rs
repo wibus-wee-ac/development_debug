@@ -1,8 +1,4 @@
 //! Error type shared by Cradle Chronicle modules.
-//!
-//! Input: lower-level I/O, time, and process failures.
-//! Output: explicit Chronicle errors suitable for CLI and tests.
-//! Position: dependency-free error boundary for the standalone Rust crate.
 
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};

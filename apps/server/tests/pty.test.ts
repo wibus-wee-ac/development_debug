@@ -1,7 +1,3 @@
-// Input: terminal session HTTP control endpoints
-// Output: integration tests for PTY control-plane semantics and structured errors after the WebSocket migration
-// Position: apps/server/tests
-
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

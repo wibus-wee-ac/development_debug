@@ -1,9 +1,3 @@
-<!--
-Output: Preferences capability spec for server migration.
-Input: Legacy IPC preferences service, electron-store app preferences, and shared chat-preferences contract.
-Position: apps/server/specs/capabilities preferences spec.
--->
-
 # Capability: Preferences
 
 ## User / System Goal

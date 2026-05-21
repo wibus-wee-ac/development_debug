@@ -1,9 +1,3 @@
-<!--
-Output: Approval capability spec for server migration.
-Input: Legacy approval service, IPC adapter, renderer approval hooks, and deferred ACP integration context.
-Position: apps/server/specs/capabilities approval spec.
--->
-
 # Capability: Approval
 
 ## User / System Goal

@@ -1,7 +1,3 @@
-// Input: Kanban issue metadata, menu trigger content, and navigation callback
-// Output: Shared context menu for issue cards and list rows
-// Position: Kanban-owned issue actions surface used by board and list item renderers
-
 import {
   BotIcon,
   CheckIcon,

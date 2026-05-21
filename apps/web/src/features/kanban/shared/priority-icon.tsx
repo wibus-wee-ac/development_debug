@@ -1,7 +1,3 @@
-// Input: Priority level string
-// Output: SVG priority bars icon colored by level
-// Position: Shared icon component for kanban priority visualization
-
 import { cn } from '~/lib/cn'
 
 type Priority = 'none' | 'low' | 'medium' | 'high' | 'urgent'

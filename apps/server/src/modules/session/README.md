@@ -1,9 +1,3 @@
-<!--
-Output: Session module inventory.
-Input: SessionModule, service, store, export helper.
-Position: apps/server/src/modules/session
--->
-
 # Session Module
 
 Session CRUD, pin toggle, message read, markdown export, and session-owned cleanup hooks.

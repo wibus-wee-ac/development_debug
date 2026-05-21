@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: React context, useState, useCallback
-// Output: LayoutSlotsProvider component and LayoutSlotsContext for per-tab layout slot injection
-// Position: Context layer between app.tsx and AppLayout; allows tab content to inject aside/panel into the parent layout
 
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useMemo, useState } from 'react'

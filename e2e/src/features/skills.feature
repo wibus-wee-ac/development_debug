@@ -1,7 +1,4 @@
 # language: zh-CN
-# Input: Settings / Workspace Detail / Agent Skills UI 与 mocked native directory picker
-# Output: Skills 真实 UI E2E 覆盖，覆盖全局 / 工作区 / Agent 三个 scope 的创建、查看、编辑、删除与导入
-# Position: Skills 端到端用户旅程定义
 
 @cradle
 功能: Skills 管理

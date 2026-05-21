@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs-next, KanbanBoardView, useBoard
-// Output: kanban-board tab definition
-// Position: Tab type for kanban board view with optional issue panel
 
 import { defineTab } from '@cradle/tabs-next'
 import { KanbanSquareIcon } from 'lucide-react'

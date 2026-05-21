@@ -1,7 +1,3 @@
-// Input: @playwright/test _electron module, E2E test context
-// Output: Electron app launcher for E2E tests
-// Position: e2e/src/support/electron-app.ts — optional Electron launch mode
-
 import { resolve } from 'node:path'
 
 import type { ElectronApplication, Page } from '@playwright/test'

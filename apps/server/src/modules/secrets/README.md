@@ -1,9 +1,3 @@
-<!--
-Output: Inventory for generic server-owned secret storage.
-Input: Secret create/list/delete requests and encrypted persistence.
-Position: apps/server/src/modules/secrets module guide.
--->
-
 # secrets
 
 Route metadata includes `x-cradle-cli` descriptors for safe generated CLI commands.

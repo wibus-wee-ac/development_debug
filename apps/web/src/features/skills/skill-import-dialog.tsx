@@ -1,7 +1,3 @@
-// Input: useSkillSourceImport hook, SkillScope type, Dialog UI primitives, motion/react
-// Output: SkillImportDialog — split-panel (left: form, right: SaaS art panel) multi-step import flow
-// Position: Feature dialog triggered by the "Import" button in SkillManager
-
 import {
   CheckIcon,
   ChevronRightIcon,

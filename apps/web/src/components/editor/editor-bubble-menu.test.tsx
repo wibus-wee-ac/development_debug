@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked Tiptap BubbleMenu, and EditorBubbleMenu
-// Output: Regression tests for inline editor toolbar button accessibility
-// Position: Editor component test guarding BubbleMenu action semantics
 
 import type { Editor } from '@tiptap/core'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'

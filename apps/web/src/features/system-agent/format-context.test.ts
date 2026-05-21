@@ -1,7 +1,3 @@
-// Input: Vitest, SystemAgentContext fixtures, formatContextForAgent
-// Output: Regression coverage for Jarvis context block formatting
-// Position: System-agent feature unit tests for prompt context formatting
-
 import { describe, expect, it } from 'vitest'
 
 import type { SystemAgentContext } from './context-schema'

@@ -1,7 +1,3 @@
-// Input: generated OpenAPI CLI operation metadata
-// Output: issue comment list command registration
-// Position: packages/cli generated command module
-
 import { registerOperationCommand } from '../../../../runtime/operation-command'
 import type { CliOperationSpec } from '../../../../runtime/types'
 import type { Command } from 'commander'

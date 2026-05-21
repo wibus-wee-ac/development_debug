@@ -1,7 +1,3 @@
-// Input: performance.memory (renderer), /health endpoint, PTY resource endpoint
-// Output: Resources popover — live memory overview with renderer/server/TUI/panel breakdown
-// Position: AppHeader right side trigger
-
 import type { ReactNode } from 'react'
 import {
   ActivityIcon,

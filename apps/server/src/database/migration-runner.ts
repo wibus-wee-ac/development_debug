@@ -1,7 +1,3 @@
-// Input: DbProvider
-// Output: migrations executed at module init
-// Position: server migration runner
-
 import { getMigrationsPath } from '@cradle/db/paths'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 

@@ -1,9 +1,3 @@
-<!--
-Output: Health capability spec for server migration.
-Input: Existing health module behavior.
-Position: apps/server/specs/capabilities health spec.
--->
-
 # Capability: Health
 
 ## User / System Goal

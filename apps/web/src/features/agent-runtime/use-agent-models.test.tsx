@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: mocked profile/provider API calls and TanStack Query hook rendering
-// Output: regression coverage for profile model cache fallback
-// Position: Agent Runtime data hook test for model picker availability
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'

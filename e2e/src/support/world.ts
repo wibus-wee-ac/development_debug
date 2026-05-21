@@ -1,7 +1,3 @@
-// Input: Cucumber World base, Playwright browser launcher, mock LLM server helpers
-// Output: CradleWorld test harness exposing browser/page handles and server API wrappers
-// Position: Shared end-to-end support world used by all Cucumber features and step definitions
-
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

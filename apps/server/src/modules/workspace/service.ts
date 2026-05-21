@@ -1,7 +1,3 @@
-// Input: drizzle db + workspace files utils
-// Output: workspace CRUD and file operations
-// Position: apps/server/src/modules/workspace/service.ts
-
 import { randomUUID } from 'node:crypto'
 import { basename } from 'node:path'
 

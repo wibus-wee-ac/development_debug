@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked Kanban item dependencies, KanbanCard and KanbanListRow
-// Output: Regression tests for issue card/list row button semantics
-// Position: Kanban feature test guarding issue item accessibility and activation behavior
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

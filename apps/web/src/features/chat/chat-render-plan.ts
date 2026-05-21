@@ -1,7 +1,3 @@
-// Input: UIMessage parts and subagent message buckets
-// Output: Pure render-plan helpers for MessageBubble
-// Position: Chat rendering adapter between AI SDK message parts and React block components
-
 import type { UIMessage } from 'ai'
 
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'

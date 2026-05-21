@@ -1,7 +1,3 @@
-// Input: UIMessageChunk sequences from hydration, live SSE, and subagent replay
-// Output: Pure assistant chunk reducer + replay helpers producing canonical UIMessage parts
-// Position: Feature-owned protocol adapter for chat chunk materialization
-
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 type AssistantMessagePart = UIMessage['parts'][number]

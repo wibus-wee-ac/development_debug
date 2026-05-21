@@ -1,7 +1,3 @@
-// Input: PTY timeline snapshots/replay and WebSocket live-channel commands
-// Output: WebSocket adapter that bridges PTY runtime/timeline to live channel sessions
-// Position: apps/server/src/modules/pty transport adapter for PTY live channels
-
 import type { ElysiaWS } from 'elysia/ws'
 
 import { AppError } from '../../errors/app-error'

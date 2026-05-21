@@ -1,7 +1,3 @@
-// Input: child_process spawn plus Node stream adapters
-// Output: server-owned ACP subprocess supervisor used by chat-runtime
-// Position: apps/server chat-runtime ACP live runtime process boundary
-
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'

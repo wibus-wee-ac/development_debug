@@ -1,7 +1,3 @@
-// Input: Issues, statuses, milestones, view config, event handlers
-// Output: Grouped list view with collapsible sections
-// Position: List layout component for kanban view
-
 import { AnimatePresence, m } from 'motion/react'
 import { useMemo, useState } from 'react'
 

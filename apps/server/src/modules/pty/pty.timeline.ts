@@ -1,7 +1,3 @@
-// Input: PTY runtime output/exit lifecycle events
-// Output: transport-neutral timeline snapshots, replay windows, and subscriptions
-// Position: apps/server/src/modules/pty timeline owner for PTY live channels
-
 import type {
   PtyExitEvent,
   PtyExitState,

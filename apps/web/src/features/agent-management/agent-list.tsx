@@ -1,7 +1,3 @@
-// Input: useAgents hook, useAgentProfiles, AgentDetailPage; motion/react, lucide icons, UI primitives
-// Output: AgentList — master-detail layout matching Providers page pattern
-// Position: Settings section rendered under "Agents" tab
-
 import { BotIcon, ChevronRightIcon, PlusIcon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'

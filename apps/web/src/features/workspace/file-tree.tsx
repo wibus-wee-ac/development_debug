@@ -1,7 +1,3 @@
-// Input: workspaceId, @pierre/trees React, SDK workspace + git APIs
-// Output: FileTree component — full-feature file tree using @pierre/trees
-// Position: Content for the File Tree tab in the right aside panel
-
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'

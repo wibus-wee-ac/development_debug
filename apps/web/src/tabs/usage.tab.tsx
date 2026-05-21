@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs-next, UsageDashboard component, AppLayout
-// Output: usage tab definition
-// Position: Tab type for usage/cost dashboard
 
 import { defineTab } from '@cradle/tabs-next'
 import { BarChart2Icon } from 'lucide-react'

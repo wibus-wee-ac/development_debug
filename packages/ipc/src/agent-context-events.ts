@@ -1,7 +1,3 @@
-// Input: none
-// Output: AgentContextEvent type definition for devtool observability
-// Position: Shared event model in @cradle/ipc package
-
 export interface AgentContextEvent {
   id: string
   timestamp: number

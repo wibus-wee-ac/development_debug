@@ -1,14 +1,10 @@
-// Input: ThinkingEffort type, model capabilities
-// Output: Label maps and capability guards for runtime/model thinking controls
-// Position: Single source of truth for selector labels
-
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import type { ThinkingOption } from './provider-model-menu'
 import type { ThinkingEffort } from './types'
 
 export const THINKING_EFFORTS: { value: ThinkingEffort, label: string, description: string }[] = [
-  { value: null, label: 'Auto', description: '根据任务复杂度自动调整' },
+  { value: null, label: '自动', description: '根据任务复杂度自动调整' },
   { value: 'low', label: '快速', description: '简单问题，快速响应' },
   { value: 'medium', label: '平衡', description: '适中思考，兼顾速度与质量' },
   { value: 'high', label: '深度', description: '复杂推理，深度思考' },

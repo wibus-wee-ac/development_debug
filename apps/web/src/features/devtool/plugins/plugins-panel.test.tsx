@@ -1,8 +1,4 @@
 // @vitest-environment jsdom
-//
-// Input: React Testing Library, mocked plugin data/store hooks, PluginsPanel
-// Output: Regression tests for plugin command action accessibility
-// Position: Devtool plugins test guarding command execution button semantics
 
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

@@ -1,7 +1,3 @@
-// Input: useThemeStore, ThemeMode from ~/store/theme, useStreamdownStore, SettingsRow
-// Output: AppearanceSettings component — Linear-style appearance row with inline theme cards + streaming animation settings
-// Position: Settings feature section — appearance/theme preferences + streaming animation
-
 import { CheckIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'

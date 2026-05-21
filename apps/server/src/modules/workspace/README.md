@@ -1,9 +1,3 @@
-<!--
-Output: Workspace module inventory.
-Input: WorkspaceModule, service, store, file helpers.
-Position: apps/server/src/modules/workspace
--->
-
 # Workspace Module
 
 Workspace CRUD and safe filesystem access (listing + text read/write).

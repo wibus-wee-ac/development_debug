@@ -1,7 +1,3 @@
-// Input: React component types
-// Output: route-context tab runtime public types
-// Position: Shared contracts for @cradle/tabs-next
-
 import type { ComponentType, ReactNode } from 'react'
 
 export type TabParams = Record<string, string | undefined>

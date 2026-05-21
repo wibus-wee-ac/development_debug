@@ -1,7 +1,3 @@
-// Input: Cucumber step bindings, Playwright assertions, and shared chat alias state from chat.steps.ts
-// Output: Thin GlobalSearchDialog E2E steps covering title highlights, snippet highlights, and opening matched sessions
-// Position: Focused search step layer for the real global search entry point
-
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

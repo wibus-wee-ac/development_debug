@@ -1,7 +1,4 @@
 /* eslint-disable react-refresh/only-export-components */
-// Input: defineTab from @cradle/tabs-next, ChatView/TuiView components, HTTP snapshot rows, layout slots context
-// Output: chat tab definition with session snapshot loader and per-tab layout (aside + shell panel)
-// Position: Tab type for chat sessions; forks to TuiView for cli-tui provider sessions
 
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
@@ -14,10 +11,24 @@ import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { ShellView } from '~/features/tui/shell-view'
 import { TuiView } from '~/features/tui/tui-view'
-import type { AgentProfile, Workspace } from '~/lib/types'
+import type { AgentProfile, RuntimeKind, Workspace } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 
 const ChatView = lazy(() => import('~/features/chat/chat-view').then(m => ({ default: m.ChatView })))
+
+export const CHAT_TAB_FALLBACK_LABEL = 'Chat'
+
+const SUPPORTED_RUNTIME_KINDS: readonly RuntimeKind[] = ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui']
+
+export function isGeneratedChatLabel(label: string, sessionId: string): boolean {
+  return label === `Chat: ${sessionId.slice(0, 6)}`
+}
+
+export function parseRuntimeKind(value: unknown): RuntimeKind | undefined {
+  return typeof value === 'string' && (SUPPORTED_RUNTIME_KINDS as readonly string[]).includes(value)
+    ? value as RuntimeKind
+    : undefined
+}
 
 function ChatTabLayoutSlots({
   sessionId,
@@ -59,6 +70,50 @@ function ChatTabLayoutSlots({
   return null
 }
 
+export function ChatRuntimeView({
+  sessionId,
+  sessionAgentProfileId,
+  runtimeKind,
+}: {
+  sessionId: string
+  sessionAgentProfileId: string | null
+  runtimeKind: RuntimeKind | undefined
+}) {
+  const composerState = useComposerState({
+    context: 'chat',
+    boundProfileId: sessionAgentProfileId ?? undefined,
+    boundRuntimeKind: runtimeKind,
+  })
+
+  // Ref to communicate per-message overrides to ChatView's internal sendMessage
+  const sendOverridesRef = useRef({ modelId: undefined as string | undefined, thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined })
+  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
+  sendOverridesRef.current = {
+    modelId: composerState.selection.modelId ?? undefined,
+    thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
+  }
+
+  const composerToolbar = useMemo(() => (
+    <ComposerToolbar context="chat" state={composerState} />
+  ), [composerState])
+
+  return (
+    <Suspense fallback={null}>
+      {/* {hasWorkspace && (
+        <div className="flex items-center gap-2 border-b border-border/50 px-4 py-1">
+          <GitBranchControl workspaceId={workspaceId} />
+        </div>
+      )} */}
+      <ChatView
+        key={sessionId}
+        sessionId={sessionId}
+        composerToolbar={composerToolbar}
+        sendOverridesRef={sendOverridesRef}
+      />
+    </Suspense>
+  )
+}
+
 function ChatTabContent({ params }: { params: { sessionId: string } }) {
   const { sessionId } = params
   const { store } = useTabsContext()
@@ -73,7 +128,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
           title: typeof data.title === 'string' ? data.title : null,
           workspaceId: typeof data.workspaceId === 'string' ? data.workspaceId : null,
           agentProfileId: typeof data.agentProfileId === 'string' ? data.agentProfileId : null,
-          runtimeKind: data.runtimeKind,
+          runtimeKind: parseRuntimeKind(data.runtimeKind),
         }
       : undefined,
   })
@@ -92,31 +147,32 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
 
-  const composerState = useComposerState({
-    context: 'chat',
-    boundProfileId: sessionAgentProfileId ?? undefined,
-    boundRuntimeKind: session?.runtimeKind ?? undefined,
-  })
-
-  // Ref to communicate per-message overrides to ChatView's internal sendMessage
-  const sendOverridesRef = useRef({ modelId: undefined as string | undefined, thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined })
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
-  sendOverridesRef.current = {
-    modelId: composerState.selection.modelId ?? undefined,
-    thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
-  }
-
-  const composerToolbar = useMemo(() => (
-    <ComposerToolbar context="chat" state={composerState} />
-  ), [composerState])
-
-  // Update tab label to session title when loaded
+  // Replace legacy session-id labels before metadata finishes loading.
   useEffect(() => {
-    if (session?.title) {
-      const activeTab = store.getState().tabs.find(t => t.params.sessionId === sessionId)
-      if (activeTab) {
-        store.getState().updateTabLabel(activeTab.id, session.title)
-      }
+    const tabs = store.getState().tabs.filter(
+      tab =>
+        tab.type === 'chat'
+        && tab.params.sessionId === sessionId
+        && isGeneratedChatLabel(tab.label, sessionId),
+    )
+
+    for (const tab of tabs) {
+      store.getState().updateTabLabel(tab.id, CHAT_TAB_FALLBACK_LABEL)
+    }
+  }, [sessionId, store])
+
+  // Update tab label to session title when loaded.
+  useEffect(() => {
+    if (!session?.title) {
+      return
+    }
+
+    const tabs = store.getState().tabs.filter(
+      tab => tab.type === 'chat' && tab.params.sessionId === sessionId && tab.label !== session.title,
+    )
+
+    for (const tab of tabs) {
+      store.getState().updateTabLabel(tab.id, session.title)
     }
   }, [session?.title, sessionId, store])
 
@@ -147,19 +203,11 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   return (
     <>
       <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
-      <Suspense fallback={null}>
-        {/* {hasWorkspace && (
-          <div className="flex items-center gap-2 border-b border-border/50 px-4 py-1">
-            <GitBranchControl workspaceId={workspaceId} />
-          </div>
-        )} */}
-        <ChatView
-          key={sessionId}
-          sessionId={sessionId}
-          composerToolbar={composerToolbar}
-          sendOverridesRef={sendOverridesRef}
-        />
-      </Suspense>
+      <ChatRuntimeView
+        sessionId={sessionId}
+        sessionAgentProfileId={sessionAgentProfileId}
+        runtimeKind={session?.runtimeKind}
+      />
     </>
   )
 }
@@ -167,7 +215,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 export const chatTab = defineTab({
   type: 'chat' as const,
   icon: MessageCircleIcon,
-  label: (params: { sessionId: string }) => `Chat: ${params.sessionId.slice(0, 6)}`,
+  label: CHAT_TAB_FALLBACK_LABEL,
   component: ChatTabContent,
   serialize: params => params.sessionId,
   deserialize: path => path ? { sessionId: path } : null,

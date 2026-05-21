@@ -1,7 +1,3 @@
-// Input: generated API SDK, HTTP client from ~/lib/client.config, TanStack Query
-// Output: useWorkspaces, useAddWorkspace, useDeleteWorkspace hooks
-// Position: Data-fetching hooks for workspace feature
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 

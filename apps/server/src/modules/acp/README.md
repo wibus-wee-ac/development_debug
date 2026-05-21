@@ -1,9 +1,3 @@
-<!--
-Output: ACP module inventory.
-Input: AcpModule, controller, service, store, registry, installer.
-Position: apps/server/src/modules/acp
--->
-
 # ACP Module
 
 HTTP-first ACP management capability for registry browsing, installation lifecycle resources, installed-agent inventory, and audit queries.

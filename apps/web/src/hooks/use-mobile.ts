@@ -1,7 +1,3 @@
-// Input: window.matchMedia('(max-width: 767px)')
-// Output: boolean mobile breakpoint state for renderer components
-// Position: Shared renderer hook used by app-shell responsive UI primitives
-
 import { useEffect, useState } from 'react'
 
 const MOBILE_MEDIA_QUERY = '(max-width: 767px)'

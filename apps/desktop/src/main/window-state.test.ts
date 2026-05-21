@@ -1,7 +1,3 @@
-// Input: vitest helpers and desktop window state bounds utilities
-// Output: coverage for restored window bounds across display changes
-// Position: apps/desktop/src/main/window-state.test.ts
-
 import { describe, expect, it } from 'vitest'
 
 import { resolveVisibleWindowBounds } from './window-state'

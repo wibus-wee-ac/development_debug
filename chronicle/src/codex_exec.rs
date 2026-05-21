@@ -1,8 +1,4 @@
 //! Child process execution boundary for future LLM-backed summaries.
-//!
-//! Input: executable, arguments, stdin prompt, and timeout.
-//! Output: captured stdout or a process error.
-//! Position: isolates external model runners from Chronicle core logic.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -53,12 +49,14 @@ pub fn run_child_process(request: ChildProcessRequest) -> ChronicleResult<ChildP
     let killer = thread::spawn(move || {
         thread::sleep(timeout);
         // Best-effort kill after timeout
-        unsafe { libc::kill(child_id as i32, libc::SIGKILL); }
+        unsafe {
+            libc::kill(child_id as i32, libc::SIGKILL);
+        }
     });
 
-    let output = child.wait_with_output().map_err(|e| {
-        ChronicleError::Process(format!("failed to wait for child: {e}"))
-    })?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| ChronicleError::Process(format!("failed to wait for child: {e}")))?;
 
     // If the killer thread hasn't fired yet, it will exit harmlessly
     // when its sleep completes (kill on a dead PID is a no-op).

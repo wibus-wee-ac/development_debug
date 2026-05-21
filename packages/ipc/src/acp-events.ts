@@ -1,7 +1,3 @@
-// Input: none (pure type definitions)
-// Output: Shared ACP devtool event types consumed by main-process store, renderer, and preload
-// Position: Cross-process observability primitives for ACP runtime monitoring in @cradle/ipc
-
 export type AcpDevtoolEventKind = 'spawn' | 'output' | 'exit'
 export type AcpDevtoolEventStream = 'stdout' | 'stderr' | 'lifecycle'
 

@@ -1,7 +1,3 @@
-// Input: Vitest helpers and the session activity Zustand store
-// Output: Regression tests for unread ownership and visible-session reconciliation
-// Position: Renderer store unit test for session activity semantics
-
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useSessionActivityStore } from './session-activity'
