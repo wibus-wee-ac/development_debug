@@ -5,11 +5,11 @@ description: WebPluginContext contracts for panels, commands, local storage, and
 
 Web plugin API 让 plugin 在 Cradle renderer 中注册 panel 和 command。它适合用户可见的 UI surface，不适合直接写 core database。
 
-## Owner
+## 谁负责
 
 `packages/plugin-sdk/src/web.ts` owns public types. Web plugin package owns its panels, commands, storage keys, display text, and compatibility. Cradle web host owns where registered surfaces appear.
 
-## Context
+## 上下文对象
 
 `WebPluginContext` exposes:
 
@@ -45,7 +45,7 @@ interface CommandRegistration {
 }
 ```
 
-## Namespace
+## 放在哪里
 
 Use plugin-owned IDs:
 
@@ -55,7 +55,7 @@ Use plugin-owned IDs:
 
 不要把 web plugin storage 当作 Cradle preference store。需要修改 Cradle core state 时，调用对应 owner API。
 
-## Lifecycle
+## 怎么运行
 
 1. Host loads web entry.
 2. Plugin `activate(ctx)` registers panels and commands.
@@ -63,7 +63,7 @@ Use plugin-owned IDs:
 4. Plugin renders UI and calls allowed server/plugin routes.
 5. Plugin optionally implements `deactivate()`.
 
-## Validation
+## 怎么验证
 
 对 web plugin，至少验证：
 
@@ -74,6 +74,6 @@ Use plugin-owned IDs:
 
 `plugins/system-info/src/web.tsx` 是当前可验证示例。
 
-## Limits
+## 边界
 
 Web plugin code runs in renderer context. It should not assume direct access to Electron main APIs unless desktop plugin or host API explicitly exposes a bridge。

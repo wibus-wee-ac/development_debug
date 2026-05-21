@@ -1,13 +1,13 @@
 ---
 title: Git workspace
-description: Inspect workspace Git branch status, fetch results, and commit graph.
+description: Check workspace branch status, fetch results, and commit history.
 ---
 
 Git panel 帮助你在 Cradle 中查看当前 workspace 的源码状态。它适合确认分支、ahead/behind、fetch 状态和提交历史。
 
-## Overview
+## 先认识这个功能
 
-当前可确认的 Git 能力包括 branch status、branch picker、fetch all prune、virtualized commit graph 和非 Git 仓库错误状态。不要把未验证的 commit、push、pull 或 stash 操作当成已支持功能。
+Git panel 主要用来查看当前 workspace 的 Git 状态：分支、ahead/behind、fetch 结果、提交图，以及非 Git 目录的提示。如果界面里没有 commit、push、pull 或 stash 入口，就继续在你熟悉的 Git 工具里完成这些操作。
 
 ## 查看状态
 
@@ -23,12 +23,12 @@ Git panel 帮助你在 Cradle 中查看当前 workspace 的源码状态。它适
 
 如果 workspace 不是 Git 仓库，Git panel 会显示错误或空状态。你仍然可以使用 Chat 和文件能力，但 Git 相关视图不会提供分支信息。
 
-## Troubleshooting
+## 遇到问题时
 
 - 分支列表不更新：先使用 fetch，再检查网络和远端权限。
 - commit graph 为空：确认目录包含 Git 历史。
 - 权限错误：在终端中验证当前用户是否能读取 `.git` 目录。
 
-## Next steps
+## 继续阅读
 
 阅读 [Workspace Git troubleshooting](../troubleshooting/workspace-git.mdx)，或查看 [Issue agents](../kanban/issue-agents.mdx)。

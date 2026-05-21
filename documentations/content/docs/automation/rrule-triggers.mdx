@@ -5,7 +5,7 @@ description: Use RRULE to describe repeated automation trigger schedules.
 
 RRULE trigger 用于描述重复执行的 automation。它适合定期检查、报告、同步或维护类任务。
 
-## Overview
+## 先认识这个功能
 
 Automation scheduler 会根据定义的 trigger 选择执行时机。RRULE 本身只是计划表达式，不保证任务一定成功执行。
 
@@ -22,10 +22,10 @@ Automation scheduler 会根据定义的 trigger 选择执行时机。RRULE 本�
 FREQ=DAILY;INTERVAL=1
 ```
 
-## Limits
+## 使用前先知道
 
-时区、错过触发后的补偿策略、并发 run 行为和重试策略应以当前 scheduler 实现为准。本文不扩展为稳定协议。
+时区、错过触发后的补偿策略、并发 run 行为和重试策略会跟随 scheduler 的实际能力。使用前先在 Automation run history 里确认它是否按你的预期触发。
 
-## Next steps
+## 继续阅读
 
 阅读 [Automation overview](./overview.mdx) 和 [Runs and artifacts](./runs-and-artifacts.mdx)。

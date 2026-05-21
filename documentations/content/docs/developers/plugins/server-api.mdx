@@ -5,11 +5,11 @@ description: Server plugin context, scoped routes, MCP, skills, hooks, events, a
 
 Server plugin API 允许 plugin 添加 server-side behavior，但不接管 Cradle core modules。Plugin 会收到 scoped context，并通过 host APIs 注册 capabilities。
 
-## Owner
+## 谁负责
 
 `packages/plugin-sdk/src/server.ts` owns public context types. `apps/server/src/plugins/context.ts` and sibling host modules own runtime behavior.
 
-## Namespace
+## 放在哪里
 
 - Plugin route scope：`/api/plugins/{routeSegment}`
 - MCP tools：plugin-owned tool names。
@@ -19,7 +19,7 @@ Server plugin API 允许 plugin 添加 server-side behavior，但不接管 Cradl
 
 Plugin routes should not mirror core routes such as `/sessions` or `/issues`. If a plugin needs core state, it should call the core owner API.
 
-## Lifecycle
+## 怎么运行
 
 1. Host creates `ServerPluginContext`.
 2. Plugin registers routes and capabilities.
@@ -28,7 +28,7 @@ Plugin routes should not mirror core routes such as `/sessions` or `/issues`. If
 5. Host records capability metadata.
 6. Host deactivates capabilities on plugin unload.
 
-## Minimal shape
+## 最小写法
 
 ```ts
 import type { ServerPlugin } from '@cradle/plugin-sdk'
@@ -40,7 +40,7 @@ export const plugin: ServerPlugin = {
 }
 ```
 
-## Validation
+## 怎么验证
 
 Plugin authors should test both context registration and hosted route behavior:
 
@@ -51,6 +51,6 @@ pnpm test -- plugins
 
 If the plugin package has local tests, run those as well.
 
-## Limits
+## 边界
 
 Server plugin API is not a database migration API. Plugin-owned storage must remain plugin-owned, and core writes must go through core owner routes or services.

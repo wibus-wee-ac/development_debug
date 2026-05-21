@@ -5,11 +5,11 @@ description: Troubleshoot Zhi Slack Bridge Socket Mode, tokens, scopes, channel 
 
 Slack bridge 是独立 app。排障时不要从 Cradle Web Settings 查找 Slack 页面，而是检查 bridge server、Slack app 和 MCP client 配置。
 
-## Overview
+## 先认识这个功能
 
 Bridge 连接 Slack app、MCP server 和 agent runtime。常见问题来自 token、scope、Socket Mode、slash command、channel bind 或 pending call 没有回复。
 
-## Quick checks
+## 先做这些检查
 
 - Socket Mode 是否开启。
 - App token 和 bot token 是否正确。
@@ -18,7 +18,7 @@ Bridge 连接 Slack app、MCP server 和 agent runtime。常见问题来自 toke
 - Channel 是否已 bind。
 - MCP client 是否连接 bridge server。
 
-## Common causes
+## 常见原因
 
 | Message or symptom | Likely cause | Recovery |
 | --- | --- | --- |
@@ -32,7 +32,7 @@ Bridge 连接 Slack app、MCP server 和 agent runtime。常见问题来自 toke
 | Reply ignored | 缺少 `message.channels` / `message.groups`，或回复不是 thread reply | 添加 event subscription，并确保在 thread 内回复。 |
 | Agent cannot call `zhi` | MCP config 未加载或 `ZHI_SOCKET_PATH` 不一致 | 检查 MCP client `command`、`args`、`env.ZHI_SOCKET_PATH` 和 bridge log。 |
 
-## Verify commands
+## 用命令确认
 
 ```text
 /zhi bind
@@ -48,10 +48,10 @@ Bridge runtime logs should show:
 [main] Socket: /tmp/zhi-bridge.sock
 ```
 
-## Limits
+## 使用前先知道
 
 Pending calls 默认不超时，除非你在 bridge 中配置或实现 timeout policy。
 
-## Next steps
+## 继续阅读
 
 阅读 [Slack bridge](../integrations/slack-bridge.mdx) 和 [Approvals](../chat/approvals.mdx)。

@@ -7,13 +7,13 @@ Cradle plugin 是 owner-scoped extension。Plugin 可以注册 server routes、M
 
 <PluginLayerMap />
 
-## Owner
+## 谁负责
 
 Plugin package owner 拥有 manifest metadata、capabilities、permissions、upgrade compatibility 和 plugin-local data。Cradle plugin host 拥有 discovery、validation、descriptor、route segment、layer state 和 capability registry。
 
 Plugin 不拥有 Cradle core tables。需要写 core state 时，必须调用 core owner 的 API。
 
-## Namespace
+## 放在哪里
 
 Manifest fields live under package metadata:
 
@@ -36,7 +36,7 @@ Host-derived namespace:
 - Capability identity：owner-prefixed capability IDs
 - Discovery env：`CRADLE_PLUGINS_DIR`, `CRADLE_EXTERNAL_PLUGINS_DIRS`
 
-## Package shape
+## Package 结构
 
 <Files>
   <Folder name="my-cradle-plugin" defaultOpen>
@@ -50,7 +50,7 @@ Host-derived namespace:
 
 `package.json` declares what the host can discover. Each layer file owns only the behavior for that runtime layer.
 
-## Lifecycle
+## 怎么运行
 
 <Steps>
   <Step>
@@ -73,7 +73,7 @@ Host-derived namespace:
   </Step>
 </Steps>
 
-## Layer comparison
+## 分层对比
 
 <Tabs items={["Server", "Web", "Desktop"]}>
   <Tab>
@@ -87,7 +87,7 @@ Host-derived namespace:
   </Tab>
 </Tabs>
 
-## Manifest reference
+## Manifest 字段
 
 <TypeTable
   type={{
@@ -116,7 +116,7 @@ Host-derived namespace:
   }}
 />
 
-## Capability contract
+## Capability 契约
 
 Plugin capabilities should state:
 
@@ -127,7 +127,7 @@ Plugin capabilities should state:
 - cleanup behavior。
 - failure behavior and observability path。
 
-## Validation
+## 怎么验证
 
 ```bash
 cd packages/plugin-sdk
@@ -143,6 +143,6 @@ pnpm test
 
 Use actual plugin package scripts when they differ.
 
-## Limits
+## 边界
 
 Current evidence does not prove persistent plugin storage semantics end to end. Docs should describe `storage` as host-provided storage capability and avoid promising durability until implementation and tests confirm it.

@@ -5,7 +5,7 @@ description: Delegate issues to provider-backed agents and track issue-scoped se
 
 Issue agents 把明确的 Issue 交给 agent 执行。Cradle 会创建 issue-scoped session，并把任务上下文传给 Chat runtime。
 
-## Overview
+## 先认识这个功能
 
 当前应把 Issue delegation 视为 provider-backed agent 能力。不是所有 agent identity 都能被委派；不支持时应选择其他 agent。
 
@@ -21,12 +21,12 @@ Issue agents 把明确的 Issue 交给 agent 执行。Cradle 会创建 issue-sco
 
 Issue detail 可显示 linked chat、activity、rerun、stop 和追加 prompt 等入口。具体可用动作取决于当前 session 状态。
 
-## Troubleshooting
+## 遇到问题时
 
 - Agent 不支持：换用 provider-backed agent。
 - Session 没有产出：检查 provider、model 和 approval。
 - 需要更多上下文：在 Issue 描述中补充文件路径或验收条件，再追加 prompt。
 
-## Next steps
+## 继续阅读
 
 阅读 [Chat overview](../chat/overview.mdx) 和 [Runtime kinds](../agents/runtime-kinds.mdx)。

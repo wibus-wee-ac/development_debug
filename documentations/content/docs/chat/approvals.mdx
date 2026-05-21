@@ -5,7 +5,7 @@ description: Control sensitive agent tool calls with Allow, Always Allow, or Den
 
 审批用于把敏感或有副作用的 agent/tool 操作交给用户确认。它通常出现在 Chat composer 上方。
 
-## Overview
+## 先认识这个功能
 
 当 runtime 请求需要批准的工具调用时，Chat 会显示 approval card。你可以允许本次操作、拒绝操作，或选择更持久的允许方式。
 
@@ -24,15 +24,15 @@ description: Control sensitive agent tool calls with Allow, Always Allow, or Den
 - 命令会删除数据、重建环境或影响 Git 历史。
 - 请求来自你不信任的 plugin 或 runtime。
 
-## Limits
+## 使用前先知道
 
 `Always Allow` 的持久化范围需要以当前 approval service 为准。不要假设它一定是全局永久规则，也不要把它当成组织级策略系统。
 
-## Troubleshooting
+## 遇到问题时
 
 - 看不到 approval card：确认当前 run 是否真的在等待审批。
 - 批准后仍不继续：检查 runtime 是否已取消、provider 是否断开、或工具调用是否返回错误。
 
-## Next steps
+## 继续阅读
 
 阅读 [Chat overview](./overview.mdx) 和 [Devtools](../operations/devtools.mdx)。

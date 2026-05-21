@@ -5,11 +5,11 @@ description: Troubleshoot Chronicle capture, resources, timeline, memory search,
 
 Chronicle 故障通常来自本地权限、资源、model 或 pipeline 状态。先检查 Settings 中的 Chronicle status。
 
-## Overview
+## 先认识这个功能
 
 Chronicle 是本地 capture 和 memory pipeline。它可能受系统权限、resource 安装、OCR、privacy filtering、dedup 和 summarization model 影响。
 
-## Quick checks
+## 先做这些检查
 
 - Capture 是否开启。
 - 系统权限是否允许 capture。
@@ -18,7 +18,7 @@ Chronicle 是本地 capture 和 memory pipeline。它可能受系统权限、res
 - Timeline 是否更新。
 - Memory search 是否返回结果。
 
-## Status table
+## 状态怎么看
 
 优先读取 Settings 中的 Chronicle status，或直接检查 `GET /chronicle/status`。这个 response 暴露 `available`、`running`、`pid`、`lastCaptureAt`、`lastSummaryAt`、`lastErrorAt`、`lastError`、`lastExitCode`、`lastExitAt`、`totalSnapshots`、`totalSummaries`、`totalMessages`、`lastMessageAt` 和 `configuredModel`。
 
@@ -41,14 +41,14 @@ Chronicle 是本地 capture 和 memory pipeline。它可能受系统权限、res
 | `cradle chronicle capture error: ...` | daemon capture loop 抛出错误 | daemon stderr、Screen Recording permission、display/provider config | 按错误后缀修复 permission、display 或 storage |
 | `cradle chronicle summary error: ...` | daemon capture 成功，但 summary 写入或 remote summary 失败 | `configuredModel`、provider profile、server `/chronicle/summarize` response | 修复 model/API key；必要时查看 local memory artifact |
 
-## Timeline and memory checks
+## 检查 Timeline 和 memory
 
 如果 `totalSnapshots>0` 但 timeline 为空，检查 `lastCaptureAt` 和 `/chronicle/timeline`；这通常是 ingest 或 UI 查询问题。如果 `totalSnapshots>0` 且 `totalSummaries=0`，先按 summary rows 排查 provider/profile，而不是重新安装 capture resource。
 
-## Limits
+## 使用前先知道
 
 macOS Screen Recording permission、daemon lifecycle 和 resource installation 的细节需要按当前平台验证。
 
-## Next steps
+## 继续阅读
 
 阅读 [Chronicle setup](../chronicle/setup.mdx) 和 [Observability](../operations/observability.mdx)。

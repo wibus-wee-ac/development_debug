@@ -5,11 +5,11 @@ description: Boundaries for Electron desktop, local server, filesystem, browser 
 
 Desktop integration 是 local trust boundary。它连接 Electron、local server、workspace filesystem、browser tab automation 和 user approvals，应与 remote API authentication 分开处理。
 
-## Owner
+## 谁负责
 
 Desktop app owns local OS integration, Electron lifecycle, trusted local channel and user-mediated access to local resources. Server modules own HTTP semantics. Plugins own plugin-local capabilities, but desktop host owns when those capabilities can touch browser tabs or local resources.
 
-## Namespace
+## 放在哪里
 
 - Workspace files：`/workspaces/:id/files`
 - Filesystem browse：`/filesystem/browse`
@@ -18,7 +18,7 @@ Desktop app owns local OS integration, Electron lifecycle, trusted local channel
 - Browser Use desktop layer：`plugins/browser-use/src/desktop.ts`
 - Approval routes：`/approvals`, `/approvals/stream`, `/approvals/:approvalId/respond`
 
-## Lifecycle
+## 怎么运行
 
 1. Desktop starts or connects to local server.
 2. User selects workspace or local resource.
@@ -27,7 +27,7 @@ Desktop app owns local OS integration, Electron lifecycle, trusted local channel
 5. Plugin or runtime executes local action.
 6. Result is recorded through module state, observability or plugin response.
 
-## Security contract
+## 安全契约
 
 Desktop-facing docs should name:
 
@@ -38,7 +38,7 @@ Desktop-facing docs should name:
 - approval requirement。
 - user-visible failure and cancellation state。
 
-## Validation
+## 怎么验证
 
 Use module tests for server-visible contracts:
 
@@ -56,6 +56,6 @@ cd plugins/browser-use
 pnpm test
 ```
 
-## Limits
+## 边界
 
 This page does not define remote API auth. It also does not promise full web/desktop plugin loader behavior beyond SDK and server evidence. Verify app-side loader code before documenting detailed desktop plugin lifecycle guarantees.

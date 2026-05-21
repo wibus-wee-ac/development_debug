@@ -5,11 +5,11 @@ description: Inspect the bundled System Info plugin route, panel, command, data 
 
 System Info 是一个 first-party plugin 示例。它展示 server route、web panel 和 web command 如何一起工作，也给管理员一个轻量的本机状态检查面板。
 
-## Overview
+## 先认识这个功能
 
 System Info plugin 读取 Node.js 进程可见的主机信息，并通过 Cradle plugin host 暴露到 UI。它不写 Cradle core state，也不拥有 provider、session、workspace 或 issue 数据。
 
-## Registered surfaces
+## 可见入口
 
 | Surface | Identifier | Behavior |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ System Info plugin 读取 Node.js 进程可见的主机信息，并通过 Cradle
 | Web panel | `system-info-panel` | 在 sidebar location 注册面板，显示系统信息并支持 refresh。 |
 | Web command | `system-info.show` | 拉取系统信息，写入 plugin logger，并记录 `lastCheck` 到 plugin web storage。 |
 
-## Data exposed
+## 会显示哪些数据
 
 返回内容来自 Node.js `os` APIs 和当前进程：
 
@@ -40,7 +40,7 @@ System Info plugin 读取 Node.js 进程可见的主机信息，并通过 Cradle
 
 这些字段可能包含本机名称、home directory 和进程标识。把截图或 export 发给别人前，应确认没有敏感路径。
 
-## Verify
+## 确认是否可用
 
 1. 启动 Cradle desktop 或 server plugin host。
 2. 打开 Devtools。
@@ -50,7 +50,7 @@ System Info plugin 读取 Node.js 进程可见的主机信息，并通过 Cradle
 6. 点击 refresh。
 7. 如果需要直接验证 route，访问 `GET /api/plugins/system-info/info`。
 
-## Failure modes
+## 常见失败
 
 | Symptom | Likely cause | Recovery |
 | --- | --- | --- |
@@ -59,10 +59,10 @@ System Info plugin 读取 Node.js 进程可见的主机信息，并通过 Cradle
 | Command has no visible UI | `system-info.show` 只记录 logger 和 storage | 打开 plugin panel 或查看 plugin logs。 |
 | Missing memory or CPU fields | Runtime `os` API 返回异常 | 记录 platform、Node.js version 和 plugin layer 状态。 |
 
-## Limits
+## 使用前先知道
 
 System Info 是诊断和 SDK 示例，不是完整监控系统。它不采集历史时间序列，不生成 observability incidents，也不替代 Devtools 的 Server Health。
 
-## Next steps
+## 继续阅读
 
 阅读 [Plugins](./plugins.mdx)、[Devtools](../operations/devtools.mdx) 和 [System Info developer contract](../developers/plugins/system-info.mdx)。

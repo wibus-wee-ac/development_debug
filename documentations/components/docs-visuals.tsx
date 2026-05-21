@@ -717,7 +717,7 @@ export function OwnerContractMatrix() {
     ['生命周期', 'registration、activation、execution、cleanup 和 upgrade 如何发生。'],
     ['接口', 'HTTP routes、CLI commands、plugin APIs、events 和 environment variables。'],
     ['验证', '哪些 tests、type checks、builds 和 smoke checks 能证明行为。'],
-    ['边界', '这个能力不拥有什么，也暂时不承诺什么。'],
+    ['边界', '这个能力负责什么、连接什么，以及哪些事情应该交给相邻 owner。'],
   ] satisfies Array<[string, string]>;
 
   return (

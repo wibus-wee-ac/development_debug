@@ -1,17 +1,17 @@
 ---
 title: Desktop app
-description: Understand how Cradle desktop starts the local server, window, plugins, and update state.
+description: Open Cradle through the desktop app and use its local server, window, plugins, and update state.
 ---
 
 Cradle desktop 是本地工作流的推荐入口。它管理 Electron 窗口、本地 server 子进程、desktop plugins、native IPC 和更新状态。
 
-## Overview
+## 先认识这个功能
 
 桌面端启动后会尝试获得单实例锁，启动本地 server，加载 desktop plugin runtime，并创建主窗口。Web UI 在窗口中运行，依赖桌面层提供的本地能力。
 
 ## 打开应用
 
-使用已安装的桌面 app 启动 Cradle。开发环境的启动命令取决于当前仓库脚本；本文不假设发布安装器或 update feed 的具体配置。
+使用已安装的桌面 app 启动 Cradle。如果你在开发环境里运行，使用仓库里对应的开发脚本；普通使用者只需要从桌面应用入口打开。
 
 启动完成后，你应该看到 Home tab。若窗口恢复到上次状态，继续从 sidebar 进入 workspace 或 New Chat。
 
@@ -28,14 +28,14 @@ Cradle desktop 是本地工作流的推荐入口。它管理 Electron 窗口、�
 
 ## 更新与退出
 
-桌面端会广播 update status，并在退出前停止 plugin 和 server。文档不承诺具体安装器、发布渠道或自动更新策略，因为这些需要按 release 配置验证。
+桌面端会显示 update status，并在退出前停止 plugin 和 server。不同构建渠道的安装和更新方式可能不同；使用时以当前应用里的 Desktop 区域为准。
 
-## Troubleshooting
+## 遇到问题时
 
 - 如果 Web UI 打不开，先检查本地 server 是否启动，见 [Desktop server](../operations/desktop-server.mdx)。
 - 如果插件行为异常，打开 [Devtools](../operations/devtools.mdx) 查看插件层注册状态。
 - 如果更新状态异常，先在 Settings 的 Desktop 区域查看当前状态。
 
-## Next steps
+## 继续阅读
 
 创建 [第一个工作区](./first-workspace.mdx)，或直接查看 [Workspace overview](../workspace/overview.mdx)。

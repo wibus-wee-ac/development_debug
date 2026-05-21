@@ -5,11 +5,11 @@ description: Developer contract for the Browser Use plugin, MCP tools, desktop s
 
 Browser Use 是 first-party plugin。它把 Cradle desktop 的 in-app browser 暴露给 agent runtime，核心 contract 是 MCP tools 加 desktop socket，而不是任意外部浏览器控制。
 
-## Owner
+## 谁负责
 
 `plugins/browser-use` owns the plugin package, MCP server, protocol, desktop socket server, browser command mapping, and `SKILL.md` trigger description. Cradle desktop host owns webview creation and Electron lifecycle.
 
-## Namespace
+## 放在哪里
 
 | Surface | Namespace |
 | --- | --- |
@@ -38,7 +38,7 @@ Browser Use 是 first-party plugin。它把 Cradle desktop 的 in-app browser �
 | `browser_wait_for_selector` | `wait_for_selector` | Default wait is `5000` ms. |
 | `browser_keyboard` | `keyboard` | Supports key and modifier array. |
 
-## Desktop lifecycle
+## Desktop 侧流程
 
 1. Desktop plugin activates.
 2. Plugin creates `browser-backend.sock`.
@@ -48,7 +48,7 @@ Browser Use 是 first-party plugin。它把 Cradle desktop 的 in-app browser �
 6. Desktop layer maps commands to CDP or webview operations.
 7. Deactivation detaches debuggers, clears registry, closes socket, and removes stale socket file.
 
-## Protocol
+## 协议
 
 The protocol uses a 4-byte little-endian length prefix followed by UTF-8 JSON. Responses use:
 
@@ -60,7 +60,7 @@ type BrowserResponse<T> =
 
 Each MCP command has a 30 second timeout in the MCP client.
 
-## Validation
+## 怎么验证
 
 Run plugin tests:
 
@@ -78,7 +78,7 @@ Manual validation:
 5. Run `browser_tabs_list`.
 6. Run `browser_dom_snapshot` on a visible page.
 
-## Limits
+## 边界
 
 - Controls Cradle in-app browser only.
 - Requires Cradle desktop and available webview.
@@ -86,6 +86,6 @@ Manual validation:
 - No dedicated cookie/storage manipulation tool.
 - Treat `browser_eval` as privileged behavior.
 
-## Related pages
+## 继续阅读
 
 Read [Desktop plugin API](./desktop-api.mdx), [Web plugin API](./web-api.mdx), and [Browser use](../../agents/browser-use.mdx).

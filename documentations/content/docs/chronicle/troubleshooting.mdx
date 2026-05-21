@@ -5,11 +5,11 @@ description: Troubleshoot Chronicle capture, resources, daemon, timeline, and me
 
 当 Chronicle 没有产生 timeline 或 memory 时，先检查本地权限和资源状态，再检查 pipeline 输出。
 
-## Overview
+## 先认识这个功能
 
 Chronicle 故障通常来自 capture 未启用、系统权限不足、resource 缺失、model 不可用或 daemon 未运行。
 
-## Quick checks
+## 先做这些检查
 
 - Settings 中 capture 是否开启。
 - Status 是否显示运行中。
@@ -17,7 +17,7 @@ Chronicle 故障通常来自 capture 未启用、系统权限不足、resource �
 - Timeline 是否有新 frame。
 - Memory search 是否能返回近期结果。
 
-## Common causes
+## 常见原因
 
 | Symptom | Likely cause | Recovery |
 | --- | --- | --- |
@@ -26,10 +26,10 @@ Chronicle 故障通常来自 capture 未启用、系统权限不足、resource �
 | Empty search | No indexed memory | 等待 pipeline 或缩小搜索词 |
 | High resource use | Capture or OCR workload | 调整 capture 设置 |
 
-## Escalate
+## 需要进一步排查时
 
 如果 status、resources 和 timeline 都异常，收集 Chronicle status、server logs 和 Devtools observability export。
 
-## Next steps
+## 继续阅读
 
 阅读 [Devtools export](../troubleshooting/devtools-export.mdx) 和 [Observability](../operations/observability.mdx)。

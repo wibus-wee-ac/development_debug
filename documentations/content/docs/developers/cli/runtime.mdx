@@ -5,11 +5,11 @@ description: Cradle CLI runtime contracts for Commander, HTTP projection, output
 
 CLI runtime 把 generated command declaration 变成实际 HTTP request。它的职责是解析输入、选择 server、投影 path/query/body、处理 response 和输出格式。
 
-## Owner
+## 谁负责
 
 `packages/cli/src/runtime/**` 拥有 CLI execution semantics。Generated command modules 只声明 operation binding，不应复制 runtime 行为。
 
-## Namespace
+## 放在哪里
 
 - Runtime root：`packages/cli/src/runtime/**`
 - Command root：`packages/cli/src/index.ts`
@@ -19,7 +19,7 @@ CLI runtime 把 generated command declaration 变成实际 HTTP request。它的
 
 `CRADLE_CHAT_SESSION_ID` 只用于把 command 与当前 chat session/provenance 关联，不是 auth boundary。
 
-## Lifecycle
+## 怎么运行
 
 1. Commander 解析 command tree。
 2. Runtime 合并 flags、env 和 generated operation metadata。
@@ -29,7 +29,7 @@ CLI runtime 把 generated command declaration 变成实际 HTTP request。它的
 6. Response formatter 根据 `--format` 或 `--json` 输出。
 7. Errors 转成 diagnostics 和 exit code。
 
-## Scripting contract
+## 脚本使用
 
 脚本应优先使用 explicit server 和 machine-readable output：
 
@@ -40,7 +40,7 @@ cradle --server http://localhost:3001 observability events --format ndjson
 
 不要解析 pretty output。Pretty output 是 human-facing surface，不是稳定 data exchange format。
 
-## Validation
+## 怎么验证
 
 ```bash
 cd packages/cli
@@ -50,6 +50,6 @@ pnpm typecheck
 
 Runtime tests 应覆盖 flag parsing、output formatting、strict unknown flags、HTTP error propagation 和 env precedence。
 
-## Limits
+## 边界
 
 CLI runtime 不应执行 local filesystem side effects，除非具体 command owner 明确声明该 side effect。Server-side destructive operations 仍由 server route owner 管权限和 confirmation model。

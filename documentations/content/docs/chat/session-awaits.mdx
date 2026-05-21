@@ -3,9 +3,9 @@ title: Session awaits
 description: Let chat wait for external conditions such as GitHub CI or reviews.
 ---
 
-Session await 用于把 agent run 暂停在外部条件上。当前可确认的来源包括 GitHub CI 和 GitHub review 状态。
+Session await 用于把 agent run 暂停在外部条件上，例如等待 GitHub CI 或 GitHub review 状态变化。
 
-## Overview
+## 先认识这个功能
 
 当 session 正在等待外部条件时，Chat 会显示 await banner 或 await panel。用户可以查看等待来源、当前状态和摘要信息。
 
@@ -17,14 +17,14 @@ Session await 用于把 agent run 暂停在外部条件上。当前可确认的�
 
 ## 配置前提
 
-GitHub token、repo 权限和 private repo 支持需要按当前环境配置验证。本文不假设所有仓库和权限模型都已覆盖。
+GitHub token、repo 权限和 private repo 访问需要在当前环境里配置好。不同组织的权限模型不同，先从能被 Cradle 读取的仓库开始验证。
 
-## Troubleshooting
+## 遇到问题时
 
 - CI 状态不更新：检查 GitHub token 和 repo 权限。
 - Review 状态为空：确认目标 pull request 可访问。
 - Chat 没有恢复：查看 await panel 的当前状态，并检查 run 是否已取消。
 
-## Next steps
+## 继续阅读
 
 阅读 [Workspace Git](../workspace/git.mdx) 和 [Devtools export](../troubleshooting/devtools-export.mdx)。

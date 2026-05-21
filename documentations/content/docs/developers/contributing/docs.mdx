@@ -3,13 +3,13 @@ title: Docs contribution
 description: Fumadocs content structure, meta.json ordering, frontmatter, and documentation ownership rules.
 ---
 
-文档是契约的一部分。文档改动应说明 owner、namespace、lifecycle、interfaces、validation 和 limits，而不是只描述 UI label。
+文档是契约的一部分。文档改动应说明 owner、namespace、lifecycle、interfaces、validation 和 Boundaries，而不是只描述 UI label。
 
-## Owner
+## 谁负责
 
 `documentations/content/docs/**` owns published documentation content. Each product or developer page should still defer semantics to the feature owner. Docs should not invent behavior that the code or owner has not made stable.
 
-## Namespace
+## 放在哪里
 
 - Content root：`documentations/content/docs`
 - Developer docs：`documentations/content/docs/developers`
@@ -19,7 +19,7 @@ description: Fumadocs content structure, meta.json ordering, frontmatter, and do
 
 Use English slugs and English identifiers. Chinese prose is expected outside code blocks, commands, paths, identifiers and frontmatter keys.
 
-## Sidebar contract
+## Sidebar 结构
 
 Every multi-page folder should include `meta.json`:
 
@@ -36,7 +36,7 @@ Every multi-page folder should include `meta.json`:
 
 Keep `pages` complete and ordered. Missing entries can lead to unstable sidebar ordering.
 
-## Page contract
+## 页面结构
 
 Each page should start with direct context, then concise sections:
 
@@ -45,11 +45,11 @@ Each page should start with direct context, then concise sections:
 - `Lifecycle`
 - `Interfaces`
 - `Validation`
-- `Limits`
+- `Boundaries`
 
-Do not turn uncertain items into release claims. Mark them as limits or open questions.
+Do not turn uncertain items into release claims. Mark them as Boundaries or open questions.
 
-## Validation
+## 怎么验证
 
 ```bash
 cd documentations
@@ -66,6 +66,6 @@ pnpm dev
 
 Then inspect `/docs`, `/llms.txt`, `/llms-full.txt` and a representative `.md` route.
 
-## Limits
+## 边界
 
 Do not edit app/lib config from a content-only documentation task. If Fumadocs config or search language needs a change, handle it as a separate scoped implementation with owner approval.

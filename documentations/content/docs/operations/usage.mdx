@@ -5,7 +5,7 @@ description: View token totals, pricing estimates, and session token progress bo
 
 Usage 用于帮助你理解模型调用的大致消耗。它不是账单系统。
 
-## Overview
+## 先认识这个功能
 
 Cradle 可以展示 usage logs、token totals、pricing estimates 和 session token progress indicator。可见性取决于 provider 是否返回 usage metadata，以及 Cradle 是否知道对应 model 的价格信息。
 
@@ -19,16 +19,16 @@ Cradle 可以展示 usage logs、token totals、pricing estimates 和 session to
 - Estimated cost。
 - Session progress。
 
-## Limits
+## 使用前先知道
 
 - 未知 model 不应估算精确 cost。
 - Provider 未返回 usage metadata 时，统计可能为空或不完整。
 - Pricing estimate 不等于 invoice。
 
-## Troubleshooting
+## 遇到问题时
 
 如果 usage 为空，先确认 provider 是否返回 token usage，再确认 model 是否在 Cradle 的 pricing 数据中。
 
-## Next steps
+## 继续阅读
 
 阅读 [Models](../agents/models.mdx) 和 [Provider errors](../troubleshooting/provider-errors.mdx)。

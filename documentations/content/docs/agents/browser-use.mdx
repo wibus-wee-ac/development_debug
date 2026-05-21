@@ -5,13 +5,13 @@ description: Distinguish the Cradle browser panel from agent browser automation 
 
 Browser use 有两层：用户可见的 browser panel，以及 agent 通过 `plugins/browser-use` 调用的 MCP tools。两者都依赖 Cradle desktop 的 embedded browser，不是外部浏览器自动化。
 
-## Overview
+## 先认识这个功能
 
 Browser panel 是 Electron `<webview>` UI。用户可以打开网页、切换 tab、刷新、后退、前进，并让桌面端追踪 webview。
 
 Browser Use plugin 是 desktop plugin runtime 承载的自动化层。它通过 Unix socket 连接 desktop backend，再用 Chrome DevTools Protocol 对 Cradle in-app browser 执行真实输入事件。
 
-## Tool families
+## 可用工具
 
 当前 plugin 暴露这些 MCP tools：
 
@@ -24,7 +24,7 @@ Browser Use plugin 是 desktop plugin runtime 承载的自动化层。它通过 
 | Tabs | `browser_tabs_list`, `browser_tabs_new`, `browser_tabs_close` | 列出、新建和关闭 browser tabs。 |
 | Waiting | `browser_wait_for_selector` | 等待 selector 出现，默认 timeout 是 `5000` ms。 |
 
-## Typical workflow
+## 常见用法
 
 让 agent 操作页面时，推荐按这个顺序：
 
@@ -45,13 +45,13 @@ browser_click -> selector: "button[type=submit]"
 browser_wait_for_selector -> selector: ".dashboard"
 ```
 
-## Permissions and trust
+## 权限与信任
 
 Browser automation 可以读取网页内容、输入文本、点击元素、执行 JavaScript 和截图。启用 plugin 前确认来源可信，并避免让 agent 访问敏感站点，除非当前会话确实需要。
 
 Selectors 使用标准 CSS selector。点击和输入通过 CDP Input domain 发送真实事件，会触发页面 listener。
 
-## Runtime contract
+## 它如何运行
 
 Desktop plugin 会在 Electron `userDataPath` 下创建 `browser-backend.sock`，并把 socket path 通过 shared config 暴露给 server side MCP process。默认 socket path 按平台不同：
 
@@ -63,7 +63,7 @@ Desktop plugin 会在 Electron `userDataPath` 下创建 `browser-backend.sock`�
 
 可以用 `BROWSER_BACKEND_SOCKET` 覆盖 MCP server 使用的 socket path。
 
-## Verify registration
+## 确认已经连接
 
 1. 启动 Cradle desktop。
 2. 打开 browser panel。
@@ -72,7 +72,7 @@ Desktop plugin 会在 Electron `userDataPath` 下创建 `browser-backend.sock`�
 5. 确认 `browser-use` desktop layer 已激活。
 6. 在 agent runtime 中确认 MCP tool list 包含 `browser_navigate` 和 `browser_dom_snapshot`。
 
-## Failure modes
+## 常见失败
 
 | Symptom | Likely cause | Recovery |
 | --- | --- | --- |
@@ -82,7 +82,7 @@ Desktop plugin 会在 Electron `userDataPath` 下创建 `browser-backend.sock`�
 | `Command timed out after 30s` | 页面阻塞、selector 不出现或 socket 无响应 | 缩小 selector、增加 wait、刷新页面或重启 desktop。 |
 | Selector 操作无效 | CSS selector 不匹配或元素不可编辑 | 用 `browser_dom_snapshot` 或 `browser_get_text` 重新定位。 |
 
-## Limits
+## 使用前先知道
 
 - 只控制 Cradle in-app browser。
 - 需要 Cradle desktop app 运行。
@@ -90,6 +90,6 @@ Desktop plugin 会在 Electron `userDataPath` 下创建 `browser-backend.sock`�
 - Cookie 和 storage 没有专用 tool；如确需调试，只能通过 `browser_eval` 操作页面上下文。
 - Screenshots 当前是 PNG。
 
-## Next steps
+## 继续阅读
 
 阅读 [Browser panel](../integrations/browser-panel.mdx)、[Plugins](../integrations/plugins.mdx) 和 [Browser Use developer example](../developers/plugins/browser-use.mdx)。

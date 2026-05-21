@@ -13,7 +13,7 @@ OpenAPI 是 server route、interactive docs 和 generated CLI 的共同契约。
 
 CLI generator 只消费 OpenAPI，它不应该成为修正 route 语义的地方。
 
-## Namespace
+## 放在哪里
 
 - Docs UI：`/docs`
 - Canonical document：`/openapi.json`
@@ -123,6 +123,6 @@ CLI generator 只消费 OpenAPI，它不应该成为修正 route 语义的地方
   </Tab>
 </Tabs>
 
-## 边界限制
+## 边界
 
 有些 routes 是 HTTP-only，例如部分 provider lookup、Chronicle、PTY 或 WebSocket surface。不要因为 route 出现在 OpenAPI 中就承诺存在 CLI command。CLI 只以 `x-cradle-cli` metadata 为准。

@@ -5,18 +5,18 @@ description: Drizzle migration artifacts, journal integrity, baseline history, a
 
 Migration files 是兼容性 artifact，不是格式化输出。应把它们视为 local workspace 和 server state 的 durability contract。
 
-## Owner
+## 谁负责
 
 `packages/db` owns migration layout and schema export compatibility. Each domain owner owns the migration content for its tables.
 
-## Namespace
+## 放在哪里
 
 - SQL migrations：`packages/db/drizzle/*.sql`
 - Drizzle journal：`packages/db/drizzle/meta/_journal.json`
 - Snapshots：`packages/db/drizzle/meta/*.json`
 - Schema source：`packages/db/src/schema/**`
 
-## Lifecycle
+## 怎么运行
 
 1. Update Drizzle schema.
 2. Generate or author migration using the repository-approved command.
@@ -25,7 +25,7 @@ Migration files 是兼容性 artifact，不是格式化输出。应把它们视�
 5. Add or update migration tests.
 6. Run server database lifecycle tests.
 
-## Review contract
+## Review 要看什么
 
 Every migration review should ask:
 
@@ -35,7 +35,7 @@ Every migration review should ask:
 - Does it keep derived read models separate from canonical tables?
 - Does it update tests and docs for public behavior changes?
 
-## Validation
+## 怎么验证
 
 ```bash
 cd apps/server
@@ -49,6 +49,6 @@ cd packages/db
 pnpm test
 ```
 
-## Limits
+## 边界
 
 This page intentionally avoids naming a migration generation command because the confirmed package evidence did not expose one. Use the current repo owner-approved command, then update this page when it is stable.

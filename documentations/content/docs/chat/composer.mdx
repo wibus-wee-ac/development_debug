@@ -5,7 +5,7 @@ description: Use send, stop, file mentions, slash commands, and path drops in th
 
 Composer 是 Chat session 的输入区域。它负责发送消息、停止当前响应、提及文件、触发 slash commands，并显示 token usage。
 
-## Overview
+## 先认识这个功能
 
 Composer 的核心工作是把用户输入和 workspace context 组合成下一次 agent run。它不替代完整的 workspace 文件浏览；复杂上下文建议使用 file mentions 或 pack codebase。
 
@@ -18,20 +18,20 @@ Composer 的核心工作是把用户输入和 workspace context 组合成下一�
 
 运行中可以使用 stop/cancel 控制当前响应。
 
-## File mentions
+## 使用文件提及
 
 使用文件提及让 agent 读取具体文件。它适合精确上下文，例如一个组件、配置文件或错误日志。
 
-## Slash commands
+## 使用 slash commands
 
-Slash commands 来自 Chat UI 和 runtime capabilities。不同 runtime 的原生命令不同，文档不列固定全集。
+Slash commands 来自 Chat UI 和 runtime capabilities。不同 runtime 会带来不同命令；使用时以 Composer 当下显示或 runtime 返回的能力为准。
 
-## Limits
+## 使用前先知道
 
 - 文件路径必须位于 workspace 可访问范围内。
 - Token usage 是估算或 runtime 提供的可见信息，不等同于账单系统。
-- 附件能力以当前 UI 与 server 实现为准，未确认的上传行为不在本文承诺。
+- 如果当前 Composer 没有显示某种附件入口，就用文件提及、路径拖放或 pack codebase 来提供上下文。
 
-## Next steps
+## 继续阅读
 
 阅读 [Pack codebase](../workspace/pack-codebase.mdx) 和 [Provider errors](../troubleshooting/provider-errors.mdx)。

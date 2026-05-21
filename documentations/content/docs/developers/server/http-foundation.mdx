@@ -5,11 +5,11 @@ description: Request context, errors, validation, OpenAPI exposure, and HTTP fou
 
 HTTP foundation 是 server module 共享的边界。它负责请求身份、错误形状、验证行为、日志、CORS 和 API 文档暴露。业务 module 不应绕开这些基础层实现自己的并行协议。
 
-## Owner
+## 谁负责
 
 `apps/server/src/http/**` 拥有 HTTP cross-cutting behavior。module owner 负责业务错误语义，但最终 HTTP status、error envelope 和 validation response 由 HTTP foundation 统一映射。
 
-## Namespace
+## 放在哪里
 
 - OpenAPI UI：`/docs`
 - OpenAPI document：`/openapi.json`
@@ -18,7 +18,7 @@ HTTP foundation 是 server module 共享的边界。它负责请求身份、错�
 
 `x-cradle-chat-session-id` 用于把 runtime 请求和当前 chat session 关联。它不是通用 auth token，也不应被文档描述成跨服务身份凭证。
 
-## Lifecycle
+## 怎么运行
 
 1. 请求进入 server。
 2. foundation 分配或传播 request id。
@@ -28,7 +28,7 @@ HTTP foundation 是 server module 共享的边界。它负责请求身份、错�
 6. exception filter 把已知错误映射成结构化 response。
 7. request logger 记录请求结果。
 
-## Error contract
+## 错误契约
 
 文档页和 route examples 应保持同一原则：
 
@@ -37,9 +37,9 @@ HTTP foundation 是 server module 共享的边界。它负责请求身份、错�
 - unexpected error 不泄漏内部 stack。
 - request id 应可用于日志关联。
 
-具体字段名需要以 `apps/server/src/http/error-mapping.ts` 当前代码为准；本文档不预写未验证的字段表。
+具体字段名以 `apps/server/src/http/error-mapping.ts` 为准。新增字段前先更新代码、测试和 OpenAPI examples，再同步页面。
 
-## Validation
+## 怎么验证
 
 相关测试入口：
 
@@ -57,6 +57,6 @@ cd apps/server
 pnpm test
 ```
 
-## Limits
+## 边界
 
 HTTP foundation 不拥有业务权限模型、database ownership 或 CLI command naming。新增 route 时，应在 module 内定义 schema 和 `x-cradle-cli` metadata，再让 OpenAPI 和 CLI generator 消费这些 metadata。

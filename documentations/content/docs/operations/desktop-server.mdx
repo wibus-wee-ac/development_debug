@@ -5,11 +5,11 @@ description: Troubleshoot the local server subprocess, health state, and shutdow
 
 Desktop server 是桌面端启动的本地服务。Web workspace 的多数数据和运行时能力都依赖它。
 
-## Overview
+## 先认识这个功能
 
 桌面端启动时会启动 server 子进程，并在退出前停止 server。Server health 可通过 Devtools 或相关状态入口查看。
 
-## Quick checks
+## 先做这些检查
 
 - 桌面端是否仍在运行。
 - Web UI 是否能访问本地 API。
@@ -24,10 +24,10 @@ Desktop server 是桌面端启动的本地服务。Web workspace 的多数数据
 | Routes fail | Local API unavailable | 查看 Server Health |
 | Plugins unavailable | Desktop plugin runtime failed | 查看 Plugins panel |
 
-## Limits
+## 使用前先知道
 
-本文不指定 server 端口、日志路径或 release 安装位置，因为这些需要以当前构建配置为准。
+Server 端口、日志路径和安装位置会随构建渠道变化。排查时从 Devtools 和当前应用配置里读取，不要记死某个固定路径。
 
-## Next steps
+## 继续阅读
 
 阅读 [Desktop server troubleshooting](../troubleshooting/desktop-server.mdx) 和 [Devtools](./devtools.mdx)。

@@ -30,7 +30,7 @@ Lifecycle：
 3. Tool call targets active or requested browser tab.
 4. Screenshot, DOM snapshot and input actions return tool results.
 
-Limits：
+Boundaries：
 
 - It controls Cradle in-app browser surfaces, not arbitrary external browser automation unless a future owner explicitly extends that contract.
 - CDP or browser socket details should be treated as plugin implementation details unless exposed through documented tools.
@@ -52,12 +52,12 @@ Lifecycle：
 3. User opens panel or command from Cradle UI.
 4. Web layer reads the plugin route and renders system data.
 
-Limits：
+Boundaries：
 
 - This is a compact example of server plus web registration.
 - Treat its local type shape as illustrative unless it is aligned with current `WebPluginContext` exports.
 
-## Validation
+## 怎么验证
 
 ```bash
 cd plugins/browser-use
@@ -66,6 +66,6 @@ pnpm test
 
 For `system-info`, use the package scripts present in `plugins/system-info/package.json`.
 
-## Next steps
+## 继续阅读
 
 从 [Plugin SDK](./sdk-overview.mdx) 理解 manifest 和 ownership，再进入 [Server plugin API](./server-api.mdx)、[Web plugin API](./web-api.mdx) 和 [Desktop plugin API](./desktop-api.mdx)。

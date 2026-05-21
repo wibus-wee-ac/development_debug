@@ -5,11 +5,11 @@ description: Troubleshoot the local server, blank Web UI, route failures, and pl
 
 Desktop server 故障会影响大部分产品能力。先判断是整个 server 不可用，还是某个模块单独失败。
 
-## Overview
+## 先认识这个功能
 
 桌面端负责启动本地 server 子进程，并在退出时停止它。Web workspace、providers、Git、Chronicle 和 automation 都通过 server routes 工作。
 
-## Quick checks
+## 先做这些检查
 
 1. 重启 desktop app。
 2. 打开 Devtools。
@@ -17,7 +17,7 @@ Desktop server 故障会影响大部分产品能力。先判断是整个 server 
 4. 查看 Observability 是否有 incident。
 5. 查看 Plugins 面板是否显示 desktop layer。
 
-## Message table
+## 提示怎么看
 
 按你实际看到的 dialog、desktop log 或 Server Health 文案定位。先做可逆恢复；如果同一 message 重复出现，再导出 Devtools data。
 
@@ -31,14 +31,14 @@ Desktop server 故障会影响大部分产品能力。先判断是整个 server 
 | `Failed to fetch server health: HTTP ...` | `/health` route 返回非-2xx，server 可达但健康检查失败 | 打开 Observability，查找同一时间的 incident；按 HTTP status 定位 server module | Server Health 下次轮询清除 error |
 | `Failed to fetch server health: TypeError...` | Web layer 无法连到 `SERVER_BASE`，通常是 server 未启动、port 失效或 desktop bridge 未注入 | 重启 desktop app；如果只影响 plugin command，再检查 Plugins panel | Server Health 从 error view 变成 health table |
 
-## When to export
+## 什么时候导出诊断
 
 出现 crash dialog、`[desktop] Server restart failed:`、连续三次 restart，或 Server Health 持续显示 `Failed to fetch server health:` 时，导出 Devtools data。导出前先不要删除 data dir；这些日志是区分 server crash、route failure 和 desktop bridge failure 的证据。
 
-## Limits
+## 使用前先知道
 
-端口、日志路径和 packaged app 行为以当前构建配置为准。本文不承诺固定安装路径。
+端口、日志路径和 packaged app 行为会随构建渠道变化。排查时优先读取 Devtools、desktop log 和当前应用配置。
 
-## Next steps
+## 继续阅读
 
 阅读 [Desktop server](../operations/desktop-server.mdx) 和 [Devtools export](./devtools-export.mdx)。

@@ -1,17 +1,17 @@
 ---
-title: Server overview
-description: Server composition root, module ownership, background work, and plugin activation contracts.
+title: Server
+description: Work with the server composition root, module ownership, background work, and plugin activation contracts.
 ---
 
 Cradle server 是 Elysia app。它组合 HTTP foundation、OpenAPI、业务 modules、PTY routes、Chronicle background work 和 server plugin host。开发 server 能力时，先确定 owner 和 namespace，再决定 route、schema、CLI metadata 和 persistence。
 
-## Owner
+## 谁负责
 
 `apps/server` 拥有 HTTP composition、request context、module mounting、plugin activation 和 server-side lifecycle。具体业务语义由 module owner 管，例如 `session`、`chat-runtime`、`issue`、`automation`、`chronicle`。
 
 `packages/db` 拥有 schema exports 和 migration artifacts。server module 可以读写自己 owner 下的 tables；跨 owner 读取需要显式用途，跨 owner 写入需要目标 owner 的 API。
 
-## Namespace
+## 放在哪里
 
 常见 namespace 形态：
 
@@ -22,7 +22,7 @@ Cradle server 是 Elysia app。它组合 HTTP foundation、OpenAPI、业务 modu
 
 历史表名不等于当前语义 owner。已知例子是 issue 数据仍可能使用 `kanban_*` 历史 table name，但 Issue owner 管 issue semantics，Kanban owner 只管 board/view configuration。
 
-## Lifecycle
+## 怎么运行
 
 Server 启动时按 composition root 装配能力：
 
@@ -33,7 +33,7 @@ Server 启动时按 composition root 装配能力：
 5. 激活 server plugins，并把 plugin routes 挂在 `/api/plugins/{routeSegment}`。
 6. 在 `NODE_ENV=test` 下启用测试专用 reset route。
 
-## Interfaces
+## 对外接口
 
 稳定入口按页面拆分：
 
@@ -42,7 +42,7 @@ Server 启动时按 composition root 装配能力：
 - OpenAPI：[OpenAPI](../api/openapi.mdx)
 - Generated CLI：[Generated CLI](../cli/generated-cli.mdx)
 
-## Validation
+## 怎么验证
 
 在 server scope 内验证：
 
@@ -60,6 +60,6 @@ cd packages/cli
 pnpm gen:cli
 ```
 
-## Limits
+## 边界
 
-本文档不把所有 route 展开成完整 reference。完整 route shape 应以当前 OpenAPI document 和 module tests 为准。HTTP-only routes 不应假设有 CLI command，除非 route metadata 明确包含 `x-cradle-cli`。
+这页负责解释 server 的结构和边界。完整 route shape 由当前 OpenAPI document 和 module tests 证明；HTTP-only routes 只有在 route metadata 包含 `x-cradle-cli` 时才会进入 generated CLI。

@@ -5,7 +5,7 @@ description: Add, enable, check, and manage model providers in Settings.
 
 Providers 决定 Cradle 可以调用哪些模型服务。Chat、Issue agents 和 automation 都依赖可用 provider。
 
-## Overview
+## 先认识这个功能
 
 Settings 的 Providers 区域用于添加 provider、搜索 provider、启用或禁用 profile、查看详情、执行 health check 和发现 models。
 
@@ -22,16 +22,16 @@ Settings 的 Providers 区域用于添加 provider、搜索 provider、启用或
 
 配置成功后，你应该能在 New Chat 或 Composer toolbar 中看到 provider 和 model。若 model 需要刷新，使用 provider 的 model discovery 或 search。
 
-## Security
+## 安全提醒
 
 凭据只应写入 Cradle 管理的配置位置。不要把 provider secret 放进项目仓库、Issue 描述或 Chat 明文上下文中。
 
-## Troubleshooting
+## 遇到问题时
 
 - Health check 失败：检查 endpoint、token、网络和 provider 类型。
 - Model 列表为空：刷新 model cache，或手动确认 provider 是否支持 discovery。
 - Chat 中不可选：确认 profile 已启用，并且当前 runtime kind 支持该 provider。
 
-## Next steps
+## 继续阅读
 
 阅读 [Models](./models.mdx) 和 [Provider errors](../troubleshooting/provider-errors.mdx)。

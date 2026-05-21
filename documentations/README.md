@@ -32,7 +32,7 @@ pnpm build
 
 - 每个 `.mdx` 页面必须包含 `title` 和 `description` frontmatter。
 - 每个多页目录必须有 `meta.json`。
-- 页面正文先说明读者能完成什么，再进入配置、使用、限制和排障。
+- 页面正文先说明读者能完成什么，再进入配置、使用、边界和排障。
 - 代码块、命令、路径、API 名、frontmatter key 和标识符保持 English。
 - 不要保留 scaffold 或测试页面；它们会进入 sidebar、search、`/llms.txt` 和 `/llms-full.txt`。
 
@@ -49,4 +49,4 @@ pnpm build
 
 ## 写作准则
 
-Cradle 文档采用 Linear-style 的任务导向结构：短段落、明确读者、清晰边界、真实限制和可验证步骤。用户页按工作域组织，开发者页按 owner、namespace、lifecycle、validation 和 limits 组织。
+Cradle 文档采用任务导向结构：短段落、明确读者、清晰产品语气、真实边界和可验证步骤。用户页按工作域组织，开发者页按 owner、namespace、lifecycle、validation 和 boundary 组织。

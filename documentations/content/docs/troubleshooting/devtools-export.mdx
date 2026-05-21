@@ -5,7 +5,7 @@ description: Export observability bundles and collect session, run, provider, an
 
 Devtools export 是提交复杂问题时最有用的诊断材料。它可以把 events、incidents 和运行上下文打包给维护者分析。
 
-## Overview
+## 先认识这个功能
 
 Observability 面板支持按 session、run、code 和 severity 查看事件。导出 bundle 前先尽量复现问题，这样事件时间线更完整。
 
@@ -29,7 +29,7 @@ Observability 面板支持按 session、run、code 和 severity 查看事件。�
 4. 导出 bundle。
 5. 附上复现步骤。
 
-## Codes to inspect
+## 错误码怎么看
 
 | Code | Meaning | First recovery |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ Observability 面板支持按 session、run、code 和 severity 查看事件。�
 | `PROVIDER_EMPTY_EVENT_STREAM` | Provider event stream 为空 | 检查 provider streaming capability 和 selected model。 |
 | `invalid_observability_input` | Observability query 参数非法 | 修正 `limit`、`since`、`until`、`severity` 或 `status`。 |
 
-## Useful filters
+## 筛选方式
 
 | Filter | When to use |
 | --- | --- |
@@ -49,7 +49,7 @@ Observability 面板支持按 session、run、code 和 severity 查看事件。�
 | `severity` | 只看 `warn`、`error` 或 `fatal`。 |
 | `since` / `until` | 限定复现窗口。 |
 
-## API and CLI surfaces
+## 也可以从接口检查
 
 ```bash
 cradle observability events --help
@@ -64,10 +64,10 @@ HTTP surfaces：
 - `POST /observability/flush`
 - `GET /observability/export`
 
-## Security
+## 安全提醒
 
 Bundle 可能包含路径、错误消息、运行标识和部分上下文。分享前确认没有敏感信息。
 
-## Next steps
+## 继续阅读
 
 阅读 [Observability](../operations/observability.mdx) 和 [Devtools](../operations/devtools.mdx)。

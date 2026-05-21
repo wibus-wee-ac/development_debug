@@ -5,11 +5,11 @@ description: Plugin host discovery, activation, route mounting, capability proje
 
 Plugin lifecycle 属于 host。Plugin code 拥有自身行为，但发现、校验、挂载、暴露和停用由 host 负责。
 
-## Owner
+## 谁负责
 
 `apps/server/src/plugins/**` owns server plugin host lifecycle. `packages/plugin-sdk/**` owns public context types and helper contracts.
 
-## Namespace
+## 放在哪里
 
 - Plugin registry API：`GET /api/plugins`
 - Web module API：`GET /api/plugins/:name/web.mjs`
@@ -18,7 +18,7 @@ Plugin lifecycle 属于 host。Plugin code 拥有自身行为，但发现、校�
 
 Route collision is a host concern. Plugin authors should choose stable package names and avoid assuming they can claim core route prefixes.
 
-## Lifecycle states
+## 生命周期状态
 
 The host lifecycle can be read as:
 
@@ -30,7 +30,7 @@ The host lifecycle can be read as:
 6. Runtime execution.
 7. Deactivation, reload or upgrade.
 
-## Event and hook boundaries
+## Event 和 hook 边界
 
 Server plugins can use host-provided context for:
 
@@ -42,7 +42,7 @@ Server plugins can use host-provided context for:
 - logger and shared config。
 - storage capability, with persistence caveat noted in [Plugin SDK](./sdk-overview.mdx)。
 
-## Validation
+## 怎么验证
 
 ```bash
 cd apps/server
@@ -52,6 +52,6 @@ pnpm test
 
 Lifecycle tests should verify descriptor shape, route segment derivation, collisions, activation failure and capability cleanup.
 
-## Limits
+## 边界
 
 Desktop and web loader lifecycle should be verified against app-side code before documenting detailed activation guarantees. This page only states the server host and SDK contracts supported by current evidence.

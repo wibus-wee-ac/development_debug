@@ -5,11 +5,11 @@ description: Troubleshoot provider health, model discovery, credentials, endpoin
 
 Provider 错误通常会影响 New Chat、Composer、Issue agents 和 Automation。先确认 provider profile 可用，再检查 model 和 runtime。
 
-## Overview
+## 先认识这个功能
 
 Cradle 通过 provider routes 进行 health check、model discovery、model cache 和 lookup。错误可能来自凭据、endpoint、网络、provider 类型或 model 不支持当前 runtime。
 
-## Quick checks
+## 先做这些检查
 
 1. 打开 Settings。
 2. 进入 Providers。
@@ -18,7 +18,7 @@ Cradle 通过 provider routes 进行 health check、model discovery、model cach
 5. 刷新 model list。
 6. 回到 New Chat 重新选择 provider 和 model。
 
-## Common causes
+## 常见原因
 
 | Code or symptom | Likely cause | Recovery |
 | --- | --- | --- |
@@ -30,9 +30,9 @@ Cradle 通过 provider routes 进行 health check、model discovery、model cach
 | Health check fails | Invalid token, endpoint, or secret reference | 更新凭据和 endpoint，重新运行 health check。 |
 | No models | Discovery unsupported, upstream failed, or cache empty | 手动刷新 model list；如果 profile 有 custom models，会与上游结果合并。 |
 | Chat fails after send | Runtime/model mismatch | 更换 runtime 或 model，并查看 Observability 是否有 `TURN_STREAM_FAILED`。 |
-| No usage data | Provider does not return usage | 查看 [Usage](../operations/usage.mdx) 限制，不要把它当作账单缺失。 |
+| No usage data | Provider does not return usage | 查看 [Usage](../operations/usage.mdx)，不要把缺少 token 数据直接理解成账单异常。 |
 
-## Verify from API or CLI
+## 用接口或命令确认
 
 如果 UI 不能定位问题，可以直接检查 provider routes：
 
@@ -51,10 +51,10 @@ API surfaces：
 
 `model-lookup` 和 `model-search` 是 HTTP surfaces；是否有 CLI command 以当前 OpenAPI metadata 为准。
 
-## Limits
+## 使用前先知道
 
-不同 provider 的凭据格式和可用 model 不同。本文不列具体 provider preset 的完整字段，以当前 Settings UI 为准。
+不同 provider 的凭据格式和可用 model 不同。配置时优先看当前 Settings UI 展示的字段，再结合 provider 自己的控制台确认 token、endpoint 和 model 名称。
 
-## Next steps
+## 继续阅读
 
 阅读 [Providers](../agents/providers.mdx)、[Models](../agents/models.mdx) 和 [Usage](../operations/usage.mdx)。

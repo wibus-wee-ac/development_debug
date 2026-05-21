@@ -5,11 +5,11 @@ description: Developer contract for the System Info plugin route, web panel, com
 
 System Info 是 first-party plugin 示例。它最小化展示 server route 与 web surface 的组合方式：server layer 提供 `/info` route，web layer 注册 panel 和 command。
 
-## Owner
+## 谁负责
 
 `plugins/system-info` owns the route handler, data shape, web panel, command, and plugin-local storage key. Cradle plugin host owns route mounting, web bundle serving, and layer state.
 
-## Namespace
+## 放在哪里
 
 | Surface | Identifier |
 | --- | --- |
@@ -20,7 +20,7 @@ System Info 是 first-party plugin 示例。它最小化展示 server route 与 
 
 The plugin does not own Cradle core data. It reads host OS information and exposes it through plugin-owned route and UI surfaces.
 
-## Data shape
+## 数据形状
 
 The route returns:
 
@@ -45,14 +45,14 @@ interface SystemInfo {
 }
 ```
 
-## Server lifecycle
+## Server 侧流程
 
 1. Host activates server layer.
 2. Plugin receives `ServerPluginContext`.
 3. Plugin registers `GET /info` on the scoped app.
 4. Host mounts it under `/api/plugins/system-info/info`.
 
-## Web lifecycle
+## Web 侧流程
 
 1. Host activates web layer.
 2. Plugin registers `system-info-panel`.
@@ -60,7 +60,7 @@ interface SystemInfo {
 4. Panel fetches server route when active.
 5. Command fetches server route, logs result, and writes `lastCheck`.
 
-## Validation
+## 怎么验证
 
 Manual validation:
 
@@ -73,10 +73,10 @@ Manual validation:
 
 If adding tests later, assert that the server route returns the documented fields and that web registration uses stable IDs.
 
-## Limits
+## 边界
 
 This plugin is a compact SDK example. It is not a metrics collector, alerting system, or durable inventory database. It exposes host details such as `hostname`, `homeDir`, and `pid`; treat those fields as local diagnostics.
 
-## Related pages
+## 继续阅读
 
 Read [Web plugin API](./web-api.mdx), [Server plugin API](./server-api.mdx), and [System Info](../../integrations/system-info.mdx).

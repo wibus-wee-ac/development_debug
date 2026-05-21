@@ -5,7 +5,7 @@ description: Use the Electron webview browser panel for navigation and agent bro
 
 Browser panel 是 Cradle 桌面环境中的浏览器视图。它适合用户查看网页，也可作为 browser-use plugin 的桥接界面。
 
-## Overview
+## 先认识这个功能
 
 Browser panel 支持 URL navigation、back、forward、reload 和有限的 script injection preset。当前证据显示最多支持多个 tabs，但具体上限以当前 store 实现为准。
 
@@ -16,14 +16,14 @@ Browser panel 支持 URL navigation、back、forward、reload 和有限的 scrip
 3. 使用 back、forward 或 reload。
 4. 在需要 agent automation 时确认 browser-use plugin 状态。
 
-## Security
+## 安全提醒
 
 Webview 会加载外部网页。不要在不可信页面中输入敏感信息，也不要批准你不理解的脚本注入或 automation 请求。
 
-## Limits
+## 使用前先知道
 
 Browser panel 是 Electron-only 能力。纯 Web 环境可能不可用。
 
-## Next steps
+## 继续阅读
 
 阅读 [Browser use](../agents/browser-use.mdx) 和 [Plugins](./plugins.mdx)。

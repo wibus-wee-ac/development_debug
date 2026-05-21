@@ -5,7 +5,7 @@ description: Server module owner, namespace, route, and command coverage matrix.
 
 Server module 是 Cradle 后端语义的最小 owner 单元。每个 module 至少拥有 route prefix、request/response schema、service boundary、tests、OpenAPI metadata；如果它有持久化状态，还应拥有对应 database schema 和 migration policy。
 
-## Ownership rules
+## 所有权规则
 
 - `Session` 拥有会话 CRUD、messages、markdown export 和 linked issue 关系。
 - `Chat Runtime` 拥有 turn execution、streaming、cancellation、usage persistence 和 provider orchestration。
@@ -16,7 +16,7 @@ Server module 是 Cradle 后端语义的最小 owner 单元。每个 module 至�
 - `Chronicle` server 拥有 Cradle DB/API projection 和 summary orchestration；Rust daemon 拥有 local capture 和 artifacts。
 - `Skills` 可以读取标准 `.agents/skills` 兼容目录，但 Cradle-owned writes 必须落在 Cradle namespace。
 
-## Module map
+## Module 地图
 
 | Owner | Primary namespace | HTTP surface | CLI surface |
 | --- | --- | --- | --- |
@@ -47,7 +47,7 @@ Server module 是 Cradle 后端语义的最小 owner 单元。每个 module 至�
 | Usage | `/usage` | daily, summary, stats, session, cost | `cradle usage ...` |
 | Search | `/search/threads` | thread search | `cradle search threads` |
 
-## Lifecycle for a new module
+## 新 module 怎么接入
 
 1. Pick owner and namespace before choosing route names.
 2. Add schema/model/service boundaries under `apps/server/src/modules/{module}`.
@@ -56,7 +56,7 @@ Server module 是 Cradle 后端语义的最小 owner 单元。每个 module 至�
 5. Add tests that cover success, validation failure, owner boundary and persistence if applicable.
 6. Update module README and developer docs when the public contract changes.
 
-## Validation
+## 怎么验证
 
 Use source files over stale README inventories when they disagree:
 
@@ -73,6 +73,6 @@ cd packages/cli
 pnpm gen:cli
 ```
 
-## Limits
+## 边界
 
 This page is a map, not a full reference. Exact payload fields, SSE event names and WebSocket frames must be verified from OpenAPI, route source and tests before publishing examples.
