@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
-import { execSync, spawn } from 'node:child_process'
+import { execSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -14,6 +14,7 @@ let pendingRestartOptions: ChronicleDaemonOptions | null = null
 export interface ChronicleDaemonOptions {
   storageRoot: string
   audioCaptureEnabled: boolean
+  audioSource: 'microphone' | 'system' | 'mixed'
   audioSegmentMs: number
   audioSegmentIntervalMs: number
   audioRmsThreshold: number
@@ -24,6 +25,8 @@ export function createDaemonArgs(options: ChronicleDaemonOptions): string[] {
   if (options.audioCaptureEnabled) {
     args.push(
       '--audio-capture',
+      '--audio-source',
+      options.audioSource,
       '--audio-segment-ms',
       String(options.audioSegmentMs),
       '--audio-segment-interval-ms',
@@ -51,6 +54,39 @@ function findChronicleBinary(): string {
   return 'cradle-chronicle'
 }
 
+export interface ChronicleEmbeddingBatch {
+  modelId: string
+  modelVersion: string
+  dimensions: number
+  embeddings: number[][]
+}
+
+export function runEmbeddingBatch(texts: string[], modelsRoot: string): ChronicleEmbeddingBatch {
+  const binary = findChronicleBinary()
+  const input = JSON.stringify({ texts })
+  const result = spawnSync(binary, ['--embed-texts'], {
+    input,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      CRADLE_MODELS_DIR: modelsRoot,
+    },
+    timeout: 120_000,
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (result.error) {
+    throw result.error
+  }
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || `cradle-chronicle embedding exited with ${result.status}`)
+  }
+  const parsed = JSON.parse(result.stdout) as ChronicleEmbeddingBatch
+  if (!Array.isArray(parsed.embeddings) || parsed.embeddings.length !== texts.length) {
+    throw new Error('cradle-chronicle embedding response has an invalid embedding count')
+  }
+  return parsed
+}
+
 export function isRunning(): boolean {
   return chronicleProcess !== null && chronicleProcess.exitCode === null
 }
@@ -62,6 +98,7 @@ export function getDaemonInfo() {
     lastExitCode,
     lastExitAt,
     audioCaptureEnabled: isRunning() ? currentOptions?.audioCaptureEnabled ?? false : false,
+    audioSource: isRunning() ? currentOptions?.audioSource ?? 'microphone' : 'microphone',
     restartPending: pendingRestartOptions !== null,
   }
 }
@@ -94,6 +131,7 @@ export function startDaemon(options: ChronicleDaemonOptions): boolean {
         ...process.env,
         CRADLE_URL: cradleUrl,
         CRADLE_CHRONICLE_AUDIO_CAPTURE: options.audioCaptureEnabled ? '1' : '0',
+        CRADLE_CHRONICLE_AUDIO_SOURCE: options.audioSource,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,

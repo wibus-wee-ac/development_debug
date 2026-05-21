@@ -14,6 +14,7 @@ import {
   RefreshCwIcon,
   SearchIcon,
   TriangleAlertIcon,
+  UserRoundIcon,
 } from 'lucide-react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { useCallback, useMemo, useRef, useState } from 'react'
@@ -35,12 +36,14 @@ import type {
   ChronicleActivitySegment,
   ChronicleAudioRawSegment,
   ChronicleAudioTranscript,
+  ChronicleConfig,
   ChronicleDreamRun,
   ChronicleKnowledgeCard,
   ChronicleMessageSource,
   ChronicleModelResource,
   ChroniclePipelineRun,
   ChronicleSlackSourceDraft,
+  ChronicleSpeakerProfile,
   ChronicleStatus,
   MemoryEntry,
   TimelineEntry,
@@ -63,6 +66,7 @@ import {
   useChronicleModelResources,
   useChroniclePipelineRuns,
   useChronicleSlackSourceActions,
+  useChronicleSpeakerProfiles,
   useChronicleStatus,
   useChronicleTimeline,
   useRefreshChronicleQueries,
@@ -170,6 +174,7 @@ export function ChronicleSettings() {
   const { snapshots: accessibilitySnapshots, loading: accessibilitySnapshotsLoading } = useChronicleAccessibilitySnapshots()
   const { transcripts: audioTranscripts, loading: audioTranscriptsLoading } = useChronicleAudioTranscripts()
   const { segments: audioRawSegments, loading: audioRawSegmentsLoading } = useChronicleAudioRawSegments()
+  const { profiles: speakerProfiles, loading: speakerProfilesLoading } = useChronicleSpeakerProfiles()
   const { segments: activitySegments, loading: activitySegmentsLoading } = useChronicleActivitySegments()
   const { runs: pipelineRuns, loading: pipelineRunsLoading } = useChroniclePipelineRuns()
   const { cards: knowledgeCards, loading: knowledgeCardsLoading } = useChronicleKnowledgeCards()
@@ -243,14 +248,26 @@ export function ChronicleSettings() {
       <SettingsRow
         label="Background Audio"
         description={config?.enabled
-          ? 'Capture local microphone segments as Chronicle artifacts; transcripts still require ASR runtime'
+          ? 'Capture local audio segments and run local ONNX transcription when models are available'
           : 'Enable Chronicle before starting background audio capture'}
       >
-        <Switch
-          checked={config?.audioCaptureEnabled ?? false}
-          onCheckedChange={audioCaptureEnabled => void updateConfig({ audioCaptureEnabled })}
-          disabled={saving || !config?.enabled}
-        />
+        <div className="flex items-center gap-3">
+          <select
+            className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+            value={config?.audioSource ?? 'microphone'}
+            onChange={event => void updateConfig({ audioSource: event.target.value as ChronicleConfig['audioSource'] })}
+            disabled={saving || !config?.enabled || !config?.audioCaptureEnabled}
+          >
+            <option value="microphone">Microphone</option>
+            <option value="system">System</option>
+            <option value="mixed">Mixed</option>
+          </select>
+          <Switch
+            checked={config?.audioCaptureEnabled ?? false}
+            onCheckedChange={audioCaptureEnabled => void updateConfig({ audioCaptureEnabled })}
+            disabled={saving || !config?.enabled}
+          />
+        </div>
       </SettingsRow>
       <SettingsDivider />
 
@@ -336,6 +353,20 @@ export function ChronicleSettings() {
       />
       <section className="pb-4">
         <ResourceGrid loading={resourcesLoading} resources={resources} />
+      </section>
+
+      <SettingsDivider />
+      <SettingsSectionHeader
+        title="Speaker Profiles"
+        description="Known speaker labels and embeddings learned from imported meeting transcripts."
+        className="pt-4"
+      />
+      <section className="pb-4">
+        {speakerProfilesLoading
+          ? <EmptyState icon={<UserRoundIcon className="size-4" />} title="Loading speaker profiles" />
+          : speakerProfiles.length === 0
+            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title="No speaker profiles yet" />
+            : <SpeakerProfileList profiles={speakerProfiles} />}
       </section>
 
       <SettingsDivider />
@@ -1738,6 +1769,49 @@ function formatAccessibilityStatus(status: ChronicleAccessibilitySnapshot['statu
     return 'Error'
   }
   return 'Ready'
+}
+
+function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+      {profiles.map(profile => (
+        <article key={profile.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
+          <div className="mb-2 flex min-w-0 items-center gap-2">
+            <UserRoundIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[13px] font-medium text-foreground">{profile.displayName}</span>
+            <Badge variant="outline" className="ml-auto text-[11px]">
+              {profile.sampleCount}
+              {' '}
+              samples
+            </Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-[12px] text-muted-foreground">
+            <span className="truncate">
+              Last seen
+              {' '}
+              {formatRelativeTime(profile.lastSeenAt)}
+            </span>
+            <span className="truncate text-right">
+              {profile.embeddingDimensions ? `${profile.embeddingDimensions} dims` : 'No embedding'}
+            </span>
+            <span className="truncate">
+              {profile.embeddingModelId ?? 'Profile label'}
+            </span>
+            <span className="truncate text-right">
+              {profile.aliases.length}
+              {' '}
+              aliases
+            </span>
+          </div>
+          {profile.aliases.length > 0 && (
+            <p className="mt-2 truncate text-[11px] text-muted-foreground/70">
+              {profile.aliases.join(', ')}
+            </p>
+          )}
+        </article>
+      ))}
+    </div>
+  )
 }
 
 function AudioTranscriptList({ transcripts }: { transcripts: ChronicleAudioTranscript[] }) {

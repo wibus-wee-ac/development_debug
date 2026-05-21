@@ -28,6 +28,7 @@ export interface ChronicleConfig {
   activityPipelineIntervalMs: number
   activityPipelineBatchSize: number
   audioCaptureEnabled: boolean
+  audioSource?: 'microphone' | 'system' | 'mixed'
   audioSegmentMs: number
   audioSegmentIntervalMs: number
   audioRmsThreshold: number
@@ -67,6 +68,7 @@ export interface ChronicleStatus {
   activityPipelineIntervalMs: number
   activityPipelineBatchSize: number
   audioCaptureEnabled: boolean
+  audioSource?: 'microphone' | 'system' | 'mixed'
   audioRuntimeStatus: 'disabled' | 'armed' | 'unavailable'
   configuredModel: string | null
 }
@@ -210,6 +212,27 @@ export interface ChronicleAudioRawSegment {
   asrStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
   speakerStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
   metadata: Record<string, unknown>
+}
+
+export interface ChronicleSpeakerProfile {
+  id: string
+  workspaceId: string | null
+  displayName: string
+  normalizedLabel: string
+  aliases: string[]
+  embedding: number[] | null
+  embeddingDimensions: number | null
+  embeddingModelId: string | null
+  sampleCount: number
+  lastSeenAt: string | null
+  lastSeenAtUnix: number | null
+  sourceTranscriptId: string | null
+  sourceSegmentId: string | null
+  metadata: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+  updatedAt: string
+  updatedAtUnix: number
 }
 
 export interface ChronicleActivitySegment {
@@ -391,14 +414,14 @@ const CHRONICLE_MODEL_RESOURCE_DEFAULTS: ChronicleModelResource[] = [
   },
   {
     category: 'speaker',
-    label: 'Speaker',
+    label: 'Speaker Extractor',
     state: 'optional',
     required: false,
     provider: null,
     path: null,
     version: null,
     sizeBytes: null,
-    message: 'Optional speaker embedding resource is not installed.',
+    message: 'Optional speaker embedding extractor resource is not installed.',
     metadata: null,
     updatedAt: null,
   },
@@ -434,7 +457,7 @@ const CHRONICLE_RESOURCE_LABELS: Record<ChronicleModelResourceCategory, string> 
   'ocr': 'OCR',
   'audio-vad': 'Audio VAD',
   'audio-asr': 'Audio ASR',
-  'speaker': 'Speaker',
+  'speaker': 'Speaker Extractor',
   'embedding': 'Embedding',
   'pii': 'PII Detection',
 }
@@ -532,6 +555,7 @@ const CHRONICLE_MESSAGE_SOURCES_QUERY_KEY = ['chronicle', 'message-sources'] as 
 const CHRONICLE_ACCESSIBILITY_SNAPSHOTS_QUERY_KEY = ['chronicle', 'accessibility-snapshots'] as const
 const CHRONICLE_AUDIO_TRANSCRIPTS_QUERY_KEY = ['chronicle', 'audio-transcripts'] as const
 const CHRONICLE_AUDIO_RAW_SEGMENTS_QUERY_KEY = ['chronicle', 'audio-raw-segments'] as const
+const CHRONICLE_SPEAKER_PROFILES_QUERY_KEY = ['chronicle', 'speaker-profiles'] as const
 const CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY = ['chronicle', 'activity-segments'] as const
 const CHRONICLE_PIPELINE_RUNS_QUERY_KEY = ['chronicle', 'pipeline-runs'] as const
 const CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY = ['chronicle', 'knowledge-cards'] as const
@@ -858,6 +882,16 @@ export function useChronicleAudioRawSegments(limit = 20) {
   return { segments, loading, refetch }
 }
 
+export function useChronicleSpeakerProfiles() {
+  const { data: profiles = [], isLoading: loading, refetch } = useQuery({
+    queryKey: CHRONICLE_SPEAKER_PROFILES_QUERY_KEY,
+    queryFn: () => fetchChronicleJson<ChronicleSpeakerProfile[]>('/chronicle/speaker-profiles'),
+    refetchInterval: 10_000,
+  })
+
+  return { profiles, loading, refetch }
+}
+
 export function useChronicleActivitySegments(limit = 20) {
   const { data: segments = [], isLoading: loading, refetch } = useQuery({
     queryKey: [...CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY, limit],
@@ -1030,6 +1064,7 @@ export function useRefreshChronicleQueries() {
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_ACCESSIBILITY_SNAPSHOTS_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_AUDIO_TRANSCRIPTS_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_AUDIO_RAW_SEGMENTS_QUERY_KEY })
+    void queryClient.invalidateQueries({ queryKey: CHRONICLE_SPEAKER_PROFILES_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_ACTIVITY_SEGMENTS_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_PIPELINE_RUNS_QUERY_KEY })
     void queryClient.invalidateQueries({ queryKey: CHRONICLE_KNOWLEDGE_CARDS_QUERY_KEY })

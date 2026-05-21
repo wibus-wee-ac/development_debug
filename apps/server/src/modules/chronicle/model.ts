@@ -10,6 +10,11 @@ export const ChronicleModel = {
     activityPipelineIntervalMs: t.Number(),
     activityPipelineBatchSize: t.Number(),
     audioCaptureEnabled: t.Boolean(),
+    audioSource: t.Optional(t.Union([
+      t.Literal('microphone'),
+      t.Literal('system'),
+      t.Literal('mixed'),
+    ])),
     audioSegmentMs: t.Number(),
     audioSegmentIntervalMs: t.Number(),
     audioRmsThreshold: t.Number(),
@@ -46,6 +51,17 @@ export const ChronicleModel = {
     semanticScore: t.Nullable(t.Number()),
   }),
 
+  embeddingRequestBody: t.Object({
+    texts: t.Array(t.String({ minLength: 1 }), { minItems: 1, maxItems: 64 }),
+  }),
+
+  embeddingResponse: t.Object({
+    modelId: t.String(),
+    modelVersion: t.String(),
+    dimensions: t.Number(),
+    embeddings: t.Array(t.Array(t.Number())),
+  }),
+
   modelResource: t.Object({
     id: t.String(),
     category: t.Union([
@@ -70,6 +86,12 @@ export const ChronicleModel = {
     sizeBytes: t.Nullable(t.Number()),
     metadata: t.Record(t.String(), t.Any()),
     updatedAt: t.Number(),
+  }),
+
+  daemonResources: t.Object({
+    running: t.Boolean(),
+    pid: t.Nullable(t.Number()),
+    rssMB: t.Nullable(t.Number()),
   }),
 
   modelResourceCategoryParams: t.Object({
@@ -239,6 +261,37 @@ export const ChronicleModel = {
     metadata: t.Optional(t.Record(t.String(), t.Any())),
   }),
 
+  speakerProfile: t.Object({
+    id: t.String(),
+    workspaceId: t.Nullable(t.String()),
+    displayName: t.String(),
+    normalizedLabel: t.String(),
+    aliases: t.Array(t.String()),
+    embedding: t.Nullable(t.Array(t.Number())),
+    embeddingDimensions: t.Nullable(t.Number()),
+    embeddingModelId: t.Nullable(t.String()),
+    sampleCount: t.Number(),
+    lastSeenAt: t.Nullable(t.String()),
+    lastSeenAtUnix: t.Nullable(t.Number()),
+    sourceTranscriptId: t.Nullable(t.String()),
+    sourceSegmentId: t.Nullable(t.String()),
+    metadata: t.Record(t.String(), t.Any()),
+    createdAt: t.String(),
+    createdAtUnix: t.Number(),
+    updatedAt: t.String(),
+    updatedAtUnix: t.Number(),
+  }),
+
+  speakerProfileBody: t.Object({
+    displayName: t.String({ minLength: 1 }),
+    aliases: t.Optional(t.Array(t.String())),
+    embedding: t.Optional(t.Nullable(t.Array(t.Number()))),
+    embeddingModelId: t.Optional(t.Nullable(t.String())),
+    sampleCount: t.Optional(t.Number({ minimum: 0 })),
+    lastSeenAt: t.Optional(t.Nullable(t.String())),
+    metadata: t.Optional(t.Record(t.String(), t.Any())),
+  }),
+
   audioRawSegment: t.Object({
     id: t.String(),
     sourceId: t.String(),
@@ -266,6 +319,23 @@ export const ChronicleModel = {
     asrStatus: t.Union([t.Literal('not-implemented'), t.Literal('pending'), t.Literal('ready'), t.Literal('error')]),
     speakerStatus: t.Union([t.Literal('not-implemented'), t.Literal('pending'), t.Literal('ready'), t.Literal('error')]),
     metadata: t.Record(t.String(), t.Any()),
+  }),
+
+  audioRawSegmentProcessingResultBody: t.Object({
+    status: t.Optional(t.Union([
+      t.Literal('captured'),
+      t.Literal('queued'),
+      t.Literal('processed'),
+      t.Literal('ignored'),
+      t.Literal('error'),
+    ])),
+    vadStatus: t.Optional(t.Union([t.Literal('not-implemented'), t.Literal('pending'), t.Literal('ready'), t.Literal('error')])),
+    asrStatus: t.Optional(t.Union([t.Literal('not-implemented'), t.Literal('pending'), t.Literal('ready'), t.Literal('error')])),
+    speakerStatus: t.Optional(t.Union([t.Literal('not-implemented'), t.Literal('pending'), t.Literal('ready'), t.Literal('error')])),
+    transcriptSourceId: t.Optional(t.Nullable(t.String())),
+    speakerProfileIds: t.Optional(t.Array(t.String())),
+    errorMessage: t.Optional(t.Nullable(t.String())),
+    metadata: t.Optional(t.Record(t.String(), t.Any())),
   }),
 
   activitySegment: t.Object({
@@ -784,6 +854,11 @@ export const ChronicleModel = {
       t.Literal('armed'),
       t.Literal('unavailable'),
     ]),
+    audioSource: t.Optional(t.Union([
+      t.Literal('microphone'),
+      t.Literal('system'),
+      t.Literal('mixed'),
+    ])),
     configuredModel: t.Nullable(t.String()),
   }),
 }

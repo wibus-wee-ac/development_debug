@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
-import { createReadStream, createWriteStream, readFileSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
@@ -28,6 +28,7 @@ import {
   chronicleMessageSources,
   chronicleModelResources,
   chroniclePipelineRuns,
+  chronicleSpeakerProfiles,
   chronicleSnapshots,
 } from '@cradle/db'
 import { count, desc, eq, inArray, sql } from 'drizzle-orm'
@@ -38,7 +39,6 @@ import { currentUnixSeconds } from '../../helpers/time'
 import { db, getServerConfig } from '../../infra'
 import { createLanguageModel, detectApiFormat } from '../chat-runtime/engine/providers'
 import * as Profiles from '../profiles/service'
-import { parseConfigWith } from '../providers/provider-base'
 import { readSecret } from '../secrets/service'
 import * as DaemonManager from './daemon-manager'
 
@@ -51,6 +51,7 @@ interface ChronicleConfig {
   activityPipelineIntervalMs: number
   activityPipelineBatchSize: number
   audioCaptureEnabled: boolean
+  audioSource: 'microphone' | 'system' | 'mixed'
   audioSegmentMs: number
   audioSegmentIntervalMs: number
   audioRmsThreshold: number
@@ -66,11 +67,33 @@ const defaultConfig: ChronicleConfig = {
   activityPipelineIntervalMs: 120_000,
   activityPipelineBatchSize: 3,
   audioCaptureEnabled: false,
+  audioSource: 'microphone',
   audioSegmentMs: 5_000,
   audioSegmentIntervalMs: 60_000,
   audioRmsThreshold: 0.02,
   storageRoot: resolve(homedir(), '.cradle', 'chronicle'),
 }
+
+const ChronicleConfigSchema = z.object({
+  profileId: z.string().catch(defaultConfig.profileId).default(defaultConfig.profileId),
+  modelId: z.string().catch(defaultConfig.modelId).default(defaultConfig.modelId),
+  workspaceId: z.string().catch(defaultConfig.workspaceId).default(defaultConfig.workspaceId),
+  enabled: z.boolean().catch(defaultConfig.enabled).default(defaultConfig.enabled),
+  activityPipelineEnabled: z.boolean().catch(defaultConfig.activityPipelineEnabled).default(defaultConfig.activityPipelineEnabled),
+  activityPipelineIntervalMs: z.number().finite().positive().catch(defaultConfig.activityPipelineIntervalMs).default(defaultConfig.activityPipelineIntervalMs),
+  activityPipelineBatchSize: z.number().finite().positive().catch(defaultConfig.activityPipelineBatchSize).default(defaultConfig.activityPipelineBatchSize),
+  audioCaptureEnabled: z.boolean().catch(defaultConfig.audioCaptureEnabled).default(defaultConfig.audioCaptureEnabled),
+  audioSource: z.enum(['microphone', 'system', 'mixed']).catch(defaultConfig.audioSource).default(defaultConfig.audioSource),
+  audioSegmentMs: z.number().finite().positive().catch(defaultConfig.audioSegmentMs).default(defaultConfig.audioSegmentMs),
+  audioSegmentIntervalMs: z.number().finite().positive().catch(defaultConfig.audioSegmentIntervalMs).default(defaultConfig.audioSegmentIntervalMs),
+  audioRmsThreshold: z.number().finite().nonnegative().catch(defaultConfig.audioRmsThreshold).default(defaultConfig.audioRmsThreshold),
+  storageRoot: z.string().catch(defaultConfig.storageRoot).default(defaultConfig.storageRoot),
+})
+
+const ChronicleConfigJsonSchema = z.preprocess(
+  value => JSON.parse(value as string),
+  ChronicleConfigSchema,
+)
 
 const ProfileConfigSchema = z.object({
   baseUrl: z.string().optional(),
@@ -79,6 +102,11 @@ const ProfileConfigSchema = z.object({
   apiKey: z.string().optional(),
   apiMode: z.enum(['responses', 'chat-completions']).optional(),
 })
+
+const ProfileConfigJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  ProfileConfigSchema,
+)
 
 const SlackSourceConfigSchema = z.object({
   realtimeMode: z.enum(['polling', 'events-api', 'socket-mode']).optional(),
@@ -98,6 +126,8 @@ const MEMORY_TOKEN_MIN_LENGTH = 2
 const MEMORY_EMBEDDING_DIMENSIONS = 64
 const MEMORY_EMBEDDING_MODEL_ID = 'chronicle-lexical'
 const MEMORY_EMBEDDING_MODEL_VERSION = 'v1'
+const ONNX_TEXT_EMBEDDING_MODEL_ID = 'all-MiniLM-L6-v2'
+const ONNX_TEXT_EMBEDDING_MODEL_VERSION = 'onnx-minilm-l6-v2'
 const MEMORY_SEMANTIC_SCORE_WEIGHT = 12
 const MEMORY_SEMANTIC_MIN_SCORE = 0.28
 const ACTIVITY_IDLE_BOUNDARY_SECONDS = 10 * 60
@@ -109,6 +139,7 @@ type ChronicleTx = Parameters<Parameters<ChronicleDb['transaction']>[0]>[0]
 
 type ModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii'
 type ModelResourceStatus = 'available' | 'missing' | 'installing' | 'installed' | 'error'
+type AudioProcessingStatus = 'not-implemented' | 'pending' | 'ready' | 'error'
 type SlackSyncTrigger = 'manual' | 'background'
 type SlackRealtimeMode = 'polling' | 'events-api' | 'socket-mode'
 type ActivitySegmentType = 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown'
@@ -124,6 +155,7 @@ type DreamRunStatus = 'running' | 'completed' | 'failed'
 interface SlackSourceConfig {
   realtimeMode: SlackRealtimeMode
   signingSecretRef: string | null
+  socketAppTokenRef: string | null
 }
 
 interface ModelResourceFileManifest {
@@ -160,6 +192,13 @@ interface ModelResourceFileCheck {
 interface MemorySearchScore {
   keywordScore: number
   semanticScore: number
+}
+
+interface TextEmbeddingVector {
+  vector: number[]
+  modelId: string
+  modelVersion: string
+  provider: 'onnx' | 'lexical'
 }
 
 interface ChronicleLanguageModelContext {
@@ -207,6 +246,119 @@ interface ActivityCrystallizationResult {
   rejectedCount: number
 }
 
+const ModelTextJsonObjectSchema = z.preprocess(
+  (raw) => {
+    const text = z.string().parse(raw).trim()
+    try {
+      return JSON.parse(text)
+    }
+    catch (error) {
+      const start = text.indexOf('{')
+      const end = text.lastIndexOf('}')
+      if (start >= 0 && end > start) {
+        return JSON.parse(text.slice(start, end + 1))
+      }
+      throw error
+    }
+  },
+  z.record(z.string(), z.unknown()),
+)
+
+const ActivitySegmentTypeSchema = z.enum(['work', 'meeting', 'browsing', 'chat', 'audio', 'idle', 'unknown'])
+const ActivityPrioritySchema = z.enum(['low', 'normal', 'high'])
+const KnowledgeCardTypeSchema = z.enum(['fact', 'insight', 'decision', 'task', 'pattern'])
+const KnowledgeDimensionSchema = z.enum(['technical', 'business', 'personal', 'project', 'general'])
+const ModelStringListSchema = z.array(z.string().min(1).catch(''))
+  .catch([])
+  .transform(values => values.filter(Boolean))
+
+const ActivitySourceRefsSchema = z.object({
+  snapshotIds: ModelStringListSchema.default([]),
+  messageIds: ModelStringListSchema.default([]),
+  audioTranscriptIds: ModelStringListSchema.default([]),
+  audioRawSegmentIds: ModelStringListSchema.default([]),
+  memoryIds: ModelStringListSchema.default([]),
+  accessibilitySnapshotIds: ModelStringListSchema.default([]),
+})
+
+const ActivitySourceRefsJsonSchema = z.preprocess(
+  raw => JSON.parse((raw ?? '{}') as string),
+  ActivitySourceRefsSchema,
+)
+
+const ActivityPipelineMemoryIdsJsonSchema = z.preprocess(
+  raw => JSON.parse((raw ?? '[]') as string),
+  ModelStringListSchema.default([]),
+)
+
+const ActivityCrystallizationRunResultJsonSchema = z.preprocess(
+  raw => JSON.parse((raw ?? '{}') as string),
+  z.object({
+    knowledgeCardIds: ModelStringListSchema.default([]),
+  }),
+)
+
+const ActivitySegmentMetadataJsonSchema = z.preprocess(
+  raw => JSON.parse((raw ?? '{}') as string),
+  z.object({
+    summarization: z.object({
+      memoryId: z.string().nullable().default(null),
+    }).default({ memoryId: null }),
+  }).passthrough(),
+)
+
+const ActivityTriageModelTextSchema = z.preprocess(
+  raw => ModelTextJsonObjectSchema.parse(raw),
+  z.object({
+    keep: z.boolean().default(false),
+    reason: z.string().default('No useful activity evidence'),
+    segmentType: ActivitySegmentTypeSchema.catch('unknown').default('unknown'),
+    title: z.string().nullable().default(null),
+    priority: ActivityPrioritySchema.catch('normal').default('normal'),
+  }),
+)
+
+const ActivitySummaryModelTextSchema = z.preprocess(
+  raw => ModelTextJsonObjectSchema.parse(raw),
+  z.object({
+    title: z.string().default('Activity summary'),
+    summary: z.string().default(''),
+    keyPoints: ModelStringListSchema.default([]),
+    entities: ModelStringListSchema.default([]),
+    followUps: ModelStringListSchema.default([]),
+  }),
+)
+
+const CrystallizedKnowledgeCardDraftSchema = z.object({
+  title: z.string().trim().min(1).transform(value => boundedString(value, 240)),
+  content: z.string().trim().min(1).transform(value => boundedString(value, 4_000)),
+  type: KnowledgeCardTypeSchema.catch('fact').default('fact'),
+  dimension: KnowledgeDimensionSchema.catch('general').default('general'),
+  confidence: z.number().finite().min(0).max(1).catch(1).default(1),
+  tags: ModelStringListSchema.default([]).transform(values => uniqueStrings(values.map(tag => boundedString(tag.trim(), 64)).filter(Boolean)).slice(0, 12)),
+  stableKey: z.string().trim().optional(),
+}).transform((card): CrystallizedKnowledgeCardDraft => {
+  const fallbackStableKey = hashText(`${card.dimension}:${card.type}:${canonicalizeMemoryContent(card.title)}:${canonicalizeMemoryContent(card.content).slice(0, 256)}`).slice(0, 32)
+  return {
+    title: card.title,
+    content: card.content,
+    cardType: card.type,
+    dimension: card.dimension,
+    confidenceBps: ratioToBps(card.confidence),
+    tags: card.tags,
+    stableKey: boundedString(card.stableKey ?? fallbackStableKey, 160) || fallbackStableKey,
+  }
+})
+
+const ActivityCrystallizationModelTextSchema = z.preprocess(
+  raw => ModelTextJsonObjectSchema.parse(raw),
+  z.object({
+    summary: z.string().default('').transform(value => boundedString(value, 4_000)),
+    knowledgeCards: z.array(CrystallizedKnowledgeCardDraftSchema).default([]),
+    rejectedCount: z.number().finite().nonnegative().transform(value => Math.floor(value)).catch(0).default(0),
+  }),
+)
+
 interface DreamMergeCandidateDraft {
   workspaceId: string | null
   sourceKnowledgeIds: string[]
@@ -216,6 +368,7 @@ interface DreamMergeCandidateDraft {
   proposedDimension: KnowledgeDimension
   score: number
   reason: string
+  vectorMode: string
 }
 
 export interface ModelResourceEntry {
@@ -330,13 +483,24 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
   },
   'speaker': {
     category: 'speaker',
-    displayName: 'Speaker Embedding',
-    version: 'sherpa-speaker',
+    displayName: 'Speaker Embedding Extractor',
+    version: '3dspeaker-campplus-zh-en-16k',
     runtime: 'sherpa-onnx',
     required: false,
-    message: 'Place a Sherpa speaker embedding model manifest to enable speaker labeling.',
-    files: [{ path: 'speaker/model.onnx', required: true }],
-    metadata: { requiredFor: ['speaker-labeling'] },
+    message: 'Sherpa speaker embedding extractor model for local speaker profiles and meeting speaker labeling.',
+    files: [{
+      path: 'speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
+      sourceUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
+      sha256: 'aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2',
+      sizeBytes: 28_281_164,
+      required: true,
+    }],
+    metadata: {
+      requiredFor: ['speaker-labeling', 'meeting-transcription'],
+      function: 'speaker-embedding-extractor',
+      sampleRate: 16_000,
+      languages: ['zh', 'en'],
+    },
   },
   'embedding': {
     category: 'embedding',
@@ -396,6 +560,17 @@ export interface MemoryEntry {
   semanticScore: number | null
 }
 
+export interface EmbeddingRequestInput {
+  texts: string[]
+}
+
+export interface EmbeddingResponse {
+  modelId: string
+  modelVersion: string
+  dimensions: number
+  embeddings: number[][]
+}
+
 export interface ChronicleStatus {
   available: boolean
   running: boolean
@@ -429,6 +604,7 @@ export interface ChronicleStatus {
   activityPipelineIntervalMs: number
   activityPipelineBatchSize: number
   audioCaptureEnabled: boolean
+  audioSource: 'microphone' | 'system' | 'mixed'
   audioRuntimeStatus: 'disabled' | 'armed' | 'unavailable'
   configuredModel: string | null
 }
@@ -563,6 +739,7 @@ export interface MessageSourceEntry {
   channelIds: string[]
   realtimeMode: SlackRealtimeMode
   signingSecretRef: string | null
+  socketAppTokenRef: string | null
   status: 'idle' | 'syncing' | 'ready' | 'error' | 'disabled'
   lastSyncAt: number | null
   lastMessageAt: number | null
@@ -581,6 +758,7 @@ export interface MessageSourceInput {
   channelIds: string[]
   realtimeMode?: SlackRealtimeMode
   signingSecretRef?: string | null
+  socketAppTokenRef?: string | null
 }
 
 export interface MessageSourcePatchInput {
@@ -592,6 +770,7 @@ export interface MessageSourcePatchInput {
   channelIds?: string[]
   realtimeMode?: SlackRealtimeMode
   signingSecretRef?: string | null
+  socketAppTokenRef?: string | null
 }
 
 export interface MessageEntry {
@@ -678,6 +857,37 @@ export interface AudioTranscriptEntry {
   segments: AudioTranscriptSegmentEntry[]
 }
 
+export interface SpeakerProfileEntry {
+  id: string
+  workspaceId: string | null
+  displayName: string
+  normalizedLabel: string
+  aliases: string[]
+  embedding: number[] | null
+  embeddingDimensions: number | null
+  embeddingModelId: string | null
+  sampleCount: number
+  lastSeenAt: string | null
+  lastSeenAtUnix: number | null
+  sourceTranscriptId: string | null
+  sourceSegmentId: string | null
+  metadata: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+  updatedAt: string
+  updatedAtUnix: number
+}
+
+export interface SpeakerProfileInput {
+  displayName: string
+  aliases?: string[]
+  embedding?: number[] | null
+  embeddingModelId?: string | null
+  sampleCount?: number
+  lastSeenAt?: string | null
+  metadata?: Record<string, unknown>
+}
+
 export interface AudioRawSegmentReportInput {
   sourceId: string
   recordedAt: string
@@ -699,6 +909,17 @@ export interface AudioRawSegmentReportInput {
   metadata?: Record<string, unknown>
 }
 
+export interface AudioRawSegmentProcessingResultInput {
+  status?: 'captured' | 'queued' | 'processed' | 'ignored' | 'error'
+  vadStatus?: AudioProcessingStatus
+  asrStatus?: AudioProcessingStatus
+  speakerStatus?: AudioProcessingStatus
+  transcriptSourceId?: string | null
+  speakerProfileIds?: string[]
+  errorMessage?: string | null
+  metadata?: Record<string, unknown>
+}
+
 export interface AudioRawSegmentEntry {
   id: string
   sourceId: string
@@ -716,9 +937,9 @@ export interface AudioRawSegmentEntry {
   rms: number
   peak: number
   active: boolean
-  vadStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
-  asrStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
-  speakerStatus: 'not-implemented' | 'pending' | 'ready' | 'error'
+  vadStatus: AudioProcessingStatus
+  asrStatus: AudioProcessingStatus
+  speakerStatus: AudioProcessingStatus
   metadata: Record<string, unknown>
 }
 
@@ -790,25 +1011,7 @@ export async function getConfig(): Promise<ChronicleConfig> {
   const filePath = getConfigPath()
   try {
     const content = await readFile(filePath, 'utf8')
-    const parsed = JSON.parse(content)
-    return {
-      profileId: readString(parsed.profileId) ?? defaultConfig.profileId,
-      modelId: readString(parsed.modelId) ?? defaultConfig.modelId,
-      workspaceId: readString(parsed.workspaceId) ?? defaultConfig.workspaceId,
-      enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : defaultConfig.enabled,
-      activityPipelineEnabled: typeof parsed.activityPipelineEnabled === 'boolean'
-        ? parsed.activityPipelineEnabled
-        : defaultConfig.activityPipelineEnabled,
-      activityPipelineIntervalMs: readPositiveNumber(parsed.activityPipelineIntervalMs) ?? defaultConfig.activityPipelineIntervalMs,
-      activityPipelineBatchSize: readPositiveNumber(parsed.activityPipelineBatchSize) ?? defaultConfig.activityPipelineBatchSize,
-      audioCaptureEnabled: typeof parsed.audioCaptureEnabled === 'boolean'
-        ? parsed.audioCaptureEnabled
-        : defaultConfig.audioCaptureEnabled,
-      audioSegmentMs: readPositiveNumber(parsed.audioSegmentMs) ?? defaultConfig.audioSegmentMs,
-      audioSegmentIntervalMs: readPositiveNumber(parsed.audioSegmentIntervalMs) ?? defaultConfig.audioSegmentIntervalMs,
-      audioRmsThreshold: readNonNegativeNumber(parsed.audioRmsThreshold) ?? defaultConfig.audioRmsThreshold,
-      storageRoot: readString(parsed.storageRoot) ?? defaultConfig.storageRoot,
-    }
+    return ChronicleConfigJsonSchema.parse(content)
   }
   catch {
     return { ...defaultConfig }
@@ -825,6 +1028,7 @@ function toDaemonOptions(config: ChronicleConfig): DaemonManager.ChronicleDaemon
   return {
     storageRoot: config.storageRoot,
     audioCaptureEnabled: config.audioCaptureEnabled,
+    audioSource: config.audioSource,
     audioSegmentMs: config.audioSegmentMs,
     audioSegmentIntervalMs: config.audioSegmentIntervalMs,
     audioRmsThreshold: config.audioRmsThreshold,
@@ -834,6 +1038,7 @@ function toDaemonOptions(config: ChronicleConfig): DaemonManager.ChronicleDaemon
 function daemonLaunchConfigChanged(previous: ChronicleConfig, next: ChronicleConfig): boolean {
   return previous.storageRoot !== next.storageRoot
     || previous.audioCaptureEnabled !== next.audioCaptureEnabled
+    || previous.audioSource !== next.audioSource
     || previous.audioSegmentMs !== next.audioSegmentMs
     || previous.audioSegmentIntervalMs !== next.audioSegmentIntervalMs
     || previous.audioRmsThreshold !== next.audioRmsThreshold
@@ -859,6 +1064,7 @@ export async function updateConfig(config: ChronicleConfig): Promise<ChronicleCo
     audioSegmentIntervalMs: clampNumber(config.audioSegmentIntervalMs, 100, 3_600_000, defaultConfig.audioSegmentIntervalMs),
     audioRmsThreshold: clampNumber(config.audioRmsThreshold, 0, 1, defaultConfig.audioRmsThreshold),
     storageRoot: resolve(config.storageRoot || defaultConfig.storageRoot),
+    audioSource: config.audioSource ?? defaultConfig.audioSource,
   }
   await saveConfig(next)
   recordEvent({
@@ -873,6 +1079,7 @@ export async function updateConfig(config: ChronicleConfig): Promise<ChronicleCo
       activityPipelineIntervalMs: next.activityPipelineIntervalMs,
       activityPipelineBatchSize: next.activityPipelineBatchSize,
       audioCaptureEnabled: next.audioCaptureEnabled,
+      audioSource: next.audioSource,
       audioSegmentMs: next.audioSegmentMs,
       audioSegmentIntervalMs: next.audioSegmentIntervalMs,
       audioRmsThreshold: next.audioRmsThreshold,
@@ -969,7 +1176,7 @@ function resolveChronicleLanguageModelContext(config: ChronicleConfig): Chronicl
   }
 
   const profile = Profiles.getProfile(config.profileId)!
-  const parsedConfig = parseConfigWith(profile.configJson, ProfileConfigSchema)
+  const parsedConfig = ProfileConfigJsonSchema.parse(profile.configJson)
   const apiKey = resolveProfileApiKey(profile.credentialRef, parsedConfig.apiKey)
   if (!apiKey) {
     return 'no API key available for profile'
@@ -1057,6 +1264,7 @@ export async function getStatus(): Promise<ChronicleStatus> {
     activityPipelineIntervalMs: config.activityPipelineIntervalMs,
     activityPipelineBatchSize: config.activityPipelineBatchSize,
     audioCaptureEnabled: config.audioCaptureEnabled,
+    audioSource: config.audioSource,
     audioRuntimeStatus: getAudioRuntimeStatus(config, daemonInfo),
     configuredModel: await getConfiguredModel(config),
   }
@@ -1079,9 +1287,13 @@ export function startSlackBackgroundSync(): void {
     return
   }
 
-  void runSlackSyncTick()
+  void runSlackSyncTick().catch((error) => {
+    console.error('[chronicle] Slack background sync failed:', error)
+  })
   slackSyncTimer = setInterval(() => {
-    void runSlackSyncTick()
+    void runSlackSyncTick().catch((error) => {
+      console.error('[chronicle] Slack background sync failed:', error)
+    })
   }, SLACK_SYNC_INTERVAL_MS)
 }
 
@@ -1111,9 +1323,13 @@ export function restartActivityPipelineScheduler(config?: ChronicleConfig): void
   if (!current.enabled || !current.activityPipelineEnabled) {
     return
   }
-  void runActivityPipelineTick()
+  void runActivityPipelineTick().catch((error) => {
+    console.error('[chronicle] Activity pipeline tick failed:', error)
+  })
   activityPipelineTimer = setInterval(() => {
-    void runActivityPipelineTick()
+    void runActivityPipelineTick().catch((error) => {
+      console.error('[chronicle] Activity pipeline tick failed:', error)
+    })
   }, current.activityPipelineIntervalMs)
 }
 
@@ -1333,11 +1549,11 @@ export function searchMemories(query: string, limit = 20): MemoryEntry[] {
     scoreByMemoryId.set(row.memoryId, current)
   }
 
-  const queryVector = buildLexicalEmbeddingVector(needle)
+  const queryEmbedding = buildTextEmbeddingVector(needle)
   const embeddingRows = db()
     .select()
     .from(chronicleMemoryEmbeddings)
-    .where(eq(chronicleMemoryEmbeddings.status, 'ready'))
+    .where(sql`${chronicleMemoryEmbeddings.status} = 'ready' AND ${chronicleMemoryEmbeddings.modelId} = ${queryEmbedding.modelId} AND ${chronicleMemoryEmbeddings.modelVersion} = ${queryEmbedding.modelVersion}`)
     .all()
 
   for (const row of embeddingRows) {
@@ -1345,7 +1561,7 @@ export function searchMemories(query: string, limit = 20): MemoryEntry[] {
     if (!vector) {
       continue
     }
-    const semanticScore = cosineSimilarity(queryVector, vector)
+    const semanticScore = cosineSimilarity(queryEmbedding.vector, vector)
     if (semanticScore < MEMORY_SEMANTIC_MIN_SCORE) {
       continue
     }
@@ -1377,6 +1593,41 @@ export function searchMemories(query: string, limit = 20): MemoryEntry[] {
     .sort((left, right) => right.score - left.score || right.row.createdAt - left.row.createdAt)
     .slice(0, limit)
     .map(({ row, match }) => toMemoryEntry(row, match))
+}
+
+export function embedTexts(input: EmbeddingRequestInput): EmbeddingResponse {
+  const texts = input.texts.map(text => text.trim()).filter(Boolean)
+  if (texts.length === 0 || texts.length > 64) {
+    throw new AppError({
+      code: 'chronicle_embedding_request_invalid',
+      status: 400,
+      message: 'Embedding request must include 1-64 non-empty texts',
+    })
+  }
+  if (!onnxEmbeddingResourceAvailable()) {
+    throw new AppError({
+      code: 'chronicle_embedding_model_unavailable',
+      status: 503,
+      message: 'Chronicle ONNX embedding model is not installed',
+    })
+  }
+  try {
+    const response = DaemonManager.runEmbeddingBatch(texts, getModelResourcesRoot())
+    validateEmbeddingBatch(response.embeddings, texts.length, response.dimensions)
+    return {
+      modelId: response.modelId,
+      modelVersion: response.modelVersion,
+      dimensions: response.dimensions,
+      embeddings: response.embeddings,
+    }
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'chronicle_embedding_failed',
+      status: 500,
+      message: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 export async function getModelResources(): Promise<ModelResourceEntry[]> {
@@ -1641,6 +1892,7 @@ export function createMessageSource(input: MessageSourceInput): MessageSourceEnt
   const sourceConfig = buildSlackSourceConfig({
     realtimeMode: input.realtimeMode,
     signingSecretRef: input.signingSecretRef,
+    socketAppTokenRef: input.socketAppTokenRef,
   })
   db().insert(chronicleMessageSources).values({
     id,
@@ -1674,6 +1926,7 @@ export function updateMessageSource(sourceId: string, input: MessageSourcePatchI
   const nextConfig = mergeSlackSourceConfig(existing.configJson, {
     realtimeMode: input.realtimeMode,
     signingSecretRef: input.signingSecretRef,
+    socketAppTokenRef: input.socketAppTokenRef,
   })
   db().update(chronicleMessageSources).set({
     label: input.label ?? existing.label,
@@ -1803,6 +2056,7 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
   const runType: DreamRunType = dryRun ? 'dry-run' : input.runType ?? 'merge'
   const threshold = clampNumber(input.similarityThreshold, 0.1, 1, 0.76)
   const limit = Math.max(2, Math.min(input.limit ?? 80, 300))
+  const vectorMode = currentTextEmbeddingVectorMode()
   const now = currentUnixSeconds()
   const runId = randomUUID()
   db().insert(chronicleDreamRuns).values({
@@ -1823,7 +2077,7 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
       runType,
       limit,
       similarityThreshold: threshold,
-      vectorMode: 'chronicle-lexical/v1',
+      vectorMode,
     }),
     resultJson: '{}',
     errorMessage: null,
@@ -1862,7 +2116,7 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
           outputKnowledgeId,
           status: outputKnowledgeId ? 'applied' : 'proposed',
           reason: candidate.reason,
-          metadataJson: JSON.stringify({ vectorMode: 'chronicle-lexical/v1' }),
+          metadataJson: JSON.stringify({ vectorMode }),
           createdAt: now,
           updatedAt: now,
         }).run()
@@ -1879,7 +2133,7 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
         outputKnowledgeIdsJson: JSON.stringify(outputKnowledgeIds),
         resultJson: JSON.stringify({
           dryRun,
-          vectorMode: 'chronicle-lexical/v1',
+          vectorMode,
           candidateCount: candidates.length,
           candidates: candidates.slice(0, 50),
         }),
@@ -2270,7 +2524,7 @@ function getCompletedActivityPipelineRun(
   if (!run || (run.status !== 'success' && run.status !== 'skipped')) {
     return null
   }
-  const memoryIds = parseJson<string[]>(run.memoryIdsJson, [])
+  const memoryIds = ActivityPipelineMemoryIdsJsonSchema.parse(run.memoryIdsJson)
   return {
     segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()!),
     run: toPipelineRunEntry(run),
@@ -2292,8 +2546,8 @@ function getCompletedCrystallizationRun(
   if (!run || (run.status !== 'success' && run.status !== 'skipped')) {
     return null
   }
-  const result = parseJson<Record<string, unknown>>(run.summaryResultsJson, {})
-  const knowledgeCardIds = readStringList(result.knowledgeCardIds)
+  const result = ActivityCrystallizationRunResultJsonSchema.parse(run.summaryResultsJson)
+  const knowledgeCardIds = result.knowledgeCardIds
   const cards = knowledgeCardIds.length === 0
     ? []
     : db()
@@ -2302,7 +2556,7 @@ function getCompletedCrystallizationRun(
         .where(inArray(chronicleKnowledgeCards.id, knowledgeCardIds))
         .all()
         .map(toKnowledgeCardEntry)
-  const memoryIds = parseJson<string[]>(run.memoryIdsJson, [])
+  const memoryIds = ActivityPipelineMemoryIdsJsonSchema.parse(run.memoryIdsJson)
   return {
     segment: toActivitySegmentEntry(db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, segmentId)).get()!),
     run: toPipelineRunEntry(run),
@@ -2482,11 +2736,11 @@ function buildActivityCrystallizationMemoryVersions(context: ActivitySegmentCont
 }
 
 function getActivityCrystallizationMemoryIds(context: ActivitySegmentContext): string[] {
-  const metadata = parseJson<Record<string, unknown>>(context.segment.metadataJson, {})
-  const summarization = isRecord(metadata.summarization) ? metadata.summarization : {}
+  const sourceRefs = ActivitySourceRefsSchema.parse(context.sourceRefs)
+  const metadata = ActivitySegmentMetadataJsonSchema.parse(context.segment.metadataJson)
   return uniqueStrings([
-    ...readStringList(context.sourceRefs.memoryIds),
-    ...(readString(summarization.memoryId) ? [readString(summarization.memoryId)!] : []),
+    ...sourceRefs.memoryIds,
+    ...(metadata.summarization.memoryId ? [metadata.summarization.memoryId] : []),
   ])
 }
 
@@ -2660,85 +2914,15 @@ function buildActivityCrystallizationPrompt(context: ActivitySegmentContext): st
 }
 
 function parseActivityTriageResult(text: string): ActivityTriageResult {
-  const parsed = parseJsonFromModelText(text)
-  const keep = typeof parsed.keep === 'boolean'
-    ? parsed.keep
-    : !/\b(skip|discard|noise|idle)\b/i.test(text)
-  const segmentType = readActivitySegmentType(parsed.segmentType)
-  const priority = parsed.priority === 'low' || parsed.priority === 'high' ? parsed.priority : 'normal'
-  return {
-    keep,
-    reason: readString(parsed.reason) ?? (keep ? 'Useful activity evidence' : 'No useful activity evidence'),
-    segmentType,
-    title: readString(parsed.title) ?? null,
-    priority,
-  }
+  return ActivityTriageModelTextSchema.parse(text)
 }
 
 function parseActivitySummaryResult(text: string): ActivitySummaryResult {
-  const parsed = parseJsonFromModelText(text)
-  const summary = readString(parsed.summary) ?? text.trim()
-  return {
-    title: readString(parsed.title) ?? 'Activity summary',
-    summary,
-    keyPoints: readStringList(parsed.keyPoints),
-    entities: readStringList(parsed.entities),
-    followUps: readStringList(parsed.followUps),
-  }
+  return ActivitySummaryModelTextSchema.parse(text)
 }
 
 function parseActivityCrystallizationResult(text: string): ActivityCrystallizationResult {
-  const parsed = parseJsonFromModelText(text)
-  const cardsInput = Array.isArray(parsed.knowledgeCards) ? parsed.knowledgeCards : []
-  const knowledgeCards = cardsInput.map((item, index) => parseCrystallizedKnowledgeCardDraft(item, index))
-  if (knowledgeCards.length === 0 && cardsInput.length > 0) {
-    throw new Error('Chronicle crystallization returned no valid knowledge cards')
-  }
-  return {
-    summary: boundedString(readString(parsed.summary) ?? '', 4_000),
-    knowledgeCards,
-    rejectedCount: Math.max(0, Math.floor(readFiniteNumber(parsed.rejectedCount) ?? 0)),
-  }
-}
-
-function parseCrystallizedKnowledgeCardDraft(value: unknown, index: number): CrystallizedKnowledgeCardDraft {
-  if (!isRecord(value)) {
-    throw new Error(`Chronicle knowledge card ${index} must be an object`)
-  }
-  const title = boundedString(readString(value.title)?.trim() ?? '', 240)
-  const content = boundedString(readString(value.content)?.trim() ?? '', 4_000)
-  if (!title || !content) {
-    throw new Error(`Chronicle knowledge card ${index} requires title and content`)
-  }
-  const cardType = readKnowledgeCardType(readString(value.type) ?? readString(value.cardType))
-  const dimension = readKnowledgeDimension(readString(value.dimension))
-  const confidence = readFiniteNumber(value.confidence)
-  const tags = uniqueStrings(readStringList(value.tags).map(tag => boundedString(tag.trim(), 64)).filter(Boolean)).slice(0, 12)
-  const fallbackStableKey = hashText(`${dimension}:${cardType}:${canonicalizeMemoryContent(title)}:${canonicalizeMemoryContent(content).slice(0, 256)}`).slice(0, 32)
-  const stableKey = boundedString((readString(value.stableKey) ?? fallbackStableKey).trim(), 160) || fallbackStableKey
-  return {
-    title,
-    content,
-    cardType,
-    dimension,
-    confidenceBps: ratioToBps(confidence ?? 1),
-    tags,
-    stableKey,
-  }
-}
-
-function parseJsonFromModelText(text: string): Record<string, unknown> {
-  const trimmed = text.trim()
-  const direct = parseJson<Record<string, unknown>>(trimmed, {})
-  if (Object.keys(direct).length > 0) {
-    return direct
-  }
-  const start = trimmed.indexOf('{')
-  const end = trimmed.lastIndexOf('}')
-  if (start >= 0 && end > start) {
-    return parseJson<Record<string, unknown>>(trimmed.slice(start, end + 1), {})
-  }
-  return {}
+  return ActivityCrystallizationModelTextSchema.parse(text)
 }
 
 function buildActivitySummaryMemoryContent(context: ActivitySegmentContext, summary: ActivitySummaryResult): string {
@@ -3008,7 +3192,7 @@ function buildDreamMergeCandidates(
     if (used.has(card.id)) {
       continue
     }
-    const cardVector = buildLexicalEmbeddingVector(`${card.title}\n${card.content}`)
+    const cardEmbedding = buildTextEmbeddingVector(`${card.title}\n${card.content}`)
     const matches = cards
       .filter(candidate => candidate.id !== card.id
         && !used.has(candidate.id)
@@ -3016,7 +3200,10 @@ function buildDreamMergeCandidates(
         && candidate.dimension === card.dimension
         && candidate.status === 'active')
       .map((candidate) => {
-        const score = cosineSimilarity(cardVector, buildLexicalEmbeddingVector(`${candidate.title}\n${candidate.content}`))
+        const candidateEmbedding = buildTextEmbeddingVector(`${candidate.title}\n${candidate.content}`)
+        const score = cardEmbedding.modelId === candidateEmbedding.modelId && cardEmbedding.modelVersion === candidateEmbedding.modelVersion
+          ? cosineSimilarity(cardEmbedding.vector, candidateEmbedding.vector)
+          : 0
         return { card: candidate, score }
       })
       .filter(match => match.score >= threshold)
@@ -3038,7 +3225,8 @@ function buildDreamMergeCandidates(
       proposedCardType: chooseDreamMergedCardType(group),
       proposedDimension: card.dimension,
       score: bestScore,
-      reason: `Lexical similarity ${bestScore.toFixed(3)} using chronicle-lexical/v1`,
+      reason: `Semantic similarity ${bestScore.toFixed(3)} using ${cardEmbedding.modelId}/${cardEmbedding.modelVersion}`,
+      vectorMode: `${cardEmbedding.modelId}/${cardEmbedding.modelVersion}`,
     })
   }
   return candidates
@@ -3086,7 +3274,7 @@ function applyDreamMergeCandidate(
       source: 'dream-merge',
       runId,
       mergedFromIds: candidate.sourceKnowledgeIds,
-      vectorMode: 'chronicle-lexical/v1',
+      vectorMode: candidate.vectorMode,
     }),
     createdAt: now,
     updatedAt: now,
@@ -3296,13 +3484,14 @@ function recordSegmentationRun(
 }
 
 function buildPipelineSourceKey(input: ActivityAssignmentInput): string {
+  const refs = ActivitySourceRefsSchema.parse(input.refs)
   const parts = [
-    ...readStringList(input.refs.snapshotIds).map(id => `snapshot:${id}`),
-    ...readStringList(input.refs.messageIds).map(id => `message:${id}`),
-    ...readStringList(input.refs.audioTranscriptIds).map(id => `audio-transcript:${id}`),
-    ...readStringList(input.refs.audioRawSegmentIds).map(id => `audio-raw:${id}`),
-    ...readStringList(input.refs.memoryIds).map(id => `memory:${id}`),
-    ...readStringList(input.refs.accessibilitySnapshotIds).map(id => `accessibility:${id}`),
+    ...refs.snapshotIds.map(id => `snapshot:${id}`),
+    ...refs.messageIds.map(id => `message:${id}`),
+    ...refs.audioTranscriptIds.map(id => `audio-transcript:${id}`),
+    ...refs.audioRawSegmentIds.map(id => `audio-raw:${id}`),
+    ...refs.memoryIds.map(id => `memory:${id}`),
+    ...refs.accessibilitySnapshotIds.map(id => `accessibility:${id}`),
   ].sort()
   return `${input.trigger}:${parts.join('|') || `${input.workspaceId ?? 'global'}:${input.occurredAt}`}`
 }
@@ -3456,12 +3645,13 @@ function mergeActivitySourceRefs(
   currentJson: string | undefined,
   next: ActivityAssignmentInput['refs'],
 ): Record<string, string[]> {
-  const current = parseJson<Record<string, unknown>>(currentJson ?? '{}', {})
+  const current = ActivitySourceRefsJsonSchema.parse(currentJson)
+  const nextRefs = ActivitySourceRefsSchema.parse(next)
   const merged: Record<string, string[]> = {}
   for (const key of ['snapshotIds', 'messageIds', 'audioTranscriptIds', 'audioRawSegmentIds', 'memoryIds', 'accessibilitySnapshotIds']) {
     merged[key] = uniqueStrings([
-      ...readStringList(current[key]),
-      ...readStringList(next[key as keyof ActivityAssignmentInput['refs']]),
+      ...current[key],
+      ...nextRefs[key],
     ])
   }
   return merged
@@ -3483,12 +3673,147 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.filter(value => value.length > 0))]
 }
 
-function readStringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : []
-}
-
 function readCount(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+}
+
+interface SpeakerProfileUpsertInput {
+  workspaceId: string | null
+  displayName: string
+  aliases?: string[]
+  embedding?: number[] | null
+  embeddingModelId?: string | null
+  sampleCount?: number
+  seenAt?: number | null
+  transcriptId?: string | null
+  segmentId?: string | null
+  metadata?: Record<string, unknown>
+  now?: number
+}
+
+function upsertSpeakerProfileFromLabel(
+  d: ChronicleDb | ChronicleTx,
+  input: SpeakerProfileUpsertInput,
+): typeof chronicleSpeakerProfiles.$inferSelect {
+  const now = input.now ?? currentUnixSeconds()
+  const displayName = normalizeSpeakerDisplayName(input.displayName)
+  const normalizedLabel = normalizeSpeakerLabel(displayName)
+  const workspaceId = input.workspaceId || null
+  const stableKey = buildSpeakerStableKey(workspaceId, normalizedLabel)
+  const existing = d
+    .select()
+    .from(chronicleSpeakerProfiles)
+    .where(eq(chronicleSpeakerProfiles.stableKey, stableKey))
+    .get()
+  const nextAliases = normalizeSpeakerAliases([
+    ...(existing ? parseJson<string[]>(existing.aliasesJson, []) : []),
+    ...(input.aliases ?? []),
+    displayName,
+  ])
+  const sampleDelta = input.sampleCount ?? 1
+  const nextSampleCount = Math.max(0, (existing?.sampleCount ?? 0) + sampleDelta)
+  const existingMetadata = existing ? parseJson<Record<string, unknown>>(existing.metadataJson, {}) : {}
+  const metadata = {
+    ...existingMetadata,
+    ...(input.metadata ?? {}),
+  }
+  const embeddingJson = input.embedding === undefined
+    ? existing?.embeddingJson ?? null
+    : input.embedding === null
+      ? null
+      : JSON.stringify(input.embedding)
+  const embeddingDimensions = input.embedding === undefined
+    ? existing?.embeddingDimensions ?? null
+    : input.embedding === null
+      ? null
+      : input.embedding.length
+  const embeddingModelId = input.embedding === undefined
+    ? existing?.embeddingModelId ?? null
+    : input.embedding === null
+      ? null
+      : input.embeddingModelId ?? existing?.embeddingModelId ?? 'speaker-embedding-extractor'
+  const lastSeenAt = input.seenAt ?? existing?.lastSeenAt ?? null
+
+  if (existing) {
+    d.update(chronicleSpeakerProfiles).set({
+      displayName,
+      normalizedLabel,
+      aliasesJson: JSON.stringify(nextAliases),
+      embeddingJson,
+      embeddingDimensions,
+      embeddingModelId,
+      sampleCount: nextSampleCount,
+      lastSeenAt,
+      sourceTranscriptId: input.transcriptId ?? existing.sourceTranscriptId,
+      sourceSegmentId: input.segmentId ?? existing.sourceSegmentId,
+      metadataJson: JSON.stringify(metadata),
+      updatedAt: now,
+    }).where(eq(chronicleSpeakerProfiles.id, existing.id)).run()
+    return d.select().from(chronicleSpeakerProfiles).where(eq(chronicleSpeakerProfiles.id, existing.id)).get()!
+  }
+
+  const id = randomUUID()
+  d.insert(chronicleSpeakerProfiles).values({
+    id,
+    workspaceId,
+    stableKey,
+    displayName,
+    normalizedLabel,
+    aliasesJson: JSON.stringify(nextAliases),
+    embeddingJson,
+    embeddingDimensions,
+    embeddingModelId,
+    sampleCount: nextSampleCount,
+    lastSeenAt,
+    sourceTranscriptId: input.transcriptId ?? null,
+    sourceSegmentId: input.segmentId ?? null,
+    metadataJson: JSON.stringify(metadata),
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+  return d.select().from(chronicleSpeakerProfiles).where(eq(chronicleSpeakerProfiles.id, id)).get()!
+}
+
+function normalizeSpeakerDisplayName(value: string): string {
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  if (!normalized) {
+    throw new AppError({
+      code: 'chronicle_speaker_profile_name_required',
+      status: 400,
+      message: 'Speaker displayName is required',
+    })
+  }
+  return normalized
+}
+
+function normalizeSpeakerLabel(value: string): string {
+  return normalizeSpeakerDisplayName(value).toLocaleLowerCase()
+}
+
+function normalizeSpeakerAliases(values: string[]): string[] {
+  const aliases = values
+    .map(value => value.trim().replace(/\s+/g, ' '))
+    .filter(value => value.length > 0)
+  return [...new Map(aliases.map(value => [value.toLocaleLowerCase(), value])).values()]
+}
+
+function normalizeSpeakerEmbedding(value: number[] | null): number[] | null {
+  if (value === null) {
+    return null
+  }
+  const vector = value.map(item => Number(item))
+  if (vector.length === 0 || vector.some(item => !Number.isFinite(item))) {
+    throw new AppError({
+      code: 'chronicle_speaker_profile_embedding_invalid',
+      status: 400,
+      message: 'Speaker embedding must contain finite numeric values',
+    })
+  }
+  return vector
+}
+
+function buildSpeakerStableKey(workspaceId: string | null, normalizedLabel: string): string {
+  return `${workspaceId ?? 'global'}:${normalizedLabel}`
 }
 
 function normalizeActivityBoundary(value: string | null): string {
@@ -3578,6 +3903,74 @@ export function recordAudioRawSegment(input: AudioRawSegmentReportInput): AudioR
   return toAudioRawSegmentEntry(db().select().from(chronicleAudioRawSegments).where(eq(chronicleAudioRawSegments.id, id)).get()!)
 }
 
+export function recordAudioRawSegmentProcessingResult(
+  sourceId: string,
+  input: AudioRawSegmentProcessingResultInput,
+): AudioRawSegmentEntry {
+  const row = db()
+    .select()
+    .from(chronicleAudioRawSegments)
+    .where(eq(chronicleAudioRawSegments.sourceId, sourceId))
+    .get()
+  if (!row) {
+    throw new AppError({
+      code: 'chronicle_audio_raw_segment_not_found',
+      status: 404,
+      message: 'Chronicle raw audio segment not found',
+    })
+  }
+  const metadata = {
+    ...parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    ...(input.metadata ?? {}),
+    processingResult: {
+      transcriptSourceId: input.transcriptSourceId ?? null,
+      speakerProfileIds: input.speakerProfileIds ?? [],
+      errorMessage: input.errorMessage ?? null,
+      updatedAt: currentUnixSeconds(),
+    },
+  }
+  const status = input.status ?? deriveRawAudioStatus(input, row.status)
+  db().update(chronicleAudioRawSegments).set({
+    status,
+    vadStatus: input.vadStatus ?? row.vadStatus,
+    asrStatus: input.asrStatus ?? row.asrStatus,
+    speakerStatus: input.speakerStatus ?? row.speakerStatus,
+    metadataJson: JSON.stringify(metadata),
+    updatedAt: currentUnixSeconds(),
+  }).where(eq(chronicleAudioRawSegments.id, row.id)).run()
+  recordEvent({
+    type: 'audio',
+    status: status === 'error' ? 'error' : 'success',
+    message: 'Chronicle raw audio processing result recorded',
+    attrs: {
+      sourceId,
+      rawSegmentId: row.id,
+      status,
+      vadStatus: input.vadStatus ?? row.vadStatus,
+      asrStatus: input.asrStatus ?? row.asrStatus,
+      speakerStatus: input.speakerStatus ?? row.speakerStatus,
+      transcriptSourceId: input.transcriptSourceId ?? null,
+    },
+  })
+  return toAudioRawSegmentEntry(db().select().from(chronicleAudioRawSegments).where(eq(chronicleAudioRawSegments.id, row.id)).get()!)
+}
+
+function deriveRawAudioStatus(
+  input: AudioRawSegmentProcessingResultInput,
+  currentStatus: AudioRawSegmentEntry['status'],
+): AudioRawSegmentEntry['status'] {
+  if ([input.vadStatus, input.asrStatus, input.speakerStatus].some(status => status === 'error')) {
+    return 'error'
+  }
+  if ([input.vadStatus, input.asrStatus, input.speakerStatus].some(status => status === 'pending')) {
+    return 'queued'
+  }
+  if ([input.vadStatus, input.asrStatus, input.speakerStatus].some(status => status === 'ready')) {
+    return 'processed'
+  }
+  return currentStatus
+}
+
 export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioTranscriptEntry {
   const config = syncConfig()
   const now = currentUnixSeconds()
@@ -3651,13 +4044,15 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
     }
 
     for (const [segmentIndex, segment] of input.segments.entries()) {
+      const segmentId = randomUUID()
+      const speakerLabel = normalizeNullableString(segment.speakerLabel)
       tx.insert(chronicleAudioSegments).values({
-        id: randomUUID(),
+        id: segmentId,
         transcriptId,
         segmentIndex,
         startMs: Math.floor(segment.startMs),
         endMs: segment.endMs === undefined || segment.endMs === null ? null : Math.floor(segment.endMs),
-        speakerLabel: normalizeNullableString(segment.speakerLabel),
+        speakerLabel,
         text: segment.text,
         confidenceBps: segment.confidence === undefined || segment.confidence === null
           ? null
@@ -3667,6 +4062,20 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
         createdAt: now,
         updatedAt: now,
       }).run()
+      if (speakerLabel) {
+        upsertSpeakerProfileFromLabel(tx, {
+          workspaceId: config.workspaceId || null,
+          displayName: speakerLabel,
+          seenAt: startedAt + Math.floor(segment.startMs / 1000),
+          transcriptId,
+          segmentId,
+          metadata: {
+            source: 'audio-transcript',
+            transcriptSourceId: input.sourceId,
+            transcriptTitle: input.title ?? null,
+          },
+        })
+      }
     }
   })
 
@@ -3720,6 +4129,50 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
     })
   }
   return toAudioTranscriptEntry(db().select().from(chronicleAudioTranscripts).where(eq(chronicleAudioTranscripts.id, transcriptId)).get()!)
+}
+
+export function listSpeakerProfiles(): SpeakerProfileEntry[] {
+  const config = syncConfig()
+  const workspaceId = config.workspaceId || null
+  const rows = workspaceId
+    ? db()
+        .select()
+        .from(chronicleSpeakerProfiles)
+        .where(eq(chronicleSpeakerProfiles.workspaceId, workspaceId))
+        .orderBy(desc(chronicleSpeakerProfiles.lastSeenAt), chronicleSpeakerProfiles.displayName)
+        .all()
+    : db()
+        .select()
+        .from(chronicleSpeakerProfiles)
+        .orderBy(desc(chronicleSpeakerProfiles.lastSeenAt), chronicleSpeakerProfiles.displayName)
+        .all()
+  return rows.map(toSpeakerProfileEntry)
+}
+
+export function upsertSpeakerProfile(input: SpeakerProfileInput): SpeakerProfileEntry {
+  const config = syncConfig()
+  const now = currentUnixSeconds()
+  const displayName = normalizeSpeakerDisplayName(input.displayName)
+  const aliases = normalizeSpeakerAliases(input.aliases ?? [])
+  const embedding = input.embedding === undefined ? undefined : normalizeSpeakerEmbedding(input.embedding)
+  const lastSeenAt = input.lastSeenAt ? readRequiredAudioTimestamp(input.lastSeenAt, 'lastSeenAt') : null
+  const sampleCount = input.sampleCount === undefined ? undefined : Math.max(0, Math.floor(input.sampleCount))
+  const metadata = input.metadata ?? {}
+  const row = upsertSpeakerProfileFromLabel(db(), {
+    workspaceId: config.workspaceId || null,
+    displayName,
+    aliases,
+    embedding,
+    embeddingModelId: normalizeNullableString(input.embeddingModelId),
+    sampleCount,
+    seenAt: lastSeenAt,
+    metadata: {
+      source: 'manual',
+      ...metadata,
+    },
+    now,
+  })
+  return toSpeakerProfileEntry(row)
 }
 
 export async function syncSlackSource(
@@ -4238,13 +4691,6 @@ function inferScreenActivitySegmentType(appBundleId: string | null, windowTitle:
   return appBundleId || windowTitle ? 'work' : 'unknown'
 }
 
-function readActivitySegmentType(value: unknown): ActivitySegmentType {
-  if (value === 'work' || value === 'meeting' || value === 'browsing' || value === 'chat' || value === 'audio' || value === 'idle') {
-    return value
-  }
-  return 'unknown'
-}
-
 export async function getFrameImageBySnapshot(snapshotId: string): Promise<Response | null> {
   const snapshot = db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, snapshotId)).get()
   if (!snapshot) {
@@ -4258,29 +4704,10 @@ export async function getFrameImage(segment: string, frame: string): Promise<Res
 }
 
 function syncConfig(): ChronicleConfig {
-  const config = getServerConfig()
-  const filePath = resolve(config.dataDir ?? dirname(config.dbPath), 'preferences', 'chronicle.json')
+  const filePath = getConfigPath()
   try {
     const content = readFileSync(filePath, 'utf8')
-    const parsed = JSON.parse(content)
-    return {
-      profileId: readString(parsed.profileId) ?? defaultConfig.profileId,
-      modelId: readString(parsed.modelId) ?? defaultConfig.modelId,
-      workspaceId: readString(parsed.workspaceId) ?? defaultConfig.workspaceId,
-      enabled: typeof parsed.enabled === 'boolean' ? parsed.enabled : defaultConfig.enabled,
-      activityPipelineEnabled: typeof parsed.activityPipelineEnabled === 'boolean'
-        ? parsed.activityPipelineEnabled
-        : defaultConfig.activityPipelineEnabled,
-      activityPipelineIntervalMs: readPositiveNumber(parsed.activityPipelineIntervalMs) ?? defaultConfig.activityPipelineIntervalMs,
-      activityPipelineBatchSize: readPositiveNumber(parsed.activityPipelineBatchSize) ?? defaultConfig.activityPipelineBatchSize,
-      audioCaptureEnabled: typeof parsed.audioCaptureEnabled === 'boolean'
-        ? parsed.audioCaptureEnabled
-        : defaultConfig.audioCaptureEnabled,
-      audioSegmentMs: readPositiveNumber(parsed.audioSegmentMs) ?? defaultConfig.audioSegmentMs,
-      audioSegmentIntervalMs: readPositiveNumber(parsed.audioSegmentIntervalMs) ?? defaultConfig.audioSegmentIntervalMs,
-      audioRmsThreshold: readNonNegativeNumber(parsed.audioRmsThreshold) ?? defaultConfig.audioRmsThreshold,
-      storageRoot: readString(parsed.storageRoot) ?? defaultConfig.storageRoot,
-    }
+    return ChronicleConfigJsonSchema.parse(content)
   }
   catch {
     return { ...defaultConfig }
@@ -4328,6 +4755,7 @@ function toMessageSourceEntry(row: typeof chronicleMessageSources.$inferSelect):
     channelIds: parseJson<string[]>(row.channelIdsJson, []),
     realtimeMode: sourceConfig.realtimeMode,
     signingSecretRef: sourceConfig.signingSecretRef,
+    socketAppTokenRef: sourceConfig.socketAppTokenRef,
     status: row.status,
     lastSyncAt: row.lastSyncAt,
     lastMessageAt: row.lastMessageAt,
@@ -4551,6 +4979,30 @@ function toAudioSegmentEntry(row: typeof chronicleAudioSegments.$inferSelect): A
   }
 }
 
+function toSpeakerProfileEntry(row: typeof chronicleSpeakerProfiles.$inferSelect): SpeakerProfileEntry {
+  const embedding = row.embeddingJson ? parseJson<unknown>(row.embeddingJson, null) : null
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    displayName: row.displayName,
+    normalizedLabel: row.normalizedLabel,
+    aliases: parseJson<string[]>(row.aliasesJson, []),
+    embedding: Array.isArray(embedding) && embedding.every(item => typeof item === 'number') ? embedding : null,
+    embeddingDimensions: row.embeddingDimensions,
+    embeddingModelId: row.embeddingModelId,
+    sampleCount: row.sampleCount,
+    lastSeenAt: row.lastSeenAt === null ? null : new Date(row.lastSeenAt * 1000).toISOString(),
+    lastSeenAtUnix: row.lastSeenAt,
+    sourceTranscriptId: row.sourceTranscriptId,
+    sourceSegmentId: row.sourceSegmentId,
+    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+    updatedAt: new Date(row.updatedAt * 1000).toISOString(),
+    updatedAtUnix: row.updatedAt,
+  }
+}
+
 function buildAudioTranscriptPreview(transcriptId: string): string {
   return db()
     .select({ text: chronicleAudioSegments.text })
@@ -4619,7 +5071,7 @@ function failSlackSync(
 function readSlackSourceConfig(configJson: string): SlackSourceConfig {
   const parsed = SlackSourceConfigSchema.safeParse(parseJson<unknown>(configJson, {}))
   if (!parsed.success) {
-    return { realtimeMode: 'polling', signingSecretRef: null }
+    return { realtimeMode: 'polling', signingSecretRef: null, socketAppTokenRef: null }
   }
   return buildSlackSourceConfig(parsed.data)
 }
@@ -4627,10 +5079,12 @@ function readSlackSourceConfig(configJson: string): SlackSourceConfig {
 function buildSlackSourceConfig(input: {
   realtimeMode?: SlackRealtimeMode
   signingSecretRef?: string | null
+  socketAppTokenRef?: string | null
 }): SlackSourceConfig {
   return {
     realtimeMode: input.realtimeMode ?? 'polling',
     signingSecretRef: normalizeNullableString(input.signingSecretRef),
+    socketAppTokenRef: normalizeNullableString(input.socketAppTokenRef),
   }
 }
 
@@ -4639,12 +5093,14 @@ function mergeSlackSourceConfig(
   patch: {
     realtimeMode?: SlackRealtimeMode
     signingSecretRef?: string | null
+    socketAppTokenRef?: string | null
   },
 ): SlackSourceConfig {
   const current = readSlackSourceConfig(configJson)
   return buildSlackSourceConfig({
     realtimeMode: patch.realtimeMode ?? current.realtimeMode,
     signingSecretRef: patch.signingSecretRef === undefined ? current.signingSecretRef : patch.signingSecretRef,
+    socketAppTokenRef: patch.socketAppTokenRef === undefined ? current.socketAppTokenRef : patch.socketAppTokenRef,
   })
 }
 
@@ -4887,7 +5343,7 @@ async function getConfiguredModel(config: ChronicleConfig): Promise<string | nul
   if (!profile) {
     return null
   }
-  const parsedConfig = parseConfigWith(profile.configJson, ProfileConfigSchema)
+  const parsedConfig = ProfileConfigJsonSchema.parse(profile.configJson)
   return config.modelId || parsedConfig.modelId || parsedConfig.model || null
 }
 
@@ -5445,25 +5901,33 @@ function insertMemoryEmbedding(
   content: string,
   now: number,
 ): void {
-  const vector = buildLexicalEmbeddingVector(content)
-  const vectorJson = JSON.stringify(vector)
+  const embedding = buildTextEmbeddingVector(content)
+  const vectorJson = JSON.stringify(embedding.vector)
   tx.insert(chronicleMemoryEmbeddings).values({
     id: randomUUID(),
     memoryId,
     chunkId,
-    modelId: MEMORY_EMBEDDING_MODEL_ID,
-    modelVersion: MEMORY_EMBEDDING_MODEL_VERSION,
-    dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+    modelId: embedding.modelId,
+    modelVersion: embedding.modelVersion,
+    dimensions: embedding.vector.length,
     vectorJson,
     vectorHash: hashText(vectorJson),
     status: 'ready',
     metadataJson: JSON.stringify({
-      provider: 'chronicle-lexical',
-      runtime: 'deterministic-local',
+      provider: embedding.provider === 'onnx' ? 'chronicle-onnx' : 'chronicle-lexical',
+      runtime: embedding.provider === 'onnx' ? 'local-onnx' : 'deterministic-local',
     }),
     createdAt: now,
     updatedAt: now,
   }).run()
+
+  if (embedding.provider === 'onnx') {
+    tx.update(chronicleMemoryChunks).set({
+      embeddingStatus: 'ready',
+      embeddingModelId: embedding.modelId,
+      updatedAt: now,
+    }).where(eq(chronicleMemoryChunks.id, chunkId)).run()
+  }
 }
 
 function insertMemoryKeywords(
@@ -5532,6 +5996,63 @@ function countTerms(terms: string[]): Map<string, number> {
 function buildCombinedMemorySearchScore(match: MemorySearchScore, phraseContained: boolean): number {
   const phraseBoost = phraseContained ? 100 : 0
   return phraseBoost + match.keywordScore + match.semanticScore * MEMORY_SEMANTIC_SCORE_WEIGHT
+}
+
+function currentTextEmbeddingVectorMode(): string {
+  return onnxEmbeddingResourceAvailable()
+    ? `${ONNX_TEXT_EMBEDDING_MODEL_ID}/${ONNX_TEXT_EMBEDDING_MODEL_VERSION}`
+    : `${MEMORY_EMBEDDING_MODEL_ID}/${MEMORY_EMBEDDING_MODEL_VERSION}`
+}
+
+function buildTextEmbeddingVector(text: string): TextEmbeddingVector {
+  if (onnxEmbeddingResourceAvailable()) {
+    try {
+      const response = DaemonManager.runEmbeddingBatch([text], getModelResourcesRoot())
+      validateEmbeddingBatch(response.embeddings, 1, response.dimensions)
+      return {
+        vector: response.embeddings[0]!,
+        modelId: response.modelId,
+        modelVersion: response.modelVersion,
+        provider: 'onnx',
+      }
+    }
+    catch (error) {
+      recordEvent({
+        type: 'model-resource',
+        status: 'error',
+        message: error instanceof Error ? error.message : String(error),
+        attrs: { category: 'embedding', runtime: 'local-onnx' },
+      })
+    }
+  }
+
+  return {
+    vector: buildLexicalEmbeddingVector(text),
+    modelId: MEMORY_EMBEDDING_MODEL_ID,
+    modelVersion: MEMORY_EMBEDDING_MODEL_VERSION,
+    provider: 'lexical',
+  }
+}
+
+function onnxEmbeddingResourceAvailable(): boolean {
+  const manifest = getModelResourceManifest('embedding')
+  return manifest.files
+    .filter(file => file.required !== false)
+    .every(file => existsSync(getModelResourceAbsolutePath(file.path)))
+}
+
+function validateEmbeddingBatch(embeddings: number[][], expectedCount: number, dimensions: number): void {
+  if (!Number.isInteger(dimensions) || dimensions <= 0) {
+    throw new Error('embedding response has invalid dimensions')
+  }
+  if (embeddings.length !== expectedCount) {
+    throw new Error('embedding response has an invalid embedding count')
+  }
+  for (const embedding of embeddings) {
+    if (embedding.length !== dimensions || embedding.some(value => !Number.isFinite(value))) {
+      throw new Error('embedding response contains an invalid vector')
+    }
+  }
 }
 
 function buildLexicalEmbeddingVector(text: string): number[] {
@@ -5629,7 +6150,7 @@ function parseTimestamp(value: string): number | null {
   return Number.isFinite(asNumber) ? Math.floor(asNumber) : null
 }
 
-function readRequiredAudioTimestamp(value: string, field: 'startedAt' | 'endedAt'): number {
+function readRequiredAudioTimestamp(value: string, field: 'startedAt' | 'endedAt' | 'lastSeenAt'): number {
   const parsed = parseTimestamp(value)
   if (parsed !== null) {
     return parsed
@@ -5689,32 +6210,6 @@ function readString(value: unknown): string | undefined {
 
 function boundedString(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : value.slice(0, maxLength)
-}
-
-function readFiniteNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-function readKnowledgeCardType(value: string | undefined): KnowledgeCardType {
-  if (value === 'insight' || value === 'decision' || value === 'task' || value === 'pattern') {
-    return value
-  }
-  return 'fact'
-}
-
-function readKnowledgeDimension(value: string | undefined): KnowledgeDimension {
-  if (value === 'technical' || value === 'business' || value === 'personal' || value === 'project') {
-    return value
-  }
-  return 'general'
-}
-
-function readPositiveNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
-}
-
-function readNonNegativeNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {

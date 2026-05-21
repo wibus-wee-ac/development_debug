@@ -22,6 +22,7 @@ import {
   chronicleMessages,
   chronicleMessageSources,
   chroniclePipelineRuns,
+  chronicleSpeakerProfiles,
   chronicleSnapshots,
 } from '@cradle/db'
 import { generateText } from 'ai'
@@ -192,6 +193,7 @@ describe('chronicle module', () => {
     const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    shutdownInfra()
     let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
@@ -572,32 +574,60 @@ describe('chronicle module', () => {
 
       const resourceResponse = await requestJson(app, '/chronicle/model-resources')
       expect(resourceResponse.status).toBe(200)
-      const resources = await resourceResponse.json() as Array<{ category: string, status: string, path: string | null }>
+      const resources = await resourceResponse.json() as Array<{
+        category: string
+        status: string
+        path: string | null
+        displayName: string
+        metadata: {
+          function?: string
+          manifest?: {
+            files?: Array<Record<string, unknown>>
+          }
+        }
+      }>
       expect(resources.map(resource => resource.category).sort()).toEqual([
         'audio-asr',
         'audio-vad',
         'embedding',
         'ocr',
+        'pii',
         'speaker',
       ])
       expect(resources.find(resource => resource.category === 'ocr')?.status).toBe('available')
       expect(resources.find(resource => resource.category === 'audio-asr')?.path).toBeNull()
+      const speakerResource = resources.find(resource => resource.category === 'speaker')
+      expect(speakerResource?.displayName).toBe('Speaker Embedding Extractor')
+      expect(speakerResource?.metadata.function).toBe('speaker-embedding-extractor')
+      expect(speakerResource?.metadata.manifest?.files).toEqual([
+        expect.objectContaining({
+          path: 'speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
+          sha256: 'aa3cfc16963a10586a9393f5035d6d6b57e98d358b347f80c2a30bf4f00ceba2',
+          sizeBytes: 28_281_164,
+        }),
+      ])
 
-      const vadManifestFetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response('download unavailable in test', { status: 502 }),
+      const speakerManifestFetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response('invalid speaker extractor bytes', { status: 200 }),
       )
-      const manifestInstallResponse = await requestJson(app, '/chronicle/model-resources/audio-vad/install', {
+      const speakerManifestInstallResponse = await requestJson(app, '/chronicle/model-resources/speaker/install', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ source: 'manifest' }),
       })
-      expect(manifestInstallResponse.status).toBe(200)
-      const manifestInstallBody = await manifestInstallResponse.json() as { status: string, message: string | null }
-      expect(manifestInstallBody.status).toBe('error')
-      expect(manifestInstallBody.message).toContain('Model resource download failed for audio-vad/silero_vad.onnx')
-      expect(manifestInstallBody.message).not.toContain('Manifest install requires source URL')
-      expect(vadManifestFetchMock).toHaveBeenCalledWith('https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx')
-      vadManifestFetchMock.mockRestore()
+      expect(speakerManifestInstallResponse.status).toBe(200)
+      const speakerManifestInstallBody = await speakerManifestInstallResponse.json() as { status: string, message: string | null }
+      expect(speakerManifestInstallBody.status).toBe('error')
+      expect(speakerManifestInstallBody.message).toContain('Size check failed for speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx')
+      expect(speakerManifestInstallBody.message).not.toContain('Manifest install requires source URL')
+      expect(speakerManifestFetchMock).toHaveBeenCalledWith(
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx',
+        expect.objectContaining({
+          headers: { 'User-Agent': 'Cradle/1.0' },
+          redirect: 'follow',
+        }),
+      )
+      speakerManifestFetchMock.mockRestore()
 
       const sourceModelPath = join(storageRoot, 'silero_vad.onnx')
       writeFileSync(sourceModelPath, Buffer.alloc(643_854, 0x41))
@@ -700,6 +730,19 @@ describe('chronicle module', () => {
       expect(transcriptBody.segments[0].confidence).toBe(0.94)
       expect(db().select().from(chronicleAudioTranscripts).where(eq(chronicleAudioTranscripts.sourceId, 'meeting-source-1')).get()?.memoryId).toBe(transcriptBody.memoryId)
       expect(db().select().from(chronicleAudioSegments).where(eq(chronicleAudioSegments.transcriptId, transcriptBody.id)).all()).toHaveLength(2)
+      const speakerProfilesResponse = await requestJson(app, '/chronicle/speaker-profiles')
+      expect(speakerProfilesResponse.status).toBe(200)
+      const speakerProfiles = await speakerProfilesResponse.json() as Array<{
+        displayName: string
+        normalizedLabel: string
+        sampleCount: number
+        sourceTranscriptId: string | null
+      }>
+      expect(speakerProfiles.map(profile => profile.displayName).sort()).toEqual(['Ada', 'Lin'])
+      expect(speakerProfiles.find(profile => profile.displayName === 'Ada')?.normalizedLabel).toBe('ada')
+      expect(speakerProfiles.find(profile => profile.displayName === 'Ada')?.sampleCount).toBe(1)
+      expect(speakerProfiles.find(profile => profile.displayName === 'Ada')?.sourceTranscriptId).toBe(transcriptBody.id)
+      expect(db().select().from(chronicleSpeakerProfiles).all()).toHaveLength(2)
 
       const updatedTranscriptResponse = await requestJson(app, '/chronicle/audio-transcripts', {
         method: 'POST',
@@ -740,6 +783,38 @@ describe('chronicle module', () => {
       expect(updatedSegments).toHaveLength(1)
       expect(updatedSegments[0].text).toContain('AudioTargetBeta')
       expect(updatedSegments[0].text).not.toContain('AudioTargetAlpha')
+      const updatedAdaProfile = db()
+        .select()
+        .from(chronicleSpeakerProfiles)
+        .where(eq(chronicleSpeakerProfiles.normalizedLabel, 'ada'))
+        .get()
+      expect(updatedAdaProfile?.sampleCount).toBe(2)
+      const manualSpeakerProfileResponse = await requestJson(app, '/chronicle/speaker-profiles', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          displayName: 'Ada',
+          aliases: ['Ada Lovelace'],
+          embedding: [0.1, 0.2, 0.3],
+          embeddingModelId: 'test-speaker-extractor',
+          sampleCount: 3,
+          lastSeenAt: '2026-05-21T10:40:00Z',
+          metadata: { source: 'manual-test' },
+        }),
+      })
+      expect(manualSpeakerProfileResponse.status).toBe(200)
+      const manualSpeakerProfile = await manualSpeakerProfileResponse.json() as {
+        displayName: string
+        aliases: string[]
+        embeddingDimensions: number | null
+        embeddingModelId: string | null
+        sampleCount: number
+      }
+      expect(manualSpeakerProfile.displayName).toBe('Ada')
+      expect(manualSpeakerProfile.aliases).toContain('Ada Lovelace')
+      expect(manualSpeakerProfile.embeddingDimensions).toBe(3)
+      expect(manualSpeakerProfile.embeddingModelId).toBe('test-speaker-extractor')
+      expect(manualSpeakerProfile.sampleCount).toBe(5)
       const transcriptActivitySegment = db()
         .select()
         .from(chronicleActivitySegments)
@@ -908,6 +983,32 @@ describe('chronicle module', () => {
       expect(updatedRawAudioBody.vadStatus).toBe('pending')
       expect(updatedRawAudioBody.asrStatus).toBe('pending')
       expect(updatedRawAudioBody.speakerStatus).toBe('pending')
+      const rawAudioProcessingResponse = await requestJson(app, '/chronicle/audio-raw-segments/audio%3Amicrophone%3Asegment-1/processing-result', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          vadStatus: 'ready',
+          asrStatus: 'ready',
+          speakerStatus: 'ready',
+          transcriptSourceId: 'meeting-source-1',
+          speakerProfileIds: [manualSpeakerProfile.displayName],
+          metadata: { runtime: 'local-audio-pipeline' },
+        }),
+      })
+      expect(rawAudioProcessingResponse.status).toBe(200)
+      const rawAudioProcessingBody = await rawAudioProcessingResponse.json() as {
+        status: string
+        vadStatus: string
+        asrStatus: string
+        speakerStatus: string
+        metadata: { processingResult?: { transcriptSourceId?: string }, runtime?: string }
+      }
+      expect(rawAudioProcessingBody.status).toBe('processed')
+      expect(rawAudioProcessingBody.vadStatus).toBe('ready')
+      expect(rawAudioProcessingBody.asrStatus).toBe('ready')
+      expect(rawAudioProcessingBody.speakerStatus).toBe('ready')
+      expect(rawAudioProcessingBody.metadata.runtime).toBe('local-audio-pipeline')
+      expect(rawAudioProcessingBody.metadata.processingResult?.transcriptSourceId).toBe('meeting-source-1')
       expect(db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_raw_segments WHERE source_id = 'audio:microphone:segment-1'`)?.count).toBe(1)
       const rawAudioActivitySegment = db()
         .select()
