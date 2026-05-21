@@ -4,9 +4,31 @@
 
 html {
   scrollbar-gutter: stable;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 html > body[data-scroll-locked] {
   margin-right: 0px !important;
   --removed-body-scroll-bar-size: 0px !important;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p,
+li,
+td,
+blockquote {
+  text-wrap: pretty;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-variant-ligatures: contextual;
 }

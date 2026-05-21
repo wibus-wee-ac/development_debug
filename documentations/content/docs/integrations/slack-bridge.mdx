@@ -15,22 +15,37 @@ Bridge 由三部分组成：
 
 每次 `zhi` 调用都会创建新的 Slack thread。收到回复后，bridge 会丢弃这次 pending mapping。唯一持久状态是绑定的 Slack channel。
 
+<SlackBridgeFlow />
+
 ## Create the Slack app
 
 在 Slack API 控制台创建 app：
 
-1. 打开 `https://api.slack.com/apps`。
-2. 选择 `Create New App`。
-3. 使用 `From scratch`。
-4. 选择 workspace。
+<Steps>
+  <Step>
+    打开 `https://api.slack.com/apps`。
+  </Step>
+  <Step>
+    选择 `Create New App`，使用 `From scratch`。
+  </Step>
+  <Step>
+    选择 workspace。
+  </Step>
+</Steps>
 
 启用 Socket Mode：
 
-1. 进入 `Socket Mode`。
-2. 打开 Socket Mode。
-3. 创建 App-Level Token。
-4. 添加 scope：`connections:write`。
-5. 保存 `xapp-...` token，作为 `SLACK_APP_TOKEN`。
+<Steps>
+  <Step>
+    进入 `Socket Mode`，打开 Socket Mode。
+  </Step>
+  <Step>
+    创建 App-Level Token，并添加 scope：`connections:write`。
+  </Step>
+  <Step>
+    保存 `xapp-...` token，作为 `SLACK_APP_TOKEN`。
+  </Step>
+</Steps>
 
 配置 bot token scopes：
 
@@ -146,13 +161,29 @@ pnpm start
 
 ## Verify the flow
 
-1. 启动 bridge server。
-2. 确认 Slack bot 已进入目标 channel。
-3. 执行 `/zhi bind`。
-4. 在 agent runtime 中触发 `zhi` tool call。
-5. 确认 Slack 出现新的 thread。
-6. 在 thread 中回复。
-7. 确认 agent 收到回复并继续执行。
+<Steps>
+  <Step>
+    启动 bridge server。
+  </Step>
+  <Step>
+    确认 Slack bot 已进入目标 channel。
+  </Step>
+  <Step>
+    执行 `/zhi bind`。
+  </Step>
+  <Step>
+    在 agent runtime 中触发 `zhi` tool call。
+  </Step>
+  <Step>
+    确认 Slack 出现新的 thread。
+  </Step>
+  <Step>
+    在 thread 中回复。
+  </Step>
+  <Step>
+    确认 agent 收到回复并继续执行。
+  </Step>
+</Steps>
 
 如果 tool call 一直等待，先运行 `/zhi status`。Pending calls 默认不超时，会一直等到有人回复或 bridge 进程关闭。
 

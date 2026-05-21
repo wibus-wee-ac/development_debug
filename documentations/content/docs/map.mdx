@@ -1,0 +1,39 @@
+---
+title: Docs map
+description: A visual map of Cradle product surfaces, developer contracts, extension points, and recovery paths.
+---
+
+这张图把 Cradle 文档按理解路径重新组织。你可以先从目标区域进入，再沿着 owner、runtime、extension 和 recovery 关系跳转。
+
+<DocsKnowledgeGraph />
+
+## 如何阅读这张地图
+
+- 产品界面是日常使用路径：workspace、Chat、Kanban、automation。
+- Agent 系统是执行路径：provider、model、runtime kind、skills。
+- 本地记忆是 Chronicle 路径：capture、artifact、filtering、memory、recall。
+- 开发者契约是贡献路径：server、OpenAPI、CLI、database。
+- 扩展点是扩展路径：plugin SDK、web API、desktop API、first-party plugins。
+- 恢复路径是排障路径：desktop server、provider、workspace Git、Devtools export。
+
+## 第一选择
+
+如果你正在学习 Cradle，先走产品界面。如果你在改代码，先走开发者契约。如果你遇到错误，先走恢复路径。
+
+<ReaderPath />
+
+## 真实链接图谱
+
+上面的地图解释“应该怎样理解 Cradle”。下面的图谱解释“当前文档实际怎样互相引用”。它来自 Fumadocs 的 `extractLinkReferences` 输出，因此可以暴露孤立页面、弱引用页面和未解析的本地链接。
+
+<DocsLinkGraph />
+
+## 系统边界
+
+<LocalFirstBoundaryMap />
+
+Cradle 的核心边界是本地优先。外部 provider、Slack、browser automation 和 MCP 都通过显式 bridge 进入系统；文档不把这些外部系统描述成 Cradle 自己拥有的 namespace。
+
+## 下一步
+
+继续阅读 [Cradle docs](./index.mdx)，或进入 [Developer overview](./developers/overview.mdx)。

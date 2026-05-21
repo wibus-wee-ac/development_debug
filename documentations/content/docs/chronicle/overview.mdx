@@ -9,17 +9,43 @@ Chronicle 是 Cradle 的本地上下文与记忆能力。它围绕 screen captur
 
 Chronicle 的目标是把本地活动整理成可检索的时间线和 memory。它不是云同步记忆服务，也不应被描述为跨设备托管能力。
 
+<ChroniclePipelineMap />
+
 ## 主要流程
 
-1. 本地 capture 收集上下文。
-2. OCR 或解析器生成 artifact。
-3. Privacy filtering 处理敏感内容。
-4. Dedup 减少重复。
-5. Memory pipeline 生成摘要和可搜索 memory。
+<Steps>
+  <Step>
+    本地 capture 收集上下文。macOS capture 依赖系统权限，非 macOS 环境不能使用 macOS provider。
+  </Step>
+  <Step>
+    OCR 或解析器生成 artifact。artifact 是后续 timeline、resource 和 memory 的可检查证据。
+  </Step>
+  <Step>
+    Privacy filtering 和 dedup 先处理噪音，再进入 summary pipeline。
+  </Step>
+  <Step>
+    Memory pipeline 写入 summary 和可搜索 memory。
+  </Step>
+  <Step>
+    Timeline 和 memory search 把上下文带回 workspace。
+  </Step>
+</Steps>
 
 ## 在 Settings 中使用
 
 Settings 的 Chronicle 区域可以管理 capture 开关、model selection、status、resources、timeline 和 memory search。
+
+<Tabs items={["Status", "Resources", "Memory"]}>
+  <Tab>
+    Status 关注 `available`、`running`、`pid`、`lastError`、`lastExitCode`、`totalSnapshots` 和 `totalSummaries`。
+  </Tab>
+  <Tab>
+    Resources 关注 capture resource、OCR resource、local model resource 和下载状态。
+  </Tab>
+  <Tab>
+    Memory 关注 `lastSummaryAt`、configured model、provider profile 和 memory search 结果。
+  </Tab>
+</Tabs>
 
 ## Privacy
 

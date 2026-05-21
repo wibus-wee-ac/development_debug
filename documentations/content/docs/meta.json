@@ -2,6 +2,7 @@
   "title": "Cradle",
   "pages": [
     "index",
+    "map",
     "getting-started",
     "workspace",
     "chat",

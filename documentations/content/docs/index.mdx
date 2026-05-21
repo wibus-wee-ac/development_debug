@@ -7,25 +7,70 @@ Cradle 是本地优先的 agent workspace。你可以从桌面端启动本地服
 
 ## Overview
 
-<Cards>
-  <Card title="快速开始" href="/docs/getting-started/overview" />
-  <Card title="第一个工作区" href="/docs/getting-started/first-workspace" />
-  <Card title="Chat 与 Composer" href="/docs/chat/overview" />
-  <Card title="Providers 与 Models" href="/docs/agents/providers" />
-</Cards>
+Cradle 的文档按读者目标组织，而不是按仓库目录组织。先看系统地图，再进入具体任务页。
 
-Cradle 的文档按任务域组织，而不是按仓库目录组织。普通用户从工作区和 Chat 开始，管理员从 Providers、审批和设置开始，本地运维者从 Devtools、Chronicle、Slack bridge 和故障处理开始。
+<CradleSystemMap />
+
+<DocsKnowledgeGraph mode="preview" />
+
+<ReaderPath />
 
 ## 常用入口
 
-- 打开桌面端并确认本地服务：阅读 [桌面端启动](./getting-started/desktop-app.mdx)。
-- 添加项目目录并建立 workspace：阅读 [创建第一个工作区](./getting-started/first-workspace.mdx)。
-- 配置模型提供商：阅读 [配置 Providers](./agents/providers.mdx) 和 [选择 Models](./agents/models.mdx)。
-- 使用 Chat、文件提及和 slash commands：阅读 [Composer](./chat/composer.mdx)。
-- 把 Issue 委派给 agent：阅读 [Issue agents](./kanban/issue-agents.mdx)。
-- 查看自动化运行、产物和失败：阅读 [Automation runs](./automation/runs-and-artifacts.mdx)。
-- 配置本地记忆管线：阅读 [Chronicle](./chronicle/overview.mdx)。
-- 连接 Slack human-in-the-loop：阅读 [Slack bridge](./integrations/slack-bridge.mdx)。
+<Tabs items={["User", "Admin", "Developer", "Operator"]}>
+  <Tab>
+    <Steps>
+      <Step>
+        打开 [Desktop app](./getting-started/desktop-app.mdx)，确认本地 server 已启动。
+      </Step>
+      <Step>
+        创建 [第一个工作区](./getting-started/first-workspace.mdx)，把项目目录交给 Cradle 管理。
+      </Step>
+      <Step>
+        进入 [Composer](./chat/composer.mdx)，选择 workspace、runtime、provider 和 model。
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab>
+    <Steps>
+      <Step>
+        在 [Providers](./agents/providers.mdx) 配置模型提供商，并检查 provider health。
+      </Step>
+      <Step>
+        阅读 [Approvals](./chat/approvals.mdx)，确认哪些 agent 操作需要人工确认。
+      </Step>
+      <Step>
+        用 [Settings](./operations/settings.mdx) 管理外观、desktop updates、skills 和 Chronicle。
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab>
+    <Steps>
+      <Step>
+        从 [Developer overview](./developers/overview.mdx) 理解 owner、namespace 和 lifecycle。
+      </Step>
+      <Step>
+        阅读 [OpenAPI](./developers/api/openapi.mdx) 与 [Generated CLI](./developers/cli/generated-cli.mdx)，确认 route 到 command 的契约。
+      </Step>
+      <Step>
+        进入 [Plugin SDK](./developers/plugins/sdk-overview.mdx)，按 layer 和 capability 扩展 Cradle。
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab>
+    <Steps>
+      <Step>
+        打开 [Devtools](./operations/devtools.mdx)，查看 Server Health、Observability 和 plugin state。
+      </Step>
+      <Step>
+        阅读 [Chronicle](./chronicle/overview.mdx) 与 [Slack bridge](./integrations/slack-bridge.mdx)，理解跨进程和外部 bridge。
+      </Step>
+      <Step>
+        从 [Troubleshooting](./troubleshooting/index.mdx) 进入具体故障页，并在删除本地状态前导出证据。
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 ## 管理与排障
 
@@ -37,4 +82,4 @@ Cradle 的复杂能力通常跨越 Web UI、本地 server、桌面 runtime 和�
 
 ## Next steps
 
-从 [快速开始](./getting-started/overview.mdx) 了解整体路径，或直接进入 [Workspace](./workspace/overview.mdx) 查看日常工作界面。
+从 [快速开始](./getting-started/overview.mdx) 了解整体路径，打开 [Docs map](./map.mdx) 查看关系图，或直接进入 [Workspace](./workspace/overview.mdx) 查看日常工作界面。

@@ -9,23 +9,68 @@ Agents 是 Cradle 执行任务的运行单元。它们通过 runtime kind 连接
 
 管理员通常先配置 providers 和 models，再决定 runtime kind 与 agent identity。普通用户在 New Chat 或 Issue detail 中选择可用 agent。
 
+<AgentRuntimeMap />
+
 ## 核心对象
 
-| Object | Purpose |
-| --- | --- |
-| Runtime kind | 决定 agent 如何执行任务 |
-| Provider | 提供模型或运行接口 |
-| Model | 当前任务使用的模型 |
-| Agent identity | 代表可委派或可选择的 agent 配置 |
-| Skill | 为 agent 提供可复用指导或能力说明 |
+<TypeTable
+  type={{
+    Provider: {
+      description: "Configuration owner for credentials, health checks, and model discovery.",
+      type: "provider profile",
+      required: true,
+    },
+    Model: {
+      description: "Model identity selected from provider catalog or custom model configuration.",
+      type: "model id",
+      required: true,
+    },
+    RuntimeKind: {
+      description: "Execution adapter used by chat, issue agents, or automation runners.",
+      type: "runtime kind",
+      required: true,
+    },
+    AgentIdentity: {
+      description: "Selectable or delegatable agent configuration with task-specific support.",
+      type: "agent identity",
+    },
+    Skill: {
+      description: "Reusable guidance, workflow, or tool boundary document for agents.",
+      type: "skill document",
+    },
+  }}
+/>
 
 ## 推荐顺序
 
-1. 配置 provider。
-2. 检查 provider health。
-3. 刷新或搜索 model。
-4. 选择 runtime kind。
-5. 在 Chat 或 Issue 中使用 agent。
+<Steps>
+  <Step>
+    配置 [Provider](./providers.mdx)，确认 credential 和 provider health。
+  </Step>
+  <Step>
+    刷新或搜索 [Model](./models.mdx)，确认目标模型在当前 runtime 中可见。
+  </Step>
+  <Step>
+    选择 [Runtime kind](./runtime-kinds.mdx)，明确 task 会在哪类 adapter 中执行。
+  </Step>
+  <Step>
+    按任务进入 Chat、Issue agent 或 Automation。
+  </Step>
+</Steps>
+
+## 使用路径
+
+<Tabs items={["Chat", "Issue agent", "Automation"]}>
+  <Tab>
+    Chat 以当前 workspace 和 session 为中心。用户选择 runtime/provider/model 后，agent 读取上下文、请求 approval，并把结果写回 session timeline。
+  </Tab>
+  <Tab>
+    Issue agent 以 issue owner 为中心。它需要可委派的 agent identity，执行记录应回到 issue activity 和 session 关联关系。
+  </Tab>
+  <Tab>
+    Automation 以 durable run 为中心。它需要明确 trigger、artifact、run status 和失败重试边界。
+  </Tab>
+</Tabs>
 
 ## Limits
 

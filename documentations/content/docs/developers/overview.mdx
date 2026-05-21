@@ -5,23 +5,68 @@ description: Developer documentation organized by owner, namespace, lifecycle, a
 
 Cradle 的开发者文档按能力 owner 组织。每个页面回答同一组问题：谁拥有语义，写入哪个 namespace，生命周期如何推进，哪些 route 或 command 是稳定入口，如何验证，哪些边界不能越过。
 
+<DeveloperArchitectureMap />
+
 ## 核心原则
 
 Cradle 可以读取其他产品或生态的 namespace 来保持兼容，但不能把写入语义放到不属于 Cradle 的 namespace。跨 namespace 写入必须由目标 owner 提供明确 API，否则视为禁止模式。
 
 这个原则适用于 server module、plugin、database schema、generated CLI、automation 和 desktop integration。文档中的 owner 不是目录名装饰，而是迁移、兼容、错误处理和权限边界的责任归属。
 
+<OwnerContractMatrix />
+
 ## 阅读路径
 
-- [Server overview](./server/overview.mdx)：理解 Elysia app、HTTP foundation 和 module ownership。
-- [OpenAPI](./api/openapi.mdx)：理解 `/docs`、`/openapi.json` 和 `x-cradle-cli` 的契约。
-- [Generated CLI](./cli/generated-cli.mdx)：理解 OpenAPI 如何生成 `cradle` commands。
-- [Plugin SDK](./plugins/sdk-overview.mdx)：理解 plugin manifest、layers、capabilities 和 lifecycle。
-- [Database ownership](./database/ownership.mdx)：理解 Drizzle schema、migration owner 和跨 namespace 读写边界。
-- [Runtime providers](./runtime/provider-integrations.mdx)：理解 provider/profile/runtime 的分层。
-- [Automation and agents](./automation/agents.mdx)：理解 durable automation、issue agents、session await 和可见状态。
-- [Desktop integration](./desktop/integration.mdx)：理解 Electron 本地通道、filesystem、browser tab 和 approval 边界。
-- [Testing](./contributing/testing.mdx)：理解 server、CLI、plugin 和 docs 的验证入口。
+<Tabs items={["Core contracts", "Extension points", "Contribution"]}>
+  <Tab>
+    <Cards>
+      <Card title="Server overview" href="/docs/developers/server/overview" />
+      <Card title="OpenAPI" href="/docs/developers/api/openapi" />
+      <Card title="Generated CLI" href="/docs/developers/cli/generated-cli" />
+      <Card title="Database ownership" href="/docs/developers/database/ownership" />
+    </Cards>
+  </Tab>
+  <Tab>
+    <Cards>
+      <Card title="Plugin SDK" href="/docs/developers/plugins/sdk-overview" />
+      <Card title="Runtime providers" href="/docs/developers/runtime/provider-integrations" />
+      <Card title="Automation agents" href="/docs/developers/automation/agents" />
+      <Card title="Desktop integration" href="/docs/developers/desktop/integration" />
+    </Cards>
+  </Tab>
+  <Tab>
+    <Cards>
+      <Card title="Testing" href="/docs/developers/contributing/testing" />
+      <Card title="Docs contribution" href="/docs/developers/contributing/docs" />
+    </Cards>
+  </Tab>
+</Tabs>
+
+## Repository map
+
+<Files>
+  <Folder name="apps" defaultOpen>
+    <File name="server" />
+    <File name="web" />
+    <File name="desktop" />
+  </Folder>
+  <Folder name="packages" defaultOpen>
+    <File name="cli" />
+    <File name="db" />
+    <File name="ipc" />
+    <File name="tabs-next" />
+  </Folder>
+  <Folder name="plugins" defaultOpen>
+    <File name="browser-use" />
+  </Folder>
+  <Folder name="documentations" defaultOpen>
+    <File name="content/docs" />
+    <File name="components/mdx.tsx" />
+    <File name="source.config.ts" />
+  </Folder>
+</Files>
+
+`apps/server` 定义语义和 OpenAPI，`packages/cli` 消费 OpenAPI，`packages/db` 拥有 schema 和 migrations，`documentations` 只描述已经能从代码或 owner 决策验证的行为。
 
 ## Contract shape
 

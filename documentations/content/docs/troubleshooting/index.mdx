@@ -9,23 +9,41 @@ description: Start debugging provider, workspace, desktop server, Chronicle, Sla
 
 Cradle 是本地优先的多层应用。一个症状可能来自桌面端、server route、runtime provider、workspace 文件权限或 plugin layer。排障时先做低风险检查，再收集诊断信息。
 
+<DiagnosticRouter />
+
 ## Quick checks
 
-- Desktop app 是否仍在运行。
-- Server Health 是否正常。
-- 当前 workspace 是否可访问。
-- Provider health 是否正常。
-- 是否有待处理 approval。
-- Devtools Observability 是否记录 error 或 incident。
+<Steps>
+  <Step>
+    确认 Desktop app 是否仍在运行。
+  </Step>
+  <Step>
+    打开 Server Health，确认本地 server 是否可达。
+  </Step>
+  <Step>
+    检查当前 workspace path 是否可访问。
+  </Step>
+  <Step>
+    检查 Provider health、model discovery 和 runtime selection。
+  </Step>
+  <Step>
+    检查是否有待处理 approval 或 session await。
+  </Step>
+  <Step>
+    查看 Devtools Observability 是否记录 error 或 incident。
+  </Step>
+</Steps>
 
 ## 常见入口
 
-<Cards>
-  <Card title="Provider errors" href="/docs/troubleshooting/provider-errors" />
-  <Card title="Workspace Git" href="/docs/troubleshooting/workspace-git" />
-  <Card title="Desktop server" href="/docs/troubleshooting/desktop-server" />
-  <Card title="Chronicle" href="/docs/troubleshooting/chronicle" />
-</Cards>
+| Symptom | Likely owner | First page | Evidence to collect |
+| --- | --- | --- | --- |
+| Web UI 空白或所有 API 失败 | Desktop server | [Desktop server](./desktop-server.mdx) | Server Health、desktop log、Devtools export |
+| 模型不可用或 agent 不能运行 | Provider / runtime | [Provider errors](./provider-errors.mdx) | Provider health、model id、runtime kind |
+| 文件、搜索或 Git 状态异常 | Workspace / Git | [Workspace Git](./workspace-git.mdx) | Workspace path、branch、git status |
+| Timeline 或 memory 为空 | Chronicle | [Chronicle](./chronicle.mdx) | `GET /chronicle/status`、daemon logs |
+| Slack thread 或 reply 丢失 | Slack bridge | [Slack bridge](./slack-bridge.mdx) | `/zhi status`、Socket Mode、event subscriptions |
+| 需要提交问题证据 | Devtools | [Devtools export](./devtools-export.mdx) | Export bundle、session id、run id |
 
 ## 收集诊断
 

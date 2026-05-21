@@ -5,6 +5,8 @@ description: Manifest, layers, capabilities, permissions, and namespace ownershi
 
 Cradle plugin 是 owner-scoped extension。Plugin 可以注册 server routes、MCP tools、skills、web panels、commands 和 desktop hooks，但它必须用自己的 capability identity 和 namespace 表达语义。
 
+<PluginLayerMap />
+
 ## Owner
 
 Plugin package owner 拥有 manifest metadata、capabilities、permissions、upgrade compatibility 和 plugin-local data。Cradle plugin host 拥有 discovery、validation、descriptor、route segment、layer state 和 capability registry。
@@ -34,15 +36,85 @@ Host-derived namespace:
 - Capability identity：owner-prefixed capability IDs
 - Discovery env：`CRADLE_PLUGINS_DIR`, `CRADLE_EXTERNAL_PLUGINS_DIRS`
 
+## Package shape
+
+<Files>
+  <Folder name="my-cradle-plugin" defaultOpen>
+    <File name="package.json" />
+    <File name="src/server.ts" />
+    <File name="src/web.tsx" />
+    <File name="src/desktop.ts" />
+    <File name="README.md" />
+  </Folder>
+</Files>
+
+`package.json` declares what the host can discover. Each layer file owns only the behavior for that runtime layer.
+
 ## Lifecycle
 
-1. Discover plugin package.
-2. Validate manifest metadata and trust source.
-3. Build host descriptor.
-4. Activate server layer, web layer or desktop layer when available.
-5. Register capabilities.
-6. Execute plugin hooks/routes/tools.
-7. Deactivate or upgrade layer when host lifecycle changes.
+<Steps>
+  <Step>
+    Discover plugin package from configured plugin directories.
+  </Step>
+  <Step>
+    Validate manifest metadata and trust source.
+  </Step>
+  <Step>
+    Build host descriptor with route segment and capability identities.
+  </Step>
+  <Step>
+    Activate server layer, web layer or desktop layer when available.
+  </Step>
+  <Step>
+    Register capabilities, routes, commands, panels, hooks or MCP tools.
+  </Step>
+  <Step>
+    Deactivate or upgrade layer when host lifecycle changes.
+  </Step>
+</Steps>
+
+## Layer comparison
+
+<Tabs items={["Server", "Web", "Desktop"]}>
+  <Tab>
+    Server plugins own route handlers, server-side hooks, MCP tools and host-visible capability registration. They must not write core state except through core owner APIs.
+  </Tab>
+  <Tab>
+    Web plugins own panels, commands and UI integration inside the Web host. They receive host context and should keep plugin UI state inside plugin namespace.
+  </Tab>
+  <Tab>
+    Desktop plugins own Electron-side hooks and local runtime integration. They should treat filesystem, browser tabs and native bridges as permissioned surfaces.
+  </Tab>
+</Tabs>
+
+## Manifest reference
+
+<TypeTable
+  type={{
+    server: {
+      description: "Server layer entrypoint loaded by the plugin host.",
+      type: "string",
+    },
+    web: {
+      description: "Web layer entrypoint exposed as a plugin web bundle.",
+      type: "string",
+    },
+    desktop: {
+      description: "Desktop layer entrypoint loaded by the desktop host.",
+      type: "string",
+    },
+    capabilities: {
+      description: "Owner-prefixed capability ids registered by this plugin.",
+      type: "string[]",
+      default: "[]",
+    },
+    permissions: {
+      description: "Permission names required before plugin behavior can run.",
+      type: "string[]",
+      default: "[]",
+    },
+  }}
+/>
 
 ## Capability contract
 

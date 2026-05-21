@@ -5,7 +5,9 @@ description: Cradle OpenAPI document, Scalar UI, route metadata, and generated C
 
 OpenAPI 是 server route、interactive docs 和 generated CLI 的共同契约。它不是附属文档；新增或修改 public route 时，应同步维护 schema、examples、operation metadata 和 CLI placement。
 
-## Owner
+<ApiToCliFlow />
+
+## 所有权
 
 `apps/server/src/http/openapi.ts` 拥有 OpenAPI exposure。每个 server module 拥有自己的 operation semantics、request schema、response schema、error cases 和 `x-cradle-cli` metadata。
 
@@ -20,16 +22,66 @@ CLI generator 只消费 OpenAPI，它不应该成为修正 route 语义的地方
 
 `x-cradle-cli` belongs to the route owner. 如果 command group、verb、description 或 output shape 不对，应回到 server route metadata 修正，然后重新生成 CLI。
 
-## Lifecycle
+## Route reference 边界
 
-1. Module 定义 route schema、operation details 和 examples。
-2. OpenAPI plugin 聚合 server app 的 public operations。
-3. `/docs` 使用 same document 渲染 API UI。
-4. CLI generator 拉取 live OpenAPI document。
-5. Generator 写入 `packages/cli/src/commands/generated/**`。
-6. Runtime 根据 generated command metadata 发起 HTTP request。
+当前页面解释 OpenAPI contract 的 owner、lifecycle、metadata 和验证方式；它不是逐 route 展开的 API reference。逐 route 的交互式 reference 仍由 server 的 `/docs` Scalar UI 和 `/openapi.json` 提供。
 
-## Authoring contract
+如果需要在 Fumadocs 中生成 route-level reference，下一步应接入 `fumadocs-openapi` 或等价生成层，并从同一份 `/openapi.json` 读取 operation、schema、examples 和 `x-cradle-cli` metadata。不要在文档中手写第二份 route reference；否则 OpenAPI、CLI 和文档会产生 drift。
+
+## 生命周期
+
+<Steps>
+  <Step>
+    Module 定义 route schema、operation details 和 examples。
+  </Step>
+  <Step>
+    OpenAPI plugin 聚合 server app 的 public operations。
+  </Step>
+  <Step>
+    `/docs` 使用 same document 渲染 API UI，`/openapi.json` 暴露 canonical document。
+  </Step>
+  <Step>
+    CLI generator 拉取 live OpenAPI document，并读取 `x-cradle-cli` metadata。
+  </Step>
+  <Step>
+    Generator 写入 `packages/cli/src/commands/generated/**`。
+  </Step>
+  <Step>
+    Runtime command 格式化 flags，发起 HTTP request，并渲染 output。
+  </Step>
+</Steps>
+
+## 契约字段
+
+<TypeTable
+  type={{
+    "operationId": {
+      description: "Operation identity shared by humans, OpenAPI consumers, and generators.",
+      type: "string",
+      required: true,
+    },
+    "summary": {
+      description: "Primary action description displayed in API UI and CLI help.",
+      type: "string",
+      required: true,
+    },
+    "tags": {
+      description: "Owner grouping for public operations.",
+      type: "string[]",
+    },
+    "x-cradle-cli": {
+      description: "Source of truth for CLI group, verb, output mode, and parameter layout.",
+      type: "object",
+    },
+    "responses": {
+      description: "Verifiable shape for success, error, and validation responses.",
+      type: "OpenAPI responses",
+      required: true,
+    },
+  }}
+/>
+
+## 编写契约
 
 新增 public route 时至少检查：
 
@@ -40,23 +92,37 @@ CLI generator 只消费 OpenAPI，它不应该成为修正 route 语义的地方
 - owner namespace 不把写入放到外部 namespace。
 - 如果需要 CLI，metadata 使用稳定 command group。
 
-## Validation
+## 验证方式
 
-检查 OpenAPI route：
+<Tabs items={["Server", "CLI", "Docs"]}>
+  <Tab>
+    检查 OpenAPI route：
 
-```bash
-cd apps/server
-pnpm test -- openapi
-pnpm typecheck
-```
+    ```bash
+    cd apps/server
+    pnpm test -- openapi
+    pnpm typecheck
+    ```
+  </Tab>
+  <Tab>
+    检查 CLI drift：
 
-检查 CLI drift：
+    ```bash
+    cd packages/cli
+    pnpm gen:cli
+    ```
+  </Tab>
+  <Tab>
+    修改文档后验证 Fumadocs：
 
-```bash
-cd packages/cli
-pnpm gen:cli
-```
+    ```bash
+    cd documentations
+    pnpm types:check
+    pnpm build
+    ```
+  </Tab>
+</Tabs>
 
-## Limits
+## 边界限制
 
 有些 routes 是 HTTP-only，例如部分 provider lookup、Chronicle、PTY 或 WebSocket surface。不要因为 route 出现在 OpenAPI 中就承诺存在 CLI command。CLI 只以 `x-cradle-cli` metadata 为准。

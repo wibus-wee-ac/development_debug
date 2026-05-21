@@ -7,12 +7,24 @@ Cradle 把本地项目目录、agent runtime、Chat、Issue、自动化和记忆
 
 ## Overview
 
-第一次使用时只需要完成四件事：
+第一次使用时只需要完成四件事。每一步都可以独立验证，不需要先理解完整架构。
 
-1. 启动桌面端。
-2. 添加一个本地项目目录作为 workspace。
-3. 在 Settings 中配置 provider 和 model。
-4. 创建第一段 Chat，并让 agent 在当前 workspace 上工作。
+<Steps>
+  <Step>
+    启动 [Desktop app](./desktop-app.mdx)，确认本地 server 能响应健康检查。
+  </Step>
+  <Step>
+    添加一个本地项目目录作为 [Workspace](./first-workspace.mdx)。
+  </Step>
+  <Step>
+    在 Settings 中配置 provider 和 model，确认 provider health 正常。
+  </Step>
+  <Step>
+    创建 [First chat](./first-chat.mdx)，让 agent 在当前 workspace 上工作。
+  </Step>
+</Steps>
+
+<LocalFirstBoundaryMap />
 
 ## 启动路径
 
@@ -20,9 +32,17 @@ Cradle 把本地项目目录、agent runtime、Chat、Issue、自动化和记忆
 
 如果你只是在浏览文档，先记住三个入口：
 
-- `Home`：查看 workspace、最近会话和常用动作。
-- `New Chat`：选择 workspace、runtime、provider 和 model。
-- `Settings`：配置外观、providers、agents、skills、Chronicle 和 desktop updates。
+<Tabs items={["Home", "New Chat", "Settings"]}>
+  <Tab>
+    `Home` 用来查看 workspace、最近会话和常用动作。它是回到项目上下文的入口。
+  </Tab>
+  <Tab>
+    `New Chat` 用来选择 workspace、runtime、provider 和 model。它决定下一段 session 的执行环境。
+  </Tab>
+  <Tab>
+    `Settings` 用来配置外观、providers、agents、skills、Chronicle 和 desktop updates。
+  </Tab>
+</Tabs>
 
 ## 配置最小环境
 
@@ -39,9 +59,11 @@ Cradle 把本地项目目录、agent runtime、Chat、Issue、自动化和记忆
 
 ## 常见边界
 
-- Home 中的某些 pending run 或 artifact 展示可能来自界面占位数据，不应视为完整后端能力。
-- Git 面板当前可文档化的能力是状态、分支、fetch 和提交图，不应假设 push、pull、commit 或 stash 已经可用。
-- Slack bridge 是独立 app，不是 Web Settings 中的内置 Slack 页面。
+| Boundary | What it means |
+| --- | --- |
+| Home placeholders | Home 中的某些 pending run 或 artifact 展示可能来自界面占位数据，不应视为完整后端能力。 |
+| Git surface | Git 面板当前可文档化的能力是状态、分支、fetch 和提交图，不应假设 push、pull、commit 或 stash 已经可用。 |
+| Slack bridge | Slack bridge 是独立 app，不是 Web Settings 中的内置 Slack 页面。 |
 
 ## Next steps
 
