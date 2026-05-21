@@ -1,19 +1,15 @@
-// Input: shared schema helpers, Kanban issue table, chat session table, identity tables, and sqlite column builders
-// Output: Issue-agent session/activity tables plus inferred row types
-// Position: Issue-agent persistence schema module used by delegation flows and agent runtime orchestration
-
 import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { sessions } from './chat'
 import { agentProfiles, agents } from './identity'
-import { kanbanIssues } from './kanban'
+import { issues } from './issue'
 import { createdAt, textPk, timestamps } from './shared'
 
 export const agentSessions = sqliteTable('agent_sessions', {
   id: textPk(),
   issueId: text('issue_id')
     .notNull()
-    .references(() => kanbanIssues.id, { onDelete: 'cascade' }),
+    .references(() => issues.id, { onDelete: 'cascade' }),
   agentProfileId: text('agent_profile_id')
     .notNull()
     .references(() => agentProfiles.id, { onDelete: 'restrict' }),
