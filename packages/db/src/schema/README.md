@@ -14,7 +14,7 @@
 - **shared.ts**: 共享列片段与 `workspaces` 表
 - **identity.ts**: Agent identity / credential 相关表
 - **chat.ts**: Product session、message、usage log 相关表；`messages.message_json` 是 chat hydration 真相源，`messages.content` 是派生纯文本 cache
-- **chronicle.ts**: Chronicle 本地活动记忆相关表，包含 screen snapshot、accessibility evidence、activity session/segment/pipeline run、knowledge card/version/source、dream run/candidate、raw audio segment、audio transcript、memory、memory chunk/keyword/embedding index、model resource status 与 event
+- **chronicle.ts**: Chronicle 本地活动记忆相关表，包含 screen snapshot、accessibility evidence、activity session/segment/pipeline run、knowledge card/version/source、dream run/candidate、raw audio segment、audio transcript、speaker profile、memory、memory chunk/keyword/embedding index、model resource status 与 event
 - **runtime.ts**: Runtime audit 相关表
 - **acp.ts**: ACP agent 与 ACP audit 相关表
 - **issue.ts**: Workspace-scoped Issue、状态、里程碑、评论、关联相关表；当前 SQLite 物理表名仍沿用 `kanban_*`

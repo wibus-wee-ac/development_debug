@@ -19,4 +19,5 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0031_shallow_captain_midlands.sql**: Drizzle Kit 生成的 Chronicle knowledge/dream foundation migration，新增 knowledge card/version/file 与 dream run 表
 - **0032_powerful_talos.sql**: Drizzle Kit 生成的 Chronicle normalized source/candidate migration，新增 knowledge source link 与 dream candidate 表
 - **0033_next_vector.sql**: Drizzle Kit 生成的 Chronicle stable knowledge key migration，新增 `stable_key` 与索引
+- **0034_aberrant_jack_flag.sql**: Drizzle Kit 生成的 Chronicle speaker profile migration，新增 speaker profile/alias/embedding runtime data 表
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

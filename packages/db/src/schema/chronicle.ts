@@ -363,6 +363,33 @@ export const chronicleAudioSegments = sqliteTable('chronicle_audio_segments', {
   bySpeaker: index('chronicle_audio_segments_speaker_label_idx').on(table.speakerLabel),
 }))
 
+export const chronicleSpeakerProfiles = sqliteTable('chronicle_speaker_profiles', {
+  id: textPk(),
+  workspaceId: text('workspace_id')
+    .references(() => workspaces.id, { onDelete: 'set null' }),
+  stableKey: text('stable_key').notNull(),
+  displayName: text('display_name').notNull(),
+  normalizedLabel: text('normalized_label').notNull(),
+  aliasesJson: text('aliases_json').notNull().default('[]'),
+  embeddingJson: text('embedding_json'),
+  embeddingDimensions: int('embedding_dimensions'),
+  embeddingModelId: text('embedding_model_id'),
+  sampleCount: int('sample_count').notNull().default(0),
+  lastSeenAt: int('last_seen_at'),
+  sourceTranscriptId: text('source_transcript_id')
+    .references(() => chronicleAudioTranscripts.id, { onDelete: 'set null' }),
+  sourceSegmentId: text('source_segment_id')
+    .references(() => chronicleAudioSegments.id, { onDelete: 'set null' }),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  ...timestamps(),
+}, table => ({
+  byStableKey: uniqueIndex('chronicle_speaker_profiles_stable_key_unique').on(table.stableKey),
+  byWorkspaceLastSeen: index('chronicle_speaker_profiles_workspace_last_seen_idx').on(table.workspaceId, table.lastSeenAt),
+  byNormalizedLabel: index('chronicle_speaker_profiles_normalized_label_idx').on(table.normalizedLabel),
+  bySourceTranscript: index('chronicle_speaker_profiles_source_transcript_id_idx').on(table.sourceTranscriptId),
+  bySourceSegment: index('chronicle_speaker_profiles_source_segment_id_idx').on(table.sourceSegmentId),
+}))
+
 export const chronicleAudioRawSegments = sqliteTable('chronicle_audio_raw_segments', {
   id: textPk(),
   sourceId: text('source_id').notNull(),
@@ -637,6 +664,8 @@ export type ChronicleAudioTranscript = typeof chronicleAudioTranscripts.$inferSe
 export type NewChronicleAudioTranscript = typeof chronicleAudioTranscripts.$inferInsert
 export type ChronicleAudioSegment = typeof chronicleAudioSegments.$inferSelect
 export type NewChronicleAudioSegment = typeof chronicleAudioSegments.$inferInsert
+export type ChronicleSpeakerProfile = typeof chronicleSpeakerProfiles.$inferSelect
+export type NewChronicleSpeakerProfile = typeof chronicleSpeakerProfiles.$inferInsert
 export type ChronicleModelResource = typeof chronicleModelResources.$inferSelect
 export type NewChronicleModelResource = typeof chronicleModelResources.$inferInsert
 export type ChronicleMessageSource = typeof chronicleMessageSources.$inferSelect
