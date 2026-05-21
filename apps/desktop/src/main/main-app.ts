@@ -1,7 +1,3 @@
-// Input: Electron app, server bootstrap, window manager, and update manager
-// Output: Desktop app startup after Velopack bootstrap completes
-// Position: apps/desktop/src/main/main-app.ts
-
 import { join } from 'node:path'
 
 import { app, BrowserWindow, screen } from 'electron'
@@ -10,6 +6,7 @@ import windowStateKeeper from 'electron-window-state'
 import { createNativeServices } from './native-services'
 import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
 import { startServer, stopServer } from './server-process'
+import { TrayManager } from './tray-manager'
 import { DesktopUpdateManager } from './update-manager'
 import { WindowManager } from './window-manager'
 import { readStoredWindowBounds, resolveVisibleWindowBounds } from './window-state'
@@ -17,6 +14,8 @@ import { readStoredWindowBounds, resolveVisibleWindowBounds } from './window-sta
 let mainWindow: BrowserWindow | null = null
 let windowManager: WindowManager | undefined
 let updateManager: DesktopUpdateManager | null = null
+let trayManager: TrayManager | null = null
+let isQuitting = false
 
 const MAIN_WINDOW_DEFAULT_WIDTH = 1280
 const MAIN_WINDOW_DEFAULT_HEIGHT = 820
@@ -84,6 +83,57 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   return win
 }
 
+function setMainWindow(win: BrowserWindow, serverUrl: string): void {
+  mainWindow = win
+  windowManager?.setMainWindow(win)
+
+  win.webContents.on('will-attach-webview', (_event, webPreferences, _params) => {
+    delete webPreferences.preload
+    webPreferences.nodeIntegration = false
+    webPreferences.contextIsolation = true
+  })
+
+  win.webContents.on('did-attach-webview', (_event, webviewContents) => {
+    const tabId = `tab-${Date.now()}`
+    notifyWebviewCreated(webviewContents, tabId)
+  })
+
+  win.webContents.once('did-finish-load', () => {
+    if (updateManager) {
+      broadcastUpdateStatus(updateManager.status)
+    }
+  })
+
+  win.on('close', (event) => {
+    if (!isQuitting && trayManager) {
+      event.preventDefault()
+      win.hide()
+    }
+  })
+
+  win.on('closed', () => {
+    if (mainWindow === win) {
+      mainWindow = null
+    }
+    if (!isQuitting && !trayManager && process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
+}
+
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show()
+  }
+  mainWindow.focus()
+}
+
 function broadcastUpdateStatus(status: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -114,60 +164,46 @@ export async function startDesktopApp(): Promise<void> {
     windowManager = new WindowManager(serverUrl)
 
     mainWindow = await createMainWindow(serverUrl)
-    windowManager.setMainWindow(mainWindow)
-
-    mainWindow.webContents.on('will-attach-webview', (_event, webPreferences, _params) => {
-      delete webPreferences.preload
-      webPreferences.nodeIntegration = false
-      webPreferences.contextIsolation = true
+    setMainWindow(mainWindow, serverUrl)
+    trayManager = new TrayManager({
+      serverUrl,
+      getMainWindow: () => mainWindow,
+      createMainWindow: async () => {
+        const win = await createMainWindow(serverUrl)
+        setMainWindow(win, serverUrl)
+        return win
+      },
     })
-
-    mainWindow.webContents.on('did-attach-webview', (_event, webviewContents) => {
-      const tabId = `tab-${Date.now()}`
-      notifyWebviewCreated(webviewContents, tabId)
-    })
-
-    mainWindow.webContents.once('did-finish-load', () => {
-      if (updateManager) {
-        broadcastUpdateStatus(updateManager.status)
-      }
-    })
-
-    mainWindow.on('closed', () => {
-      mainWindow = null
-    })
+    trayManager.initialize()
 
     updateManager?.startBackgroundChecks()
 
     app.on('activate', async () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        if (!windowManager) {
-          return
-        }
-        mainWindow = await createMainWindow(serverUrl)
-        windowManager.setMainWindow(mainWindow)
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        const restoredWindow = await createMainWindow(serverUrl)
+        setMainWindow(restoredWindow, serverUrl)
+        return
       }
+      showMainWindow()
     })
   })
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    if (!trayManager && process.platform !== 'darwin') {
       app.quit()
     }
   })
 
   app.on('before-quit', async () => {
+    isQuitting = true
     updateManager?.stopBackgroundChecks()
+    trayManager?.destroy()
+    trayManager = null
     await deactivateDesktopPlugins()
     stopServer()
   })
 
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) {
-        mainWindow.restore()
-      }
-      mainWindow.focus()
-    }
+    showMainWindow()
   })
 }

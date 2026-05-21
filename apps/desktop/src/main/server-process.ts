@@ -1,12 +1,8 @@
-// Input: child_process fork, get-port, tsx runner, and development Node executable
-// Output: Starts the Cradle server as a child process with desktop-owned runtime environment
-// Position: apps/desktop/src/main/server-process.ts
-
 import type { ChildProcess } from 'node:child_process'
 import { fork } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { app, dialog } from 'electron'
 import getPort from 'get-port'
@@ -21,6 +17,20 @@ const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
 let currentServerUrl = ''
+
+function resolveDevServerEntry(): string {
+  const candidates = [
+    resolve(process.cwd(), '../server/src/index.ts'),
+    resolve(process.cwd(), 'apps/server/src/index.ts'),
+    resolve(__dirname, '../../../../../apps/server/src/index.ts'),
+  ]
+
+  const entry = candidates.find(candidate => existsSync(candidate))
+  if (!entry) {
+    throw new Error(`Cannot find development server entry. Tried: ${candidates.join(', ')}`)
+  }
+  return entry
+}
 
 /**
  * Start the Cradle server as a forked child process.
@@ -50,7 +60,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   // In production, run the compiled server entry
   const isDev = !!process.env.ELECTRON_RENDERER_URL
   const serverEntry = isDev
-    ? join(__dirname, '../../../../apps/server/src/index.ts')
+    ? resolveDevServerEntry()
     : join(process.resourcesPath, 'server/main.js')
 
   const execArgv = isDev ? ['--import', 'tsx'] : []
