@@ -20,24 +20,21 @@ function getPluginOwner(plugin: PluginInfo): string {
 }
 
 function getLayerStatus(plugin: PluginInfo, layer: 'server' | 'web' | 'desktop'): string {
-  const hasLayer = layer === 'server'
-    ? plugin.hasServer
-    : layer === 'web'
-      ? plugin.hasWeb
-      : plugin.hasDesktop
+  const hasLayer =
+    layer === 'server' ? plugin.hasServer : layer === 'web' ? plugin.hasWeb : plugin.hasDesktop
 
   return plugin.layers?.[layer]?.status ?? (hasLayer ? 'discovered' : 'skipped')
 }
 
 export function PluginsPanel() {
   const { plugins, loading, error, refresh, getActivatedAt } = usePluginData()
-  const panels = usePluginStore(s => s.panels)
-  const commands = usePluginStore(s => s.commands)
+  const panels = usePluginStore((s) => s.panels)
+  const commands = usePluginStore((s) => s.commands)
   const [expandedPlugin, setExpandedPlugin] = useState<string | null>(null)
 
-  const serverCount = plugins.filter(p => p.hasServer).length
-  const webCount = plugins.filter(p => p.hasWeb).length
-  const desktopCount = plugins.filter(p => p.hasDesktop).length
+  const serverCount = plugins.filter((p) => p.hasServer).length
+  const webCount = plugins.filter((p) => p.hasWeb).length
+  const desktopCount = plugins.filter((p) => p.hasDesktop).length
 
   return (
     <div className="h-full overflow-auto p-4 font-mono text-[11px]">
@@ -83,7 +80,7 @@ export function PluginsPanel() {
       {/* Plugin list */}
       {!loading && !error && (
         <div className="space-y-2">
-          {plugins.map(p => (
+          {plugins.map((p) => (
             <PluginListItem
               key={getPluginOwner(p)}
               plugin={p}
@@ -93,8 +90,8 @@ export function PluginsPanel() {
                 setExpandedPlugin(expandedPlugin === owner ? null : owner)
               }}
               activatedAt={getActivatedAt(p)}
-              panels={panels.filter(panel => panel.owner === getPluginOwner(p))}
-              commands={commands.filter(command => command.owner === getPluginOwner(p))}
+              panels={panels.filter((panel) => panel.owner === getPluginOwner(p))}
+              commands={commands.filter((command) => command.owner === getPluginOwner(p))}
             />
           ))}
           {plugins.length === 0 && (
@@ -110,18 +107,14 @@ export function PluginsPanel() {
         {/* Panels */}
         <div className="mb-3">
           <div className="mb-1 text-muted-foreground">Panels ({panels.length})</div>
-          {panels.length === 0 && (
-            <div className="text-muted-foreground/60">None</div>
-          )}
-          {panels.map(panel => (
+          {panels.length === 0 && <div className="text-muted-foreground/60">None</div>}
+          {panels.map((panel) => (
             <div key={panel.id} className="flex items-center gap-2 py-0.5">
               <span className="text-foreground">{panel.title}</span>
               <span className="text-muted-foreground">{panel.localId}</span>
               <span className="rounded bg-fill px-1 text-muted-foreground">{panel.owner}</span>
               {panel.location && (
-                <span className="rounded bg-fill px-1 text-muted-foreground">
-                  {panel.location}
-                </span>
+                <span className="rounded bg-fill px-1 text-muted-foreground">{panel.location}</span>
               )}
             </div>
           ))}
@@ -130,10 +123,8 @@ export function PluginsPanel() {
         {/* Commands */}
         <div>
           <div className="mb-1 text-muted-foreground">Commands ({commands.length})</div>
-          {commands.length === 0 && (
-            <div className="text-muted-foreground/60">None</div>
-          )}
-          {commands.map(cmd => (
+          {commands.length === 0 && <div className="text-muted-foreground/60">None</div>}
+          {commands.map((cmd) => (
             <div key={cmd.id} className="flex items-center gap-2 py-0.5">
               <button
                 type="button"
@@ -148,9 +139,7 @@ export function PluginsPanel() {
               <span className="text-muted-foreground">{cmd.localId}</span>
               <span className="rounded bg-fill px-1 text-muted-foreground">{cmd.owner}</span>
               {cmd.keybinding && (
-                <span className="rounded bg-fill px-1 text-muted-foreground">
-                  {cmd.keybinding}
-                </span>
+                <span className="rounded bg-fill px-1 text-muted-foreground">{cmd.keybinding}</span>
               )}
             </div>
           ))}
@@ -166,14 +155,20 @@ function PluginListItem({
   onToggle,
   activatedAt,
   panels,
-  commands,
+  commands
 }: {
   plugin: PluginInfo
   expanded: boolean
   onToggle: () => void
   activatedAt: number | undefined
   panels: Array<{ id: string; localId: string; title: string; owner: string }>
-  commands: Array<{ id: string; localId: string; title: string; owner: string; execute(): void | Promise<void> }>
+  commands: Array<{
+    id: string
+    localId: string
+    title: string
+    owner: string
+    execute(): void | Promise<void>
+  }>
 }) {
   const owner = getPluginOwner(plugin)
   const webStatus = getLayerStatus(plugin, 'web')
@@ -190,7 +185,7 @@ function PluginListItem({
         <span
           className={cn(
             'inline-block size-1.5 shrink-0 rounded-full',
-            isActive ? 'bg-emerald-400' : 'bg-muted-foreground/30',
+            isActive ? 'bg-emerald-400' : 'bg-muted-foreground/30'
           )}
         />
         <span className="text-foreground">{plugin.displayName || plugin.name}</span>
@@ -199,9 +194,15 @@ function PluginListItem({
           <span className="text-muted-foreground">{plugin.routeSegment}</span>
         )}
         <div className="ml-auto flex gap-1">
-          {plugin.hasServer && <PlatformBadge label={getLayerStatus(plugin, 'server')} variant="blue" />}
-          {plugin.hasWeb && <PlatformBadge label={getLayerStatus(plugin, 'web')} variant="purple" />}
-          {plugin.hasDesktop && <PlatformBadge label={getLayerStatus(plugin, 'desktop')} variant="amber" />}
+          {plugin.hasServer && (
+            <PlatformBadge label={getLayerStatus(plugin, 'server')} variant="blue" />
+          )}
+          {plugin.hasWeb && (
+            <PlatformBadge label={getLayerStatus(plugin, 'web')} variant="purple" />
+          )}
+          {plugin.hasDesktop && (
+            <PlatformBadge label={getLayerStatus(plugin, 'desktop')} variant="amber" />
+          )}
         </div>
         <span className="text-muted-foreground">{expanded ? '▾' : '▸'}</span>
       </button>
@@ -212,9 +213,7 @@ function PluginListItem({
 
       {expanded && (
         <div className="border-t border-border p-2 space-y-2">
-          {plugin.description && (
-            <div className="text-muted-foreground">{plugin.description}</div>
-          )}
+          {plugin.description && <div className="text-muted-foreground">{plugin.description}</div>}
 
           <div className="space-y-0.5">
             <div className="text-muted-foreground font-medium">Descriptor</div>
@@ -261,7 +260,7 @@ function PluginListItem({
           {plugin.layers && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Layers</div>
-              {(['server', 'web', 'desktop'] as const).map(layer => (
+              {(['server', 'web', 'desktop'] as const).map((layer) => (
                 <InfoRow
                   key={layer}
                   label={layer}
@@ -274,11 +273,43 @@ function PluginListItem({
           {plugin.capabilities && plugin.capabilities.length > 0 && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Capabilities</div>
-              {plugin.capabilities.map(capability => (
+              {plugin.capabilities.map((capability) => (
                 <div key={capability.id} className="flex items-center gap-2">
                   <span className="text-foreground">{capability.label ?? capability.type}</span>
                   <span className="text-muted-foreground">{capability.id}</span>
-                  <span className="rounded bg-fill px-1 text-muted-foreground">{capability.status}</span>
+                  <span className="rounded bg-fill px-1 text-muted-foreground">
+                    {capability.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {plugin.declaredCapabilities && plugin.declaredCapabilities.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-muted-foreground font-medium">Declared Capabilities</div>
+              {plugin.declaredCapabilities.map((capability) => (
+                <div key={capability.id} className="flex items-center gap-2">
+                  <span className="text-foreground">{capability.label ?? capability.type}</span>
+                  <span className="text-muted-foreground">{capability.localId}</span>
+                  <span className="rounded bg-fill px-1 text-muted-foreground">
+                    {capability.layer ?? 'any'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {plugin.declaredPermissions && plugin.declaredPermissions.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-muted-foreground font-medium">Declared Permissions</div>
+              {plugin.declaredPermissions.map((permission) => (
+                <div key={permission.id} className="flex items-center gap-2">
+                  <span className="text-foreground">{permission.label ?? permission.localId}</span>
+                  <span className="text-muted-foreground">{permission.localId}</span>
+                  {permission.required === true && (
+                    <span className="rounded bg-fill px-1 text-muted-foreground">required</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -287,8 +318,10 @@ function PluginListItem({
           {plugin.warnings && plugin.warnings.length > 0 && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Warnings</div>
-              {plugin.warnings.map(warning => (
-                <div key={warning} className="text-amber-400">{warning}</div>
+              {plugin.warnings.map((warning) => (
+                <div key={warning} className="text-amber-400">
+                  {warning}
+                </div>
               ))}
             </div>
           )}
@@ -297,14 +330,14 @@ function PluginListItem({
           {(panels.length > 0 || commands.length > 0) && plugin.hasWeb && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Web Contributions</div>
-              {panels.map(panel => (
+              {panels.map((panel) => (
                 <div key={panel.id} className="flex items-center gap-2">
                   <span className="text-foreground">{panel.title}</span>
                   <span className="text-muted-foreground">{panel.localId}</span>
                   <span className="rounded bg-fill px-1 text-muted-foreground">panel</span>
                 </div>
               ))}
-              {commands.map(cmd => (
+              {commands.map((cmd) => (
                 <div key={cmd.id} className="flex items-center gap-2">
                   <button
                     type="button"
@@ -337,17 +370,20 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function PlatformBadge({ label, variant }: { label: string; variant: 'blue' | 'purple' | 'amber' }) {
+function PlatformBadge({
+  label,
+  variant
+}: {
+  label: string
+  variant: 'blue' | 'purple' | 'amber'
+}) {
   return (
     <span
-      className={cn(
-        'rounded px-1.5 py-0.5 text-[10px]',
-        {
-          'bg-blue-500/15 text-blue-400': variant === 'blue',
-          'bg-purple-500/15 text-purple-400': variant === 'purple',
-          'bg-amber-500/15 text-amber-400': variant === 'amber',
-        },
-      )}
+      className={cn('rounded px-1.5 py-0.5 text-[10px]', {
+        'bg-blue-500/15 text-blue-400': variant === 'blue',
+        'bg-purple-500/15 text-purple-400': variant === 'purple',
+        'bg-amber-500/15 text-amber-400': variant === 'amber'
+      })}
     >
       {label}
     </span>

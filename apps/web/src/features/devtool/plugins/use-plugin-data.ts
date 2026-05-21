@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   PluginCapabilityRecord,
+  PluginDeclaredCapabilityRecord,
+  PluginDeclaredPermissionRecord,
   PluginLayer,
   PluginLayerState,
-  PluginSourceDescriptor,
+  PluginSourceDescriptor
 } from '@cradle/plugin-sdk'
 
 import { getServerUrl } from '~/lib/electron'
@@ -18,6 +20,8 @@ export interface PluginInfo {
   source?: PluginSourceDescriptor
   layers?: Partial<Record<PluginLayer, PluginLayerState>>
   capabilities?: PluginCapabilityRecord[]
+  declaredCapabilities?: PluginDeclaredCapabilityRecord[]
+  declaredPermissions?: PluginDeclaredPermissionRecord[]
   warnings?: string[]
   hasWeb: boolean
   hasServer: boolean
@@ -46,7 +50,10 @@ export function usePluginData() {
       const now = Date.now()
       for (const p of data) {
         const key = p.identity ?? p.name
-        const activatedAt = p.layers?.web?.activatedAt ?? p.layers?.server?.activatedAt ?? p.layers?.desktop?.activatedAt
+        const activatedAt =
+          p.layers?.web?.activatedAt ??
+          p.layers?.server?.activatedAt ??
+          p.layers?.desktop?.activatedAt
         if (activatedAt) {
           activatedAtRef.current.set(key, Date.parse(activatedAt))
         } else if (!activatedAtRef.current.has(key)) {
