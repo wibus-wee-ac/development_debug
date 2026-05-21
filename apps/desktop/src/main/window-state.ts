@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 
+import { z } from 'zod'
+
 export interface WindowBounds {
   x?: number
   y?: number
@@ -21,19 +23,19 @@ export interface WindowBoundsPolicy {
   minHeight: number
 }
 
+const StoredWindowBoundsJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  z.object({
+    x: z.number().finite().optional(),
+    y: z.number().finite().optional(),
+    width: z.number().finite().positive().optional(),
+    height: z.number().finite().positive().optional(),
+  }),
+)
+
 export function readStoredWindowBounds(filePath: string): WindowBounds | null {
   try {
-    const parsed = JSON.parse(readFileSync(filePath, 'utf8')) as unknown
-    if (!isRecord(parsed)) {
-      return null
-    }
-
-    return {
-      x: readFiniteNumber(parsed.x),
-      y: readFiniteNumber(parsed.y),
-      width: readPositiveNumber(parsed.width),
-      height: readPositiveNumber(parsed.height),
-    }
+    return StoredWindowBoundsJsonSchema.parse(readFileSync(filePath, 'utf8'))
   }
   catch {
     return null
@@ -134,18 +136,6 @@ function clampPosition(value: number, minimum: number, maximum: number): number 
 
 function isUsableWorkArea(value: DisplayWorkArea | undefined): value is DisplayWorkArea {
   return Boolean(value && Number.isFinite(value.x) && Number.isFinite(value.y) && value.width > 0 && value.height > 0)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function readFiniteNumber(value: unknown): number | undefined {
-  return isFiniteNumber(value) ? value : undefined
-}
-
-function readPositiveNumber(value: unknown): number | undefined {
-  return isFiniteNumber(value) && value > 0 ? value : undefined
 }
 
 function isFiniteNumber(value: unknown): value is number {

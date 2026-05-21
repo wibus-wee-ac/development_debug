@@ -11,7 +11,7 @@ import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { formatIssueId } from './shared/format-issue-id'
-import { parseIssueLabels, priorityOptions } from './shared/issue-metadata'
+import { IssueLabelsJsonSchema, priorityOptions } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -69,7 +69,7 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   const selectedIssue = issue.data
   const statusRows = statuses.data ?? []
   const status = findStatus(statusRows, selectedIssue)
-  const labels = parseIssueLabels(selectedIssue?.labels)
+  const labels = IssueLabelsJsonSchema.parse(selectedIssue?.labels)
   const boardId = boards.data?.[0]?.id
 
   const candidateIssues = useMemo(() => {
@@ -364,7 +364,7 @@ function IssueComboboxItem({
   workspaces: ReturnType<typeof useWorkspaces>['workspaces']
   disabled: boolean
 }) {
-  const labels = parseIssueLabels(issue.labels)
+  const labels = IssueLabelsJsonSchema.parse(issue.labels)
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const readableId = formatIssueId(issue, workspaces)
 

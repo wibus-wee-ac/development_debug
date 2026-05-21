@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
-import { parseIssueLabels, priorityOptions } from '../shared/issue-metadata'
+import { IssueLabelsJsonSchema, priorityOptions } from '../shared/issue-metadata'
 import { LabelChip } from '../shared/label-chip'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
@@ -46,7 +46,7 @@ interface PropertiesSidebarProps {
 export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) {
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
-  const labels = parseIssueLabels(issue.labels)
+  const labels = IssueLabelsJsonSchema.parse(issue.labels)
 
   return (
     <div className="flex flex-col gap-1">

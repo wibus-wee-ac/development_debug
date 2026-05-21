@@ -10,7 +10,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
-import { parseIssueLabels } from './shared/issue-metadata'
+import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { normalizeStatusCategory, StatusIcon } from './shared/status-icon'
@@ -62,7 +62,7 @@ export function KanbanCard({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
 
-  const labels = parseIssueLabels(issue.labels)
+  const labels = IssueLabelsJsonSchema.parse(issue.labels)
   const issueStatus = statuses.find(status => status.id === issue.statusId)
   const statusCategory = normalizeStatusCategory(issueStatus?.category ?? category)
 

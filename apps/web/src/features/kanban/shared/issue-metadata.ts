@@ -1,4 +1,5 @@
 import type { IssuePriority } from '../use-kanban'
+import { z } from 'zod'
 
 export const priorityOptions: { value: IssuePriority, label: string }[] = [
   { value: 'urgent', label: 'Urgent' },
@@ -8,12 +9,7 @@ export const priorityOptions: { value: IssuePriority, label: string }[] = [
   { value: 'none', label: 'No priority' },
 ]
 
-export function parseIssueLabels(raw: string | null | undefined): string[] {
-  try {
-    const parsed = JSON.parse(raw || '[]')
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
-  }
-  catch {
-    return []
-  }
-}
+export const IssueLabelsJsonSchema = z.string()
+  .nullish()
+  .transform(raw => JSON.parse(raw ?? '[]'))
+  .pipe(z.array(z.string()).default([]))

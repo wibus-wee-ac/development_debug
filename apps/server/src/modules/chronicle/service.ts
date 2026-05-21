@@ -75,19 +75,19 @@ const defaultConfig: ChronicleConfig = {
 }
 
 const ChronicleConfigSchema = z.object({
-  profileId: z.string().catch(defaultConfig.profileId).default(defaultConfig.profileId),
-  modelId: z.string().catch(defaultConfig.modelId).default(defaultConfig.modelId),
-  workspaceId: z.string().catch(defaultConfig.workspaceId).default(defaultConfig.workspaceId),
-  enabled: z.boolean().catch(defaultConfig.enabled).default(defaultConfig.enabled),
-  activityPipelineEnabled: z.boolean().catch(defaultConfig.activityPipelineEnabled).default(defaultConfig.activityPipelineEnabled),
-  activityPipelineIntervalMs: z.number().finite().positive().catch(defaultConfig.activityPipelineIntervalMs).default(defaultConfig.activityPipelineIntervalMs),
-  activityPipelineBatchSize: z.number().finite().positive().catch(defaultConfig.activityPipelineBatchSize).default(defaultConfig.activityPipelineBatchSize),
-  audioCaptureEnabled: z.boolean().catch(defaultConfig.audioCaptureEnabled).default(defaultConfig.audioCaptureEnabled),
-  audioSource: z.enum(['microphone', 'system', 'mixed']).catch(defaultConfig.audioSource).default(defaultConfig.audioSource),
-  audioSegmentMs: z.number().finite().positive().catch(defaultConfig.audioSegmentMs).default(defaultConfig.audioSegmentMs),
-  audioSegmentIntervalMs: z.number().finite().positive().catch(defaultConfig.audioSegmentIntervalMs).default(defaultConfig.audioSegmentIntervalMs),
-  audioRmsThreshold: z.number().finite().nonnegative().catch(defaultConfig.audioRmsThreshold).default(defaultConfig.audioRmsThreshold),
-  storageRoot: z.string().catch(defaultConfig.storageRoot).default(defaultConfig.storageRoot),
+  profileId: z.string().default(defaultConfig.profileId),
+  modelId: z.string().default(defaultConfig.modelId),
+  workspaceId: z.string().default(defaultConfig.workspaceId),
+  enabled: z.boolean().default(defaultConfig.enabled),
+  activityPipelineEnabled: z.boolean().default(defaultConfig.activityPipelineEnabled),
+  activityPipelineIntervalMs: z.number().finite().positive().default(defaultConfig.activityPipelineIntervalMs),
+  activityPipelineBatchSize: z.number().finite().positive().default(defaultConfig.activityPipelineBatchSize),
+  audioCaptureEnabled: z.boolean().default(defaultConfig.audioCaptureEnabled),
+  audioSource: z.enum(['microphone', 'system', 'mixed']).default(defaultConfig.audioSource),
+  audioSegmentMs: z.number().finite().positive().default(defaultConfig.audioSegmentMs),
+  audioSegmentIntervalMs: z.number().finite().positive().default(defaultConfig.audioSegmentIntervalMs),
+  audioRmsThreshold: z.number().finite().nonnegative().default(defaultConfig.audioRmsThreshold),
+  storageRoot: z.string().default(defaultConfig.storageRoot),
 })
 
 const ChronicleConfigJsonSchema = z.preprocess(
@@ -249,17 +249,7 @@ interface ActivityCrystallizationResult {
 const ModelTextJsonObjectSchema = z.preprocess(
   (raw) => {
     const text = z.string().parse(raw).trim()
-    try {
-      return JSON.parse(text)
-    }
-    catch (error) {
-      const start = text.indexOf('{')
-      const end = text.lastIndexOf('}')
-      if (start >= 0 && end > start) {
-        return JSON.parse(text.slice(start, end + 1))
-      }
-      throw error
-    }
+    return JSON.parse(text)
   },
   z.record(z.string(), z.unknown()),
 )
@@ -268,9 +258,7 @@ const ActivitySegmentTypeSchema = z.enum(['work', 'meeting', 'browsing', 'chat',
 const ActivityPrioritySchema = z.enum(['low', 'normal', 'high'])
 const KnowledgeCardTypeSchema = z.enum(['fact', 'insight', 'decision', 'task', 'pattern'])
 const KnowledgeDimensionSchema = z.enum(['technical', 'business', 'personal', 'project', 'general'])
-const ModelStringListSchema = z.array(z.string().min(1).catch(''))
-  .catch([])
-  .transform(values => values.filter(Boolean))
+const ModelStringListSchema = z.array(z.string().min(1)).default([])
 
 const ActivitySourceRefsSchema = z.object({
   snapshotIds: ModelStringListSchema.default([]),
@@ -312,9 +300,9 @@ const ActivityTriageModelTextSchema = z.preprocess(
   z.object({
     keep: z.boolean().default(false),
     reason: z.string().default('No useful activity evidence'),
-    segmentType: ActivitySegmentTypeSchema.catch('unknown').default('unknown'),
+    segmentType: ActivitySegmentTypeSchema.default('unknown'),
     title: z.string().nullable().default(null),
-    priority: ActivityPrioritySchema.catch('normal').default('normal'),
+    priority: ActivityPrioritySchema.default('normal'),
   }),
 )
 
@@ -332,9 +320,9 @@ const ActivitySummaryModelTextSchema = z.preprocess(
 const CrystallizedKnowledgeCardDraftSchema = z.object({
   title: z.string().trim().min(1).transform(value => boundedString(value, 240)),
   content: z.string().trim().min(1).transform(value => boundedString(value, 4_000)),
-  type: KnowledgeCardTypeSchema.catch('fact').default('fact'),
-  dimension: KnowledgeDimensionSchema.catch('general').default('general'),
-  confidence: z.number().finite().min(0).max(1).catch(1).default(1),
+  type: KnowledgeCardTypeSchema.default('fact'),
+  dimension: KnowledgeDimensionSchema.default('general'),
+  confidence: z.number().finite().min(0).max(1).default(1),
   tags: ModelStringListSchema.default([]).transform(values => uniqueStrings(values.map(tag => boundedString(tag.trim(), 64)).filter(Boolean)).slice(0, 12)),
   stableKey: z.string().trim().optional(),
 }).transform((card): CrystallizedKnowledgeCardDraft => {
@@ -355,7 +343,7 @@ const ActivityCrystallizationModelTextSchema = z.preprocess(
   z.object({
     summary: z.string().default('').transform(value => boundedString(value, 4_000)),
     knowledgeCards: z.array(CrystallizedKnowledgeCardDraftSchema).default([]),
-    rejectedCount: z.number().finite().nonnegative().transform(value => Math.floor(value)).catch(0).default(0),
+    rejectedCount: z.number().finite().nonnegative().transform(value => Math.floor(value)).default(0),
   }),
 )
 

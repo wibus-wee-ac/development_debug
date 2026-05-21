@@ -5,7 +5,7 @@ import { agentProfiles, agents, backendRuns, backendSessionBindings, messages, s
 import { desc, eq, inArray } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
-import { buildSessionRuntimeConfigJson, readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
+import { AgentRuntimeConfigJsonSchema, buildSessionRuntimeConfigJson } from '../../helpers/agent-runtime-config'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { buildAgentAvatarUrl } from '../agent-identity/avatar'
@@ -197,7 +197,7 @@ function resolveSessionCreateInput(input: {
     }
 
     if (agent.runtimeKind === 'cli-tui') {
-      const launch = readCliTuiLaunchSpecFromAgentConfig(agent.configJson)
+      const launch = AgentRuntimeConfigJsonSchema.parse(agent.configJson).cliTui
       if (!launch) {
         throw new AppError({
           code: 'invalid_session_input',

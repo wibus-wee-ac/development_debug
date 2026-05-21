@@ -10,7 +10,6 @@ import {
 import { desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
-import { parseJsonStringArray } from '../../helpers/json-text'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import * as ChatRuntime from '../chat-runtime/service'
@@ -42,22 +41,6 @@ interface IssueAgentDelegationState {
 // ── in-memory state ──
 
 const activeRuns = new Map<string, ActiveAgentRun>()
-
-// ── helpers ──
-
-function parseContextRefs(raw: string): Array<{ type: string, value: string, label?: string }> {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed)
-      ? parsed.filter((v): v is { type: string, value: string, label?: string } => {
-          return typeof v === 'object' && v !== null && typeof (v as { type?: unknown }).type === 'string' && typeof (v as { value?: unknown }).value === 'string'
-        })
-      : []
-  }
-  catch {
-    return []
-  }
-}
 
 // ── DB queries (merged from store) ──
 
@@ -215,12 +198,12 @@ function buildIssuePrompt(
 
   parts.push(`Priority: ${issue.priority}`)
 
-  const labels = parseJsonStringArray(issue.labels)
+  const labels = Issue.IssueLabelsJsonSchema.parse(issue.labels)
   if (labels.length > 0) {
     parts.push(`Labels: ${labels.join(', ')}`)
   }
 
-  const refs = parseContextRefs(issue.contextRefs)
+  const refs = Issue.IssuePromptContextRefsJsonSchema.parse(issue.contextRefs)
   if (refs.length > 0) {
     parts.push('', '## Context')
     refs.forEach((ref) => {

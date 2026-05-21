@@ -12,14 +12,40 @@ import {
   workspaces,
 } from '@cradle/db'
 import { desc, eq, or, sql } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import { parseJsonStringArray } from '../../helpers/json-text'
 import { currentUnixSeconds } from '../../helpers/time'
 import type { MutationActor } from '../../http/actor-context'
 import { db } from '../../infra'
 
 type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
+
+export const IssueLabelsJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  z.array(z.string()),
+)
+
+export const IssueContextRefsJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  z.array(z.string()),
+)
+
+export const IssuePromptContextRefsJsonSchema = z.preprocess(
+  raw => JSON.parse(raw as string),
+  z.array(z.union([
+    z.string().transform(value => ({
+      type: 'ref',
+      value,
+      label: undefined as string | undefined,
+    })),
+    z.object({
+      type: z.string(),
+      value: z.string(),
+      label: z.string().optional(),
+    }),
+  ])),
+)
 
 export interface IssueCommentAuthorView {
   kind: 'user' | 'agent' | 'system'
@@ -229,7 +255,7 @@ export function listIssues(params: IssueListParams): Issue[] {
       if (!params.labels || params.labels.length === 0) {
         return true
       }
-      const labels = parseJsonStringArray(issue.labels)
+      const labels = IssueLabelsJsonSchema.parse(issue.labels)
       return params.labels.every(label => labels.includes(label))
     })
 }
@@ -491,7 +517,7 @@ export function deleteRelation(id: string): void {
 
 export function addContextRef(issueId: string, ref: string): Issue {
   const issue = getIssue(issueId)
-  const refs = parseJsonStringArray(issue.contextRefs)
+  const refs = IssueContextRefsJsonSchema.parse(issue.contextRefs)
   refs.push(ref)
   db().update(issues).set({ contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }).where(eq(issues.id, issueId)).run()
   return getIssue(issueId)
@@ -499,7 +525,7 @@ export function addContextRef(issueId: string, ref: string): Issue {
 
 export function removeContextRef(issueId: string, index: number): Issue {
   const issue = getIssue(issueId)
-  const refs = parseJsonStringArray(issue.contextRefs)
+  const refs = IssueContextRefsJsonSchema.parse(issue.contextRefs)
   if (index < 0 || index >= refs.length) {
     throw new AppError({ code: 'issue_context_ref_invalid_index', status: 400, message: 'Invalid context ref index', details: { issueId, index } })
   }

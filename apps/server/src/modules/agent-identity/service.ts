@@ -6,7 +6,7 @@ import type { SQL } from 'drizzle-orm'
 import { and, desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
-import { readCliTuiLaunchSpecFromAgentConfig } from '../../helpers/agent-runtime-config'
+import { AgentRuntimeConfigJsonSchema } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 import { buildAgentAvatarUrl } from './avatar'
 
@@ -176,7 +176,7 @@ function normalizeAgentInput(input: CreateAgentInput): Required<Omit<CreateAgent
       })
     }
 
-    const launch = readCliTuiLaunchSpecFromAgentConfig(configJson)
+    const launch = AgentRuntimeConfigJsonSchema.parse(configJson).cliTui
     if (!launch) {
       throw new AppError({
         code: 'invalid_agent_input',

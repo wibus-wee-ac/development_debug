@@ -5,8 +5,7 @@ import { eq } from 'drizzle-orm'
 import { AppError } from '../../errors/app-error'
 import {
   type CodexCliSessionBinding,
-  readCliTuiLaunchSpecFromSessionConfig,
-  readCodexCliSessionBindingFromSessionConfig,
+  SessionRuntimeConfigJsonSchema,
   writeCodexCliSessionBindingToSessionConfig
 } from '../../helpers/agent-runtime-config'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
@@ -185,7 +184,8 @@ export function startOrAttach(input: { sessionId: string; cols: number; rows: nu
     })
   }
 
-  const config = readCliTuiLaunchSpecFromSessionConfig(context.session.configJson)
+  const sessionConfig = SessionRuntimeConfigJsonSchema.parse(context.session.configJson)
+  const config = sessionConfig.cliTuiLaunch
   if (!config) {
     throw new AppError({
       code: 'terminal_launch_config_missing',
@@ -211,7 +211,7 @@ export function startOrAttach(input: { sessionId: string; cols: number; rows: nu
     }
   }
   else if (isCodexCli(config.executable)) {
-    const binding = readCodexCliSessionBindingFromSessionConfig(context.session.configJson)
+    const binding = sessionConfig.codexCliSession
     const autoResumeAllowed = !hasCodexPositionalArg(args)
     const bindingMatchesWorkspace = binding?.workspacePath === context.workspace.path
     if (!running && autoResumeAllowed && bindingMatchesWorkspace) {
@@ -462,7 +462,7 @@ function persistCodexSessionBinding(
   if (!session) {
     return
   }
-  const existing = readCodexCliSessionBindingFromSessionConfig(session.configJson)
+  const existing = SessionRuntimeConfigJsonSchema.parse(session.configJson).codexCliSession
   if (existing?.workspacePath === binding.workspacePath) {
     return
   }

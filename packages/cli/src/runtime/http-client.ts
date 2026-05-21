@@ -1,7 +1,11 @@
 import type { CliHttpMethod } from './types'
+import { z } from 'zod'
 
 const PATH_PARAM_RE = /\{([^}]+)\}/g
 const CRADLE_CHAT_SESSION_ID_HEADER = 'x-cradle-chat-session-id'
+const HttpErrorPayloadJsonSchema = z.string()
+  .transform(value => JSON.parse(value))
+  .pipe(z.object({ message: z.string() }).passthrough())
 
 interface RequestInput {
   body?: unknown
@@ -42,13 +46,7 @@ async function readError(response: Response): Promise<string> {
   if (!text) {
     return `${response.status} ${response.statusText}`
   }
-  try {
-    const payload = JSON.parse(text) as { message?: unknown }
-    return typeof payload.message === 'string' ? payload.message : text
-  }
-  catch {
-    return text
-  }
+  return HttpErrorPayloadJsonSchema.parse(text).message
 }
 
 export async function requestJson<T = unknown>(input: RequestInput): Promise<T> {

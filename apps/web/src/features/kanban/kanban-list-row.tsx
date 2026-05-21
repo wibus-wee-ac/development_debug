@@ -9,7 +9,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
-import { parseIssueLabels } from './shared/issue-metadata'
+import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -57,7 +57,7 @@ export function KanbanListRow({
   const { workspaces } = useWorkspaces()
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
-  const labels = parseIssueLabels(issue.labels)
+  const labels = IssueLabelsJsonSchema.parse(issue.labels)
 
   useEffect(() => {
     return () => {

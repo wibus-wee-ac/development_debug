@@ -5,7 +5,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import { formatIssueId } from './shared/format-issue-id'
-import { parseIssueLabels } from './shared/issue-metadata'
+import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -53,7 +53,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
   const { data: statuses = [] } = useStatuses(workspaceId)
 
   const status = issue?.statusId ? statuses.find(s => s.id === issue.statusId) : undefined
-  const labels = parseIssueLabels(issue?.labels)
+  const labels = IssueLabelsJsonSchema.parse(issue?.labels)
 
   return (
     <m.div

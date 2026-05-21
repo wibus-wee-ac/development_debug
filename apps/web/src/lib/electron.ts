@@ -7,6 +7,7 @@ export const isElectron = !!window.cradle?.env?.isElectron
 
 /**
  * The server URL — from Electron preload or Vite env.
+ * WARNING: Unless you need to bypass api-gen's react-query integration, do not use this client directly.
  */
 export function getServerUrl(): string {
   if (window.cradle?.env?.serverUrl) {

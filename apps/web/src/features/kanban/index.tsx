@@ -9,6 +9,7 @@ import type { IssueSelectionMode } from './kanban-selection'
 import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
 import { KanbanSelectionBar } from './kanban-selection-bar'
 import { KanbanToolbar } from './kanban-toolbar'
+import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
 import type { FilterState } from './use-view-config'
 import { useViewConfig } from './use-view-config'
@@ -84,12 +85,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     }
     if (filter.labels?.length) {
       result = result.filter((i) => {
-        const issueLabels: string[] = (() => {
- try {
-   return JSON.parse(i.labels || '[]')
- }
- catch { return [] }
-})()
+        const issueLabels = IssueLabelsJsonSchema.parse(i.labels)
         return filter.labels!.some(l => issueLabels.includes(l))
       })
     }

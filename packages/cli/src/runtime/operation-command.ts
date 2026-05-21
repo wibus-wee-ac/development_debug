@@ -1,8 +1,35 @@
 import { Command } from 'commander'
+import { z } from 'zod'
 
 import { getCommandContext } from './context'
 import { printResult } from './output'
 import type { CliOperationSpec, CliOutputFormat, CliValueType } from './types'
+
+const OutputFormatSchema = z.enum(['auto', 'json', 'pretty', 'table', 'ndjson'])
+const JsonFieldsOptionSchema = z.union([
+  z.string()
+    .transform(value => value.split(',').map(field => field.trim()).filter(Boolean))
+    .transform(fields => fields.length > 0 ? fields : undefined),
+  z.boolean().transform(() => undefined),
+  z.undefined(),
+])
+
+const CliValueSchemas = {
+  string: z.unknown(),
+  number: z.coerce.number(),
+  boolean: z.union([
+    z.boolean(),
+    z.enum(['true', 'false']).transform(value => value === 'true'),
+  ]),
+  'string[]': z.union([
+    z.array(z.string()),
+    z.string().transform(value => value.split(',').map(item => item.trim()).filter(Boolean)),
+  ]),
+  json: z.union([
+    z.string().transform(value => JSON.parse(value)),
+    z.unknown(),
+  ]),
+} satisfies Record<CliValueType, z.ZodTypeAny>
 
 function findSubcommand(parent: Command, name: string): Command | undefined {
   return parent.commands.find(command => command.name() === name)
@@ -85,56 +112,7 @@ function parseValue(value: unknown, type: CliValueType | undefined): unknown {
   if (value === undefined) {
     return undefined
   }
-  if (!type || type === 'string') {
-    return value
-  }
-  if (type === 'number') {
-    const parsed = Number(value)
-    if (Number.isNaN(parsed)) {
-      throw new TypeError(`Expected a number, received ${String(value)}`)
-    }
-    return parsed
-  }
-  if (type === 'boolean') {
-    if (typeof value === 'boolean') {
-      return value
-    }
-    if (value === 'true') {
-      return true
-    }
-    if (value === 'false') {
-      return false
-    }
-    throw new TypeError(`Expected a boolean, received ${String(value)}`)
-  }
-  if (type === 'string[]') {
-    if (Array.isArray(value)) {
-      return value
-    }
-    return String(value).split(',').map(item => item.trim()).filter(Boolean)
-  }
-  if (type === 'json') {
-    if (typeof value !== 'string') {
-      return value
-    }
-    return JSON.parse(value) as unknown
-  }
-  return value
-}
-
-function parseFormat(value: unknown): CliOutputFormat {
-  if (value === 'auto' || value === 'json' || value === 'pretty' || value === 'table' || value === 'ndjson') {
-    return value
-  }
-  throw new Error(`Unsupported format: ${String(value)}`)
-}
-
-function parseJsonFields(value: unknown): string[] | undefined {
-  if (typeof value !== 'string') {
-    return undefined
-  }
-  const fields = value.split(',').map(field => field.trim()).filter(Boolean)
-  return fields.length > 0 ? fields : undefined
+  return CliValueSchemas[type ?? 'string'].parse(value)
 }
 
 function hasValues(record: Record<string, unknown>): boolean {
@@ -211,8 +189,8 @@ export function registerOperationCommand(root: Command, spec: CliOperationSpec):
 
     printResult(result, {
       forceJson: opts.json !== undefined,
-      format: parseFormat(opts.format),
-      jsonFields: parseJsonFields(opts.json),
+      format: OutputFormatSchema.parse(opts.format) satisfies CliOutputFormat,
+      jsonFields: JsonFieldsOptionSchema.parse(opts.json),
     })
   })
 
