@@ -21,4 +21,5 @@ Keep subdirectory inventories current when files are added or changed.
 - **draft-solutions/**: Working notes and proposal documents that are not yet formal execution plans.
 - **exec-plans/**: Living execution plans that guide complex implementation work, including the session await/resume runtime plan and the `apps/server` Elysia replatform plan.
 - **for-users/**: End-user and integration-developer documentation set (quick start, user guide, integrations, CLI/API references, data model, troubleshooting).
+- **specs/**: Forward-looking product and capability specs, including Alma-inspired gap specs.
 - **superpowers/**: Design specs and implementation plans produced via superpowers workflows.
