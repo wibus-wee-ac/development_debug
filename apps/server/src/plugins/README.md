@@ -10,7 +10,7 @@
 - **external-provider-source-registry.ts**：保存插件注册的 external provider source readers；插件只提供标准 snapshot，Cradle host 负责 profile/secret 投影与固定 UI。
 - **hooks.ts**：注册 chat lifecycle hooks，并投影插件拥有的 hook capability records。
 - **index.ts**：导出 server plugin host API，供 server 其它模块使用。
-- **loader.ts**：发现 plugin packages，构建 governed descriptors，激活 server entries，并把插件路由挂载到 `/api/plugins/:routeSegment`。
+- **loader.ts**：发现 plugin packages，构建 governed descriptors，尊重 desktop fork 传入的 primary plugin source kind，激活 server entries，并把插件路由挂载到 `/api/plugins/:routeSegment`。
 - **mcp-registry.ts**：保存 MCP server registrations，并投影 owner-scoped MCP capability records。
 - **runtime-registry.ts**：维护 host-owned plugin descriptors、source descriptors、layer lifecycle states、route ownership 和 capability records。
 - **runtime-registry.test.ts**：覆盖 identity、route collision、source classification 和 capability id 行为的 focused tests。

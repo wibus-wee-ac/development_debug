@@ -3,6 +3,7 @@ import { app, BrowserWindow } from 'electron'
 import type { Disposable, PluginCapabilityRecord, PluginDescriptor, PluginManifest } from '@cradle/plugin-sdk'
 import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
 import { discoverDesktopPlugins, type DesktopPluginSource } from './plugin-discovery'
+import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind } from './plugin-paths'
 
 /** Shared config written by desktop plugins, consumed as env vars by server */
 const pluginSharedConfig = new Map<string, string>()
@@ -104,18 +105,24 @@ function isRejectedDescriptor(descriptor: PluginDescriptor): boolean {
 }
 
 function createDesktopPluginSources(isDev: boolean): DesktopPluginSource[] {
+  const primaryPluginsDir = resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname })
+  const primarySourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
   const defaultSource: DesktopPluginSource = isDev
     ? {
-        pluginsDir: resolve(__dirname, '../../../../plugins'),
-        kind: 'workspaceDev',
+        pluginsDir: primaryPluginsDir,
+        kind: primarySourceKind,
         trusted: true,
-        reason: 'Workspace plugin directory used by the Electron development runtime',
+        reason: primarySourceKind === 'externalLocal'
+          ? 'Operator-configured CRADLE_PLUGINS_DIR used as the primary plugin directory'
+          : 'Workspace plugin directory used by the Electron development runtime',
       }
     : {
-        pluginsDir: resolve(process.resourcesPath!, 'plugins'),
-        kind: 'bundledResource',
+        pluginsDir: primaryPluginsDir,
+        kind: primarySourceKind,
         trusted: true,
-        reason: 'Bundled plugin resource directory shipped with the desktop app',
+        reason: primarySourceKind === 'externalLocal'
+          ? 'Operator-configured CRADLE_PLUGINS_DIR used as the primary plugin directory'
+          : 'Bundled plugin resource directory shipped with the desktop app',
       }
 
   const externalDirs = [

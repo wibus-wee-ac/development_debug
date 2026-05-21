@@ -8,6 +8,7 @@ import { app, dialog } from 'electron'
 import getPort from 'get-port'
 
 import { getPluginEnvVars } from './plugin-loader'
+import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind } from './plugin-paths'
 
 let serverProcess: ChildProcess | null = null
 let restartCount = 0
@@ -65,6 +66,8 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
 
   const execArgv = isDev ? ['--import', 'tsx'] : []
   const execPath = isDev ? resolveDevNodeExecPath() : undefined
+  const pluginsDir = resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname })
+  const pluginsSourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
 
   serverProcess = fork(serverEntry, [], {
     env: {
@@ -74,6 +77,8 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       CRADLE_PORT: String(port),
       CRADLE_DATA_DIR: dataDir,
       CRADLE_CREDENTIAL_SECRET: credentialSecret,
+      CRADLE_PLUGINS_DIR: pluginsDir,
+      CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
       NODE_ENV: isDev ? 'development' : 'production',
     },
     execPath,

@@ -14,6 +14,7 @@
 - `update-manager.ts`：拥有 Velopack update feed URL 解析、后台检查、下载进度、应用更新，以及 renderer 状态事件。
 - `plugin-discovery.ts`：拥有 desktop plugin discovery 和 manifest validation。
 - `plugin-loader.ts`：拥有 desktop plugin activation、shared config projection、webview listener registry，以及 renderer browser tab bridge。
+- `plugin-paths.ts`：拥有 desktop dev/bundled runtime 的 primary plugin directory 解析，并把同一路径投影给 forked server。
 - `browser-backend.ts`：legacy browser-use socket backend。当前 main process 不会启动这个 backend；active browser-use path 是 `plugins/browser-use/src/desktop.ts` 通过 desktop plugin loader 激活。
 
 ## Browser-use backend ownership

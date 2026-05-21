@@ -33,6 +33,14 @@ interface PackageWithSource {
   source: PluginSourceDescriptor
 }
 
+function readPrimaryPluginSourceKind(): PluginSourceKind | undefined {
+  const value = process.env.CRADLE_PLUGINS_SOURCE_KIND
+  if (value === 'workspaceDev' || value === 'bundledResource' || value === 'externalLocal') {
+    return value
+  }
+  return process.env.CRADLE_PLUGINS_DIR ? 'externalLocal' : undefined
+}
+
 function getPluginDiscoverySources(defaultPluginsDir: string): PluginDiscoverySource[] {
   const externalDirs = (process.env.CRADLE_EXTERNAL_PLUGINS_DIRS ?? '')
     .split(delimiter)
@@ -42,7 +50,7 @@ function getPluginDiscoverySources(defaultPluginsDir: string): PluginDiscoverySo
   return [
     {
       pluginsDir: defaultPluginsDir,
-      kind: process.env.CRADLE_PLUGINS_DIR ? 'externalLocal' : undefined,
+      kind: readPrimaryPluginSourceKind(),
     },
     ...externalDirs.map(pluginsDir => ({
       pluginsDir,
