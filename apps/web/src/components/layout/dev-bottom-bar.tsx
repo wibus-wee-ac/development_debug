@@ -1,15 +1,22 @@
+import { buildHash } from '@cradle/tabs-next'
 import { MonitorIcon, RefreshCwIcon } from 'lucide-react'
 
 import { isElectron } from '~/lib/electron'
+import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
 export function DevBottomBar() {
+  const activeRouteHash = useCradleTabStore((state) => {
+    const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
+    return activeTab ? buildHash(cradleRegistry, activeTab.type, activeTab.params) : '/'
+  })
+
   return (
     <footer className="flex h-7 shrink-0 items-center border-t border-border bg-sidebar px-2 font-mono text-[10px]">
       <span
         className="flex-1 truncate select-all text-muted-foreground"
-        title={window.location.href}
+        title={activeRouteHash}
       >
-        {window.location.hash || '/'}
+        {activeRouteHash}
       </span>
 
       <div className="flex items-center gap-0.5">
@@ -18,17 +25,17 @@ export function DevBottomBar() {
           title="Open DevTools window"
           aria-label="Open DevTools"
           onClick={() => {
-              if (isElectron) {
-                window.cradle?.ipc.invoke('window.openDevtool')
-              }
-              else {
-                window.open('/#/devtool', '_blank')
-              }
-            }}
+            if (isElectron) {
+              window.cradle?.ipc.invoke('window.openDevtool')
+            }
+            else {
+              window.open('/#/devtool', '_blank')
+            }
+          }}
           className="flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
-            <MonitorIcon className="inline-block size-3.5" aria-hidden="true" />
-            DevTools
+          <MonitorIcon className="inline-block size-3.5" aria-hidden="true" />
+          DevTools
         </button>
         <button
           type="button"
