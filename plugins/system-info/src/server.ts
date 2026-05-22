@@ -47,8 +47,12 @@ function getSystemInfo(): SystemInfo {
 }
 
 export function activate(ctx: ServerPluginContext): void {
-  const app = ctx.app as any
-  app.get('/info', () => getSystemInfo())
+  ctx.routes.register({
+    method: 'GET',
+    path: '/info',
+    label: 'System info',
+    handler: () => getSystemInfo(),
+  })
 
   ctx.logger.info('System Info plugin activated')
 }

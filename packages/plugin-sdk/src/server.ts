@@ -5,17 +5,20 @@ export type { Disposable, Logger, PluginManifest } from './index'
 
 /** Server plugin context — provided by host during activation */
 export interface ServerPluginContext {
-  /** Scoped Elysia app — register routes via standard Elysia API */
-  app: unknown // Elysia type — plugin imports elysia themselves if needed
+  /** HTTP route registrations owned by this plugin. */
+  routes: ServerPluginRouteRegistry
 
-  /** Register an MCP server for agent runtime */
-  registerMcpServer(config: McpServerConfig): void
+  /** MCP server registrations */
+  mcp: ServerPluginMcpRegistry
 
-  /** Register a skill for agent discovery */
-  registerSkill(skill: SkillDefinition): void
+  /** Skill registrations */
+  skills: ServerPluginSkillRegistry
 
-  /** Register external provider sources that return host-rendered provider snapshots */
-  externalProviderSources: ExternalProviderSourceRegistry
+  /** Provider-related registrations */
+  providers: ServerPluginProviderRegistries
+
+  /** Disposables that the host releases when this plugin layer deactivates */
+  subscriptions: Disposable[]
 
   /** Plugin-scoped persistent KV storage */
   storage: PluginStorage
@@ -36,6 +39,49 @@ export interface ServerPluginContext {
   events: PluginEventBus
 }
 
+export type ServerPluginRouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+export interface ServerPluginRouteContext<
+  TBody = unknown,
+  TParams extends Record<string, string> = Record<string, string>,
+  TQuery extends Record<string, unknown> = Record<string, unknown>,
+> {
+  body: TBody
+  params: TParams
+  query: TQuery
+  headers: Record<string, string | undefined>
+  set: {
+    status?: number | string
+    headers?: Record<string, string>
+  }
+}
+
+export type ServerPluginRouteHandler<
+  TBody = unknown,
+  TParams extends Record<string, string> = Record<string, string>,
+  TQuery extends Record<string, unknown> = Record<string, unknown>,
+> = (
+  context: ServerPluginRouteContext<TBody, TParams, TQuery>
+) => unknown | Promise<unknown>
+
+export interface ServerPluginRouteRegistration<
+  TBody = unknown,
+  TParams extends Record<string, string> = Record<string, string>,
+  TQuery extends Record<string, unknown> = Record<string, unknown>,
+> {
+  method: ServerPluginRouteMethod
+  /** Path below /api/plugins/{routeSegment}; must start with '/'. */
+  path: string
+  handler: ServerPluginRouteHandler<TBody, TParams, TQuery>
+  label?: string
+  metadata?: Record<string, unknown>
+}
+
+export interface ServerPluginRouteRegistry {
+  /** Register a plugin-owned HTTP route below /api/plugins/{routeSegment}. */
+  register(route: ServerPluginRouteRegistration): Disposable
+}
+
 export interface McpServerConfig {
   /** Unique name for this MCP server */
   name: string
@@ -49,6 +95,11 @@ export interface McpServerConfig {
   when?: () => boolean | Promise<boolean>
 }
 
+export interface ServerPluginMcpRegistry {
+  /** Register an MCP server for agent runtime */
+  registerServer(config: McpServerConfig): Disposable | Promise<Disposable | undefined> | undefined
+}
+
 export interface SkillDefinition {
   /** Skill name (used as identifier) */
   name: string
@@ -56,6 +107,16 @@ export interface SkillDefinition {
   description: string
   /** Absolute path to SKILL.md file */
   skillFile: string
+}
+
+export interface ServerPluginSkillRegistry {
+  /** Register a skill for agent discovery */
+  register(skill: SkillDefinition): Disposable
+}
+
+export interface ServerPluginProviderRegistries {
+  /** External provider sources that return host-rendered provider snapshots */
+  externalSources: ExternalProviderSourceRegistry
 }
 
 export interface ExternalProviderSourceRegistry {
@@ -146,6 +207,11 @@ export interface PluginStorage {
 
 /** Chat lifecycle hooks — intercept/observe agent queries */
 export interface ServerPluginHooks {
+  /** Chat lifecycle hooks grouped under a domain namespace */
+  chat: ServerPluginChatHooks
+}
+
+export interface ServerPluginChatHooks {
   /** Called before an agent query is executed. Can modify the query context. */
   onBeforeQuery(handler: BeforeQueryHandler): Disposable
   /** Called after an agent response is received (observation only). */

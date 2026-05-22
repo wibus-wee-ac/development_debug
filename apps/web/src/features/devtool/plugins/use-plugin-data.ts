@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   PluginCapabilityRecord,
   PluginDeclaredCapabilityRecord,
@@ -9,6 +9,7 @@ import type {
 } from '@cradle/plugin-sdk'
 
 import { getServerUrl } from '~/lib/electron'
+import { usePluginStore } from '~/lib/plugin-store'
 
 export interface PluginInfo {
   identity?: string
@@ -32,10 +33,26 @@ export interface PluginInfo {
 }
 
 export function usePluginData() {
-  const [plugins, setPlugins] = useState<PluginInfo[]>([])
+  const webLayerStates = usePluginStore((s) => s.webLayerStates)
+  const [serverPlugins, setServerPlugins] = useState<PluginInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const activatedAtRef = useRef<Map<string, number>>(new Map())
+  const plugins = useMemo(() => serverPlugins.map(plugin => {
+    const owner = plugin.identity ?? plugin.name
+    const webLayerState = webLayerStates[owner]
+    if (!webLayerState) return plugin
+    return {
+      ...plugin,
+      layers: {
+        ...plugin.layers,
+        web: {
+          ...plugin.layers?.web,
+          ...webLayerState,
+        },
+      },
+    }
+  }), [serverPlugins, webLayerStates])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -46,7 +63,7 @@ export function usePluginData() {
         throw new Error(`${res.status} ${res.statusText}`)
       }
       const data = (await res.json()) as PluginInfo[]
-      setPlugins(data)
+      setServerPlugins(data)
       const now = Date.now()
       for (const p of data) {
         const key = p.identity ?? p.name
@@ -83,7 +100,11 @@ export function usePluginData() {
   }, [refresh])
 
   function getActivatedAt(plugin: PluginInfo): number | undefined {
-    return activatedAtRef.current.get(plugin.identity ?? plugin.name)
+    const activatedAt =
+      plugin.layers?.web?.activatedAt ??
+      plugin.layers?.server?.activatedAt ??
+      plugin.layers?.desktop?.activatedAt
+    return activatedAt ? Date.parse(activatedAt) : activatedAtRef.current.get(plugin.identity ?? plugin.name)
   }
 
   return { plugins, loading, error, refresh, getActivatedAt }

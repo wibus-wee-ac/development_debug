@@ -1,8 +1,14 @@
 /* Parses and installs Cradle Marketplace plugin links for the desktop runtime. */
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
+import {
+  projectCradlePluginContributions,
+  type CradlePluginMeta,
+  type PluginDeclaredCapabilityRecord,
+  type PluginDeclaredPermissionRecord,
+} from '@cradle/plugin-sdk'
+import { parseCradlePluginPackageJsonText, type ParsedCradlePluginPackage } from '@cradle/plugin-sdk/manifest'
 import * as tar from 'tar'
-import { z } from 'zod'
 
 const PLUGIN_INSTALL_PROTOCOL = 'cradle:'
 const PLUGIN_INSTALL_HOST = 'plugins'
@@ -35,10 +41,26 @@ export interface PluginInstallRequest {
   originalUrl: string
 }
 
+export type PluginInstallMode = 'alreadyAvailable' | 'downloaded'
+
+export interface PluginInstallSummary {
+  request: PluginInstallRequest
+  mode: PluginInstallMode
+  packageDir: string
+  packageName: string
+  version: string
+  displayName?: string
+  description?: string
+  declaredCapabilities: PluginDeclaredCapabilityRecord[]
+  declaredPermissions: PluginDeclaredPermissionRecord[]
+  requiredPermissions: string[]
+}
+
 export interface PluginInstallResult {
   request: PluginInstallRequest
+  summary: PluginInstallSummary
   installedAt: string
-  mode: 'alreadyAvailable' | 'downloaded'
+  mode: PluginInstallMode
   packageDir: string
   receiptPath: string
 }
@@ -47,6 +69,7 @@ export interface PluginInstallOptions {
   availablePluginsDir?: string
   fetchImpl?: typeof fetch
   now?: () => Date
+  confirmInstall?: (summary: PluginInstallSummary) => Promise<boolean>
   userDataPath: string
 }
 
@@ -57,20 +80,7 @@ export class PluginInstallLinkError extends Error {
   }
 }
 
-const RunnablePluginEntrySchema = z.string()
-  .regex(/\.(?:mjs|js|cjs)$/)
-  .refine(entry => !entry.includes('\\') && !entry.startsWith('/'))
-  .refine(entry => !entry.split('/').some(segment => segment === '' || segment === '.' || segment === '..'))
-
-const PluginPackageJsonSchema = z.object({
-  name: z.string(),
-  version: z.string(),
-  cradle: z.object({
-    server: RunnablePluginEntrySchema.optional(),
-    web: RunnablePluginEntrySchema.optional(),
-    desktop: RunnablePluginEntrySchema.optional(),
-  }).passthrough(),
-})
+const RunnablePluginEntryPattern = /\.(?:mjs|js|cjs)$/
 
 function readSingleParam(url: URL, key: string): string {
   const values = url.searchParams.getAll(key)
@@ -273,10 +283,10 @@ async function validateExtractedPlugin(
   request: PluginInstallRequest,
   packageDir: string,
   options: { requireRunnableEntries: boolean },
-): Promise<void> {
+): Promise<ParsedCradlePluginPackage> {
   const packageJsonPath = resolve(packageDir, 'package.json')
   const raw = await readFile(packageJsonPath, 'utf8')
-  const pkg = PluginPackageJsonSchema.parse(JSON.parse(raw))
+  const pkg = parseCradlePluginPackageJsonText(raw)
   if (pkg.name !== request.packageName) {
     throw new Error(`Installed package name mismatch: expected ${request.packageName}, got ${pkg.name}`)
   }
@@ -286,12 +296,13 @@ async function validateExtractedPlugin(
   if (options.requireRunnableEntries) {
     await validatePluginRuntimeEntries(request, packageDir, pkg.cradle)
   }
+  return pkg
 }
 
 async function validatePluginRuntimeEntries(
   request: PluginInstallRequest,
   packageDir: string,
-  cradle: z.infer<typeof PluginPackageJsonSchema>['cradle'],
+  cradle: CradlePluginMeta,
 ): Promise<void> {
   const entries = [
     ['server', cradle.server],
@@ -301,6 +312,9 @@ async function validatePluginRuntimeEntries(
 
   for (const [layer, entry] of entries) {
     if (entry === undefined) continue
+    if (!RunnablePluginEntryPattern.test(entry)) {
+      throw new Error(`Installed package ${request.packageName} declares non-runnable ${layer} entry: ${entry}`)
+    }
     if (!await pathExists(resolve(packageDir, entry))) {
       throw new Error(`Installed package ${request.packageName} is missing ${layer} entry: ${entry}`)
     }
@@ -311,8 +325,9 @@ async function writePluginInstallReceipt(
   request: PluginInstallRequest,
   receiptPath: string,
   installedAt: string,
-  mode: PluginInstallResult['mode'],
+  mode: PluginInstallMode,
   packageDir: string,
+  grantedPermissions: readonly string[],
 ): Promise<void> {
   await mkdir(dirname(receiptPath), { recursive: true })
   await writeFile(
@@ -330,6 +345,7 @@ async function writePluginInstallReceipt(
       ref: request.ref,
       packageDir,
       originalUrl: request.originalUrl,
+      grantedPermissions: [...grantedPermissions],
     }, null, 2)}\n`,
     'utf8',
   )
@@ -360,10 +376,51 @@ async function publishPluginInstall(stagingDir: string, packageDir: string): Pro
   }
 }
 
+function createPluginInstallSummary(
+  request: PluginInstallRequest,
+  packageDir: string,
+  mode: PluginInstallMode,
+  pkg: ParsedCradlePluginPackage,
+): PluginInstallSummary {
+  const contributions = projectCradlePluginContributions(pkg.name, pkg.cradle)
+  const requiredPermissions = new Set<string>()
+
+  for (const permission of contributions.declaredPermissions) {
+    if (permission.required === true) {
+      requiredPermissions.add(permission.localId)
+    }
+  }
+  for (const capability of contributions.declaredCapabilities) {
+    for (const permission of capability.permissions) {
+      requiredPermissions.add(permission)
+    }
+  }
+
+  return {
+    request,
+    mode,
+    packageDir,
+    packageName: pkg.name,
+    version: pkg.version,
+    displayName: pkg.cradle.displayName,
+    description: pkg.cradle.description,
+    declaredCapabilities: contributions.declaredCapabilities,
+    declaredPermissions: contributions.declaredPermissions,
+    requiredPermissions: [...requiredPermissions].sort(),
+  }
+}
+
+async function acceptPluginInstall(
+  summary: PluginInstallSummary,
+  options: PluginInstallOptions,
+): Promise<boolean> {
+  return options.confirmInstall ? options.confirmInstall(summary) : true
+}
+
 export async function installPluginFromRequest(
   request: PluginInstallRequest,
   options: PluginInstallOptions,
-): Promise<PluginInstallResult> {
+): Promise<PluginInstallResult | undefined> {
   const now = options.now?.() ?? new Date()
   const installedAt = now.toISOString()
   const receiptName = `${createInstalledPluginPackageDirName(request.packageName)}.json`
@@ -372,10 +429,22 @@ export async function installPluginFromRequest(
   if (options.availablePluginsDir) {
     const availablePackageDir = resolveAvailablePluginPackageDir(request, options.availablePluginsDir)
     if (await pathExists(resolve(availablePackageDir, 'package.json'))) {
-      await validateExtractedPlugin(request, availablePackageDir, { requireRunnableEntries: false })
-      await writePluginInstallReceipt(request, availableReceiptPath, installedAt, 'alreadyAvailable', availablePackageDir)
+      const pkg = await validateExtractedPlugin(request, availablePackageDir, { requireRunnableEntries: false })
+      const summary = createPluginInstallSummary(request, availablePackageDir, 'alreadyAvailable', pkg)
+      if (!await acceptPluginInstall(summary, options)) {
+        return undefined
+      }
+      await writePluginInstallReceipt(
+        request,
+        availableReceiptPath,
+        installedAt,
+        'alreadyAvailable',
+        availablePackageDir,
+        summary.requiredPermissions,
+      )
       return {
         request,
+        summary,
         installedAt,
         mode: 'alreadyAvailable',
         packageDir: availablePackageDir,
@@ -399,19 +468,30 @@ export async function installPluginFromRequest(
   try {
     await downloadTarball(request, archivePath, fetchImpl)
     await extractPluginPath(archivePath, request, stagingDir)
-    await validateExtractedPlugin(request, stagingDir, { requireRunnableEntries: true })
-    await writePluginInstallReceipt(request, resolve(stagingDir, INSTALL_RECEIPT_FILE), installedAt, 'downloaded', packageDir)
+    const pkg = await validateExtractedPlugin(request, stagingDir, { requireRunnableEntries: true })
+    const summary = createPluginInstallSummary(request, packageDir, 'downloaded', pkg)
+    if (!await acceptPluginInstall(summary, options)) {
+      return undefined
+    }
+    await writePluginInstallReceipt(
+      request,
+      resolve(stagingDir, INSTALL_RECEIPT_FILE),
+      installedAt,
+      'downloaded',
+      packageDir,
+      summary.requiredPermissions,
+    )
     await publishPluginInstall(stagingDir, packageDir)
+    return {
+      request,
+      summary,
+      installedAt,
+      mode: 'downloaded',
+      packageDir,
+      receiptPath,
+    }
   } finally {
     await rm(archivePath, { force: true })
     await rm(stagingDir, { recursive: true, force: true })
-  }
-
-  return {
-    request,
-    installedAt,
-    mode: 'downloaded',
-    packageDir,
-    receiptPath,
   }
 }

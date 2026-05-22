@@ -5,17 +5,35 @@ export type { Disposable, Logger } from './index'
 
 /** Web plugin context — provided by host during activation */
 export interface WebPluginContext {
-  /** Register a panel in the workspace */
-  registerPanel(panel: PanelRegistration): Disposable
+  /** Plugin-owned server route client */
+  routes: WebPluginRouteClient
 
-  /** Register a command (accessible via command palette / keyboard shortcut) */
-  registerCommand(cmd: CommandRegistration): Disposable
+  /** Panel registrations */
+  panels: WebPluginPanelRegistry
+
+  /** Command registrations */
+  commands: WebPluginCommandRegistry
+
+  /** Disposables that the host releases when this plugin layer deactivates */
+  subscriptions: Disposable[]
 
   /** Plugin-scoped local storage */
   storage: WebPluginStorage
 
   /** Plugin-scoped logger */
   logger: Logger
+}
+
+export interface WebPluginRouteClient {
+  /** Build an absolute URL for this plugin's server route. */
+  url(path: string): string
+  /** Fetch this plugin's server route. */
+  fetch(path: string, init?: RequestInit): Promise<Response>
+}
+
+export interface WebPluginPanelRegistry {
+  /** Register a panel in the workspace */
+  register(panel: PanelRegistration): Disposable
 }
 
 export interface PanelRegistration {
@@ -36,6 +54,11 @@ export interface PanelRegistration {
 export interface PanelProps {
   /** Whether this panel is currently visible */
   isActive: boolean
+}
+
+export interface WebPluginCommandRegistry {
+  /** Register a command (accessible via command palette / keyboard shortcut) */
+  register(cmd: CommandRegistration): Disposable
 }
 
 export interface CommandRegistration {
@@ -60,5 +83,5 @@ export interface WebPluginStorage {
 /** Web plugin module shape */
 export interface WebPlugin {
   activate(ctx: WebPluginContext): void | Promise<void>
-  deactivate?(): void
+  deactivate?(): void | Promise<void>
 }

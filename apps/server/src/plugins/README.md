@@ -10,11 +10,14 @@
 - **external-provider-source-registry.ts**：保存插件注册的 external provider source readers；插件只提供标准 snapshot，Cradle host 负责 profile/secret 投影与固定 UI。
 - **hooks.ts**：注册 chat lifecycle hooks，并投影插件拥有的 hook capability records。
 - **index.ts**：导出 server plugin host API，供 server 其它模块使用。
+- **install-receipt.ts**：读取 plugin package 内的 Marketplace install receipt，并投影为 descriptor source provenance。
 - **loader.ts**：发现 plugin packages，构建 governed descriptors，尊重 desktop fork 传入的 primary plugin source kind，激活 server entries，并把插件路由挂载到 `/api/plugins/:routeSegment`。
+- **loader.test.ts**：覆盖 server plugin activation 后由 `deactivateAllPlugins()` 清理 owner-scoped registrations 和 capability records。
 - **mcp-registry.ts**：保存 MCP server registrations，并投影 owner-scoped MCP capability records。
 - **runtime-registry.ts**：维护 host-owned plugin descriptors、source descriptors、layer lifecycle states、route ownership 和 capability records。
 - **runtime-registry.test.ts**：覆盖 identity、route collision、source classification 和 capability id 行为的 focused tests。
 - **skill-registry.ts**：保存 plugin skill registrations，并投影 owner-scoped skill capability records。
 - **static-server.ts**：提供 governed `/api/plugins` descriptor list 和 validated web plugin bundles。
-- **storage.ts**：提供 plugin-scoped server KV storage；目前是 in-memory，等待后续持久化。
+- **storage.ts**：提供 plugin-scoped server KV storage；使用 Cradle DB 的 `plugin_storage_entries` 表，按 plugin package identity 和 key 隔离。
+- **storage.test.ts**：覆盖 plugin storage 的持久化、同 key owner 隔离和删除语义。
 - **validation.ts**：验证 plugin module exports，并报告结构化 plugin load errors。

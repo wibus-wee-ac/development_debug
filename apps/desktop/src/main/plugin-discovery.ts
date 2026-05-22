@@ -2,21 +2,24 @@ import type { Dirent } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type {
-  CradlePluginMeta,
   PluginDescriptor,
   PluginLayer,
   PluginLayerState,
   PluginManifest,
   PluginSourceDescriptor,
   PluginSourceKind,
+  PluginSourceProvenance,
 } from '@cradle/plugin-sdk'
-import { derivePluginRouteSegment } from '@cradle/plugin-sdk'
+import { derivePluginRouteSegment, projectCradlePluginContributions } from '@cradle/plugin-sdk'
+import { parseCradlePluginPackageJsonText } from '@cradle/plugin-sdk/manifest'
+import { readPluginInstallProvenance } from './plugin-install-receipt'
 
 export interface DesktopPluginSource {
   pluginsDir: string
   kind: PluginSourceKind
   trusted: boolean
   reason?: string
+  trustMarketplaceGrants?: boolean
 }
 
 export interface DesktopPluginDiscoveryResult {
@@ -27,21 +30,6 @@ export interface DesktopPluginDiscoveryResult {
 interface DiscoveredPlugin {
   manifest: PluginManifest
   descriptor: PluginDescriptor
-}
-
-interface PackageJson {
-  name?: unknown
-  version?: unknown
-  cradle?: unknown
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readCradleMeta(value: unknown): CradlePluginMeta | undefined {
-  if (!isRecord(value)) return undefined
-  return value as CradlePluginMeta
 }
 
 function createLayerState(layer: PluginLayer, entry: string | undefined): PluginLayerState {
@@ -60,17 +48,28 @@ function createInvalidLayerState(layer: PluginLayer, error: string): PluginLayer
   }
 }
 
-function createSourceDescriptor(source: DesktopPluginSource, packageDir: string): PluginSourceDescriptor {
+function createSourceDescriptor(
+  source: DesktopPluginSource,
+  packageDir: string,
+  provenance?: PluginSourceProvenance,
+): PluginSourceDescriptor {
   return {
     kind: source.kind,
     packageDir,
     trusted: source.trusted,
     reason: source.reason,
+    provenance,
+    grantedPermissions: source.trustMarketplaceGrants ? provenance?.grantedPermissions : undefined,
   }
 }
 
-function createDescriptor(manifest: PluginManifest, source: DesktopPluginSource): PluginDescriptor {
+function createDescriptor(
+  manifest: PluginManifest,
+  source: DesktopPluginSource,
+  provenance?: PluginSourceProvenance,
+): PluginDescriptor {
   const cradle = manifest.cradle
+  const contributions = projectCradlePluginContributions(manifest.name, cradle)
 
   return {
     identity: manifest.name,
@@ -80,13 +79,15 @@ function createDescriptor(manifest: PluginManifest, source: DesktopPluginSource)
     displayName: cradle.displayName ?? manifest.name,
     description: cradle.description,
     deployments: cradle.deployments,
-    source: createSourceDescriptor(source, manifest.packageDir),
+    source: createSourceDescriptor(source, manifest.packageDir, provenance),
     layers: {
       server: createLayerState('server', cradle.server),
       web: createLayerState('web', cradle.web),
       desktop: createLayerState('desktop', cradle.desktop),
     },
     capabilities: [],
+    declaredCapabilities: contributions.declaredCapabilities,
+    declaredPermissions: contributions.declaredPermissions,
     warnings: [],
     hasWeb: Boolean(cradle.web),
     hasServer: Boolean(cradle.server),
@@ -116,6 +117,8 @@ function createInvalidDescriptor(
       desktop: createInvalidLayerState('desktop', error),
     },
     capabilities: [],
+    declaredCapabilities: [],
+    declaredPermissions: [],
     warnings: [error],
     hasWeb: false,
     hasServer: false,
@@ -220,30 +223,21 @@ async function discoverDesktopPluginsFromSource(
     const pkgPath = resolve(packageDir, 'package.json')
     try {
       const raw = await readFile(pkgPath, 'utf-8')
-      const pkg = JSON.parse(raw) as PackageJson
-      const cradle = readCradleMeta(pkg.cradle)
-      if (!cradle) continue
+      const pkg = parseCradlePluginPackageJsonText(raw)
 
-      if (typeof pkg.name !== 'string' || pkg.name.trim() === '') {
-        diagnostics.push(createInvalidDescriptor(
-          packageDir,
-          source,
-          directoryName,
-          'Missing required package.json#name',
-        ))
-        continue
-      }
-
-      const packageName = pkg.name.trim()
       const manifest: PluginManifest = {
-        name: packageName,
-        version: typeof pkg.version === 'string' ? pkg.version : '0.0.0',
+        name: pkg.name,
+        version: pkg.version,
         packageDir,
-        cradle,
+        cradle: pkg.cradle,
       }
+      const provenance = await readPluginInstallProvenance(packageDir, {
+        packageName: manifest.name,
+        version: manifest.version,
+      })
       discovered.push({
         manifest,
-        descriptor: createDescriptor(manifest, source),
+        descriptor: createDescriptor(manifest, source, provenance),
       })
     } catch (err) {
       diagnostics.push(createInvalidDescriptor(

@@ -253,6 +253,13 @@
       "when": 1779360137870,
       "tag": "0035_lethal_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1779384366208,
+      "tag": "0037_sweet_paibok",
+      "breakpoints": true
     }
   ]
 }

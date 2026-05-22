@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { PluginLayerState, PluginLayerStatus } from '@cradle/plugin-sdk'
 import type { PanelRegistration, CommandRegistration } from '@cradle/plugin-sdk/web'
 
 export type WebPanelRegistration = PanelRegistration & {
@@ -18,11 +19,14 @@ export type WebCommandRegistration = CommandRegistration & {
 interface PluginStoreState {
   panels: WebPanelRegistration[]
   commands: WebCommandRegistration[]
+  webLayerStates: Record<string, PluginLayerState>
 }
 
 interface PluginStoreActions {
   registerPanel(owner: string, panel: PanelRegistration): () => void
   registerCommand(owner: string, cmd: CommandRegistration): () => void
+  setWebLayerState(owner: string, status: PluginLayerStatus, error?: string): void
+  clearWebLayerState(owner: string): void
 }
 
 function toScopedContributionId(owner: string, localId: string): string {
@@ -36,6 +40,27 @@ function toLocalContributionId(owner: string, id: string): string {
 export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set) => ({
   panels: [],
   commands: [],
+  webLayerStates: {},
+  setWebLayerState(owner, status, error) {
+    set((s) => ({
+      webLayerStates: {
+        ...s.webLayerStates,
+        [owner]: {
+          ...s.webLayerStates[owner],
+          layer: 'web',
+          status,
+          error,
+          activatedAt: status === 'active' ? new Date().toISOString() : undefined,
+        },
+      },
+    }))
+  },
+  clearWebLayerState(owner) {
+    set((s) => {
+      const { [owner]: _removed, ...webLayerStates } = s.webLayerStates
+      return { webLayerStates }
+    })
+  },
   registerPanel(owner, panel) {
     const localId = toLocalContributionId(owner, panel.id)
     const id = toScopedContributionId(owner, localId)

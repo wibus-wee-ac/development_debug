@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PluginManifest } from '@cradle/plugin-sdk'
+import { CradlePluginPackageJsonSchema } from '@cradle/plugin-sdk/manifest'
 import {
   classifyPluginSource,
   createPluginDescriptor,
@@ -9,12 +10,25 @@ import {
   resetPluginRuntimeRegistry,
 } from './runtime-registry'
 
-function manifest(name: string, cradle: PluginManifest['cradle'] = {}): PluginManifest {
-  return {
+function manifest(name: string, cradle: Record<string, unknown> = {}): PluginManifest {
+  const pkg = CradlePluginPackageJsonSchema.parse({
     name,
     version: '1.0.0',
+    cradle: {
+      apiVersion: '1',
+      contributes: {
+        capabilities: [],
+        permissions: [],
+      },
+      ...cradle,
+    },
+  })
+
+  return {
+    name: pkg.name,
+    version: pkg.version,
     packageDir: `/plugins/${name}`,
-    cradle,
+    cradle: pkg.cradle,
   }
 }
 
@@ -37,6 +51,15 @@ describe('plugin runtime registry', () => {
     expect(descriptor.layers.server.status).toBe('discovered')
     expect(descriptor.layers.web.status).toBe('discovered')
     expect(descriptor.layers.desktop.status).toBe('skipped')
+  })
+
+  it('does not warn for v1 plugin metadata', () => {
+    const descriptor = createPluginDescriptor(
+      manifest('@cradle/v1-plugin', { apiVersion: '1', server: 'src/server.ts' }),
+      classifyPluginSource('/repo/plugins/v1-plugin', '/repo/plugins'),
+    )
+
+    expect(descriptor.warnings).toHaveLength(0)
   })
 
   it('marks route collisions invalid without replacing the first owner', () => {
@@ -102,5 +125,88 @@ describe('plugin runtime registry', () => {
     expect(source.kind).toBe('externalLocal')
     expect(source.trusted).toBe(true)
     expect(source.reason).toContain('trusted operator-selected code')
+  })
+
+  it('projects structured manifest declarations into descriptor records', () => {
+    const descriptor = createPluginDescriptor(
+      manifest('@cradle/declarations', {
+        server: 'src/server.ts',
+        contributes: {
+          capabilities: [
+            {
+              id: 'provider-source',
+              type: 'external-provider-source',
+              layer: 'server',
+              label: 'Provider Source',
+              permissions: ['filesystem'],
+            },
+          ],
+          permissions: [
+            {
+              id: 'network',
+              label: 'Network access',
+              required: false,
+            },
+          ],
+        },
+      }),
+      classifyPluginSource('/repo/plugins/declarations', '/repo/plugins'),
+    )
+
+    expect(descriptor.declaredCapabilities.map(capability => ({
+      id: capability.id,
+      localId: capability.localId,
+      type: capability.type,
+      layer: capability.layer,
+    }))).toEqual([
+      {
+        id: '@cradle/declarations:provider-source',
+        localId: 'provider-source',
+        type: 'external-provider-source',
+        layer: 'server',
+      },
+    ])
+    expect(descriptor.declaredPermissions.map(permission => ({
+      id: permission.id,
+      localId: permission.localId,
+      required: permission.required,
+    }))).toEqual([
+      {
+        id: '@cradle/declarations:network',
+        localId: 'network',
+        required: false,
+      },
+    ])
+  })
+
+  it('rejects invalid structured declarations at the manifest boundary', () => {
+    expect(() => CradlePluginPackageJsonSchema.parse({
+      name: '@cradle/declaration-warnings',
+      version: '1.0.0',
+      cradle: {
+        apiVersion: '1',
+        server: 'src/server.ts',
+        contributes: {
+          capabilities: [
+            { id: '', type: 'mcp-server' },
+            { id: 'missing-type' },
+          ],
+          permissions: [
+            { label: 'Missing id' },
+          ],
+        },
+      },
+    })).toThrow(/contributes/)
+  })
+
+  it('requires explicit manifest contributions in apiVersion 1', () => {
+    expect(() => CradlePluginPackageJsonSchema.parse({
+      name: '@cradle/missing-contributes',
+      version: '1.0.0',
+      cradle: {
+        apiVersion: '1',
+        server: 'src/server.ts',
+      },
+    })).toThrow(/contributes/)
   })
 })

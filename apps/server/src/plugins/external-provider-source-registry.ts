@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import type { Disposable } from '@cradle/plugin-sdk'
 import type { ExternalProviderSource } from '@cradle/plugin-sdk/server'
+import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
 export interface RegisteredExternalProviderSource {
   key: string
@@ -31,16 +32,23 @@ export function registerExternalProviderSource(owner: string, source: ExternalPr
     throw new Error(`External provider source already registered: ${owner}:${id}`)
   }
 
+  const record = registerPluginCapability(owner, 'external-provider-source', 'server', id, source.label, {
+    description: source.description,
+    capabilities: source.capabilities,
+  }, [`external-provider-source.${id}`])
   sources.set(key, {
     key,
     owner,
     source: { ...source, id },
     registeredAt: Math.floor(Date.now() / 1000),
   })
-
+  let disposed = false
   return {
     dispose() {
+      if (disposed) return
+      disposed = true
       sources.delete(key)
+      unregisterPluginCapability(owner, record.id)
     },
   }
 }

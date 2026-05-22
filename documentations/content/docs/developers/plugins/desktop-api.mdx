@@ -5,6 +5,8 @@ description: DesktopPluginContext contracts for webview hooks, browser tabs, sha
 
 Desktop plugin API 运行在 Electron main process 边界。它适合接入本地能力、browser webview lifecycle 和 desktop-only resources。
 
+Desktop registration APIs follow the shared plugin lifecycle contract. `webviews.onCreated` returns a `Disposable`, `sharedConfig.set` creates a host-tracked cleanup entry, and the host disposes `context.subscriptions` after plugin `deactivate()` runs.
+
 ## 谁负责
 
 `packages/plugin-sdk/src/desktop.ts` owns public desktop plugin context types. Desktop plugin package owns its behavior and cleanup. Cradle desktop host owns Electron lifecycle, window state, renderer bridge, and shared config propagation.
@@ -16,11 +18,13 @@ Desktop plugin API 运行在 Electron main process 边界。它适合接入本�
 | API | Contract |
 | --- | --- |
 | `userDataPath` | Electron user data directory for desktop-owned runtime files. |
-| `onWebviewCreated(handler)` | Subscribe to new webview creation. Handler receives raw `WebContents` and `tabId`. |
-| `requestBrowserTab(url?)` | Ask renderer to create a visible browser panel tab. |
-| `activateBrowserTab(tabId)` | Ask renderer to show an existing browser tab. |
-| `getActiveBrowserTab()` | Ask renderer for the visible browser tab. |
-| `setSharedConfig(key, value)` | Propagate desktop config to server through host-managed shared config. |
+| `webviews.onCreated(handler)` | Subscribe to new webview creation. Handler receives a host-owned `DesktopWebview` facade and `tabId`. |
+| `browserTabs.request(url?)` | Ask renderer to create a visible browser panel tab. |
+| `browserTabs.activate(tabId)` | Ask renderer to show an existing browser tab. |
+| `browserTabs.goOffScreen(tabId?)` | Ask renderer to hide the browser panel without closing tabs. |
+| `browserTabs.getActive()` | Ask renderer for the visible browser tab. |
+| `sharedConfig.set(key, value)` | Propagate desktop config to server through host-managed shared config. |
+| `subscriptions` | Host-managed cleanup list for desktop registrations. |
 | `logger` | Plugin-scoped desktop logger. |
 | `manifest` | Plugin manifest metadata. |
 
@@ -36,16 +40,27 @@ Shared config keys must be stable and plugin-owned. `browser-use` currently uses
 2. Host activates desktop entry.
 3. Plugin subscribes to desktop events or creates local resources.
 4. Plugin serves requests through desktop APIs, sockets, or shared config.
-5. Plugin `deactivate()` releases listeners, sockets, debuggers, file handles, or timers.
+5. Plugin `deactivate()` releases plugin-owned sockets, debuggers, file handles, or timers.
+6. Host disposes `context.subscriptions` and removes webview listeners, shared config projection, and capability records.
 
 ## Example: browser-use
 
 `plugins/browser-use/src/desktop.ts` starts a Unix socket server at `browser-backend.sock`, listens for webview creation, registers webviews, and detaches debuggers on deactivation.
 
+Webview listeners receive the SDK facade instead of a direct Electron object:
+
+```ts
+ctx.webviews.onCreated((webview, tabId) => {
+  webview.cdp.attach('1.3')
+  void webview.cdp.sendCommand('Runtime.enable')
+  ctx.logger.info(`${tabId}: ${webview.getUrl()}`)
+})
+```
+
 The plugin also calls:
 
 ```ts
-ctx.setSharedConfig('BROWSER_BACKEND_SOCKET', socketPath)
+ctx.sharedConfig.set('BROWSER_BACKEND_SOCKET', socketPath)
 ```
 
 This lets the MCP server discover the desktop socket without hardcoding a platform path.
@@ -56,6 +71,7 @@ Validate desktop plugins by checking:
 
 - Desktop layer appears in Devtools Plugins.
 - Deactivation cleans local resources.
+- Host-managed subscriptions clean webview listeners and shared config.
 - Shared config reaches the server-side component that needs it.
 - Browser or filesystem actions are gated by user-visible trust and approval paths where needed.
 

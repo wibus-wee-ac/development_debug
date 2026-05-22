@@ -216,8 +216,8 @@ function countRuntimeContributions(plugin: PluginInfo, layer: Layer): number {
   return (plugin.capabilities ?? []).filter((capability) => capability.layer === layer).length
 }
 
-function getNodeColor(node: Node): string {
-  const data = node.data as PluginGraphNodeData
+function getNodeColor(node: Node<PluginGraphNodeData>): string {
+  const data = node.data
 
   if (data.kind === 'runtime') return LAYER_COLORS[data.layer]
   if (data.kind === 'contribution') return CONTRIBUTION_COLORS[data.contributionType]
@@ -605,8 +605,8 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
     }
   }, [commands, panels, plugins])
 
-  const handleSelectionChange = useCallback((params: OnSelectionChangeParams) => {
-    setSelectedNode((params.nodes[0] as PluginGraphNode | undefined) ?? null)
+  const handleSelectionChange = useCallback((params: OnSelectionChangeParams<PluginGraphNode>) => {
+    setSelectedNode(params.nodes[0] ?? null)
   }, [])
 
   if (plugins.length === 0) return null

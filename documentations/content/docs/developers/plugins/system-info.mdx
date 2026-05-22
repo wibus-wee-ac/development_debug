@@ -49,7 +49,7 @@ interface SystemInfo {
 
 1. Host activates server layer.
 2. Plugin receives `ServerPluginContext`.
-3. Plugin registers `GET /info` on the scoped app.
+3. Plugin registers `GET /info` through `context.routes.register`.
 4. Host mounts it under `/api/plugins/system-info/info`.
 
 ## Web 侧流程

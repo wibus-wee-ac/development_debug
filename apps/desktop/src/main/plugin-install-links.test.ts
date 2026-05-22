@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import * as tar from 'tar'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import {
   collectPluginInstallUrls,
@@ -12,10 +13,21 @@ import {
   parsePluginInstallUrl,
   PluginInstallLinkError,
   resolveDesktopInstalledPluginsDir,
+  type PluginInstallOptions,
 } from './plugin-install-links'
 
 const tempRoots: string[] = []
 const installUrl = 'cradle://plugins/install?source=github&repository=wibus-wee%2FCradle&path=plugins%2Fsystem-info&package=%40cradle%2Fsystem-info&version=0.0.1&channel=bundled'
+const InstallReceiptJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.object({
+  mode: z.enum(['alreadyAvailable', 'downloaded']),
+  packageName: z.string(),
+  packageDir: z.string(),
+}).passthrough())
+
+const PackageJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.object({
+  name: z.string(),
+  version: z.string(),
+}).passthrough())
 
 async function createTempRoot(prefix: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix))
@@ -41,6 +53,24 @@ async function writePluginPackage(
         apiVersion: '1',
         displayName: 'System Info',
         server: serverEntry,
+        contributes: {
+          capabilities: [
+            {
+              id: 'system-info',
+              type: 'mcp-server',
+              layer: 'server',
+              label: 'System Info MCP',
+              permissions: ['system-info.read'],
+            },
+          ],
+          permissions: [
+            {
+              id: 'system-info.read',
+              label: 'Read system info',
+              required: true,
+            },
+          ],
+        },
       },
     }, null, 2)}\n`,
     'utf8',
@@ -114,16 +144,25 @@ describe('installPluginFromRequest', () => {
       userDataPath,
     })
 
+    expect(result).toBeDefined()
+    if (!result) throw new Error('Expected plugin install result')
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       mode: 'alreadyAvailable',
       packageDir: availablePackageDir,
+      summary: {
+        packageName: '@cradle/system-info',
+        requiredPermissions: ['system-info.read'],
+      },
     })
-    const receipt = JSON.parse(await readFile(result.receiptPath, 'utf8')) as Record<string, unknown>
+    expect(result.summary.declaredCapabilities.map(capability => capability.localId)).toEqual(['system-info'])
+    expect(result.summary.declaredPermissions.map(permission => permission.localId)).toEqual(['system-info.read'])
+    const receipt = InstallReceiptJsonSchema.parse(await readFile(result.receiptPath, 'utf8'))
     expect(receipt).toMatchObject({
       mode: 'alreadyAvailable',
       packageName: '@cradle/system-info',
       packageDir: availablePackageDir,
+      grantedPermissions: ['system-info.read'],
     })
   })
 
@@ -138,6 +177,8 @@ describe('installPluginFromRequest', () => {
       userDataPath,
     })
 
+    expect(result).toBeDefined()
+    if (!result) throw new Error('Expected plugin install result')
     expect(fetchImpl).toHaveBeenCalledOnce()
     expect(result).toMatchObject({
       mode: 'downloaded',
@@ -146,11 +187,67 @@ describe('installPluginFromRequest', () => {
         createInstalledPluginPackageDirName('@cradle/system-info'),
       ),
     })
-    const packageJson = JSON.parse(await readFile(resolve(result.packageDir, 'package.json'), 'utf8')) as Record<string, unknown>
+    const packageJson = PackageJsonSchema.parse(await readFile(resolve(result.packageDir, 'package.json'), 'utf8'))
     expect(packageJson).toMatchObject({
       name: '@cradle/system-info',
       version: '0.0.1',
     })
+    const receipt = InstallReceiptJsonSchema.parse(await readFile(result.receiptPath, 'utf8'))
+    expect(receipt).toMatchObject({
+      mode: 'downloaded',
+      packageName: '@cradle/system-info',
+      grantedPermissions: ['system-info.read'],
+    })
+  })
+
+  it('does not record a receipt when bundled plugin install consent is denied', async () => {
+    const userDataPath = await createTempRoot('cradle-plugin-user-data-')
+    const pluginsRoot = await createTempRoot('cradle-plugin-bundled-')
+    await writePluginPackage(pluginsRoot, 'system-info', '@cradle/system-info', 'src/server.ts')
+    const confirmInstall = vi.fn<NonNullable<PluginInstallOptions['confirmInstall']>>(async () => false)
+
+    const result = await installPluginFromRequest(parsePluginInstallUrl(installUrl), {
+      availablePluginsDir: pluginsRoot,
+      confirmInstall,
+      now: () => new Date('2026-05-21T10:00:00.000Z'),
+      userDataPath,
+    })
+
+    expect(result).toBeUndefined()
+    expect(confirmInstall).toHaveBeenCalledOnce()
+    expect(confirmInstall.mock.calls[0]?.[0]).toMatchObject({
+      mode: 'alreadyAvailable',
+      requiredPermissions: ['system-info.read'],
+    })
+    await expect(readFile(resolve(userDataPath, 'marketplace/receipts/cradle-system-info.json'), 'utf8')).rejects.toThrow()
+  })
+
+  it('does not publish a downloaded plugin when install consent is denied', async () => {
+    const userDataPath = await createTempRoot('cradle-plugin-user-data-')
+    const archive = await createRepositoryArchive()
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(new Uint8Array(archive)))
+    const confirmInstall = vi.fn<NonNullable<PluginInstallOptions['confirmInstall']>>(async () => false)
+    const packageDir = resolve(
+      resolveDesktopInstalledPluginsDir(userDataPath),
+      createInstalledPluginPackageDirName('@cradle/system-info'),
+    )
+
+    const result = await installPluginFromRequest(parsePluginInstallUrl(`${installUrl}&ref=testref`), {
+      confirmInstall,
+      fetchImpl,
+      now: () => new Date('2026-05-21T10:00:00.000Z'),
+      userDataPath,
+    })
+
+    expect(result).toBeUndefined()
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    expect(confirmInstall).toHaveBeenCalledOnce()
+    expect(confirmInstall.mock.calls[0]?.[0]).toMatchObject({
+      mode: 'downloaded',
+      packageDir,
+      requiredPermissions: ['system-info.read'],
+    })
+    await expect(readFile(resolve(packageDir, 'package.json'), 'utf8')).rejects.toThrow()
   })
 
   it('rejects source-only plugin entries before publishing the install', async () => {

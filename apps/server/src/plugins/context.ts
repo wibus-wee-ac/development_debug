@@ -1,17 +1,38 @@
-import type { PluginManifest } from '@cradle/plugin-sdk'
-import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
+import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
+import type { McpServerConfig, ServerPluginContext, ServerPluginRouteRegistration } from '@cradle/plugin-sdk/server'
 import { createChildLogger } from '../logging/logger'
 import { createPluginEventBus } from './event-bus'
 import { registerExternalProviderSource } from './external-provider-source-registry'
 import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
 import { registerPluginMcpServer } from './mcp-registry'
+import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 import { registerOwnedPluginSkill } from './skill-registry'
 import { createPluginStorage } from './storage'
 
+interface PluginRouteHostContext {
+  body: unknown
+  params: Record<string, string>
+  query: Record<string, unknown>
+  headers: Record<string, string | undefined>
+  set: {
+    status?: number | string
+    headers?: Record<string, string>
+  }
+}
+
+interface PluginRouteApp {
+  get(path: string, handler: unknown): unknown
+  post(path: string, handler: unknown): unknown
+  put(path: string, handler: unknown): unknown
+  patch(path: string, handler: unknown): unknown
+  delete(path: string, handler: unknown): unknown
+}
+
 export function createServerPluginContext(
   manifest: PluginManifest,
-  app: unknown,
+  pluginApp: unknown,
 ): ServerPluginContext {
+  const routeApp = pluginApp as PluginRouteApp
   const pluginLogger = createChildLogger({ module: 'plugin', plugin: manifest.name })
   const logger = {
     info: (msg: string, ...args: unknown[]) => pluginLogger.info(msg, { args }),
@@ -29,36 +50,135 @@ export function createServerPluginContext(
   }
 
   const eventBus = createPluginEventBus()
+  const subscriptions: Disposable[] = []
 
-  return {
-    app,
-    registerMcpServer(config) {
-      if (config.when && !config.when()) {
-        logger.debug(`MCP server ${config.name} skipped — when() returned false`)
-        return
+  function track(disposable: Disposable): Disposable {
+    subscriptions.push(disposable)
+    return disposable
+  }
+
+  function skipMcpRegistration(name: string): undefined {
+    logger.debug(`MCP server ${name} skipped because when() returned false`)
+    return undefined
+  }
+
+  function registerServerAfterAsyncPredicate(config: McpServerConfig, enabled: Promise<boolean>): Promise<Disposable | undefined> {
+    let disposed = false
+    let registered: Disposable | undefined
+    const pending: Disposable = {
+      dispose() {
+        disposed = true
+        registered?.dispose()
+      },
+    }
+    track(pending)
+    return enabled.then((result) => {
+      if (!result || disposed) {
+        return skipMcpRegistration(config.name)
       }
-      registerPluginMcpServer(manifest.name, config)
+      registered = registerPluginMcpServer(manifest.name, config)
+      return registered
+    })
+  }
+
+  function registerRoute(route: ServerPluginRouteRegistration): Disposable {
+    let disposed = false
+    const normalizedPath = route.path.startsWith('/') ? route.path : `/${route.path}`
+    const routePathId = normalizedPath.replace(/^\//, '').replaceAll('/', '.') || 'root'
+    const capability = registerPluginCapability(
+      manifest.name,
+      'server-route',
+      'server',
+      `${route.method.toLowerCase()}.${routePathId}`,
+      route.label ?? `${route.method} ${normalizedPath}`,
+      {
+        method: route.method,
+        path: normalizedPath,
+        ...route.metadata,
+      },
+      [`route.${routePathId}`],
+    )
+    const handler = async (context: PluginRouteHostContext) => {
+      if (disposed) {
+        context.set.status = 410
+        return { error: 'Plugin route disposed.' }
+      }
+      return route.handler(context)
+    }
+
+    if (route.method === 'GET') {
+      routeApp.get(normalizedPath, handler)
+    } else if (route.method === 'POST') {
+      routeApp.post(normalizedPath, handler)
+    } else if (route.method === 'PUT') {
+      routeApp.put(normalizedPath, handler)
+    } else if (route.method === 'PATCH') {
+      routeApp.patch(normalizedPath, handler)
+    } else {
+      routeApp.delete(normalizedPath, handler)
+    }
+
+    return track({
+      dispose() {
+        if (disposed) return
+        disposed = true
+        unregisterPluginCapability(manifest.name, capability.id)
+      },
+    })
+  }
+
+  const mcp = {
+    registerServer(config) {
+      if (config.when) {
+        return registerServerAfterAsyncPredicate(config, Promise.resolve(config.when()))
+      }
+      return track(registerPluginMcpServer(manifest.name, config))
     },
-    registerSkill(skill) {
-      registerOwnedPluginSkill(manifest.name, skill)
+  } satisfies ServerPluginContext['mcp']
+
+  const skills = {
+    register(skill) {
+      return track(registerOwnedPluginSkill(manifest.name, skill))
     },
-    externalProviderSources: {
+  } satisfies ServerPluginContext['skills']
+
+  const providers = {
+    externalSources: {
       register(source) {
-        return registerExternalProviderSource(manifest.name, source)
+        return track(registerExternalProviderSource(manifest.name, source))
       },
     },
+  } satisfies ServerPluginContext['providers']
+
+  const chatHooks = {
+    onBeforeQuery(handler) {
+      return track(registerOwnedBeforeQueryHook(manifest.name, handler))
+    },
+    onAfterResponse(handler) {
+      return track(registerOwnedAfterResponseHook(manifest.name, handler))
+    },
+  } satisfies ServerPluginContext['hooks']['chat']
+
+  return {
+    subscriptions,
+    routes: {
+      register: registerRoute,
+    },
+    mcp,
+    skills,
+    providers,
     storage: createPluginStorage(manifest.name),
     logger,
     sharedConfig,
     manifest,
     hooks: {
-      onBeforeQuery(handler) {
-        return registerOwnedBeforeQueryHook(manifest.name, handler)
-      },
-      onAfterResponse(handler) {
-        return registerOwnedAfterResponseHook(manifest.name, handler)
-      },
+      chat: chatHooks,
     },
-    events: eventBus,
+    events: {
+      on(event, handler) {
+        return track(eventBus.on(event, handler))
+      },
+      emit: eventBus.emit,
+    },
   }
 }

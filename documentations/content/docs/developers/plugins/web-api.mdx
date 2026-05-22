@@ -5,6 +5,12 @@ description: WebPluginContext contracts for panels, commands, local storage, and
 
 Web plugin API 让 plugin 在 Cradle renderer 中注册 panel 和 command。它适合用户可见的 UI surface，不适合直接写 core database。
 
+Web registration APIs follow the shared plugin lifecycle contract. `panels.register` and `commands.register` return `Disposable` values, the host tracks them in `context.subscriptions`, and `deactivateWebPlugins()` disposes them when the web layer unloads or reloads.
+
+Web bundle loading is governed by the host descriptor state. The server evaluates required permissions for the web layer before serving `/api/plugins/{routeSegment}/web.mjs`; if an external local plugin is missing a required grant, the web layer is marked `disabled`, the bundle is not served, and the renderer skips loading it.
+
+After a bundle is loaded, the renderer owns the web layer runtime state it can directly observe. It projects `activating`, `active`, `failed`, and `discovered` states into the plugin devtool while preserving the server as the authority for discovery, permissions, and bundle serving.
+
 ## 谁负责
 
 `packages/plugin-sdk/src/web.ts` owns public types. Web plugin package owns its panels, commands, storage keys, display text, and compatibility. Cradle web host owns where registered surfaces appear.
@@ -15,8 +21,10 @@ Web plugin API 让 plugin 在 Cradle renderer 中注册 panel 和 command。它�
 
 | API | Contract |
 | --- | --- |
-| `registerPanel(panel)` | 注册 workspace panel，返回 `Disposable`。 |
-| `registerCommand(cmd)` | 注册 command palette 或快捷键入口，返回 `Disposable`。 |
+| `routes.url(path)` / `routes.fetch(path, init)` | 访问当前 plugin 自己的 server routes；host 负责 base URL 和 route segment。 |
+| `panels.register(panel)` | 注册 workspace panel，返回 `Disposable`。 |
+| `commands.register(cmd)` | 注册 command palette 或快捷键入口，返回 `Disposable`。 |
+| `subscriptions` | Host-managed cleanup list；registration APIs 自动写入。 |
 | `storage` | Plugin-scoped local storage，提供 `get`、`set`、`delete`。 |
 | `logger` | Plugin-scoped logger。 |
 
@@ -45,6 +53,17 @@ interface CommandRegistration {
 }
 ```
 
+Plugin route client shape:
+
+```ts
+interface WebPluginRouteClient {
+  url(path: string): string
+  fetch(path: string, init?: RequestInit): Promise<Response>
+}
+```
+
+`path` is relative to the current plugin's route scope. For a plugin with route segment `system-info`, `ctx.routes.fetch('/info')` calls `/api/plugins/system-info/info` on the host server. The route client rejects absolute URLs, protocol-relative URLs, backslash paths, and `..` traversal segments.
+
 ## 放在哪里
 
 Use plugin-owned IDs:
@@ -52,8 +71,10 @@ Use plugin-owned IDs:
 - Panel ID：`{pluginName}.{panelName}` 或稳定的 plugin-local ID。
 - Command ID：`{pluginName}.{commandName}`。
 - Storage keys：plugin-owned keys only。
+- Server route paths：使用 plugin-local path，例如 `ctx.routes.fetch('/info')`。
 
 不要把 web plugin storage 当作 Cradle preference store。需要修改 Cradle core state 时，调用对应 owner API。
+不要在 web plugin 里读取 `window.cradle`、`import.meta.env` 或手写 `/api/plugins/{routeSegment}`；这些是 host routing details，由 `ctx.routes` 拥有。
 
 ## 怎么运行
 
@@ -62,6 +83,7 @@ Use plugin-owned IDs:
 3. User opens panel or command.
 4. Plugin renders UI and calls allowed server/plugin routes.
 5. Plugin optionally implements `deactivate()`.
+6. Host disposes `context.subscriptions` and removes panels / commands.
 
 ## 怎么验证
 
@@ -69,6 +91,8 @@ Use plugin-owned IDs:
 
 - panel appears in Plugins or target UI surface。
 - command is registered and executable。
+- deactivation removes panels and commands。
+- disabled or invalid web layers are not loaded by the renderer。
 - storage keys remain plugin-scoped。
 - route calls use documented plugin or core APIs。
 

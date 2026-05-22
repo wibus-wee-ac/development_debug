@@ -1,6 +1,7 @@
 // Web plugin entry — runs in browser context
 // Uses React via import map resolution (provided by host in dev + prod)
 import { useState, useEffect } from 'react'
+import type { WebPluginContext } from '@cradle/plugin-sdk/web'
 
 interface SystemInfo {
   hostname: string
@@ -16,7 +17,7 @@ interface SystemInfo {
   nodeVersion: string
 }
 
-function SystemInfoPanel({ isActive }: { isActive: boolean }) {
+function SystemInfoPanel({ isActive, routes }: { isActive: boolean; routes: WebPluginContext['routes'] }) {
   const [info, setInfo] = useState<SystemInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -25,10 +26,7 @@ function SystemInfoPanel({ isActive }: { isActive: boolean }) {
     setLoading(true)
     setError(null)
     try {
-      const serverUrl = (window as any).cradle?.env?.serverUrl
-        ?? (import.meta as any).env?.VITE_SERVER_URL
-        ?? 'http://127.0.0.1:21423'
-      const res = await fetch(`${serverUrl}/api/plugins/system-info/info`)
+      const res = await routes.fetch('/info')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setInfo(await res.json())
     } catch (err) {
@@ -74,30 +72,20 @@ function SystemInfoPanel({ isActive }: { isActive: boolean }) {
   )
 }
 
-interface PluginContext {
-  registerPanel(panel: { id: string; title: string; component: any; location?: string }): unknown
-  registerCommand(cmd: { id: string; title: string; execute: () => void | Promise<void> }): unknown
-  logger: { info(msg: string, ...args: unknown[]): void }
-  storage: { get(key: string): string | null; set(key: string, value: string): void }
-}
-
-export function activate(ctx: PluginContext): void {
-  ctx.registerPanel({
-    id: 'system-info-panel',
+export function activate(ctx: WebPluginContext): void {
+  ctx.panels.register({
+    id: 'system-info',
     title: 'System Info',
-    component: SystemInfoPanel,
+    component: props => <SystemInfoPanel {...props} routes={ctx.routes} />,
     location: 'sidebar',
   })
 
-  ctx.registerCommand({
-    id: 'system-info.show',
+  ctx.commands.register({
+    id: 'show',
     title: 'Show System Info',
     async execute() {
       try {
-        const serverUrl = (window as any).cradle?.env?.serverUrl
-          ?? (import.meta as any).env?.VITE_SERVER_URL
-          ?? 'http://127.0.0.1:21423'
-        const response = await fetch(`${serverUrl}/api/plugins/system-info/info`)
+        const response = await ctx.routes.fetch('/info')
         if (!response.ok) {
           ctx.logger.info('Failed to fetch system info:', response.status.toString())
           return

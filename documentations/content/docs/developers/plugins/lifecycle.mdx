@@ -25,19 +25,30 @@ The host lifecycle can be read as:
 1. Discovery from configured plugin directories.
 2. Manifest validation and source classification.
 3. Descriptor creation.
-4. Layer activation for server, web and desktop entries.
-5. Capability registration for MCP, skills, hooks and events.
-6. Runtime execution.
-7. Deactivation, reload or upgrade.
+4. Permission policy evaluation for the target layer.
+5. Layer activation for server, web and desktop entries.
+6. Capability registration for MCP, skills, hooks and events.
+7. Runtime execution.
+8. Plugin `deactivate()` on unload.
+9. Host disposes `context.subscriptions` in reverse registration order.
+10. Reload or upgrade.
+
+`context.subscriptions` is the lifecycle cleanup list for server, web, and desktop plugin contexts. Host-provided registration APIs push their returned `Disposable` into this list automatically. Plugin code may still keep a returned `Disposable` when it needs to unregister a capability before the whole plugin unloads. Server plugins use namespace APIs such as `context.routes.register`, `context.mcp.registerServer`, `context.skills.register`, `context.providers.externalSources.register`, and `context.hooks.chat.*`.
+
+Permission policy runs before `activate(context)`. Workspace development and bundled plugins are trusted by source policy. External local plugins with required permissions must be granted by `CRADLE_PLUGIN_ALLOWED_PERMISSIONS`, `CRADLE_PLUGIN_ALLOWED_{ROUTE_SEGMENT}_PERMISSIONS`, or Cradle Marketplace install consent projected from the Cradle-owned installed plugin directory. A receipt in an arbitrary external local directory may show provenance, but it is not trusted as an activation grant. If a grant is missing, the layer state becomes `disabled`, the error explains the missing permission ids, and host registration APIs are never called for that layer.
+
+For web plugins, the same policy applies before the server serves the web bundle. A disabled web layer is visible in `GET /api/plugins`, `/api/plugins/{routeSegment}/web.mjs` returns 404, and the renderer does not import that bundle.
+
+Web activation has two authorities with separate ownership. The server owns discovery, source classification, permissions, and bundle serving. The renderer owns the runtime facts it observes after importing a bundle: whether the web layer is `activating`, `active`, `failed`, or returned to `discovered` after deactivation. The devtool merges those views so `GET /api/plugins` remains the server-owned discovery source while the UI still reflects renderer activation results.
 
 ## Event 和 hook 边界
 
 Server plugins can use host-provided context for:
 
-- scoped Elysia app routes。
+- `routes.register` HTTP routes。
 - MCP server registration。
 - skill registration。
-- `hooks.onBeforeQuery` and `hooks.onAfterResponse`。
+- `hooks.chat.onBeforeQuery` and `hooks.chat.onAfterResponse`。
 - event bus `events.on` and `events.emit`。
 - logger and shared config。
 - storage capability, with persistence caveat noted in [Plugin SDK](./sdk-overview.mdx)。

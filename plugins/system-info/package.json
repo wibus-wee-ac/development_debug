@@ -4,10 +4,44 @@
   "version": "0.0.1",
   "private": true,
   "cradle": {
+    "apiVersion": "1",
     "displayName": "System Info",
     "description": "Exposes system information via API and web command",
     "server": "src/server.ts",
-    "web": "dist/web.mjs"
+    "web": "dist/web.mjs",
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "route.info",
+          "type": "server-route",
+          "layer": "server",
+          "label": "System info API",
+          "description": "Exposes GET /info under the plugin route segment.",
+          "permissions": ["system.read"]
+        },
+        {
+          "id": "panel.system-info",
+          "type": "web-panel",
+          "layer": "web",
+          "label": "System Info panel",
+          "permissions": []
+        },
+        {
+          "id": "command.show",
+          "type": "web-command",
+          "layer": "web",
+          "label": "Show System Info",
+          "permissions": []
+        }
+      ],
+      "permissions": [
+        {
+          "id": "system.read",
+          "label": "Read local system information",
+          "required": true
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "vite build"

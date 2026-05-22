@@ -1,34 +1,56 @@
+import type { Disposable } from '@cradle/plugin-sdk'
 import type { McpServerConfig } from '@cradle/plugin-sdk/server'
+import { z } from 'zod'
 import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
-const registry = new Map<string, McpServerConfig>()
+const McpServerConfigSchema = z.object({
+  name: z.string(),
+  command: z.string(),
+  args: z.array(z.string()),
+  env: z.record(z.string(), z.string()).default({}),
+  when: z.function().optional(),
+})
 
-export function registerMcpServer(config: McpServerConfig): void {
-  registry.set(config.name, config)
+type RegisteredMcpServerConfig = z.infer<typeof McpServerConfigSchema>
+
+const registry = new Map<string, RegisteredMcpServerConfig>()
+
+export function addHostMcpServer(config: McpServerConfig): void {
+  const registered = McpServerConfigSchema.parse(config)
+  registry.set(registered.name, registered)
 }
 
-export function registerPluginMcpServer(owner: string, config: McpServerConfig): void {
+export function registerHostMcpServer(owner: string, config: McpServerConfig): Disposable {
+  const registered = McpServerConfigSchema.parse(config)
+  const record = registerPluginCapability(owner, 'mcp-server', 'server', config.name, config.name, {
+    command: registered.command,
+    args: registered.args,
+    hasEnv: Object.keys(registered.env).length > 0,
+  }, [`mcp.${config.name}`])
+  registry.set(registered.name, registered)
+  let disposed = false
+  return {
+    dispose() {
+      if (disposed) return
+      disposed = true
+      registry.delete(config.name)
+      unregisterPluginCapability(owner, record.id)
+    },
+  }
+}
+
+export function registerPluginMcpServer(owner: string, config: McpServerConfig): Disposable {
   if (registry.has(config.name)) {
     throw new Error(`Duplicate MCP server registration: ${config.name}`)
   }
-  registerMcpServer(config)
-  registerPluginCapability(owner, 'mcp-server', 'server', config.name, config.name, {
-    command: config.command,
-    args: config.args,
-    hasEnv: !!config.env && Object.keys(config.env).length > 0,
-  })
+  return registerHostMcpServer(owner, config)
 }
 
-export function unregisterMcpServer(name: string): void {
+export function removeHostMcpServer(name: string): void {
   registry.delete(name)
 }
 
-export function unregisterPluginMcpServer(owner: string, name: string): void {
-  registry.delete(name)
-  unregisterPluginCapability(owner, `${owner}:mcp-server.${name}`)
-}
-
-export function getRegisteredMcpServers(): Record<string, { command: string; args: string[]; env?: Record<string, string> }> {
+export function getRegisteredMcpServers(): Record<string, { command: string; args: string[]; env: Record<string, string> }> {
   return Object.fromEntries(
     [...registry.entries()].map(([name, c]) => [name, { command: c.command, args: c.args, env: c.env }]),
   )

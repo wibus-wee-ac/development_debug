@@ -1,25 +1,50 @@
+/* Provides Cradle-owned persistent KV storage for server plugins. */
 import type { PluginStorage } from '@cradle/plugin-sdk/server'
+import { pluginStorageEntries } from '@cradle/db'
+import { randomUUID } from 'node:crypto'
+import { and, eq, sql } from 'drizzle-orm'
 
-// Uses the existing db infrastructure. For now, simple in-memory with file persistence.
-// TODO: Use Drizzle ORM when plugin_storage table is added to schema.
-
-const memoryStore = new Map<string, Map<string, string>>()
+import { db } from '../infra'
 
 export function createPluginStorage(pluginName: string): PluginStorage {
-  if (!memoryStore.has(pluginName)) {
-    memoryStore.set(pluginName, new Map())
-  }
-  const store = memoryStore.get(pluginName)!
-
   return {
     async get(key: string) {
-      return store.get(key) ?? null
+      const row = db()
+        .select({ value: pluginStorageEntries.value })
+        .from(pluginStorageEntries)
+        .where(and(
+          eq(pluginStorageEntries.pluginName, pluginName),
+          eq(pluginStorageEntries.key, key),
+        ))
+        .get()
+      return row?.value ?? null
     },
     async set(key: string, value: string) {
-      store.set(key, value)
+      db()
+        .insert(pluginStorageEntries)
+        .values({
+          id: randomUUID(),
+          pluginName,
+          key,
+          value,
+        })
+        .onConflictDoUpdate({
+          target: [pluginStorageEntries.pluginName, pluginStorageEntries.key],
+          set: {
+            value,
+            updatedAt: sql`(unixepoch())`,
+          },
+        })
+        .run()
     },
     async delete(key: string) {
-      store.delete(key)
+      db()
+        .delete(pluginStorageEntries)
+        .where(and(
+          eq(pluginStorageEntries.pluginName, pluginName),
+          eq(pluginStorageEntries.key, key),
+        ))
+        .run()
     },
   }
 }

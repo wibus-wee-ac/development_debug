@@ -5,6 +5,10 @@ description: Server plugin context, scoped routes, MCP, skills, hooks, events, a
 
 Server plugin API 允许 plugin 添加 server-side behavior，但不接管 Cradle core modules。Plugin 会收到 scoped context，并通过 host APIs 注册 capabilities。
 
+Server registration APIs follow a disposable lifecycle. `routes.register`、`mcp.registerServer`、`skills.register`、`hooks.chat.*`、events 和 external provider sources 会返回 `Disposable`，host 也会把这些 registration 放进 `context.subscriptions`，并在 server plugin layer 停用时统一清理。Server SDK 不再暴露 flat compatibility APIs。
+
+Required permissions are enforced before layer activation for external local plugins. Workspace development plugins and bundled resource plugins are trusted by source policy, but plugins loaded from `externalLocal` sources must have each required permission granted through `CRADLE_PLUGIN_ALLOWED_PERMISSIONS`, `CRADLE_PLUGIN_ALLOWED_{ROUTE_SEGMENT}_PERMISSIONS`, or Cradle Marketplace install consent projected from the Cradle-owned installed plugin directory. Otherwise the server layer is marked `disabled` and `activate()` is not called.
+
 ## 谁负责
 
 `packages/plugin-sdk/src/server.ts` owns public context types. `apps/server/src/plugins/context.ts` and sibling host modules own runtime behavior.
@@ -23,10 +27,11 @@ Plugin routes should not mirror core routes such as `/sessions` or `/issues`. If
 
 1. Host creates `ServerPluginContext`.
 2. Plugin registers routes and capabilities.
-3. Host mounts plugin app under scoped route segment.
+3. Host mounts plugin-owned routes under the scoped route segment.
 4. Runtime calls plugin handlers.
 5. Host records capability metadata.
-6. Host deactivates capabilities on plugin unload.
+6. Host calls plugin `deactivate()` on unload.
+7. Host disposes `context.subscriptions` and removes owner-scoped capability records.
 
 ## 最小写法
 
@@ -35,10 +40,46 @@ import type { ServerPlugin } from '@cradle/plugin-sdk'
 
 export const plugin: ServerPlugin = {
   activate: async (context) => {
-    context.app.get('/health', () => ({ ok: true }))
+    context.routes.register({
+      method: 'GET',
+      path: '/health',
+      handler: () => ({ ok: true }),
+    })
+    context.skills.register({
+      name: 'example',
+      description: 'Example skill registration',
+      skillFile: '/absolute/path/to/SKILL.md',
+    })
   },
 }
 ```
+
+Recommended namespaces are:
+
+- `context.routes.register(route)` for HTTP routes below `/api/plugins/{routeSegment}`.
+- `context.mcp.registerServer(config)` for MCP servers.
+- `context.skills.register(skill)` for agent skills.
+- `context.providers.externalSources.register(source)` for provider snapshots rendered by host UI.
+- `context.hooks.chat.onBeforeQuery(handler)` and `context.hooks.chat.onAfterResponse(handler)` for chat lifecycle hooks.
+
+## 权限
+
+Plugin manifests can declare required permissions with `cradle.contributes.permissions` and can attach those permissions to declared capabilities. The host evaluates those declarations before activating each layer.
+
+For `externalLocal` plugins, required permissions must be granted explicitly by operator env or by trusted Marketplace install consent.
+
+Operator env grants:
+
+```bash
+CRADLE_PLUGIN_ALLOWED_PERMISSIONS=network.local,provider.read
+CRADLE_PLUGIN_ALLOWED_SYSTEM_INFO_PERMISSIONS=system.info.read
+```
+
+`CRADLE_PLUGIN_ALLOWED_PERMISSIONS` is global for all external local plugins. `CRADLE_PLUGIN_ALLOWED_{ROUTE_SEGMENT}_PERMISSIONS` grants permissions only to the plugin with that route segment.
+
+Marketplace install receipts include the permission ids accepted during install. The server treats those ids as grants only when the package is discovered from the Cradle-owned Marketplace installed plugin directory. Receipts found in ordinary external local directories remain provenance evidence and do not grant activation permissions.
+
+Missing grants leave the layer in `disabled` state and prevent runtime registrations.
 
 ## 怎么验证
 

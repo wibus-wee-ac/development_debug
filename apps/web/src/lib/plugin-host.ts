@@ -1,10 +1,51 @@
-import type { WebPlugin, WebPluginContext, WebPluginStorage } from '@cradle/plugin-sdk/web'
+import type { Disposable } from '@cradle/plugin-sdk'
+import type { WebPlugin, WebPluginContext, WebPluginRouteClient, WebPluginStorage } from '@cradle/plugin-sdk/web'
 import { derivePluginRouteSegment, type PluginDescriptor } from '@cradle/plugin-sdk'
+import { evaluatePluginRuntimeCapabilityPolicy } from '@cradle/plugin-sdk/permissions'
+import { z } from 'zod'
 import { getServerUrl } from './electron'
 import { usePluginStore } from './plugin-store'
 
 type WebPluginDescriptor = Pick<PluginDescriptor, 'name' | 'version' | 'displayName' | 'hasWeb'>
-  & Partial<Pick<PluginDescriptor, 'identity' | 'routeSegment'>>
+  & Partial<Pick<PluginDescriptor, 'identity' | 'routeSegment' | 'layers'>>
+
+const WebPluginActivateSchema = z.function()
+  .transform(fn => fn as NonNullable<WebPlugin['activate']>)
+const WebPluginDeactivateSchema = z.function()
+  .transform(fn => fn as NonNullable<WebPlugin['deactivate']>)
+
+const WebPluginModuleSchema = z.object({
+  activate: WebPluginActivateSchema,
+  deactivate: WebPluginDeactivateSchema.optional(),
+}).passthrough()
+
+const WebPluginModuleWithDefaultSchema = z.union([
+  WebPluginModuleSchema,
+  z.object({ default: WebPluginModuleSchema }).passthrough().transform(mod => mod.default),
+])
+
+const activeWebPlugins = new Map<string, { deactivate?: () => void | Promise<void>; subscriptions: Disposable[] }>()
+
+interface WebRuntimeCapabilityRegistration {
+  type: string
+  localId: string
+  candidateDeclaredLocalIds?: string[]
+}
+
+function setWebLayerState(owner: string, status: 'activating' | 'active' | 'failed' | 'discovered', error?: string): void {
+  usePluginStore.getState().setWebLayerState(owner, status, error)
+}
+
+function disposeSubscriptions(owner: string, subscriptions: Disposable[]): void {
+  for (const subscription of [...subscriptions].reverse()) {
+    try {
+      subscription.dispose()
+    } catch (err) {
+      console.error(`[plugin-host] failed to dispose ${owner} web subscription:`, err)
+    }
+  }
+  subscriptions.length = 0
+}
 
 function createWebPluginStorage(pluginName: string): WebPluginStorage {
   const prefix = `cradle-plugin:${pluginName}:`
@@ -21,8 +62,72 @@ function createWebPluginStorage(pluginName: string): WebPluginStorage {
   }
 }
 
-function createWebPluginContext(pluginName: string): WebPluginContext {
+function normalizePluginRoutePath(path: string): string {
+  const trimmed = path.trim()
+  if (trimmed === '') {
+    throw new Error('Plugin route path must not be empty.')
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//')) {
+    throw new Error('Plugin route path must be relative to the plugin route scope.')
+  }
+  if (trimmed.includes('\\')) {
+    throw new Error('Plugin route path must use forward slashes.')
+  }
+  const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
+  const pathname = normalizedPath.split(/[?#]/, 1)[0] ?? ''
+  const segments = pathname.split('/')
+  if (segments.some((segment) => {
+    try {
+      return decodeURIComponent(segment) === '..'
+    } catch {
+      return segment === '..'
+    }
+  })) {
+    throw new Error('Plugin route path must not contain traversal segments.')
+  }
+  return normalizedPath
+}
+
+function createWebPluginRouteClient(pluginName: string, descriptor?: PluginDescriptor): WebPluginRouteClient {
+  const routeSegment = descriptor?.routeSegment ?? derivePluginRouteSegment(descriptor?.identity ?? pluginName)
+  const routeBase = `${getServerUrl().replace(/\/$/, '')}/api/plugins/${routeSegment}`
+  const routeUrl = (path: string) => `${routeBase}${normalizePluginRoutePath(path)}`
+  return {
+    url(path) {
+      return routeUrl(path)
+    },
+    fetch(path, init) {
+      return fetch(routeUrl(path), init)
+    },
+  }
+}
+
+function validateWebRuntimeCapability(
+  descriptor: PluginDescriptor | undefined,
+  registration: WebRuntimeCapabilityRegistration,
+): void {
+  if (!descriptor) return
+  const policy = evaluatePluginRuntimeCapabilityPolicy(descriptor, {
+    type: registration.type,
+    layer: 'web',
+    localId: registration.localId,
+    candidateDeclaredLocalIds: registration.candidateDeclaredLocalIds,
+  })
+  if (!policy.allowed) {
+    throw new Error(policy.reason ?? `Runtime capability ${registration.type}:${registration.localId} is not allowed.`)
+  }
+  if (policy.warning && !descriptor.warnings.includes(policy.warning)) {
+    descriptor.warnings.push(policy.warning)
+  }
+}
+
+function createWebPluginContext(pluginName: string, descriptor?: PluginDescriptor): WebPluginContext {
   const store = usePluginStore.getState()
+  const subscriptions: Disposable[] = []
+  const track = (disposable: Disposable): Disposable => {
+    subscriptions.push(disposable)
+    return disposable
+  }
   const logger = {
     info: (msg: string, ...args: unknown[]) => console.log(`[plugin:${pluginName}]`, msg, ...args),
     warn: (msg: string, ...args: unknown[]) => console.warn(`[plugin:${pluginName}]`, msg, ...args),
@@ -31,16 +136,85 @@ function createWebPluginContext(pluginName: string): WebPluginContext {
   }
 
   return {
-    registerPanel(panel) {
-      const dispose = store.registerPanel(pluginName, panel)
-      return { dispose }
+    routes: createWebPluginRouteClient(pluginName, descriptor),
+    subscriptions,
+    panels: {
+      register(panel) {
+        validateWebRuntimeCapability(descriptor, {
+          type: 'web-panel',
+          localId: panel.id,
+          candidateDeclaredLocalIds: [`panel.${panel.id}`],
+        })
+        const dispose = store.registerPanel(pluginName, panel)
+        return track({ dispose })
+      },
     },
-    registerCommand(cmd) {
-      const dispose = store.registerCommand(pluginName, cmd)
-      return { dispose }
+    commands: {
+      register(cmd) {
+        validateWebRuntimeCapability(descriptor, {
+          type: 'web-command',
+          localId: cmd.id,
+          candidateDeclaredLocalIds: [`command.${cmd.id}`],
+        })
+        const dispose = store.registerCommand(pluginName, cmd)
+        return track({ dispose })
+      },
     },
     storage: createWebPluginStorage(pluginName),
     logger,
+  }
+}
+
+export async function activateWebPluginModule(
+  owner: string,
+  rawModule: unknown,
+  descriptor?: PluginDescriptor,
+): Promise<void> {
+  let mod: z.infer<typeof WebPluginModuleSchema>
+  try {
+    mod = WebPluginModuleWithDefaultSchema.parse(rawModule)
+  }
+  catch {
+    setWebLayerState(owner, 'failed', `Plugin ${owner} web entry does not export 'activate'`)
+    throw new Error(`Plugin ${owner} web entry does not export 'activate'`)
+  }
+
+  await deactivateWebPlugin(owner)
+  setWebLayerState(owner, 'activating')
+
+  const ctx = createWebPluginContext(owner, descriptor)
+  try {
+    await mod.activate(ctx)
+  } catch (err) {
+    setWebLayerState(owner, 'failed', err instanceof Error ? err.message : String(err))
+    disposeSubscriptions(owner, ctx.subscriptions)
+    throw err
+  }
+
+  activeWebPlugins.set(owner, {
+    deactivate: mod.deactivate,
+    subscriptions: ctx.subscriptions,
+  })
+  setWebLayerState(owner, 'active')
+}
+
+export async function deactivateWebPlugin(owner: string): Promise<void> {
+  const plugin = activeWebPlugins.get(owner)
+  if (!plugin) return
+  activeWebPlugins.delete(owner)
+  try {
+    await plugin.deactivate?.()
+  } catch (err) {
+    console.error(`[plugin-host] failed to deactivate ${owner}:`, err)
+  } finally {
+    disposeSubscriptions(owner, plugin.subscriptions)
+    setWebLayerState(owner, 'discovered')
+  }
+}
+
+export async function deactivateWebPlugins(): Promise<void> {
+  for (const owner of [...activeWebPlugins.keys()].reverse()) {
+    await deactivateWebPlugin(owner)
   }
 }
 
@@ -48,53 +222,35 @@ function getWebBundleRouteSegment(plugin: WebPluginDescriptor): string {
   return plugin.routeSegment ?? derivePluginRouteSegment(plugin.identity ?? plugin.name)
 }
 
+export function isWebLayerLoadable(plugin: WebPluginDescriptor): boolean {
+  const status = plugin.layers?.web.status
+  return plugin.hasWeb && status !== 'invalid' && status !== 'disabled'
+}
+
 /**
  * Load and activate all web plugins.
- * Called once at app initialization, before React renders.
+ * Called after the React shell renders so plugin networking never blocks first paint.
  */
 export async function loadWebPlugins(): Promise<void> {
-  try {
-    // Fetch plugin list from server
-    const baseUrl = getServerUrl()
-    const response = await fetch(`${baseUrl}/api/plugins`)
-    if (!response.ok) {
-      console.warn('[plugin-host] Failed to fetch plugin list:', response.status)
-      return
-    }
+  const baseUrl = getServerUrl()
+  const response = await fetch(`${baseUrl}/api/plugins`)
+  const plugins: PluginDescriptor[] = await response.json()
+  const webPlugins = plugins.filter(isWebLayerLoadable)
 
-    const plugins: WebPluginDescriptor[] = await response.json()
-    const webPlugins = plugins.filter((p) => p.hasWeb)
-
-    if (webPlugins.length === 0) return
-
-    // Load each web plugin
-    const results = await Promise.allSettled(
-      webPlugins.map(async (plugin) => {
-        const owner = plugin.identity ?? plugin.name
-        const moduleUrl = `${baseUrl}/api/plugins/${getWebBundleRouteSegment(plugin)}/web.mjs`
+  await Promise.all(
+    webPlugins.map(async (plugin) => {
+      const owner = plugin.identity ?? plugin.name
+      const moduleUrl = `${baseUrl}/api/plugins/${getWebBundleRouteSegment(plugin)}/web.mjs`
+      try {
+        setWebLayerState(owner, 'activating')
         const mod = await import(/* @vite-ignore */ moduleUrl)
 
-        const activateFn = mod.activate ?? mod.default?.activate
-        if (typeof activateFn !== 'function') {
-          throw new Error(`Plugin ${owner} web entry does not export 'activate'`)
-        }
-
-        const ctx = createWebPluginContext(owner)
-        await activateFn(ctx)
+        await activateWebPluginModule(owner, mod, plugin)
         console.log(`[plugin-host] activated: ${owner}`)
-      }),
-    )
-
-    // Log failures
-    for (let i = 0; i < results.length; i++) {
-      if (results[i].status === 'rejected') {
-        const reason = (results[i] as PromiseRejectedResult).reason
-        const msg = reason instanceof Error ? reason.message : String(reason)
-        console.error(`[plugin-host] failed to load ${webPlugins[i].name}:`, msg, reason)
+      } catch (err) {
+        setWebLayerState(owner, 'failed', err instanceof Error ? err.message : String(err))
+        console.error(`[plugin-host] failed to activate ${owner}:`, err)
       }
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error('[plugin-host] Plugin loading failed:', msg, err)
-  }
+    }),
+  )
 }

@@ -3,7 +3,7 @@ import type { Server, Socket } from 'node:net'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 
-import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
+import type { DesktopPluginContext, DesktopWebview } from '@cradle/plugin-sdk/desktop'
 
 import {
   buildDocumentReadyExpression,
@@ -34,6 +34,7 @@ import type {
   ScrollResult,
   TabInfo,
   TabsCloseResult,
+  TabsVisibilityResult,
   TabsListResult,
   TabsNewResult,
   TypeResult,
@@ -44,14 +45,28 @@ import { encodeFrame, FrameDecoder } from './protocol.js'
 let server: Server | null = null
 let socketPath = ''
 
-// eslint-disable-next-line ts/no-explicit-any -- Electron WebContents type, can't import electron in plugin
-type WebContents = any
-type NativeImage = { toPNG: () => Buffer }
-
 interface WebviewEntry {
-  wc: WebContents
+  webview: DesktopWebview
   attached: boolean
   rendererTabId?: string
+}
+
+interface CdpValueResult<T> {
+  result: {
+    value: T
+  }
+}
+
+interface CdpAxNode {
+  ignored?: boolean
+  role?: { value?: string }
+  name?: { value?: string }
+  value?: { value?: string }
+  description?: { value?: string }
+}
+
+interface CdpAxTreeResult {
+  nodes: CdpAxNode[]
 }
 
 const webviewRegistry = new Map<string, WebviewEntry>()
@@ -62,7 +77,7 @@ let desktopContext: DesktopPluginContext | null = null
 
 async function waitForDocumentReady(entry: WebviewEntry): Promise<void> {
   ensureDebugger(entry)
-  await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+  await entry.webview.cdp.sendCommand('Runtime.evaluate', {
     expression: buildDocumentReadyExpression(),
     awaitPromise: true,
     returnByValue: true,
@@ -85,16 +100,16 @@ async function activateRendererTab(entry: WebviewEntry): Promise<void> {
   if (!desktopContext || !entry.rendererTabId) {
     return
   }
-  const activated = await desktopContext.activateBrowserTab(entry.rendererTabId)
+  const activated = await desktopContext.browserTabs.activate(entry.rendererTabId)
   if (activated) {
     await new Promise(resolve => setTimeout(resolve, 50))
   }
 }
 
 function ensureDebugger(entry: WebviewEntry): void {
-  if (!entry.attached && !entry.wc.isDestroyed()) {
+  if (!entry.attached && !entry.webview.isDestroyed()) {
     try {
-      entry.wc.debugger.attach('1.3')
+      entry.webview.cdp.attach('1.3')
       entry.attached = true
     }
     catch (err) {
@@ -105,9 +120,9 @@ function ensureDebugger(entry: WebviewEntry): void {
 
 async function getActiveWebview(): Promise<WebviewEntry | undefined> {
   if (desktopContext) {
-    const rendererTabId = await desktopContext.getActiveBrowserTab()
+    const rendererTabId = await desktopContext.browserTabs.getActive()
     if (rendererTabId) {
-      const activeEntry = [...webviewRegistry.values()].find(entry => entry.rendererTabId === rendererTabId && !entry.wc.isDestroyed())
+      const activeEntry = [...webviewRegistry.values()].find(entry => entry.rendererTabId === rendererTabId && !entry.webview.isDestroyed())
       if (activeEntry) {
         return activeEntry
       }
@@ -124,7 +139,7 @@ async function getActiveWebview(): Promise<WebviewEntry | undefined> {
 async function getWebview(tabId?: string): Promise<WebviewEntry | undefined> {
   if (tabId) {
     const entry = webviewRegistry.get(tabId)
-    if (entry && !entry.wc.isDestroyed()) {
+    if (entry && !entry.webview.isDestroyed()) {
       return entry
     }
     webviewRegistry.delete(tabId)
@@ -133,26 +148,26 @@ async function getWebview(tabId?: string): Promise<WebviewEntry | undefined> {
   return getActiveWebview()
 }
 
-function registerWebview(wc: WebContents): string {
+function registerWebview(webview: DesktopWebview): string {
   const id = `tab-${++tabCounter}`
   let attached = false
   try {
-    wc.debugger.attach('1.3')
+    webview.cdp.attach('1.3')
     attached = true
   }
   catch (err) {
     console.error('[browser-use] Failed to attach debugger:', err)
   }
 
-  const entry: WebviewEntry = { wc, attached }
+  const entry: WebviewEntry = { webview, attached }
   webviewRegistry.set(id, entry)
 
-  wc.debugger.on('detach', (_event: unknown, reason: string) => {
+  webview.cdp.onDetached((reason) => {
     console.warn(`[browser-use] Debugger detached from ${id}: ${reason}`)
     entry.attached = false
   })
 
-  wc.once('destroyed', () => {
+  webview.onDestroyed(() => {
     webviewRegistry.delete(id)
   })
 
@@ -182,7 +197,7 @@ async function requestRendererBrowserTab(url?: string): Promise<string> {
     })
   })
 
-  const rendererTabId = await desktopContext.requestBrowserTab(url)
+  const rendererTabId = await desktopContext.browserTabs.request(url)
 
   for (const tabId of webviewRegistry.keys()) {
     if (!before.has(tabId)) {
@@ -210,16 +225,16 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         try {
-          await entry.wc.loadURL(cmd.url)
+          await entry.webview.navigate(cmd.url)
         }
         catch (err) {
-          const finalUrl = entry.wc.getURL()
+          const finalUrl = entry.webview.getUrl()
           if (!isRecoverableNavigationAbort(err, cmd.url, finalUrl)) {
             throw err
           }
         }
         await waitForDocumentReady(entry)
-        const data: NavigateResult = { url: entry.wc.getURL(), title: entry.wc.getTitle() }
+        const data: NavigateResult = { url: entry.webview.getUrl(), title: entry.webview.getTitle() }
         return { id: cmd.id, ok: true, data }
       }
 
@@ -229,8 +244,8 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         await activateRendererTab(entry)
-        const image = await withTimeout<NativeImage>(entry.wc.capturePage(), 3000, 'Screenshot capture')
-        const data: ScreenshotResult = { base64: image.toPNG().toString('base64'), mimeType: 'image/png' }
+        const png = await withTimeout(entry.webview.capturePng(), 3000, 'Screenshot capture')
+        const data: ScreenshotResult = { base64: Buffer.from(png).toString('base64'), mimeType: 'image/png' }
         return { id: cmd.id, ok: true, data }
       }
 
@@ -240,7 +255,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: click } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value: click } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean }>>('Runtime.evaluate', {
           expression: buildElementClickExpression(cmd.selector),
           returnByValue: true,
         })
@@ -257,7 +272,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: replacement } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value: replacement } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean; editable?: boolean }>>('Runtime.evaluate', {
           expression: buildTextReplacementExpression(cmd.selector, cmd.text),
           returnByValue: true,
         })
@@ -277,7 +292,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value } } = await entry.webview.cdp.sendCommand<CdpValueResult<string | undefined>>('Runtime.evaluate', {
           expression: cmd.selector
             ? `document.querySelector(${JSON.stringify(cmd.selector)})?.innerText ?? ''`
             : `document.body.innerText`,
@@ -294,7 +309,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         }
         ensureDebugger(entry)
         const amount = cmd.amount ?? 300
-        const { result: { value: scroll } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value: scroll } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean; canMove?: boolean; moved?: boolean }>>('Runtime.evaluate', {
           expression: buildScrollActionExpression(cmd.selector, cmd.direction, amount),
           returnByValue: true,
         })
@@ -314,14 +329,14 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: box } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value: box } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ x: number; y: number } | undefined>>('Runtime.evaluate', {
           expression: buildElementCenterExpression(cmd.selector),
           returnByValue: true,
         })
         if (!box) {
           throw new Error(`Element not found: ${cmd.selector}`)
         }
-        await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
+        await entry.webview.cdp.sendCommand('Input.dispatchMouseEvent', {
           type: 'mouseMoved',
           x: box.x,
           y: box.y,
@@ -336,12 +351,10 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { nodes } = await entry.wc.debugger.sendCommand('Accessibility.getFullAXTree', {})
+        const { nodes } = await entry.webview.cdp.sendCommand<CdpAxTreeResult>('Accessibility.getFullAXTree', {})
         const transformed: AXNode[] = nodes
-          // eslint-disable-next-line ts/no-explicit-any
-          .filter((n: any) => n.ignored !== true)
-          // eslint-disable-next-line ts/no-explicit-any
-          .map((n: any) => ({
+          .filter(n => n.ignored !== true)
+          .map(n => ({
             role: n.role?.value ?? 'unknown',
             name: n.name?.value ?? '',
             value: n.value?.value,
@@ -360,7 +373,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         const timeout = cmd.timeout ?? 5000
         const start = Date.now()
         while (Date.now() - start < timeout) {
-          const { result: { value } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          const { result: { value } } = await entry.webview.cdp.sendCommand<CdpValueResult<boolean>>('Runtime.evaluate', {
             expression: `!!document.querySelector(${JSON.stringify(cmd.selector)})`,
             returnByValue: true,
           })
@@ -369,7 +382,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           }
           await new Promise(r => setTimeout(r, 100))
         }
-        const { result: { value: found } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value: found } } = await entry.webview.cdp.sendCommand<CdpValueResult<boolean>>('Runtime.evaluate', {
           expression: `!!document.querySelector(${JSON.stringify(cmd.selector)})`,
           returnByValue: true,
         })
@@ -386,18 +399,18 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: before } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value: before } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ editable?: boolean; value?: string }>>('Runtime.evaluate', {
           expression: buildFocusedEditableStateExpression(),
           returnByValue: true,
         })
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyDown', cmd.key, cmd.modifiers))
-        await entry.wc.debugger.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyUp', cmd.key, cmd.modifiers))
-        const { result: { value: after } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        await entry.webview.cdp.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyDown', cmd.key, cmd.modifiers))
+        await entry.webview.cdp.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyUp', cmd.key, cmd.modifiers))
+        const { result: { value: after } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ editable?: boolean; value?: string }>>('Runtime.evaluate', {
           expression: buildFocusedEditableStateExpression(),
           returnByValue: true,
         })
         if (before?.editable && after?.editable && before.value === after.value) {
-          await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+          await entry.webview.cdp.sendCommand('Runtime.evaluate', {
             expression: buildKeyboardTextFallbackExpression(cmd.key, cmd.modifiers),
             returnByValue: true,
           })
@@ -409,11 +422,11 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
       case 'tabs_list': {
         const tabs: TabInfo[] = []
         for (const [id, entry] of webviewRegistry) {
-          if (entry.wc.isDestroyed()) {
+          if (entry.webview.isDestroyed()) {
             webviewRegistry.delete(id)
             continue
           }
-          tabs.push({ id, url: entry.wc.getURL(), title: entry.wc.getTitle() })
+          tabs.push({ id, url: entry.webview.getUrl(), title: entry.webview.getTitle() })
         }
         const data: TabsListResult = { tabs }
         return { id: cmd.id, ok: true, data }
@@ -425,29 +438,55 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'New browser tab was not registered' }
         }
-        if (cmd.url && entry.wc.getURL() !== cmd.url) {
-          await entry.wc.loadURL(cmd.url)
+        if (cmd.url && entry.webview.getUrl() !== cmd.url) {
+          await entry.webview.navigate(cmd.url)
         }
         if (cmd.url) {
           await waitForDocumentReady(entry)
         }
-        const data: TabsNewResult = { tab: { id: newTabId, url: entry.wc.getURL(), title: entry.wc.getTitle() } }
+        const data: TabsNewResult = { tab: { id: newTabId, url: entry.webview.getUrl(), title: entry.webview.getTitle() } }
         return { id: cmd.id, ok: true, data }
       }
 
       case 'tabs_close': {
         const entry = webviewRegistry.get(cmd.tabId)
-        if (!entry || entry.wc.isDestroyed()) {
+        if (!entry || entry.webview.isDestroyed()) {
           webviewRegistry.delete(cmd.tabId)
           return { id: cmd.id, ok: false, error: `Tab ${cmd.tabId} not found` }
         }
         try {
-          entry.wc.debugger.detach()
+          entry.webview.cdp.detach()
         }
         catch { /* already detached */ }
-        entry.wc.close()
+        entry.webview.close()
         webviewRegistry.delete(cmd.tabId)
         const data: TabsCloseResult = { success: true }
+        return { id: cmd.id, ok: true, data }
+      }
+
+      case 'tabs_go_off_screen': {
+        const entry = await getWebview(cmd.tabId)
+        if (!entry) {
+          return { id: cmd.id, ok: false, error: 'No webview available' }
+        }
+        if (!desktopContext) {
+          return { id: cmd.id, ok: false, error: 'Desktop plugin context is not available' }
+        }
+        const hidden = await desktopContext.browserTabs.goOffScreen(entry.rendererTabId)
+        if (!hidden) {
+          return { id: cmd.id, ok: false, error: 'Browser tab could not be moved off screen' }
+        }
+        const data: TabsVisibilityResult = { success: true }
+        return { id: cmd.id, ok: true, data }
+      }
+
+      case 'tabs_bring_to_front': {
+        const entry = await getWebview(cmd.tabId)
+        if (!entry) {
+          return { id: cmd.id, ok: false, error: 'No webview available' }
+        }
+        await activateRendererTab(entry)
+        const data: TabsVisibilityResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
 
@@ -457,7 +496,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
+        const { result: { value } } = await entry.webview.cdp.sendCommand<CdpValueResult<unknown>>('Runtime.evaluate', {
           expression: cmd.expression,
           returnByValue: true,
         })
@@ -504,11 +543,11 @@ export function activate(ctx: DesktopPluginContext): void {
   })
 
   // Propagate socket path to server via shared config
-  ctx.setSharedConfig('BROWSER_BACKEND_SOCKET', socketPath)
+  ctx.sharedConfig.set('BROWSER_BACKEND_SOCKET', socketPath)
 
   // Listen for webview creation
-  ctx.onWebviewCreated((wc, _tabId) => {
-    registerWebview(wc)
+  ctx.webviews.onCreated((webview, _tabId) => {
+    registerWebview(webview)
   })
 
   ctx.logger.info(`Browser backend started on ${socketPath}`)
@@ -519,9 +558,9 @@ export function deactivate(): void {
   pendingWebviewResolvers.splice(0)
   // Detach all debuggers
   for (const [, entry] of webviewRegistry) {
-    if (entry.attached && !entry.wc.isDestroyed()) {
+    if (entry.attached && !entry.webview.isDestroyed()) {
       try {
-        entry.wc.debugger.detach()
+        entry.webview.cdp.detach()
       }
       catch { /* ignore */ }
     }

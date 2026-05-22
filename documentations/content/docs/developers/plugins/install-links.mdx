@@ -47,13 +47,22 @@ Desktop handler 是一个显式 consent flow，而不是静默安装：
     Restrict the current installer to first-party GitHub plugins from `wibus-wee/Cradle`, `@cradle/*` package names, `plugins/*` paths, semantic versions, and the `bundled` channel.
   </Step>
   <Step>
-    Show a native confirmation dialog listing package, version, repository, path, and ref.
+    Resolve the actual plugin package before final install side effects. Already-available bundled plugins are inspected in place. Downloaded plugins are downloaded and extracted only into the temporary Marketplace staging directory.
   </Step>
   <Step>
-    If the plugin already exists in the current primary plugin directory, record an install receipt only. This avoids duplicating bundled plugins and causing duplicate plugin identities.
+    Parse `package.json#cradle`, validate package name/version, normalize declared capabilities and permissions, then show a native confirmation dialog listing package, version, repository, path, ref, required permissions, and declared capabilities.
   </Step>
   <Step>
-    If the plugin is not already available, download the repository tarball, extract only the requested plugin path, validate `package.json`, require runnable JS layer entries, and publish into the Cradle-owned Marketplace plugin directory.
+    If the user cancels the confirmation, do not write a receipt and do not publish the staged package. Temporary downloaded files are removed.
+  </Step>
+  <Step>
+    If the plugin already exists in the current primary plugin directory and the user accepts, record an install receipt only. This avoids duplicating bundled plugins and causing duplicate plugin identities.
+  </Step>
+  <Step>
+    Receipts record the required permission ids accepted by the user. These ids are activation grants only when projected from the Cradle-owned Marketplace installed plugin directory; copied receipts in arbitrary external plugin directories remain provenance only.
+  </Step>
+  <Step>
+    If the plugin is not already available and the user accepts, require runnable JS layer entries, write a receipt with granted permissions in the staged package, and publish into the Cradle-owned Marketplace plugin directory.
   </Step>
   <Step>
     Ask for restart after install. The desktop and server plugin hosts include the Marketplace installed plugin directory in discovery on the next startup.
@@ -76,8 +85,10 @@ Desktop installer 至少需要这些 gate：
 - Protocol host must be exactly `plugins` and path must be exactly `/install` or equivalent normalized routing.
 - `path` must stay inside an allowed plugin package root.
 - URL metadata must match the downloaded package name, version and Cradle metadata before install.
-- User confirmation must include package, version, repository, path and ref.
+- User confirmation must include package, version, repository, path, ref, required permissions and declared capabilities from the actual package manifest.
 - Downloaded packages must declare runnable `.js`, `.mjs` or `.cjs` layer entries before they are written to the installed plugin directory.
+- Cancelling the native confirmation must not write an already-available receipt and must not publish a downloaded package.
+- Receipt `grantedPermissions` can activate a plugin only when the package is discovered from the Cradle-owned Marketplace installed plugin directory.
 - Activation must be logged with source, version, route segment and validation result.
 
 ## Current implementation state
@@ -91,10 +102,13 @@ Desktop installer 至少需要这些 gate：
 - Desktop registration for the `cradle://` protocol.
 - Startup, macOS `open-url`, and `second-instance` handling for plugin install links.
 - URL parsing and validation in `apps/desktop/src/main/plugin-install-links.ts`.
-- Native consent dialog before any install write.
+- Native consent dialog before any durable receipt write or package publish.
 - Bundled-plugin receipt recording to avoid duplicate plugin identities.
 - Download/install path for first-party plugins that are not already present in the primary plugin directory and already ship runnable JS entries.
 - Desktop and server discovery include the Cradle-owned Marketplace installed plugin directory on restart.
+- Marketplace install receipts inside plugin packages are projected into `PluginDescriptor.source.provenance`, so `GET /api/plugins` and the plugin devtool can show repository, path, version, ref and install mode.
+- Permission-aware native install consent is built from the actual parsed plugin manifest. The installer passes a `PluginInstallSummary` with `declaredCapabilities`, `declaredPermissions` and `requiredPermissions` to the desktop confirmation callback before writing receipts or publishing packages.
+- Accepted Marketplace permissions are written to the install receipt as `grantedPermissions`. Server and desktop discovery expose them as `source.grantedPermissions` only for the Cradle-owned Marketplace installed plugin directory, preventing arbitrary external local packages from self-granting permissions by copying a receipt.
 
 Built-in plugin packaging is intentionally not part of this contract. Source-only built-in plugins can still be shown in the Marketplace and recorded as already available in development, but publishing them as packaged desktop resources is owned by the plugin distribution pipeline.
 
@@ -111,10 +125,13 @@ pnpm build
 Desktop installer 验证：
 
 - URL parsing rejects malformed or ambiguous links.
-- Consent flow displays package, version, repository, path, and ref.
+- Consent flow displays package, version, repository, path, ref, required permissions, and declared capabilities.
 - Files are written only to Cradle-owned plugin install namespace.
 - Bundled plugins record receipts without duplicate installation.
+- Cancelling consent for an already-available plugin leaves no receipt.
+- Cancelling consent for a downloaded plugin leaves no published package.
 - Plugin host discovery includes the Marketplace installed plugin directory after restart.
+- Plugin host discovery treats receipt grants from ordinary external local directories as provenance only, while the Cradle-owned Marketplace installed plugin directory can use those grants for activation.
 
 ```bash
 pnpm --filter @cradle/desktop exec tsc --noEmit -p tsconfig.node.json

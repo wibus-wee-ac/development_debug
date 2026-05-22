@@ -1,6 +1,7 @@
 import {
   derivePluginCapabilityId,
   derivePluginRouteSegment,
+  projectCradlePluginContributions,
   type PluginCapabilityRecord,
   type PluginDescriptor,
   type PluginLayer,
@@ -10,6 +11,7 @@ import {
   type PluginSourceDescriptor,
   type PluginSourceKind,
 } from '@cradle/plugin-sdk'
+import { evaluatePluginRuntimeCapabilityPolicy } from '@cradle/plugin-sdk/permissions'
 
 const layerNames: PluginLayer[] = ['server', 'web', 'desktop']
 
@@ -72,13 +74,10 @@ export function createPluginDescriptor(
   manifest: PluginManifest,
   source: PluginSourceDescriptor,
 ): PluginDescriptor {
-  const warnings: string[] = []
   const identity = manifest.name
   const routeSegment = derivePluginRouteSegment(identity)
 
-  if (!manifest.cradle.apiVersion) {
-    warnings.push('Legacy plugin metadata: cradle.apiVersion is missing.')
-  }
+  const contributions = projectCradlePluginContributions(identity, manifest.cradle)
 
   const layers = Object.fromEntries(layerNames.map((layer) => {
     const entry = manifest.cradle[layer]
@@ -100,7 +99,9 @@ export function createPluginDescriptor(
     source,
     layers,
     capabilities: [],
-    warnings,
+    declaredCapabilities: contributions.declaredCapabilities,
+    declaredPermissions: contributions.declaredPermissions,
+    warnings: [],
     hasWeb: !!manifest.cradle.web,
     hasServer: !!manifest.cradle.server,
     hasDesktop: !!manifest.cradle.desktop,
@@ -132,6 +133,8 @@ export function createInvalidPluginDescriptor(
     source,
     layers,
     capabilities: [],
+    declaredCapabilities: [],
+    declaredPermissions: [],
     warnings: [error],
     hasWeb: false,
     hasServer: false,
@@ -188,8 +191,23 @@ export function registerPluginCapability(
   localId: string,
   label?: string,
   metadata?: Record<string, unknown>,
+  candidateDeclaredLocalIds?: string[],
 ): PluginCapabilityRecord {
   const descriptor = descriptors.get(owner)
+  if (descriptor) {
+    const policy = evaluatePluginRuntimeCapabilityPolicy(descriptor, {
+      type,
+      layer,
+      localId,
+      candidateDeclaredLocalIds,
+    })
+    if (!policy.allowed) {
+      throw new Error(policy.reason ?? `Runtime capability ${type}:${localId} is not allowed.`)
+    }
+    if (policy.warning && !descriptor.warnings.includes(policy.warning)) {
+      descriptor.warnings.push(policy.warning)
+    }
+  }
   const record: PluginCapabilityRecord = {
     id: descriptor
       ? createUniqueCapabilityId(descriptor, owner, `${type}.${localId}`)

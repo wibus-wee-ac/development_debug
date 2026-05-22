@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export class PluginLoadError extends Error {
   constructor(
     public readonly pluginName: string,
@@ -8,20 +10,25 @@ export class PluginLoadError extends Error {
   }
 }
 
+const PluginFunctionSchema = z.function({
+  input: [z.unknown()],
+  output: z.unknown(),
+})
+
+const PluginModuleSchema = z.object({
+  activate: PluginFunctionSchema,
+  deactivate: PluginFunctionSchema.optional(),
+}).passthrough()
+
 export function validatePluginModule(
   mod: unknown,
   pluginName: string,
   layer: 'server' | 'desktop' | 'web',
-): asserts mod is { activate: Function; deactivate?: Function } {
-  if (mod === null || typeof mod !== 'object') {
-    throw new PluginLoadError(pluginName, `${layer} entry did not export a module object. Got: ${typeof mod}`)
+): asserts mod is z.infer<typeof PluginModuleSchema> {
+  try {
+    PluginModuleSchema.parse(mod)
   }
-  const m = mod as Record<string, unknown>
-  if (typeof m.activate !== 'function') {
-    const exported = Object.keys(m).join(', ')
-    throw new PluginLoadError(pluginName, `${layer} entry does not export 'activate' function. Got exports: [${exported}]`)
-  }
-  if ('deactivate' in m && typeof m.deactivate !== 'function') {
-    throw new PluginLoadError(pluginName, `${layer} entry exports 'deactivate' but it's not a function (got ${typeof m.deactivate})`)
+  catch (err) {
+    throw new PluginLoadError(pluginName, `${layer} entry is not a valid plugin module: ${err instanceof Error ? err.message : String(err)}`)
   }
 }

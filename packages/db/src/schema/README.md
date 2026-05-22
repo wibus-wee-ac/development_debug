@@ -22,3 +22,4 @@
 - **kanban.ts**: Kanban board/view configuration 相关表
 - **issue-agent.ts**: Issue Agent session / activity 相关表
 - **observability.ts**: local observability append-only events 与 dedupe incident 相关表
+- **plugin.ts**: Cradle plugin host 拥有的 plugin-scoped persistent storage 表；按 plugin package identity 和 key 隔离，不写入其他产品 namespace

@@ -224,6 +224,15 @@ function PluginListItem({
                 <InfoRow label="source" value={plugin.source.kind} />
                 <InfoRow label="trusted" value={String(plugin.source.trusted)} />
                 <InfoRow label="path" value={plugin.source.packageDir} />
+                {plugin.source.provenance && (
+                  <>
+                    <InfoRow label="origin" value={plugin.source.provenance.kind} />
+                    <InfoRow label="origin mode" value={plugin.source.provenance.mode} />
+                    <InfoRow label="origin repo" value={plugin.source.provenance.repository} />
+                    <InfoRow label="origin path" value={plugin.source.provenance.path} />
+                    <InfoRow label="origin ref" value={plugin.source.provenance.ref} />
+                  </>
+                )}
               </>
             )}
           </div>

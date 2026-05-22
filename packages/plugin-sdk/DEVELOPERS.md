@@ -37,7 +37,7 @@ A single plugin can implement **any combination** of these layers. For example:
 │    └── discoverPlugins(pluginsDir)                              │
 │    └── For each manifest with cradle.server:                    │
 │          import(entryPath) → validate → activate(ctx)           │
-│          Register sub-app at /api/plugins/{shortName}/          │
+│          Mount plugin-owned routes below /api/plugins/{name}/   │
 │    └── Create static routes:                                    │
 │          GET /api/plugins         → plugin list JSON            │
 │          GET /api/plugins/:name/web.mjs → serve web bundle     │
@@ -74,9 +74,22 @@ mkdir -p plugins/my-plugin/src
   "version": "0.0.1",
   "private": true,
   "cradle": {
+    "apiVersion": "1",
     "displayName": "My Plugin",
     "description": "Does something useful",
-    "server": "src/server.ts"
+    "server": "src/server.ts",
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "route.hello",
+          "type": "server-route",
+          "layer": "server",
+          "label": "Hello route",
+          "permissions": []
+        }
+      ],
+      "permissions": []
+    }
   },
   "devDependencies": {
     "@cradle/plugin-sdk": "workspace:*"
@@ -90,9 +103,11 @@ mkdir -p plugins/my-plugin/src
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 
 export function activate(ctx: ServerPluginContext): void {
-  const app = ctx.app as any
-
-  app.get('/hello', () => ({ message: 'Hello from my plugin!' }))
+  ctx.routes.register({
+    method: 'GET',
+    path: '/hello',
+    handler: () => ({ message: 'Hello from my plugin!' }),
+  })
 
   ctx.logger.info('My Plugin activated')
 }
@@ -147,8 +162,27 @@ plugins/
 | `cradle.web` | No* | Path to web entry (pre-built `.mjs`) |
 | `cradle.desktop` | No* | Path to desktop entry |
 | `cradle.deployments` | No | `['desktop']` or `['web']` — restricts where plugin loads |
+| `cradle.apiVersion` | Yes | Plugin SDK contract version. Must be `"1"` for the current manifest shape. |
+| `cradle.contributes` | Yes | Structured static capability and permission declarations. Use empty arrays when the plugin declares no capabilities or permissions. |
 
 \* At least one of `server`, `web`, or `desktop` must be present.
+
+### Permission Enforcement
+
+`cradle.contributes.permissions` is enforced during host activation for external local plugins. Workspace development plugins and bundled resource plugins are trusted by source policy. For `externalLocal` plugins, every required permission for the layer must be granted by the operator or by Cradle Marketplace install consent from a Cradle-owned installed plugin directory.
+
+Operator grants use these environment variables:
+
+```bash
+CRADLE_PLUGIN_ALLOWED_PERMISSIONS=network.local,provider.read
+CRADLE_PLUGIN_ALLOWED_MY_PLUGIN_PERMISSIONS=network.local
+```
+
+`CRADLE_PLUGIN_ALLOWED_PERMISSIONS` applies to all external local plugins. `CRADLE_PLUGIN_ALLOWED_{ROUTE_SEGMENT}_PERMISSIONS` applies only to one route segment after uppercasing it and replacing non-alphanumeric characters with underscores.
+
+Marketplace install consent records the manifest-derived required permission ids in the install receipt. That receipt is displayed as provenance for any matching package, but it becomes an activation grant only when the host projects it from the Cradle-owned Marketplace installed plugin directory. A copied or hand-written receipt in an arbitrary external plugin directory does not grant permissions.
+
+If a required permission is missing, the host marks that layer `disabled`. Server and desktop entries do not call `activate()`. Web entries are not served from `/api/plugins/{routeSegment}/web.mjs` and the renderer does not import them.
 
 ### Plugin Identity And Route Segment
 
@@ -183,25 +217,29 @@ export function deactivate(): void | Promise<void> {
 }
 ```
 
-### `ctx.app` — Scoped Elysia Instance
+### `ctx.routes.register(route)` — HTTP Route Registration
 
-A pre-configured Elysia sub-app with prefix `/api/plugins/{routeSegment}/`. Register routes using the standard Elysia API:
+Register plugin-owned routes below `/api/plugins/{routeSegment}`. The host owns mounting and lifecycle cleanup; plugin code owns only the route handler semantics.
 
 ```ts
 export function activate(ctx: ServerPluginContext): void {
-  const app = ctx.app as any
-
   // GET /api/plugins/my-plugin/status
-  app.get('/status', () => ({ ok: true, uptime: process.uptime() }))
+  ctx.routes.register({
+    method: 'GET',
+    path: '/status',
+    handler: () => ({ ok: true, uptime: process.uptime() }),
+  })
 
   // POST /api/plugins/my-plugin/action
-  app.post('/action', ({ body }: { body: any }) => {
-    return { result: 'done', input: body }
+  ctx.routes.register<{ value?: string }>({
+    method: 'POST',
+    path: '/action',
+    handler: ({ body }) => ({ result: 'done', input: body }),
   })
 }
 ```
 
-### `ctx.registerMcpServer(config)` — MCP Server Registration
+### `ctx.mcp.registerServer(config)` — MCP Server Registration
 
 Register an MCP (Model Context Protocol) server that agents can discover and use:
 
@@ -212,15 +250,21 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export function activate(ctx: ServerPluginContext): void {
-  ctx.registerMcpServer({
+  const disposable = ctx.mcp.registerServer({
     name: 'my-tool',
     command: 'node',
     args: [resolve(__dirname, 'mcp-server.mjs')],
     env: { MY_CONFIG: 'value' },
     when: () => !!ctx.sharedConfig.get('MY_FEATURE_ENABLED'),
   })
+
+  // The host tracks returned disposables automatically. Keep this value only
+  // when the plugin needs to dispose the registration before deactivation.
+  void disposable
 }
 ```
+
+Server registrations return `Disposable` handles and are also tracked in `ctx.subscriptions`. Use namespace APIs such as `ctx.routes.register`, `ctx.mcp.registerServer`, `ctx.skills.register`, and `ctx.providers.externalSources.register`. When `when` is asynchronous, await the result if later initialization depends on the MCP server being registered.
 
 **`McpServerConfig` fields:**
 
@@ -232,7 +276,7 @@ export function activate(ctx: ServerPluginContext): void {
 | `env` | `Record<string, string>` | Optional environment variables |
 | `when` | `() => boolean \| Promise<boolean>` | Optional predicate — skips registration if returns `false` |
 
-### `ctx.registerSkill(skill)` — Skill Registration
+### `ctx.skills.register(skill)` — Skill Registration
 
 Register a skill (a Markdown file describing a capability for agent discovery):
 
@@ -243,7 +287,7 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export function activate(ctx: ServerPluginContext): void {
-  ctx.registerSkill({
+  ctx.skills.register({
     name: 'browser-automation',
     description: 'Browser automation for AI agents via CDP',
     skillFile: resolve(__dirname, 'SKILL.md'),
@@ -251,7 +295,7 @@ export function activate(ctx: ServerPluginContext): void {
 }
 ```
 
-### `ctx.externalProviderSources.register(source)` — External Provider Source
+### `ctx.providers.externalSources.register(source)` — External Provider Source
 
 插件可以提供外部 provider 数据源。这个能力只返回标准化数据，不允许插件渲染 Provider settings UI，也不允许插件直接写 Cradle 的 `agent_profiles` 或 `agent_credentials`。Cradle host 会读取 snapshot、加密 credential、投影 profile、处理 missing/stale 状态，并用固定 Provider UI 展示。
 
@@ -259,7 +303,7 @@ export function activate(ctx: ServerPluginContext): void {
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 
 export function activate(ctx: ServerPluginContext): void {
-  ctx.externalProviderSources.register({
+  ctx.providers.externalSources.register({
     id: 'fixture-providers',
     label: 'Fixture Providers',
     capabilities: { refresh: true },
@@ -305,7 +349,7 @@ Provider source contract 的边界是：
 
 ### `ctx.storage` — Plugin KV Storage
 
-Async key-value store scoped to the plugin. 当前 server host implementation 是 in-memory cache，不能作为 source-of-truth；需要长期保存的 provider projection、fingerprint、credential ref 和 sync status 必须交给 host-owned external provider source pipeline。
+Async key-value store scoped to the plugin. The server host stores values in the Cradle-owned `plugin_storage_entries` table and isolates data by plugin package identity plus key. Use this for small plugin-owned preferences or cursors. Host-owned projections such as provider records, fingerprints, credential refs, and sync status still belong in their dedicated host pipelines.
 
 ```ts
 export async function activate(ctx: ServerPluginContext): Promise<void> {
@@ -327,14 +371,14 @@ Intercept or observe LLM interactions:
 ```ts
 export function activate(ctx: ServerPluginContext): void {
   // Modify queries before they reach the LLM
-  const dispose1 = ctx.hooks.onBeforeQuery((queryCtx) => {
+  const dispose1 = ctx.hooks.chat.onBeforeQuery((queryCtx) => {
     // Add system context
     queryCtx.metadata.myPlugin = { injectedAt: Date.now() }
     return queryCtx // Must return the (possibly modified) context
   })
 
   // Observe responses (read-only)
-  const dispose2 = ctx.hooks.onAfterResponse((responseCtx) => {
+  const dispose2 = ctx.hooks.chat.onAfterResponse((responseCtx) => {
     console.log(`Model ${responseCtx.model} responded in ${responseCtx.durationMs}ms`)
     if (responseCtx.usage) {
       console.log(`Tokens: ${responseCtx.usage.inputTokens} in, ${responseCtx.usage.outputTokens} out`)
@@ -379,7 +423,7 @@ export function activate(ctx: ServerPluginContext): void {
 
 ### `ctx.sharedConfig` — Desktop-Provided Configuration
 
-A `ReadonlyMap<string, string>` populated from environment variables with prefix `CRADLE_PLUGIN_`. Desktop plugins write these via `ctx.setSharedConfig()`.
+A `ReadonlyMap<string, string>` populated from environment variables with prefix `CRADLE_PLUGIN_`. Desktop plugins write these via `ctx.sharedConfig.set()`.
 
 ```ts
 export function activate(ctx: ServerPluginContext): void {
@@ -392,7 +436,7 @@ export function activate(ctx: ServerPluginContext): void {
 }
 ```
 
-**Key mapping:** Desktop calls `ctx.setSharedConfig('MY_KEY', 'value')` → becomes env `CRADLE_PLUGIN_MY_KEY=value` → server reads `ctx.sharedConfig.get('MY_KEY')`.
+**Key mapping:** Desktop calls `ctx.sharedConfig.set('MY_KEY', 'value')` → becomes env `CRADLE_PLUGIN_MY_KEY=value` → server reads `ctx.sharedConfig.get('MY_KEY')`.
 
 ### `ctx.logger` — Scoped Logger
 
@@ -434,7 +478,7 @@ import { useState } from 'react'
 import type { WebPluginContext } from '@cradle/plugin-sdk/web'
 
 export function activate(ctx: WebPluginContext): void {
-  ctx.registerPanel({
+  ctx.panels.register({
     id: 'my-panel',
     title: 'My Panel',
     component: MyPanel,
@@ -453,12 +497,14 @@ function MyPanel({ isActive }: { isActive: boolean }) {
 }
 ```
 
-### `ctx.registerPanel(panel)` — UI Panel Registration
+Web panel and command registrations are tracked in `ctx.subscriptions` and are disposed by the host when the web plugin layer deactivates. Use namespace APIs such as `ctx.panels.register` and `ctx.commands.register`. Keep a returned `Disposable` only when the plugin needs to remove a panel or command before full deactivation.
+
+### `ctx.panels.register(panel)` — UI Panel Registration
 
 Register a React component as a panel in the Cradle UI:
 
 ```ts
-ctx.registerPanel({
+ctx.panels.register({
   id: 'unique-panel-id',       // Must be unique across all plugins
   title: 'Panel Title',        // Displayed in UI
   icon: MyIconComponent,       // Optional: React component or icon name string
@@ -486,19 +532,18 @@ interface PanelProps {
 
 Returns a `Disposable` — call `.dispose()` to unregister.
 
-### `ctx.registerCommand(cmd)` — Command Registration
+### `ctx.commands.register(cmd)` — Command Registration
 
 Register a command accessible via the command palette:
 
 ```ts
-ctx.registerCommand({
+ctx.commands.register({
   id: 'my-plugin.doThing',
   title: 'Do Something Useful',
   icon: MyIcon,             // Optional
   keybinding: 'ctrl+shift+m', // Optional
   async execute() {
-    const serverUrl = getServerUrl()
-    const res = await fetch(`${serverUrl}/api/plugins/my-plugin/action`)
+    const res = await ctx.routes.fetch('/action')
     const data = await res.json()
     ctx.logger.info('Action result:', data)
   },
@@ -526,17 +571,16 @@ ctx.logger.info('Panel rendered')
 ctx.logger.error('API call failed', err)
 ```
 
-### Getting the Server URL
+### `ctx.routes` — Plugin Server Route Client
 
-Web plugins need to call their server-side routes. Use this pattern:
+Web plugins call their own server-side routes through the plugin-scoped route client:
 
 ```ts
-function getServerUrl(): string {
-  return (window as any).cradle?.env?.serverUrl
-    ?? (import.meta as any).env?.VITE_SERVER_URL
-    ?? 'http://127.0.0.1:21423'
-}
+const url = ctx.routes.url('/info')
+const response = await ctx.routes.fetch('/info')
 ```
+
+The host owns the server base URL and route segment. `ctx.routes` only accepts paths relative to the current plugin's route scope, so web plugins should not read `window.cradle`, `import.meta.env`, or manually build `/api/plugins/{routeSegment}` URLs.
 
 ---
 
@@ -552,12 +596,13 @@ import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
 
 export function activate(ctx: DesktopPluginContext): void {
   // Pass config to the server layer
-  ctx.setSharedConfig('MY_SECRET', process.env.MY_API_KEY ?? '')
+  ctx.sharedConfig.set('MY_SECRET', process.env.MY_API_KEY ?? '')
 
   // Listen for webview creation
-  ctx.onWebviewCreated((wc, tabId) => {
+  ctx.webviews.onCreated((webview, tabId) => {
     ctx.logger.info(`Webview created: ${tabId}`)
-    // Attach CDP, inject scripts, etc.
+    webview.cdp.attach('1.3')
+    void webview.cdp.sendCommand('Runtime.enable')
   })
 }
 
@@ -566,13 +611,15 @@ export function deactivate(): void {
 }
 ```
 
-### `ctx.setSharedConfig(key, value)` — Cross-Layer Config
+Desktop event and shared-config registrations are tracked in `ctx.subscriptions` and are disposed by the host after `deactivate()` runs.
+
+### `ctx.sharedConfig.set(key, value)` — Cross-Layer Config
 
 Writes a value that becomes available to the server plugin via `ctx.sharedConfig`:
 
 ```ts
 // Desktop:
-ctx.setSharedConfig('BROWSER_BACKEND_SOCKET', '/tmp/my-socket.sock')
+ctx.sharedConfig.set('BROWSER_BACKEND_SOCKET', '/tmp/my-socket.sock')
 
 // Server reads it as:
 const socket = ctx.sharedConfig.get('BROWSER_BACKEND_SOCKET')
@@ -580,39 +627,41 @@ const socket = ctx.sharedConfig.get('BROWSER_BACKEND_SOCKET')
 
 The value is passed as environment variable `CRADLE_PLUGIN_BROWSER_BACKEND_SOCKET` to the server process.
 
-### `ctx.onWebviewCreated(handler)` — WebContents Access
+### `ctx.webviews.onCreated(handler)` — Webview Facade
 
 Called whenever a new webview (tab) is created in the Electron renderer:
 
 ```ts
-ctx.onWebviewCreated((wc, tabId) => {
-  // wc is Electron's WebContents — use for CDP, script injection, etc.
-  wc.debugger.attach('1.3')
-  wc.debugger.sendCommand('Runtime.enable')
+ctx.webviews.onCreated((webview, tabId) => {
+  webview.cdp.attach('1.3')
+  void webview.cdp.sendCommand('Runtime.enable')
+  ctx.logger.info(`${tabId}: ${webview.getUrl()}`)
 })
 ```
 
-Returns a `Disposable` for cleanup.
+The handler receives the SDK-owned `DesktopWebview` facade instead of a direct Electron object. The facade exposes navigation, URL/title lookup, PNG capture, close, destroyed event subscription, and a CDP session. Returns a `Disposable` for cleanup.
 
 ### Browser Panel Tab Bridge
 
 Desktop plugins can ask the active renderer to create, activate, or inspect Cradle's visible browser panel tabs. This is useful for plugins that own a browser automation backend and need to keep backend webview IDs mapped to renderer tab IDs.
 
 ```ts
-const rendererTabId = await ctx.requestBrowserTab('https://example.com')
+const rendererTabId = await ctx.browserTabs.request('https://example.com')
 if (!rendererTabId) {
   throw new Error('Browser panel tab was not created')
 }
 
-const activated = await ctx.activateBrowserTab(rendererTabId)
-const activeTabId = await ctx.getActiveBrowserTab()
+const activated = await ctx.browserTabs.activate(rendererTabId)
+const hidden = await ctx.browserTabs.goOffScreen(rendererTabId)
+const activeTabId = await ctx.browserTabs.getActive()
 ```
 
 | Method | Description |
 |--------|-------------|
-| `requestBrowserTab(url?)` | Creates a visible browser panel tab in the active renderer and returns its renderer tab ID. |
-| `activateBrowserTab(tabId)` | Opens the browser panel and activates an existing renderer tab. Returns `false` when the renderer does not know the tab. |
-| `getActiveBrowserTab()` | Returns the active renderer browser panel tab ID, if one is available. |
+| `browserTabs.request(url?)` | Creates a visible browser panel tab in the active renderer and returns its renderer tab ID. |
+| `browserTabs.activate(tabId)` | Opens the browser panel and activates an existing renderer tab. Returns `false` when the renderer does not know the tab. |
+| `browserTabs.goOffScreen(tabId?)` | Hides the browser panel without closing tabs. Returns `false` when a provided tab ID is unknown. |
+| `browserTabs.getActive()` | Returns the active renderer browser panel tab ID, if one is available. |
 
 ### `ctx.userDataPath` — Electron User Data
 
@@ -721,16 +770,15 @@ The `cradle.web` field in `package.json` should point to the built output: `"web
 └─────────────┘                └────────────┘
 ```
 
-Desktop plugins run **before** the server process is forked. Values set via `ctx.setSharedConfig()` are available immediately when the server starts.
+Desktop plugins run **before** the server process is forked. Values set via `ctx.sharedConfig.set()` are available immediately when the server starts.
 
 ### Web → Server (via HTTP)
 
-Web plugins call their server routes using standard `fetch()`:
+Web plugins call their server routes through `ctx.routes`:
 
 ```ts
 // In web plugin
-const serverUrl = getServerUrl()
-const res = await fetch(`${serverUrl}/api/plugins/my-plugin/data`)
+const res = await ctx.routes.fetch('/data')
 ```
 
 ### Server → Web (via Events/Polling)
@@ -817,13 +865,53 @@ interface PluginManifest {
   cradle: CradlePluginMeta
 }
 
+interface PluginSourceDescriptor {
+  kind: 'workspaceDev' | 'bundledResource' | 'externalLocal'
+  packageDir: string
+  trusted: boolean
+  reason?: string
+  provenance?: PluginSourceProvenance
+}
+
+interface PluginSourceProvenance {
+  kind: 'marketplace-install'
+  installedAt: string
+  mode: 'alreadyAvailable' | 'downloaded'
+  source: string
+  repository: string
+  path: string
+  packageName: string
+  version: string
+  channel: string
+  ref: string
+  originalUrl?: string
+}
+
 interface CradlePluginMeta {
+  apiVersion: '1'
   displayName?: string
   description?: string
   deployments?: Array<'desktop' | 'web'>
   server?: string
   web?: string
   desktop?: string
+  contributes: {
+    capabilities: Array<{
+      id: string
+      type: string
+      layer?: 'server' | 'web' | 'desktop'
+      label?: string
+      description?: string
+      permissions: string[]
+      metadata?: Record<string, unknown>
+    }>
+    permissions: Array<{
+      id: string
+      label?: string
+      description?: string
+      required?: boolean
+    }>
+  }
 }
 
 interface Logger {
@@ -838,15 +926,29 @@ interface Logger {
 
 ```ts
 interface ServerPluginContext {
-  app: unknown  // Elysia instance
-  registerMcpServer(config: McpServerConfig): void
-  registerSkill(skill: SkillDefinition): void
+  routes: ServerPluginRouteRegistry
+  mcp: ServerPluginMcpRegistry
+  skills: ServerPluginSkillRegistry
+  providers: ServerPluginProviderRegistries
+  subscriptions: Disposable[]
   storage: PluginStorage
   logger: Logger
   sharedConfig: ReadonlyMap<string, string>
   manifest: PluginManifest
   hooks: ServerPluginHooks
   events: PluginEventBus
+}
+
+interface ServerPluginMcpRegistry {
+  registerServer(config: McpServerConfig): Disposable | Promise<Disposable | undefined> | undefined
+}
+
+interface ServerPluginSkillRegistry {
+  register(skill: SkillDefinition): Disposable
+}
+
+interface ServerPluginProviderRegistries {
+  externalSources: ExternalProviderSourceRegistry
 }
 
 interface McpServerConfig {
@@ -870,6 +972,10 @@ interface PluginStorage {
 }
 
 interface ServerPluginHooks {
+  chat: ServerPluginChatHooks
+}
+
+interface ServerPluginChatHooks {
   onBeforeQuery(handler: BeforeQueryHandler): Disposable
   onAfterResponse(handler: AfterResponseHandler): Disposable
 }
@@ -902,10 +1008,25 @@ interface PluginEventBus {
 
 ```ts
 interface WebPluginContext {
-  registerPanel(panel: PanelRegistration): Disposable
-  registerCommand(cmd: CommandRegistration): Disposable
+  routes: WebPluginRouteClient
+  panels: WebPluginPanelRegistry
+  commands: WebPluginCommandRegistry
+  subscriptions: Disposable[]
   storage: WebPluginStorage
   logger: Logger
+}
+
+interface WebPluginRouteClient {
+  url(path: string): string
+  fetch(path: string, init?: RequestInit): Promise<Response>
+}
+
+interface WebPluginPanelRegistry {
+  register(panel: PanelRegistration): Disposable
+}
+
+interface WebPluginCommandRegistry {
+  register(cmd: CommandRegistration): Disposable
 }
 
 interface PanelRegistration {
@@ -941,13 +1062,46 @@ interface WebPluginStorage {
 ```ts
 interface DesktopPluginContext {
   userDataPath: string
-  onWebviewCreated(handler: (wc: unknown, tabId: string) => void): Disposable
-  requestBrowserTab(url?: string): Promise<string | undefined>
-  activateBrowserTab(tabId: string): Promise<boolean>
-  getActiveBrowserTab(): Promise<string | undefined>
-  setSharedConfig(key: string, value: string): void
+  webviews: DesktopPluginWebviewRegistry
+  browserTabs: DesktopPluginBrowserTabBridge
+  sharedConfig: DesktopPluginSharedConfigRegistry
+  subscriptions: Disposable[]
   logger: Logger
   manifest: PluginManifest
+}
+
+interface DesktopPluginWebviewRegistry {
+  onCreated(handler: (webview: DesktopWebview, tabId: string) => void): Disposable
+}
+
+interface DesktopWebview {
+  readonly tabId: string
+  isDestroyed(): boolean
+  navigate(url: string): Promise<void>
+  getUrl(): string
+  getTitle(): string
+  capturePng(): Promise<Uint8Array>
+  close(): void
+  onDestroyed(handler: () => void): Disposable
+  cdp: DesktopWebviewCdpSession
+}
+
+interface DesktopWebviewCdpSession {
+  attach(protocolVersion?: string): void
+  detach(): void
+  sendCommand<T = unknown>(command: string, params?: Record<string, unknown>): Promise<T>
+  onDetached(handler: (reason: string) => void): Disposable
+}
+
+interface DesktopPluginBrowserTabBridge {
+  request(url?: string): Promise<string | undefined>
+  activate(tabId: string): Promise<boolean>
+  goOffScreen(tabId?: string): Promise<boolean>
+  getActive(): Promise<string | undefined>
+}
+
+interface DesktopPluginSharedConfigRegistry {
+  set(key: string, value: string): void
 }
 ```
 
@@ -968,9 +1122,29 @@ A plugin that exposes a single API route.
   "version": "0.0.1",
   "private": true,
   "cradle": {
+    "apiVersion": "1",
     "displayName": "Hello World",
     "description": "Minimal example plugin",
-    "server": "src/server.ts"
+    "server": "src/server.ts",
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "route.greet",
+          "type": "server-route",
+          "layer": "server",
+          "label": "Greeting route",
+          "permissions": []
+        },
+        {
+          "id": "route.health",
+          "type": "server-route",
+          "layer": "server",
+          "label": "Health route",
+          "permissions": []
+        }
+      ],
+      "permissions": []
+    }
   },
   "devDependencies": {
     "@cradle/plugin-sdk": "workspace:*"
@@ -984,14 +1158,20 @@ A plugin that exposes a single API route.
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 
 export function activate(ctx: ServerPluginContext): void {
-  const app = ctx.app as any
-
-  app.get('/greet', ({ query }: { query: { name?: string } }) => {
-    const name = query.name ?? 'World'
-    return { greeting: `Hello, ${name}!` }
+  ctx.routes.register<unknown, Record<string, string>, { name?: string }>({
+    method: 'GET',
+    path: '/greet',
+    handler: ({ query }) => {
+      const name = query.name ?? 'World'
+      return { greeting: `Hello, ${name}!` }
+    },
   })
 
-  app.get('/health', () => ({ status: 'ok', timestamp: Date.now() }))
+  ctx.routes.register({
+    method: 'GET',
+    path: '/health',
+    handler: () => ({ status: 'ok', timestamp: Date.now() }),
+  })
 
   ctx.logger.info('Hello plugin ready')
 }
@@ -1019,10 +1199,37 @@ A plugin with an API route AND a sidebar panel.
   "version": "0.0.1",
   "private": true,
   "cradle": {
+    "apiVersion": "1",
     "displayName": "System Monitor",
     "description": "Shows system metrics in a sidebar panel",
     "server": "src/server.ts",
-    "web": "dist/web.mjs"
+    "web": "dist/web.mjs",
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "route.metrics",
+          "type": "server-route",
+          "layer": "server",
+          "label": "Metrics route",
+          "permissions": []
+        },
+        {
+          "id": "panel.monitor-panel",
+          "type": "web-panel",
+          "layer": "web",
+          "label": "System Monitor panel",
+          "permissions": []
+        },
+        {
+          "id": "command.my-monitor.refresh",
+          "type": "web-command",
+          "layer": "web",
+          "label": "Refresh System Metrics",
+          "permissions": []
+        }
+      ],
+      "permissions": []
+    }
   },
   "scripts": {
     "build": "vite build"
@@ -1069,18 +1276,22 @@ import { cpus, totalmem, freemem, hostname, uptime } from 'node:os'
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 
 export function activate(ctx: ServerPluginContext): void {
-  const app = ctx.app as any
-
-  app.get('/metrics', () => {
-    const totalMem = totalmem()
-    const freeMem = freemem()
-    return {
-      hostname: hostname(),
-      cpuCores: cpus().length,
-      memoryUsedGB: Math.round((totalMem - freeMem) / 1073741824 * 100) / 100,
-      memoryTotalGB: Math.round(totalMem / 1073741824 * 100) / 100,
-      uptimeHours: Math.round(uptime() / 3600 * 100) / 100,
-    }
+  ctx.routes.register({
+    method: 'GET',
+    path: '/metrics',
+    handler: () => {
+      const totalMem = totalmem()
+      const freeMem = freemem()
+      const memoryUsedGB = Math.round((totalMem - freeMem) / 1073741824 * 100) / 100
+      const memoryTotalGB = Math.round(totalMem / 1073741824 * 100) / 100
+      return {
+        hostname: hostname(),
+        cpuCores: cpus().length,
+        memoryUsedGB,
+        memoryTotalGB,
+        uptimeHours: Math.round(uptime() / 3600 * 100) / 100,
+      }
+    },
   })
 
   ctx.logger.info('Monitor server activated')
@@ -1101,17 +1312,14 @@ interface Metrics {
   uptimeHours: number
 }
 
-function MonitorPanel({ isActive }: { isActive: boolean }) {
+function MonitorPanel({ isActive, routes }: { isActive: boolean; routes: WebPluginContext['routes'] }) {
   const [metrics, setMetrics] = useState<Metrics | null>(null)
 
   useEffect(() => {
     if (!isActive) return
-    const serverUrl = (window as any).cradle?.env?.serverUrl
-      ?? (import.meta as any).env?.VITE_SERVER_URL
-      ?? 'http://127.0.0.1:21423'
 
     const load = () =>
-      fetch(`${serverUrl}/api/plugins/my-monitor/metrics`)
+      routes.fetch('/metrics')
         .then(r => r.json())
         .then(setMetrics)
         .catch(console.error)
@@ -1147,20 +1355,19 @@ function MonitorPanel({ isActive }: { isActive: boolean }) {
 }
 
 export function activate(ctx: WebPluginContext): void {
-  ctx.registerPanel({
+  ctx.panels.register({
     id: 'monitor-panel',
     title: 'System Monitor',
-    component: MonitorPanel,
+    component: props => <MonitorPanel {...props} routes={ctx.routes} />,
     location: 'sidebar',
     order: 50,
   })
 
-  ctx.registerCommand({
+  ctx.commands.register({
     id: 'my-monitor.refresh',
     title: 'Refresh System Metrics',
     async execute() {
-      const serverUrl = (window as any).cradle?.env?.serverUrl ?? 'http://127.0.0.1:21423'
-      const data = await fetch(`${serverUrl}/api/plugins/my-monitor/metrics`).then(r => r.json())
+      const data = await ctx.routes.fetch('/metrics').then(r => r.json())
       ctx.logger.info('Current metrics:', data)
     },
   })
@@ -1191,11 +1398,44 @@ A plugin that provides an MCP server and skill for agent use, with desktop integ
   "version": "0.0.1",
   "private": true,
   "cradle": {
+    "apiVersion": "1",
     "displayName": "My AI Tool",
     "description": "Provides tool X for AI agents",
     "server": "dist/server.mjs",
     "desktop": "dist/desktop.mjs",
-    "deployments": ["desktop"]
+    "deployments": ["desktop"],
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "mcp.my-tool",
+          "type": "mcp-server",
+          "layer": "server",
+          "label": "My Tool MCP server",
+          "permissions": ["desktop.my-tool-socket"]
+        },
+        {
+          "id": "skill.my-tool",
+          "type": "skill",
+          "layer": "server",
+          "label": "My Tool skill",
+          "permissions": []
+        },
+        {
+          "id": "desktop.shared-config.my-tool-socket",
+          "type": "desktop.sharedConfigEndpoint",
+          "layer": "desktop",
+          "label": "My Tool socket path",
+          "permissions": ["desktop.my-tool-socket"]
+        }
+      ],
+      "permissions": [
+        {
+          "id": "desktop.my-tool-socket",
+          "label": "Share My Tool desktop socket with the server layer",
+          "required": true
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "vite build"
@@ -1254,7 +1494,7 @@ import type { DesktopPluginContext } from '@cradle/plugin-sdk/desktop'
 export function activate(ctx: DesktopPluginContext): void {
   // Create a Unix socket path for IPC
   const socketPath = join(ctx.userDataPath, 'my-tool.sock')
-  ctx.setSharedConfig('MY_TOOL_SOCKET', socketPath)
+  ctx.sharedConfig.set('MY_TOOL_SOCKET', socketPath)
 
   // Start background service, attach to webviews, etc.
   ctx.logger.info(`Desktop plugin ready, socket: ${socketPath}`)
@@ -1275,7 +1515,7 @@ export function activate(ctx: ServerPluginContext): void {
 
   // Only register MCP server when socket is available (desktop mode)
   if (socketPath) {
-    ctx.registerMcpServer({
+    ctx.mcp.registerServer({
       name: 'my-tool',
       command: 'node',
       args: [resolve(__dirname, 'mcp-server.mjs')],
@@ -1284,7 +1524,7 @@ export function activate(ctx: ServerPluginContext): void {
   }
 
   // Register skill for agent discovery
-  ctx.registerSkill({
+  ctx.skills.register({
     name: 'my-tool',
     description: 'Tool X for AI agents — use when user needs to do Y',
     skillFile: resolve(__dirname, 'SKILL.md'),

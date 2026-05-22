@@ -55,6 +55,23 @@ vi.mock('./use-plugin-data', () => ({
         version: '1.0.0',
         displayName: 'Sample Plugin',
         description: 'Sample plugin',
+        source: {
+          kind: 'externalLocal',
+          trusted: true,
+          packageDir: '/tmp/cradle/marketplace/plugins/sample',
+          provenance: {
+            kind: 'marketplace-install',
+            installedAt: '2026-05-21T10:00:00.000Z',
+            mode: 'downloaded',
+            source: 'github',
+            repository: 'wibus-wee/Cradle',
+            path: 'plugins/sample',
+            packageName: 'sample',
+            version: '1.0.0',
+            channel: 'bundled',
+            ref: 'main',
+          },
+        },
         hasServer: false,
         hasWeb: true,
         hasDesktop: false,
@@ -99,5 +116,7 @@ describe('PluginsPanel', () => {
 
     expect(mockedDeps.executeGlobal).toHaveBeenCalledTimes(1)
     expect(mockedDeps.executeOwned).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('wibus-wee/Cradle')).toBeTruthy()
+    expect(screen.getByText('plugins/sample')).toBeTruthy()
   })
 })

@@ -60,6 +60,18 @@ export interface TabsCloseCommand {
   tabId: string
 }
 
+export interface TabsGoOffScreenCommand {
+  type: 'tabs_go_off_screen'
+  id: string
+  tabId?: string
+}
+
+export interface TabsBringToFrontCommand {
+  type: 'tabs_bring_to_front'
+  id: string
+  tabId?: string
+}
+
 export interface EvalCommand {
   type: 'eval'
   id: string
@@ -114,6 +126,8 @@ export type BrowserCommand
     | TabsListCommand
     | TabsNewCommand
     | TabsCloseCommand
+    | TabsGoOffScreenCommand
+    | TabsBringToFrontCommand
     | EvalCommand
     | ScrollCommand
     | HoverCommand
@@ -153,6 +167,7 @@ export type GetTextResult = { text: string }
 export type TabsListResult = { tabs: TabInfo[] }
 export type TabsNewResult = { tab: TabInfo }
 export type TabsCloseResult = { success: true }
+export type TabsVisibilityResult = { success: true }
 export type EvalResult = { result: unknown }
 export type ScrollResult = { success: true }
 export type HoverResult = { success: true }

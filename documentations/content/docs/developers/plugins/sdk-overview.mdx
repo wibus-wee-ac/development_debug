@@ -20,11 +20,14 @@ Manifest fields live under package metadata:
 ```json
 {
   "cradle": {
+    "apiVersion": "1",
     "server": "./dist/server.js",
     "web": "./dist/web.js",
     "desktop": "./dist/desktop.js",
-    "capabilities": [],
-    "permissions": []
+    "contributes": {
+      "capabilities": [],
+      "permissions": []
+    }
   }
 }
 ```
@@ -91,6 +94,10 @@ Host-derived namespace:
 
 <TypeTable
   type={{
+    apiVersion: {
+      description: "Plugin SDK contract version. Must be 1 for the current manifest shape.",
+      type: "\"1\"",
+    },
     server: {
       description: "Server layer entrypoint loaded by the plugin host.",
       type: "string",
@@ -103,18 +110,41 @@ Host-derived namespace:
       description: "Desktop layer entrypoint loaded by the desktop host.",
       type: "string",
     },
-    capabilities: {
-      description: "Owner-prefixed capability ids registered by this plugin.",
-      type: "string[]",
-      default: "[]",
-    },
-    permissions: {
-      description: "Permission names required before plugin behavior can run.",
-      type: "string[]",
-      default: "[]",
+    contributes: {
+      description: "Required structured static declarations for capabilities and permissions. Use empty arrays when the plugin declares no capabilities or permissions.",
+      type: "{ capabilities: CapabilityContribution[]; permissions: PermissionContribution[] }",
     },
   }}
 />
+
+`contributes` 是静态声明，不是运行期注册。它让 host 在 activation 前知道 plugin 计划提供哪些能力、需要哪些权限、这些能力属于哪个 layer。运行期仍然必须通过 SDK context 注册真实能力；host 会把静态声明投影为 `declaredCapabilities` 和 `declaredPermissions`，把运行期注册投影为 `capabilities`。
+
+```json
+{
+  "cradle": {
+    "apiVersion": "1",
+    "server": "dist/server.mjs",
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "external-provider-source.cc-switch",
+          "type": "external-provider-source",
+          "layer": "server",
+          "label": "CC Switch provider source",
+          "permissions": ["filesystem.cc-switch.read"]
+        }
+      ],
+      "permissions": [
+        {
+          "id": "filesystem.cc-switch.read",
+          "label": "Read CC Switch local configuration",
+          "required": true
+        }
+      ]
+    }
+  }
+}
+```
 
 ## Capability 契约
 
@@ -126,6 +156,13 @@ Plugin capabilities should state:
 - events emitted or consumed。
 - cleanup behavior。
 - failure behavior and observability path。
+
+Static declarations and runtime registrations have different meanings:
+
+- `declaredCapabilities` / `declaredPermissions` describe expected behavior before activation.
+- `capabilities` describes what actually registered in the current runtime.
+- A declared capability may not register when environment predicates fail, for example desktop-only MCP server registration without a desktop socket.
+- External local plugins fail activation when they register runtime capabilities that were not declared in `cradle.contributes.capabilities`.
 
 ## 怎么验证
 

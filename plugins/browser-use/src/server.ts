@@ -10,7 +10,7 @@ export function activate(ctx: ServerPluginContext): void {
 
   // Only register MCP server if the socket path is available (desktop deployment)
   if (socketPath) {
-    ctx.registerMcpServer({
+    ctx.mcp.registerServer({
       name: 'browser-use',
       command: 'node',
       args: [resolve(__dirname, 'mcp-server.mjs')],
@@ -20,7 +20,7 @@ export function activate(ctx: ServerPluginContext): void {
 
   // Register the browser-use skill for agent discovery
   const skillFile = resolve(__dirname, 'SKILL.md')
-  ctx.registerSkill({
+  ctx.skills.register({
     name: 'browser-use',
     description: 'Browser automation CLI for AI agents. Use when the user needs to interact with websites.',
     skillFile,

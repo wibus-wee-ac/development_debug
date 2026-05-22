@@ -27,8 +27,10 @@ export function registerAfterResponseHook(handler: AfterResponseHandler): Dispos
 }
 
 export function registerOwnedBeforeQueryHook(owner: string, handler: BeforeQueryHandler): Disposable {
+  const record = registerPluginCapability(owner, 'hook', 'server', 'before-query', 'Before query hook', undefined, [
+    'hook.before-query',
+  ])
   const disposable = registerBeforeQueryHook(handler)
-  const record = registerPluginCapability(owner, 'hook', 'server', 'before-query', 'Before query hook')
   return {
     dispose() {
       disposable.dispose()
@@ -38,8 +40,10 @@ export function registerOwnedBeforeQueryHook(owner: string, handler: BeforeQuery
 }
 
 export function registerOwnedAfterResponseHook(owner: string, handler: AfterResponseHandler): Disposable {
+  const record = registerPluginCapability(owner, 'hook', 'server', 'after-response', 'After response hook', undefined, [
+    'hook.after-response',
+  ])
   const disposable = registerAfterResponseHook(handler)
-  const record = registerPluginCapability(owner, 'hook', 'server', 'after-response', 'After response hook')
   return {
     dispose() {
       disposable.dispose()
