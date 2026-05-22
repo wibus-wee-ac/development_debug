@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } from 'electron'
+import { z } from 'zod'
 
 export type TrayActionId =
   | 'open-app'
@@ -28,6 +29,25 @@ interface TrayManagerOptions {
 const TRAY_ACTION_CHANNEL = 'desktop-tray:perform-action'
 const TRAY_PENDING_ACTIONS_CHANNEL = 'desktop-tray:consume-pending-actions'
 const TRAY_SNAPSHOT_PATH = '/desktop/tray'
+const TrayActionIdSchema = z.enum([
+  'open-app',
+  'open-chat',
+  'new-chat',
+  'global-search',
+  'open-resident',
+  'open-running',
+  'open-approvals',
+  'open-awaits',
+  'open-automation',
+  'open-workspaces',
+  'open-agents',
+  'open-providers',
+  'open-chronicle',
+  'open-usage',
+  'open-plugins',
+  'open-desktop-settings',
+  'quit',
+])
 
 interface TrayActionRequest {
   actionId: TrayActionId
@@ -64,6 +84,37 @@ interface TraySnapshot {
   resident: TraySessionItem[]
   quickActions: TrayQuickAction[]
 }
+
+const TraySessionItemSchema = z.object({
+  sessionId: z.string(),
+  title: z.string(),
+  workspaceName: z.string(),
+  runtimeKind: z.string(),
+  modelId: z.string().nullable(),
+  detail: z.string(),
+})
+
+const TrayMetricSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  tone: z.enum(['neutral', 'active', 'warning', 'danger']),
+})
+
+const TrayQuickActionSchema = z.object({
+  id: TrayActionIdSchema,
+  label: z.string(),
+  description: z.string(),
+  accelerator: z.string().nullable(),
+  badge: z.string().nullable(),
+  enabled: z.boolean(),
+})
+
+const TraySnapshotSchema = z.object({
+  metrics: z.array(TrayMetricSchema),
+  running: z.array(TraySessionItemSchema),
+  resident: z.array(TraySessionItemSchema),
+  quickActions: z.array(TrayQuickActionSchema),
+})
 
 const TRAY_ICON_SIZE = 18
 const MENU_ICON_SIZE = 10
@@ -115,28 +166,6 @@ function createMetricIcon(tone: TrayMetric['tone']): Electron.NativeImage {
   return createMenuDotIcon(115, 115, 115)
 }
 
-function isTrayActionId(value: unknown): value is TrayActionId {
-  return typeof value === 'string' && (
-    value === 'open-app'
-    || value === 'open-chat'
-    || value === 'new-chat'
-    || value === 'global-search'
-    || value === 'open-resident'
-    || value === 'open-running'
-    || value === 'open-approvals'
-    || value === 'open-awaits'
-    || value === 'open-automation'
-    || value === 'open-workspaces'
-    || value === 'open-agents'
-    || value === 'open-providers'
-    || value === 'open-chronicle'
-    || value === 'open-usage'
-    || value === 'open-plugins'
-    || value === 'open-desktop-settings'
-    || value === 'quit'
-  )
-}
-
 export class TrayManager {
   private tray: Tray | null = null
   private pendingActionRequests: TrayActionRequest[] = []
@@ -168,10 +197,7 @@ export class TrayManager {
     })
 
     ipcMain.handle(TRAY_ACTION_CHANNEL, async (_event, actionId: unknown, payload: unknown) => {
-      if (!isTrayActionId(actionId)) {
-        throw new Error(`Unsupported tray action: ${String(actionId)}`)
-      }
-      await this.performAction(actionId, payload)
+      await this.performAction(TrayActionIdSchema.parse(actionId), payload)
     })
     ipcMain.handle(TRAY_PENDING_ACTIONS_CHANNEL, () => this.pendingActionRequests.splice(0))
   }
@@ -247,7 +273,7 @@ export class TrayManager {
       if (!response.ok) {
         return null
       }
-      return await response.json() as TraySnapshot
+      return TraySnapshotSchema.parse(await response.json())
     }
     catch {
       return null

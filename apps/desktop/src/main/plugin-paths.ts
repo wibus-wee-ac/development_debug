@@ -1,6 +1,7 @@
 /* Resolves desktop plugin directories across dev, bundled, and operator-configured runtimes. */
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { z } from 'zod'
 
 const WORKSPACE_MARKER_FILE = 'pnpm-workspace.yaml'
 const PLUGINS_DIR_NAME = 'plugins'
@@ -14,10 +15,11 @@ interface DesktopPluginDirOptions {
   resourcesPath?: string
 }
 
-function readEnvPath(env: Record<string, string | undefined>, key: string): string | undefined {
-  const value = env[key]?.trim()
-  return value ? resolve(value) : undefined
-}
+const ConfiguredPluginDirSchema = z.string()
+  .trim()
+  .min(1)
+  .transform(value => resolve(value))
+  .optional()
 
 function findWorkspacePluginsDir(anchors: string[]): string | undefined {
   for (const anchor of anchors) {
@@ -41,7 +43,7 @@ function findWorkspacePluginsDir(anchors: string[]): string | undefined {
 export function readConfiguredPrimaryPluginsDir(
   env: Record<string, string | undefined> = process.env,
 ): string | undefined {
-  return readEnvPath(env, 'CRADLE_PLUGINS_DIR')
+  return ConfiguredPluginDirSchema.parse(env.CRADLE_PLUGINS_DIR)
 }
 
 export function resolveDesktopPrimaryPluginsDir(options: DesktopPluginDirOptions): string {

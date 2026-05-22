@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 
 import { z } from 'zod'
 
@@ -23,23 +23,42 @@ export interface WindowBoundsPolicy {
   minHeight: number
 }
 
-const StoredWindowBoundsJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
-  z.object({
+const StoredWindowBoundsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
     x: z.number().finite().optional(),
     y: z.number().finite().optional(),
     width: z.number().finite().positive().optional(),
     height: z.number().finite().positive().optional(),
-  }),
-)
+  }))
+
+const WindowBoundsSchema = z.object({
+  x: z.number().finite().optional(),
+  y: z.number().finite().optional(),
+  width: z.number().finite().positive().optional(),
+  height: z.number().finite().positive().optional(),
+})
+
+const DisplayWorkAreaSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+})
+
+const WindowBoundsPolicySchema = z.object({
+  defaultWidth: z.number().finite().positive(),
+  defaultHeight: z.number().finite().positive(),
+  minWidth: z.number().finite().positive(),
+  minHeight: z.number().finite().positive(),
+})
 
 export function readStoredWindowBounds(filePath: string): WindowBounds | null {
-  try {
-    return StoredWindowBoundsJsonSchema.parse(readFileSync(filePath, 'utf8'))
-  }
-  catch {
+  if (!existsSync(filePath)) {
     return null
   }
+
+  return StoredWindowBoundsJsonSchema.parse(readFileSync(filePath, 'utf8'))
 }
 
 export function resolveVisibleWindowBounds(
@@ -48,26 +67,62 @@ export function resolveVisibleWindowBounds(
   policy: WindowBoundsPolicy,
   primaryWorkArea = workAreas[0],
 ): Required<WindowBounds> {
-  const validWorkAreas = workAreas.filter(isUsableWorkArea)
-  const fallbackWorkArea = isUsableWorkArea(primaryWorkArea) ? primaryWorkArea : validWorkAreas[0]
+  const input = z.object({
+    storedBounds: WindowBoundsSchema,
+    workAreas: z.array(DisplayWorkAreaSchema),
+    policy: WindowBoundsPolicySchema,
+    primaryWorkArea: DisplayWorkAreaSchema.optional(),
+  }).parse({ storedBounds, workAreas, policy, primaryWorkArea })
+
+  const fallbackWorkArea = input.primaryWorkArea ?? input.workAreas[0]
 
   if (!fallbackWorkArea) {
+    const width = z.number()
+      .finite()
+      .positive()
+      .optional()
+      .default(input.policy.defaultWidth)
+      .transform(Math.round)
+      .transform(value => Math.max(value, input.policy.minWidth))
+      .parse(input.storedBounds.width)
+    const height = z.number()
+      .finite()
+      .positive()
+      .optional()
+      .default(input.policy.defaultHeight)
+      .transform(Math.round)
+      .transform(value => Math.max(value, input.policy.minHeight))
+      .parse(input.storedBounds.height)
     return {
       x: 0,
       y: 0,
-      width: readDimension(storedBounds.width, policy.defaultWidth, policy.minWidth),
-      height: readDimension(storedBounds.height, policy.defaultHeight, policy.minHeight),
+      width,
+      height,
     }
   }
 
-  const storedWorkArea = pickWorkAreaForBounds(storedBounds, validWorkAreas)
+  const storedWorkArea = pickWorkAreaForBounds(input.storedBounds, input.workAreas)
   const targetWorkArea = storedWorkArea ?? fallbackWorkArea
-  const width = readDimension(storedBounds.width, policy.defaultWidth, policy.minWidth, targetWorkArea.width)
-  const height = readDimension(storedBounds.height, policy.defaultHeight, policy.minHeight, targetWorkArea.height)
+  const width = z.number()
+    .finite()
+    .positive()
+    .optional()
+    .default(input.policy.defaultWidth)
+    .transform(Math.round)
+    .transform(value => Math.min(Math.max(value, Math.min(input.policy.minWidth, targetWorkArea.width)), targetWorkArea.width))
+    .parse(input.storedBounds.width)
+  const height = z.number()
+    .finite()
+    .positive()
+    .optional()
+    .default(input.policy.defaultHeight)
+    .transform(Math.round)
+    .transform(value => Math.min(Math.max(value, Math.min(input.policy.minHeight, targetWorkArea.height)), targetWorkArea.height))
+    .parse(input.storedBounds.height)
   const centeredX = targetWorkArea.x + Math.round((targetWorkArea.width - width) / 2)
   const centeredY = targetWorkArea.y + Math.round((targetWorkArea.height - height) / 2)
-  const targetX = storedWorkArea && isFiniteNumber(storedBounds.x) ? Math.round(storedBounds.x) : centeredX
-  const targetY = storedWorkArea && isFiniteNumber(storedBounds.y) ? Math.round(storedBounds.y) : centeredY
+  const targetX = storedWorkArea && input.storedBounds.x !== undefined ? Math.round(input.storedBounds.x) : centeredX
+  const targetY = storedWorkArea && input.storedBounds.y !== undefined ? Math.round(input.storedBounds.y) : centeredY
 
   return {
     x: clampPosition(targetX, targetWorkArea.x, targetWorkArea.x + targetWorkArea.width - width),
@@ -79,10 +134,10 @@ export function resolveVisibleWindowBounds(
 
 function pickWorkAreaForBounds(bounds: WindowBounds, workAreas: DisplayWorkArea[]): DisplayWorkArea | undefined {
   if (
-    !isFiniteNumber(bounds.x)
-    || !isFiniteNumber(bounds.y)
-    || !isFiniteNumber(bounds.width)
-    || !isFiniteNumber(bounds.height)
+    bounds.x === undefined
+    || bounds.y === undefined
+    || bounds.width === undefined
+    || bounds.height === undefined
   ) {
     return undefined
   }
@@ -118,26 +173,10 @@ function getIntersectionArea(bounds: Required<WindowBounds>, workArea: DisplayWo
   return width * height
 }
 
-function readDimension(value: number | undefined, fallback: number, minimum: number, maximum = Number.POSITIVE_INFINITY): number {
-  const base = isFiniteNumber(value) && value > 0 ? Math.round(value) : fallback
-  const limitedMaximum = Number.isFinite(maximum) && maximum > 0 ? Math.round(maximum) : Number.POSITIVE_INFINITY
-  const limitedMinimum = Number.isFinite(limitedMaximum) ? Math.min(minimum, limitedMaximum) : minimum
-
-  return Math.min(Math.max(base, limitedMinimum), limitedMaximum)
-}
-
 function clampPosition(value: number, minimum: number, maximum: number): number {
   if (maximum < minimum) {
     return minimum
   }
 
   return Math.min(Math.max(value, minimum), maximum)
-}
-
-function isUsableWorkArea(value: DisplayWorkArea | undefined): value is DisplayWorkArea {
-  return Boolean(value && Number.isFinite(value.x) && Number.isFinite(value.y) && value.width > 0 && value.height > 0)
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
 }

@@ -1,6 +1,6 @@
-import { join } from 'node:path'
-
 import { BrowserWindow } from 'electron'
+
+import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null
@@ -39,7 +39,7 @@ export class WindowManager {
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 16, y: 18 },
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: resolveDesktopPreloadPath(__dirname),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -62,7 +62,7 @@ export class WindowManager {
       await win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?session=${sessionId}&tearoff=true`)
     }
     else {
-      await win.loadFile(join(__dirname, '../renderer/index.html'), {
+      await win.loadFile(resolveDesktopRendererIndexPath(), {
         query: { session: sessionId, tearoff: 'true' },
       })
     }
@@ -122,7 +122,7 @@ export class WindowManager {
       height: 600,
       title: 'Cradle DevTools',
       webPreferences: {
-        preload: join(__dirname, '../preload/index.js'),
+        preload: resolveDesktopPreloadPath(__dirname),
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
@@ -143,7 +143,7 @@ export class WindowManager {
       await win.loadURL(`${process.env.ELECTRON_RENDERER_URL}#devtool`)
     }
     else {
-      await win.loadFile(join(__dirname, '../renderer/index.html'), {
+      await win.loadFile(resolveDesktopRendererIndexPath(), {
         hash: 'devtool',
       })
     }

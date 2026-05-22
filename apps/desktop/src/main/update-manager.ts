@@ -1,5 +1,8 @@
 import type { UpdateInfo } from 'velopack'
+import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { existsSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
 import { app } from 'electron'
 import { UpdateManager as VelopackUpdateManager } from 'velopack'
@@ -26,6 +29,12 @@ export type DesktopUpdateManagerEvents = {
 }
 
 type DesktopUpdateEventName = keyof DesktopUpdateManagerEvents
+type BeforeApplyUpdate = () => Promise<void> | void
+
+export type DesktopUpdateManagerOptions = {
+  updateFeedUrl?: string | null
+  beforeApplyUpdate?: BeforeApplyUpdate
+}
 
 async function retryWithBackoff<T>(
   operation: () => Promise<T>,
@@ -62,16 +71,27 @@ function readUpdateFeedUrl(): string | null {
   return url ? url : null
 }
 
+function readRestartArgs(): string[] {
+  return process.argv.slice(1)
+}
+
+function readTargetPackageName(updateInfo: UpdateInfo): string {
+  return updateInfo.TargetFullRelease.FileName
+}
+
 export class DesktopUpdateManager {
   private readonly events = new EventEmitter()
   private readonly updateFeedUrl: string | null
   private readonly updater: VelopackUpdateManager | null
+  private readonly beforeApplyUpdate: BeforeApplyUpdate
   private statusSnapshot: DesktopUpdateStatus
   private backgroundTimer: NodeJS.Timeout | null = null
 
-  constructor(updateFeedUrl = readUpdateFeedUrl()) {
+  constructor(options: DesktopUpdateManagerOptions = {}) {
+    const updateFeedUrl = options.updateFeedUrl ?? readUpdateFeedUrl()
     this.updateFeedUrl = updateFeedUrl
     this.updater = this.createUpdater(updateFeedUrl)
+    this.beforeApplyUpdate = options.beforeApplyUpdate ?? (() => {})
     this.statusSnapshot = {
       unsupported: this.updater === null,
       currentVersion: this.getCurrentVersion(),
@@ -154,7 +174,7 @@ export class DesktopUpdateManager {
         downloadingProgress: 0,
       })
 
-      if (updateInfo && options.autoDownload !== false) {
+      if (updateInfo && options.autoDownload === true) {
         await this.downloadUpdate()
       }
     }
@@ -208,8 +228,86 @@ export class DesktopUpdateManager {
       return
     }
 
-    this.updater.waitExitThenApplyUpdate(this.statusSnapshot.updateInfo)
-    app.exit()
+    try {
+      await this.beforeApplyUpdate()
+    }
+    catch (error) {
+      this.setStatus({
+        errorMessage: readErrorMessage(error),
+      })
+      return
+    }
+
+    if (this.startMacUpdateApply(this.statusSnapshot.updateInfo)) {
+      app.quit()
+      return
+    }
+
+    try {
+      this.updater.waitExitThenApplyUpdate(this.statusSnapshot.updateInfo, false, true, readRestartArgs())
+    }
+    catch (error) {
+      this.setStatus({
+        errorMessage: readErrorMessage(error),
+      })
+      return
+    }
+
+    app.quit()
+  }
+
+  private startMacUpdateApply(updateInfo: UpdateInfo): boolean {
+    if (process.platform !== 'darwin' || !app.isPackaged || !this.updater) {
+      return false
+    }
+
+    const appId = this.updater.getAppId()
+    const packageDir = join(app.getPath('home'), 'Library', 'Caches', 'velopack', appId, 'packages')
+    const packagePath = join(packageDir, readTargetPackageName(updateInfo))
+    const updateExePath = join(dirname(process.execPath), 'UpdateMac')
+    const rootAppDir = resolve(process.resourcesPath, '..', '..')
+    const logPath = join(app.getPath('home'), 'Library', 'Logs', `velopack_${appId}.log`)
+
+    if (!existsSync(updateExePath)) {
+      return false
+    }
+    if (!existsSync(packagePath)) {
+      this.setStatus({
+        errorMessage: `Downloaded update package not found at ${packagePath}`,
+      })
+      return true
+    }
+
+    const args = [
+      '--rootDir',
+      rootAppDir,
+      '--packageDir',
+      packageDir,
+      '--log',
+      logPath,
+      'apply',
+      '--waitPid',
+      String(process.pid),
+      '--package',
+      packagePath,
+      '--',
+      ...readRestartArgs(),
+    ]
+
+    try {
+      const updaterProcess = spawn(updateExePath, args, {
+        detached: true,
+        stdio: 'ignore',
+      })
+      updaterProcess.unref()
+      return true
+    }
+    catch (error) {
+      this.setStatus({
+        errorMessage: readErrorMessage(error),
+      })
+      return true
+    }
   }
 
   private createUpdater(updateFeedUrl: string | null): VelopackUpdateManager | null {

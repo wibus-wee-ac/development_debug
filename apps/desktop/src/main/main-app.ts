@@ -4,13 +4,14 @@ import { app, BrowserWindow, dialog, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
 import { createNativeServices } from './native-services'
+import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import {
   collectPluginInstallUrls,
   installPluginFromRequest,
   parsePluginInstallUrl,
   PluginInstallLinkError,
+  type PluginInstallSummary,
   type PluginInstallResult,
-  type PluginInstallRequest,
 } from './plugin-install-links'
 import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
 import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
@@ -72,7 +73,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
+      preload: resolveDesktopPreloadPath(__dirname),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -91,7 +92,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
     await win.loadURL(process.env.ELECTRON_RENDERER_URL)
   }
   else {
-    await win.loadFile(join(__dirname, '../renderer/index.html'))
+    await win.loadFile(resolveDesktopRendererIndexPath())
   }
 
   return win
@@ -164,22 +165,39 @@ function registerPluginInstallProtocol(): void {
   app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL)
 }
 
-function describePluginInstallRequest(request: PluginInstallRequest): string {
+function describePluginInstallSummary(summary: PluginInstallSummary): string {
+  const capabilities = summary.declaredCapabilities.length > 0
+    ? summary.declaredCapabilities
+        .map(capability => `- ${capability.type}:${capability.localId}${capability.layer ? ` (${capability.layer})` : ''}`)
+        .join('\n')
+    : '- None declared'
+  const permissions = summary.requiredPermissions.length > 0
+    ? summary.requiredPermissions.map(permission => `- ${permission}`).join('\n')
+    : '- None required'
+
   return [
-    `Package: ${request.packageName}`,
-    `Version: ${request.version}`,
-    `Repository: ${request.repository}`,
-    `Path: ${request.path}`,
-    `Ref: ${request.ref}`,
+    `Package: ${summary.packageName}`,
+    `Version: ${summary.version}`,
+    `Display name: ${summary.displayName ?? summary.packageName}`,
+    `Mode: ${summary.mode}`,
+    `Repository: ${summary.request.repository}`,
+    `Path: ${summary.request.path}`,
+    `Ref: ${summary.request.ref}`,
+    '',
+    'Required permissions:',
+    permissions,
+    '',
+    'Declared capabilities:',
+    capabilities,
   ].join('\n')
 }
 
-async function askPluginInstallConsent(request: PluginInstallRequest): Promise<boolean> {
+async function askPluginInstallConsent(summary: PluginInstallSummary): Promise<boolean> {
   const { response } = await dialog.showMessageBox({
     type: 'question',
     title: 'Install Cradle Plugin',
-    message: `Install ${request.packageName}?`,
-    detail: `${describePluginInstallRequest(request)}\n\nCradle will download this first-party plugin into the desktop Marketplace plugin directory. The plugin is activated after restart.`,
+    message: `Install ${summary.packageName}?`,
+    detail: `${describePluginInstallSummary(summary)}\n\nCradle will install this first-party plugin into the desktop Marketplace plugin directory. The plugin is activated after restart.`,
     buttons: ['Install', 'Cancel'],
     defaultId: 0,
     cancelId: 1,
@@ -221,14 +239,14 @@ async function installPluginFromDeepLink(rawUrl: string): Promise<void> {
   showMainWindow()
   try {
     const request = parsePluginInstallUrl(rawUrl)
-    const accepted = await askPluginInstallConsent(request)
-    if (!accepted) return
 
     const isDev = !!process.env.ELECTRON_RENDERER_URL
     const result = await installPluginFromRequest(request, {
       availablePluginsDir: resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname }),
+      confirmInstall: askPluginInstallConsent,
       userDataPath: app.getPath('userData'),
     })
+    if (!result) return
     await showPluginInstallSuccess(result)
   } catch (err) {
     console.error('[plugin-marketplace] install link failed:', err)
@@ -252,6 +270,14 @@ function processPendingPluginInstallUrls(): void {
   handlePluginInstallUrls(urls)
 }
 
+async function shutdownDesktopRuntime(): Promise<void> {
+  updateManager?.stopBackgroundChecks()
+  trayManager?.destroy()
+  trayManager = null
+  await deactivateDesktopPlugins()
+  await stopServer()
+}
+
 export async function startDesktopApp(): Promise<void> {
   registerPluginInstallProtocol()
   const gotLock = app.requestSingleInstanceLock()
@@ -260,7 +286,9 @@ export async function startDesktopApp(): Promise<void> {
     return
   }
 
-  updateManager = new DesktopUpdateManager()
+  updateManager = new DesktopUpdateManager({
+    beforeApplyUpdate: shutdownDesktopRuntime,
+  })
   createNativeServices({
     getWindowManager: () => windowManager,
     getUpdateManager: () => updateManager,
@@ -314,11 +342,7 @@ export async function startDesktopApp(): Promise<void> {
 
   app.on('before-quit', async () => {
     isQuitting = true
-    updateManager?.stopBackgroundChecks()
-    trayManager?.destroy()
-    trayManager = null
-    await deactivateDesktopPlugins()
-    stopServer()
+    await shutdownDesktopRuntime()
   })
 
   app.on('second-instance', (_event, argv) => {

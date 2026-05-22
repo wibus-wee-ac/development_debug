@@ -6,6 +6,7 @@ import { delimiter, join, resolve } from 'node:path'
 
 import { app, dialog } from 'electron'
 import getPort from 'get-port'
+import { z } from 'zod'
 
 import { getPluginEnvVars } from './plugin-loader'
 import { resolveDesktopInstalledPluginsDir } from './plugin-install-links'
@@ -13,11 +14,14 @@ import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind
 
 let serverProcess: ChildProcess | null = null
 let restartCount = 0
+let isServerShutdownRequested = false
 const MAX_RESTARTS = 3
 const CREDENTIAL_SECRET_FILE = 'credential-secret'
 const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
+const ExternalPluginsDirsSchema = z.array(z.string().optional())
+  .transform(values => values.flatMap(value => value?.trim() ? [value.trim()] : []))
 let currentServerUrl = ''
 
 function resolveDevServerEntry(): string {
@@ -39,6 +43,9 @@ function resolveDevServerEntry(): string {
  * Returns the full URL the server is listening on.
  */
 export async function startServer(): Promise<string> {
+  isServerShutdownRequested = false
+  restartCount = 0
+
   const port = await getPort({ port: [21423, 21424, 21425, 21426] })
   const host = '127.0.0.1'
   currentServerUrl = `http://${host}:${port}`
@@ -69,13 +76,14 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   const execPath = isDev ? resolveDevNodeExecPath() : undefined
   const pluginsDir = resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname })
   const pluginsSourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
+  const configuredMigrationsDir = process.env.CRADLE_MIGRATIONS_DIR?.trim()
+  const migrationsDir = configuredMigrationsDir || (isDev ? undefined : join(process.resourcesPath, 'drizzle'))
   const installedPluginsDir = resolveDesktopInstalledPluginsDir(app.getPath('userData'))
   const externalPluginsDirs = [
     installedPluginsDir,
     process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
   ]
-    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
-    .join(delimiter)
+  const externalPluginsDirList = ExternalPluginsDirsSchema.parse(externalPluginsDirs).join(delimiter)
 
   serverProcess = fork(serverEntry, [], {
     env: {
@@ -87,7 +95,9 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       CRADLE_CREDENTIAL_SECRET: credentialSecret,
       CRADLE_PLUGINS_DIR: pluginsDir,
       CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
-      CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirs,
+      CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirList,
+      CRADLE_MARKETPLACE_PLUGINS_DIR: installedPluginsDir,
+      ...(migrationsDir ? { CRADLE_MIGRATIONS_DIR: migrationsDir } : {}),
       NODE_ENV: isDev ? 'development' : 'production',
     },
     execPath,
@@ -104,7 +114,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   })
 
   serverProcess.on('exit', (code, signal) => {
-    if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+    if (isServerShutdownRequested || signal === 'SIGTERM' || signal === 'SIGKILL') {
       // Intentional shutdown
       return
     }
@@ -192,11 +202,46 @@ function showServerCrashDialog(exitCode: number | null): void {
 /**
  * Stop the server process.
  */
-export function stopServer(): void {
-  if (serverProcess) {
-    serverProcess.kill('SIGTERM')
-    serverProcess = null
+export async function stopServer(timeoutMs = 5_000): Promise<void> {
+  const child = serverProcess
+  if (!child) {
+    return
   }
+
+  isServerShutdownRequested = true
+  serverProcess = null
+
+  await new Promise<void>((resolveStop) => {
+    let resolved = false
+    let forceTimer: NodeJS.Timeout | null = null
+
+    const finish = () => {
+      if (resolved) {
+        return
+      }
+      resolved = true
+      if (forceTimer) {
+        clearTimeout(forceTimer)
+      }
+      resolveStop()
+    }
+
+    child.once('exit', finish)
+    child.once('error', finish)
+
+    if (child.exitCode !== null || child.signalCode !== null) {
+      finish()
+      return
+    }
+
+    child.kill('SIGTERM')
+    forceTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL')
+      }
+      finish()
+    }, timeoutMs)
+  })
 }
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {

@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+
+const MenuItemSchema: z.ZodType<Record<string, unknown>> = z.lazy(() =>
+  z.object({
+    submenu: z.array(MenuItemSchema).optional(),
+  }).passthrough(),
+)
+const MenuItemsSchema = z.array(MenuItemSchema).optional().default([])
 
 const electronMocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void
@@ -206,8 +214,9 @@ function findMenuItem(
     if (item.label === label) {
       return item
     }
-    if (Array.isArray(item.submenu)) {
-      const child = findMenuItem(item.submenu as Array<Record<string, unknown>>, label)
+    const childItems = MenuItemsSchema.parse(item.submenu)
+    if (childItems.length > 0) {
+      const child = findMenuItem(childItems, label)
       if (child) {
         return child
       }
@@ -221,7 +230,7 @@ function submenuItems(
   label: string,
 ): Array<Record<string, unknown>> {
   const item = findMenuItem(items, label)
-  return Array.isArray(item?.submenu) ? item.submenu as Array<Record<string, unknown>> : []
+  return MenuItemsSchema.parse(item?.submenu)
 }
 
 describe('TrayManager', () => {

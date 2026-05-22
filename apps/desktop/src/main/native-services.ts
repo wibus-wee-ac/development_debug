@@ -1,5 +1,6 @@
 import { createServices, IpcMethod, IpcService } from '@cradle/ipc'
-import { dialog, shell } from 'electron'
+import { app, dialog, shell } from 'electron'
+import { join } from 'node:path'
 
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
@@ -51,6 +52,23 @@ class NativeService extends IpcService {
   @IpcMethod()
   async showItemInFolder(fullPath: string): Promise<void> {
     shell.showItemInFolder(fullPath)
+  }
+
+  @IpcMethod()
+  async getCradleDataPaths(): Promise<{
+    userDataPath: string
+    serverDataPath: string
+    databasePath: string
+    serverLogPath: string
+  }> {
+    const userDataPath = app.getPath('userData')
+    const serverDataPath = join(userDataPath, 'data')
+    return {
+      userDataPath,
+      serverDataPath,
+      databasePath: join(serverDataPath, 'cradle.db'),
+      serverLogPath: join(serverDataPath, 'server.log'),
+    }
   }
 }
 
