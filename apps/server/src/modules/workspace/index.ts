@@ -82,8 +82,12 @@ export const workspace = new Elysia({
     response: { 200: WorkspaceModel.readFileResponse },
   })
   .put('/:id/files/content', async ({ params, body }) => {
-    const success = await Workspace.setFileContent(params.id, trimValue(body.path), body.content)
-    return { success }
+    return Workspace.setFileContent({
+      workspaceId: params.id,
+      relativePath: trimValue(body.path),
+      content: body.content,
+      confirmedNonCradleOwnedWrite: body.confirmedNonCradleOwnedWrite,
+    })
   }, {
     detail: {
       'summary': 'Write workspace file content',

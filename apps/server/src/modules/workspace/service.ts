@@ -7,7 +7,7 @@ import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
-import { listFiles, readTextFile, writeTextFile } from './files'
+import { createWorkspaceFileWriteBoundary, listFiles, readTextFile, writeTextFile } from './files'
 
 // ── helpers ──
 
@@ -88,10 +88,42 @@ export async function getFileContent(workspaceId: string, relativePath: string):
   return readTextFile(workspace.path, relativePath)
 }
 
-export async function setFileContent(workspaceId: string, relativePath: string, content: string): Promise<boolean> {
+export async function setFileContent(input: {
+  workspaceId: string
+  relativePath: string
+  content: string
+  confirmedNonCradleOwnedWrite: boolean
+}) {
+  if (!input.confirmedNonCradleOwnedWrite) {
+    throw new AppError({
+      code: 'non_cradle_owned_write_confirmation_required',
+      status: 400,
+      message: 'Workspace file writes require explicit non-Cradle-owned write confirmation',
+      details: {
+        ownerBoundary: createWorkspaceFileWriteBoundary({
+          workspacePath: null,
+          relativePath: input.relativePath,
+        }),
+      },
+    })
+  }
+
+  const { workspaceId, relativePath, content } = input
   const workspace = get(workspaceId)
   if (!workspace) {
-    return false
+    return {
+      success: false,
+      ownerBoundary: createWorkspaceFileWriteBoundary({
+        workspacePath: null,
+        relativePath,
+      }),
+    }
   }
-  return writeTextFile(workspace.path, relativePath, content)
+  return {
+    success: await writeTextFile(workspace.path, relativePath, content),
+    ownerBoundary: createWorkspaceFileWriteBoundary({
+      workspacePath: workspace.path,
+      relativePath,
+    }),
+  }
 }

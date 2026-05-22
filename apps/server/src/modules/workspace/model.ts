@@ -46,6 +46,7 @@ export const WorkspaceModel = {
   writeFileBody: t.Object({
     path: nonBlankString,
     content: t.String(),
+    confirmedNonCradleOwnedWrite: t.Boolean(),
   }, { additionalProperties: false }),
 
   readFileResponse: t.Object({
@@ -54,6 +55,15 @@ export const WorkspaceModel = {
 
   writeFileResponse: t.Object({
     success: t.Boolean(),
+    ownerBoundary: t.Object({
+      classification: t.Literal('non-cradle-owned'),
+      owner: t.Literal('workspace'),
+      consentRequired: t.Literal(true),
+      consentConfirmed: t.Literal(true),
+      workspacePath: t.Nullable(t.String()),
+      relativePath: t.String(),
+      targetPath: t.Nullable(t.String()),
+    }, { additionalProperties: false }),
   }),
 
   deleteResponse: t.Object({

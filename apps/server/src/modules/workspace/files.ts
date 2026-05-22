@@ -10,6 +10,16 @@ export interface WorkspaceFileEntry {
   path: string
 }
 
+export interface WorkspaceFileWriteBoundary {
+  classification: 'non-cradle-owned'
+  owner: 'workspace'
+  consentRequired: true
+  consentConfirmed: true
+  workspacePath: string | null
+  relativePath: string
+  targetPath: string | null
+}
+
 export async function listFiles(workspacePath: string): Promise<WorkspaceFileEntry[]> {
   const ig = ignore()
   try {
@@ -41,7 +51,7 @@ export async function listFiles(workspacePath: string): Promise<WorkspaceFileEnt
 }
 
 export async function readTextFile(workspacePath: string, relativePath: string): Promise<string | null> {
-  const fullPath = resolveWorkspacePath(workspacePath, relativePath)
+  const fullPath = resolveWorkspaceFilePath(workspacePath, relativePath)
   if (!fullPath) {
     return null
   }
@@ -54,7 +64,7 @@ export async function readTextFile(workspacePath: string, relativePath: string):
 }
 
 export async function writeTextFile(workspacePath: string, relativePath: string, content: string): Promise<boolean> {
-  const fullPath = resolveWorkspacePath(workspacePath, relativePath)
+  const fullPath = resolveWorkspaceFilePath(workspacePath, relativePath)
   if (!fullPath) {
     return false
   }
@@ -67,10 +77,28 @@ export async function writeTextFile(workspacePath: string, relativePath: string,
   }
 }
 
-function resolveWorkspacePath(workspacePath: string, relativePath: string): string | null {
+export function resolveWorkspaceFilePath(workspacePath: string, relativePath: string): string | null {
   const resolvedWorkspace = resolve(workspacePath)
   const fullPath = resolve(resolvedWorkspace, relativePath)
   return isWithinRoot(resolvedWorkspace, fullPath) ? fullPath : null
+}
+
+export function createWorkspaceFileWriteBoundary(input: {
+  workspacePath: string | null
+  relativePath: string
+}): WorkspaceFileWriteBoundary {
+  const targetPath = input.workspacePath
+    ? resolveWorkspaceFilePath(input.workspacePath, input.relativePath)
+    : null
+  return {
+    classification: 'non-cradle-owned',
+    owner: 'workspace',
+    consentRequired: true,
+    consentConfirmed: true,
+    workspacePath: input.workspacePath,
+    relativePath: input.relativePath,
+    targetPath,
+  }
 }
 
 function isWithinRoot(rootDir: string, targetPath: string): boolean {
