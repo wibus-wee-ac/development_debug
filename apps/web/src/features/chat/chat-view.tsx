@@ -7,6 +7,7 @@ import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
+import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
@@ -14,6 +15,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
@@ -51,6 +53,11 @@ interface ChatScrollMetrics {
 
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
+let firstChatRendered = false
+const SessionBindingSchema = z.object({
+  agentProfileId: z.string().nullable(),
+  modelId: z.string().nullable(),
+}).passthrough()
 
 function ChatMessageListPane({
   messages,
@@ -270,12 +277,7 @@ export function ChatView({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     enabled: !!sessionId,
     staleTime: 60_000,
-    select: data => data
-      ? {
-          agentProfileId: typeof data.agentProfileId === 'string' ? data.agentProfileId : null,
-          modelId: typeof data.modelId === 'string' ? data.modelId : null,
-        }
-      : null,
+    select: data => data ? SessionBindingSchema.parse(data) : null,
   })
   const { models: sessionModels } = useAgentModels(sessionBinding?.agentProfileId ?? null)
   const sessionContextWindow = useMemo(() => {
@@ -303,6 +305,20 @@ export function ChatView({
   const [scrollMetrics, setScrollMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
 
   const isStreaming = status === 'streaming'
+
+  useEffect(() => {
+    if (!sessionId || !isReady || firstChatRendered) {
+      return
+    }
+
+    firstChatRendered = true
+    markCradlePerformance('cradle:first-chat-rendered')
+    measureCradlePerformance(
+      'cradle:chat-first-render',
+      'cradle:chat-render-requested',
+      'cradle:first-chat-rendered',
+    )
+  }, [isReady, sessionId])
 
   // Keep the streaming message mounted to prevent re-animation on scroll recycle
   const generatingIds = useChatStore(s => s.generatingMessageIds)

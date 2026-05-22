@@ -52,7 +52,7 @@ vi.mock('@tanstack/react-query', () => ({
       title: 'Session Alpha',
       workspaceId: null,
       agentProfileId: null,
-      runtimeKind: 'chat',
+      runtimeKind: 'standard',
     }
 
     return {

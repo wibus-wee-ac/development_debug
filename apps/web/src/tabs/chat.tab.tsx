@@ -3,31 +3,51 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useReducer, useRef } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
+import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
+import { loadChatView } from '~/features/chat/chat-view-loader'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
-import { ShellView } from '~/features/tui/shell-view'
-import { TuiView } from '~/features/tui/tui-view'
-import type { AgentProfile, RuntimeKind, Workspace } from '~/lib/types'
+import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
+import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
+import { markCradlePerformance } from '~/lib/perf-monitor'
+import { WorkspaceSchema } from '~/features/workspace/use-workspace'
+import type { RuntimeKind } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 
-const ChatView = lazy(() => import('~/features/chat/chat-view').then(m => ({ default: m.ChatView })))
+const ChatView = lazy(loadChatView)
+const ShellView = lazy(loadTerminalPanelView)
+const TuiView = lazy(loadTuiView)
 
 export const CHAT_TAB_FALLBACK_LABEL = 'Chat'
+let firstChatRenderRequested = false
 
-const SUPPORTED_RUNTIME_KINDS: readonly RuntimeKind[] = ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui']
+const RuntimeKindSchema = z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'])
+const ChatSessionMetadataSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
+  workspaceId: z.string().nullable(),
+  agentProfileId: z.string().nullable(),
+  runtimeKind: RuntimeKindSchema,
+}).passthrough()
+const AgentProfileSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  enabled: z.boolean(),
+  configJson: z.string(),
+  credentialRef: z.string().nullable(),
+  customModels: z.string(),
+  iconSlug: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
 
 export function isGeneratedChatLabel(label: string, sessionId: string): boolean {
   return label === `Chat: ${sessionId.slice(0, 6)}`
-}
-
-export function parseRuntimeKind(value: unknown): RuntimeKind | undefined {
-  return typeof value === 'string' && (SUPPORTED_RUNTIME_KINDS as readonly string[]).includes(value)
-    ? value as RuntimeKind
-    : undefined
 }
 
 function ChatTabLayoutSlots({
@@ -47,16 +67,18 @@ function ChatTabLayoutSlots({
   const panel = useMemo(
     () => hasWorkspace
       ? (
-        <ShellView
-          key={`${sessionId}:${shellGen}`}
-          ptyId={`shell:${sessionId}:${shellGen}`}
-          cwd={workspacePath!}
-          active={bottomPanelOpen}
-          onExited={() => {
-            closeBottomPanel(false)
-            bumpShellGen()
-          }}
-        />
+        <Suspense fallback={null}>
+          <ShellView
+            key={`${sessionId}:${shellGen}`}
+            ptyId={`shell:${sessionId}:${shellGen}`}
+            cwd={workspacePath!}
+            active={bottomPanelOpen}
+            onExited={() => {
+              closeBottomPanel(false)
+              bumpShellGen()
+            }}
+          />
+        </Suspense>
       )
       : undefined,
     [bottomPanelOpen, closeBottomPanel, hasWorkspace, workspacePath, sessionId, shellGen],
@@ -122,15 +144,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   const { data: session } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId } }),
     enabled: !!sessionId,
-    select: data => data
-      ? {
-          id: data.id,
-          title: typeof data.title === 'string' ? data.title : null,
-          workspaceId: typeof data.workspaceId === 'string' ? data.workspaceId : null,
-          agentProfileId: typeof data.agentProfileId === 'string' ? data.agentProfileId : null,
-          runtimeKind: parseRuntimeKind(data.runtimeKind),
-        }
-      : undefined,
+    select: data => data ? ChatSessionMetadataSchema.parse(data) : undefined,
   })
   const sessionAgentProfileId = session?.agentProfileId ?? null
 
@@ -139,13 +153,22 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
     queryKey: ['agent-profile', sessionAgentProfileId],
     queryFn: async () => {
       const { data } = await getProfilesById({ path: { id: sessionAgentProfileId! } })
-      return data as AgentProfile | undefined
+      return AgentProfileSchema.parse(data)
     },
     enabled: !!sessionAgentProfileId,
     staleTime: 60_000,
   })
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
+
+  useLayoutEffect(() => {
+    if (!session || isCliTui || firstChatRenderRequested) {
+      return
+    }
+
+    firstChatRenderRequested = true
+    markCradlePerformance('cradle:chat-render-requested')
+  }, [isCliTui, session])
 
   // Replace legacy session-id labels before metadata finishes loading.
   useEffect(() => {
@@ -183,7 +206,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
     queryKey: ['workspace-detail', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesById({ path: { id: workspaceId! } })
-      return data as Workspace | undefined
+      return WorkspaceSchema.parse(data)
     },
     enabled: !!workspaceId,
     staleTime: 60_000,
@@ -191,11 +214,25 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   const workspacePath = workspace?.path ?? null
 
+  useEffect(() => {
+    if (workspacePath) {
+      preloadTerminalPanelView()
+    }
+  }, [workspacePath])
+
+  useEffect(() => {
+    if (isCliTui) {
+      preloadTuiView()
+    }
+  }, [isCliTui])
+
   if (isCliTui) {
     return (
       <>
         <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
-        <TuiView sessionId={sessionId} />
+        <Suspense fallback={null}>
+          <TuiView sessionId={sessionId} />
+        </Suspense>
       </>
     )
   }

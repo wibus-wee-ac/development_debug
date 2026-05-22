@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
+import { z } from 'zod'
 
 import { deleteWorkspacesById, getWorkspaces, postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
@@ -7,16 +8,26 @@ import type { Workspace } from '~/lib/types'
 
 export const WORKSPACES_QUERY_KEY = ['workspaces'] as const
 
+export const WorkspaceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  path: z.string(),
+  identifier: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+export const WorkspaceListSchema = z.array(WorkspaceSchema).default([])
+
 export function useWorkspaces() {
-  const { data: workspaces = [], isPending: loading } = useQuery({
+  const { data: workspaces = [], isPending: loading, isSuccess: ready } = useQuery({
     queryKey: WORKSPACES_QUERY_KEY,
     queryFn: async () => {
       const { data } = await getWorkspaces()
-      return (data ?? []) as Workspace[]
+      return WorkspaceListSchema.parse(data) satisfies Workspace[]
     },
   })
 
-  return { workspaces, loading }
+  return { workspaces, loading, ready }
 }
 
 export function useAddWorkspace() {

@@ -27,6 +27,7 @@ import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import {
   derivePullRequestNumberFromStatus,
@@ -880,17 +881,38 @@ function GitHubAwaitComposer({
 
 // ── Main Panel ──
 
+let firstRightAsideAwaitRendered = false
+
 interface AwaitPanelProps {
   sessionId: string | null
   workspaceId: string | null
 }
 
 export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
-  const { data: awaits = [] } = useSessionAwaits(sessionId)
+  const { data: awaits = [], isSuccess: awaitsReady } = useSessionAwaits(sessionId)
+  const ready = !!sessionId && awaitsReady
+
+  useEffect(() => {
+    if (!ready || firstRightAsideAwaitRendered) {
+      return
+    }
+
+    firstRightAsideAwaitRendered = true
+    markCradlePerformance('cradle:first-right-aside-await-rendered')
+    measureCradlePerformance(
+      'cradle:right-aside-await-first-render',
+      'cradle:right-aside-await-open-requested',
+      'cradle:first-right-aside-await-rendered',
+    )
+  }, [ready, sessionId])
 
   if (!sessionId) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div
+        className="flex flex-1 items-center justify-center"
+        data-testid="right-aside-await-panel"
+        data-right-aside-await-ready="false"
+      >
         <p className="text-[11px] text-muted-foreground">No session selected</p>
       </div>
     )
@@ -901,14 +923,22 @@ export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
 
   if (awaits.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center p-3">
+      <div
+        className="flex flex-1 items-center justify-center p-3"
+        data-testid="right-aside-await-panel"
+        data-right-aside-await-ready={ready ? 'true' : 'false'}
+      >
         <GitHubAwaitComposer sessionId={sessionId} workspaceId={workspaceId} />
       </div>
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto p-3 gap-y-3">
+    <div
+      className="flex flex-1 flex-col overflow-y-auto p-3 gap-y-3"
+      data-testid="right-aside-await-panel"
+      data-right-aside-await-ready={ready ? 'true' : 'false'}
+    >
       <GitHubAwaitComposer sessionId={sessionId} workspaceId={workspaceId} compact />
       {activeAwaits.length > 0 && (
         <div className="space-y-2">
