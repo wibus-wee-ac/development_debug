@@ -6,7 +6,7 @@ import {
   SendIcon,
   Share2Icon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { z } from 'zod'
 
 import { getObservabilityExport, postObservabilityFlush } from '~/api-gen/sdk.gen'
@@ -16,7 +16,6 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -109,7 +108,6 @@ function formatTimestampForFilename(timestamp: number): string {
 }
 
 export function SupportSettings() {
-  const firstRenderedRef = useRef(false)
   const [status, setStatus] = useState<SupportStatus>('idle')
   const [message, setMessage] = useState<string | null>(null)
   const [dataPath, setDataPath] = useState<string | null>(null)
@@ -117,20 +115,6 @@ export function SupportSettings() {
   const template = useMemo(() => createSupportTemplate(), [])
   const canOpenDataPath = isElectron && !!nativeIpc
   const settingsSupportReady = template.length > 0
-
-  useEffect(() => {
-    if (!settingsSupportReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-support-rendered')
-    measureCradlePerformance(
-      'cradle:settings-support-first-render',
-      'cradle:settings-support-render-requested',
-      'cradle:first-settings-support-rendered',
-    )
-  }, [settingsSupportReady])
 
   const exportDiagnostics = useCallback(async () => {
     setStatus('working')

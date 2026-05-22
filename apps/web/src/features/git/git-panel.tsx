@@ -8,7 +8,6 @@ import { postWorkspacesByIdGitFetch } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { BranchPicker } from './branch-picker'
 import { GitGraphRow, ROW_HEIGHT } from './git-graph-row'
@@ -36,7 +35,6 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
   const [fetching, setFetching] = useState(false)
   const queryClient = useQueryClient()
   const ready = !!workspaceId && statusReady && graphReady
-  const firstRenderedWorkspaceIdRef = useRef<string | null>(null)
 
   const invalidateAll = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId! } }) })
@@ -75,19 +73,6 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
     [commits],
   )
 
-  useEffect(() => {
-    if (!ready || firstRenderedWorkspaceIdRef.current === workspaceId) {
-      return
-    }
-
-    firstRenderedWorkspaceIdRef.current = workspaceId ?? null
-    markCradlePerformance('cradle:first-right-aside-git-rendered')
-    measureCradlePerformance(
-      'cradle:right-aside-git-first-render',
-      'cradle:right-aside-git-open-requested',
-      'cradle:first-right-aside-git-rendered',
-    )
-  }, [ready, workspaceId])
 
   if (!workspaceId) {
     return (

@@ -40,8 +40,6 @@ import {
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
-
 import { sessionsQueryKey } from '../workspace/use-session'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -451,9 +449,6 @@ export function useIssue(id: string) {
 export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
-    onMutate: () => {
-      markCradlePerformance('cradle:issue-mutation-requested')
-    },
     mutationFn: async (input: CreateIssueInput) => {
       const { data, error } = await postIssues({ body: input })
       if (error || !data) {
@@ -462,12 +457,6 @@ export function useCreateIssue() {
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     onSuccess: () => {
-      markCradlePerformance('cradle:issue-mutation-confirmed')
-      measureCradlePerformance(
-        'cradle:issue-mutation-confirm',
-        'cradle:issue-mutation-requested',
-        'cradle:issue-mutation-confirmed',
-      )
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
     },
   })
@@ -476,20 +465,11 @@ export function useCreateIssue() {
 export function useUpdateIssue() {
   const qc = useQueryClient()
   return useMutation({
-    onMutate: () => {
-      markCradlePerformance('cradle:issue-mutation-requested')
-    },
     mutationFn: async (vars: UpdateIssueInput) => {
       const { data } = await patchIssuesById({ path: { id: vars.id }, body: vars.patch })
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     onSuccess: (_data, vars) => {
-      markCradlePerformance('cradle:issue-mutation-confirmed')
-      measureCradlePerformance(
-        'cradle:issue-mutation-confirm',
-        'cradle:issue-mutation-requested',
-        'cradle:issue-mutation-confirmed',
-      )
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.id) })
     },
@@ -518,20 +498,11 @@ export function useBulkUpdateIssues() {
 export function useMoveIssue() {
   const qc = useQueryClient()
   return useMutation({
-    onMutate: () => {
-      markCradlePerformance('cradle:issue-mutation-requested')
-    },
     mutationFn: async (vars: MoveIssueInput) => {
       const { data } = await patchIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     onSuccess: () => {
-      markCradlePerformance('cradle:issue-mutation-confirmed')
-      measureCradlePerformance(
-        'cradle:issue-mutation-confirm',
-        'cradle:issue-mutation-requested',
-        'cradle:issue-mutation-confirmed',
-      )
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
     },
   })

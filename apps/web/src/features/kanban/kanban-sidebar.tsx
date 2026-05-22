@@ -14,13 +14,9 @@ import { createPortal } from 'react-dom'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
-import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './use-kanban'
-
-let firstKanbanSidebarRendered = false
 
 // ── Create Board Popover ──────────────────────────────────────────────────────
 
@@ -238,8 +234,6 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
         <Link
           to="kanban-board"
           params={{ boardId: board.id }}
-          onFocus={() => preloadTabRoute('kanban-board')}
-          onMouseEnter={() => preloadTabRoute('kanban-board')}
           onDoubleClick={handleRenameStart}
           className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs text-sidebar-foreground/80"
         >
@@ -285,20 +279,6 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const [isCreating, setIsCreating] = useState(false)
   const ready = boards.isSuccess
 
-  useEffect(() => {
-    if (!ready || firstKanbanSidebarRendered) {
-      return
-    }
-
-    firstKanbanSidebarRendered = true
-    markCradlePerformance('cradle:first-kanban-sidebar-rendered')
-    measureCradlePerformance(
-      'cradle:kanban-sidebar-first-render',
-      'cradle:kanban-sidebar-render-requested',
-      'cradle:first-kanban-sidebar-rendered',
-    )
-  }, [ready])
-
   return (
     <div
       className="flex flex-col"
@@ -330,7 +310,6 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
         open={isCreating}
         onOpenChange={setIsCreating}
         onCreated={(board) => {
-          preloadTabRoute('kanban-board')
           openTab('kanban-board', { boardId: board.id })
         }}
       />

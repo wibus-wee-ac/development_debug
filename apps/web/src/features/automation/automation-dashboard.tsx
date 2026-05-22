@@ -10,13 +10,12 @@ import {
   RefreshCwIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { z } from 'zod'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger } from './types'
 import { useAutomationArtifacts, useAutomationDefinitions, useAutomationRuns, useRunAutomationNow } from './use-automations'
@@ -229,7 +228,6 @@ function ArtifactRow({
 }
 
 export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
-  const firstRenderedRef = useRef(false)
   const definitionsQuery = useAutomationDefinitions()
   const definitions = definitionsQuery.data ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -249,20 +247,6 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   }, [artifactsQuery.data, selectedArtifactId])
   const automationReady = definitionsQuery.isSuccess
     && (!selectedAutomationId || (runsQuery.isSuccess && artifactsQuery.isSuccess))
-
-  useEffect(() => {
-    if (!automationReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-automation-rendered')
-    measureCradlePerformance(
-      'cradle:automation-first-render',
-      'cradle:automation-render-requested',
-      'cradle:first-automation-rendered',
-    )
-  }, [automationReady])
 
   return (
     <div

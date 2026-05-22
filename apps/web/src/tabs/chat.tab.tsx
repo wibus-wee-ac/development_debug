@@ -3,7 +3,7 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef } from 'react'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
@@ -13,7 +13,6 @@ import { loadChatView } from '~/features/chat/chat-view-loader'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
 import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
-import { markCradlePerformance } from '~/lib/perf-monitor'
 import { WorkspaceSchema } from '~/features/workspace/use-workspace'
 import type { RuntimeKind } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
@@ -23,7 +22,6 @@ const ShellView = lazy(loadTerminalPanelView)
 const TuiView = lazy(loadTuiView)
 
 export const CHAT_TAB_FALLBACK_LABEL = 'Chat'
-let firstChatRenderRequested = false
 
 const RuntimeKindSchema = z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'])
 const ChatSessionMetadataSchema = z.object({
@@ -160,15 +158,6 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   })
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
-
-  useLayoutEffect(() => {
-    if (!session || isCliTui || firstChatRenderRequested) {
-      return
-    }
-
-    firstChatRenderRequested = true
-    markCradlePerformance('cradle:chat-render-requested')
-  }, [isCliTui, session])
 
   // Replace legacy session-id labels before metadata finishes loading.
   useEffect(() => {

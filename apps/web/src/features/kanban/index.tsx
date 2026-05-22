@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
-
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
 import { IssuePeekPanel } from './issue-peek-panel'
@@ -37,8 +35,6 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const spaceDownTimeRef = useRef<number>(0)
   const peekWasOpenRef = useRef(false)
   const visibleIssuesRef = useRef<typeof allIssues>([])
-  const firstRenderedWorkspaceIdRef = useRef<string | null>(null)
-
   // Refs for keyboard handler (avoid stale closures + listener re-registration)
   const peekIssueIdRef = useRef<string | null>(null)
   const focusedIndexRef = useRef<number>(-1)
@@ -74,25 +70,6 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const { data: milestones = [], isSuccess: milestonesReady } = useMilestones(workspaceId)
   const { data: allIssues = [], isSuccess: issuesReady } = useIssues({ workspaceId })
   const moveIssue = useMoveIssue()
-
-  useEffect(() => {
-    if (
-      firstRenderedWorkspaceIdRef.current === workspaceId
-      || !statusesReady
-      || !milestonesReady
-      || !issuesReady
-    ) {
-      return
-    }
-
-    firstRenderedWorkspaceIdRef.current = workspaceId
-    markCradlePerformance('cradle:first-kanban-rendered')
-    measureCradlePerformance(
-      'cradle:kanban-first-render',
-      'cradle:kanban-render-requested',
-      'cradle:first-kanban-rendered',
-    )
-  }, [issuesReady, milestonesReady, statusesReady, workspaceId])
 
   // Apply filters
   const filteredIssues = useMemo(() => {

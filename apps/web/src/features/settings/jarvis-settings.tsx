@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
@@ -7,7 +7,6 @@ import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -20,7 +19,6 @@ const JARVIS_THINKING_OPTIONS: Array<ThinkingOption<JarvisPreferences['thinkingL
 ]
 
 export function JarvisSettings() {
-  const firstRenderedRef = useRef(false)
   const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { profiles, isSuccess: profilesReady } = useAgentProfiles()
   const { modelsByProfileId, loadingProfileIds, successfulProfileIds } = useAgentModelMap(profiles)
@@ -35,20 +33,6 @@ export function JarvisSettings() {
   const settingsJarvisReady = prefsReady && profilesReady && selectedProfileModelsReady
   const selectThinkingForModel = (model: typeof selectedModel): JarvisPreferences['thinkingLevel'] =>
     selectSupportedThinkingValue(model, JARVIS_THINKING_OPTIONS, prefs?.thinkingLevel ?? 'medium', 'medium')
-
-  useEffect(() => {
-    if (!settingsJarvisReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-jarvis-rendered')
-    measureCradlePerformance(
-      'cradle:settings-jarvis-first-render',
-      'cradle:settings-jarvis-render-requested',
-      'cradle:first-settings-jarvis-rendered',
-    )
-  }, [settingsJarvisReady])
 
   if (!prefs) {
     return null

@@ -12,7 +12,6 @@ import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef, useState } from 'react'
 
 import { postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import { getAppTerminalTheme } from './app-theme'
@@ -20,7 +19,6 @@ import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
 
 const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
-let firstTuiViewRendered = false
 
 interface TuiViewProps {
   sessionId: string
@@ -140,15 +138,6 @@ export function TuiView({ sessionId }: TuiViewProps) {
 
       channel.connect()
       setReady(true)
-      if (!firstTuiViewRendered) {
-        firstTuiViewRendered = true
-        markCradlePerformance('cradle:first-tui-view-rendered')
-        measureCradlePerformance(
-          'cradle:tui-view-first-render',
-          'cradle:tui-view-render-requested',
-          'cradle:first-tui-view-rendered',
-        )
-      }
     })()
 
     attachMacKeyboardHandler(terminal)

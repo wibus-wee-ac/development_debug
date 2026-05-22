@@ -28,7 +28,6 @@ import { Textarea } from '~/components/ui/textarea'
 import { TruncatedText } from '~/components/ui/truncated-text'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { SkillInventoryEntry, SkillScope } from '~/lib/types'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
@@ -459,7 +458,6 @@ export function SkillManager({
   title,
   description,
 }: SkillManagerProps) {
-  const firstRenderedRef = useRef(false)
   const {
     inventory,
     isLoading,
@@ -472,37 +470,6 @@ export function SkillManager({
 
   const { selectDirectory } = useDirectoryPicker()
   const [uiState, dispatch] = useReducer(skillManagerUiReducer, initialSkillManagerUiState)
-
-  useEffect(() => {
-    if (
-      !skillsReady ||
-      firstRenderedRef.current ||
-      (editableScope !== 'global' && editableScope !== 'workspace')
-    ) {
-      return
-    }
-
-    firstRenderedRef.current = true
-
-    if (editableScope === 'global') {
-      markCradlePerformance('cradle:first-settings-skills-rendered')
-      measureCradlePerformance(
-        'cradle:settings-skills-first-render',
-        'cradle:settings-skills-render-requested',
-        'cradle:first-settings-skills-rendered',
-      )
-      return
-    }
-
-    if (editableScope === 'workspace') {
-      markCradlePerformance('cradle:first-workspace-skills-rendered')
-      measureCradlePerformance(
-        'cradle:workspace-skills-first-render',
-        'cradle:workspace-skills-open-requested',
-        'cradle:first-workspace-skills-rendered',
-      )
-    }
-  }, [editableScope, skillsReady])
 
   const activeInventory = useMemo(() => inventory.filter(entry => entry.active), [inventory])
 

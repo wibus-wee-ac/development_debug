@@ -3,10 +3,7 @@ import { z } from 'zod'
 
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { usePluginStore } from '~/lib/plugin-store'
-import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleTabStore } from '~/tabs/registry'
-
-import type { TrayActionRequest } from './types'
 
 interface DesktopTrayActionBridgeOptions {
   onOpenGlobalSearch: () => void
@@ -44,7 +41,6 @@ const ChatPayloadSchema = z.object({
 }).passthrough()
 
 function openHome(): void {
-  preloadTabRoute('home')
   useCradleTabStore.getState().openTab('home', {})
 }
 
@@ -53,7 +49,6 @@ function openChatFromPayload(payload: unknown): boolean {
     return false
   }
   const { sessionId } = ChatPayloadSchema.parse(payload)
-  preloadTabRoute('chat')
   useCradleTabStore.getState().openTab('chat', { sessionId })
   return true
 }
@@ -63,7 +58,6 @@ function openSettingsSection(section: string): void {
   const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
     ? tabStore.activeTabId
     : (() => {
-        preloadTabRoute('home')
         return tabStore.openTab('home', {}, { pinned: true })
       })()
   const settingsStore = useSettingsOverlayStore.getState()
@@ -77,7 +71,6 @@ function openFirstPluginPanel(): boolean {
   if (!firstPanel) {
     return false
   }
-  preloadTabRoute('plugin-panel')
   useCradleTabStore.getState().openTab('plugin-panel', { panelId: firstPanel.id })
   return true
 }
@@ -91,7 +84,6 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         openChatFromPayload(request.payload)
         return
       case 'new-chat':
-        preloadTabRoute('new-chat')
         useCradleTabStore.getState().openTab('new-chat', {})
         return
       case 'global-search':
@@ -104,15 +96,12 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         }
         return
       case 'open-approvals':
-        preloadTabRoute('approvals')
         useCradleTabStore.getState().openTab('approvals', {})
         return
       case 'open-awaits':
-        preloadTabRoute('awaits')
         useCradleTabStore.getState().openTab('awaits', {})
         return
       case 'open-automation':
-        preloadTabRoute('automation')
         useCradleTabStore.getState().openTab('automation', {})
         return
       case 'open-workspaces':
@@ -128,7 +117,6 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         openSettingsSection('chronicle')
         return
       case 'open-usage':
-        preloadTabRoute('usage')
         useCradleTabStore.getState().openTab('usage', {})
         return
       case 'open-plugins':

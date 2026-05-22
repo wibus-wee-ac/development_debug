@@ -2,11 +2,10 @@ import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 import { z } from 'zod'
 
 import { getWorkspacesByIdFiles, getWorkspacesByIdGitStatus } from '~/api-gen/sdk.gen'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 import type { GitFileStatus } from '~/lib/types'
 
@@ -165,22 +164,6 @@ function FileTreeInner({ workspaceId, preparedInput, ready, gitStatus, workspace
   const selectedPaths = useFileTreeSelection(model)
   const search = useFileTreeSearch(model)
   const hasSearchValue = search.value.length > 0
-  const firstRenderedWorkspaceIdRef = useRef<string | null>(null)
-
-  useEffect(() => {
-    if (!ready || firstRenderedWorkspaceIdRef.current === workspaceId) {
-      return
-    }
-
-    firstRenderedWorkspaceIdRef.current = workspaceId
-    markCradlePerformance('cradle:first-right-aside-files-rendered')
-    measureCradlePerformance(
-      'cradle:right-aside-files-first-render',
-      'cradle:right-aside-files-open-requested',
-      'cradle:first-right-aside-files-rendered',
-    )
-  }, [ready, workspaceId])
-
   // Update git status when it changes
   useEffect(() => {
     model.setGitStatus(gitStatus)

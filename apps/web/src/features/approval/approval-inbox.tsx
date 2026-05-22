@@ -1,5 +1,4 @@
 import { CheckSquareIcon } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 
 import {
   Empty,
@@ -8,28 +7,12 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '~/components/ui/empty'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { ApprovalCard } from './approval-card'
 import { useSessionApprovalRequests } from './use-approval'
 
 export function ApprovalInbox() {
-  const firstRenderedRef = useRef(false)
   const { pending, respond } = useSessionApprovalRequests(null)
-
-  useEffect(() => {
-    if (firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-approvals-rendered')
-    measureCradlePerformance(
-      'cradle:approvals-first-render',
-      'cradle:approvals-render-requested',
-      'cradle:first-approvals-rendered',
-    )
-  }, [])
 
   return (
     <div

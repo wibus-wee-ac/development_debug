@@ -20,7 +20,6 @@ import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Switch } from '~/components/ui/switch'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { formatTokens, mergeScopePaths, pathsToIncludeFromDraft } from './pack-codebase-utils'
 
@@ -128,21 +127,6 @@ function PackCodebaseDialogContent({
 }) {
   const [state, dispatch] = useReducer(packCodebaseDialogReducer, initialPaths, createInitialPackCodebaseDialogState)
   const pathInputRef = useRef<HTMLTextAreaElement>(null)
-  const firstRenderedRef = useRef(false)
-
-  useEffect(() => {
-    if (firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-pack-codebase-dialog-rendered')
-    measureCradlePerformance(
-      'cradle:pack-codebase-dialog-first-render',
-      'cradle:pack-codebase-dialog-open-requested',
-      'cradle:first-pack-codebase-dialog-rendered',
-    )
-  }, [])
 
   const addPath = useCallback((raw: string) => {
     dispatch({ type: 'add-paths', input: raw })

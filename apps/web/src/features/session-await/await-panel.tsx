@@ -27,8 +27,6 @@ import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
-
 import {
   derivePullRequestNumberFromStatus,
   parseGitHubAwaitTargetInput,
@@ -881,8 +879,6 @@ function GitHubAwaitComposer({
 
 // ── Main Panel ──
 
-let firstRightAsideAwaitRendered = false
-
 interface AwaitPanelProps {
   sessionId: string | null
   workspaceId: string | null
@@ -891,20 +887,6 @@ interface AwaitPanelProps {
 export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
   const { data: awaits = [], isSuccess: awaitsReady } = useSessionAwaits(sessionId)
   const ready = !!sessionId && awaitsReady
-
-  useEffect(() => {
-    if (!ready || firstRightAsideAwaitRendered) {
-      return
-    }
-
-    firstRightAsideAwaitRendered = true
-    markCradlePerformance('cradle:first-right-aside-await-rendered')
-    measureCradlePerformance(
-      'cradle:right-aside-await-first-render',
-      'cradle:right-aside-await-open-requested',
-      'cradle:first-right-aside-await-rendered',
-    )
-  }, [ready, sessionId])
 
   if (!sessionId) {
     return (

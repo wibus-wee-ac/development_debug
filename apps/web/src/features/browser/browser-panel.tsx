@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 
 // Electron webview element — not in React's JSX types
@@ -64,22 +63,7 @@ export function BrowserPanel() {
   const { tabs, activeTabId, requestedTab, createTab, fulfillRequestedTab, closeTab, setActiveTab, updateTab, navigateTo } = useBrowserPanelStore()
   const activeTab = tabs.find(t => t.id === activeTabId)
   const [urlInput, setUrlInput] = useState('')
-  const firstRenderedRef = useRef(false)
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
-
-  useEffect(() => {
-    if (!isElectron || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-browser-panel-rendered')
-    measureCradlePerformance(
-      'cradle:browser-panel-first-render',
-      'cradle:browser-panel-open-requested',
-      'cradle:first-browser-panel-rendered',
-    )
-  }, [])
 
   useEffect(() => {
     if (!requestedTab) {

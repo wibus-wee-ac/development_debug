@@ -1,7 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, ExternalLinkIcon } from 'lucide-react'
-import { useEffect, useRef } from 'react'
-
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import {
@@ -14,9 +12,7 @@ import {
 import { readTrayAwaits } from '~/features/desktop-tray/api'
 import type { TrayAwaitItem } from '~/features/desktop-tray/types'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useCradleTabStore } from '~/tabs/registry'
-import { preloadTabRoute } from '~/tabs/route-preload'
 
 function formatRelativeTime(unixSeconds: number): string {
   const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds)
@@ -34,7 +30,6 @@ function formatRelativeTime(unixSeconds: number): string {
 
 function AwaitRow({ item }: { item: TrayAwaitItem }) {
   const preloadChatRoute = () => {
-    preloadTabRoute('chat')
   }
 
   const openChat = () => {
@@ -76,7 +71,6 @@ function AwaitRow({ item }: { item: TrayAwaitItem }) {
 }
 
 export function AwaitsOverview() {
-  const firstRenderedRef = useRef(false)
   const awaitsQuery = useQuery({
     queryKey: ['desktop-tray', 'awaits'],
     queryFn: readTrayAwaits,
@@ -84,20 +78,6 @@ export function AwaitsOverview() {
     staleTime: 5_000,
   })
   const awaits = awaitsQuery.data ?? []
-
-  useEffect(() => {
-    if (!awaitsQuery.isSuccess || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-awaits-rendered')
-    measureCradlePerformance(
-      'cradle:awaits-first-render',
-      'cradle:awaits-render-requested',
-      'cradle:first-awaits-rendered',
-    )
-  }, [awaitsQuery.isSuccess])
 
   return (
     <div

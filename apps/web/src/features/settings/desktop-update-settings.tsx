@@ -1,5 +1,5 @@
 import { DownloadIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
 import { Badge } from '~/components/ui/badge'
@@ -7,7 +7,6 @@ import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import { type DesktopUpdateStatus, isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -77,7 +76,6 @@ function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
 }
 
 export function DesktopUpdateSettings() {
-  const firstRenderedRef = useRef(false)
   const [status, setStatus] = useState<DesktopUpdateStatus>(EMPTY_UPDATE_STATUS)
   const [statusReady, setStatusReady] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -126,20 +124,6 @@ export function DesktopUpdateSettings() {
     void refreshStatus()
     return subscribeDesktopUpdateStatus(setStatus)
   }, [refreshStatus])
-
-  useEffect(() => {
-    if (!statusReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-desktop-rendered')
-    measureCradlePerformance(
-      'cradle:settings-desktop-first-render',
-      'cradle:settings-desktop-render-requested',
-      'cradle:first-settings-desktop-rendered',
-    )
-  }, [statusReady])
 
   return (
     <div

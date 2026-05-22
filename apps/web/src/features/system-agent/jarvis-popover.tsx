@@ -9,7 +9,6 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { MessageBubble } from '~/features/chat/message-bubble'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { formatContextForAgent } from './format-context'
 import { useJarvisUiStore } from './jarvis-ui-store'
@@ -46,22 +45,7 @@ export function JarvisPopover({
 
   const { messages, status, error, sendMessage, stop, isReady: chatReady } = useChatSession(activeSessionId)
   const isStreaming = status === 'streaming'
-  const firstRenderedRef = React.useRef(false)
   const jarvisReady = preferencesReady && (!activeSessionId || chatReady)
-
-  React.useEffect(() => {
-    if (!open || !jarvisReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-jarvis-popover-rendered')
-    measureCradlePerformance(
-      'cradle:jarvis-popover-first-render',
-      'cradle:jarvis-popover-open-requested',
-      'cradle:first-jarvis-popover-rendered',
-    )
-  }, [jarvisReady, open])
 
   // Send the initial message once the session ID becomes available
   React.useEffect(() => {

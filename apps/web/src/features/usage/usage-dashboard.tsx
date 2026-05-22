@@ -10,7 +10,6 @@ import {
   getUsageSummaryOptions,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { formatTokens, formatUsd } from './usage-format'
 import { UsageHeatmap } from './usage-heatmap'
@@ -118,7 +117,6 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
 }
 
 export function UsageDashboard() {
-  const firstRenderedRef = useRef(false)
   const dailyQuery = useQuery({
     ...getUsageDailyOptions({ query: { days: '365' } }),
     select: DailyUsageListSchema.parse,
@@ -146,20 +144,6 @@ export function UsageDashboard() {
     statsQuery.isSuccess &&
     costSummaryQuery.isSuccess &&
     dailyCostQuery.isSuccess
-
-  useEffect(() => {
-    if (!usageReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-usage-rendered')
-    measureCradlePerformance(
-      'cradle:usage-first-render',
-      'cradle:usage-render-requested',
-      'cradle:first-usage-rendered',
-    )
-  }, [usageReady])
 
   const daily = dailyQuery.data ?? []
   const summary = summaryQuery.data ?? null

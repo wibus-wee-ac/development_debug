@@ -3,15 +3,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 import { z } from 'zod'
 
 import { getWorkflowRulesByWorkspaceId, putWorkflowRulesByWorkspaceId } from '~/api-gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
-
 const WorkflowRuleSchema = z.object({
   global: z.string().nullable(),
   profileSpecific: z.string().nullable(),
@@ -91,7 +88,6 @@ export function WorkspaceWorkflowRules({
   selectedAgentId: string | null
   onSelectedAgentId: (agentId: string | null) => void
 }) {
-  const firstRenderedRef = useRef(false)
   const { agents, isSuccess: agentsReady } = useAgents()
   const workflowRule = useWorkflowRule(workspaceId, selectedAgentId)
   const saveMutation = useSaveWorkflowRule()
@@ -104,20 +100,6 @@ export function WorkspaceWorkflowRules({
     ? (workflowRule.data?.profileSpecific ?? null)
     : (workflowRule.data?.global ?? null)
   const ready = agentsReady && workflowRule.isSuccess
-
-  useEffect(() => {
-    if (!ready || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-workspace-workflow-rules-rendered')
-    measureCradlePerformance(
-      'cradle:workspace-workflow-rules-first-render',
-      'cradle:workspace-workflow-rules-open-requested',
-      'cradle:first-workspace-workflow-rules-rendered',
-    )
-  }, [ready])
 
   const handleSave = (agentId: string | null, content: string) => {
     saveMutation.mutate({ workspaceId, agentId, content })

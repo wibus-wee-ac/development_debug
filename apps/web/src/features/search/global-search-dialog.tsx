@@ -32,13 +32,10 @@ import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { ChronicleSearchHit, ThreadSearchHit } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
-import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
-
 import { selectFileSearchResult } from './global-search-actions'
 import { HighlightedText } from './highlighted-text'
 import { groupHitsByWorkspace } from './thread-search-groups'
@@ -258,12 +255,6 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
       return
     }
 
-    markCradlePerformance('cradle:command-palette-opened')
-    measureCradlePerformance(
-      'cradle:command-palette-open',
-      'cradle:command-palette-open-requested',
-      'cradle:command-palette-opened'
-    )
     panelRef.current?.querySelector<HTMLInputElement>('[data-slot="command-input"]')?.focus()
   }, [open])
 
@@ -297,7 +288,6 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
 
       requestedQueryRef.current = nextTrimmed
       measuredQueryRef.current = ''
-      markCradlePerformance('cradle:command-palette-query-requested')
     },
     [open]
   )
@@ -353,12 +343,6 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
         return
       }
 
-      markCradlePerformance('cradle:command-palette-query-settled')
-      measureCradlePerformance(
-        'cradle:command-palette-query-settle',
-        'cradle:command-palette-query-requested',
-        'cradle:command-palette-query-settled'
-      )
       measuredQueryRef.current = measuredQuery
     })
   }, [hasQuery, isPending, open, trimmed])
@@ -394,7 +378,6 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
     const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
       ? tabStore.activeTabId
       : (() => {
-          preloadTabRoute('home')
           return tabStore.openTab('home', {}, { pinned: true })
         })()
     close()

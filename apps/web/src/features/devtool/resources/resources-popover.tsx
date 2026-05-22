@@ -18,7 +18,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 const SERVER_BASE = getServerUrl()
 const REFRESH_INTERVAL_MS = 3000
@@ -369,12 +368,8 @@ function useResourceSnapshot() {
 export function ResourcesPopover() {
   const { snap, loading, refresh, resourcesReady } = useResourceSnapshot()
   const [open, setOpen] = useState(false)
-  const firstRenderedRef = useRef(false)
 
   const handleOpenChange = useCallback((nextOpen: boolean) => {
-    if (nextOpen) {
-      markCradlePerformance('cradle:resources-popover-open-requested')
-    }
     setOpen(nextOpen)
   }, [])
 
@@ -383,19 +378,6 @@ export function ResourcesPopover() {
       void refresh()
     }
   }, [open, refresh])
-
-  useEffect(() => {
-    if (firstRenderedRef.current || !open || !snap || !resourcesReady) {
-      return
-    }
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-resources-popover-rendered')
-    measureCradlePerformance(
-      'cradle:resources-popover-first-render',
-      'cradle:resources-popover-open-requested',
-      'cradle:first-resources-popover-rendered'
-    )
-  }, [open, resourcesReady, snap])
 
   const totalRendererMB = snap ? Number(toMB(snap.rendererHeapUsed)) : 0
   const totalServerMB = snap ? Number(toMB(snap.serverRss)) : 0

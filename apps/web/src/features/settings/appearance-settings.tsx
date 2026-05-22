@@ -1,8 +1,6 @@
 import { CheckIcon } from 'lucide-react'
-import { useEffect, useRef } from 'react'
 
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useStreamdownStore } from '~/store/streamdown'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
@@ -82,24 +80,9 @@ const THEME_OPTIONS: Array<{ value: ThemeMode, label: string }> = [
 ]
 
 export function AppearanceSettings() {
-  const firstRenderedRef = useRef(false)
   const mode = useThemeStore(s => s.mode)
   const setMode = useThemeStore(s => s.setMode)
   const settingsAppearanceReady = THEME_OPTIONS.length > 0 && ANIMATION_PRESETS.length > 0
-
-  useEffect(() => {
-    if (!settingsAppearanceReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-appearance-rendered')
-    measureCradlePerformance(
-      'cradle:settings-appearance-first-render',
-      'cradle:settings-appearance-render-requested',
-      'cradle:first-settings-appearance-rendered',
-    )
-  }, [settingsAppearanceReady])
 
   return (
     <div

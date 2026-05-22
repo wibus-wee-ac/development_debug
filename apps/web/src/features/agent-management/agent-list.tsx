@@ -1,5 +1,5 @@
 import { BotIcon, ChevronRightIcon, PlusIcon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -17,7 +17,6 @@ import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-con
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { Agent, AgentProfile, CliTuiLaunchConfig } from '~/lib/types'
 
 import { AgentDetailPage } from './agent-detail'
@@ -104,7 +103,6 @@ function AgentSidebarRow({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function AgentList() {
-  const firstRenderedRef = useRef(false)
   const { agents, isLoading, isSuccess: agentsReady } = useAgents()
   const { profiles, isSuccess: profilesReady } = useAgentProfiles()
 
@@ -137,20 +135,6 @@ export function AgentList() {
       setSelectedId(null)
     }
   }, [agents, selectedId])
-
-  useEffect(() => {
-    if (!settingsAgentsReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-agents-rendered')
-    measureCradlePerformance(
-      'cradle:settings-agents-first-render',
-      'cradle:settings-agents-render-requested',
-      'cradle:first-settings-agents-rendered',
-    )
-  }, [settingsAgentsReady])
 
   const startDraft = useCallback(() => {
     setIsDrafting(true)

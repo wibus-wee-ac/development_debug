@@ -24,7 +24,6 @@ import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -100,7 +99,6 @@ function useNewChatPageOwner() {
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const queryClient = useQueryClient()
-  const firstRenderedRef = useRef(false)
 
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -125,20 +123,6 @@ function useNewChatPageOwner() {
     !composerState.isLoadingAgents &&
     !composerState.isLoadingProfiles &&
     !composerState.isLoadingModels
-
-  useEffect(() => {
-    if (!isReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-new-chat-rendered')
-    measureCradlePerformance(
-      'cradle:new-chat-first-render',
-      'cradle:new-chat-render-requested',
-      'cradle:first-new-chat-rendered'
-    )
-  }, [isReady])
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []

@@ -36,7 +36,6 @@ import type { ChronicleFocusTarget } from '~/features/settings/settings-overlay-
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import type {
   ChronicleAccessibilityEvent,
@@ -251,7 +250,6 @@ function prependFocusedItem<T extends { id: string }>(items: T[], focusedItem: T
 }
 
 export function ChronicleSettings() {
-  const firstRenderedRef = useRef(false)
   const { config, loading: configLoading, saving, updateConfig } = useChronicleConfig()
   const { status, loading: statusLoading } = useChronicleStatus()
   const { resources, loading: resourcesLoading } = useChronicleModelResources()
@@ -361,20 +359,6 @@ export function ChronicleSettings() {
     && !focusedMemoryLoading
     && !focusedKnowledgeLoading
     && !searchingMemories
-
-  useEffect(() => {
-    if (!settingsChronicleReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-chronicle-rendered')
-    measureCradlePerformance(
-      'cradle:settings-chronicle-first-render',
-      'cradle:settings-chronicle-render-requested',
-      'cradle:first-settings-chronicle-rendered',
-    )
-  }, [settingsChronicleReady])
 
   useEffect(() => {
     if (!chronicleFocusTarget) {

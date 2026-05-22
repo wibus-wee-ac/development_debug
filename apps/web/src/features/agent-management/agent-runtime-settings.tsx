@@ -9,7 +9,7 @@ import {
   ServerIcon,
   SparklesIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getExternalProviderSourcesRecordsOptions, postExternalProviderSourcesRefreshMutation } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
@@ -29,7 +29,6 @@ import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-vis
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { AgentProfile, ProviderKind } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
@@ -76,7 +75,6 @@ export function providerVisuals(presetId: string | null) {
 // ─── Root component ───────────────────────────────────────────────────────────
 
 export function AgentRuntimeSettings() {
-  const firstRenderedRef = useRef(false)
   const { profiles, isSuccess: profilesReady, refetch, updateProfile, removeProfile } = useAgentProfiles()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftProvider | null>(null)
@@ -129,20 +127,6 @@ export function AgentRuntimeSettings() {
       setSelectedId(null)
     }
   }, [draft, profiles, selectedId])
-
-  useEffect(() => {
-    if (!settingsProvidersReady || firstRenderedRef.current) {
-      return
-    }
-
-    firstRenderedRef.current = true
-    markCradlePerformance('cradle:first-settings-providers-rendered')
-    measureCradlePerformance(
-      'cradle:settings-providers-first-render',
-      'cradle:settings-providers-render-requested',
-      'cradle:first-settings-providers-rendered',
-    )
-  }, [settingsProvidersReady])
 
   const startDraft = useCallback(() => {
     const id = `draft-${Date.now()}`

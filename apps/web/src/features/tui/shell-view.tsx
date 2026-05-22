@@ -11,8 +11,6 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useRef, useState } from 'react'
 
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
-
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
@@ -28,8 +26,6 @@ const RE_CSI = /\u001B\[[0-?]*[ -/]*[@-~]/g
 const RE_CR = /\r/g
 // eslint-disable-next-line no-control-regex
 const RE_BS = /\u0008/g
-let firstBottomPanelShellRendered = false
-
 function toPlainTerminalText(value: string): string {
   return value
     .replace(RE_OSC, '')
@@ -197,15 +193,6 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
       await startShell({ ptyId, cwd, cols, rows })
       channel.connect()
       setReady(true)
-      if (!firstBottomPanelShellRendered) {
-        firstBottomPanelShellRendered = true
-        markCradlePerformance('cradle:first-bottom-panel-shell-rendered')
-        measureCradlePerformance(
-          'cradle:bottom-panel-shell-first-render',
-          'cradle:bottom-panel-shell-open-requested',
-          'cradle:first-bottom-panel-shell-rendered',
-        )
-      }
     }
 
     function fitAndNotify() {

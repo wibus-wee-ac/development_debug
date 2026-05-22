@@ -1,13 +1,12 @@
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircle2Icon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '~/components/ui/combobox'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -77,8 +76,6 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   const linkedIssueDataReady = !linkedIssueId || (issue.isSuccess && comments.isSuccess)
   const pickerDataReady = issues.isSuccess && statuses.isSuccess && boards.isSuccess
   const ready = !!workspaceId && workspacesReady && linkedIssueReady && linkedIssueDataReady && pickerDataReady
-  const firstRenderedSessionIdRef = useRef<string | null>(null)
-
   const candidateIssues = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const rows = issues.data ?? []
@@ -95,20 +92,6 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
 
   const isInitialLoading = linkedIssue.isLoading || (linkedIssueId && issue.isLoading)
   const isPickerLoading = issues.isLoading || boards.isLoading
-
-  useEffect(() => {
-    if (!ready || firstRenderedSessionIdRef.current === sessionId) {
-      return
-    }
-
-    firstRenderedSessionIdRef.current = sessionId
-    markCradlePerformance('cradle:first-right-aside-issue-rendered')
-    measureCradlePerformance(
-      'cradle:right-aside-issue-first-render',
-      'cradle:right-aside-issue-open-requested',
-      'cradle:first-right-aside-issue-rendered',
-    )
-  }, [ready, sessionId])
 
   const openIssue = () => {
     if (!selectedIssue || !boardId) {
