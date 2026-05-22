@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  CheckIcon,
+  ChevronRightIcon,
   GitCommitHorizontalIcon,
   GitPullRequestIcon,
   LoaderCircleIcon,
+  MinusIcon,
   MessageSquareCheckIcon,
   MessageSquareWarningIcon,
+  MoreHorizontalIcon,
   PlusIcon,
+  XIcon,
   WandSparklesIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
@@ -27,6 +32,7 @@ import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
+
 import {
   derivePullRequestNumberFromStatus,
   parseGitHubAwaitTargetInput,
@@ -261,6 +267,39 @@ function RunStatusIcon({ status, conclusion }: { status: LiveCheckRun['status'] 
   )
 }
 
+function StepStatusIcon({ status, conclusion }: { status: LiveWorkflowJobStep['status'], conclusion: string | null }) {
+  const icon = (() => {
+    if (status === 'completed') {
+      if (conclusion === 'success' || conclusion === 'neutral' || conclusion === 'skipped') {
+        return <CheckIcon className="size-3 text-green-500" strokeWidth={2.2} />
+      }
+      if (conclusion === 'cancelled') {
+        return <MinusIcon className="size-3 text-muted-foreground" strokeWidth={2.1} />
+      }
+      return <XIcon className="size-3 text-red-500" strokeWidth={2.1} />
+    }
+    if (status === 'in_progress') {
+      return <MoreHorizontalIcon className="size-3 text-amber-500" strokeWidth={2.1} />
+    }
+    return <MinusIcon className="size-3 text-muted-foreground/60" strokeWidth={2.1} />
+  })()
+
+  return (
+    <AnimatePresence mode="wait">
+      <m.span
+        key={`step-${status}-${conclusion}`}
+        initial={{ scale: 0.5, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.5, opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        className="inline-flex"
+      >
+        {icon}
+      </m.span>
+    </AnimatePresence>
+  )
+}
+
 function StatusContextIcon({ status }: { status: LiveCommitStatus }) {
   if (status.state === 'success') {
     return <CheckRunIcon className="text-green-500" />
@@ -354,10 +393,17 @@ const STROKE_W = 1.5
 const TRUNK_X = STROKE_W / 2
 const BRANCH_END = TREE_INDENT + 5 // extend to dot center
 
-function countRows(node: TreeNode): number {
+function isExpandableJobNode(node: TreeNode): boolean {
+  return !!node.run && node.children.length > 0
+}
+
+function countVisibleRows(node: TreeNode, expandedNodeIds: Set<string>): number {
   let c = 1
+  if (isExpandableJobNode(node) && !expandedNodeIds.has(node.id)) {
+    return c
+  }
   for (const child of node.children) {
-    c += countRows(child)
+    c += countVisibleRows(child, expandedNodeIds)
   }
   return c
 }
@@ -395,12 +441,20 @@ function buildConnectorPath(offsets: number[]): string {
 }
 
 /** Renders the trunk line + branch connectors for a list of sibling nodes */
-function TreeLevel({ nodes }: { nodes: TreeNode[] }) {
+function TreeLevel({
+  nodes,
+  expandedNodeIds,
+  onToggleNode,
+}: {
+  nodes: TreeNode[]
+  expandedNodeIds: Set<string>
+  onToggleNode: (nodeId: string) => void
+}) {
   const offsets: number[] = []
   let acc = 0
   for (const node of nodes) {
     offsets.push(acc)
-    acc += countRows(node)
+    acc += countVisibleRows(node, expandedNodeIds)
   }
   const totalH = acc * ROW_H
   const pathD = buildConnectorPath(offsets)
@@ -425,40 +479,100 @@ function TreeLevel({ nodes }: { nodes: TreeNode[] }) {
       </svg>
 
       {nodes.map((node, i) => (
-        <TreeItem key={node.id} node={node} isLast={i === nodes.length - 1} />
+        <TreeItem
+          key={node.id}
+          node={node}
+          isLast={i === nodes.length - 1}
+          expandedNodeIds={expandedNodeIds}
+          onToggleNode={onToggleNode}
+        />
       ))}
     </div>
   )
 }
 
-function TreeItem({ node, isLast: _isLast }: { node: TreeNode, isLast: boolean }) {
+function TreeItem({
+  node,
+  isLast: _isLast,
+  expandedNodeIds,
+  onToggleNode,
+}: {
+  node: TreeNode
+  isLast: boolean
+  expandedNodeIds: Set<string>
+  onToggleNode: (nodeId: string) => void
+}) {
   const hasChildren = node.children.length > 0
+  const isExpandableJob = isExpandableJobNode(node)
+  const isExpanded = !isExpandableJob || expandedNodeIds.has(node.id)
+
+  const content = (
+    <>
+      {node.run && <RunStatusIcon status={node.run.status} conclusion={node.run.conclusion} />}
+      {node.step && <StepStatusIcon status={node.step.status} conclusion={node.step.conclusion} />}
+      {!node.run && !node.step && hasChildren && (
+        <span className="size-2 rounded-full bg-foreground/40 shrink-0" />
+      )}
+      <span className={cn(
+        'truncate text-[11px]',
+        node.run || node.step ? 'text-foreground/80' : 'text-muted-foreground font-medium',
+      )}
+      >
+        {node.label}
+      </span>
+      {node.run?.required && (
+        <span className="shrink-0 rounded bg-muted/60 px-1 text-[9px] text-muted-foreground/50">req</span>
+      )}
+      {isExpandableJob && (
+        <m.span
+          className="ml-auto inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground/60"
+          animate={{ rotate: isExpanded ? 90 : 0 }}
+          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+          aria-hidden
+        >
+          <ChevronRightIcon className="size-3" />
+        </m.span>
+      )}
+    </>
+  )
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 min-w-0" style={{ height: ROW_H }}>
-        {node.run && <RunStatusIcon status={node.run.status} conclusion={node.run.conclusion} />}
-        {node.step && <RunStatusIcon status={node.step.status} conclusion={node.step.conclusion} />}
-        {!node.run && !node.step && hasChildren && (
-          <span className="size-2 rounded-full bg-foreground/40 shrink-0" />
-        )}
-        <span className={cn(
-          'truncate text-[11px]',
-          node.run || node.step ? 'text-foreground/80' : 'text-muted-foreground font-medium',
-        )}
-        >
-          {node.label}
-        </span>
-        {node.run?.required && (
-          <span className="shrink-0 text-[9px] text-muted-foreground/40 border border-border rounded px-0.5">req</span>
-        )}
-      </div>
+      {isExpandableJob
+        ? (
+            <button
+              type="button"
+              className={cn(
+                'flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 text-left',
+                'transition-colors duration-150 hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+              )}
+              style={{ height: ROW_H }}
+              aria-expanded={isExpanded}
+              onClick={() => onToggleNode(node.id)}
+            >
+              {content}
+            </button>
+          )
+        : (
+            <div className={cn('flex min-w-0 items-center gap-1.5', node.step && 'ml-0.5')} style={{ height: ROW_H }}>
+              {content}
+            </div>
+          )}
 
-      {hasChildren && (
-        <div style={{ marginLeft: 3 }}>
-          <TreeLevel nodes={node.children} />
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {hasChildren && isExpanded && (
+          <m.div
+            initial={isExpandableJob ? { height: 0, opacity: 0, y: -2 } : false}
+            animate={{ height: 'auto', opacity: 1, y: 0 }}
+            exit={{ height: 0, opacity: 0, y: -2 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+            style={{ marginLeft: 3 }}
+          >
+            <TreeLevel nodes={node.children} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -489,6 +603,8 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
 }
 
 function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set())
+
   if (!ci.hasToken) {
     return (
       <div className="rounded-md border border-border p-3">
@@ -502,6 +618,18 @@ function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
 
   const tree = buildRunTree(ci.checkRuns)
   const targetLabel = ci.prNumber ? null : ci.ref.slice(0, 12)
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodeIds((current) => {
+      const next = new Set(current)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      }
+      else {
+        next.add(nodeId)
+      }
+      return next
+    })
+  }
 
   return (
     <div className="rounded-md border border-border overflow-hidden">
@@ -531,7 +659,7 @@ function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
       {tree.length > 0 && (
         <div className="px-3 pb-2">
           <div className="ml-1.25">
-            <TreeLevel nodes={tree} />
+            <TreeLevel nodes={tree} expandedNodeIds={expandedNodeIds} onToggleNode={toggleNode} />
           </div>
         </div>
       )}
