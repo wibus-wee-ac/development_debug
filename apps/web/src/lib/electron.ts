@@ -41,17 +41,17 @@ export function getServerWebSocketUrl(
 /**
  * Whether this is a tearoff window (session-specific).
  */
-const _isTearoff = !!window.cradle?.env?.isTearoff
+export const isTearoffWindow = !!window.cradle?.env?.isTearoff
 
 /**
  * The session ID for tearoff windows.
  */
-const _tearoffSessionId = window.cradle?.env?.sessionId ?? null
+export const tearoffSessionId = window.cradle?.env?.sessionId ?? null
 
 /**
  * The OS platform.
  */
-const _platform = window.cradle?.env?.platform ?? 'darwin'
+export const platform = window.cradle?.env?.platform ?? 'darwin'
 
 // ── IPC Proxy (typed) ─────────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@ Store naming convention: `use<Domain>Store`.
 
 ## Files
 
-- **layout.ts**: Layout shell state — sidebar/aside/panel dimensions and visibility only, with bottom panel visibility defaulting open through persisted-state migration; feature UI state such as Settings overlay and Jarvis expansion now lives with the owning feature
+- **layout.ts**: Layout shell state — sidebar/aside/panel dimensions and visibility only, with bottom panel visibility defaulting open in main windows; Electron tear-off windows use session-scoped layout persistence, start with bottom panel and right aside collapsed, and do not persist those open/closed toggles back into the main-window layout state. Feature UI state such as Settings overlay and Jarvis expansion now lives with the owning feature
 - **layout-slots.ts**: Layout slot registry — pages inject content into aside/panel regions
 - **theme.ts**: Theme preference state — light/dark/system mode
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)

@@ -9,11 +9,15 @@ import { TabsProvider } from '../provider'
 import { defineTab } from '../route-definition'
 import { createTabStore } from '../store'
 
+const dndMockState = vi.hoisted(() => ({
+  activeId: 'mock-tab',
+}))
+
 vi.mock('@dnd-kit/core', () => ({
   closestCenter: vi.fn(),
   DndContext: ({ children, onDragStart }: {
     children: ReactNode
-    onDragStart?: (event: { activatorEvent: Event }) => void
+    onDragStart?: (event: { active: { id: string }, activatorEvent: Event }) => void
   }) => (
     <div>
       <button
@@ -21,6 +25,7 @@ vi.mock('@dnd-kit/core', () => ({
         data-testid="mock-drag-start"
         onClick={() => {
           onDragStart?.({
+            active: { id: dndMockState.activeId },
             activatorEvent: new MouseEvent('pointerdown', { screenX: 10, screenY: 10 }),
           })
         }}
@@ -62,13 +67,26 @@ const registry = {
 
 function renderTabBar() {
   const store = createTabStore(registry, { persistKey: `tabs-next-tab-bar-test-${Math.random()}` })
-  store.getState().openTab('chat', { sessionId: 'one' })
+  const tabId = store.getState().openTab('chat', { sessionId: 'one' })
+  dndMockState.activeId = tabId
   const view = render(
     <TabsProvider store={store} registry={registry}>
       <TabBar onNewTab={vi.fn()} />
     </TabsProvider>,
   )
   return { store, ...view }
+}
+
+function renderTabBarWithTearOff(onTabTearOff = vi.fn()) {
+  const store = createTabStore(registry, { persistKey: `tabs-next-tab-bar-tear-off-test-${Math.random()}` })
+  const tabId = store.getState().openTab('chat', { sessionId: 'one' })
+  dndMockState.activeId = tabId
+  const view = render(
+    <TabsProvider store={store} registry={registry}>
+      <TabBar onTabTearOff={onTabTearOff} />
+    </TabsProvider>,
+  )
+  return { onTabTearOff, store, tabId, ...view }
 }
 
 describe('TabBar', () => {
@@ -118,5 +136,26 @@ describe('TabBar', () => {
     unmount()
 
     expect(removeListener).toHaveBeenCalledWith('pointermove', pointerMoveListener, true)
+  })
+
+  it('tears off a tab as soon as the drag leaves the window', () => {
+    const addListener = vi.spyOn(window, 'addEventListener')
+    const { onTabTearOff, store, tabId } = renderTabBarWithTearOff()
+
+    Object.defineProperties(window, {
+      screenX: { configurable: true, value: 0 },
+      screenY: { configurable: true, value: 0 },
+      outerWidth: { configurable: true, value: 100 },
+      outerHeight: { configurable: true, value: 100 },
+    })
+
+    fireEvent.click(screen.getByTestId('mock-drag-start'))
+    const mouseMoveListener = addListener.mock.calls.find(call => call[0] === 'mousemove')?.[1]
+
+    expect(mouseMoveListener).toBeTypeOf('function')
+
+    ;(mouseMoveListener as EventListener)(new MouseEvent('mousemove', { screenX: 140, screenY: 20 }))
+
+    expect(onTabTearOff).toHaveBeenCalledWith(store.getState().tabs.find(tab => tab.id === tabId), 140, 20)
   })
 })

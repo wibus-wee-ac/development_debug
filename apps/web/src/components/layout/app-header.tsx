@@ -7,7 +7,7 @@ import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import { isElectron } from '~/lib/electron'
+import { isElectron, isTearoffWindow, platform } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
@@ -26,6 +26,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
   const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
   const isDrillIn = isSettingsActive
   const sidebarToggleLabel = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+  const reserveTrafficLightSpace = isTearoffWindow && platform === 'darwin'
 
   const handleTabActivated = useCallback(() => {
     // No-op: settings is now per-tab, tab switching is handled by isSettingsVisible in app.tsx
@@ -77,7 +78,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       {/* Left: sidebar toggle (hidden in drill-in modes where sidebar is forced open) */}
-      {!isDrillIn && (
+      {!isDrillIn && !isTearoffWindow && (
         <Button
           variant="ghost"
           size="icon-xs"
@@ -89,6 +90,12 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
         >
           {sidebarCollapsed ? <PanelLeftOpenIcon aria-hidden="true" /> : <PanelLeftCloseIcon aria-hidden="true" />}
         </Button>
+      )}
+      {reserveTrafficLightSpace && (
+        <div
+          aria-hidden="true"
+          className="h-full w-20 shrink-0"
+        />
       )}
 
       {/* Tab bar */}

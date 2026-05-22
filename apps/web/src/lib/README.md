@@ -9,7 +9,7 @@ Used across features and components in the renderer.
 ## Files
 
 - **cn.ts**: Tailwind class merging utility (`cn`) using clsx + tailwind-merge
-- **electron.ts**: Electron environment helpers, typed IPC proxy, server HTTP base URL resolution, and server WebSocket URL derivation
+- **electron.ts**: Electron environment helpers, including main vs tear-off window metadata, typed IPC proxy, server HTTP base URL resolution, and server WebSocket URL derivation
 - **ipc.ts**: Typed IPC proxy for renderer-to-main communication; 默认只在 devtool route 上启用昂贵的 caller stack 捕获
 - **ipc-options.ts**: IPC instrumentation policy helper，决定何时允许捕获调用栈
 - **asset-precache.ts**: Production asset precache service worker registration helper，启动后在 shell 可见之后注册 Vite 生成的静态资源缓存。

@@ -16,6 +16,7 @@ import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
+import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useThemeStore } from '~/store/theme'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
@@ -25,6 +26,10 @@ const PERSONAL_WORKSPACE_TAB_POLICY: TabRenderPolicy = {
   strategy: 'activity-pool',
   maxMountedTabs: 15,
   keepPinnedMounted: true,
+}
+
+const TEAROFF_TAB_POLICY: TabRenderPolicy = {
+  strategy: 'single',
 }
 
 function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
@@ -54,7 +59,37 @@ export function App() {
 function AppRuntime() {
   'use no memo'
 
+  if (isTearoffWindow) {
+    return <TearoffAppRuntime />
+  }
+
+  return <MainAppRuntime />
+}
+
+function useThemeClass(): void {
   const mode = useThemeStore(s => s.mode)
+
+  useEffect(() => {
+    const applyDark = (dark: boolean): void => {
+      document.documentElement.classList.toggle('dark', dark)
+    }
+
+    if (mode !== 'system') {
+      applyDark(mode === 'dark')
+      return
+    }
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    applyDark(mq.matches)
+    const listener = (e: MediaQueryListEvent): void => applyDark(e.matches)
+    mq.addEventListener('change', listener)
+    return () => mq.removeEventListener('change', listener)
+  }, [mode])
+}
+
+function MainAppRuntime() {
+  'use no memo'
+
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
@@ -72,6 +107,8 @@ function AppRuntime() {
   const openGlobalSearch = useCallback(() => {
     setGlobalSearchOpen(true)
   }, [])
+
+  useThemeClass()
 
   useDesktopTrayActionBridge({ onOpenGlobalSearch: openGlobalSearch })
 
@@ -113,23 +150,6 @@ function AppRuntime() {
     return () => urlSync.destroy()
   }, [])
 
-  useEffect(() => {
-    const applyDark = (dark: boolean): void => {
-      document.documentElement.classList.toggle('dark', dark)
-    }
-
-    if (mode !== 'system') {
-      applyDark(mode === 'dark')
-      return
-    }
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    applyDark(mq.matches)
-    const listener = (e: MediaQueryListEvent): void => applyDark(e.matches)
-    mq.addEventListener('change', listener)
-    return () => mq.removeEventListener('change', listener)
-  }, [mode])
-
   return (
     <AppEnvironmentProviders>
       <LayoutSlotsProvider activeSlotId={activeSlotId}>
@@ -164,6 +184,50 @@ function AppRuntime() {
                 )}
                 <GlobalSearchDialog open={globalSearchOpen} onOpenChange={setGlobalSearchOpen} />
               </div>
+            </AppLayout>
+          </div>
+        </TabsProvider>
+      </LayoutSlotsProvider>
+    </AppEnvironmentProviders>
+  )
+}
+
+function TearoffAppRuntime() {
+  'use no memo'
+
+  const activeTabId = useCradleTabStore(s => s.activeTabId)
+  const activeTab = useCradleTabStore(s => s.tabs.find(tab => tab.id === activeTabId))
+  const activeSlotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+
+  useThemeClass()
+
+  useEffect(() => {
+    if (!tearoffSessionId) {
+      return
+    }
+    useCradleTabStore.getState().openTab('chat', { sessionId: tearoffSessionId })
+  }, [])
+
+  useEffect(() => {
+    if (!tearoffSessionId) {
+      return
+    }
+    const urlSync = createUrlSync({ store: useCradleTabStore, registry: cradleRegistry })
+    urlSync.init()
+    return () => urlSync.destroy()
+  }, [])
+
+  return (
+    <AppEnvironmentProviders>
+      <LayoutSlotsProvider activeSlotId={activeSlotId}>
+        <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
+          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+            <AppLayout>
+              <TabRenderer
+                fallback={null}
+                className="h-full flex overflow-hidden w-full"
+                policy={TEAROFF_TAB_POLICY}
+              />
             </AppLayout>
           </div>
         </TabsProvider>

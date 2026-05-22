@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
+
 import { persistStorage } from './persist-storage'
 
 interface LayoutState {
@@ -38,6 +40,10 @@ interface PersistedLayoutState {
   browserPanelRatio?: number
 }
 
+const layoutPersistKey = isTearoffWindow
+  ? `cradle:layout:tearoff:${tearoffSessionId ?? 'unknown'}:v1`
+  : 'cradle:layout:v1'
+
 export const useLayoutStore = create<LayoutState>()(
   persist(
     set => ({
@@ -47,7 +53,7 @@ export const useLayoutStore = create<LayoutState>()(
       bottomPanelHeight: 200,
       asideOpen: false,
       asideActiveTab: 'files',
-      bottomPanelOpen: true,
+      bottomPanelOpen: !isTearoffWindow,
       browserPanelOpen: false,
       browserPanelRatio: 0.4,
       setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
@@ -65,11 +71,18 @@ export const useLayoutStore = create<LayoutState>()(
       setBrowserPanelRatio: (r: number) => set({ browserPanelRatio: Math.max(0.2, Math.min(0.7, r)) }),
     }),
     {
-      name: 'cradle:layout:v1',
+      name: layoutPersistKey,
       storage: persistStorage,
       version: 2,
       migrate: (persistedState, version) => {
         const state = persistedState as PersistedLayoutState
+        if (isTearoffWindow) {
+          return {
+            ...state,
+            asideOpen: false,
+            bottomPanelOpen: false,
+          }
+        }
         if (version < 2) {
           return {
             ...state,
@@ -83,9 +96,23 @@ export const useLayoutStore = create<LayoutState>()(
         sidebarCollapsed: state.sidebarCollapsed,
         asideWidth: state.asideWidth,
         bottomPanelHeight: state.bottomPanelHeight,
-        asideOpen: state.asideOpen,
-        bottomPanelOpen: state.bottomPanelOpen,
+        ...(isTearoffWindow
+          ? {}
+          : {
+              asideOpen: state.asideOpen,
+              bottomPanelOpen: state.bottomPanelOpen,
+            }),
         browserPanelRatio: state.browserPanelRatio,
+      }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as PersistedLayoutState),
+        ...(isTearoffWindow
+          ? {
+              asideOpen: false,
+              bottomPanelOpen: false,
+            }
+          : {}),
       }),
     },
   ),

@@ -53,7 +53,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/__tests__/use-tab-navigation.test.tsx**: Hook tests for current-tab and new-tab navigation helpers.
 - **src/__tests__/url-sync.test.ts**: Browser history and `popstate` URL sync tests.
 - **src/__tests__/persisted-contexts.test.ts**: Persisted context repair tests.
-- **src/__tests__/tab-bar.test.tsx**: Tab bar accessibility and drag cleanup tests.
+- **src/__tests__/tab-bar.test.tsx**: Tab bar accessibility, drag cleanup, and tear-off trigger tests.
 
 ## Migration Notes
 

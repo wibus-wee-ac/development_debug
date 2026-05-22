@@ -1,8 +1,10 @@
 import { createTabStore } from '@cradle/tabs-next'
 
+import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
+
 import { approvalsTab } from './approvals.tab'
-import { awaitsTab } from './awaits.tab'
 import { automationTab } from './automation.tab'
+import { awaitsTab } from './awaits.tab'
 import { chatTab } from './chat.tab'
 import { homeTab } from './home.tab'
 import { kanbanBoardTab } from './kanban-board.tab'
@@ -24,4 +26,11 @@ export const cradleRegistry = {
   'plugin-panel': pluginPanelTab,
 } as const
 
-export const useCradleTabStore = createTabStore(cradleRegistry)
+const tabPersistKey = isTearoffWindow
+  ? `cradle:tabs-next:tearoff:${tearoffSessionId ?? 'unknown'}:v1`
+  : undefined
+
+export const useCradleTabStore = createTabStore(
+  cradleRegistry,
+  tabPersistKey ? { persistKey: tabPersistKey } : undefined,
+)

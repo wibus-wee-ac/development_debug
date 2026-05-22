@@ -141,11 +141,21 @@ export const TabBar = memo(({
   const tabs = store(s => s.tabs)
   const activeTabId = store(s => s.activeTabId)
   const pointerRef = useRef<ScreenCoordinates | null>(null)
+  const activeDragIdRef = useRef<string | number | null>(null)
+  const dragWasTornOffRef = useRef(false)
   const dragCleanupRef = useRef<(() => void) | null>(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
   )
+
+  const releaseCurrentDrag = useCallback(() => {
+    dragCleanupRef.current?.()
+    dragCleanupRef.current = null
+    pointerRef.current = null
+    activeDragIdRef.current = null
+    dragWasTornOffRef.current = false
+  }, [])
 
   const handleActivate = useCallback((id: string) => {
     store.getState().setActiveTab(id)
@@ -161,29 +171,10 @@ export const TabBar = memo(({
     onTabClosed?.(id)
   }, [onTabClosed, store])
 
-  const handleDragStart = useCallback((event: DragStartEvent) => {
-    pointerRef.current = getEventScreenCoordinates(event.activatorEvent)
-    dragCleanupRef.current?.()
-    const onMove = (moveEvent: PointerEvent) => {
-      pointerRef.current = { screenX: moveEvent.screenX, screenY: moveEvent.screenY }
-    }
-    window.addEventListener('pointermove', onMove, true)
-    dragCleanupRef.current = () => {
-      window.removeEventListener('pointermove', onMove, true)
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      dragCleanupRef.current?.()
-      dragCleanupRef.current = null
-      pointerRef.current = null
-    }
-  }, [])
-
   const checkTearOff = useCallback((activeId: string | number) => {
     dragCleanupRef.current?.()
     dragCleanupRef.current = null
+    activeDragIdRef.current = null
 
     if (!onTabTearOff) {
       return false
@@ -198,6 +189,7 @@ export const TabBar = memo(({
 
     const tab = store.getState().tabs.find(item => item.id === activeId)
     if (tab && !tab.pinned && pointer) {
+      dragWasTornOffRef.current = true
       onTabTearOff(tab, pointer.screenX, pointer.screenY)
       return true
     }
@@ -205,8 +197,40 @@ export const TabBar = memo(({
     return false
   }, [onTabTearOff, store])
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    pointerRef.current = getEventScreenCoordinates(event.activatorEvent)
+    activeDragIdRef.current = event.active.id
+    dragWasTornOffRef.current = false
+    dragCleanupRef.current?.()
+
+    const onMove = (moveEvent: MouseEvent | PointerEvent | TouchEvent) => {
+      pointerRef.current = getEventScreenCoordinates(moveEvent)
+      const activeDragId = activeDragIdRef.current
+      if (activeDragId !== null && isPointerOutsideWindow(pointerRef.current, window)) {
+        checkTearOff(activeDragId)
+      }
+    }
+
+    window.addEventListener('mousemove', onMove, true)
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('touchmove', onMove, true)
+    dragCleanupRef.current = () => {
+      window.removeEventListener('mousemove', onMove, true)
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('touchmove', onMove, true)
+    }
+  }, [checkTearOff])
+
+  useEffect(() => {
+    return releaseCurrentDrag
+  }, [releaseCurrentDrag])
+
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
+    if (dragWasTornOffRef.current) {
+      releaseCurrentDrag()
+      return
+    }
     if (checkTearOff(active.id)) {
       return
     }
@@ -223,11 +247,15 @@ export const TabBar = memo(({
     const [moved] = reordered.splice(oldIndex, 1)
     reordered.splice(newIndex, 0, moved)
     store.getState().reorderTabs(reordered.map(tab => tab.id))
-  }, [checkTearOff, store])
+  }, [checkTearOff, releaseCurrentDrag, store])
 
   const handleDragCancel = useCallback((event: { active: { id: string | number } }) => {
+    if (dragWasTornOffRef.current) {
+      releaseCurrentDrag()
+      return
+    }
     checkTearOff(event.active.id)
-  }, [checkTearOff])
+  }, [checkTearOff, releaseCurrentDrag])
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
