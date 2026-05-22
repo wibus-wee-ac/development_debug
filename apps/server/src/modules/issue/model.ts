@@ -49,7 +49,7 @@ export const IssueModel = {
     title: t.String(),
     description: t.Nullable(t.String()),
     priority: priorityEnum,
-    labels: t.String(),
+    labels: t.Array(t.String()),
     assigneeKind: t.Nullable(t.String()),
     assigneeId: t.Nullable(t.String()),
     createdByKind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
@@ -155,7 +155,7 @@ export const IssueModel = {
     update: t.Object({
       statusId: t.Optional(t.Nullable(t.String())),
       priority: t.Optional(priorityEnum),
-      labels: t.Optional(t.String()),
+      labels: t.Optional(t.Array(t.String())),
       milestoneId: t.Optional(t.Nullable(t.String())),
       assigneeKind: t.Optional(t.Nullable(t.String())),
       assigneeId: t.Optional(t.Nullable(t.String())),

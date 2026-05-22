@@ -21,19 +21,57 @@ import { db } from '../../infra'
 
 type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
 
-export const IssueLabelsJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
-  z.array(z.string()),
-)
+const StatusCategorySchema = z.enum(['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled'])
+const IssueCommentAuthorKindSchema = z.enum(['user', 'agent', 'system', 'system.delegated', 'system.undelegated'])
+const IssueLabelsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.string()))
 
-export const IssueContextRefsJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
-  z.array(z.string()),
-)
+const CreateIssueInputSchema = z.object({
+  workspaceId: z.string(),
+  title: z.string(),
+  description: z.string().nullable().default(null),
+  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']).default('none'),
+  labels: z.array(z.string()).default([]),
+  milestoneId: z.string().nullable().default(null),
+  parentIssueId: z.string().nullable().default(null),
+  statusId: z.string().nullable().default(null),
+})
 
-export const IssuePromptContextRefsJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
-  z.array(z.union([
+const CreateStatusInputSchema = z.object({
+  workspaceId: z.string(),
+  name: z.string(),
+  color: z.string().nullable().default(null),
+  category: StatusCategorySchema.default('unstarted'),
+})
+
+const CreateMilestoneInputSchema = z.object({
+  workspaceId: z.string(),
+  title: z.string(),
+  description: z.string().nullable().default(null),
+  dueDate: z.number().nullable().default(null),
+  status: z.enum(['open', 'closed']).default('open'),
+})
+
+const AddCommentBaseInputSchema = z.object({
+  issueId: z.string(),
+  content: z.string(),
+  authorKind: IssueCommentAuthorKindSchema.default('user'),
+  authorId: z.string().nullable().optional(),
+})
+
+const AddCommentInputSchema = AddCommentBaseInputSchema.transform(input => ({
+  ...input,
+  authorId: z.string().nullable().default(() => input.authorKind.startsWith('system') ? null : '__self__').parse(input.authorId),
+}))
+
+export const IssueContextRefsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.string()))
+
+export const IssuePromptContextRefsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.union([
     z.string().transform(value => ({
       type: 'ref',
       value,
@@ -44,8 +82,7 @@ export const IssuePromptContextRefsJsonSchema = z.preprocess(
       value: z.string(),
       label: z.string().optional(),
     }),
-  ])),
-)
+  ])))
 
 export interface IssueCommentAuthorView {
   kind: 'user' | 'agent' | 'system'
@@ -56,6 +93,7 @@ export interface IssueCommentAuthorView {
 }
 
 export type IssueCommentView = IssueComment & { author: IssueCommentAuthorView }
+export type IssueView = Omit<Issue, 'labels'> & { labels: string[] }
 
 const DEFAULT_STATUSES = [
   { name: 'Triage', color: '#a855f7', category: 'triage' as const },
@@ -140,10 +178,11 @@ export function listStatuses(workspaceId: string): IssueStatus[] {
   return db().select().from(issueStatuses).where(eq(issueStatuses.workspaceId, workspaceId)).orderBy(issueStatuses.order).all()
 }
 
-export function createStatus(input: { workspaceId: string, name: string, color?: string | null, category?: StatusCategory }): IssueStatus {
+export function createStatus(rawInput: { workspaceId: string, name: string, color?: string | null, category?: StatusCategory }): IssueStatus {
+  const input = CreateStatusInputSchema.parse(rawInput)
   requireWorkspace(input.workspaceId)
   const count = countStatuses(input.workspaceId)
-  return createStatusRow({ ...input, color: input.color ?? null, category: input.category ?? 'unstarted', order: count })
+  return createStatusRow({ ...input, order: count })
 }
 
 export function updateStatus(id: string, patch: { name?: string, color?: string | null }): IssueStatus {
@@ -183,16 +222,17 @@ export function listMilestones(workspaceId: string): IssueMilestone[] {
   return db().select().from(issueMilestones).where(eq(issueMilestones.workspaceId, workspaceId)).orderBy(desc(issueMilestones.createdAt)).all()
 }
 
-export function createMilestone(input: { workspaceId: string, title: string, description?: string | null, dueDate?: number | null, status?: 'open' | 'closed' }): IssueMilestone {
+export function createMilestone(rawInput: { workspaceId: string, title: string, description?: string | null, dueDate?: number | null, status?: 'open' | 'closed' }): IssueMilestone {
+  const input = CreateMilestoneInputSchema.parse(rawInput)
   requireWorkspace(input.workspaceId)
   const now = currentUnixSeconds()
   return db().insert(issueMilestones).values({
     id: randomUUID(),
     workspaceId: input.workspaceId,
     title: input.title,
-    description: input.description ?? null,
-    dueDate: input.dueDate ?? null,
-    status: input.status ?? 'open',
+    description: input.description,
+    dueDate: input.dueDate,
+    status: input.status,
     createdAt: now,
     updatedAt: now,
   }).returning().get()
@@ -237,7 +277,7 @@ export interface IssueListParams {
   statusId?: string | null
 }
 
-export function listIssues(params: IssueListParams): Issue[] {
+export function listIssues(params: IssueListParams): IssueView[] {
   requireWorkspace(params.workspaceId)
   const rows = db()
     .select()
@@ -247,6 +287,7 @@ export function listIssues(params: IssueListParams): Issue[] {
     .all()
 
   return rows
+    .map(toIssueView)
     .filter(issue => params.milestoneId === undefined || issue.milestoneId === (params.milestoneId ?? null))
     .filter(issue => params.parentIssueId === undefined || issue.parentIssueId === (params.parentIssueId ?? null))
     .filter(issue => params.priority == null || issue.priority === params.priority)
@@ -255,12 +296,11 @@ export function listIssues(params: IssueListParams): Issue[] {
       if (!params.labels || params.labels.length === 0) {
         return true
       }
-      const labels = IssueLabelsJsonSchema.parse(issue.labels)
-      return params.labels.every(label => labels.includes(label))
+      return params.labels.every(label => issue.labels.includes(label))
     })
 }
 
-export function getIssue(id: string): Issue {
+function getIssueRow(id: string): Issue {
   const issue = db().select().from(issues).where(eq(issues.id, id)).get()
   if (!issue) {
     throw new AppError({ code: 'issue_not_found', status: 404, message: 'Issue not found', details: { issueId: id } })
@@ -268,15 +308,27 @@ export function getIssue(id: string): Issue {
   return issue
 }
 
-export function searchIssues(q: string, limit = 20): Issue[] {
+export function getIssue(id: string): IssueView {
+  return toIssueView(getIssueRow(id))
+}
+
+function toIssueView(issue: Issue): IssueView {
+  return {
+    ...issue,
+    labels: IssueLabelsJsonSchema.parse(issue.labels),
+  }
+}
+
+export function searchIssues(q: string, limit = 20): IssueView[] {
   const lowerQ = q.toLowerCase()
   const all = db().select().from(issues).orderBy(desc(issues.createdAt)).all()
   return all
     .filter(issue => issue.title.toLowerCase().includes(lowerQ) || (issue.description ?? '').toLowerCase().includes(lowerQ))
     .slice(0, limit)
+    .map(toIssueView)
 }
 
-export function createIssue(input: {
+export function createIssue(rawInput: {
   workspaceId: string
   title: string
   description?: string | null
@@ -285,7 +337,8 @@ export function createIssue(input: {
   milestoneId?: string | null
   parentIssueId?: string | null
   statusId?: string | null
-}, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user' }): Issue {
+}, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user' }): IssueView {
+  const input = CreateIssueInputSchema.parse(rawInput)
   const workspace = requireWorkspace(input.workspaceId)
   seedDefaultStatuses(input.workspaceId)
   const now = currentUnixSeconds()
@@ -295,15 +348,15 @@ export function createIssue(input: {
   const statusId = input.statusId
     ?? db().select({ id: issueStatuses.id }).from(issueStatuses).where(eq(issueStatuses.workspaceId, input.workspaceId)).orderBy(issueStatuses.order).get()?.id
     ?? null
-  return db().insert(issues).values({
+  const issue = db().insert(issues).values({
     id: identity.id,
     workspaceId: input.workspaceId,
     title: input.title,
-    description: input.description ?? null,
-    priority: input.priority ?? 'none',
-    labels: JSON.stringify(input.labels ?? []),
-    milestoneId: input.milestoneId ?? null,
-    parentIssueId: input.parentIssueId ?? null,
+    description: input.description,
+    priority: input.priority,
+    labels: JSON.stringify(input.labels),
+    milestoneId: input.milestoneId,
+    parentIssueId: input.parentIssueId,
     statusId,
     number: identity.number,
     assigneeKind: null,
@@ -317,6 +370,7 @@ export function createIssue(input: {
     createdAt: now,
     updatedAt: now,
   }).returning().get()
+  return toIssueView(issue)
 }
 
 export function updateIssue(id: string, patch: Partial<{
@@ -330,7 +384,7 @@ export function updateIssue(id: string, patch: Partial<{
   assigneeKind: string | null
   assigneeId: string | null
   order: number
-}>): Issue {
+}>): IssueView {
   const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if (patch.title !== undefined) {
     updates.title = patch.title
@@ -367,7 +421,7 @@ export function updateIssue(id: string, patch: Partial<{
   return getIssue(id)
 }
 
-export function updateIssueDelegation(id: string, delegation: { agentId: string, agentProfileId: string } | null): Issue {
+export function updateIssueDelegation(id: string, delegation: { agentId: string, agentProfileId: string } | null): IssueView {
   db().update(issues).set({
     delegateAgentId: delegation?.agentId ?? null,
     delegateAgentProfileId: delegation?.agentProfileId ?? null,
@@ -377,12 +431,12 @@ export function updateIssueDelegation(id: string, delegation: { agentId: string,
 }
 
 export function deleteIssue(id: string): void {
-  getIssue(id)
+  getIssueRow(id)
   db().update(issues).set({ parentIssueId: null, updatedAt: currentUnixSeconds() }).where(eq(issues.parentIssueId, id)).run()
   db().delete(issues).where(eq(issues.id, id)).run()
 }
 
-export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string | null, priority?: string, labels?: string, milestoneId?: string | null, assigneeKind?: string | null, assigneeId?: string | null }): number {
+export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string | null, priority?: string, labels?: string[], milestoneId?: string | null, assigneeKind?: string | null, assigneeId?: string | null }): number {
   if (issueIds.length === 0) {
     return 0
   }
@@ -394,7 +448,7 @@ export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string
     updates.priority = update.priority
   }
   if (update.labels !== undefined) {
-    updates.labels = update.labels
+    updates.labels = JSON.stringify(update.labels)
   }
   if ('milestoneId' in update) {
     updates.milestoneId = update.milestoneId ?? null
@@ -411,19 +465,19 @@ export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string
 }
 
 export function listComments(issueId: string): IssueCommentView[] {
-  getIssue(issueId)
+  getIssueRow(issueId)
   return db().select().from(issueComments).where(eq(issueComments.issueId, issueId)).orderBy(issueComments.createdAt).all().map(toCommentView)
 }
 
-export function addComment(input: { issueId: string, content: string, authorKind?: IssueComment['authorKind'], authorId?: string | null }): IssueCommentView {
+export function addComment(rawInput: { issueId: string, content: string, authorKind?: IssueComment['authorKind'], authorId?: string | null }): IssueCommentView {
+  const input = AddCommentInputSchema.parse(rawInput)
   getIssue(input.issueId)
-  const authorKind = input.authorKind ?? 'user'
   const comment = db().insert(issueComments).values({
     id: randomUUID(),
     issueId: input.issueId,
     content: input.content,
-    authorKind,
-    authorId: input.authorId ?? (authorKind.startsWith('system') ? null : '__self__'),
+    authorKind: input.authorKind,
+    authorId: input.authorId,
     agentActivityId: null,
     createdAt: currentUnixSeconds(),
   }).returning().get()
@@ -488,7 +542,7 @@ export function deleteComment(id: string): void {
 }
 
 export function listRelations(issueId: string): IssueRelation[] {
-  getIssue(issueId)
+  getIssueRow(issueId)
   return db()
     .select()
     .from(issueRelations)
@@ -497,8 +551,8 @@ export function listRelations(issueId: string): IssueRelation[] {
 }
 
 export function createRelation(input: { sourceIssueId: string, targetIssueId: string, type: 'blocks' | 'duplicates' | 'relates_to' }): IssueRelation {
-  getIssue(input.sourceIssueId)
-  getIssue(input.targetIssueId)
+  getIssueRow(input.sourceIssueId)
+  getIssueRow(input.targetIssueId)
   return db().insert(issueRelations).values({
     id: randomUUID(),
     sourceIssueId: input.sourceIssueId,
@@ -515,7 +569,7 @@ export function deleteRelation(id: string): void {
   db().delete(issueRelations).where(eq(issueRelations.id, id)).run()
 }
 
-export function addContextRef(issueId: string, ref: string): Issue {
+export function addContextRef(issueId: string, ref: string): IssueView {
   const issue = getIssue(issueId)
   const refs = IssueContextRefsJsonSchema.parse(issue.contextRefs)
   refs.push(ref)
@@ -523,7 +577,7 @@ export function addContextRef(issueId: string, ref: string): Issue {
   return getIssue(issueId)
 }
 
-export function removeContextRef(issueId: string, index: number): Issue {
+export function removeContextRef(issueId: string, index: number): IssueView {
   const issue = getIssue(issueId)
   const refs = IssueContextRefsJsonSchema.parse(issue.contextRefs)
   if (index < 0 || index >= refs.length) {

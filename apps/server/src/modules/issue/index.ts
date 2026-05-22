@@ -1,8 +1,14 @@
 import { Elysia, t } from 'elysia'
+import { z } from 'zod'
 
 import { resolveActorContext } from '../../http/actor-context'
 import { IssueModel } from './model'
 import * as Issue from './service'
+
+const IssueLabelsQuerySchema = z.union([
+  z.string().transform(value => value.split(',').map(item => item.trim()).filter(Boolean)),
+  z.array(z.string().transform(item => item.trim()).pipe(z.string().min(1))),
+]).optional()
 
 export const issue = new Elysia({
   prefix: '/issues',
@@ -104,7 +110,7 @@ export const issue = new Elysia({
     milestoneId: query.milestoneId,
     parentIssueId: query.parentIssueId,
     priority: query.priority,
-    labels: normalizeLabels(query.labels),
+    labels: IssueLabelsQuerySchema.parse(query.labels),
     statusId: query.statusId,
   }), {
     detail: {
@@ -238,13 +244,3 @@ export const issue = new Elysia({
     params: IssueModel.contextRefIndexParams,
     response: { 200: IssueModel.issue },
   })
-
-function normalizeLabels(value: string[] | string | undefined): string[] | undefined {
-  if (value === undefined) {
-    return undefined
-  }
-  if (Array.isArray(value)) {
-    return value.filter(item => typeof item === 'string' && item.trim().length > 0).map(item => item.trim())
-  }
-  return value.split(',').map(item => item.trim()).filter(item => item.length > 0)
-}
