@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
@@ -7,6 +7,7 @@ import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -19,9 +20,10 @@ const JARVIS_THINKING_OPTIONS: Array<ThinkingOption<JarvisPreferences['thinkingL
 ]
 
 export function JarvisSettings() {
-  const { prefs, isSaving: saving, savePrefs: save } = useJarvisPreferences()
-  const { profiles } = useAgentProfiles()
-  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
+  const firstRenderedRef = useRef(false)
+  const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
+  const { profiles, isSuccess: profilesReady } = useAgentProfiles()
+  const { modelsByProfileId, loadingProfileIds, successfulProfileIds } = useAgentModelMap(profiles)
 
   const selectedProfile = useMemo(
     () => profiles.find(profile => profile.id === prefs?.profileId) ?? null,
@@ -29,15 +31,35 @@ export function JarvisSettings() {
   )
   const selectedModels = selectedProfile ? modelsByProfileId[selectedProfile.id] ?? [] : []
   const selectedModel = selectedModels.find(model => model.id === prefs?.model) ?? null
+  const selectedProfileModelsReady = !selectedProfile || !selectedProfile.enabled || successfulProfileIds.has(selectedProfile.id)
+  const settingsJarvisReady = prefsReady && profilesReady && selectedProfileModelsReady
   const selectThinkingForModel = (model: typeof selectedModel): JarvisPreferences['thinkingLevel'] =>
     selectSupportedThinkingValue(model, JARVIS_THINKING_OPTIONS, prefs?.thinkingLevel ?? 'medium', 'medium')
+
+  useEffect(() => {
+    if (!settingsJarvisReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-jarvis-rendered')
+    measureCradlePerformance(
+      'cradle:settings-jarvis-first-render',
+      'cradle:settings-jarvis-render-requested',
+      'cradle:first-settings-jarvis-rendered',
+    )
+  }, [settingsJarvisReady])
 
   if (!prefs) {
     return null
   }
 
   return (
-    <div className="flex flex-col gap-0">
+    <div
+      className="flex flex-col gap-0"
+      data-testid="jarvis-settings"
+      data-settings-jarvis-ready={settingsJarvisReady ? 'true' : 'false'}
+    >
       <SettingsSectionHeader
         title="Jarvis"
         description="Configure the system assistant that has full awareness of your workspace."

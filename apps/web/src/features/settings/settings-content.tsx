@@ -6,6 +6,7 @@ import { GlobalSkillsSettings } from '~/features/skills/global-skills-settings'
 import { AppearanceSettings } from './appearance-settings'
 import { DesktopUpdateSettings } from './desktop-update-settings'
 import { JarvisSettings } from './jarvis-settings'
+import { SupportSettings } from './support-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
   appearance: AppearanceSettings,
@@ -15,6 +16,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   chronicle: ChronicleSettings,
   skills: GlobalSkillsSettings,
   desktop: DesktopUpdateSettings,
+  support: SupportSettings,
 }
 
 interface SettingsContentProps {

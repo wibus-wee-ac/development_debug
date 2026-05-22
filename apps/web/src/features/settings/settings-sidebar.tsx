@@ -1,4 +1,4 @@
-import { ActivityIcon, ArrowLeftIcon, BotIcon, DownloadIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
+import { ActivityIcon, ArrowLeftIcon, BotIcon, DownloadIcon, LifeBuoyIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -17,6 +17,7 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'chronicle', label: '记录', icon: ActivityIcon },
   { id: 'skills', label: '技能', icon: SparklesIcon },
   { id: 'desktop', label: '桌面端', icon: DownloadIcon },
+  { id: 'support', label: '支持', icon: LifeBuoyIcon },
 ]
 
 interface SettingsSidebarProps {
@@ -35,6 +36,7 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
           size="icon-xs"
           onClick={onClose}
           aria-label="关闭设置"
+          data-testid="settings-close"
         >
           <ArrowLeftIcon aria-hidden="true" />
         </Button>

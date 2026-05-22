@@ -32,7 +32,8 @@ describe('SettingsSidebar', () => {
       />,
     )
 
-    const closeButton = screen.getByRole('button', { name: 'Close settings' })
+    const closeButton = screen.getByTestId('settings-close')
+    expect(closeButton.getAttribute('aria-label')).toBe('关闭设置')
     expect(closeButton.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
 
     fireEvent.click(closeButton)
@@ -53,7 +54,7 @@ describe('SettingsSidebar', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Providers' }))
+    fireEvent.click(screen.getByTestId('settings-nav-providers'))
 
     expect(onSetSection).toHaveBeenCalledWith('providers')
     expect(onClose).not.toHaveBeenCalled()

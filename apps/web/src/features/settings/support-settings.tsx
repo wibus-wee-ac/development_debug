@@ -1,0 +1,303 @@
+import {
+  ClipboardIcon,
+  ExternalLinkIcon,
+  FolderOpenIcon,
+  LifeBuoyIcon,
+  SendIcon,
+  Share2Icon,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
+
+import { getObservabilityExport, postObservabilityFlush } from '~/api-gen/sdk.gen'
+import type { GetObservabilityExportResponses } from '~/api-gen/types.gen'
+import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
+import { Badge } from '~/components/ui/badge'
+import { Button } from '~/components/ui/button'
+import { Spinner } from '~/components/ui/spinner'
+import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
+
+import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+
+const FEEDBACK_URL = 'https://github.com/wibus-wee/Cradle/issues/new'
+
+type SupportStatus = 'idle' | 'working' | 'ready' | 'error'
+type ObservabilityExportBundle = GetObservabilityExportResponses[200]
+
+const ObservabilityEventSchema = z.object({
+  id: z.string(),
+  schemaVersion: z.number(),
+  source: z.string(),
+  code: z.string(),
+  severity: z.string(),
+  category: z.string(),
+  message: z.string(),
+  attrs: z.record(z.string(), z.unknown()).optional(),
+  chatSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  messageId: z.string().optional(),
+  traceId: z.string().optional(),
+  dedupeKey: z.string().optional(),
+  parentEventId: z.string().optional(),
+  occurredAt: z.number(),
+  recordedAt: z.number(),
+})
+
+const ObservabilityIncidentSchema = z.object({
+  id: z.string(),
+  dedupeKey: z.string(),
+  code: z.string(),
+  severity: z.string(),
+  status: z.enum(['open', 'resolved']),
+  source: z.string(),
+  message: z.string(),
+  chatSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  messageId: z.string().optional(),
+  firstOccurredAt: z.number(),
+  lastOccurredAt: z.number(),
+  lastRecordedAt: z.number(),
+  count: z.number(),
+  lastEventId: z.string().optional(),
+  attrs: z.record(z.string(), z.unknown()).optional(),
+})
+
+const ObservabilityExportBundleSchema = z.object({
+  exportedAt: z.number(),
+  events: z.array(ObservabilityEventSchema),
+  incidents: z.array(ObservabilityIncidentSchema),
+  timeline: z.array(z.record(z.string(), z.unknown())),
+})
+
+function createSupportTemplate(): string {
+  return [
+    '# Cradle Preview Feedback',
+    '',
+    `Version: ${import.meta.env.PACKAGE_VERSION ?? '0.0.1'}`,
+    `Runtime: ${isElectron ? 'Electron desktop' : 'Web preview'}`,
+    `Server: ${getServerUrl()}`,
+    '',
+    '## What happened',
+    '',
+    '',
+    '## What I expected',
+    '',
+    '',
+    '## Reproduction steps',
+    '',
+    '1. ',
+    '',
+    '## Diagnostics',
+    '',
+    'Attach the local diagnostics JSON exported from Settings > Support. Review it before sharing.',
+  ].join('\n')
+}
+
+function downloadTextFile(filename: string, text: string): void {
+  const blob = new Blob([text], { type: 'application/json;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function formatTimestampForFilename(timestamp: number): string {
+  return new Date(timestamp).toISOString().replace(/[:.]/g, '-')
+}
+
+export function SupportSettings() {
+  const firstRenderedRef = useRef(false)
+  const [status, setStatus] = useState<SupportStatus>('idle')
+  const [message, setMessage] = useState<string | null>(null)
+  const [dataPath, setDataPath] = useState<string | null>(null)
+
+  const template = useMemo(() => createSupportTemplate(), [])
+  const canOpenDataPath = isElectron && !!nativeIpc
+  const settingsSupportReady = template.length > 0
+
+  useEffect(() => {
+    if (!settingsSupportReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-support-rendered')
+    measureCradlePerformance(
+      'cradle:settings-support-first-render',
+      'cradle:settings-support-render-requested',
+      'cradle:first-settings-support-rendered',
+    )
+  }, [settingsSupportReady])
+
+  const exportDiagnostics = useCallback(async () => {
+    setStatus('working')
+    setMessage(null)
+    try {
+      await postObservabilityFlush()
+      const { data } = await getObservabilityExport()
+      if (!data) {
+        throw new Error('No diagnostics bundle returned')
+      }
+      const bundle = ObservabilityExportBundleSchema.parse(data) satisfies ObservabilityExportBundle
+      const exportedAt = bundle.exportedAt
+      const payload = {
+        schema: 'cradle.preview.diagnostics.v1',
+        exportedAt,
+        source: 'settings.support',
+        note: 'Local diagnostics export. Review before sharing; no automatic upload was performed.',
+        bundle,
+      }
+      downloadTextFile(
+        `cradle-diagnostics-${formatTimestampForFilename(exportedAt)}.json`,
+        JSON.stringify(payload, null, 2),
+      )
+      setStatus('ready')
+      setMessage(`Exported ${bundle.events.length} events and ${bundle.incidents.length} incidents.`)
+    }
+    catch (error) {
+      setStatus('error')
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
+  }, [])
+
+  const copyFeedbackTemplate = useCallback(async () => {
+    setStatus('working')
+    setMessage(null)
+    try {
+      await navigator.clipboard.writeText(template)
+      setStatus('ready')
+      setMessage('Feedback template copied.')
+    }
+    catch (error) {
+      setStatus('error')
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
+  }, [template])
+
+  const openFeedback = useCallback(async () => {
+    if (isElectron && nativeIpc) {
+      await nativeIpc.native.openExternal(FEEDBACK_URL)
+      return
+    }
+    window.open(FEEDBACK_URL, '_blank', 'noopener,noreferrer')
+  }, [])
+
+  const openDataDirectory = useCallback(async () => {
+    if (!nativeIpc) {
+      return
+    }
+    const paths = await nativeIpc.native.getCradleDataPaths()
+    setDataPath(paths.serverDataPath)
+    await nativeIpc.native.showItemInFolder(paths.serverDataPath)
+  }, [])
+
+  return (
+    <div
+      className="flex flex-col gap-0"
+      data-testid="support-settings"
+      data-settings-support-ready={settingsSupportReady ? 'true' : 'false'}
+    >
+      <SettingsSectionHeader
+        title="Support"
+        description="Export local diagnostics, prepare feedback, and inspect Cradle-owned data before uninstalling."
+        action={<Badge variant="outline">Manual</Badge>}
+      />
+
+      <Alert className="mb-4">
+        <LifeBuoyIcon className="size-4" aria-hidden="true" />
+        <AlertTitle>Preview support is local-first</AlertTitle>
+        <AlertDescription>
+          Cradle does not upload diagnostics automatically in this preview. Exported bundles stay on this machine until you attach them yourself.
+        </AlertDescription>
+      </Alert>
+
+      <SettingsDivider />
+      <SettingsRow
+        label="Diagnostics bundle"
+        description="Flush local observability data and download a JSON bundle you can review before sharing."
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void exportDiagnostics()}
+          disabled={status === 'working'}
+        >
+          {status === 'working' ? <Spinner className="size-3.5" /> : <Share2Icon className="size-3.5" aria-hidden="true" />}
+          Export
+        </Button>
+      </SettingsRow>
+
+      <SettingsDivider />
+      <SettingsRow
+        label="Feedback template"
+        description="Copy a compact issue template with version, runtime, server URL, and diagnostics instructions."
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void copyFeedbackTemplate()}
+          disabled={status === 'working'}
+        >
+          <ClipboardIcon className="size-3.5" aria-hidden="true" />
+          Copy
+        </Button>
+      </SettingsRow>
+
+      <SettingsDivider />
+      <SettingsRow
+        label="Feedback channel"
+        description="Open the public issue form. Attach diagnostics only after reviewing the exported JSON."
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void openFeedback()}
+        >
+          <SendIcon className="size-3.5" aria-hidden="true" />
+          Open
+          <ExternalLinkIcon className="size-3" aria-hidden="true" />
+        </Button>
+      </SettingsRow>
+
+      <SettingsDivider />
+      <SettingsRow
+        label="Cradle data directory"
+        description={dataPath ?? 'Open the Cradle-owned data directory that stores the local database, logs, plugins, and runtime files.'}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void openDataDirectory()}
+          disabled={!canOpenDataPath}
+        >
+          <FolderOpenIcon className="size-3.5" aria-hidden="true" />
+          Reveal
+        </Button>
+      </SettingsRow>
+
+      <SettingsDivider />
+      <SettingsRow
+        label="Uninstall"
+        description="Use the OS uninstall flow to remove the app. Cradle-owned user data is retained by default so accidental uninstall does not delete work."
+      >
+        <Badge variant="outline">Documented</Badge>
+      </SettingsRow>
+
+      {message && (
+        <>
+          <SettingsDivider />
+          <p className="py-3 text-[12px] text-muted-foreground" data-testid="support-settings-status">
+            {message}
+          </p>
+        </>
+      )}
+    </div>
+  )
+}

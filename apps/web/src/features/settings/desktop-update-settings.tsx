@@ -1,11 +1,13 @@
 import { DownloadIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import { type DesktopUpdateStatus, isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -20,14 +22,21 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   errorMessage: 'Desktop updates are only available in the Electron app',
 }
 
+const ByteSizeLabelSchema = z.number()
+  .finite()
+  .nonnegative()
+  .transform((bytes) => {
+    if (bytes === 0) {
+      return '0 B'
+    }
+    const units = ['B', 'KB', 'MB', 'GB'] as const
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+    const amount = bytes / 1024 ** exponent
+    return `${amount.toFixed(amount >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
+  })
+
 function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) {
-    return '0 B'
-  }
-  const units = ['B', 'KB', 'MB', 'GB'] as const
-  const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
-  const amount = value / 1024 ** exponent
-  return `${amount.toFixed(amount >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
+  return ByteSizeLabelSchema.parse(value)
 }
 
 function readTargetVersion(status: DesktopUpdateStatus): string | null {
@@ -68,7 +77,9 @@ function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
 }
 
 export function DesktopUpdateSettings() {
+  const firstRenderedRef = useRef(false)
   const [status, setStatus] = useState<DesktopUpdateStatus>(EMPTY_UPDATE_STATUS)
+  const [statusReady, setStatusReady] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const targetVersion = readTargetVersion(status)
@@ -81,12 +92,15 @@ export function DesktopUpdateSettings() {
   const refreshStatus = useCallback(async () => {
     if (!isElectron || !nativeIpc) {
       setStatus(EMPTY_UPDATE_STATUS)
+      setStatusReady(true)
       return
     }
 
     setLoading(true)
     try {
-      setStatus(await nativeIpc.desktopUpdate.getStatus())
+      const nextStatus = await nativeIpc.desktopUpdate.getStatus()
+      setStatus(nextStatus)
+      setStatusReady(true)
     }
     finally {
       setLoading(false)
@@ -113,8 +127,26 @@ export function DesktopUpdateSettings() {
     return subscribeDesktopUpdateStatus(setStatus)
   }, [refreshStatus])
 
+  useEffect(() => {
+    if (!statusReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-desktop-rendered')
+    measureCradlePerformance(
+      'cradle:settings-desktop-first-render',
+      'cradle:settings-desktop-render-requested',
+      'cradle:first-settings-desktop-rendered',
+    )
+  }, [statusReady])
+
   return (
-    <div className="flex flex-col gap-0">
+    <div
+      className="flex flex-col gap-0"
+      data-testid="desktop-update-settings"
+      data-settings-desktop-ready={statusReady ? 'true' : 'false'}
+    >
       <SettingsSectionHeader
         title="Desktop Updates"
         description="Manage Velopack updates for the packaged Desktop app."

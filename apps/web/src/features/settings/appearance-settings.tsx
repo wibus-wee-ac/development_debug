@@ -1,6 +1,8 @@
 import { CheckIcon } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useStreamdownStore } from '~/store/streamdown'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
@@ -80,11 +82,31 @@ const THEME_OPTIONS: Array<{ value: ThemeMode, label: string }> = [
 ]
 
 export function AppearanceSettings() {
+  const firstRenderedRef = useRef(false)
   const mode = useThemeStore(s => s.mode)
   const setMode = useThemeStore(s => s.setMode)
+  const settingsAppearanceReady = THEME_OPTIONS.length > 0 && ANIMATION_PRESETS.length > 0
+
+  useEffect(() => {
+    if (!settingsAppearanceReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-appearance-rendered')
+    measureCradlePerformance(
+      'cradle:settings-appearance-first-render',
+      'cradle:settings-appearance-render-requested',
+      'cradle:first-settings-appearance-rendered',
+    )
+  }, [settingsAppearanceReady])
 
   return (
-    <div className="flex flex-col gap-1">
+    <div
+      className="flex flex-col gap-1"
+      data-testid="appearance-settings"
+      data-settings-appearance-ready={settingsAppearanceReady ? 'true' : 'false'}
+    >
       <SettingsSectionHeader title="外观" description="自定义应用的视觉风格" />
       <SettingsDivider />
 
@@ -105,7 +127,7 @@ export function AppearanceSettings() {
               >
                 <div
                   className={cn(
-                    'relative aspect-4/3 w-36 overflow-hidden rounded-lg p-0.5 transition-all',
+                    'relative aspect-4/3 w-36 overflow-hidden rounded-lg p-0.5 transition-[box-shadow,outline-color] duration-150',
                     selected
                       ? 'ring-1 ring-foreground/30 ring-offset-2 ring-offset-background'
                       : 'ring-1 ring-border/60 hover:ring-border',
@@ -173,7 +195,7 @@ function StreamdownSettings() {
                 type="button"
                 onClick={() => setAnimationPreset(value)}
                 className={cn(
-                  'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-all',
+                  'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-[background-color,border-color] duration-150',
                   selected
                     ? 'border-foreground/20 bg-foreground/5'
                     : 'border-border hover:border-foreground/10',
