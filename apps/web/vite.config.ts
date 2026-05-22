@@ -4,10 +4,10 @@ import { resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 import { devtools } from '@tanstack/devtools-vite'
 import viteReact from '@vitejs/plugin-react'
+import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import { defineConfig, type Plugin } from 'vite'
 
 import packageJson from './package.json' with { type: 'json' }
-import { pluginImportMap } from './src/lib/vite-plugin-import-map'
 
 const ASSET_MODULE_RE = /\.(?:avif|gif|ico|jpe?g|png|svg|webp)(?:\?|$)/
 const PRECACHE_ASSET_RE = /\.(?:css|js|woff2)$/

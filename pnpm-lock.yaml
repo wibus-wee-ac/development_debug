@@ -356,6 +356,9 @@ importers:
       '@cradle/ipc':
         specifier: workspace:*
         version: link:../../packages/ipc
+      '@cradle/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       electron-window-state:
         specifier: ^5.0.3
         version: 5.0.3
@@ -590,6 +593,9 @@ importers:
       '@cradle/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@cradle/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
       '@cradle/streamdown':
         specifier: workspace:*
         version: link:../../packages/streamdown

@@ -1589,6 +1589,7 @@ The host validates plugin modules at load time. If validation fails, a `PluginLo
 | `packages/plugin-sdk/src/server.ts` | Server plugin context interface |
 | `packages/plugin-sdk/src/web.ts` | Web plugin context interface |
 | `packages/plugin-sdk/src/desktop.ts` | Desktop plugin context interface |
+| `packages/plugin-sdk/src/vite-plugin-import-map.ts` | Shared Vite import map + React wrapper modules for runtime-loaded web plugins |
 | `apps/server/src/plugins/discovery.ts` | Plugin discovery (reads `plugins/*/package.json`) |
 | `apps/server/src/plugins/loader.ts` | Server plugin activation orchestrator |
 | `apps/server/src/plugins/validation.ts` | Module validation + `PluginLoadError` |
@@ -1597,7 +1598,7 @@ The host validates plugin modules at load time. If validation fails, a `PluginLo
 | `apps/server/src/plugins/event-bus.ts` | Global plugin event bus |
 | `apps/web/src/lib/plugin-host.ts` | Browser-side plugin loader |
 | `apps/web/src/lib/plugin-store.ts` | Zustand store for panels/commands |
-| `apps/web/src/lib/vite-plugin-import-map.ts` | Import map + React wrapper modules |
+| `apps/web/src/lib/vite-plugin-import-map.ts` | Compatibility re-export for the shared plugin import map |
 | `apps/web/src/main.tsx` | Sets `window[Symbol.for('cradle:modules')]`, calls `loadWebPlugins()` |
 | `apps/desktop/src/main/plugin-loader.ts` | Desktop plugin activation |
 | `apps/desktop/src/main/plugin-discovery.ts` | Desktop-side plugin discovery |

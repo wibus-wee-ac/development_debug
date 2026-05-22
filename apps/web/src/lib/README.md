@@ -16,6 +16,7 @@ Used across features and components in the renderer.
 - **plugin-host.ts**: Web plugin host，读取 server 返回的 governed plugin descriptors，按 `routeSegment` 和 `layers.web.status` 加载 web bundle，投影 renderer-local web layer lifecycle，并在 deactivation 时清理 web plugin subscriptions
 - **plugin-host.test.ts**: 覆盖 web plugin activation failure cleanup、deactivation cleanup、disabled web layer skip 和 renderer-local web layer state projection。
 - **plugin-store.ts**: Plugin panel / command 的 Zustand store，记录 owner-scoped contribution ids 和 renderer-local web layer state
+- **vite-plugin-import-map.ts**: Vite import-map 注入插件，为 runtime-loaded web plugins 提供 React shared-module specifier 映射。
 - **perf-monitor.ts**: Renderer performance monitor，收集 Web Vitals 和 heap snapshots。
 - **shortcut-context.ts**: React context for keyboard shortcut management
 - **shortcut-provider.tsx**: Provider component for shortcut context

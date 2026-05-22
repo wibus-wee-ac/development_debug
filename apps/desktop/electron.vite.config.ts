@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
 import viteReact from '@vitejs/plugin-react'
+import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -50,6 +51,7 @@ export default defineConfig({
           plugins: ['babel-plugin-react-compiler'],
         },
       }),
+      pluginImportMap(),
     ],
     resolve: {
       alias: {
