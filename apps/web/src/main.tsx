@@ -1,18 +1,24 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as React from 'react'
+import * as ReactJSXRuntime from 'react/jsx-runtime'
 import * as ReactDOM from 'react-dom'
 import * as ReactDOMClient from 'react-dom/client'
-import * as ReactJSXRuntime from 'react/jsx-runtime'
 
 import { App } from './app'
-import { DevtoolPage } from './features/devtool'
+import { AppErrorBoundary } from './components/common/app-error-boundary'
+import { DevtoolPage } from './features/devtool/ipc-devtool-page'
 import { initPerfMonitor } from './lib/perf-monitor'
 import { loadWebPlugins } from './lib/plugin-host'
 
+type SharedModuleRegistry = Window & {
+  [key: symbol]: Record<string, unknown>
+}
+
 // Expose shared React modules for plugin runtime
 // Plugins loaded via dynamic import() need access to the SAME React instance
-;(window as any)[Symbol.for('cradle:modules')] = {
-  react: React,
+const sharedModuleRegistry = window as unknown as SharedModuleRegistry
+sharedModuleRegistry[Symbol.for('cradle:modules')] = {
+  'react': React,
   'react-dom': ReactDOM,
   'react-dom/client': ReactDOMClient,
   'react/jsx-runtime': ReactJSXRuntime,
@@ -30,16 +36,22 @@ const queryClient = new QueryClient({
 // Hash-based routing: #devtool renders the devtool page (Electron second window)
 const isDevtoolWindow = window.location.hash === '#devtool' || window.location.hash === '#/devtool'
 
-// Load web plugins before rendering
-await loadWebPlugins()
+async function startApp(): Promise<void> {
+  // Load web plugins before rendering.
+  await loadWebPlugins()
 
-ReactDOMClient.createRoot(document.getElementById('app')!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      {isDevtoolWindow ? <DevtoolPage /> : <App />}
-    </QueryClientProvider>
-  </React.StrictMode>,
-)
+  ReactDOMClient.createRoot(document.getElementById('app')!).render(
+    <React.StrictMode>
+      <AppErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          {isDevtoolWindow ? <DevtoolPage /> : <App />}
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    </React.StrictMode>,
+  )
 
-// Non-blocking: initialize performance monitoring after render
-queueMicrotask(initPerfMonitor)
+  // Non-blocking: initialize performance monitoring after render.
+  queueMicrotask(initPerfMonitor)
+}
+
+void startApp()
