@@ -42,11 +42,21 @@ const EmbeddingBatchOptionsSchema = z.object({
   timeoutMs: z.number().finite().positive().default(120_000),
 }).prefault({})
 
-const ProcessRssTextSchema = z.string()
+const PROCESS_RESOURCE_FIELD_SEPARATOR_PATTERN = /\s+/
+
+const ProcessResourcesTextSchema = z.string()
   .trim()
-  .transform(value => Number.parseInt(value, 10))
-  .pipe(z.number().int().nonnegative())
-  .transform(value => value / 1024)
+  .transform((value) => {
+    const [rssRaw, cpuRaw] = value.split(PROCESS_RESOURCE_FIELD_SEPARATOR_PATTERN)
+    return {
+      rssMB: Number.parseInt(rssRaw, 10) / 1024,
+      cpuPercent: Number.parseFloat(cpuRaw),
+    }
+  })
+  .pipe(z.object({
+    rssMB: z.number().finite().nonnegative(),
+    cpuPercent: z.number().finite().nonnegative(),
+  }))
 
 function getModelResourcesRoot(): string {
   const config = getServerConfig()
@@ -251,17 +261,28 @@ export function getDaemonInfo() {
   }
 }
 
-export function getDaemonResources(): { running: boolean, pid: number | null, rssMB: number | null } {
+export function getDaemonResources(): {
+  running: boolean
+  pid: number | null
+  rssMB: number | null
+  cpuPercent: number | null
+} {
   if (!isRunning() || !chronicleProcess?.pid) {
-    return { running: false, pid: null, rssMB: null }
+    return { running: false, pid: null, rssMB: null, cpuPercent: null }
   }
 
   try {
-    const output = execSync(`ps -o rss= -p ${chronicleProcess.pid}`, { encoding: 'utf8', timeout: 1000 })
-    return { running: true, pid: chronicleProcess.pid, rssMB: ProcessRssTextSchema.parse(output) }
+    const output = execSync(`ps -o rss=,pcpu= -p ${chronicleProcess.pid}`, { encoding: 'utf8', timeout: 1000 })
+    const resources = ProcessResourcesTextSchema.parse(output)
+    return {
+      running: true,
+      pid: chronicleProcess.pid,
+      rssMB: Math.round(resources.rssMB * 100) / 100,
+      cpuPercent: Math.round(resources.cpuPercent * 100) / 100,
+    }
   }
   catch {
-    return { running: true, pid: chronicleProcess.pid, rssMB: null }
+    return { running: true, pid: chronicleProcess.pid, rssMB: null, cpuPercent: null }
   }
 }
 

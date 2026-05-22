@@ -359,21 +359,29 @@ export async function listResources() {
   const terminals = await ptyRuntime.snapshotResources()
   const totals = terminals.reduce(
     (acc, item) => {
-      if (item.rssMB === null) {
-        return acc
+      if (item.rssMB !== null) {
+        if (item.role === 'cli-tui') {
+          acc.cliTuiRssMB += item.rssMB
+        } else {
+          acc.bottomPanelRssMB += item.rssMB
+        }
       }
 
-      if (item.role === 'cli-tui') {
-        acc.cliTuiRssMB += item.rssMB
-      } else {
-        acc.bottomPanelRssMB += item.rssMB
+      if (item.cpuPercent !== null) {
+        if (item.role === 'cli-tui') {
+          acc.cliTuiCpuPercent += item.cpuPercent
+        } else {
+          acc.bottomPanelCpuPercent += item.cpuPercent
+        }
       }
 
       return acc
     },
     {
       cliTuiRssMB: 0,
-      bottomPanelRssMB: 0
+      bottomPanelRssMB: 0,
+      cliTuiCpuPercent: 0,
+      bottomPanelCpuPercent: 0,
     }
   )
 
@@ -381,9 +389,11 @@ export async function listResources() {
     terminals,
     totals: {
       cliTuiRssMB: Math.round(totals.cliTuiRssMB * 100) / 100,
-      bottomPanelRssMB: Math.round(totals.bottomPanelRssMB * 100) / 100
+      bottomPanelRssMB: Math.round(totals.bottomPanelRssMB * 100) / 100,
+      cliTuiCpuPercent: Math.round(totals.cliTuiCpuPercent * 100) / 100,
+      bottomPanelCpuPercent: Math.round(totals.bottomPanelCpuPercent * 100) / 100,
     },
-    timestamp: Date.now()
+    timestamp: Date.now(),
   }
 }
 

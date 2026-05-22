@@ -50,14 +50,17 @@ export const PtyModel = {
         cols: t.Number(),
         rows: t.Number(),
         rssMB: t.Nullable(t.Number()),
-        descendantCount: t.Nullable(t.Number())
+        cpuPercent: t.Nullable(t.Number()),
+        descendantCount: t.Nullable(t.Number()),
       })
     ),
     totals: t.Object({
       cliTuiRssMB: t.Number(),
-      bottomPanelRssMB: t.Number()
+      bottomPanelRssMB: t.Number(),
+      cliTuiCpuPercent: t.Number(),
+      bottomPanelCpuPercent: t.Number(),
     }),
-    timestamp: t.Number()
+    timestamp: t.Number(),
   }),
 
   startShellBody: t.Object({

@@ -260,6 +260,7 @@ export const ChronicleModel = {
     running: t.Boolean(),
     pid: t.Nullable(t.Number()),
     rssMB: t.Nullable(t.Number()),
+    cpuPercent: t.Nullable(t.Number()),
   }),
 
   modelResourceCategoryParams: t.Object({

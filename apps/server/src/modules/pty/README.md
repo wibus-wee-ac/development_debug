@@ -8,7 +8,7 @@ Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource
 - `model.ts`: TypeBox schemas for control routes and live-channel payloads.
 - `protocol.ts`: Shared PTY WebSocket protocol types.
 - `codex-session-capture.ts`: Conservative Codex CLI JSONL metadata reader for cli-tui session resume bindings.
-- `pty.runtime.ts`: `node-pty` runtime registry, process lifecycle hooks, and process tree resource sampling.
+- `pty.runtime.ts`: `node-pty` runtime registry, process lifecycle hooks, and process tree memory/CPU resource sampling.
 - `pty.timeline.ts`: Sequence-aware snapshots, replay windows, and exit history.
 - `pty.socket.ts`: WebSocket adapter that bridges runtime/timeline to clients.
-- `service.ts`: Session/profile/workspace ownership rules, shell lease cleanup, and module shutdown.
+- `service.ts`: Session/profile/workspace ownership rules, memory/CPU resource totals, shell lease cleanup, and module shutdown.

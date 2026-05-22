@@ -49,6 +49,7 @@ export interface PtyRuntimeResourceSnapshot {
   cols: number
   rows: number
   rssMB: number | null
+  cpuPercent: number | null
   descendantCount: number | null
 }
 
@@ -56,7 +57,10 @@ interface ProcessTableRow {
   pid: number
   ppid: number
   rssKB: number
+  cpuPercent: number
 }
+
+const PROCESS_TABLE_FIELD_SEPARATOR_PATTERN = /\s+/
 
 const ProcessTableStdoutSchema = z.string().transform((stdout) => {
   return stdout
@@ -64,11 +68,12 @@ const ProcessTableStdoutSchema = z.string().transform((stdout) => {
     .map(line => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [pidRaw, ppidRaw, rssRaw] = line.split(/\s+/)
+      const [pidRaw, ppidRaw, rssRaw, cpuRaw] = line.split(PROCESS_TABLE_FIELD_SEPARATOR_PATTERN)
       return {
         pid: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(pidRaw),
         ppid: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(ppidRaw),
         rssKB: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(rssRaw),
+        cpuPercent: z.string().transform(value => Number.parseFloat(value)).pipe(z.number().finite().nonnegative()).parse(cpuRaw),
       }
     })
 })
@@ -206,6 +211,7 @@ export class PtyRuntimeRegistry {
       const pid = record.process?.pid ?? 0
       const tree = processTable ? collectProcessTree(pid, processTable) : null
       const rssKB = tree?.reduce((total, row) => total + row.rssKB, 0) ?? null
+      const cpuPercent = tree?.reduce((total, row) => total + row.cpuPercent, 0) ?? null
 
       return {
         id,
@@ -218,7 +224,8 @@ export class PtyRuntimeRegistry {
         cols: record.cols,
         rows: record.rows,
         rssMB: rssKB === null ? null : Math.round((rssKB / 1024) * 100) / 100,
-        descendantCount: tree === null ? null : Math.max(0, tree.length - 1)
+        cpuPercent: cpuPercent === null ? null : Math.round(cpuPercent * 100) / 100,
+        descendantCount: tree === null ? null : Math.max(0, tree.length - 1),
       }
     })
   }
@@ -226,7 +233,7 @@ export class PtyRuntimeRegistry {
 
 async function readProcessTable(): Promise<Map<number, ProcessTableRow> | null> {
   try {
-    const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,ppid=,rss='])
+    const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,ppid=,rss=,pcpu='])
     const rows = new Map<number, ProcessTableRow>()
 
     for (const row of ProcessTableStdoutSchema.parse(stdout)) {

@@ -143,11 +143,14 @@ describe('pty capability HTTP control plane', () => {
           cols: number
           rows: number
           rssMB: number | null
+          cpuPercent: number | null
           descendantCount: number | null
         }>
         totals: {
           cliTuiRssMB: number
           bottomPanelRssMB: number
+          cliTuiCpuPercent: number
+          bottomPanelCpuPercent: number
         }
         timestamp: number
       }
@@ -166,10 +169,16 @@ describe('pty capability HTTP control plane', () => {
       expect(terminal?.startedAt).toBeGreaterThan(0)
       expect(resources.timestamp).toBeGreaterThan(0)
       expect(resources.totals.cliTuiRssMB).toBe(0)
+      expect(resources.totals.cliTuiCpuPercent).toBe(0)
       expect(resources.totals.bottomPanelRssMB).toBeGreaterThanOrEqual(0)
+      expect(resources.totals.bottomPanelCpuPercent).toBeGreaterThanOrEqual(0)
       if (terminal?.rssMB !== null && terminal?.rssMB !== undefined) {
         expect(terminal.rssMB).toBeGreaterThanOrEqual(0)
         expect(resources.totals.bottomPanelRssMB).toBeGreaterThanOrEqual(terminal.rssMB)
+      }
+      if (terminal?.cpuPercent !== null && terminal?.cpuPercent !== undefined) {
+        expect(terminal.cpuPercent).toBeGreaterThanOrEqual(0)
+        expect(resources.totals.bottomPanelCpuPercent).toBeGreaterThanOrEqual(terminal.cpuPercent)
       }
       if (terminal?.descendantCount !== null && terminal?.descendantCount !== undefined) {
         expect(terminal.descendantCount).toBeGreaterThanOrEqual(0)

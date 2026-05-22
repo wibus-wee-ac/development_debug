@@ -10,6 +10,11 @@ export const HealthModel = {
       rss: t.Number(),
       external: t.Number(),
     }),
+    cpu: t.Object({
+      percent: t.Nullable(t.Number()),
+      userMicros: t.Number(),
+      systemMicros: t.Number(),
+    }),
     timestamp: t.Number(),
   }),
 } as const

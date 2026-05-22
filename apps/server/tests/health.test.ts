@@ -26,6 +26,16 @@ describe('health module', () => {
       const body = await res.json()
       expect(body.status).toBe('ok')
       expect(body.timestamp).toBeTypeOf('number')
+      expect(body.cpu).toEqual(expect.objectContaining({
+        userMicros: expect.any(Number),
+        systemMicros: expect.any(Number),
+      }))
+      expect(body.cpu.percent === null || body.cpu.percent >= 0).toBe(true)
+
+      const nextRes = await app.handle(new Request('http://localhost/health'))
+      expect(nextRes.status).toBe(200)
+      const nextBody = await nextRes.json()
+      expect(nextBody.cpu.percent === null || nextBody.cpu.percent >= 0).toBe(true)
     }
     finally {
       shutdownInfra()

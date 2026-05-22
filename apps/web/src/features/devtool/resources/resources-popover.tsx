@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import {
   ActivityIcon,
   CircleAlertIcon,
@@ -8,8 +7,9 @@ import {
   PanelBottomIcon,
   RefreshCwIcon,
   ServerIcon,
-  SquareTerminalIcon
+  SquareTerminalIcon,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 
@@ -21,6 +21,7 @@ import { getServerUrl } from '~/lib/electron'
 
 const SERVER_BASE = getServerUrl()
 const REFRESH_INTERVAL_MS = 3000
+const PATH_SEGMENT_SEPARATOR_PATTERN = /[\\/]/
 
 const ServerHealthSchema = z.object({
   memory: z.object({
@@ -29,6 +30,11 @@ const ServerHealthSchema = z.object({
     rss: z.number(),
     external: z.number(),
   }),
+  cpu: z.object({
+    percent: z.number().nullable(),
+    userMicros: z.number(),
+    systemMicros: z.number(),
+  }).optional(),
   uptime: z.number(),
 }).passthrough()
 
@@ -43,6 +49,7 @@ const PtyResourceItemSchema = z.object({
   cols: z.number(),
   rows: z.number(),
   rssMB: z.number().nullable(),
+  cpuPercent: z.number().nullable().default(null),
   descendantCount: z.number().nullable(),
 })
 
@@ -51,6 +58,8 @@ const PtyResourcesSchema = z.object({
   totals: z.object({
     cliTuiRssMB: z.number(),
     bottomPanelRssMB: z.number(),
+    cliTuiCpuPercent: z.number().default(0),
+    bottomPanelCpuPercent: z.number().default(0),
   }),
   timestamp: z.number(),
 })
@@ -59,6 +68,7 @@ const ChronicleResourcesSchema = z.object({
   running: z.boolean(),
   pid: z.number().nullable(),
   rssMB: z.number().nullable(),
+  cpuPercent: z.number().nullable().default(null),
 })
 
 export interface ServerHealth {
@@ -67,6 +77,11 @@ export interface ServerHealth {
     heapTotal: number
     rss: number
     external: number
+  }
+  cpu?: {
+    percent: number | null
+    userMicros: number
+    systemMicros: number
   }
   uptime: number
 }
@@ -82,6 +97,7 @@ export interface PtyResourceItem {
   cols: number
   rows: number
   rssMB: number | null
+  cpuPercent: number | null
   descendantCount: number | null
 }
 
@@ -90,6 +106,8 @@ export interface PtyResources {
   totals: {
     cliTuiRssMB: number
     bottomPanelRssMB: number
+    cliTuiCpuPercent: number
+    bottomPanelCpuPercent: number
   }
   timestamp: number
 }
@@ -98,6 +116,7 @@ interface ChronicleResources {
   running: boolean
   pid: number | null
   rssMB: number | null
+  cpuPercent: number | null
 }
 
 interface RendererMemory {
@@ -114,12 +133,16 @@ export interface ResourceSnapshot {
   serverHeapUsed: number
   serverHeapTotal: number
   serverExternal: number
+  serverCpuPercent: number | null
   serverUptime: number
   cliTuiRss: number
+  cliTuiCpuPercent: number
   bottomPanelRss: number
+  bottomPanelCpuPercent: number
   chronicleRunning: boolean
   chroniclePid: number | null
   chronicleRss: number
+  chronicleCpuPercent: number | null
   terminals: PtyResourceItem[]
   timestamp: number
   updatedAtLabel: string
@@ -146,12 +169,26 @@ function formatMemoryLabel(mb: number): string {
   return `${Math.round(mb)} MB`
 }
 
+function formatCpuLabel(percent: number | null): string {
+  if (percent === null) {
+    return '—'
+  }
+  if (percent > 0 && percent < 0.1) {
+    return '<0.1%'
+  }
+  return `${percent.toFixed(percent < 10 ? 1 : 0)}%`
+}
+
+function formatResourceLabel(memoryMB: number, cpuPercent: number | null): string {
+  return `${formatMemoryLabel(memoryMB)} / ${formatCpuLabel(cpuPercent)}`
+}
+
 function readRendererMemory(): RendererMemory {
   if (typeof performance === 'undefined' || !('memory' in performance)) {
     return {
       heapUsed: 0,
       heapTotal: 0,
-      heapLimit: 0
+      heapLimit: 0,
     }
   }
 
@@ -164,7 +201,7 @@ function readRendererMemory(): RendererMemory {
   return {
     heapUsed: memory.usedJSHeapSize ?? 0,
     heapTotal: memory.totalJSHeapSize ?? 0,
-    heapLimit: memory.jsHeapSizeLimit ?? 0
+    heapLimit: memory.jsHeapSizeLimit ?? 0,
   }
 }
 
@@ -172,12 +209,12 @@ function formatTimestampLabel(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString('en-US', { hour12: false })
 }
 
-export function createResourceSnapshot({
+function createResourceSnapshot({
   renderer,
   server,
   pty,
   chronicle,
-  timestamp
+  timestamp,
 }: ResourceSnapshotInput): ResourceSnapshot {
   const mbToBytes = (mb: number) => mb * 1024 * 1024
   const warnings: string[] = []
@@ -197,23 +234,27 @@ export function createResourceSnapshot({
     serverHeapUsed: server ? mbToBytes(server.memory.heapUsed) : 0,
     serverHeapTotal: server ? mbToBytes(server.memory.heapTotal) : 0,
     serverExternal: server ? mbToBytes(server.memory.external) : 0,
+    serverCpuPercent: server?.cpu?.percent ?? null,
     serverUptime: server?.uptime ?? 0,
     cliTuiRss: pty ? mbToBytes(pty.totals.cliTuiRssMB) : 0,
+    cliTuiCpuPercent: pty?.totals.cliTuiCpuPercent ?? 0,
     bottomPanelRss: pty ? mbToBytes(pty.totals.bottomPanelRssMB) : 0,
+    bottomPanelCpuPercent: pty?.totals.bottomPanelCpuPercent ?? 0,
     chronicleRunning: chronicle?.running ?? false,
     chroniclePid: chronicle?.pid ?? null,
     chronicleRss: chronicle?.rssMB ? mbToBytes(chronicle.rssMB) : 0,
+    chronicleCpuPercent: chronicle?.cpuPercent ?? null,
     terminals: pty?.terminals ?? [],
     timestamp,
     updatedAtLabel: formatTimestampLabel(timestamp),
-    warnings
+    warnings,
   }
 }
 
 function MemoryBar({
   used,
   total,
-  className
+  className,
 }: {
   used: number
   total: number
@@ -229,13 +270,13 @@ function MemoryBar({
 
 function SectionRow({
   label,
-  memory,
+  value,
   dimLabel = false,
   detail,
-  branch
+  branch,
 }: {
   label: string
-  memory: string
+  value: string
   dimLabel?: boolean
   detail?: string
   branch?: 'middle' | 'last'
@@ -257,7 +298,7 @@ function SectionRow({
           {detail}
         </span>
       )}
-      <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">{memory}</span>
+      <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">{value}</span>
     </div>
   )
 }
@@ -286,7 +327,7 @@ function ResourceGroup({
   icon,
   label,
   value,
-  children
+  children,
 }: {
   icon: ReactNode
   label: string
@@ -328,7 +369,7 @@ function useResourceSnapshot() {
       const [healthRes, ptyRes, chronicleRes] = await Promise.allSettled([
         requestResourceJson(`${SERVER_BASE}/health`).then(data => ServerHealthSchema.parse(data) satisfies ServerHealth),
         requestResourceJson(`${SERVER_BASE}/terminal-sessions/resources`).then(data => PtyResourcesSchema.parse(data) satisfies PtyResources),
-        requestResourceJson(`${SERVER_BASE}/chronicle/resources`).then(data => ChronicleResourcesSchema.parse(data) satisfies ChronicleResources)
+        requestResourceJson(`${SERVER_BASE}/chronicle/resources`).then(data => ChronicleResourcesSchema.parse(data) satisfies ChronicleResources),
       ])
 
       if (requestId === requestRef.current) {
@@ -345,11 +386,12 @@ function useResourceSnapshot() {
           server,
           pty,
           chronicle,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         }))
         setResourcesReady(allResourcesReady)
       }
-    } finally {
+    }
+    finally {
       if (requestId === requestRef.current) {
         setLoading(false)
       }
@@ -385,10 +427,21 @@ export function ResourcesPopover() {
   const totalBottomPanelMB = snap ? Number(toMB(snap.bottomPanelRss)) : 0
   const totalChronicleMB = snap ? Number(toMB(snap.chronicleRss)) : 0
   const totalMB = totalRendererMB + totalServerMB + totalCliTuiMB + totalBottomPanelMB + totalChronicleMB
-  const cliTuiTerminals = snap?.terminals.filter((item) => item.role === 'cli-tui') ?? []
-  const bottomPanelTerminals = snap?.terminals.filter((item) => item.role === 'bottom-panel') ?? []
+  const totalCpuPercent = snap
+    ? Math.round((
+      (snap.serverCpuPercent ?? 0)
+      + snap.cliTuiCpuPercent
+      + snap.bottomPanelCpuPercent
+      + (snap.chronicleCpuPercent ?? 0)
+    ) * 100) / 100
+    : null
+  const cliTuiTerminals = snap?.terminals.filter(item => item.role === 'cli-tui') ?? []
+  const bottomPanelTerminals = snap?.terminals.filter(item => item.role === 'bottom-panel') ?? []
 
-  const triggerLabel = snap ? formatMemoryLabel(totalMB) : '— MB'
+  const triggerLabel = snap ? formatResourceLabel(totalMB, totalCpuPercent) : '— MB / —'
+  const footerStatusLabel = snap
+    ? `Uptime ${formatUptime(snap.serverUptime)} · Updated ${snap.updatedAtLabel}`
+    : ''
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -440,10 +493,11 @@ export function ResourcesPopover() {
           </div>
           <div className="bg-popover px-3 py-2.5">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-              Uptime
+              CPU
             </div>
-            <div className="text-base font-semibold tabular-nums leading-none">
-              {snap ? formatUptime(snap.serverUptime) : '—'}
+            <div className="flex items-center gap-1.5 text-base font-semibold tabular-nums leading-none">
+              <CpuIcon className="size-4 text-muted-foreground" />
+              {formatCpuLabel(totalCpuPercent)}
             </div>
           </div>
         </div>
@@ -455,7 +509,7 @@ export function ResourcesPopover() {
               used={snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss + snap.chronicleRss}
               total={Math.max(
                 snap.rendererHeapLimit,
-                (snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss + snap.chronicleRss) * 2
+                (snap.rendererHeapUsed + snap.serverRss + snap.cliTuiRss + snap.bottomPanelRss + snap.chronicleRss) * 2,
               )}
             />
           </div>
@@ -475,60 +529,71 @@ export function ResourcesPopover() {
           )}
 
           <div className="flex-1">
-          <ResourceGroup
-            icon={<MonitorIcon className="size-3.5" />}
-            label="Renderer"
-            value={snap ? formatMemoryLabel(Number(toMB(snap.rendererHeapUsed))) : '—'}
-          >
-            {snap && snap.rendererHeapUsed > 0 && (
-              <>
-                <SectionRow
-                  label="Heap Used"
-                  memory={`${toMB(snap.rendererHeapUsed, 1)} MB`}
-                  dimLabel
-                  branch="middle"
-                />
-                <SectionRow
-                  label="Heap Total"
-                  memory={`${toMB(snap.rendererHeapTotal, 1)} MB`}
-                  dimLabel
-                  branch="last"
-                />
-              </>
-            )}
-          </ResourceGroup>
+            <ResourceGroup
+              icon={<MonitorIcon className="size-3.5" />}
+              label="Renderer"
+              value={snap ? formatResourceLabel(Number(toMB(snap.rendererHeapUsed)), null) : '—'}
+            >
+              {snap && snap.rendererHeapUsed > 0 && (
+                <>
+                  <SectionRow
+                    label="Heap Used"
+                    value={`${toMB(snap.rendererHeapUsed, 1)} MB`}
+                    dimLabel
+                    branch="middle"
+                  />
+                  <SectionRow
+                    label="Heap Total"
+                    value={`${toMB(snap.rendererHeapTotal, 1)} MB`}
+                    dimLabel
+                    branch="middle"
+                  />
+                  <SectionRow
+                    label="CPU"
+                    value={formatCpuLabel(null)}
+                    dimLabel
+                    branch="last"
+                  />
+                </>
+              )}
+            </ResourceGroup>
 
-          {/* Divider */}
-          <div className="border-t border-border my-1.5" />
+            <div className="border-t border-border my-1.5" />
 
-          <ResourceGroup
-            icon={<ServerIcon className="size-3.5" />}
-            label="Server"
-            value={snap ? formatMemoryLabel(Number(toMB(snap.serverRss))) : '—'}
-          >
-            {snap && snap.serverRss > 0 && (
-              <>
-                <SectionRow
-                  label="Heap Used"
-                  memory={`${toMB(snap.serverHeapUsed, 1)} MB`}
-                  dimLabel
-                  branch="middle"
-                />
-                <SectionRow
-                  label="Heap Total"
-                  memory={`${toMB(snap.serverHeapTotal, 1)} MB`}
-                  dimLabel
-                  branch="middle"
-                />
-                <SectionRow
-                  label="External"
-                  memory={`${toMB(snap.serverExternal, 1)} MB`}
-                  dimLabel
-                  branch="last"
-                />
-              </>
-            )}
-          </ResourceGroup>
+            <ResourceGroup
+              icon={<ServerIcon className="size-3.5" />}
+              label="Server"
+              value={snap ? formatResourceLabel(Number(toMB(snap.serverRss)), snap.serverCpuPercent) : '—'}
+            >
+              {snap && snap.serverRss > 0 && (
+                <>
+                  <SectionRow
+                    label="Heap Used"
+                    value={`${toMB(snap.serverHeapUsed, 1)} MB`}
+                    dimLabel
+                    branch="middle"
+                  />
+                  <SectionRow
+                    label="Heap Total"
+                    value={`${toMB(snap.serverHeapTotal, 1)} MB`}
+                    dimLabel
+                    branch="middle"
+                  />
+                  <SectionRow
+                    label="External"
+                    value={`${toMB(snap.serverExternal, 1)} MB`}
+                    dimLabel
+                    branch="middle"
+                  />
+                  <SectionRow
+                    label="CPU"
+                    value={formatCpuLabel(snap.serverCpuPercent)}
+                    dimLabel
+                    branch="last"
+                  />
+                </>
+              )}
+            </ResourceGroup>
           </div>
 
           <div className="border-l border-border my-1.5" />
@@ -537,18 +602,22 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<ActivityIcon className="size-3.5" />}
               label="Chronicle"
-              value={snap?.chronicleRunning ? formatMemoryLabel(Number(toMB(snap.chronicleRss))) : 'Off'}
+              value={snap?.chronicleRunning
+                ? formatResourceLabel(Number(toMB(snap.chronicleRss)), snap.chronicleCpuPercent)
+                : 'Off'}
             >
-              {snap?.chronicleRunning ? (
+              {snap?.chronicleRunning
+? (
                 <SectionRow
                   label="cradle-chronicle"
                   detail={snap.chroniclePid ? `pid ${snap.chroniclePid}` : undefined}
-                  memory={snap.chronicleRss > 0 ? `${toMB(snap.chronicleRss, 1)} MB` : '—'}
+                  value={`${snap.chronicleRss > 0 ? `${toMB(snap.chronicleRss, 1)} MB` : '—'} / ${formatCpuLabel(snap.chronicleCpuPercent)}`}
                   dimLabel
                   branch="last"
                 />
-              ) : (
-                <SectionRow label="Not running" memory="0 MB" dimLabel branch="last" />
+              )
+: (
+                <SectionRow label="Not running" value="0 MB / 0%" dimLabel branch="last" />
               )}
             </ResourceGroup>
 
@@ -557,21 +626,23 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<SquareTerminalIcon className="size-3.5" />}
               label="CLI TUI"
-              value={snap ? formatMemoryLabel(Number(toMB(snap.cliTuiRss))) : '—'}
+              value={snap ? formatResourceLabel(Number(toMB(snap.cliTuiRss)), snap.cliTuiCpuPercent) : '—'}
             >
-              {cliTuiTerminals.length > 0 ? (
+              {cliTuiTerminals.length > 0
+? (
                 cliTuiTerminals.map((item, index) => (
                   <SectionRow
                     key={item.id}
                     label={basename(item.executable)}
                     detail={`pid ${item.pid}`}
-                    memory={item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)}
+                    value={`${item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)} / ${formatCpuLabel(item.cpuPercent)}`}
                     dimLabel
                     branch={index === cliTuiTerminals.length - 1 ? 'last' : 'middle'}
                   />
                 ))
-              ) : (
-                <SectionRow label="No running TUI sessions" memory="0 MB" dimLabel branch="last" />
+              )
+: (
+                <SectionRow label="No running TUI sessions" value="0 MB / 0%" dimLabel branch="last" />
               )}
             </ResourceGroup>
 
@@ -580,21 +651,23 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<PanelBottomIcon className="size-3.5" />}
               label="Bottom Panel"
-              value={snap ? formatMemoryLabel(Number(toMB(snap.bottomPanelRss))) : '—'}
+              value={snap ? formatResourceLabel(Number(toMB(snap.bottomPanelRss)), snap.bottomPanelCpuPercent) : '—'}
             >
-              {bottomPanelTerminals.length > 0 ? (
+              {bottomPanelTerminals.length > 0
+? (
                 bottomPanelTerminals.map((item, index) => (
                   <SectionRow
                     key={item.id}
                     label={basename(item.executable)}
                     detail={`pid ${item.pid}`}
-                    memory={item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)}
+                    value={`${item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)} / ${formatCpuLabel(item.cpuPercent)}`}
                     dimLabel
                     branch={index === bottomPanelTerminals.length - 1 ? 'last' : 'middle'}
                   />
                 ))
-              ) : (
-                <SectionRow label="No running panel terminals" memory="0 MB" dimLabel branch="last" />
+              )
+: (
+                <SectionRow label="No running panel terminals" value="0 MB / 0%" dimLabel branch="last" />
               )}
             </ResourceGroup>
           </div>
@@ -608,9 +681,7 @@ export function ResourcesPopover() {
               <RefreshCwIcon className={cn('size-3', loading && 'animate-spin')} aria-hidden="true" />
               Live
             </span>
-            <span>
-              Updated {snap.updatedAtLabel}
-            </span>
+            <span>{footerStatusLabel}</span>
           </div>
         )}
       </PopoverContent>
@@ -628,5 +699,5 @@ function formatUptime(seconds: number): string {
 }
 
 function basename(path: string): string {
-  return path.split(/[\\/]/).pop() || path
+  return path.split(PATH_SEGMENT_SEPARATOR_PATTERN).pop() || path
 }
