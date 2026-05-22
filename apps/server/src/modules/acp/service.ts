@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import type { AcpAgent, AcpAuditEntry } from '@cradle/db'
 import { acpAgents, acpAuditLog } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
@@ -18,6 +19,13 @@ const installAbortControllers = new Map<string, AbortController>()
 
 const registry = new AcpRegistry()
 const installer = new AcpInstaller()
+
+const AuditInputSchema = z.object({
+  agentId: z.string(),
+  action: z.string(),
+  path: z.string().nullable(),
+  details: z.record(z.string(), z.unknown()).default({}),
+})
 
 // ── helpers ──
 
@@ -75,8 +83,8 @@ function saveInstalledToDb(input: { agent: RegistryAgent, distributionType: AcpD
     distributionType: input.distributionType,
     installPath: input.result.installPath,
     cmd: input.result.cmd,
-    args: JSON.stringify(input.result.args ?? []),
-    env: JSON.stringify(input.result.env ?? {}),
+    args: JSON.stringify(input.result.args),
+    env: JSON.stringify(input.result.env),
     status: 'installed',
     updatedAt: now,
   }).onConflictDoUpdate({
@@ -87,8 +95,8 @@ function saveInstalledToDb(input: { agent: RegistryAgent, distributionType: AcpD
       distributionType: input.distributionType,
       installPath: input.result.installPath,
       cmd: input.result.cmd,
-      args: JSON.stringify(input.result.args ?? []),
-      env: JSON.stringify(input.result.env ?? {}),
+      args: JSON.stringify(input.result.args),
+      env: JSON.stringify(input.result.env),
       status: 'installed',
       updatedAt: now,
     },
@@ -129,12 +137,13 @@ function getAuditLogFromDb(agentId?: string): AcpAuditEntry[] {
   return db().select().from(acpAuditLog).orderBy(desc(acpAuditLog.id)).all()
 }
 
-function recordAudit(input: { agentId: string, action: string, path: string | null, details?: Record<string, unknown> }): void {
+function recordAudit(input: z.input<typeof AuditInputSchema>): void {
+  const audit = AuditInputSchema.parse(input)
   db().insert(acpAuditLog).values({
-    agentId: input.agentId,
-    action: input.action,
-    path: input.path,
-    details: JSON.stringify(input.details ?? {}),
+    agentId: audit.agentId,
+    action: audit.action,
+    path: audit.path,
+    details: JSON.stringify(audit.details),
   }).run()
 }
 

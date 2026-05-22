@@ -2,6 +2,31 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 import { createServer } from 'node:http'
 import type { Socket } from 'node:net'
 
+import { z } from 'zod'
+
+const ChatCompletionsRequestJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.object({
+  messages: z.array(z.object({
+    role: z.string(),
+    tool_call_id: z.string().optional(),
+  })).default([]),
+}))
+
+const ResponsesRequestJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.object({
+  input: z.array(z.object({
+    type: z.string().optional(),
+  })).default([]),
+}))
+
+const AnthropicMessagesRequestJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.object({
+  messages: z.array(z.object({
+    role: z.string(),
+    content: z.array(z.object({
+      type: z.string().optional(),
+    })).default([]),
+  })).default([]),
+  stream: z.boolean().optional(),
+}))
+
 export interface MockLlmRequestLogEntry {
   method: string
   path: string
@@ -257,14 +282,8 @@ export class MockLlmServer {
         return
       }
 
-      // Parse body to check if this is a tool result turn
-      let parsedBody: { messages?: Array<{ role: string, tool_call_id?: string }> } | null = null
-      try {
-        parsedBody = JSON.parse(body)
-      }
-      catch { /* ignore */ }
-
-      const hasToolResults = parsedBody?.messages?.some(m => m.role === 'tool') ?? false
+      const parsedBody = ChatCompletionsRequestJsonSchema.parse(body)
+      const hasToolResults = parsedBody.messages.some(m => m.role === 'tool')
 
       // First turn with tool calls configured and no tool results yet: emit tool calls
       if (this.toolCalls.length > 0 && !hasToolResults) {
@@ -485,14 +504,8 @@ export class MockLlmServer {
         return
       }
 
-      // Parse body to check for tool results in input
-      let parsedBody: { input?: Array<{ type?: string }> } | null = null
-      try {
-        parsedBody = JSON.parse(body)
-      }
-      catch { /* ignore */ }
-
-      const hasToolResults = parsedBody?.input?.some(i => i.type === 'function_call_output') ?? false
+      const parsedBody = ResponsesRequestJsonSchema.parse(body)
+      const hasToolResults = parsedBody.input.some(i => i.type === 'function_call_output')
 
       if (this.toolCalls.length > 0 && !hasToolResults) {
         void this.streamResponsesToolCall(res)
@@ -644,15 +657,11 @@ export class MockLlmServer {
       this.recordRequest(req, body)
       this.turnCount++
 
-      let parsedBody: { messages?: Array<{ role: string, content?: unknown[] }>, stream?: boolean } | null = null
-      try {
-        parsedBody = JSON.parse(body)
-      }
- catch { /* ignore */ }
+      const parsedBody = AnthropicMessagesRequestJsonSchema.parse(body)
 
       // Check if this is a turn after tool_result (continuation)
-      const hasToolResult = parsedBody?.messages?.some(m =>
-        m.role === 'user' && Array.isArray(m.content) && (m.content as Array<{ type?: string }>).some(c => c.type === 'tool_result')) ?? false
+      const hasToolResult = parsedBody.messages.some(m =>
+        m.role === 'user' && m.content.some(c => c.type === 'tool_result'))
 
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',

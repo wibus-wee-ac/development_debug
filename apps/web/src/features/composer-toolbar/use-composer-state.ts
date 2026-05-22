@@ -29,7 +29,9 @@ export interface ComposerStateResult {
   models: ModelDescriptor[]
   modelsByProfileId: ModelsByProfileId
   loadingProfileIds: Set<string>
+  isLoadingAgents: boolean
   isLoadingModels: boolean
+  isLoadingProfiles: boolean
   effectiveAgent: Agent | null
   effectiveProfile: AgentProfile | null
   effectiveModel: ModelDescriptor | null
@@ -53,8 +55,8 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   const setLastThinkingEffort = useNewChatStore(s => s.setLastThinkingEffort)
 
   // Data
-  const { agents } = useAgents()
-  const { profiles } = useAgentProfiles()
+  const { agents, isLoading: isLoadingAgents } = useAgents()
+  const { profiles, isLoading: isLoadingProfiles } = useAgentProfiles()
 
   // Local non-persisted state
   const [manualAgentId, setManualAgentId] = useState<string | null>(null)
@@ -200,7 +202,9 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     models,
     modelsByProfileId,
     loadingProfileIds,
+    isLoadingAgents,
     isLoadingModels,
+    isLoadingProfiles,
     effectiveAgent,
     effectiveProfile,
     effectiveModel,

@@ -24,7 +24,7 @@ export function useWorkspaceFile(workspaceId: string, relativePath: string) {
     mutationFn: async (newContent: string) => {
       await putWorkspacesByIdFilesContent({
         path: { id: workspaceId },
-        body: { path: relativePath, content: newContent },
+        body: { path: relativePath, content: newContent, confirmedNonCradleOwnedWrite: true },
       })
       return true
     },

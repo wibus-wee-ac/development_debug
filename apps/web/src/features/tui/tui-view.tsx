@@ -9,9 +9,10 @@ import '@xterm/xterm/css/xterm.css'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import { getAppTerminalTheme } from './app-theme'
@@ -19,6 +20,7 @@ import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
 
 const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
+let firstTuiViewRendered = false
 
 interface TuiViewProps {
   sessionId: string
@@ -27,11 +29,13 @@ interface TuiViewProps {
 export function TuiView({ sessionId }: TuiViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const channelRef = useRef<ReturnType<typeof createPtyChannel> | null>(null)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (!containerRef.current) {
       return
     }
+    setReady(false)
 
     const darkMq = window.matchMedia('(prefers-color-scheme: dark)')
     const terminal = new Terminal({
@@ -135,6 +139,16 @@ export function TuiView({ sessionId }: TuiViewProps) {
       })
 
       channel.connect()
+      setReady(true)
+      if (!firstTuiViewRendered) {
+        firstTuiViewRendered = true
+        markCradlePerformance('cradle:first-tui-view-rendered')
+        measureCradlePerformance(
+          'cradle:tui-view-first-render',
+          'cradle:tui-view-render-requested',
+          'cradle:first-tui-view-rendered',
+        )
+      }
     })()
 
     attachMacKeyboardHandler(terminal)
@@ -178,6 +192,8 @@ export function TuiView({ sessionId }: TuiViewProps) {
       ref={containerRef}
       className="h-full w-full overflow-hidden"
       data-testid="tui-view"
+      data-tui-view-ready={ready ? 'true' : 'false'}
+      data-tui-session-id={sessionId}
       style={{ padding: '4px 8px' }}
       onDrop={(e) => {
         e.preventDefault()

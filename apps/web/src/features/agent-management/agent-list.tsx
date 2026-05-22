@@ -1,6 +1,5 @@
 import { BotIcon, ChevronRightIcon, PlusIcon, SearchIcon, SparklesIcon, XIcon } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -18,6 +17,7 @@ import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-con
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { Agent, AgentProfile, CliTuiLaunchConfig } from '~/lib/types'
 
 import { AgentDetailPage } from './agent-detail'
@@ -104,12 +104,14 @@ function AgentSidebarRow({
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function AgentList() {
-  const { agents, isLoading } = useAgents()
-  const { profiles } = useAgentProfiles()
+  const firstRenderedRef = useRef(false)
+  const { agents, isLoading, isSuccess: agentsReady } = useAgents()
+  const { profiles, isSuccess: profilesReady } = useAgentProfiles()
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isDrafting, setIsDrafting] = useState(false)
   const [filter, setFilter] = useState('')
+  const settingsAgentsReady = agentsReady && profilesReady
 
   const visibleAgents = useMemo(() => {
     if (!filter.trim()) {
@@ -136,6 +138,20 @@ export function AgentList() {
     }
   }, [agents, selectedId])
 
+  useEffect(() => {
+    if (!settingsAgentsReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-agents-rendered')
+    measureCradlePerformance(
+      'cradle:settings-agents-first-render',
+      'cradle:settings-agents-render-requested',
+      'cradle:first-settings-agents-rendered',
+    )
+  }, [settingsAgentsReady])
+
   const startDraft = useCallback(() => {
     setIsDrafting(true)
     setSelectedId(DRAFT_ID)
@@ -153,6 +169,7 @@ export function AgentList() {
   return (
     <div
       data-testid="agent-list"
+      data-settings-agents-ready={settingsAgentsReady ? 'true' : 'false'}
       className="flex h-full flex-col overflow-hidden"
     >
       {/* Header */}
@@ -197,54 +214,51 @@ export function AgentList() {
           <ScrollArea className="-mx-1 flex-1">
             <div className="flex flex-col gap-0.5 px-1">
               {/* Draft row */}
-              <AnimatePresence initial={false}>
-                {isDrafting && (
-                  <m.div
-                    key={DRAFT_ID}
-                    initial={{ opacity: 0, y: -4, height: 0 }}
-                    animate={{ opacity: 1, y: 0, height: 'auto' }}
-                    exit={{ opacity: 0, y: -4, height: 0 }}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
+              {isDrafting && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedId(DRAFT_ID)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedId(DRAFT_ID)
+                    }
+                  }}
+                  aria-pressed={isDraftSelected}
+                  className={cn(
+                    'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
+                    'transition-[background-color] duration-150',
+                    'focus-visible:ring-2 focus-visible:ring-ring/50',
+                    isDraftSelected
+                      ? 'bg-accent text-accent-foreground'
+                      : 'opacity-90 hover:bg-foreground/[0.035]',
+                  )}
+                >
+                  <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
+                    <SparklesIcon className="size-3.5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] leading-tight text-foreground/70">
+                      New agent
+                    </span>
+                    <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/60">
+                      Set up identity
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsDrafting(false)
+                      setSelectedId(null)
+                    }}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
                   >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(DRAFT_ID)}
-                      aria-pressed={isDraftSelected}
-                      className={cn(
-                        'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
-                        'transition-[background-color] duration-150',
-                        'focus-visible:ring-2 focus-visible:ring-ring/50',
-                        isDraftSelected
-                          ? 'bg-accent text-accent-foreground'
-                          : 'opacity-90 hover:bg-foreground/[0.035]',
-                      )}
-                    >
-                      <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
-                        <SparklesIcon className="size-3.5" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <span className="block truncate text-[12.5px] leading-tight text-foreground/70">
-                          New agent
-                        </span>
-                        <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/60">
-                          Set up identity
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setIsDrafting(false)
-                          setSelectedId(null)
-                        }}
-                        className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
-                      >
-                        <XIcon className="size-3" />
-                      </button>
-                    </button>
-                  </m.div>
-                )}
-              </AnimatePresence>
+                    <XIcon className="size-3" />
+                  </button>
+                </div>
+              )}
 
               {/* Agent rows */}
               {!isLoading && visibleAgents.map(agent => (

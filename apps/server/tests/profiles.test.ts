@@ -3,18 +3,24 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { shutdownInfra } from '../src/infra'
+import { ProfileConfigWithModelRegistryJsonSchema } from '../src/modules/providers/model-registry-mappings'
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
+const ProfileResponseSchema = z.object({
+  configJson: z.string(),
+  customModels: z.string(),
+})
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
 function getRequestUrl(input: Parameters<typeof fetch>[0]): string {
-  return typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+  return new Request(input).url
 }
 
 describe('profiles capability', () => {
@@ -376,8 +382,8 @@ describe('profiles capability', () => {
 
       const profileAfterMappingRes = await app.handle(new Request('http://localhost/profiles/profile-map'))
       expect(profileAfterMappingRes.status).toBe(200)
-      const profileAfterMapping = await profileAfterMappingRes.json() as { configJson: string, customModels: string }
-      const config = JSON.parse(profileAfterMapping.configJson) as { modelRegistryMappings?: unknown[] }
+      const profileAfterMapping = ProfileResponseSchema.parse(await profileAfterMappingRes.json())
+      const config = ProfileConfigWithModelRegistryJsonSchema.parse(profileAfterMapping.configJson)
       expect(profileAfterMapping.customModels).toBe('[]')
       expect(config.modelRegistryMappings).toEqual([
         expect.objectContaining({ modelId: 'vendor-gpt4o', registryModelId: 'gpt-4o' }),

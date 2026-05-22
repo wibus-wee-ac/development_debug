@@ -8,6 +8,7 @@ import { startObservation } from '@langfuse/tracing'
 import type { CodexOptions, Thread, ThreadEvent } from '@openai/codex-sdk'
 import { Codex } from '@openai/codex-sdk'
 import type { UIMessageChunk } from 'ai'
+import { z } from 'zod'
 
 import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
@@ -30,13 +31,21 @@ import { closeOpenCodexReasoning, mapCodexThreadEventToChunks } from './mapper'
 
 interface CodexProviderDeps {
   readSecret: (credentialRef: string) => string
-  resolveSkillPaths?: (workspacePath: string) => string[]
+  resolveSkillPaths: (workspacePath: string) => string[]
   recordObservability: (input: CreateEventInput) => void
 }
 
 const RUNTIME_KIND: RuntimeKind = 'codex'
 const MAX_EVENT_SAMPLES = 20
 type ActiveCodexThread = { thread: Thread, abortController: AbortController }
+const LangfuseGenerationSpanSchema = z.object({
+  otelSpan: z.object({
+    setAttribute: z.function({
+      input: [z.string(), z.string()],
+      output: z.void(),
+    }),
+  }),
+}).passthrough()
 
 interface CodexStreamDiagnostics {
   totalEvents: number
@@ -71,7 +80,7 @@ export class CodexProvider implements ChatRuntime {
       agentProfileId: input.profile.id,
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
-      providerStateSnapshot: JSON.stringify({ workspacePath: input.workspacePath, models: { currentModelId: input.modelId ?? null } }),
+      providerStateSnapshot: JSON.stringify({ workspacePath: input.workspacePath, models: { currentModelId: input.modelId } }),
     }
   }
 
@@ -83,7 +92,7 @@ export class CodexProvider implements ChatRuntime {
         ...snapshot,
         workspacePath: input.workspacePath,
         models: {
-          currentModelId: input.modelId ?? snapshot.models?.currentModelId ?? null,
+          currentModelId: input.modelId ?? snapshot.models.currentModelId,
         },
       }),
     }
@@ -100,11 +109,11 @@ export class CodexProvider implements ChatRuntime {
     const abortController = new AbortController()
     const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
-    const skillPaths = config.skillPaths ?? this.deps.resolveSkillPaths?.(workspacePath) ?? []
+    const skillPaths = config.skillPaths.length > 0
+      ? config.skillPaths
+      : this.deps.resolveSkillPaths(workspacePath)
+    const instructionPaths = [...skillPaths]
     const codexConfig: NonNullable<CodexOptions['config']> = {}
-    if (skillPaths.length > 0) {
-      codexConfig.instructions_paths = skillPaths
-    }
     const mcpServers = buildCodexMcpServersConfig()
     if (Object.keys(mcpServers).length > 0) {
       codexConfig.mcp_servers = mcpServers
@@ -115,9 +124,10 @@ export class CodexProvider implements ChatRuntime {
     if (input.systemPrompt) {
       systemPromptFile = join(tmpdir(), `cradle-codex-prompt-${randomUUID()}.md`)
       writeFileSync(systemPromptFile, input.systemPrompt, 'utf-8')
-      const paths = (codexConfig.instructions_paths as string[] | undefined) ?? []
-      paths.push(systemPromptFile)
-      codexConfig.instructions_paths = paths
+      instructionPaths.push(systemPromptFile)
+    }
+    if (instructionPaths.length > 0) {
+      codexConfig.instructions_paths = instructionPaths
     }
 
     const codex = new Codex({
@@ -129,9 +139,9 @@ export class CodexProvider implements ChatRuntime {
     const threadOptions = {
       model: effectiveModel,
       workingDirectory: workspacePath,
-      sandboxMode: config.sandboxMode ?? 'workspace-write',
-      approvalPolicy: config.approvalPolicy ?? 'on-failure',
-      modelReasoningEffort: config.reasoningEffort ?? 'high',
+      sandboxMode: config.sandboxMode,
+      approvalPolicy: config.approvalPolicy,
+      modelReasoningEffort: config.reasoningEffort,
       additionalDirectories: config.additionalDirectories,
     }
 
@@ -164,7 +174,7 @@ export class CodexProvider implements ChatRuntime {
           ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: input.message }]
           : [{ role: 'user', content: input.message }],
       }, { asType: 'generation' }) as LangfuseGeneration
-      const span = (generation as unknown as { otelSpan: { setAttribute: (k: string, v: string) => void } }).otelSpan
+      const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
       span.setAttribute('langfuse.trace.name', 'codex-chat')
     }
@@ -243,7 +253,7 @@ export class CodexProvider implements ChatRuntime {
             chatSessionId: input.runtimeSession.chatSessionId,
             runId: null,
           }),
-          attrs: { runtimeKind: RUNTIME_KIND, diagnostics, model: effectiveModel ?? null, baseUrl: config.baseUrl ?? null },
+          attrs: { runtimeKind: RUNTIME_KIND, diagnostics, model: effectiveModel, baseUrl: config.baseUrl },
         })
         throw new Error(errorText)
       }

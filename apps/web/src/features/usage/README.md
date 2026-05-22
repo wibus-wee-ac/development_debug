@@ -9,6 +9,7 @@ Data sourced from the `usage_logs` SQLite table via the `UsageService` IPC layer
 
 ## Files
 
+- **usage-dashboard-loader.ts**: Usage tab 的共享 lazy loader 与 route preload 入口。
 - **usage-dashboard.tsx**: Main dashboard page component with heatmap + stats + breakdowns；现展示 Prompt / Completion / Turns 等关键汇总，便于核对 `usage_logs` 聚合
 - **usage-format.ts**: Pure formatting helpers for token and USD labels used by the dashboard
 - **usage-format.test.ts**: Unit coverage for compact token labels and tiny non-zero USD values

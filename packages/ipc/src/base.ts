@@ -3,10 +3,11 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { context as otelContext, trace } from '@opentelemetry/api'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { ipcMain } from 'electron'
+import { z } from 'zod'
 
 import {
   createObservedEvent,
-  isTraceEnvelope,
+  IpcTraceEnvelopeSchema,
   markSpanError,
   markSpanSuccess,
   serializeError,
@@ -14,6 +15,17 @@ import {
 } from './events'
 
 const HYPHEN_RE = /-/g
+
+const IpcInvocationArgsSchema = z.union([
+  z.tuple([IpcTraceEnvelopeSchema]).rest(z.unknown()).transform(([traceEnvelope, ...handlerArgs]) => ({
+    traceEnvelope,
+    handlerArgs,
+  })),
+  z.array(z.unknown()).transform(handlerArgs => ({
+    traceEnvelope: null,
+    handlerArgs,
+  })),
+])
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -129,9 +141,7 @@ export class IpcHandler {
     this.registeredChannels.add(channel)
 
     ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
-      const maybeEnvelope = args[0]
-      const traceEnvelope = isTraceEnvelope(maybeEnvelope) ? maybeEnvelope : null
-      const handlerArgs = traceEnvelope ? args.slice(1) : args
+      const { traceEnvelope, handlerArgs } = IpcInvocationArgsSchema.parse(args)
       const startedAt = traceEnvelope?.startedAt ?? Date.now()
       const span = trace.getTracer('cradle.ipc-devtool').startSpan(channel, {
         attributes: {

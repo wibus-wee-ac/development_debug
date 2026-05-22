@@ -2,6 +2,8 @@
 
 import { describe, expect, it } from 'vitest'
 
+import { AgentRuntimeConfigSchema } from '~/features/agent-runtime/agent-config-schema'
+
 import { getAgentCreateDisabledReason, parseCliEnvText, stringifyConfigJson } from './agent-detail'
 
 describe('parseCliEnvText', () => {
@@ -35,6 +37,7 @@ describe('stringifyConfigJson', () => {
   const baseInput = {
     systemPrompt: '',
     baseConfig: {},
+    claudeAgentConfig: AgentRuntimeConfigSchema.parse({}).claudeAgent,
     runtimeKind: 'claude-agent' as const,
     cliTuiPreset: 'claude-code',
     cliTuiExecutable: '',

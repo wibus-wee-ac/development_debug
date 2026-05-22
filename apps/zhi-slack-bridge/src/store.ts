@@ -16,6 +16,8 @@ const StoreSchema = z.object({
   channelBinding: ChannelBindingSchema.nullable(),
 })
 
+const StoreJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(StoreSchema)
+
 export type ChannelBinding = z.infer<typeof ChannelBindingSchema>
 export type Store = z.infer<typeof StoreSchema>
 
@@ -38,9 +40,7 @@ function loadStore(): Store {
   if (!existsSync(path)) {
     return { channelBinding: null }
   }
-  const raw = readFileSync(path, 'utf-8')
-  const parsed = JSON.parse(raw)
-  return StoreSchema.parse(parsed)
+  return StoreJsonSchema.parse(readFileSync(path, 'utf-8'))
 }
 
 function saveStore(store: Store): void {

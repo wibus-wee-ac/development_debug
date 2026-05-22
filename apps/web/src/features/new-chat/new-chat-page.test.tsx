@@ -8,9 +8,23 @@ import { NewChatPage } from './new-chat-page'
 
 const mockedDeps = vi.hoisted(() => ({
   openTab: vi.fn(),
+  openSettings: vi.fn(),
+  setSettingsSection: vi.fn(),
   postSessions: vi.fn(),
   startChatResponse: vi.fn(),
   invalidateQueries: vi.fn(),
+  addFromPicker: vi.fn(),
+  workspaces: [{
+    id: 'workspace-1',
+    name: 'Workspace Alpha',
+    path: '/tmp/workspace-alpha',
+    identifier: 'ALP',
+    createdAt: 1,
+    updatedAt: 1,
+  }],
+  addingWorkspace: false,
+  tabs: [{ id: 'tab-new-chat', type: 'new-chat', params: {} }],
+  activeTabId: 'tab-new-chat',
   composerState: {
     selection: {
       agentId: null,
@@ -44,6 +58,8 @@ const mockedDeps = vi.hoisted(() => ({
     }],
     modelsByProfileId: {},
     loadingProfileIds: new Set<string>(),
+    isLoadingAgents: false,
+    isLoadingProfiles: false,
     isLoadingModels: false,
     effectiveAgent: null,
     effectiveProfile: {
@@ -145,6 +161,16 @@ vi.mock('~/features/composer-toolbar', () => ({
   useComposerState: () => mockedDeps.composerState,
 }))
 
+vi.mock('~/features/settings/settings-overlay-store', () => ({
+  useSettingsOverlayStore: (selector: (state: {
+    openSettings: typeof mockedDeps.openSettings
+    setSettingsSection: typeof mockedDeps.setSettingsSection
+  }) => unknown) => selector({
+    openSettings: mockedDeps.openSettings,
+    setSettingsSection: mockedDeps.setSettingsSection,
+  }),
+}))
+
 vi.mock('~/features/workspace/use-session', () => ({
   sessionsQueryKey: (workspaceId: string) => ['sessions', workspaceId],
   useSessions: () => ({ sessions: [] }),
@@ -152,14 +178,12 @@ vi.mock('~/features/workspace/use-session', () => ({
 
 vi.mock('~/features/workspace/use-workspace', () => ({
   useWorkspaces: () => ({
-    workspaces: [{
-      id: 'workspace-1',
-      name: 'Workspace Alpha',
-      path: '/tmp/workspace-alpha',
-      identifier: 'ALP',
-      createdAt: 1,
-      updatedAt: 1,
-    }],
+    workspaces: mockedDeps.workspaces,
+    loading: false,
+  }),
+  useAddWorkspace: () => ({
+    addFromPicker: mockedDeps.addFromPicker,
+    adding: mockedDeps.addingWorkspace,
   }),
 }))
 
@@ -169,6 +193,15 @@ vi.mock('~/hooks/use-now', () => ({
 
 vi.mock('~/lib/cn', () => ({
   cn: (...values: Array<string | false | null | undefined>) => values.filter(Boolean).join(' '),
+}))
+
+vi.mock('~/tabs/registry', () => ({
+  useCradleTabStore: {
+    getState: () => ({
+      activeTabId: mockedDeps.activeTabId,
+      tabs: mockedDeps.tabs,
+    }),
+  },
 }))
 
 vi.mock('~/tabs/use-cradle-navigation', () => ({
@@ -183,6 +216,36 @@ describe('NewChatPage composer actions', () => {
     mockedDeps.startChatResponse.mockResolvedValue(undefined)
     mockedDeps.invalidateQueries.mockClear()
     mockedDeps.openTab.mockClear()
+    mockedDeps.openSettings.mockClear()
+    mockedDeps.setSettingsSection.mockClear()
+    mockedDeps.addFromPicker.mockResolvedValue(undefined)
+    mockedDeps.addingWorkspace = false
+    mockedDeps.workspaces = [{
+      id: 'workspace-1',
+      name: 'Workspace Alpha',
+      path: '/tmp/workspace-alpha',
+      identifier: 'ALP',
+      createdAt: 1,
+      updatedAt: 1,
+    }]
+    mockedDeps.tabs = [{ id: 'tab-new-chat', type: 'new-chat', params: {} }]
+    mockedDeps.activeTabId = 'tab-new-chat'
+    mockedDeps.composerState.selection.runtimeKind = 'standard'
+    mockedDeps.composerState.effectiveAgent = null
+    mockedDeps.composerState.effectiveProfile = {
+      id: 'profile-1',
+      name: 'Default Profile',
+      enabled: true,
+      providerKind: 'openai-compatible',
+      configJson: '{}',
+      credentialRef: null,
+      customModels: '[]',
+      createdAt: 1,
+      updatedAt: 1,
+    }
+    performance.clearMarks()
+    performance.clearMeasures()
+    performance.mark('cradle:new-chat-render-requested')
     HTMLCanvasElement.prototype.getContext = vi.fn(() => null)
   })
 
@@ -230,5 +293,28 @@ describe('NewChatPage composer actions', () => {
     })
     expect(mockedDeps.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['sessions', 'workspace-1'] })
     expect(mockedDeps.openTab).toHaveBeenCalledWith('chat', { sessionId: 'session-1' })
+  })
+
+  it('explains the first-run workspace blocker and opens the project picker', () => {
+    mockedDeps.workspaces = []
+
+    render(<NewChatPage />)
+
+    expect(screen.getByTestId('new-chat-readiness-notice').textContent).toContain('Add a project first')
+    fireEvent.click(screen.getByRole('button', { name: 'Add project' }))
+
+    expect(mockedDeps.addFromPicker).toHaveBeenCalledTimes(1)
+  })
+
+  it('explains the first-run provider blocker and opens provider settings', () => {
+    ;(mockedDeps.composerState as { effectiveProfile: unknown }).effectiveProfile = null
+
+    render(<NewChatPage />)
+
+    expect(screen.getByTestId('new-chat-readiness-notice').textContent).toContain('No model provider is available')
+    fireEvent.click(screen.getByRole('button', { name: 'Open providers' }))
+
+    expect(mockedDeps.setSettingsSection).toHaveBeenCalledWith('providers')
+    expect(mockedDeps.openSettings).toHaveBeenCalledWith('tab-new-chat')
   })
 })

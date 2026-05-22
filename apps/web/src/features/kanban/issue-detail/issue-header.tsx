@@ -1,4 +1,5 @@
 import { ArrowLeftIcon, ChevronRightIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react'
+import { memo } from 'react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
@@ -13,7 +14,7 @@ interface IssueHeaderProps {
   onDelete: () => void
 }
 
-export function IssueHeader({ issue, status, onBack, onDelete }: IssueHeaderProps) {
+export const IssueHeader = memo(function IssueHeader({ issue, status, onBack, onDelete }: IssueHeaderProps) {
   return (
     <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-3" data-testid="issue-detail-header">
       <button
@@ -63,4 +64,4 @@ export function IssueHeader({ issue, status, onBack, onDelete }: IssueHeaderProp
       </Menu>
     </div>
   )
-}
+})

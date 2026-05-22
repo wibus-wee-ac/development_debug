@@ -1,6 +1,13 @@
 import { join, normalize } from 'pathe'
+import { z } from 'zod'
 
 const WORKSPACE_FILE_DRAG_MIME = 'application/x-cradle-workspace-file+json'
+const WorkspaceFileDragPayloadJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    absolutePath: z.string().min(1).optional(),
+    relativePath: z.string().min(1),
+  }))
 
 export interface WorkspaceFileDragPayload {
   absolutePath?: string
@@ -32,18 +39,8 @@ export function writeWorkspaceFileDragData(dataTransfer: DataTransfer, payload: 
 export function readWorkspaceFileDragText(dataTransfer: DataTransfer): string | null {
   const rawPayload = dataTransfer.getData(WORKSPACE_FILE_DRAG_MIME)
   if (rawPayload) {
-    try {
-      const payload = JSON.parse(rawPayload) as Partial<WorkspaceFileDragPayload>
-      const path = typeof payload.absolutePath === 'string' && payload.absolutePath.length > 0
-        ? payload.absolutePath
-        : typeof payload.relativePath === 'string' && payload.relativePath.length > 0
-          ? payload.relativePath
-          : null
-      return path ? quoteWorkspacePath(path) : null
-    }
-    catch {
-      return null
-    }
+    const payload = WorkspaceFileDragPayloadJsonSchema.parse(rawPayload)
+    return quoteWorkspacePath(payload.absolutePath ?? payload.relativePath)
   }
 
   return dataTransfer.getData('text/plain') || null

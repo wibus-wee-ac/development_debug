@@ -1,6 +1,7 @@
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { z } from 'zod'
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -68,8 +69,36 @@ interface ChatState {
 // ── Server Base ─────────────────────────────────────────────
 
 type MessagePart = UIMessage['parts'][number]
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 const EMPTY_MESSAGES: UIMessage[] = []
 const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false, cancelling: false }
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(JsonValueSchema),
+  ]),
+)
+const TextMessagePartSchema = z.object({
+  type: z.literal('text'),
+  text: z.string(),
+}).passthrough()
+const ReasoningMessagePartSchema = z.object({
+  text: z.string().optional(),
+  reasoning: z.string().optional(),
+  state: z.string().optional(),
+}).passthrough()
+const DynamicToolMessagePartSchema = z.object({
+  toolCallId: z.string().optional(),
+  toolName: z.string().optional(),
+  state: z.string().optional(),
+  input: JsonValueSchema.optional(),
+  output: JsonValueSchema.optional(),
+  errorText: z.string().optional(),
+}).passthrough()
 
 // ── Store ───────────────────────────────────────────────────
 
@@ -423,55 +452,32 @@ function areMessagePartsStructurallyEqual(currentPart: MessagePart, incomingPart
 
   switch (currentPart.type) {
     case 'text':
-      return currentPart.text === (incomingPart as { type: 'text', text: string }).text
+      return currentPart.text === TextMessagePartSchema.parse(incomingPart).text
     case 'reasoning': {
-      const currentReasoning = currentPart as unknown as { text?: string, reasoning?: string, state?: string }
-      const incomingReasoning = incomingPart as unknown as { text?: string, reasoning?: string, state?: string }
+      const currentReasoning = ReasoningMessagePartSchema.parse(currentPart)
+      const incomingReasoning = ReasoningMessagePartSchema.parse(incomingPart)
       return currentReasoning.text === incomingReasoning.text
         && currentReasoning.reasoning === incomingReasoning.reasoning
         && currentReasoning.state === incomingReasoning.state
     }
     case 'dynamic-tool': {
-      const currentTool = currentPart as unknown as {
-        toolCallId?: string
-        toolName?: string
-        state?: string
-        input?: unknown
-        output?: unknown
-        errorText?: string
-      }
-      const incomingTool = incomingPart as unknown as {
-        toolCallId?: string
-        toolName?: string
-        state?: string
-        input?: unknown
-        output?: unknown
-        errorText?: string
-      }
+      const currentTool = DynamicToolMessagePartSchema.parse(currentPart)
+      const incomingTool = DynamicToolMessagePartSchema.parse(incomingPart)
       return currentTool.toolCallId === incomingTool.toolCallId
         && currentTool.toolName === incomingTool.toolName
         && currentTool.state === incomingTool.state
         && currentTool.errorText === incomingTool.errorText
-        && areUnknownValuesEqual(currentTool.input, incomingTool.input)
-        && areUnknownValuesEqual(currentTool.output, incomingTool.output)
+        && areJsonValuesEqual(currentTool.input, incomingTool.input)
+        && areJsonValuesEqual(currentTool.output, incomingTool.output)
     }
     default:
-      return areUnknownValuesEqual(currentPart, incomingPart)
+      return areJsonValuesEqual(currentPart, incomingPart)
   }
 }
 
-function areUnknownValuesEqual(currentValue: unknown, incomingValue: unknown): boolean {
+function areJsonValuesEqual(currentValue: unknown, incomingValue: unknown): boolean {
   if (Object.is(currentValue, incomingValue)) {
     return true
   }
-  if (typeof currentValue !== 'object' || currentValue === null || typeof incomingValue !== 'object' || incomingValue === null) {
-    return false
-  }
-
-  try {
-    return JSON.stringify(currentValue) === JSON.stringify(incomingValue)
-  }
-  catch {
-    return false
-  }
+  return JSON.stringify(JsonValueSchema.parse(currentValue)) === JSON.stringify(JsonValueSchema.parse(incomingValue))
 }

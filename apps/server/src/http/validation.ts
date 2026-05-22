@@ -1,5 +1,6 @@
 import type { ValidationError } from 'elysia'
 import { t } from 'elysia'
+import { z } from 'zod'
 
 export interface ValidationIssue {
   path: string
@@ -24,6 +25,9 @@ export const validationErrorDetailsSchema = t.Object({
 
 const RE_LEADING_SLASHES = /^\/+/
 const RE_SLASH = /\//g
+const ValidationIssueSummarySchema = z.object({
+  summary: z.string().optional(),
+}).passthrough()
 
 export function normalizeTypeBoxPath(path: string | undefined): string {
   if (!path || path === '/' || path === 'root') {
@@ -42,10 +46,7 @@ export function normalizeValidationIssues(error: Readonly<ValidationError>): Val
       : []
 
   return issues.map((issue) => {
-    const summary = 'summary' in issue && typeof issue.summary === 'string'
-      ? issue.summary
-      : undefined
-
+    const { summary } = ValidationIssueSummarySchema.parse(issue)
     return {
       path: normalizeTypeBoxPath(issue.path),
       message: summary ?? issue.message,

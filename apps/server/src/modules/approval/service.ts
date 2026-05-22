@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import { approvalAudit } from '@cradle/db'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
@@ -38,6 +39,17 @@ export interface PendingApproval {
 export type ApprovalRequestedListener = (approval: PendingApproval) => void
 export type ApprovalResolvedListener = (approvalId: string, response: ApprovalResponse) => void
 
+const PendingApprovalInputSchema = z.object({
+  chatSessionId: z.string().nullable().default(null),
+  agentId: z.string(),
+  prompt: z.string(),
+  options: z.array(z.object({
+    optionId: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+  })),
+})
+
 // ── module-level state ──
 
 interface PendingEntry {
@@ -52,11 +64,12 @@ const resolvedListeners = new Set<ApprovalResolvedListener>()
 
 // ── public API ──
 
-export function createPending(input: CreateApprovalInput): PendingApproval {
+export function createPending(rawInput: CreateApprovalInput): PendingApproval {
+  const input = PendingApprovalInputSchema.parse(rawInput)
   const id = randomUUID()
   const approval: PendingApproval = {
     id,
-    chatSessionId: input.chatSessionId ?? null,
+    chatSessionId: input.chatSessionId,
     agentId: input.agentId,
     prompt: input.prompt,
     options: input.options,

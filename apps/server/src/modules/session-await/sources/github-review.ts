@@ -6,15 +6,11 @@ import {
   isGitHubRateLimited,
   type GitHubPullRequestReview,
 } from './github-api'
+import { z } from 'zod'
 
-type GitHubReviewMode = 'approved' | 'changes-requested' | 'reviewed'
+const GitHubReviewModeSchema = z.enum(['approved', 'changes-requested', 'reviewed'])
 
-interface GitHubReviewFilter {
-  repo: string
-  pr: number
-  mode?: GitHubReviewMode
-  headSha?: string
-}
+type GitHubReviewMode = z.infer<typeof GitHubReviewModeSchema>
 
 export interface LiveReview {
   id: number
@@ -55,44 +51,41 @@ interface ReviewAggregate {
   matched: boolean
 }
 
-function parseFilter(filterJson: string): GitHubReviewFilter | null {
-  try {
-    const f = JSON.parse(filterJson) as GitHubReviewFilter
-    if (!f.repo || !Number.isInteger(f.pr) || f.pr <= 0) {
-      return null
-    }
-    if (f.mode && f.mode !== 'approved' && f.mode !== 'changes-requested' && f.mode !== 'reviewed') {
-      return null
-    }
-    return f
-  }
-  catch {
-    return null
-  }
-}
+const GitHubRepoSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/)
+  .transform((repoFullName) => {
+    const [owner, repo] = repoFullName.split('/')
+    return { owner, repo }
+  })
 
-function splitRepo(repoFullName: string): { owner: string, repo: string } | null {
-  const [owner, repo] = repoFullName.split('/')
-  return owner && repo ? { owner, repo } : null
-}
+const GitHubReviewFilterSchema = z.object({
+  repo: GitHubRepoSchema,
+  pr: z.number().int().positive(),
+  mode: GitHubReviewModeSchema.default('approved'),
+  headSha: z.string().min(1).optional(),
+}).transform(({ repo, ...filter }) => ({
+  ...filter,
+  owner: repo.owner,
+  repo: repo.repo,
+}))
+
+export const GitHubReviewFilterJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(GitHubReviewFilterSchema)
+
+type GitHubReviewFilter = z.infer<typeof GitHubReviewFilterSchema>
 
 async function resolveTarget(filter: GitHubReviewFilter): Promise<ResolvedReviewTarget | null> {
-  const repoParts = splitRepo(filter.repo)
-  if (!repoParts) {
-    return null
-  }
-
-  const prData = await fetchPullRequest(repoParts.owner, repoParts.repo, filter.pr)
+  const prData = await fetchPullRequest(filter.owner, filter.repo, filter.pr)
   if (!prData) {
     return null
   }
 
   return {
-    owner: repoParts.owner,
-    repo: repoParts.repo,
+    owner: filter.owner,
+    repo: filter.repo,
     prNumber: filter.pr,
     prTitle: prData.title,
-    mode: filter.mode ?? 'approved',
+    mode: filter.mode,
     headSha: filter.headSha ?? prData.head.sha,
   }
 }
@@ -181,11 +174,7 @@ export const githubReviewSource: SessionAwaitSource = {
     const results: CheckResult[] = []
 
     for (const row of awaits) {
-      const filter = parseFilter(row.filterJson)
-      if (!filter) {
-        results.push({ awaitId: row.id, matched: false, transientError: 'Invalid GitHub review filter JSON' })
-        continue
-      }
+      const filter = GitHubReviewFilterJsonSchema.parse(row.filterJson)
 
       const target = await resolveTarget(filter)
       if (!target) {
@@ -218,24 +207,16 @@ export const githubReviewSource: SessionAwaitSource = {
 }
 
 export async function fetchLiveReviewStatus(filterJson: string): Promise<LiveReviewStatus | null> {
-  const filter = parseFilter(filterJson)
-  if (!filter) {
-    return null
-  }
-
-  const repoParts = splitRepo(filter.repo)
-  if (!repoParts) {
-    return null
-  }
+  const filter = GitHubReviewFilterJsonSchema.parse(filterJson)
 
   if (!hasGitHubToken()) {
     return {
       kind: 'github-review',
-      owner: repoParts.owner,
-      repo: repoParts.repo,
+      owner: filter.owner,
+      repo: filter.repo,
       prNumber: filter.pr,
       prTitle: null,
-      mode: filter.mode ?? 'approved',
+      mode: filter.mode,
       headSha: filter.headSha ?? null,
       matched: false,
       approvedCount: 0,

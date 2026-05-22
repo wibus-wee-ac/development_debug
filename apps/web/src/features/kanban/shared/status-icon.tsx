@@ -1,4 +1,5 @@
 import { cn } from '~/lib/cn'
+import { z } from 'zod'
 
 import type { StatusCategory } from '../use-view-config'
 
@@ -11,16 +12,18 @@ const categoryColors: Record<StatusCategory, string> = {
   canceled: '#6b7280',
 }
 
-export function normalizeStatusCategory(value: unknown): StatusCategory {
-  return typeof value === 'string' && value in categoryColors ? value as StatusCategory : 'unstarted'
-}
+export const StatusCategorySchema = z.union([
+  z.enum(['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled']),
+  z.null().transform(() => 'unstarted' as const),
+  z.undefined().transform(() => 'unstarted' as const),
+])
 
 export function StatusIcon({ category, size = 16, className }: {
   category: StatusCategory | string | null | undefined
   size?: number
   className?: string
 }) {
-  const normalizedCategory = normalizeStatusCategory(category)
+  const normalizedCategory = StatusCategorySchema.parse(category) as StatusCategory
   const color = categoryColors[normalizedCategory]
   const r = size / 2 - 2
   const cx = size / 2

@@ -1,4 +1,5 @@
-import type { ChatStreamEvent } from './chat-delta-events'
+import type { ChatPartDelta, ChatStreamEvent } from './chat-delta-events'
+import { z } from 'zod'
 
 // ── Per-session run event emitter ───────────────────────────
 
@@ -16,6 +17,44 @@ type RunEventHandler = (data: ChatRunEventPayload) => void
 
 const sessionHandlers = new Map<string, Set<RunEventHandler>>()
 const globalHandlers = new Set<RunEventHandler>()
+const ChatPartDeltaSchema = z.custom<ChatPartDelta>()
+const ChatStreamEventSchema: z.ZodType<ChatStreamEvent> = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('message_delta'),
+    data: z.object({ messageId: z.string(), deltas: z.array(ChatPartDeltaSchema) }),
+  }),
+  z.object({
+    type: z.literal('subagent_message_delta'),
+    data: z.object({
+      context: z.object({
+        messageId: z.string(),
+        parentMessageId: z.string(),
+        parentToolCallId: z.string(),
+        taskId: z.string().nullable().optional(),
+      }),
+      deltas: z.array(ChatPartDeltaSchema),
+    }),
+  }),
+  z.object({
+    type: z.literal('run_completed'),
+    data: z.object({ messageId: z.string() }),
+  }),
+  z.object({
+    type: z.literal('run_aborted'),
+    data: z.object({ messageId: z.string() }),
+  }),
+  z.object({
+    type: z.literal('run_failed'),
+    data: z.object({ messageId: z.string(), errorText: z.string() }),
+  }),
+])
+const ChatStreamEventJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.record(z.string(), z.unknown()))
+  .transform(raw => ({
+    event: ChatStreamEventSchema.parse(raw),
+    raw,
+  }))
 
 /**
  * Subscribe to chat run events for a specific session.
@@ -134,11 +173,8 @@ export function buildEventStreamFromResponse(
             continue
           }
 
-          let event: ChatStreamEvent
-          try {
-            event = JSON.parse(data) as ChatStreamEvent
-          }
-          catch { continue }
+          const parsed = ChatStreamEventJsonSchema.parse(data)
+          const event = parsed.event
 
           const eventType = event.type === 'run_completed'
             ? 'run.completed'
@@ -147,18 +183,16 @@ export function buildEventStreamFromResponse(
               : event.type === 'run_failed'
                 ? 'run.failed'
                 : 'run.streaming'
-          const messageId = 'data' in event && typeof event.data === 'object' && event.data !== null && 'messageId' in event.data
-            ? String((event.data as { messageId?: unknown }).messageId)
-            : event.type === 'subagent_message_delta'
-              ? event.data.context.messageId
-              : ''
+          const messageId = event.type === 'subagent_message_delta'
+            ? event.data.context.messageId
+            : event.data.messageId
 
           emitRunEvent({
             chatSessionId,
             messageId,
             event: {
               type: eventType,
-              raw: event as unknown as Record<string, unknown>,
+              raw: parsed.raw,
             },
           })
 

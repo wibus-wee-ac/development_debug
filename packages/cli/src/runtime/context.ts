@@ -13,14 +13,14 @@ interface CreateCommandContextInput {
 export function createCommandContext(input: CreateCommandContextInput): CommandContext {
   return {
     serverUrl: input.serverUrl,
-    request<T>(operation: {
+    request(operation: {
       body?: unknown
       method: CliHttpMethod
       path: Record<string, unknown>
       query: Record<string, unknown>
       template: string
     }) {
-      return requestJson<T>({ ...operation, serverUrl: input.serverUrl })
+      return requestJson({ ...operation, serverUrl: input.serverUrl })
     },
   }
 }

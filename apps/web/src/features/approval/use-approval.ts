@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react'
+import { z } from 'zod'
 
 import { postApprovalsByApprovalIdRespond } from '~/api-gen'
 import type {
@@ -9,6 +10,31 @@ import { getServerUrl } from '~/lib/electron'
 import { clearPendingApprovals, mergePendingApprovals, removePendingApproval } from './approval-state'
 
 const SERVER_BASE = getServerUrl()
+
+const ApprovalOptionPayloadSchema = z.object({
+  optionId: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+})
+
+const ApprovalRequestedPayloadJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    id: z.string(),
+    chatSessionId: z.string().nullable(),
+    agentId: z.string(),
+    prompt: z.string(),
+    options: z.array(ApprovalOptionPayloadSchema),
+    createdAt: z.number(),
+  }))
+
+const ApprovalResolvedPayloadJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    approvalId: z.string(),
+    decision: z.enum(['approved', 'rejected']),
+    selectedOptionId: z.string(),
+  }))
 
 // ── Module-level state ──────────────────────────────────────
 
@@ -45,19 +71,13 @@ function ensureSubscription(): void {
   })
 
   es.addEventListener('approval.requested', (ev: MessageEvent) => {
-    try {
-      const payload = JSON.parse(ev.data) as ApprovalRequestedPayload
-      setPendingApprovals(mergePendingApprovals(pendingApprovals, [payload]))
-    }
-    catch { /* malformed JSON — skip */ }
+    const payload = ApprovalRequestedPayloadJsonSchema.parse(ev.data) satisfies ApprovalRequestedPayload
+    setPendingApprovals(mergePendingApprovals(pendingApprovals, [payload]))
   })
 
   es.addEventListener('approval.resolved', (ev: MessageEvent) => {
-    try {
-      const payload = JSON.parse(ev.data) as ApprovalResolvedPayload
-      setPendingApprovals(removePendingApproval(pendingApprovals, payload.approvalId))
-    }
-    catch { /* malformed JSON — skip */ }
+    const payload = ApprovalResolvedPayloadJsonSchema.parse(ev.data) satisfies ApprovalResolvedPayload
+    setPendingApprovals(removePendingApproval(pendingApprovals, payload.approvalId))
   })
 }
 

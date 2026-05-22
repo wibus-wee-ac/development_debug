@@ -74,7 +74,7 @@ export function ResizeHandle({
       {/* Invisible hit area — only a hairline appears on hover / drag */}
       <div
         className={cn(
-          'absolute rounded-full transition-all duration-300',
+          'absolute rounded-full transition-[background-color,opacity,transform] duration-300',
           isH ? 'inset-y-[10%] inset-x-0.5' : 'inset-x-[10%] inset-y-0.5',
           active ? 'bg-border/40' : 'bg-transparent group-hover:bg-border/20',
         )}

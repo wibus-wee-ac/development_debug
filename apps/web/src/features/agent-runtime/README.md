@@ -11,6 +11,6 @@ Model visibility semantics are owned here: missing or empty `enabledModels` mean
 
 - **model-visibility.ts**: Shared helpers for interpreting provider model visibility config and filtering model descriptors
 - **model-visibility.test.ts**: Unit coverage for default-all, all-disabled, and explicit allow-list model visibility semantics
-- **use-agent-profiles.ts**: `useAgentProfiles` hook — owns unified Agent Runtime profile query state and update/delete mutations, invalidating model queries when profile config changes
-- **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities (TanStack Query mutations)
-- **use-agent-models.ts**: `useAgentModels` and `useAgentModelMap` hooks — fetch visible models for one profile or a profile-keyed composer model map, with shared query-key ownership and stale profile model cache fallback when fresh provider listing fails
+- **use-agent-profiles.ts**: `useAgentProfiles` hook — owns unified Agent Runtime profile query state, exposes query success for settings readiness, and update/delete mutations, invalidating model queries when profile config changes
+- **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities (TanStack Query mutations) and query success for settings readiness
+- **use-agent-models.ts**: `useAgentModels` and `useAgentModelMap` hooks — fetch visible models for one profile or a profile-keyed composer model map, expose per-profile query success for Settings Jarvis readiness, and keep shared query-key ownership plus stale profile model cache fallback when fresh provider listing fails

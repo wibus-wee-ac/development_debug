@@ -34,7 +34,7 @@ export function resolveRouteTitle<TParams extends TabParams>(
   if (fallback) {
     return fallback
   }
-  return typeof route.title === 'function' ? route.title(params) : route.title
+  return route.title instanceof Function ? route.title(params) : route.title
 }
 
 export function resolveLocation<TParams extends TabParams>(

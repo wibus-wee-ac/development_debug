@@ -33,7 +33,11 @@ export const AgentRuntimeConfigSchema = z.object({
   claudeAgent: ClaudeAgentConfigSchema.default(DEFAULT_CLAUDE_AGENT_CONFIG),
 }).passthrough()
 
-export const AgentRuntimeConfigJsonSchema = z.string()
-  .nullish()
-  .transform(raw => JSON.parse(raw ?? '{}'))
-  .pipe(AgentRuntimeConfigSchema)
+export const AgentRuntimeConfigJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.null().transform(() => ({})),
+  z.undefined().transform(() => ({})),
+]).pipe(AgentRuntimeConfigSchema)
+
+export type AgentRuntimeConfig = z.infer<typeof AgentRuntimeConfigSchema>
+export type ClaudeAgentConfig = z.infer<typeof ClaudeAgentConfigSchema>

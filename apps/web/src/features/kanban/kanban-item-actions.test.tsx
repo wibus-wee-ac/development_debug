@@ -58,7 +58,7 @@ const issue: KanbanIssue = {
   title: 'Improve keyboard access',
   description: null,
   priority: 'high',
-  labels: '["ux"]',
+  labels: ['ux'],
   assigneeKind: 'user',
   assigneeId: 'wibus',
   createdByKind: 'user',
@@ -116,7 +116,7 @@ describe('kanban item actions', () => {
         statuses={statuses}
         milestones={milestones}
         displayProperties={displayProperties}
-        onClick={onClick}
+        onOpenIssue={onClick}
         category="started"
       />,
     )
@@ -144,7 +144,7 @@ describe('kanban item actions', () => {
         statuses={statuses}
         milestones={milestones}
         displayProperties={displayProperties}
-        onClick={onClick}
+        onOpenIssue={onClick}
         onSelectionGesture={onSelectionGesture}
         category="started"
       />,
@@ -170,7 +170,7 @@ describe('kanban item actions', () => {
         statuses={statuses}
         milestones={milestones}
         displayProperties={displayProperties}
-        onClick={onClick}
+        onOpenIssue={onClick}
         onSelectionGesture={onSelectionGesture}
         category="started"
       />,
@@ -194,7 +194,7 @@ describe('kanban item actions', () => {
         statuses={statuses}
         milestones={milestones}
         displayProperties={displayProperties}
-        onClick={onClick}
+        onOpenIssue={onClick}
       />,
     )
 
@@ -218,7 +218,7 @@ describe('kanban item actions', () => {
         statuses={statuses}
         milestones={milestones}
         displayProperties={displayProperties}
-        onClick={onClick}
+        onOpenIssue={onClick}
         category="started"
       />,
     )
@@ -236,7 +236,7 @@ describe('kanban item actions', () => {
         statuses={statuses}
         milestones={milestones}
         displayProperties={displayProperties}
-        onClick={vi.fn()}
+        onOpenIssue={vi.fn()}
         selected
       />,
     )

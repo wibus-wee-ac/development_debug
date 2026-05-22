@@ -1,60 +1,89 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { z } from 'zod'
 
-import { getUsageCostDaily, getUsageCostSummary, getUsageDaily, getUsageStats, getUsageSummary } from '~/api-gen/sdk.gen'
+import {
+  getUsageCostDailyOptions,
+  getUsageCostSummaryOptions,
+  getUsageDailyOptions,
+  getUsageStatsOptions,
+  getUsageSummaryOptions,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { formatTokens, formatUsd } from './usage-format'
 import { UsageHeatmap } from './usage-heatmap'
 
-interface DailyUsage {
-  date: string
-  totalTokens: number
-  promptTokens: number
-  completionTokens: number
-  count: number
-}
+const DailyUsageSchema = z.object({
+  date: z.string(),
+  totalTokens: z.number(),
+  promptTokens: z.number(),
+  completionTokens: z.number(),
+  count: z.number(),
+})
 
-interface UsageSummary {
-  totalPromptTokens: number
-  totalCompletionTokens: number
-  totalTokens: number
-  totalTurns: number
-  byAgent: Array<{ agentProfileId: string, totalTokens: number, count: number }>
-  byModel: Array<{ modelId: string, totalTokens: number, count: number }>
-}
+const UsageSummarySchema = z.object({
+  totalPromptTokens: z.number(),
+  totalCompletionTokens: z.number(),
+  totalTokens: z.number(),
+  totalTurns: z.number(),
+  byAgent: z.array(z.object({
+    agentProfileId: z.string(),
+    totalTokens: z.number(),
+    count: z.number(),
+  })),
+  byModel: z.array(z.object({
+    modelId: z.string(),
+    totalTokens: z.number(),
+    count: z.number(),
+  })),
+})
 
-interface UsageStats {
-  currentStreak: number
-  longestStreak: number
-  activeDays: number
-  avgDailyTokens: number
-  peakDay: { date: string, totalTokens: number } | null
-  todayTokens: number
-}
+const UsageStatsSchema = z.object({
+  currentStreak: z.number(),
+  longestStreak: z.number(),
+  activeDays: z.number(),
+  avgDailyTokens: z.number(),
+  peakDay: z.object({
+    date: z.string(),
+    totalTokens: z.number(),
+  }).nullable(),
+  todayTokens: z.number(),
+})
 
-interface CostSummary {
-  totalCostUsd: number
-  totalPromptTokens: number
-  totalCompletionTokens: number
-  totalTokens: number
-  byModel: Array<{
-    modelId: string
-    costUsd: number
-    promptTokens: number
-    completionTokens: number
-    totalTokens: number
-    count: number
-  }>
-}
+const CostSummarySchema = z.object({
+  totalCostUsd: z.number(),
+  totalPromptTokens: z.number(),
+  totalCompletionTokens: z.number(),
+  totalTokens: z.number(),
+  byModel: z.array(z.object({
+    modelId: z.string(),
+    costUsd: z.number(),
+    promptTokens: z.number(),
+    completionTokens: z.number(),
+    totalTokens: z.number(),
+    count: z.number(),
+  })),
+})
 
-interface DailyCost {
-  date: string
-  costUsd: number
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-  stepCount: number
-}
+const DailyCostSchema = z.object({
+  date: z.string(),
+  costUsd: z.number(),
+  promptTokens: z.number(),
+  completionTokens: z.number(),
+  totalTokens: z.number(),
+  stepCount: z.number(),
+})
+
+const DailyUsageListSchema = z.array(DailyUsageSchema)
+const DailyCostListSchema = z.array(DailyCostSchema)
+
+type DailyUsage = z.infer<typeof DailyUsageSchema>
+type UsageSummary = z.infer<typeof UsageSummarySchema>
+type UsageStats = z.infer<typeof UsageStatsSchema>
+type CostSummary = z.infer<typeof CostSummarySchema>
+type DailyCost = z.infer<typeof DailyCostSchema>
 
 /** Tiny SVG sparkline for the last 30 days */
 function Sparkline({ data }: { data: DailyUsage[] }) {
@@ -88,51 +117,64 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
   )
 }
 
-interface UsageData {
-  daily: DailyUsage[]
-  summary: UsageSummary | null
-  stats: UsageStats | null
-  costSummary: CostSummary | null
-  dailyCost: DailyCost[]
-}
-
-const INITIAL_USAGE_DATA: UsageData = {
-  daily: [],
-  summary: null,
-  stats: null,
-  costSummary: null,
-  dailyCost: [],
-}
-
 export function UsageDashboard() {
-  const [data, setData] = useState<UsageData>(INITIAL_USAGE_DATA)
+  const firstRenderedRef = useRef(false)
+  const dailyQuery = useQuery({
+    ...getUsageDailyOptions({ query: { days: '365' } }),
+    select: DailyUsageListSchema.parse,
+  })
+  const summaryQuery = useQuery({
+    ...getUsageSummaryOptions(),
+    select: UsageSummarySchema.parse,
+  })
+  const statsQuery = useQuery({
+    ...getUsageStatsOptions(),
+    select: UsageStatsSchema.parse,
+  })
+  const costSummaryQuery = useQuery({
+    ...getUsageCostSummaryOptions(),
+    select: CostSummarySchema.parse,
+  })
+  const dailyCostQuery = useQuery({
+    ...getUsageCostDailyOptions(),
+    select: DailyCostListSchema.parse,
+  })
+
+  const usageReady =
+    dailyQuery.isSuccess &&
+    summaryQuery.isSuccess &&
+    statsQuery.isSuccess &&
+    costSummaryQuery.isSuccess &&
+    dailyCostQuery.isSuccess
 
   useEffect(() => {
-    Promise.all([
-      getUsageDaily({ query: { days: '365' } }),
-      getUsageSummary(),
-      getUsageStats(),
-      getUsageCostSummary().catch(() => ({ data: undefined })),
-      getUsageCostDaily().catch(() => ({ data: undefined })),
-    ]).then(([{ data: d }, { data: s }, { data: st }, { data: costData }, { data: dailyCostData }]) => {
-      setData({
-        daily: (d as DailyUsage[] | undefined) ?? [],
-        summary: (s as UsageSummary | undefined) ?? null,
-        stats: (st as UsageStats | undefined) ?? null,
-        costSummary: (costData as CostSummary | undefined) ?? null,
-        dailyCost: (dailyCostData as DailyCost[] | undefined) ?? [],
-      })
-    }).catch((err) => {
-      console.error('[UsageDashboard] fetch failed:', err)
-    })
-  }, [])
+    if (!usageReady || firstRenderedRef.current) {
+      return
+    }
 
-  const { daily, summary, stats, costSummary, dailyCost } = data
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-usage-rendered')
+    measureCradlePerformance(
+      'cradle:usage-first-render',
+      'cradle:usage-render-requested',
+      'cradle:first-usage-rendered',
+    )
+  }, [usageReady])
+
+  const daily = dailyQuery.data ?? []
+  const summary = summaryQuery.data ?? null
+  const stats = statsQuery.data ?? null
+  const costSummary = costSummaryQuery.data ?? null
+  const dailyCost = dailyCostQuery.data ?? []
 
   const hasData = summary && summary.totalTokens > 0
 
   return (
-    <div className="h-full overflow-y-auto" data-testid="usage-dashboard">
+    <div
+      className="h-full overflow-y-auto"
+      data-testid="usage-dashboard"
+      data-usage-ready={usageReady ? 'true' : 'false'}
+    >
       <div className="mx-auto max-w-4xl px-8 py-10">
         {/* Header row with streak */}
         <div className="flex items-end justify-between">

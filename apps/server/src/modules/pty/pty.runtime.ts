@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 import * as pty from 'node-pty'
+import { z } from 'zod'
 
 import type { PtyExitState } from './protocol'
 
@@ -56,6 +57,21 @@ interface ProcessTableRow {
   ppid: number
   rssKB: number
 }
+
+const ProcessTableStdoutSchema = z.string().transform((stdout) => {
+  return stdout
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [pidRaw, ppidRaw, rssRaw] = line.split(/\s+/)
+      return {
+        pid: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(pidRaw),
+        ppid: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(ppidRaw),
+        rssKB: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(rssRaw),
+      }
+    })
+})
 
 export class PtyRuntimeRegistry {
   private readonly sessions = new Map<string, RuntimeRecord>()
@@ -213,17 +229,8 @@ async function readProcessTable(): Promise<Map<number, ProcessTableRow> | null> 
     const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,ppid=,rss='])
     const rows = new Map<number, ProcessTableRow>()
 
-    for (const line of stdout.split('\n')) {
-      const [pidRaw, ppidRaw, rssRaw] = line.trim().split(/\s+/)
-      const pid = Number.parseInt(pidRaw ?? '', 10)
-      const ppid = Number.parseInt(ppidRaw ?? '', 10)
-      const rssKB = Number.parseInt(rssRaw ?? '', 10)
-
-      if (!Number.isFinite(pid) || !Number.isFinite(ppid) || !Number.isFinite(rssKB)) {
-        continue
-      }
-
-      rows.set(pid, { pid, ppid, rssKB })
+    for (const row of ProcessTableStdoutSchema.parse(stdout)) {
+      rows.set(row.pid, row)
     }
 
     return rows

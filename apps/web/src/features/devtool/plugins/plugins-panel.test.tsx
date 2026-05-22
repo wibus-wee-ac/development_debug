@@ -91,8 +91,10 @@ vi.mock('~/lib/cn', () => ({
   cn: (...values: Array<string | false | null | undefined | Record<string, boolean>>) => values
     .flatMap(value => {
       if (!value) return []
-      if (typeof value === 'string') return [value]
-      return Object.entries(value).filter(([, enabled]) => enabled).map(([key]) => key)
+      const boxed = Object(value)
+      return boxed === value
+        ? Object.entries(value).filter(([, enabled]) => enabled).map(([key]) => key)
+        : [String(value)]
     })
     .join(' '),
 }))

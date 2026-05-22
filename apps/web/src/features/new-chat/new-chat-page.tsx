@@ -6,6 +6,7 @@ import {
   LoaderCircleIcon,
   MessageSquareIcon,
   PaperclipIcon,
+  SettingsIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -18,10 +19,13 @@ import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, Me
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
-import { useWorkspaces } from '~/features/workspace/use-workspace'
+import { useAddWorkspace, useWorkspaces } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
+import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 /* ─── Constants ───────────────────────────────────────────────────────── */
@@ -90,9 +94,13 @@ function useRotatingPlaceholder(hints: string[], interval = 4000): string {
 function useNewChatPageOwner() {
   const composerState = useComposerState({ context: 'new-chat' })
   const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
-  const { workspaces } = useWorkspaces()
+  const { workspaces, loading: workspacesLoading } = useWorkspaces()
   const { openTab } = useCradleNavigation()
+  const { addFromPicker, adding: addingWorkspace } = useAddWorkspace()
+  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+  const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const queryClient = useQueryClient()
+  const firstRenderedRef = useRef(false)
 
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -106,10 +114,31 @@ function useNewChatPageOwner() {
   }, [selectedWorkspaceId, workspaces])
 
   const selectedWorkspace = workspaces.find(w => w.id === effectiveWorkspaceId) ?? null
-  const { sessions } = useSessions(effectiveWorkspaceId)
+  const { sessions, loading: sessionsLoading } = useSessions(effectiveWorkspaceId)
   const now = useNow()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
+  const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
+  const isReady =
+    !workspacesLoading &&
+    sessionsReady &&
+    !composerState.isLoadingAgents &&
+    !composerState.isLoadingProfiles &&
+    !composerState.isLoadingModels
+
+  useEffect(() => {
+    if (!isReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-new-chat-rendered')
+    measureCradlePerformance(
+      'cradle:new-chat-first-render',
+      'cradle:new-chat-render-requested',
+      'cradle:first-new-chat-rendered'
+    )
+  }, [isReady])
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
@@ -133,6 +162,63 @@ function useNewChatPageOwner() {
   const canSend = selection.runtimeKind === 'cli-tui'
     ? !!effectiveAgent && !!effectiveWorkspaceId && !sending
     : !!effectiveProfile && !!effectiveWorkspaceId && input.trim().length > 0 && !sending
+
+  const readinessNotice = useMemo(() => {
+    if (!isReady) {
+      return null
+    }
+    if (!effectiveWorkspaceId) {
+      return {
+        key: 'workspace',
+        icon: FolderIcon,
+        message: 'Add a project first so Cradle can bind the chat to a real workspace.',
+        actionLabel: addingWorkspace ? 'Adding...' : 'Add project',
+        disabled: addingWorkspace,
+      }
+    }
+    if (selection.runtimeKind === 'cli-tui' && !effectiveAgent) {
+      return {
+        key: 'agents',
+        icon: SettingsIcon,
+        message: 'No CLI agent is available. Enable a local agent in settings to start.',
+        actionLabel: 'Open agents',
+        disabled: false,
+      }
+    }
+    if (selection.runtimeKind !== 'cli-tui' && !effectiveProfile) {
+      return {
+        key: 'providers',
+        icon: SettingsIcon,
+        message: 'No model provider is available. Configure a provider profile before sending the first message.',
+        actionLabel: 'Open providers',
+        disabled: false,
+      }
+    }
+    return null
+  }, [addingWorkspace, effectiveAgent, effectiveProfile, effectiveWorkspaceId, isReady, selection.runtimeKind])
+
+  const openSettingsSection = useCallback((section: string) => {
+    const tabStore = useCradleTabStore.getState()
+    const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
+      ? tabStore.activeTabId
+      : tabStore.tabs[0]?.id
+    if (!activeTabId) {
+      return
+    }
+    setSettingsSection(section)
+    openSettings(activeTabId)
+  }, [openSettings, setSettingsSection])
+
+  const handleReadinessAction = useCallback(() => {
+    if (!readinessNotice) {
+      return
+    }
+    if (readinessNotice.key === 'workspace') {
+      void addFromPicker()
+      return
+    }
+    openSettingsSection(readinessNotice.key)
+  }, [addFromPicker, openSettingsSection, readinessNotice])
 
   const handleSend = useCallback(async () => {
     if (!canSend || !effectiveWorkspaceId || !selectedWorkspace) {
@@ -229,13 +315,16 @@ function useNewChatPageOwner() {
     handleInput,
     handleKeyDown,
     handleQuickAction,
+    handleReadinessAction,
     handleResumeSession,
     handleSend,
     input,
+    isReady,
     now,
     openTab,
     placeholder,
     recentSessions,
+    readinessNotice,
     selectedWorkspace,
     sending,
     setSelectedWorkspaceId,
@@ -405,6 +494,40 @@ function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPag
   )
 }
 
+/* ─── Readiness Notice ────────────────────────────────────────────────── */
+
+function NewChatReadinessNotice({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
+  const notice = owner.readinessNotice
+  if (!notice) {
+    return null
+  }
+
+  const NoticeIcon = notice.icon
+
+  return (
+    <m.div
+      className="mt-3 flex items-center gap-2 rounded-lg border border-border bg-muted/35 px-3 py-2 text-[12px] text-muted-foreground"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+      data-testid="new-chat-readiness-notice"
+    >
+      <NoticeIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+      <span className="min-w-0 flex-1 leading-relaxed">{notice.message}</span>
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        onClick={owner.handleReadinessAction}
+        disabled={notice.disabled}
+        className="h-7 shrink-0"
+      >
+        {notice.actionLabel}
+      </Button>
+    </m.div>
+  )
+}
+
 /* ─── Recent Sessions ─────────────────────────────────────────────────── */
 
 function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
@@ -462,7 +585,11 @@ export function NewChatPage() {
   const owner = useNewChatPageOwner()
 
   return (
-    <div className="relative flex h-full flex-col bg-background" data-testid="new-chat-page">
+    <div
+      className="relative flex h-full flex-col bg-background"
+      data-testid="new-chat-page"
+      data-new-chat-ready={owner.isReady ? 'true' : 'false'}
+    >
       <m.div
         className="pointer-events-none"
         initial={{ opacity: 0 }}
@@ -484,6 +611,7 @@ export function NewChatPage() {
           transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <NewChatComposerCard owner={owner} />
+          <NewChatReadinessNotice owner={owner} />
           <NewChatQuickActions owner={owner} />
         </m.div>
       </div>

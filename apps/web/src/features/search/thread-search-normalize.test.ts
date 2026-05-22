@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeThreadSearchHit, normalizeThreadSearchHits } from './thread-search-normalize'
+import { ThreadSearchHitSchema, ThreadSearchHitsSchema } from './thread-search-normalize'
 
-describe('normalizeThreadSearchHit', () => {
+describe('ThreadSearchHitSchema', () => {
   it('fills missing arrays so SessionRow can render safely', () => {
-    const hit = normalizeThreadSearchHit({
+    const hit = ThreadSearchHitSchema.parse({
       sessionId: 'session-1',
       workspaceId: 'workspace-1',
       sessionTitle: 'Deploy failure',
@@ -17,8 +17,8 @@ describe('normalizeThreadSearchHit', () => {
     expect(hit.snippets).toEqual([])
   })
 
-  it('normalizes malformed snippets into UI-safe values', () => {
-    const hit = normalizeThreadSearchHit({
+  it('rejects malformed snippets at the boundary', () => {
+    expect(() => ThreadSearchHitSchema.parse({
       sessionId: 'session-1',
       workspaceId: 'workspace-1',
       sessionTitle: 'Deploy failure',
@@ -30,21 +30,11 @@ describe('normalizeThreadSearchHit', () => {
           ranges: undefined,
         },
       ],
-    })
-
-    expect(hit.snippets).toEqual([
-      {
-        messageId: 'missing-message-0',
-        messageRole: 'assistant',
-        text: 'Fixed now',
-        ranges: [],
-        createdAt: 0,
-      },
-    ])
+    })).toThrow()
   })
 
   it('strips FTS mark tags from snippets while preserving highlight ranges', () => {
-    const hit = normalizeThreadSearchHit({
+    const hit = ThreadSearchHitSchema.parse({
       sessionId: 'session-1',
       workspaceId: 'workspace-1',
       sessionTitle: 'Deploy failure',
@@ -71,8 +61,8 @@ describe('normalizeThreadSearchHit', () => {
   })
 })
 
-describe('normalizeThreadSearchHits', () => {
+describe('ThreadSearchHitsSchema', () => {
   it('returns an empty list for missing payloads', () => {
-    expect(normalizeThreadSearchHits(undefined)).toEqual([])
+    expect(ThreadSearchHitsSchema.parse(undefined)).toEqual([])
   })
 })

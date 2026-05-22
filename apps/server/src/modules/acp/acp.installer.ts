@@ -64,8 +64,8 @@ export class AcpInstaller {
     return {
       installPath: installDir,
       cmd: target.cmd,
-      args: target.args ?? [],
-      env: target.env ?? {},
+      args: target.args,
+      env: target.env,
     }
   }
 
@@ -78,8 +78,8 @@ export class AcpInstaller {
     return {
       installPath: null,
       cmd: spec.package,
-      args: spec.args ?? [],
-      env: spec.env ?? {},
+      args: spec.args,
+      env: spec.env,
     }
   }
 

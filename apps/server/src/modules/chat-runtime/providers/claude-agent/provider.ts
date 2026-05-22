@@ -4,6 +4,7 @@ import type { CanUseTool, Options, Query, SDKUserMessage, SlashCommand } from '@
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
+import { z } from 'zod'
 
 import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
@@ -33,6 +34,14 @@ interface ClaudeAgentProviderDeps {
 
 const RUNTIME_KIND: RuntimeKind = 'claude-agent'
 type ActiveClaudeQuery = { query: Query, abortController: AbortController }
+const LangfuseGenerationSpanSchema = z.object({
+  otelSpan: z.object({
+    setAttribute: z.function({
+      input: [z.string(), z.string()],
+      output: z.void(),
+    }),
+  }),
+}).passthrough()
 
 export class ClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
@@ -61,7 +70,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         workspacePath: input.workspacePath,
-        models: { currentModelId: input.modelId ?? null },
+        models: { currentModelId: input.modelId },
       }),
     }
   }
@@ -74,7 +83,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
         ...snapshot,
         workspacePath: input.workspacePath,
         models: {
-          currentModelId: input.modelId ?? snapshot.models?.currentModelId ?? null,
+          currentModelId: input.modelId ?? snapshot.models.currentModelId,
         },
       }),
     }
@@ -137,7 +146,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
           : [{ role: 'user', content: input.message }],
       }, { asType: 'generation' }) as LangfuseGeneration
       // Set trace-level attributes for session grouping
-      const span = (generation as unknown as { otelSpan: { setAttribute: (k: string, v: string) => void } }).otelSpan
+      const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
       span.setAttribute('langfuse.trace.name', 'claude-agent-chat')
     }
@@ -236,11 +245,11 @@ function buildClaudeQueryOptions(input: {
     abortController: input.abortController,
     model: effectiveModel,
     cwd: snapshot.workspacePath ?? input.input.workspacePath ?? process.cwd(),
-    permissionMode: config.permissionMode ?? 'acceptEdits',
+    permissionMode: config.permissionMode,
     allowDangerouslySkipPermissions: config.permissionMode === 'bypassPermissions'
       ? true
       : config.allowDangerouslySkipPermissions,
-    maxTurns: config.maxTurns ?? 100,
+    maxTurns: config.maxTurns,
     additionalDirectories: config.additionalDirectories,
     forwardSubagentText: true,
     agentProgressSummaries: true,
@@ -292,30 +301,20 @@ function buildClaudeAgentModelEnv(config: {
 } | undefined): Record<string, string> {
   const env: Record<string, string> = {}
   const aliases = config?.modelAliases
-  const haiku = normalizeModelEnvValue(aliases?.haiku)
-  const sonnet = normalizeModelEnvValue(aliases?.sonnet)
-  const opus = normalizeModelEnvValue(aliases?.opus)
-  const subagentModel = normalizeModelEnvValue(config?.subagentModel)
-
-  if (haiku) {
-    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku
+  if (aliases?.haiku) {
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = aliases.haiku
   }
-  if (sonnet) {
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnet
+  if (aliases?.sonnet) {
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = aliases.sonnet
   }
-  if (opus) {
-    env.ANTHROPIC_DEFAULT_OPUS_MODEL = opus
+  if (aliases?.opus) {
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = aliases.opus
   }
-  if (subagentModel) {
-    env.CLAUDE_CODE_SUBAGENT_MODEL = subagentModel
+  if (config?.subagentModel) {
+    env.CLAUDE_CODE_SUBAGENT_MODEL = config.subagentModel
   }
 
   return env
-}
-
-function normalizeModelEnvValue(value: string | undefined): string | null {
-  const trimmed = value?.trim()
-  return trimmed ? trimmed : null
 }
 
 async function* emptyUserInput(): AsyncGenerator<SDKUserMessage, void, void> {}

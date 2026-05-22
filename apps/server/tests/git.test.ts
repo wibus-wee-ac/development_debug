@@ -174,7 +174,6 @@ describe('git capability', () => {
       }
     }
   })
-
   it('returns structured errors for missing workspaces and non-git directories', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const plainWorkspaceRoot = makeTempDir('cradle-plain-workspace-')

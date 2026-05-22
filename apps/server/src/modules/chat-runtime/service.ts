@@ -13,6 +13,7 @@ import {
 } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { and, eq, isNull, or } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { AgentRuntimeConfigJsonSchema } from '../../helpers/agent-runtime-config'
@@ -22,6 +23,7 @@ import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
+import { buildAgentMemoryContext } from '../chronicle/agent-context'
 import * as Profiles from '../profiles/service'
 import type { RuntimeKind } from '../providers/types'
 import { estimateCost } from '../usage/pricing'
@@ -34,13 +36,50 @@ import {
   createMessageProjection,
   createUserMessage,
   extractMessageText,
-  parseMessageJson,
+  normalizeMessageSnapshot,
   readChunkRouteContext,
+  UiMessageSnapshotJsonSchema,
 } from './delta-events'
 import { ProviderStateSnapshotJsonSchema } from './providers/provider-state-snapshot'
 import type { ChatRuntime, ChatRuntimeCapabilities, RuntimeSession, TokenUsage } from './runtime-provider-types'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+)
+const JsonObjectTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.record(z.string(), z.unknown()))
+const SerializableErrorSchema = z.object({
+  code: z.union([z.number(), z.string()]).optional(),
+  data: z.unknown().optional(),
+}).passthrough()
+const SerializableErrorCarrierSchema = z.union([
+  SerializableErrorSchema,
+  z.null().transform(() => null),
+  z.undefined().transform(() => null),
+])
+const ErrorDetailValueSchema = z.union([
+  z.object({
+    details: z.unknown(),
+  }).passthrough().transform(value => value.details),
+  z.unknown(),
+])
+const ErrorTextSchema = z.union([
+  z.string(),
+  z.null().transform(() => null),
+  z.undefined().transform(() => null),
+  JsonValueSchema.transform(value => JSON.stringify(value)),
+])
 
 // ── types ──
 
@@ -147,31 +186,18 @@ function getSessionRunContext(sessionId: string): SessionRunContext | null {
     return null
   }
 
-  const profileConfig = readJsonObject(profile.configJson)
+  const profileConfig = JsonObjectTextSchema.parse(profile.configJson)
   const agent = session.agentId
     ? db().select().from(agents).where(eq(agents.id, session.agentId)).get()
     : null
-  const agentConfig = readJsonObject(agent?.configJson)
-  const sessionConfig = readJsonObject(session.configJson)
+  const agentConfig = agent ? JsonObjectTextSchema.parse(agent.configJson) : {}
+  const sessionConfig = JsonObjectTextSchema.parse(session.configJson)
   const effectiveProfile = {
     ...profile,
     configJson: JSON.stringify({ ...profileConfig, ...agentConfig, ...sessionConfig }),
   }
 
   return { session, workspacePath: workspace?.path ?? '', profile: effectiveProfile }
-}
-
-function readJsonObject(json: string | null | undefined): Record<string, unknown> {
-  if (!json || json === '{}') {
-    return {}
-  }
-  try {
-    const parsed = JSON.parse(json) as unknown
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
-  }
-  catch {
-    return {}
-  }
 }
 
 function getBinding(sessionId: string): BackendSessionBinding | undefined {
@@ -305,11 +331,12 @@ function persistMessageSnapshot(input: {
   errorText: string | null
 }): void {
   const now = currentUnixSeconds()
+  const message = normalizeMessageSnapshot(input.message)
   db().transaction((tx) => {
     tx.update(messages)
       .set({
-        content: extractMessageText(input.message),
-        messageJson: JSON.stringify(input.message),
+        content: extractMessageText(message),
+        messageJson: JSON.stringify(message),
         status: input.messageStatus,
         errorText: input.errorText,
         updatedAt: now,
@@ -366,7 +393,16 @@ function resolveSessionSystemPrompt(session: import('@cradle/db').Session | null
 function resolveTurnContext(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
   const session = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
 
-  const systemPrompt = resolveSessionSystemPrompt(session)
+  let systemPrompt = resolveSessionSystemPrompt(session)
+  const draftUserMessage = db().select().from(messages).where(eq(messages.id, input.draftUserMessageId)).get()
+  const chronicleContext = draftUserMessage?.content
+    ? resolveChronicleTurnContext(draftUserMessage.content)
+    : null
+  if (chronicleContext) {
+    systemPrompt = systemPrompt
+      ? `${systemPrompt}\n\n---\n\n${chronicleContext}`
+      : chronicleContext
+  }
 
   const historyRows = db()
     .select()
@@ -387,6 +423,23 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
   }
 }
 
+function resolveChronicleTurnContext(query: string): string | null {
+  try {
+    return buildAgentMemoryContext({
+      query,
+      memoryLimit: 3,
+      knowledgeLimit: 3,
+      maxChars: 6_000,
+    })
+  }
+  catch (error) {
+    chatLogger.warn('failed to resolve Chronicle turn context', {
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
+}
+
 // ── public service functions ──
 
 export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
@@ -404,19 +457,54 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
 
   return rows.map((row) => {
     const role = row.role as 'user' | 'assistant'
+    const message = parseStoredMessageSnapshot(row, role)
+    if (message.id !== row.id || message.role !== role) {
+      throw new AppError({
+        code: 'chat_message_snapshot_invalid',
+        status: 500,
+        message: 'Stored chat message snapshot is invalid',
+        details: {
+          messageId: row.id,
+          role,
+          reason: message.id !== row.id ? 'message_json.id must match messages.id' : 'message_json.role must match messages.role',
+        },
+      })
+    }
+
     return {
       messageId: row.id,
       role,
       status: row.status as ChatMessageStatus,
       errorText: row.errorText ?? undefined,
       content: row.content,
-      message: parseMessageJson(row.id, role, row.messageJson) as ChatMessageSnapshotRow['message'],
+      message,
       parentMessageId: row.parentMessageId,
       parentToolCallId: row.parentToolCallId,
       taskId: row.taskId,
       depth: row.depth,
     }
   })
+}
+
+function parseStoredMessageSnapshot(
+  row: typeof messages.$inferSelect,
+  role: 'user' | 'assistant',
+): ChatMessageSnapshotRow['message'] {
+  try {
+    return UiMessageSnapshotJsonSchema.parse(row.messageJson) as ChatMessageSnapshotRow['message']
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'chat_message_snapshot_invalid',
+      status: 500,
+      message: 'Stored chat message snapshot is invalid',
+      details: {
+        messageId: row.id,
+        role,
+        reason: error instanceof Error ? `Invalid UIMessage snapshot: ${error.message}` : 'Invalid UIMessage snapshot',
+      },
+    })
+  }
 }
 
 export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCapabilities> {
@@ -1387,14 +1475,10 @@ function serializeChatError(error: unknown): SerializedChatError {
     payload.stack = error.stack
   }
 
-  if (typeof error === 'object' && error !== null) {
-    const candidate = error as Record<string, unknown>
-    if (typeof candidate.code === 'number' || typeof candidate.code === 'string') {
-      payload.code = candidate.code
-    }
-    if ('data' in candidate) {
-      payload.data = candidate.data
-    }
+  const candidate = SerializableErrorCarrierSchema.parse(error)
+  if (candidate) {
+    payload.code = candidate.code
+    payload.data = candidate.data
   }
 
   const detailText = formatErrorDetails(payload.data)
@@ -1410,24 +1494,9 @@ function formatErrorDetails(data: unknown): string | null {
   if (data === null || data === undefined) {
     return null
   }
-  if (typeof data === 'object' && data !== null && 'details' in data) {
-    const details = (data as Record<string, unknown>).details
-    return stringifyErrorValue(details)
-  }
-  return stringifyErrorValue(data)
+  return stringifyErrorValue(ErrorDetailValueSchema.parse(data))
 }
 
 function stringifyErrorValue(value: unknown): string | null {
-  if (value === null || value === undefined) {
-    return null
-  }
-  if (typeof value === 'string') {
-    return value
-  }
-  try {
-    return JSON.stringify(value)
-  }
-  catch {
-    return String(value)
-  }
+  return ErrorTextSchema.parse(value)
 }

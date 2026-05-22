@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly PACKAGE_VERSION?: string
   readonly VITE_SERVER_URL?: string
 }
 
@@ -46,6 +47,7 @@ interface Window {
   }
   __cradleBrowserUseCreateTab?: (url?: string) => string
   __cradleBrowserUseActivateTab?: (tabId: string) => boolean
+  __cradleBrowserUseGoOffScreen?: (tabId?: string) => boolean
   __cradleBrowserUseGetActiveTab?: () => string | undefined
   // eslint-disable-next-line ts/no-explicit-any
   ipc: any

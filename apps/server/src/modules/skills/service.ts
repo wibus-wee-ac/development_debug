@@ -21,6 +21,15 @@ import {
 } from './skills.store'
 import type { SkillScope } from './skills-paths'
 
+export interface SkillExportOwnerBoundary {
+  classification: 'non-cradle-owned'
+  owner: 'user-selected-export-directory'
+  consentRequired: true
+  consentConfirmed: true
+  destinationDir: string
+  targetPath: string
+}
+
 function resolveWorkspacePath(workspaceId?: string | null): string | undefined {
   if (!workspaceId) {
     return undefined
@@ -148,15 +157,54 @@ export function importSkill(params: { scope: SkillScope, sourceDir: string, over
   }))
 }
 
-export function exportSkill(params: { scope: SkillScope, name: string, destinationDir: string, overwrite?: boolean, workspaceId?: string | null, agentId?: string | null }): Promise<string> {
-  return wrapAsync(() => exportSkillPackage({
-    scope: params.scope,
-    name: params.name,
-    destinationDir: params.destinationDir,
-    overwrite: params.overwrite,
-    workspacePath: resolveWorkspacePath(params.workspaceId),
-    agentId: params.agentId ?? undefined,
-  }))
+export function exportSkill(params: {
+  scope: SkillScope
+  name: string
+  destinationDir: string
+  confirmedNonCradleOwnedWrite: boolean
+  overwrite?: boolean
+  workspaceId?: string | null
+  agentId?: string | null
+}): Promise<{ destinationDir: string, ownerBoundary: SkillExportOwnerBoundary }> {
+  return wrapAsync(async () => {
+    if (!params.confirmedNonCradleOwnedWrite) {
+      throw new AppError({
+        code: 'non_cradle_owned_write_confirmation_required',
+        status: 400,
+        message: 'Skill export requires explicit non-Cradle-owned write confirmation',
+        details: {
+          ownerBoundary: {
+            classification: 'non-cradle-owned',
+            owner: 'user-selected-export-directory',
+            consentRequired: true,
+            consentConfirmed: false,
+            destinationDir: params.destinationDir,
+          },
+        },
+      })
+    }
+
+    const targetPath = await exportSkillPackage({
+      scope: params.scope,
+      name: params.name,
+      destinationDir: params.destinationDir,
+      overwrite: params.overwrite,
+      workspacePath: resolveWorkspacePath(params.workspaceId),
+      agentId: params.agentId ?? undefined,
+    })
+
+    return {
+      destinationDir: targetPath,
+      ownerBoundary: {
+        classification: 'non-cradle-owned',
+        owner: 'user-selected-export-directory',
+        consentRequired: true,
+        consentConfirmed: true,
+        destinationDir: params.destinationDir,
+        targetPath,
+      },
+    }
+  })
 }
 
 export async function fetchSource(source: string): Promise<{ sessionId: string, source: ParsedSkillSource, skills: DiscoveredSkill[] }> {

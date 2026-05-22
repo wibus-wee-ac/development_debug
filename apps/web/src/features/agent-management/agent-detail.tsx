@@ -19,7 +19,7 @@ import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
-import { AgentRuntimeConfigJsonSchema, ClaudeAgentConfigSchema } from '~/features/agent-runtime/agent-config-schema'
+import { AgentRuntimeConfigJsonSchema, AgentRuntimeConfigSchema, type ClaudeAgentConfig } from '~/features/agent-runtime/agent-config-schema'
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
@@ -256,16 +256,17 @@ function trimToValue(value: string): string | undefined {
 
 function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
   runtimeKind: RuntimeKind
+  existingConfig: ClaudeAgentConfig
   haikuModel: string
   sonnetModel: string
   opusModel: string
 }): void {
-  const existing = { ...ClaudeAgentConfigSchema.parse(config.claudeAgent) }
   const aliases: ClaudeAgentModelAliases = {
     haiku: '',
     sonnet: '',
     opus: '',
   }
+  const { modelAliases: _modelAliases, ...configWithoutAliases } = input.existingConfig
   const haiku = trimToValue(input.haikuModel)
   const sonnet = trimToValue(input.sonnetModel)
   const opus = trimToValue(input.opusModel)
@@ -281,18 +282,15 @@ function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
   }
 
   if (input.runtimeKind === 'claude-agent' && (haiku || sonnet || opus)) {
-    existing.modelAliases = aliases
-  }
-  else if (input.runtimeKind === 'claude-agent') {
-    existing.modelAliases = {
-      haiku: '',
-      sonnet: '',
-      opus: '',
+    config.claudeAgent = {
+      ...configWithoutAliases,
+      modelAliases: aliases,
     }
+    return
   }
 
-  if (Object.keys(existing).length > 0) {
-    config.claudeAgent = existing
+  if (Object.keys(configWithoutAliases).length > 0) {
+    config.claudeAgent = configWithoutAliases
     return
   }
 
@@ -304,6 +302,7 @@ export function stringifyConfigJson(input: {
   claudeAgentHaikuModel: string
   claudeAgentSonnetModel: string
   claudeAgentOpusModel: string
+  claudeAgentConfig: ClaudeAgentConfig
   baseConfig: Record<string, unknown>
   runtimeKind: RuntimeKind
   cliTuiPreset: string
@@ -317,6 +316,7 @@ export function stringifyConfigJson(input: {
   }
   writeClaudeAgentConfig(config, {
     runtimeKind: input.runtimeKind,
+    existingConfig: input.claudeAgentConfig,
     haikuModel: input.claudeAgentHaikuModel,
     sonnetModel: input.claudeAgentSonnetModel,
     opusModel: input.claudeAgentOpusModel,
@@ -1028,7 +1028,7 @@ function useAgentDetailOwner({
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
   const persistedConfig = useMemo(() => AgentRuntimeConfigJsonSchema.parse(agent?.configJson), [agent?.configJson])
-  const { systemPrompt: _systemPrompt, skills: _skills, cliTui: _cliTui, ...baseConfig } = persistedConfig
+  const { systemPrompt: _systemPrompt, skills: _skills, cliTui: _cliTui, claudeAgent: _claudeAgent, ...baseConfig } = persistedConfig
   const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
   const form = useForm<AgentDetailFormValues>({
     defaultValues: getAgentDetailFormValues(agent, enabledProfiles),
@@ -1120,6 +1120,7 @@ function useAgentDetailOwner({
         claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
         claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
         claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
+        claudeAgentConfig: persistedConfig.claudeAgent,
         baseConfig,
         runtimeKind: currentValues.runtimeKind,
         cliTuiPreset: currentValues.cliTuiPreset,
@@ -1206,6 +1207,7 @@ function useAgentDetailOwner({
           claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
           claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
           claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
+          claudeAgentConfig: AgentRuntimeConfigSchema.parse({}).claudeAgent,
           baseConfig: {},
           runtimeKind: currentValues.runtimeKind,
           cliTuiPreset: currentValues.cliTuiPreset,

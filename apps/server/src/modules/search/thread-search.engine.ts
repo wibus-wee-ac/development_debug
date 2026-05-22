@@ -6,6 +6,7 @@ import {
 import { Jieba } from '@node-rs/jieba'
 import { dict } from '@node-rs/jieba/dict'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { db } from '../../infra'
 
@@ -49,6 +50,14 @@ const ELLIPSIS = '…'
 const TITLE_WEIGHT = 10
 const CONTENT_WEIGHT = 1
 
+const ThreadSearchParamsSchema = z.object({
+  query: z.string(),
+  workspaceId: z.string().optional(),
+  limit: z.number().finite().positive().default(DEFAULT_LIMIT),
+  snippetsPerHit: z.number().finite().positive().default(DEFAULT_SNIPPETS_PER_HIT),
+})
+type ParsedThreadSearchParams = z.infer<typeof ThreadSearchParamsSchema>
+
 let _jieba: Jieba | null = null
 
 function getJieba(): Jieba | null {
@@ -75,7 +84,7 @@ function tokenize(query: string): string[] {
   const seen = new Set<string>()
   const tokens: string[] = []
   for (const token of [trimmed, ...segments]) {
-    const clean = typeof token === 'string' ? token.trim() : ''
+    const clean = token.trim()
     if (!clean) {
       continue
     }
@@ -119,11 +128,12 @@ function buildIndexedValues(sessionTitle: string, content: string): { segmentedT
 
 export class ThreadSearchEngine {
   search(params: ThreadSearchParams): ThreadSearchHit[] {
+    const input = ThreadSearchParamsSchema.parse(params)
     try {
-      return searchFts(params)
+      return searchFts(input)
     }
     catch {
-      return searchLegacy(params)
+      return searchLegacy(input)
     }
   }
 
@@ -175,14 +185,12 @@ export class ThreadSearchEngine {
 
 // ── search implementations ──
 
-function searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
+function searchFts(params: ParsedThreadSearchParams): ThreadSearchHit[] {
   const tokens = tokenize(params.query)
   if (tokens.length === 0) {
     return []
   }
 
-  const limit = params.limit ?? DEFAULT_LIMIT
-  const snippetsPerHit = params.snippetsPerHit ?? DEFAULT_SNIPPETS_PER_HIT
   const d = db()
   const jieba = getJieba()
   const ftsQuery = jieba
@@ -206,7 +214,7 @@ function searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
     FROM messages_fts
     WHERE messages_fts MATCH ${ftsQuery}
     ORDER BY rank
-    LIMIT ${limit * 3}
+    LIMIT ${params.limit * 3}
   `)
 
   if (rows.length === 0) {
@@ -256,7 +264,7 @@ function searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
     }
 
     const titleRanges = findMatches(session.title, tokens)
-    const snippets: ThreadSearchSnippet[] = entry.snippets.slice(0, snippetsPerHit).map(snippet => ({
+    const snippets: ThreadSearchSnippet[] = entry.snippets.slice(0, params.snippetsPerHit).map(snippet => ({
       text: snippet.text,
       ranges: extractMarkRanges(snippet.text),
       messageRole: 'assistant',
@@ -278,17 +286,15 @@ function searchFts(params: ThreadSearchParams): ThreadSearchHit[] {
   }
 
   hits.sort((left, right) => right.score - left.score || right.updatedAt - left.updatedAt)
-  return hits.slice(0, limit)
+  return hits.slice(0, params.limit)
 }
 
-function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
+function searchLegacy(params: ParsedThreadSearchParams): ThreadSearchHit[] {
   const tokens = tokenize(params.query)
   if (tokens.length === 0) {
     return []
   }
 
-  const limit = params.limit ?? DEFAULT_LIMIT
-  const snippetsPerHit = params.snippetsPerHit ?? DEFAULT_SNIPPETS_PER_HIT
   const d = db()
 
   const sessionRows = params.workspaceId
@@ -361,7 +367,7 @@ function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
       workspaceName: session.workspaceId ? workspaceNameById.get(session.workspaceId) ?? null : null,
       sessionTitle: session.title,
       titleRanges,
-      snippets: candidateSnippets.slice(0, snippetsPerHit).map(({ matchCount: _ignored, ...snippet }) => snippet),
+      snippets: candidateSnippets.slice(0, params.snippetsPerHit).map(({ matchCount: _ignored, ...snippet }) => snippet),
       matchCount,
       score: titleRanges.length * TITLE_WEIGHT + contentMatchCount * CONTENT_WEIGHT,
       updatedAt: session.updatedAt,
@@ -374,7 +380,7 @@ function searchLegacy(params: ThreadSearchParams): ThreadSearchHit[] {
     }
     return right.updatedAt - left.updatedAt
   })
-  return hits.slice(0, limit)
+  return hits.slice(0, params.limit)
 }
 
 // ── utility functions ──

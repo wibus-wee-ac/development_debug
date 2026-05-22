@@ -1,7 +1,8 @@
 import type { ObservabilitySeverity } from '@cradle/ipc'
+import { z } from 'zod'
 
 import type { ObservabilityEvent, ObservabilityIncident } from './contract'
-import { createIncidentFromEvent, OBSERVABILITY_CODES } from './contract'
+import { createDedupeKey, createIncidentFromEvent, OBSERVABILITY_CODES } from './contract'
 
 export interface IncidentRuleInput {
   nowMs: number
@@ -15,17 +16,22 @@ export interface IncidentRuleResult {
 
 const EMPTY_OUTPUT_WINDOW_MS = 5 * 60 * 1000
 const EMPTY_OUTPUT_THRESHOLD = 3
+const EventDedupeKeySchema = z.object({
+  code: z.string(),
+  dedupeKey: z.string().optional(),
+}).transform(input => input.dedupeKey || createDedupeKey({ code: input.code }))
 
 export function evaluateIncidentRules(input: IncidentRuleInput): IncidentRuleResult[] {
   const results: IncidentRuleResult[] = []
   const event = input.incoming
 
   if (event.code === OBSERVABILITY_CODES.chatEmptyOutputCompletion) {
-    const occurrences = countRecentOccurrences(input, OBSERVABILITY_CODES.chatEmptyOutputCompletion, event.dedupeKey)
+    const dedupeKey = EventDedupeKeySchema.parse(event)
+    const occurrences = countRecentOccurrences(input, OBSERVABILITY_CODES.chatEmptyOutputCompletion, dedupeKey)
     if (occurrences >= EMPTY_OUTPUT_THRESHOLD) {
       results.push({
         incident: createIncidentFromEvent({
-          dedupeKey: event.dedupeKey ?? defaultDedupeKey(event.code),
+          dedupeKey,
           code: event.code,
           severity: event.severity,
           source: event.source,
@@ -44,7 +50,7 @@ export function evaluateIncidentRules(input: IncidentRuleInput): IncidentRuleRes
   if (event.code === OBSERVABILITY_CODES.turnStreamFailed && isErrorSeverity(event.severity)) {
     results.push({
       incident: createIncidentFromEvent({
-        dedupeKey: event.dedupeKey ?? defaultDedupeKey(event.code),
+        dedupeKey: EventDedupeKeySchema.parse(event),
         code: event.code,
         severity: event.severity,
         source: event.source,
@@ -57,7 +63,7 @@ export function evaluateIncidentRules(input: IncidentRuleInput): IncidentRuleRes
   if (event.code === OBSERVABILITY_CODES.domainEventHandlerFailed && isErrorSeverity(event.severity)) {
     results.push({
       incident: createIncidentFromEvent({
-        dedupeKey: event.dedupeKey ?? defaultDedupeKey(event.code),
+        dedupeKey: EventDedupeKeySchema.parse(event),
         code: event.code,
         severity: event.severity,
         source: event.source,
@@ -73,7 +79,7 @@ export function evaluateIncidentRules(input: IncidentRuleInput): IncidentRuleRes
 function countRecentOccurrences(
   input: IncidentRuleInput,
   code: string,
-  dedupeKey: string | undefined,
+  dedupeKey: string,
 ): number {
   const cutoff = input.nowMs - EMPTY_OUTPUT_WINDOW_MS
   const history = [...input.recent, input.incoming]
@@ -81,7 +87,7 @@ function countRecentOccurrences(
     if (event.code !== code) {
       return false
     }
-    if ((event.dedupeKey ?? defaultDedupeKey(event.code)) !== (dedupeKey ?? defaultDedupeKey(code))) {
+    if (EventDedupeKeySchema.parse(event) !== dedupeKey) {
       return false
     }
     return event.occurredAt >= cutoff
@@ -90,8 +96,4 @@ function countRecentOccurrences(
 
 function isErrorSeverity(severity: ObservabilitySeverity): boolean {
   return severity === 'error' || severity === 'fatal'
-}
-
-function defaultDedupeKey(code: string): string {
-  return `${code}:-:-:-`
 }

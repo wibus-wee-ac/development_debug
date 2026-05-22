@@ -11,15 +11,56 @@ import {
   SquareTerminalIcon
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { Button } from '~/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 const SERVER_BASE = getServerUrl()
 const REFRESH_INTERVAL_MS = 3000
+
+const ServerHealthSchema = z.object({
+  memory: z.object({
+    heapUsed: z.number(),
+    heapTotal: z.number(),
+    rss: z.number(),
+    external: z.number(),
+  }),
+  uptime: z.number(),
+}).passthrough()
+
+const PtyResourceItemSchema = z.object({
+  id: z.string(),
+  role: z.enum(['cli-tui', 'bottom-panel']),
+  pid: z.number(),
+  executable: z.string(),
+  cwd: z.string(),
+  running: z.boolean(),
+  startedAt: z.number(),
+  cols: z.number(),
+  rows: z.number(),
+  rssMB: z.number().nullable(),
+  descendantCount: z.number().nullable(),
+})
+
+const PtyResourcesSchema = z.object({
+  terminals: z.array(PtyResourceItemSchema),
+  totals: z.object({
+    cliTuiRssMB: z.number(),
+    bottomPanelRssMB: z.number(),
+  }),
+  timestamp: z.number(),
+})
+
+const ChronicleResourcesSchema = z.object({
+  running: z.boolean(),
+  pid: z.number().nullable(),
+  rssMB: z.number().nullable(),
+})
 
 export interface ServerHealth {
   memory: {
@@ -267,17 +308,18 @@ function ResourceGroup({
   )
 }
 
-async function readJson<T>(url: string): Promise<T> {
+async function requestResourceJson(url: string): Promise<unknown> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`${response.status} ${response.statusText}`)
   }
-  return response.json() as Promise<T>
+  return response.json()
 }
 
 function useResourceSnapshot() {
   const [snap, setSnap] = useState<ResourceSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
+  const [resourcesReady, setResourcesReady] = useState(false)
   const requestRef = useRef(0)
 
   const refresh = useCallback(async () => {
@@ -285,9 +327,9 @@ function useResourceSnapshot() {
     setLoading(true)
     try {
       const [healthRes, ptyRes, chronicleRes] = await Promise.allSettled([
-        readJson<ServerHealth>(`${SERVER_BASE}/health`),
-        readJson<PtyResources>(`${SERVER_BASE}/terminal-sessions/resources`),
-        readJson<ChronicleResources>(`${SERVER_BASE}/chronicle/resources`)
+        requestResourceJson(`${SERVER_BASE}/health`).then(data => ServerHealthSchema.parse(data) satisfies ServerHealth),
+        requestResourceJson(`${SERVER_BASE}/terminal-sessions/resources`).then(data => PtyResourcesSchema.parse(data) satisfies PtyResources),
+        requestResourceJson(`${SERVER_BASE}/chronicle/resources`).then(data => ChronicleResourcesSchema.parse(data) satisfies ChronicleResources)
       ])
 
       if (requestId === requestRef.current) {
@@ -295,6 +337,9 @@ function useResourceSnapshot() {
         const pty = ptyRes.status === 'fulfilled' ? ptyRes.value : null
         const chronicle = chronicleRes.status === 'fulfilled' ? chronicleRes.value : null
         const renderer = readRendererMemory()
+        const allResourcesReady = healthRes.status === 'fulfilled'
+          && ptyRes.status === 'fulfilled'
+          && chronicleRes.status === 'fulfilled'
 
         setSnap(createResourceSnapshot({
           renderer,
@@ -303,6 +348,7 @@ function useResourceSnapshot() {
           chronicle,
           timestamp: Date.now()
         }))
+        setResourcesReady(allResourcesReady)
       }
     } finally {
       if (requestId === requestRef.current) {
@@ -317,18 +363,39 @@ function useResourceSnapshot() {
     return () => clearInterval(intervalId)
   }, [refresh])
 
-  return { snap, loading, refresh }
+  return { snap, loading, refresh, resourcesReady }
 }
 
 export function ResourcesPopover() {
-  const { snap, loading, refresh } = useResourceSnapshot()
+  const { snap, loading, refresh, resourcesReady } = useResourceSnapshot()
   const [open, setOpen] = useState(false)
+  const firstRenderedRef = useRef(false)
+
+  const handleOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen) {
+      markCradlePerformance('cradle:resources-popover-open-requested')
+    }
+    setOpen(nextOpen)
+  }, [])
 
   useEffect(() => {
     if (open) {
       void refresh()
     }
   }, [open, refresh])
+
+  useEffect(() => {
+    if (firstRenderedRef.current || !open || !snap || !resourcesReady) {
+      return
+    }
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-resources-popover-rendered')
+    measureCradlePerformance(
+      'cradle:resources-popover-first-render',
+      'cradle:resources-popover-open-requested',
+      'cradle:first-resources-popover-rendered'
+    )
+  }, [open, resourcesReady, snap])
 
   const totalRendererMB = snap ? Number(toMB(snap.rendererHeapUsed)) : 0
   const totalServerMB = snap ? Number(toMB(snap.serverRss)) : 0
@@ -342,7 +409,7 @@ export function ResourcesPopover() {
   const triggerLabel = snap ? formatMemoryLabel(totalMB) : '— MB'
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
@@ -355,7 +422,13 @@ export function ResourcesPopover() {
           {triggerLabel}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="w-xl p-0 gap-0">
+      <PopoverContent
+        align="end"
+        sideOffset={6}
+        className="w-xl p-0 gap-0"
+        data-testid="resources-popover"
+        data-resources-ready={resourcesReady ? 'true' : 'false'}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-3 pt-3 pb-2">
           <span className="text-sm font-medium">Resources</span>

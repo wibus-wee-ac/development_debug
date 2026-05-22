@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VListHandle } from 'virtua'
 import { VList } from 'virtua'
 
@@ -8,6 +8,7 @@ import { postWorkspacesByIdGitFetch } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { BranchPicker } from './branch-picker'
 import { GitGraphRow, ROW_HEIGHT } from './git-graph-row'
@@ -19,11 +20,23 @@ interface GitPanelProps {
 }
 
 export function GitPanel({ workspaceId }: GitPanelProps) {
-  const { data: status, isLoading: statusLoading, isError: statusError } = useGitStatus(workspaceId)
+  const {
+    data: status,
+    isLoading: statusLoading,
+    isError: statusError,
+    isSuccess: statusReady,
+  } = useGitStatus(workspaceId)
   const [limit, setLimit] = useState(100)
-  const { data: commits, isLoading: graphLoading, isFetching: graphFetching } = useGitGraph(workspaceId, limit)
+  const {
+    data: commits,
+    isLoading: graphLoading,
+    isFetching: graphFetching,
+    isSuccess: graphReady,
+  } = useGitGraph(workspaceId, limit)
   const [fetching, setFetching] = useState(false)
   const queryClient = useQueryClient()
+  const ready = !!workspaceId && statusReady && graphReady
+  const firstRenderedWorkspaceIdRef = useRef<string | null>(null)
 
   const invalidateAll = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId! } }) })
@@ -62,6 +75,20 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
     [commits],
   )
 
+  useEffect(() => {
+    if (!ready || firstRenderedWorkspaceIdRef.current === workspaceId) {
+      return
+    }
+
+    firstRenderedWorkspaceIdRef.current = workspaceId ?? null
+    markCradlePerformance('cradle:first-right-aside-git-rendered')
+    measureCradlePerformance(
+      'cradle:right-aside-git-first-render',
+      'cradle:right-aside-git-open-requested',
+      'cradle:first-right-aside-git-rendered',
+    )
+  }, [ready, workspaceId])
+
   if (!workspaceId) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 text-center" data-testid="git-panel-empty-workspace">
@@ -82,7 +109,11 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" data-testid="git-panel">
+    <div
+      className="flex flex-1 flex-col overflow-hidden"
+      data-testid="git-panel"
+      data-right-aside-git-ready={ready ? 'true' : 'false'}
+    >
       {/* Status bar */}
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1" data-testid="git-panel-status-bar">
         {statusLoading

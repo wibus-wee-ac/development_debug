@@ -73,6 +73,9 @@ pub struct ChronicleConfig {
     pub audio_segment_interval_ms: u64,
     pub audio_rms_threshold: f32,
     pub ax_observer: bool,
+    pub privacy_sensitive_app_bundle_ids: Vec<String>,
+    pub privacy_sensitive_title_patterns: Vec<String>,
+    pub privacy_sensitive_url_patterns: Vec<String>,
 }
 
 impl ChronicleConfig {
@@ -128,6 +131,9 @@ impl ChronicleConfig {
         let mut audio_segment_interval_ms = 60_000;
         let mut audio_rms_threshold = 0.02;
         let mut ax_observer = !env_flag("CRADLE_CHRONICLE_NO_AX_OBSERVER");
+        let mut privacy_sensitive_app_bundle_ids = Vec::new();
+        let mut privacy_sensitive_title_patterns = Vec::new();
+        let mut privacy_sensitive_url_patterns = Vec::new();
 
         let mut iterator = args.into_iter().map(Into::into).peekable();
         while let Some(arg) = iterator.next() {
@@ -152,6 +158,33 @@ impl ChronicleConfig {
                 ax_observer = true;
             } else if arg == "--no-ax-observer" {
                 ax_observer = false;
+            } else if let Some(value) = arg.strip_prefix("--privacy-sensitive-app=") {
+                push_non_empty(&mut privacy_sensitive_app_bundle_ids, value);
+            } else if arg == "--privacy-sensitive-app" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--privacy-sensitive-app requires a value".to_string(),
+                    )
+                })?;
+                push_non_empty(&mut privacy_sensitive_app_bundle_ids, &value);
+            } else if let Some(value) = arg.strip_prefix("--privacy-sensitive-title=") {
+                push_non_empty(&mut privacy_sensitive_title_patterns, value);
+            } else if arg == "--privacy-sensitive-title" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--privacy-sensitive-title requires a value".to_string(),
+                    )
+                })?;
+                push_non_empty(&mut privacy_sensitive_title_patterns, &value);
+            } else if let Some(value) = arg.strip_prefix("--privacy-sensitive-url=") {
+                push_non_empty(&mut privacy_sensitive_url_patterns, value);
+            } else if arg == "--privacy-sensitive-url" {
+                let value = iterator.next().ok_or_else(|| {
+                    ChronicleError::InvalidArgument(
+                        "--privacy-sensitive-url requires a value".to_string(),
+                    )
+                })?;
+                push_non_empty(&mut privacy_sensitive_url_patterns, &value);
             } else if arg == "--run-once" {
                 run_once = true;
             } else if let Some(value) = arg.strip_prefix("--storage-root=") {
@@ -300,12 +333,22 @@ impl ChronicleConfig {
             audio_segment_interval_ms,
             audio_rms_threshold,
             ax_observer,
+            privacy_sensitive_app_bundle_ids,
+            privacy_sensitive_title_patterns,
+            privacy_sensitive_url_patterns,
         })
     }
 }
 
 pub fn usage() -> String {
-    "usage: cradle-chronicle (--smoke | --daemon | --audio-diagnostics) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--audio-capture] [--no-audio-capture] [--audio-source microphone|system|mixed] [--ax-observer] [--no-ax-observer] [--audio-duration-ms <ms>] [--audio-segment-ms <ms>] [--audio-segment-interval-ms <ms>] [--audio-rms-threshold <value>] [--run-once]".to_string()
+    "usage: cradle-chronicle (--smoke | --daemon | --audio-diagnostics | --embed-texts | --redact-pii | --transcribe-wav <path> | --embed-speaker-wav <path> | --inspect-onnx <path>) [--provider macos|inbox] [--storage-root <path>] [--inbox-root <path>] [--display-id <id>] [--capture-limit <count>] [--poll-ms <ms>] [--idle-timeout <seconds>] [--min-interval-ms <ms>] [--max-interval-ms <ms>] [--audio-capture] [--no-audio-capture] [--audio-source microphone|system|mixed] [--ax-observer] [--no-ax-observer] [--privacy-sensitive-app <bundle-id>] [--privacy-sensitive-title <pattern>] [--privacy-sensitive-url <pattern>] [--audio-duration-ms <ms>] [--audio-segment-ms <ms>] [--audio-segment-interval-ms <ms>] [--audio-rms-threshold <value>] [--run-once]".to_string()
+}
+
+fn push_non_empty(values: &mut Vec<String>, value: &str) {
+    let trimmed = value.trim();
+    if !trimmed.is_empty() && !values.iter().any(|existing| existing == trimmed) {
+        values.push(trimmed.to_string());
+    }
 }
 
 fn env_flag(name: &str) -> bool {
@@ -459,6 +502,45 @@ mod tests {
         assert_eq!(config.audio_segment_ms, 750);
         assert_eq!(config.audio_segment_interval_ms, 1250);
         assert_eq!(config.audio_rms_threshold, 0.03);
+    }
+
+    #[test]
+    fn parses_configured_privacy_rules() {
+        let config = ChronicleConfig::from_args([
+            "--daemon",
+            "--privacy-sensitive-app",
+            "com.apple.Terminal",
+            "--privacy-sensitive-app=com.example.Secret",
+            "--privacy-sensitive-title",
+            "Bank Dashboard",
+            "--privacy-sensitive-url=admin.example.com",
+        ])
+        .expect("config should parse");
+
+        assert_eq!(
+            config.privacy_sensitive_app_bundle_ids,
+            vec![
+                "com.apple.Terminal".to_string(),
+                "com.example.Secret".to_string()
+            ]
+        );
+        assert_eq!(
+            config.privacy_sensitive_title_patterns,
+            vec!["Bank Dashboard".to_string()]
+        );
+        assert_eq!(
+            config.privacy_sensitive_url_patterns,
+            vec!["admin.example.com".to_string()]
+        );
+    }
+
+    #[test]
+    fn usage_lists_direct_local_model_diagnostics() {
+        let text = super::usage();
+        assert!(text.contains("--transcribe-wav <path>"));
+        assert!(text.contains("--embed-speaker-wav <path>"));
+        assert!(text.contains("--inspect-onnx <path>"));
+        assert!(text.contains("--privacy-sensitive-app <bundle-id>"));
     }
 
     #[test]

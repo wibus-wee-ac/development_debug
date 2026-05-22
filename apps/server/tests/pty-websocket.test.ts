@@ -7,12 +7,43 @@ import { sessions, workspaces } from '@cradle/db'
 import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
+import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import type { PtyServerEvent } from '../src/modules/pty/protocol'
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
+
+const PtyServerEventJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.discriminatedUnion('type', [
+    z.object({
+      type: z.literal('snapshot'),
+      seq: z.number(),
+      buffer: z.string(),
+      running: z.boolean(),
+    }),
+    z.object({
+      type: z.literal('output'),
+      seq: z.number(),
+      data: z.string(),
+    }),
+    z.object({
+      type: z.literal('exit'),
+      seq: z.number(),
+      exitCode: z.number().nullable(),
+      signal: z.string().nullable(),
+    }),
+    z.object({
+      type: z.literal('pong'),
+    }),
+    z.object({
+      type: z.literal('error'),
+      code: z.string(),
+      message: z.string(),
+    }),
+  ]))
 
 const TERMINAL_FIXTURE_SCRIPT = [
   'process.stdout.write(\'READY\\n\')',
@@ -138,8 +169,8 @@ function createSocketClient(url: string) {
   })
 
   socket.on('message', (data) => {
-    const text = typeof data === 'string' ? data : data.toString()
-    const message = JSON.parse(text) as PtyServerEvent
+    const text = data.toString()
+    const message = PtyServerEventJsonSchema.parse(text)
     messages.push(message)
     for (const listener of listeners) {
       listener(message)

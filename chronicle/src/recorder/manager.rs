@@ -23,10 +23,19 @@ where
     O: TextExtractor,
 {
     pub fn new(source: S, extractor: O, artifact_store: ArtifactStore) -> Self {
+        Self::with_privacy_filter(source, extractor, artifact_store, PrivacyFilter::default())
+    }
+
+    pub fn with_privacy_filter(
+        source: S,
+        extractor: O,
+        artifact_store: ArtifactStore,
+        privacy_filter: PrivacyFilter,
+    ) -> Self {
         Self {
             source,
             extractor,
-            privacy_filter: PrivacyFilter,
+            privacy_filter,
             artifact_store,
             previous_fingerprints: HashMap::new(),
         }
@@ -78,6 +87,7 @@ mod tests {
 
     use crate::ocr::ObservedTextExtractor;
     use crate::recorder::artifacts::ArtifactStore;
+    use crate::screen::privacy_filter::{PrivacyFilter, PrivacyFilterRules};
     use crate::screen::synthetic::SyntheticCaptureSource;
     use crate::screen::{
         AccessibilityCapture, AccessibilityCaptureStatus, BrowserWindowObservation, CapturedFrame,
@@ -171,6 +181,55 @@ mod tests {
                 .iter()
                 .any(|frame| frame.display_id == 30)
         );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn applies_configured_privacy_rules_to_capture_flow() {
+        let root = std::env::temp_dir().join(format!(
+            "cradle-chronicle-manager-privacy-rules-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let frames = vec![
+            frame(
+                1,
+                "terminal",
+                BrowserWindowObservation::new(1, "Logs", "com.apple.Terminal"),
+            ),
+            frame(
+                2,
+                "bank",
+                BrowserWindowObservation::new(1, "Bank Dashboard", "com.apple.Safari"),
+            ),
+            frame(
+                3,
+                "admin",
+                BrowserWindowObservation::new(1, "Admin", "com.google.Chrome")
+                    .with_url("https://admin.example.com/settings"),
+            ),
+            frame(
+                4,
+                "cradle",
+                BrowserWindowObservation::new(1, "Cradle", "app.cradle"),
+            ),
+        ];
+        let source = SyntheticCaptureSource::from_frames(frames);
+        let store = ArtifactStore::new(&root, Timestamp::from_seconds(1_779_125_791));
+        let filter = PrivacyFilter::new(PrivacyFilterRules {
+            app_bundle_ids: vec!["com.apple.Terminal".to_string()],
+            title_patterns: vec!["bank dashboard".to_string()],
+            url_patterns: vec!["admin.example.com".to_string()],
+        });
+        let mut manager =
+            RecorderManager::with_privacy_filter(source, ObservedTextExtractor, store, filter);
+
+        let report = manager.run_until_exhausted().expect("run should succeed");
+
+        assert_eq!(report.observed_frames, 4);
+        assert_eq!(report.privacy_filtered_frames, 3);
+        assert_eq!(report.persisted_frames.len(), 1);
 
         let _ = fs::remove_dir_all(&root);
     }

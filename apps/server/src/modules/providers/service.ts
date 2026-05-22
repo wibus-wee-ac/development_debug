@@ -6,6 +6,7 @@ import {
   runtimeAuditLog,
 } from '@cradle/db'
 import { eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
@@ -17,23 +18,46 @@ import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, Provider
 
 // ── provider body parsing ──
 
-interface ProviderBodyInput {
-  providerKind: ProviderKind
-  label: string
-  config: Record<string, unknown>
-  secretRef?: string | null
-  profileId?: string | null
-}
-
-export function parseProviderBody(body: ProviderBodyInput): ProviderRequest {
-  return {
-    providerKind: body.providerKind,
-    label: body.label,
-    configJson: JSON.stringify(body.config),
-    secretRef: normalizeNullableString(body.secretRef, 'secretRef'),
-    profileId: normalizeNullableString(body.profileId, 'profileId'),
+const NullableProviderRefSchema = z.string().trim().min(1).nullish().transform((value) => {
+  if (value === undefined || value === null) {
+    return null
   }
-}
+  return value
+})
+
+export const ProviderRequestSchema = z.object({
+  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  label: z.string().min(1),
+  config: z.record(z.string(), z.unknown()),
+  secretRef: NullableProviderRefSchema,
+  profileId: NullableProviderRefSchema,
+}).transform(parsed => ({
+  providerKind: parsed.providerKind,
+  label: parsed.label,
+  configJson: JSON.stringify(parsed.config),
+  secretRef: parsed.secretRef,
+  profileId: parsed.profileId,
+}))
+
+const CustomModelSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  contextWindow: z.number().finite().nullable().optional(),
+  capabilities: z.record(z.string(), z.unknown()).optional().default({}),
+}).transform(({ contextWindow, capabilities, ...model }) => ({
+  ...model,
+  capabilities: contextWindow != null && capabilities.contextWindow === undefined
+    ? { ...capabilities, contextWindow }
+    : capabilities,
+}))
+
+const CustomModelsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(CustomModelSchema))
+
+const RuntimeAuditProfileInputSchema = z.object({
+  profileId: z.string().nullable().default(null),
+})
 
 // ── health check ──
 
@@ -48,12 +72,12 @@ export async function healthCheck(input: ProviderRequest): Promise<ProviderHealt
       providerKind: input.providerKind,
       subject: input.label,
       ok: result.ok,
-      errorText: result.errorText ?? null,
+      errorText: result.errorText,
     })
     recordCapabilitySnapshot({
       profileId: input.profileId,
       providerKind: input.providerKind,
-      capabilitiesJson: JSON.stringify(result.details ?? {}),
+      capabilitiesJson: JSON.stringify(result.details),
     })
     return result
   }
@@ -95,24 +119,17 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
   if (input.profileId) {
     const profile = db().select().from(agentProfiles).where(eq(agentProfiles.id, input.profileId)).get()
     if (profile?.customModels) {
-      try {
-        const customModels = JSON.parse(profile.customModels) as Array<{ id: string, label: string, contextWindow?: number | null, capabilities?: Record<string, unknown> }>
-        const upstreamIds = new Set(models.map(m => m.id))
-        for (const cm of customModels) {
-          if (!upstreamIds.has(cm.id)) {
-            // Backward compat: migrate old { contextWindow } to { capabilities: { contextWindow } }
-            const capabilities = cm.capabilities ?? (cm.contextWindow != null ? { contextWindow: cm.contextWindow } : {})
-            models.push({
-              id: cm.id,
-              label: cm.label,
-              providerKind: input.providerKind,
-              capabilities,
-            })
-          }
+      const customModels = CustomModelsJsonSchema.parse(profile.customModels)
+      const upstreamIds = new Set(models.map(m => m.id))
+      for (const cm of customModels) {
+        if (!upstreamIds.has(cm.id)) {
+          models.push({
+            id: cm.id,
+            label: cm.label,
+            providerKind: input.providerKind,
+            capabilities: cm.capabilities,
+          })
         }
-      }
-      catch {
-        // Ignore malformed JSON
       }
     }
   }
@@ -139,9 +156,10 @@ function recordHealthCheck(input: {
   ok: boolean
   errorText: string | null
 }): void {
+  const auditInput = RuntimeAuditProfileInputSchema.parse(input)
   try {
     db().insert(runtimeAuditLog).values({
-      agentProfileId: input.profileId ?? null,
+      agentProfileId: auditInput.profileId,
       providerKind: input.providerKind,
       action: 'healthCheck',
       subject: input.subject,
@@ -159,8 +177,9 @@ function recordModelList(input: {
   subject: string
   count: number
 }): void {
+  const auditInput = RuntimeAuditProfileInputSchema.parse(input)
   db().insert(runtimeAuditLog).values({
-    agentProfileId: input.profileId ?? null,
+    agentProfileId: auditInput.profileId,
     providerKind: input.providerKind,
     action: 'listModels',
     subject: input.subject,
@@ -200,21 +219,6 @@ function requireProvider(providerKind: ProviderKind) {
     })
   }
   return provider
-}
-
-function normalizeNullableString(value: string | null | undefined, field: string): string | null {
-  if (value === undefined || value === null) {
-    return null
-  }
-  const trimmed = value.trim()
-  if (!trimmed) {
-    throw new AppError({
-      code: 'invalid_provider_input',
-      status: 400,
-      message: `${field} must not be blank`,
-    })
-  }
-  return trimmed
 }
 
 function mapOperationalError(error: unknown): Error {

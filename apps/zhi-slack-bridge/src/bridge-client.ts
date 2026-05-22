@@ -4,11 +4,23 @@
  */
 import { createConnection } from 'node:net'
 
-export interface BridgeResponse {
-  success: boolean
-  result?: { user_input: string, selected_options: string[] }
-  error?: string
-}
+import { z } from 'zod'
+
+const BridgeResponseJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.union([
+  z.object({
+    success: z.literal(true),
+    result: z.object({
+      user_input: z.string(),
+      selected_options: z.array(z.string()),
+    }),
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string(),
+  }),
+]))
+
+export type BridgeResponse = z.infer<typeof BridgeResponseJsonSchema>
 
 export interface BridgeClientOptions {
   socketPath: string
@@ -31,7 +43,7 @@ export async function callBridge(message: string, options: BridgeClientOptions):
     try {
       return await callBridgeOnce(message, options.socketPath)
     }
- catch (error) {
+    catch (error) {
       if (!(error instanceof BridgeConnectionError)) {
         throw error
       }
@@ -70,12 +82,12 @@ function callBridgeOnce(message: string, socketPath: string): Promise<BridgeResp
       const line = buffer.slice(0, newlineIdx)
       settled = true
       try {
-        resolve(JSON.parse(line))
+        resolve(BridgeResponseJsonSchema.parse(line))
       }
- catch {
+      catch {
         reject(new Error(`Invalid bridge response: ${line}`))
       }
- finally {
+      finally {
         socket.end()
       }
     })

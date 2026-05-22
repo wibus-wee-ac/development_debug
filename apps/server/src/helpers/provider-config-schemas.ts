@@ -1,17 +1,29 @@
 import { z } from 'zod'
 
-export const acpChatConfigSchema = z.object({
-  distributionType: z.enum(['binary', 'npx', 'uvx']).optional(),
-  installPath: z.string().trim().min(1).nullable().optional(),
+const RawAcpChatConfigSchema = z.object({
+  distributionType: z.enum(['binary', 'npx', 'uvx']).default('npx'),
+  installPath: z.string().trim().min(1).nullable().default(null),
   cmd: z.string().trim().min(1).optional(),
   packageName: z.string().trim().min(1).optional(),
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string(), z.string()).optional(),
+  args: z.array(z.string()).default([]),
+  env: z.record(z.string(), z.string()).default({}),
 })
 
-export const acpChatConfigJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
-  acpChatConfigSchema,
-)
+export const acpChatConfigSchema = RawAcpChatConfigSchema
+  .transform(({ packageName, ...config }) => ({
+    ...config,
+    cmd: config.cmd ?? packageName,
+  }))
+  .pipe(z.object({
+    distributionType: z.enum(['binary', 'npx', 'uvx']),
+    installPath: z.string().trim().min(1).nullable(),
+    cmd: z.string().trim().min(1),
+    args: z.array(z.string()),
+    env: z.record(z.string(), z.string()),
+  }))
+
+export const acpChatConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(acpChatConfigSchema)
 
 export type AcpChatConfig = z.infer<typeof acpChatConfigSchema>

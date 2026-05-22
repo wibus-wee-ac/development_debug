@@ -14,18 +14,11 @@ import {
   type GitHubWorkflowJobStep,
   type GitHubWorkflowRun,
 } from './github-api'
+import { z } from 'zod'
 
 export { resetTokenCache }
 
 type GitHubCIMode = 'all'
-
-interface GitHubCIFilter {
-  repo: string
-  pr?: number
-  sha?: string
-  mode?: GitHubCIMode
-  allowNoChecksAfterSeconds?: number
-}
 
 export interface LiveCheckRun {
   id: number | null
@@ -127,40 +120,38 @@ const PASSING_CHECK_CONCLUSIONS = new Set(['success', 'neutral', 'skipped'])
 const FAILING_CHECK_CONCLUSIONS = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'])
 const CHECK_RUN_ID_PATTERN = /\/check-runs\/(\d+)(?:$|\?)/
 
-function parseFilter(filterJson: string): GitHubCIFilter | null {
-  try {
-    const f = JSON.parse(filterJson) as GitHubCIFilter
-    if (!f.repo || (!f.pr && !f.sha)) {
-      return null
-    }
-    if (f.pr !== undefined && (!Number.isInteger(f.pr) || f.pr <= 0)) {
-      return null
-    }
-    if (f.sha !== undefined && typeof f.sha !== 'string') {
-      return null
-    }
-    return f
-  }
-  catch {
-    return null
-  }
-}
+const GitHubRepoSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/)
+  .transform((repoFullName) => {
+    const [owner, repo] = repoFullName.split('/')
+    return { owner, repo }
+  })
 
-function splitRepo(repoFullName: string): { owner: string, repo: string } | null {
-  const [owner, repo] = repoFullName.split('/')
-  return owner && repo ? { owner, repo } : null
-}
+const GitHubCIFilterSchema = z.object({
+  repo: GitHubRepoSchema,
+  pr: z.number().int().positive().optional(),
+  sha: z.string().min(1).optional(),
+  mode: z.literal('all').optional(),
+  allowNoChecksAfterSeconds: z.number().int().nonnegative().default(DEFAULT_NO_CHECKS_GRACE_SECONDS),
+}).refine(filter => filter.pr !== undefined || filter.sha !== undefined, {
+  message: 'GitHub CI filter requires pr or sha',
+}).transform(({ repo, ...filter }) => ({
+  ...filter,
+  owner: repo.owner,
+  repo: repo.repo,
+  statusRef: filter.sha ?? '',
+}))
+
+export const GitHubCIFilterJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(GitHubCIFilterSchema)
+
+type GitHubCIFilter = z.infer<typeof GitHubCIFilterSchema>
 
 async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget | null> {
-  const repoParts = splitRepo(filter.repo)
-  if (!repoParts) {
-    return null
-  }
-
-  let ref = filter.sha ?? ''
+  let ref = filter.sha
   let prTitle: string | null = null
   if (filter.pr) {
-    const prData = await fetchPullRequest(repoParts.owner, repoParts.repo, filter.pr)
+    const prData = await fetchPullRequest(filter.owner, filter.repo, filter.pr)
     if (!prData) {
       return null
     }
@@ -173,8 +164,8 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
   }
 
   return {
-    owner: repoParts.owner,
-    repo: repoParts.repo,
+    owner: filter.owner,
+    repo: filter.repo,
     prNumber: filter.pr ?? null,
     prTitle,
     ref,
@@ -374,11 +365,7 @@ export const githubCISource: SessionAwaitSource = {
     const results: CheckResult[] = []
 
     for (const row of awaits) {
-      const filter = parseFilter(row.filterJson)
-      if (!filter) {
-        results.push({ awaitId: row.id, matched: false, transientError: 'Invalid GitHub CI filter JSON' })
-        continue
-      }
+      const filter = GitHubCIFilterJsonSchema.parse(row.filterJson)
 
       const target = await resolveTarget(filter)
       if (!target) {
@@ -393,8 +380,8 @@ export const githubCISource: SessionAwaitSource = {
       }
 
       if (aggregate.totalCount === 0) {
-        const graceSeconds = filter.allowNoChecksAfterSeconds ?? DEFAULT_NO_CHECKS_GRACE_SECONDS
-        const ageSeconds = Math.floor(Date.now() / 1000) - (row.createdAt ?? 0)
+        const graceSeconds = filter.allowNoChecksAfterSeconds
+        const ageSeconds = Math.floor(Date.now() / 1000) - row.createdAt
         if (ageSeconds > graceSeconds) {
           results.push({
             awaitId: row.id,
@@ -429,24 +416,16 @@ export const githubCISource: SessionAwaitSource = {
 }
 
 export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatus | null> {
-  const filter = parseFilter(filterJson)
-  if (!filter) {
-    return null
-  }
-
-  const repoParts = splitRepo(filter.repo)
-  if (!repoParts) {
-    return null
-  }
+  const filter = GitHubCIFilterJsonSchema.parse(filterJson)
 
   if (!hasGitHubToken()) {
     return {
       kind: 'github-ci',
-      owner: repoParts.owner,
-      repo: repoParts.repo,
+      owner: filter.owner,
+      repo: filter.repo,
       prNumber: filter.pr ?? null,
       prTitle: null,
-      ref: filter.sha ?? '',
+      ref: filter.statusRef,
       checkRuns: [],
       workflowRuns: [],
       statuses: [],

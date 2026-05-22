@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
 
 import { getPreferencesJarvisOptions, getPreferencesJarvisQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { putPreferencesJarvis } from '~/api-gen/sdk.gen'
-import type { PutPreferencesJarvisData } from '~/api-gen/types.gen'
 
 export interface JarvisPreferences {
   profileId: string | null
@@ -10,12 +10,18 @@ export interface JarvisPreferences {
   thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 }
 
+const JarvisPreferencesSchema = z.object({
+  profileId: z.string().nullable(),
+  model: z.string().optional(),
+  thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']),
+})
+
 export const JARVIS_PREFS_QUERY_KEY = getPreferencesJarvisQueryKey()
 
 export function useJarvisPreferencesQuery() {
   return useQuery({
     ...getPreferencesJarvisOptions(),
-    select: data => data as JarvisPreferences,
+    select: data => JarvisPreferencesSchema.parse(data) satisfies JarvisPreferences,
   })
 }
 
@@ -31,7 +37,7 @@ export function useUpdateJarvisPreferencesMutation() {
 
       const next = { ...current, ...updates }
       await putPreferencesJarvis({
-        body: next as unknown as PutPreferencesJarvisData['body'],
+        body: next,
       })
 
       return next
@@ -45,8 +51,8 @@ export function useUpdateJarvisPreferencesMutation() {
 }
 
 export function useJarvisPreferences() {
-  const { data: prefs, isLoading } = useJarvisPreferencesQuery()
+  const { data: prefs, isLoading, isSuccess } = useJarvisPreferencesQuery()
   const { mutateAsync: savePrefs, isPending: isSaving } = useUpdateJarvisPreferencesMutation()
 
-  return { prefs: prefs ?? null, isLoading, savePrefs, isSaving }
+  return { prefs: prefs ?? null, isLoading, isSuccess, savePrefs, isSaving }
 }

@@ -1,4 +1,6 @@
-import type { UIMessage, UIMessageChunk } from 'ai'
+import type { ProviderMetadata, UIMessage, UIMessageChunk } from 'ai'
+import { isDeepStrictEqual } from 'node:util'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 
@@ -46,14 +48,14 @@ interface MutableTextPart {
   type: 'text'
   text: string
   state?: 'streaming' | 'done'
-  providerMetadata?: unknown
+  providerMetadata?: ProviderMetadata
 }
 
 interface MutableReasoningPart {
   type: 'reasoning'
   text: string
   state?: 'streaming' | 'done'
-  providerMetadata?: unknown
+  providerMetadata?: ProviderMetadata
 }
 
 interface MutableToolPart {
@@ -64,9 +66,154 @@ interface MutableToolPart {
   input?: unknown
   output?: unknown
   errorText?: string
-  callProviderMetadata?: unknown
-  resultProviderMetadata?: unknown
+  callProviderMetadata?: ProviderMetadata
+  resultProviderMetadata?: ProviderMetadata
 }
+
+const ProviderMetadataSchema = z.custom<ProviderMetadata>()
+
+const TextMessagePartSchema = z.object({
+  type: z.literal('text'),
+  text: z.string(),
+  state: z.enum(['streaming', 'done']).optional(),
+  providerMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
+const ReasoningMessagePartSchema = z.object({
+  type: z.literal('reasoning'),
+  text: z.string(),
+  state: z.enum(['streaming', 'done']).optional(),
+  providerMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
+const DynamicToolMessagePartSchema = z.object({
+  type: z.literal('dynamic-tool'),
+  toolName: z.string().min(1),
+  toolCallId: z.string().min(1),
+  state: z.string(),
+  input: z.unknown().optional(),
+  output: z.unknown().optional(),
+  errorText: z.string().optional(),
+  callProviderMetadata: ProviderMetadataSchema.optional(),
+  resultProviderMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
+const MessagePartSchema = z.discriminatedUnion('type', [
+  TextMessagePartSchema,
+  ReasoningMessagePartSchema,
+  DynamicToolMessagePartSchema,
+])
+type ParsedMessagePart = z.infer<typeof MessagePartSchema>
+const UiMessagePartSchema = MessagePartSchema.transform(part => part as MessagePart)
+const MessageMetadataCarrierSchema = z.object({
+  metadata: z.unknown().optional(),
+}).passthrough()
+const MutableTextPartSchema = z.custom<MutableTextPart>((part) => {
+  TextMessagePartSchema.parse(part)
+  return true
+})
+const MutableReasoningPartSchema = z.custom<MutableReasoningPart>((part) => {
+  ReasoningMessagePartSchema.parse(part)
+  return true
+})
+const MutableToolPartSchema = z.custom<MutableToolPart>((part) => {
+  DynamicToolMessagePartSchema.parse(part)
+  return true
+})
+
+const SnapshotTextDeltaPartSchema = z.object({
+  type: z.literal('text-delta'),
+  delta: z.string(),
+}).passthrough().transform(({ type: _type, delta, ...part }) => ({
+  ...part,
+  type: 'text' as const,
+  text: delta,
+}))
+
+const SnapshotTextStartPartSchema = z.object({
+  type: z.literal('text-start'),
+  text: z.string().default(''),
+}).passthrough().transform(({ type: _type, ...part }) => ({
+  ...part,
+  type: 'text' as const,
+}))
+
+const SnapshotTextEndPartSchema = z.object({
+  type: z.literal('text-end'),
+  text: z.string().default(''),
+}).passthrough().transform(({ type: _type, ...part }) => ({
+  ...part,
+  type: 'text' as const,
+  state: 'done' as const,
+}))
+
+const SnapshotReasoningDeltaPartSchema = z.object({
+  type: z.literal('reasoning-delta'),
+  delta: z.string(),
+}).passthrough().transform(({ type: _type, delta, ...part }) => ({
+  ...part,
+  type: 'reasoning' as const,
+  text: delta,
+}))
+
+const SnapshotReasoningStartPartSchema = z.object({
+  type: z.literal('reasoning-start'),
+  text: z.string().default(''),
+}).passthrough().transform(({ type: _type, ...part }) => ({
+  ...part,
+  type: 'reasoning' as const,
+}))
+
+const SnapshotReasoningEndPartSchema = z.object({
+  type: z.literal('reasoning-end'),
+  text: z.string().default(''),
+}).passthrough().transform(({ type: _type, ...part }) => ({
+  ...part,
+  type: 'reasoning' as const,
+  state: 'done' as const,
+}))
+
+const SnapshotMessagePartSchema = z.union([
+  MessagePartSchema,
+  SnapshotTextDeltaPartSchema,
+  SnapshotTextStartPartSchema,
+  SnapshotTextEndPartSchema,
+  SnapshotReasoningDeltaPartSchema,
+  SnapshotReasoningStartPartSchema,
+  SnapshotReasoningEndPartSchema,
+])
+
+const SnapshotMessagePartsSchema = z.array(
+  z.union([
+    z.object({ type: z.enum(['step-start', 'step-finish']) }).passthrough().transform(() => null),
+    SnapshotMessagePartSchema,
+  ]),
+).transform(parts => parts.filter((part): part is z.infer<typeof SnapshotMessagePartSchema> => part !== null))
+
+export const UiMessageSnapshotSchema = z.object({
+  id: z.string(),
+  role: z.enum(['user', 'assistant']),
+  parts: z.array(MessagePartSchema),
+  metadata: z.unknown().optional(),
+}).passthrough()
+
+const NormalizedUiMessageSnapshotSchema = z.object({
+  id: z.string(),
+  role: z.enum(['user', 'assistant']),
+  parts: SnapshotMessagePartsSchema,
+  metadata: z.unknown().optional(),
+}).passthrough()
+
+export const UiMessageSnapshotJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(UiMessageSnapshotSchema)
+
+const ChunkRouteProviderMetadataSchema = z.object({
+  cradle: z.object({
+    parentToolUseId: z.string().nullable().default(null),
+    taskId: z.string().nullable().default(null),
+  }).default({ parentToolUseId: null, taskId: null }),
+}).passthrough().default({ cradle: { parentToolUseId: null, taskId: null } })
 
 export interface MessageProjection {
   message: UIMessage
@@ -74,6 +221,7 @@ export interface MessageProjection {
   activeReasoningPartIndices: Map<string, number>
   toolPartIndices: Map<string, number>
   partialToolInputs: Map<string, string>
+  partialToolOutputs: Map<string, string>
 }
 
 export interface ProjectionApplyResult {
@@ -85,23 +233,137 @@ export interface ProjectionApplyResult {
 }
 
 export function createMessageProjection(message: UIMessage): MessageProjection {
+  const parsedMessage = z.custom<UIMessage>().parse(UiMessageSnapshotSchema.parse(message))
   const toolPartIndices = new Map<string, number>()
-  message.parts.forEach((part, index) => {
-    if (isToolPart(part)) {
+  parsedMessage.parts.forEach((part, index) => {
+    if (part.type === 'dynamic-tool') {
       toolPartIndices.set(part.toolCallId, index)
     }
   })
   return {
     message: {
-      ...message,
-      parts: [...message.parts],
+      ...parsedMessage,
+      parts: [...parsedMessage.parts],
     },
     activeTextPartIndices: new Map(),
     activeReasoningPartIndices: new Map(),
     toolPartIndices,
     partialToolInputs: new Map(),
+    partialToolOutputs: new Map(),
   }
 }
+
+const ProviderMetadataCarrierSchema = z.object({
+  providerMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
+const StartChunkSchema = z.object({
+  type: z.literal('start'),
+  messageMetadata: z.unknown().optional(),
+}).passthrough()
+
+const TextStartChunkSchema = ProviderMetadataCarrierSchema.extend({
+  type: z.literal('text-start'),
+  id: z.string().min(1).default('text'),
+})
+
+const TextDeltaChunkSchema = ProviderMetadataCarrierSchema.extend({
+  type: z.literal('text-delta'),
+  id: z.string().min(1).default('text'),
+  delta: z.string().default(''),
+})
+
+const TextEndChunkSchema = z.object({
+  type: z.literal('text-end'),
+  id: z.string().min(1).default('text'),
+}).passthrough()
+
+const ReasoningStartChunkSchema = ProviderMetadataCarrierSchema.extend({
+  type: z.literal('reasoning-start'),
+  id: z.string().min(1).default('reasoning'),
+})
+
+const ReasoningDeltaChunkSchema = ProviderMetadataCarrierSchema.extend({
+  type: z.literal('reasoning-delta'),
+  id: z.string().min(1).default('reasoning'),
+  delta: z.string().default(''),
+})
+
+const ReasoningEndChunkSchema = z.object({
+  type: z.literal('reasoning-end'),
+  id: z.string().min(1).default('reasoning'),
+}).passthrough()
+
+const ToolInputStartChunkSchema = ProviderMetadataCarrierSchema.extend({
+  type: z.literal('tool-input-start'),
+  toolCallId: z.string().min(1),
+  toolName: z.string().min(1),
+})
+
+const ToolInputDeltaChunkSchema = z.object({
+  type: z.literal('tool-input-delta'),
+  toolCallId: z.string().min(1),
+  inputTextDelta: z.string().default(''),
+}).passthrough()
+
+const ToolInputAvailableChunkSchema = z.object({
+  type: z.literal('tool-input-available'),
+  toolCallId: z.string().min(1),
+  toolName: z.string().min(1).default('tool'),
+  input: z.unknown(),
+}).passthrough()
+
+const ToolInputErrorChunkSchema = z.object({
+  type: z.literal('tool-input-error'),
+  toolCallId: z.string().min(1),
+  toolName: z.string().min(1).default('tool'),
+  input: z.unknown().optional(),
+  errorText: z.string(),
+}).passthrough()
+
+const ToolOutputAvailableChunkSchema = z.object({
+  type: z.literal('tool-output-available'),
+  toolCallId: z.string().min(1),
+  output: z.unknown(),
+}).passthrough()
+
+const ToolOutputErrorChunkSchema = z.object({
+  type: z.literal('tool-output-error'),
+  toolCallId: z.string().min(1),
+  errorText: z.string(),
+}).passthrough()
+
+const ToolOutputDeniedChunkSchema = z.object({
+  type: z.literal('tool-output-denied'),
+  toolCallId: z.string().min(1),
+}).passthrough()
+
+const FinishChunkSchema = z.object({ type: z.literal('finish') }).passthrough()
+const AbortChunkSchema = z.object({ type: z.literal('abort') }).passthrough()
+const ErrorChunkSchema = z.object({
+  type: z.literal('error'),
+  errorText: z.string().default('Unknown chat error'),
+}).passthrough()
+
+const ChatChunkSchema = z.discriminatedUnion('type', [
+  StartChunkSchema,
+  TextStartChunkSchema,
+  TextDeltaChunkSchema,
+  TextEndChunkSchema,
+  ReasoningStartChunkSchema,
+  ReasoningDeltaChunkSchema,
+  ReasoningEndChunkSchema,
+  ToolInputStartChunkSchema,
+  ToolInputDeltaChunkSchema,
+  ToolInputAvailableChunkSchema,
+  ToolInputErrorChunkSchema,
+  ToolOutputAvailableChunkSchema,
+  ToolOutputErrorChunkSchema,
+  ToolOutputDeniedChunkSchema,
+  FinishChunkSchema,
+  AbortChunkSchema,
+  ErrorChunkSchema,
+])
 
 export function applyChunkToProjection(
   projection: MessageProjection,
@@ -115,39 +377,39 @@ export function applyChunkToProjection(
     nextSeq += 1
   }
 
-  const chunkType = chunk.type as string
-  switch (chunkType) {
+  const parsedChunk = ChatChunkSchema.parse(chunk)
+  switch (parsedChunk.type) {
     case 'start': {
-      const metadata = (chunk as { messageMetadata?: unknown }).messageMetadata
+      const metadata = parsedChunk.messageMetadata
       if (metadata !== undefined) {
-        ;(projection.message as { metadata?: unknown }).metadata = metadata
+        Object.assign(MessageMetadataCarrierSchema.parse(projection.message), { metadata })
         push({ type: 'metadata_update', metadata })
       }
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'text-start': {
-      const id = readChunkId(chunk, 'text')
+      const id = parsedChunk.id
       if (!projection.activeTextPartIndices.has(id)) {
         const part: MutableTextPart = {
           type: 'text',
           text: '',
           state: 'streaming',
-          providerMetadata: readProviderMetadata(chunk),
+          providerMetadata: parsedChunk.providerMetadata,
         }
         const partIndex = projection.message.parts.length
-        projection.message.parts.push(part as MessagePart)
+        projection.message.parts.push(UiMessagePartSchema.parse(part))
         projection.activeTextPartIndices.set(id, partIndex)
-        push({ type: 'part_add', partIndex, part: clonePart(part as MessagePart) })
+        push({ type: 'part_add', partIndex, part: clonePart(UiMessagePartSchema.parse(part)) })
       }
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'text-delta': {
-      const id = readChunkId(chunk, 'text')
+      const id = parsedChunk.id
       const partIndex = locateTextPart(projection, id, deltas, push)
-      const part = projection.message.parts[partIndex] as unknown as MutableTextPart
-      const text = (chunk as { delta?: string }).delta ?? ''
+      const part = MutableTextPartSchema.parse(projection.message.parts[partIndex])
+      const text = parsedChunk.delta
       part.text += text
-      const metadata = readProviderMetadata(chunk)
+      const metadata = parsedChunk.providerMetadata
       if (metadata !== undefined) {
         part.providerMetadata = metadata
       }
@@ -157,10 +419,10 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'text-end': {
-      const id = readChunkId(chunk, 'text')
+      const id = parsedChunk.id
       const partIndex = projection.activeTextPartIndices.get(id)
       if (partIndex !== undefined) {
-        const part = projection.message.parts[partIndex] as unknown as MutableTextPart
+        const part = MutableTextPartSchema.parse(projection.message.parts[partIndex])
         part.state = 'done'
         projection.activeTextPartIndices.delete(id)
         push({ type: 'text_done', partIndex, partType: 'text' })
@@ -168,28 +430,28 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'reasoning-start': {
-      const id = readChunkId(chunk, 'reasoning')
+      const id = parsedChunk.id
       if (!projection.activeReasoningPartIndices.has(id)) {
         const part: MutableReasoningPart = {
           type: 'reasoning',
           text: '',
           state: 'streaming',
-          providerMetadata: readProviderMetadata(chunk),
+          providerMetadata: parsedChunk.providerMetadata,
         }
         const partIndex = projection.message.parts.length
-        projection.message.parts.push(part as MessagePart)
+        projection.message.parts.push(UiMessagePartSchema.parse(part))
         projection.activeReasoningPartIndices.set(id, partIndex)
-        push({ type: 'part_add', partIndex, part: clonePart(part as MessagePart) })
+        push({ type: 'part_add', partIndex, part: clonePart(UiMessagePartSchema.parse(part)) })
       }
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'reasoning-delta': {
-      const id = readChunkId(chunk, 'reasoning')
+      const id = parsedChunk.id
       const partIndex = locateReasoningPart(projection, id, deltas, push)
-      const part = projection.message.parts[partIndex] as unknown as MutableReasoningPart
-      const text = (chunk as { delta?: string }).delta ?? ''
+      const part = MutableReasoningPartSchema.parse(projection.message.parts[partIndex])
+      const text = parsedChunk.delta
       part.text += text
-      const metadata = readProviderMetadata(chunk)
+      const metadata = parsedChunk.providerMetadata
       if (metadata !== undefined) {
         part.providerMetadata = metadata
       }
@@ -199,10 +461,10 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'reasoning-end': {
-      const id = readChunkId(chunk, 'reasoning')
+      const id = parsedChunk.id
       const partIndex = projection.activeReasoningPartIndices.get(id)
       if (partIndex !== undefined) {
-        const part = projection.message.parts[partIndex] as unknown as MutableReasoningPart
+        const part = MutableReasoningPartSchema.parse(projection.message.parts[partIndex])
         part.state = 'done'
         projection.activeReasoningPartIndices.delete(id)
         push({ type: 'text_done', partIndex, partType: 'reasoning' })
@@ -210,34 +472,40 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-start': {
-      const toolChunk = chunk as { toolCallId: string, toolName: string }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, toolChunk.toolName)
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'input-streaming'
-      const metadata = readProviderMetadata(chunk)
+      if (parsedChunk.toolName === 'command_execution') {
+        projection.partialToolOutputs.set(parsedChunk.toolCallId, '')
+        part.output = ''
+      }
+      else {
+        projection.partialToolInputs.set(parsedChunk.toolCallId, '')
+        part.input = { input: '' }
+      }
+      const metadata = parsedChunk.providerMetadata
       if (metadata !== undefined) {
         part.callProviderMetadata = metadata
       }
-      if (partIndex === projection.message.parts.length - 1 && part.input === undefined && part.output === undefined) {
-        push({ type: 'part_add', partIndex, part: clonePart(part as unknown as MessagePart) })
+      if (partIndex === projection.message.parts.length - 1) {
+        push({ type: 'part_add', partIndex, part: clonePart(UiMessagePartSchema.parse(part)) })
       }
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-delta': {
-      const toolChunk = chunk as { toolCallId: string, inputTextDelta?: string }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, 'tool')
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
-      const text = toolChunk.inputTextDelta ?? ''
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
+      const text = parsedChunk.inputTextDelta
       if (part.toolName === 'command_execution') {
-        part.output = `${typeof part.output === 'string' ? part.output : ''}${text}`
+        const nextOutput = appendPartialText(projection.partialToolOutputs, parsedChunk.toolCallId, text)
+        part.output = nextOutput
         if (text.length > 0) {
           push({ type: 'tool_output_streaming', partIndex, stream: 'stdout', text })
         }
       }
       else {
-        const nextInput = `${projection.partialToolInputs.get(toolChunk.toolCallId) ?? ''}${text}`
-        projection.partialToolInputs.set(toolChunk.toolCallId, nextInput)
-        part.input = mergeInputAppend(part.input, 'input', text)
+        const nextInput = appendPartialText(projection.partialToolInputs, parsedChunk.toolCallId, text)
+        part.input = { input: nextInput }
         if (text.length > 0) {
           push({ type: 'tool_input_append', partIndex, inputKey: 'input', text })
         }
@@ -245,48 +513,46 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-available': {
-      const toolChunk = chunk as { toolCallId: string, toolName?: string, input: unknown }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, toolChunk.toolName ?? 'tool')
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'input-available'
-      part.input = toolChunk.input
-      projection.partialToolInputs.delete(toolChunk.toolCallId)
-      push({ type: 'tool_input_set', partIndex, input: toolChunk.input })
+      part.input = parsedChunk.input
+      projection.partialToolInputs.delete(parsedChunk.toolCallId)
+      push({ type: 'tool_input_set', partIndex, input: parsedChunk.input })
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-error': {
-      const toolChunk = chunk as { toolCallId: string, toolName?: string, input?: unknown, errorText: string }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, toolChunk.toolName ?? 'tool')
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-error'
-      part.input = toolChunk.input
-      part.errorText = toolChunk.errorText
-      push({ type: 'tool_output_set', partIndex, state: 'output-error', errorText: toolChunk.errorText })
+      part.input = parsedChunk.input
+      part.errorText = parsedChunk.errorText
+      push({ type: 'tool_output_set', partIndex, state: 'output-error', errorText: parsedChunk.errorText })
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-output-available': {
-      const toolChunk = chunk as { toolCallId: string, output: unknown }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, 'tool')
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-available'
-      part.output = toolChunk.output
-      push({ type: 'tool_output_set', partIndex, state: 'output-available', output: toolChunk.output })
+      part.output = parsedChunk.output
+      projection.partialToolOutputs.delete(parsedChunk.toolCallId)
+      push({ type: 'tool_output_set', partIndex, state: 'output-available', output: parsedChunk.output })
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-output-error': {
-      const toolChunk = chunk as { toolCallId: string, errorText: string }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, 'tool')
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-error'
-      part.errorText = toolChunk.errorText
-      push({ type: 'tool_output_set', partIndex, state: 'output-error', errorText: toolChunk.errorText })
+      part.errorText = parsedChunk.errorText
+      projection.partialToolOutputs.delete(parsedChunk.toolCallId)
+      push({ type: 'tool_output_set', partIndex, state: 'output-error', errorText: parsedChunk.errorText })
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-output-denied': {
-      const toolChunk = chunk as { toolCallId: string }
-      const partIndex = locateToolPart(projection, toolChunk.toolCallId, 'tool')
-      const part = projection.message.parts[partIndex] as unknown as MutableToolPart
+      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-denied'
+      projection.partialToolOutputs.delete(parsedChunk.toolCallId)
       push({ type: 'tool_output_set', partIndex, state: 'output-denied' })
       return result(deltas, nextSeq, false, 'streaming', null)
     }
@@ -296,9 +562,7 @@ export function applyChunkToProjection(
     case 'abort':
       return result(deltas, nextSeq, true, 'aborted', null)
     case 'error':
-      return result(deltas, nextSeq, true, 'failed', (chunk as { errorText?: string }).errorText ?? 'Unknown chat error')
-    default:
-      return result(deltas, nextSeq, false, 'streaming', null)
+      return result(deltas, nextSeq, true, 'failed', parsedChunk.errorText)
   }
 }
 
@@ -307,7 +571,7 @@ export function applySnapshotToProjection(
   message: UIMessage,
   firstSeq: number,
 ): ProjectionApplyResult {
-  const normalizedMessage = normalizeSnapshotMessage(message)
+  const normalizedMessage = normalizeMessageSnapshot(message)
   const projectedRole = projection.message.role as 'user' | 'assistant'
 
   if (normalizedMessage.id !== projection.message.id) {
@@ -326,8 +590,8 @@ export function applySnapshotToProjection(
   }
 
   const prevMessage = projection.message
-  const prevMetadata = (prevMessage as { metadata?: unknown }).metadata
-  const nextMetadata = (normalizedMessage as { metadata?: unknown }).metadata
+  const prevMetadata = MessageMetadataCarrierSchema.parse(prevMessage).metadata
+  const nextMetadata = MessageMetadataCarrierSchema.parse(normalizedMessage).metadata
   if (!areEqual(prevMetadata, nextMetadata) && nextMetadata !== undefined) {
     push({ type: 'metadata_update', metadata: cloneValue(nextMetadata) })
   }
@@ -350,51 +614,54 @@ export function applySnapshotToProjection(
       continue
     }
 
-    if (nextPart.type === 'text' || nextPart.type === 'reasoning') {
-      const prevText = typeof (prevPart as { text?: unknown }).text === 'string'
-        ? (prevPart as { text: string }).text
-        : ''
-      const nextText = typeof (nextPart as { text?: unknown }).text === 'string'
-        ? (nextPart as { text: string }).text
-        : ''
-      if (nextText.length > prevText.length && nextText.startsWith(prevText)) {
+    if (nextPart.type === 'text') {
+      const previousPart = TextMessagePartSchema.parse(prevPart)
+      if (nextPart.text.length > previousPart.text.length && nextPart.text.startsWith(previousPart.text)) {
         push({
           type: 'text_append',
           partIndex,
-          partType: nextPart.type,
-          text: nextText.slice(prevText.length),
+          partType: 'text',
+          text: nextPart.text.slice(previousPart.text.length),
         })
       }
 
-      const prevState = (prevPart as { state?: unknown }).state
-      const nextState = (nextPart as { state?: unknown }).state
-      if (prevState !== 'done' && nextState === 'done') {
-        push({ type: 'text_done', partIndex, partType: nextPart.type })
+      if (previousPart.state !== 'done' && nextPart.state === 'done') {
+        push({ type: 'text_done', partIndex, partType: 'text' })
+      }
+      continue
+    }
+
+    if (nextPart.type === 'reasoning') {
+      const previousPart = ReasoningMessagePartSchema.parse(prevPart)
+      if (nextPart.text.length > previousPart.text.length && nextPart.text.startsWith(previousPart.text)) {
+        push({
+          type: 'text_append',
+          partIndex,
+          partType: 'reasoning',
+          text: nextPart.text.slice(previousPart.text.length),
+        })
+      }
+
+      if (previousPart.state !== 'done' && nextPart.state === 'done') {
+        push({ type: 'text_done', partIndex, partType: 'reasoning' })
       }
       continue
     }
 
     if (nextPart.type === 'dynamic-tool') {
-      const prevInput = (prevPart as { input?: unknown }).input
-      const nextInput = (nextPart as { input?: unknown }).input
-      if (!areEqual(prevInput, nextInput) && nextInput !== undefined) {
-        push({ type: 'tool_input_set', partIndex, input: cloneValue(nextInput) })
+      const previousPart = DynamicToolMessagePartSchema.parse(prevPart)
+      if (!areEqual(previousPart.input, nextPart.input) && nextPart.input !== undefined) {
+        push({ type: 'tool_input_set', partIndex, input: cloneValue(nextPart.input) })
       }
 
-      const prevOutput = (prevPart as { output?: unknown }).output
-      const nextOutput = (nextPart as { output?: unknown }).output
-      const prevState = (prevPart as { state?: unknown }).state
-      const nextState = (nextPart as { state?: unknown }).state
-      const prevErrorText = (prevPart as { errorText?: unknown }).errorText
-      const nextErrorText = (nextPart as { errorText?: unknown }).errorText
-      if (!areEqual(prevOutput, nextOutput) || prevState !== nextState || prevErrorText !== nextErrorText) {
-        if (nextState === 'output-available' || nextState === 'output-error' || nextState === 'output-denied') {
+      if (!areEqual(previousPart.output, nextPart.output) || previousPart.state !== nextPart.state || previousPart.errorText !== nextPart.errorText) {
+        if (nextPart.state === 'output-available' || nextPart.state === 'output-error' || nextPart.state === 'output-denied') {
           push({
             type: 'tool_output_set',
             partIndex,
-            state: nextState,
-            output: nextOutput === undefined ? undefined : cloneValue(nextOutput),
-            errorText: typeof nextErrorText === 'string' ? nextErrorText : undefined,
+            state: nextPart.state,
+            output: nextPart.output === undefined ? undefined : cloneValue(nextPart.output),
+            errorText: nextPart.errorText,
           })
         }
       }
@@ -407,15 +674,21 @@ export function applySnapshotToProjection(
   projection.activeReasoningPartIndices.clear()
   projection.toolPartIndices = nextProjection.toolPartIndices
   projection.partialToolInputs.clear()
+  projection.partialToolOutputs.clear()
 
   return result(deltas, nextSeq, false, 'streaming', null)
 }
 
+export function normalizeMessageSnapshot(message: UIMessage): UIMessage {
+  return z.custom<UIMessage>().parse(NormalizedUiMessageSnapshotSchema.parse(message))
+}
+
 export function readChunkRouteContext(chunk: UIMessageChunk): ChunkRouteContext {
-  const meta = readProviderMetadata(chunk) as { cradle?: { parentToolUseId?: string, taskId?: string } } | undefined
+  const metadataCarrier = ProviderMetadataCarrierSchema.parse(chunk)
+  const meta = ChunkRouteProviderMetadataSchema.parse(metadataCarrier.providerMetadata)
   return {
-    parentToolCallId: meta?.cradle?.parentToolUseId ?? null,
-    taskId: meta?.cradle?.taskId ?? null,
+    parentToolCallId: meta.cradle.parentToolUseId,
+    taskId: meta.cradle.taskId,
   }
 }
 
@@ -435,34 +708,10 @@ export function createUserMessage(messageId: string, text: string): UIMessage {
   }
 }
 
-export function parseMessageJson(messageId: string, role: 'user' | 'assistant', value: string): UIMessage {
-  let parsed: unknown
-
-  try {
-    parsed = JSON.parse(value) as UIMessage
-  }
-  catch (error) {
-    throw invalidSnapshotError(messageId, role, 'message_json is not valid JSON', error)
-  }
-
-  if (!isUiMessageSnapshot(parsed)) {
-    throw invalidSnapshotError(messageId, role, 'message_json must be a UIMessage-like object with id, role, and parts')
-  }
-
-  if (parsed.id !== messageId) {
-    throw invalidSnapshotError(messageId, role, 'message_json.id must match messages.id')
-  }
-
-  if (parsed.role !== role) {
-    throw invalidSnapshotError(messageId, role, 'message_json.role must match messages.role')
-  }
-
-  return parsed
-}
-
 export function extractMessageText(message: UIMessage): string {
-  return message.parts
-    .flatMap(part => part.type === 'text' ? [(part as { text?: string }).text ?? ''] : [])
+  const parsedMessage = normalizeMessageSnapshot(message)
+  return parsedMessage.parts
+    .flatMap(part => part.type === 'text' ? [part.text] : [])
     .join('')
 }
 
@@ -481,14 +730,14 @@ function closeActiveTextParts(
   push: (delta: UnsequencedChatPartDelta) => void,
 ): void {
   for (const [id, partIndex] of projection.activeTextPartIndices) {
-    const part = projection.message.parts[partIndex] as unknown as MutableTextPart
+    const part = MutableTextPartSchema.parse(projection.message.parts[partIndex])
     part.state = 'done'
     projection.activeTextPartIndices.delete(id)
     push({ type: 'text_done', partIndex, partType: 'text' })
   }
 
   for (const [id, partIndex] of projection.activeReasoningPartIndices) {
-    const part = projection.message.parts[partIndex] as unknown as MutableReasoningPart
+    const part = MutableReasoningPartSchema.parse(projection.message.parts[partIndex])
     part.state = 'done'
     projection.activeReasoningPartIndices.delete(id)
     push({ type: 'text_done', partIndex, partType: 'reasoning' })
@@ -507,9 +756,9 @@ function locateTextPart(
   }
   const part: MutableTextPart = { type: 'text', text: '', state: 'streaming' }
   const partIndex = projection.message.parts.length
-  projection.message.parts.push(part as MessagePart)
+  projection.message.parts.push(UiMessagePartSchema.parse(part))
   projection.activeTextPartIndices.set(id, partIndex)
-  push({ type: 'part_add', partIndex, part: clonePart(part as MessagePart) })
+  push({ type: 'part_add', partIndex, part: clonePart(UiMessagePartSchema.parse(part)) })
   return partIndex
 }
 
@@ -525,9 +774,9 @@ function locateReasoningPart(
   }
   const part: MutableReasoningPart = { type: 'reasoning', text: '', state: 'streaming' }
   const partIndex = projection.message.parts.length
-  projection.message.parts.push(part as MessagePart)
+  projection.message.parts.push(UiMessagePartSchema.parse(part))
   projection.activeReasoningPartIndices.set(id, partIndex)
-  push({ type: 'part_add', partIndex, part: clonePart(part as MessagePart) })
+  push({ type: 'part_add', partIndex, part: clonePart(UiMessagePartSchema.parse(part)) })
   return partIndex
 }
 
@@ -544,33 +793,20 @@ function locateToolPart(projection: MessageProjection, toolCallId: string, toolN
     input: undefined,
   }
   const partIndex = projection.message.parts.length
-  projection.message.parts.push(part as unknown as MessagePart)
+  projection.message.parts.push(UiMessagePartSchema.parse(part))
   projection.toolPartIndices.set(toolCallId, partIndex)
   return partIndex
 }
 
-function mergeInputAppend(input: unknown, inputKey: string, text: string): Record<string, unknown> {
-  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-    const current = input as Record<string, unknown>
-    return {
-      ...current,
-      [inputKey]: `${typeof current[inputKey] === 'string' ? current[inputKey] : ''}${text}`,
-    }
+function appendPartialText(buffer: Map<string, string>, toolCallId: string, text: string): string {
+  const current = buffer.get(toolCallId)
+  if (current === undefined) {
+    throw invalidProjectionStateError(toolCallId, 'tool input delta arrived before the input stream was started')
   }
-  return { [inputKey]: text }
-}
 
-function isToolPart(part: MessagePart): part is MessagePart & { toolCallId: string } {
-  return typeof part === 'object' && part !== null && 'toolCallId' in part && typeof (part as { toolCallId?: unknown }).toolCallId === 'string'
-}
-
-function readChunkId(chunk: UIMessageChunk, fallback: string): string {
-  const id = (chunk as { id?: unknown }).id
-  return typeof id === 'string' && id.length > 0 ? id : fallback
-}
-
-function readProviderMetadata(chunk: UIMessageChunk): unknown {
-  return 'providerMetadata' in chunk ? (chunk as { providerMetadata?: unknown }).providerMetadata : undefined
+  const next = `${current}${text}`
+  buffer.set(toolCallId, next)
+  return next
 }
 
 function invalidSnapshotError(messageId: string, role: 'user' | 'assistant', reason: string, cause?: unknown): AppError {
@@ -587,60 +823,30 @@ function invalidSnapshotError(messageId: string, role: 'user' | 'assistant', rea
   })
 }
 
-function isUiMessageSnapshot(value: unknown): value is UIMessage {
-  if (!isRecord(value)) {
-    return false
-  }
-
-  return typeof value.id === 'string'
-    && (value.role === 'user' || value.role === 'assistant')
-    && Array.isArray(value.parts)
-    && value.parts.every(isMessagePartLike)
-}
-
-function isMessagePartLike(value: unknown): boolean {
-  return isRecord(value) && typeof value.type === 'string'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+function invalidProjectionStateError(toolCallId: string, reason: string): AppError {
+  return new AppError({
+    code: 'chat_projection_state_invalid',
+    status: 500,
+    message: 'Chat projection state is invalid',
+    details: {
+      toolCallId,
+      reason,
+    },
+  })
 }
 
 function clonePart(part: MessagePart): MessagePart {
-  return typeof structuredClone === 'function'
-    ? structuredClone(part)
-    : JSON.parse(JSON.stringify(part)) as MessagePart
-}
-
-function normalizeSnapshotMessage(message: UIMessage): UIMessage {
-  return {
-    ...message,
-    parts: message.parts.filter(part => part.type === 'text' || part.type === 'reasoning' || part.type === 'dynamic-tool'),
-  }
+  return structuredClone(part)
 }
 
 function cloneMessage(message: UIMessage): UIMessage {
-  return typeof structuredClone === 'function'
-    ? structuredClone(message)
-    : JSON.parse(JSON.stringify(message)) as UIMessage
+  return structuredClone(message)
 }
 
 function cloneValue<T>(value: T): T {
-  if (typeof structuredClone === 'function') {
-    return structuredClone(value)
-  }
-  return JSON.parse(JSON.stringify(value)) as T
+  return structuredClone(value)
 }
 
 function areEqual(left: unknown, right: unknown): boolean {
-  if (left === right) {
-    return true
-  }
-
-  try {
-    return JSON.stringify(left) === JSON.stringify(right)
-  }
-  catch {
-    return false
-  }
+  return isDeepStrictEqual(left, right)
 }

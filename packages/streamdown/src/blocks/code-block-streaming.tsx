@@ -65,6 +65,8 @@ const CodeBlockStreaming = memo<CodeBlockStreamingProps>(({ code, language, stre
   }, [language])
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
     if (state === 'queued') {
       return
     }
@@ -85,10 +87,18 @@ const CodeBlockStreaming = memo<CodeBlockStreamingProps>(({ code, language, stre
       highlight(code)
     }
  else if (!pendingRef.current) {
-      pendingRef.current = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         pendingRef.current = null
         highlight(code)
       }, STREAMING_HIGHLIGHT_THROTTLE_MS - elapsed)
+      pendingRef.current = timeoutId
+    }
+
+    return () => {
+      if (timeoutId && pendingRef.current === timeoutId) {
+        clearTimeout(timeoutId)
+        pendingRef.current = null
+      }
     }
   }, [code, streaming, state, highlight])
 

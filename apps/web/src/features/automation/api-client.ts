@@ -1,17 +1,132 @@
 import { getServerUrl } from '~/lib/electron'
+import { z } from 'zod'
 
 import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun } from './types'
 
-interface CollectionPayload<T> {
-  automations?: T[]
-  definitions?: T[]
-  runs?: T[]
-  artifacts?: T[]
-  items?: T[]
-  data?: T[]
-}
+const AutomationTriggerSchema = z.object({
+  type: z.literal('rrule'),
+  rrule: z.string(),
+  timezone: z.string(),
+  misfirePolicy: z.enum(['skip', 'run_latest']).optional(),
+})
 
-async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
+const AutomationInputSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('file_ref'),
+    path: z.string(),
+  }),
+  z.object({
+    type: z.literal('inline_file'),
+    name: z.string(),
+    content: z.string(),
+  }),
+  z.object({
+    type: z.literal('text'),
+    name: z.string(),
+    content: z.string(),
+  }),
+  z.object({
+    type: z.literal('url'),
+    url: z.string(),
+  }),
+])
+
+const AutomationArtifactRequestSchema = z.object({
+  name: z.string(),
+  kind: z.enum(['markdown', 'text', 'json', 'file_ref']),
+  description: z.string().optional(),
+})
+
+const AutomationRecipeSchema = z.object({
+  kind: z.literal('agent_task'),
+  prompt: z.string(),
+  inputs: z.array(AutomationInputSchema),
+  artifactRequests: z.array(AutomationArtifactRequestSchema),
+  agentId: z.string().optional(),
+  agentProfileId: z.string(),
+  runtimeKind: z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat']).optional(),
+  modelId: z.string().optional(),
+  thinkingEffort: z.enum(['low', 'medium', 'high']).optional(),
+})
+
+const AutomationDefinitionSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string().nullable(),
+  title: z.string(),
+  description: z.string(),
+  enabled: z.boolean(),
+  trigger: AutomationTriggerSchema,
+  recipe: AutomationRecipeSchema,
+  createdByKind: z.enum(['agent', 'user', 'system']),
+  createdById: z.string().nullable(),
+  lastRunAt: z.number().nullable(),
+  nextRunAt: z.number().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+
+const AutomationRunSchema = z.object({
+  id: z.string(),
+  automationDefinitionId: z.string(),
+  workspaceId: z.string().nullable(),
+  triggerType: z.enum(['manual', 'scheduled']),
+  occurrenceKey: z.string().nullable(),
+  status: z.enum(['queued', 'running', 'complete', 'failed', 'cancelled']),
+  triggerSnapshot: AutomationTriggerSchema,
+  recipeSnapshot: AutomationRecipeSchema,
+  chatSessionId: z.string().nullable(),
+  backendRunId: z.string().nullable(),
+  artifactCount: z.number(),
+  errorText: z.string().nullable(),
+  scheduledFor: z.number().nullable(),
+  claimedAt: z.number().nullable(),
+  startedAt: z.number().nullable(),
+  finishedAt: z.number().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+
+const AutomationArtifactSchema = z.object({
+  id: z.string(),
+  automationRunId: z.string(),
+  automationDefinitionId: z.string().nullable(),
+  kind: z.enum(['markdown', 'text', 'json', 'file_ref']),
+  name: z.string(),
+  mimeType: z.string().nullable(),
+  content: z.string().nullable(),
+  metadata: z.record(z.string(), z.unknown()),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+
+const AutomationDefinitionCollectionSchema = z.union([
+  z.array(AutomationDefinitionSchema),
+  z.object({ automations: z.array(AutomationDefinitionSchema) }).transform(payload => payload.automations),
+  z.object({ definitions: z.array(AutomationDefinitionSchema) }).transform(payload => payload.definitions),
+  z.object({ items: z.array(AutomationDefinitionSchema) }).transform(payload => payload.items),
+  z.object({ data: z.array(AutomationDefinitionSchema) }).transform(payload => payload.data),
+])
+
+const AutomationRunCollectionSchema = z.union([
+  z.array(AutomationRunSchema),
+  z.object({ runs: z.array(AutomationRunSchema) }).transform(payload => payload.runs),
+  z.object({ items: z.array(AutomationRunSchema) }).transform(payload => payload.items),
+  z.object({ data: z.array(AutomationRunSchema) }).transform(payload => payload.data),
+])
+
+const AutomationArtifactCollectionSchema = z.union([
+  z.array(AutomationArtifactSchema),
+  z.object({ artifacts: z.array(AutomationArtifactSchema) }).transform(payload => payload.artifacts),
+  z.object({ items: z.array(AutomationArtifactSchema) }).transform(payload => payload.items),
+  z.object({ data: z.array(AutomationArtifactSchema) }).transform(payload => payload.data),
+])
+
+const RunAutomationNowResponseSchema = z.union([
+  AutomationRunSchema,
+  z.object({ run: AutomationRunSchema }).transform(payload => payload.run),
+])
+
+async function requestAutomationJson(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(`${getServerUrl()}${path}`, {
     ...init,
     headers: {
@@ -22,63 +137,37 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
   })
 
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
+    const text = await response.text()
     throw new Error(text || `Automation request failed: ${response.status}`)
   }
 
-  return response.json() as Promise<T>
-}
-
-function readCollection<T>(payload: T[] | CollectionPayload<T>, keys: Array<keyof CollectionPayload<T>>): T[] {
-  if (Array.isArray(payload)) {
-    return payload
-  }
-
-  for (const key of keys) {
-    const value = payload[key]
-    if (Array.isArray(value)) {
-      return value
-    }
-  }
-
-  return []
+  return response.json()
 }
 
 async function attachLatestRun(definition: AutomationDefinition): Promise<AutomationDefinitionSummary> {
-  try {
-    const runs = await listAutomationRuns(definition.id, 1)
-    return { ...definition, latestRun: runs[0] ?? null }
-  }
-  catch {
-    return { ...definition, latestRun: null }
-  }
+  const runs = await listAutomationRuns(definition.id, 1)
+  return { ...definition, latestRun: runs[0] ?? null }
 }
 
 export async function listAutomationDefinitions(): Promise<AutomationDefinitionSummary[]> {
-  const payload = await readJson<AutomationDefinition[] | CollectionPayload<AutomationDefinition>>('/automations')
-  const definitions = readCollection(payload, ['automations', 'definitions', 'items', 'data'])
+  const definitions = AutomationDefinitionCollectionSchema.parse(await requestAutomationJson('/automations')) satisfies AutomationDefinition[]
   return Promise.all(definitions.map(attachLatestRun))
 }
 
 export async function listAutomationRuns(automationId: string, limit = 20): Promise<AutomationRun[]> {
-  const payload = await readJson<AutomationRun[] | CollectionPayload<AutomationRun>>(
-    `/automations/${encodeURIComponent(automationId)}/runs`,
-  )
-  return readCollection(payload, ['runs', 'items', 'data']).slice(0, limit)
+  const runs = AutomationRunCollectionSchema.parse(await requestAutomationJson(`/automations/${encodeURIComponent(automationId)}/runs`)) satisfies AutomationRun[]
+  return runs.slice(0, limit)
 }
 
 export async function listAutomationArtifacts(automationId: string): Promise<AutomationArtifact[]> {
-  const payload = await readJson<AutomationArtifact[] | CollectionPayload<AutomationArtifact>>(
-    `/automations/${encodeURIComponent(automationId)}/artifacts`,
-  )
-  return readCollection(payload, ['artifacts', 'items', 'data'])
+  return AutomationArtifactCollectionSchema.parse(
+    await requestAutomationJson(`/automations/${encodeURIComponent(automationId)}/artifacts`),
+  ) satisfies AutomationArtifact[]
 }
 
 export async function runAutomationNow(automationId: string): Promise<AutomationRun> {
-  const payload = await readJson<AutomationRun | { run: AutomationRun }>(
+  return RunAutomationNowResponseSchema.parse(await requestAutomationJson(
     `/automations/${encodeURIComponent(automationId)}/run`,
     { method: 'POST', body: JSON.stringify({}) },
-  )
-
-  return 'run' in payload ? payload.run : payload
+  )) satisfies AutomationRun
 }

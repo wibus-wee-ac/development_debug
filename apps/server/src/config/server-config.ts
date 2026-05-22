@@ -1,26 +1,40 @@
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { getMigrationsPath } from '@cradle/db/paths'
 import { z } from 'zod'
 
 const logLevels = ['debug', 'info', 'warn', 'error'] as const
 
-const trimOptionalString = (value: unknown) => {
-  if (typeof value !== 'string') {
-    return value
-  }
+const OptionalEnvStringSchema = z.string()
+  .trim()
+  .transform(value => value.length > 0 ? value : undefined)
+  .optional()
 
-  const trimmed = value.trim()
-  return trimmed.length === 0 ? undefined : trimmed
-}
-
-const serverConfigSchema = z.object({
+const serverEnvSchema = z.object({
   CRADLE_HOST: z.string().default('127.0.0.1'),
   CRADLE_PORT: z.coerce.number().int().positive().default(21423),
   CRADLE_LOG_LEVEL: z.enum(logLevels).default('info'),
-  CRADLE_DATA_DIR: z.preprocess(trimOptionalString, z.string().optional()),
-  CRADLE_DB_PATH: z.preprocess(trimOptionalString, z.string().optional()),
-  CRADLE_LOG_FILE: z.preprocess(trimOptionalString, z.string().optional()),
+  CRADLE_DATA_DIR: OptionalEnvStringSchema,
+  CRADLE_DB_PATH: OptionalEnvStringSchema,
+  CRADLE_MIGRATIONS_DIR: OptionalEnvStringSchema,
+  CRADLE_LOG_FILE: OptionalEnvStringSchema,
+}).transform((env) => {
+  const dbPath = env.CRADLE_DB_PATH || (env.CRADLE_DATA_DIR ? join(env.CRADLE_DATA_DIR, 'cradle.db') : undefined)
+
+  if (!dbPath) {
+    throw new Error('CRADLE_DATA_DIR or CRADLE_DB_PATH is required')
+  }
+
+  return {
+    host: env.CRADLE_HOST,
+    port: env.CRADLE_PORT,
+    logLevel: env.CRADLE_LOG_LEVEL,
+    dataDir: env.CRADLE_DATA_DIR,
+    dbPath,
+    migrationsDir: env.CRADLE_MIGRATIONS_DIR || getMigrationsPath(),
+    logFile: env.CRADLE_LOG_FILE || (env.CRADLE_DATA_DIR ? join(env.CRADLE_DATA_DIR, 'server.log') : undefined),
+  }
 })
 
 export type LogLevel = (typeof logLevels)[number]
@@ -31,30 +45,14 @@ export interface ServerConfigValues {
   logLevel: LogLevel
   dataDir?: string
   dbPath: string
+  migrationsDir: string
   logFile?: string
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfigValues {
-  const parsed = serverConfigSchema.parse(env)
-  const dbPath
-    = parsed.CRADLE_DB_PATH
-      ?? (parsed.CRADLE_DATA_DIR ? join(parsed.CRADLE_DATA_DIR, 'cradle.db') : undefined)
-
-  if (!dbPath) {
-    throw new Error('CRADLE_DATA_DIR or CRADLE_DB_PATH is required')
-  }
-
-  mkdirSync(dirname(dbPath), { recursive: true })
-
-  return {
-    host: parsed.CRADLE_HOST,
-    port: parsed.CRADLE_PORT,
-    logLevel: parsed.CRADLE_LOG_LEVEL,
-    dataDir: parsed.CRADLE_DATA_DIR,
-    dbPath,
-    logFile: parsed.CRADLE_LOG_FILE
-      ?? (parsed.CRADLE_DATA_DIR ? join(parsed.CRADLE_DATA_DIR, 'server.log') : undefined),
-  }
+  const config = serverEnvSchema.parse(env)
+  mkdirSync(dirname(config.dbPath), { recursive: true })
+  return config
 }
 
 export class ServerConfig {

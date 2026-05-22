@@ -133,7 +133,6 @@ describe('workspace capability', () => {
       }
     }
   })
-
   it('lists files and enforces safe text IO', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
@@ -194,27 +193,71 @@ describe('workspace capability', () => {
       const writeRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: 'notes.md', content: 'updated text\n' }),
+        body: JSON.stringify({ path: 'notes.md', content: 'updated text\n', confirmedNonCradleOwnedWrite: true }),
       }))
       const writeBody = await writeRes.json()
       expect(writeBody.success).toBe(true)
+      expect(writeBody.ownerBoundary).toEqual(expect.objectContaining({
+        classification: 'non-cradle-owned',
+        owner: 'workspace',
+        consentRequired: true,
+        consentConfirmed: true,
+        workspacePath: workspaceRoot,
+        relativePath: 'notes.md',
+        targetPath: join(workspaceRoot, 'notes.md'),
+      }))
+      expect(readFileSync(join(workspaceRoot, 'notes.md'), 'utf8')).toBe('updated text\n')
+
+      const unconfirmedWrite = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'notes.md', content: 'unconfirmed text\n' }),
+      }))
+      expect(unconfirmedWrite.status).toBe(400)
+      expect(readFileSync(join(workspaceRoot, 'notes.md'), 'utf8')).toBe('updated text\n')
+
+      const rejectedConfirmationWrite = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'notes.md', content: 'rejected text\n', confirmedNonCradleOwnedWrite: false }),
+      }))
+      expect(rejectedConfirmationWrite.status).toBe(400)
+      const rejectedConfirmationBody = await rejectedConfirmationWrite.json()
+      expect(rejectedConfirmationBody.code).toBe('non_cradle_owned_write_confirmation_required')
       expect(readFileSync(join(workspaceRoot, 'notes.md'), 'utf8')).toBe('updated text\n')
 
       const blockedWrite = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: '../outside.md', content: 'bad\n' }),
+        body: JSON.stringify({ path: '../outside.md', content: 'bad\n', confirmedNonCradleOwnedWrite: true }),
       }))
       const blockedWriteBody = await blockedWrite.json()
       expect(blockedWriteBody.success).toBe(false)
+      expect(blockedWriteBody.ownerBoundary).toEqual(expect.objectContaining({
+        classification: 'non-cradle-owned',
+        owner: 'workspace',
+        consentRequired: true,
+        consentConfirmed: true,
+        relativePath: '../outside.md',
+        targetPath: null,
+      }))
 
       const missingWrite = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files/content', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: 'notes.md', content: 'bad\n' }),
+        body: JSON.stringify({ path: 'notes.md', content: 'bad\n', confirmedNonCradleOwnedWrite: true }),
       }))
       const missingWriteBody = await missingWrite.json()
       expect(missingWriteBody.success).toBe(false)
+      expect(missingWriteBody.ownerBoundary).toEqual(expect.objectContaining({
+        classification: 'non-cradle-owned',
+        owner: 'workspace',
+        consentRequired: true,
+        consentConfirmed: true,
+        workspacePath: null,
+        relativePath: 'notes.md',
+        targetPath: null,
+      }))
     }
     finally {
       shutdownInfra()

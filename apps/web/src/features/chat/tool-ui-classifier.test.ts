@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
-import { describeToolCall, materializeStreamingToolInput } from './tool-ui-classifier'
+import { describeToolCall } from './tool-ui-classifier'
 
 function tool(toolName: string, input?: unknown, output?: unknown): RenderableToolPart {
   return {
@@ -53,27 +53,4 @@ describe('describeToolCall', () => {
     })
   })
 
-  it('classifies partial streaming edit input before the tool JSON is complete', () => {
-    const partialInput = {
-      input: '{"file_path":"/repo/src/app.tsx","old_string":"const value = 1","new_string":"const value = 2',
-    }
-    const descriptor = describeToolCall({
-      type: 'dynamic-tool',
-      toolName: 'Edit File',
-      toolCallId: 'call-edit-streaming',
-      state: 'input-streaming',
-      input: partialInput,
-    })
-
-    expect(descriptor).toMatchObject({
-      kind: 'file-diff',
-      target: '/repo/src/app.tsx',
-      title: 'Edit file',
-    })
-    expect(materializeStreamingToolInput(partialInput)).toMatchObject({
-      file_path: '/repo/src/app.tsx',
-      old_string: 'const value = 1',
-      new_string: 'const value = 2',
-    })
-  })
 })

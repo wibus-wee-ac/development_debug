@@ -6,7 +6,7 @@ import {
   XIcon,
   ZapIcon,
 } from 'lucide-react'
-import { useCallback, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef } from 'react'
 
 import { postWorkspacesByIdPack } from '~/api-gen'
 import { Button } from '~/components/ui/button'
@@ -20,6 +20,7 @@ import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Switch } from '~/components/ui/switch'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { formatTokens, mergeScopePaths, pathsToIncludeFromDraft } from './pack-codebase-utils'
 
@@ -127,6 +128,21 @@ function PackCodebaseDialogContent({
 }) {
   const [state, dispatch] = useReducer(packCodebaseDialogReducer, initialPaths, createInitialPackCodebaseDialogState)
   const pathInputRef = useRef<HTMLTextAreaElement>(null)
+  const firstRenderedRef = useRef(false)
+
+  useEffect(() => {
+    if (firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-pack-codebase-dialog-rendered')
+    measureCradlePerformance(
+      'cradle:pack-codebase-dialog-first-render',
+      'cradle:pack-codebase-dialog-open-requested',
+      'cradle:first-pack-codebase-dialog-rendered',
+    )
+  }, [])
 
   const addPath = useCallback((raw: string) => {
     dispatch({ type: 'add-paths', input: raw })
@@ -177,7 +193,7 @@ function PackCodebaseDialogContent({
   }, [state.compress, state.ignore, state.pathInput, state.removeComments, state.scopePaths, state.style, workspaceId])
 
   return (
-    <div className="space-y-5 py-1">
+    <div className="space-y-5 py-1" data-testid="pack-codebase-dialog-content">
       {state.status === 'done' && state.result && (
         <div
           className="flex items-start gap-3 rounded-lg bg-muted/60 px-4 py-3"
@@ -376,7 +392,7 @@ export function PackCodebaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" showCloseButton data-testid="pack-codebase-dialog">
+      <DialogContent className="max-w-md" showCloseButton data-testid="pack-codebase-dialog" data-pack-codebase-ready="true">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <PackageIcon className="size-4 text-muted-foreground" />

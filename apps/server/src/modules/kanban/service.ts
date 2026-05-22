@@ -3,10 +3,17 @@ import { randomUUID } from 'node:crypto'
 import type { KanbanBoard } from '@cradle/db'
 import { kanbanBoards, workspaces } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
+
+const CreateBoardInputSchema = z.object({
+  workspaceId: z.string(),
+  name: z.string(),
+  filterConfig: z.string().nullable().default(null),
+})
 
 function workspaceExists(workspaceId: string): boolean {
   return !!db().select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.id, workspaceId)).get()
@@ -29,14 +36,15 @@ export function listBoards(workspaceId?: string): KanbanBoard[] {
   return query.where(eq(kanbanBoards.workspaceId, workspaceId)).orderBy(desc(kanbanBoards.createdAt)).all()
 }
 
-export function createBoard(input: { workspaceId: string, name: string, filterConfig?: string | null }): KanbanBoard {
+export function createBoard(rawInput: { workspaceId: string, name: string, filterConfig?: string | null }): KanbanBoard {
+  const input = CreateBoardInputSchema.parse(rawInput)
   requireWorkspace(input.workspaceId)
   const now = currentUnixSeconds()
   return db().insert(kanbanBoards).values({
     id: randomUUID(),
     workspaceId: input.workspaceId,
     name: input.name,
-    filterConfig: input.filterConfig ?? null,
+    filterConfig: input.filterConfig,
     createdAt: now,
     updatedAt: now,
   }).returning().get()

@@ -11,6 +11,7 @@ import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { memo, useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
+import { z } from 'zod'
 
 import {
   postProvidersHealthCheck,
@@ -60,13 +61,6 @@ interface EditableCustomModel {
   capabilities: ModelCapabilities
 }
 
-interface StoredCustomModel {
-  id?: unknown
-  label?: unknown
-  capabilities?: unknown
-  contextWindow?: unknown
-}
-
 interface ProfileDetailFormValues {
   name: string
   apiKey: string
@@ -84,6 +78,10 @@ interface ProfileDetailUiState {
   saveState: SaveState
   confirmRemove: boolean
 }
+
+const SecretCreateResponseSchema = z.object({
+  id: z.string().min(1),
+})
 
 interface ExternalProviderSourceView {
   id: string
@@ -120,6 +118,44 @@ interface ExternalProfileMetadata {
   record: ExternalProviderRecordView | null
 }
 
+const ExternalProviderWarningSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  severity: z.enum(['info', 'warning', 'error']),
+})
+
+const ExternalProviderSourceViewSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  lastSyncStatus: z.enum(['never', 'ok', 'warning', 'error']),
+  lastSyncMessage: z.string().nullable(),
+  lastSyncError: z.string().nullable(),
+  lastSyncAt: z.number().finite().nullable(),
+  inventory: z.record(z.string(), z.unknown()),
+  warnings: z.array(ExternalProviderWarningSchema),
+})
+
+const ExternalProviderRecordViewSchema = z.object({
+  id: z.string(),
+  sourceKey: z.string(),
+  externalId: z.string(),
+  app: z.string(),
+  status: z.enum(['active', 'stale', 'missing', 'unsupported', 'error']),
+  metadata: z.record(z.string(), z.unknown()),
+  warnings: z.array(ExternalProviderWarningSchema),
+})
+
+const ExternalProfileLinkViewSchema = z.object({
+  sourceKey: z.string(),
+  externalRecordId: z.string(),
+  profileId: z.string(),
+  credentialRef: z.string().nullable(),
+  sourceOwnedFields: z.array(z.string()),
+})
+
+const ExternalProviderSourcesSchema = z.array(ExternalProviderSourceViewSchema)
+const ExternalProviderRecordsSchema = z.array(ExternalProviderRecordViewSchema)
+
 type ProfileDetailUiAction = { type: 'reset' }
   | { type: 'models/loading' }
   | { type: 'models/loaded', models: ModelDescriptor[], cachedAt?: number | null }
@@ -140,47 +176,87 @@ const INITIAL_UI_STATE: ProfileDetailUiState = {
 
 const EMPTY_ENABLED_MODELS: string[] = []
 
-function readModelCapabilities(value: unknown): ModelCapabilities {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as ModelCapabilities : {}
-}
+const ModelCapabilitiesSchema = z.object({
+  contextWindow: z.number().optional(),
+}).passthrough()
 
-function normalizeEditableCustomModel(value: unknown): EditableCustomModel | null {
-  if (!value || typeof value !== 'object') {
-    return null
-  }
+const ModelDescriptorSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  capabilities: ModelCapabilitiesSchema.default({}),
+})
 
-  const item = value as StoredCustomModel
-  const id = typeof item.id === 'string' ? item.id.trim() : ''
-  if (!id) {
-    return null
-  }
+const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
 
-  const label = typeof item.label === 'string' && item.label.trim() ? item.label.trim() : id
-  const capabilities = readModelCapabilities(item.capabilities)
+const ProviderModelsCacheSchema = z.object({
+  models: ModelDescriptorListSchema,
+  cached: z.boolean(),
+  stale: z.boolean(),
+}).nullable()
 
-  if (capabilities.contextWindow == null && typeof item.contextWindow === 'number') {
-    capabilities.contextWindow = item.contextWindow
-  }
+const EditableCustomModelSchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().optional(),
+  capabilities: ModelCapabilitiesSchema.default({}),
+  contextWindow: z.number().optional(),
+}).transform(item => ({
+  id: item.id,
+  label: item.label || item.id,
+  capabilities: item.capabilities.contextWindow == null && item.contextWindow !== undefined
+    ? { ...item.capabilities, contextWindow: item.contextWindow }
+    : item.capabilities,
+}))
 
-  return { id, label, capabilities }
-}
+const CustomModelsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(EditableCustomModelSchema))
 
-function parseCustomModelsJson(customModelsJson: string): EditableCustomModel[] {
-  try {
-    const parsed = JSON.parse(customModelsJson) as unknown
-    if (!Array.isArray(parsed)) {
-      return []
-    }
+const ExternalRecordMetadataSchema = z.object({
+  baseUrl: z.string().nullable().default(null),
+  model: z.string().nullable().default(null),
+}).passthrough()
 
-    return parsed.flatMap((item) => {
-      const normalized = normalizeEditableCustomModel(item)
-      return normalized ? [normalized] : []
-    })
-  }
-  catch {
-    return []
-  }
-}
+const ExternalWarningSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  severity: z.enum(['info', 'warning', 'error']),
+})
+
+const ExternalSourceSectionSchema = z.object({
+  link: z.object({
+    externalRecordId: z.string(),
+    profileId: z.string(),
+  }).passthrough(),
+  source: z.object({
+    label: z.string().default('External source'),
+    lastSyncStatus: z.enum(['never', 'ok', 'warning', 'error']).default('never'),
+    lastSyncError: z.string().nullable().default(null),
+    inventory: z.record(z.unknown()).default({}),
+    warnings: z.array(ExternalWarningSchema).default([]),
+  }).passthrough().nullable().transform(source => source ?? {
+    label: 'External source',
+    lastSyncStatus: 'never' as const,
+    lastSyncError: null,
+    inventory: {},
+    warnings: [],
+  }),
+  record: z.object({
+    app: z.string().default('unknown'),
+    metadata: ExternalRecordMetadataSchema.default({}),
+    warnings: z.array(ExternalWarningSchema).default([]),
+  }).passthrough().nullable().transform(record => record ?? {
+    app: 'unknown',
+    metadata: { baseUrl: null, model: null },
+    warnings: [],
+  }),
+}).transform(({ link, source, record }) => ({
+  link,
+  source,
+  record,
+  warnings: source.warnings.length > 0 ? source.warnings : record.warnings,
+  inventoryEntries: Object.entries(source.inventory),
+}))
 
 function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDetailUiAction): ProfileDetailUiState {
   switch (action.type) {
@@ -280,13 +356,17 @@ async function loadExternalProfileMetadata(profileId: string): Promise<ExternalP
     throw new Error('Failed to load external profile metadata')
   }
 
-  const link = await linkRes.json() as ExternalProfileLinkView
+  const link = ExternalProfileLinkViewSchema.parse(await linkRes.json())
   const [sourcesRes, recordsRes] = await Promise.all([
     fetch(`${baseUrl}/external-provider-sources`),
     fetch(`${baseUrl}/external-provider-sources/records`),
   ])
-  const sources = sourcesRes.ok ? await sourcesRes.json() as ExternalProviderSourceView[] : []
-  const records = recordsRes.ok ? await recordsRes.json() as ExternalProviderRecordView[] : []
+  if (!sourcesRes.ok || !recordsRes.ok) {
+    throw new Error('Failed to load external provider metadata')
+  }
+
+  const sources = ExternalProviderSourcesSchema.parse(await sourcesRes.json())
+  const records = ExternalProviderRecordsSchema.parse(await recordsRes.json())
   return {
     link,
     source: sources.find(source => source.id === link.sourceKey) ?? null,
@@ -414,7 +494,8 @@ export function ProfileDetailPanel({
     const cacheUrl = `${getServerUrl()}/providers/${encodeURIComponent(profile.id)}/models-cache`
     fetch(cacheUrl)
       .then(res => res.ok ? res.json() : null)
-      .then((cache: { models: ModelDescriptor[], cached: boolean, stale: boolean } | null) => {
+      .then((rawCache) => {
+        const cache = ProviderModelsCacheSchema.parse(rawCache)
         if (requestId !== modelsRequestRef.current) {
           return
         }
@@ -428,7 +509,7 @@ export function ProfileDetailPanel({
                 if (requestId !== modelsRequestRef.current) {
                   return
                 }
-                dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+                dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
               })
               .catch(() => {})
           }
@@ -441,7 +522,7 @@ export function ProfileDetailPanel({
             if (requestId !== modelsRequestRef.current) {
               return
             }
-            dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+            dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
           })
           .catch(() => {
             if (requestId !== modelsRequestRef.current) {
@@ -457,7 +538,7 @@ export function ProfileDetailPanel({
             if (requestId !== modelsRequestRef.current) {
               return
             }
-            dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+            dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
           })
           .catch(() => {
             if (requestId !== modelsRequestRef.current) {
@@ -477,7 +558,7 @@ export function ProfileDetailPanel({
         if (requestId !== modelsRequestRef.current) {
           return
         }
-        dispatch({ type: 'models/loaded', models: (data ?? []) as ModelDescriptor[], cachedAt: Date.now() })
+        dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
       })
       .catch(() => {
         if (requestId !== modelsRequestRef.current) {
@@ -533,7 +614,7 @@ export function ProfileDetailPanel({
         const { data: meta } = await postSecrets({
           body: { kind: profile.providerKind, label: currentValues.name, secret: currentValues.apiKey },
         })
-        credentialRef = (meta as Record<string, unknown>)?.id as string ?? credentialRef
+        credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
 
       await putProfilesById({
@@ -778,9 +859,8 @@ function ProfileDetailHeader({
 }
 
 function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata }) {
-  const { source, record, link } = metadata
-  const baseUrl = typeof record?.metadata.baseUrl === 'string' ? record.metadata.baseUrl : null
-  const model = typeof record?.metadata.model === 'string' ? record.metadata.model : null
+  const { source, record, link, warnings, inventoryEntries } = ExternalSourceSectionSchema.parse(metadata)
+  const { baseUrl, model } = record.metadata
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-foreground/6 bg-foreground/[0.015] p-3">
@@ -795,10 +875,10 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
       <div className="grid gap-3">
         <SettingsRow label="Source" description="The plugin-owned reader that supplies this provider">
           <div className="flex flex-col gap-1 text-[12px] text-foreground">
-            <span>{source?.label ?? 'External source'}</span>
+            <span>{source.label}</span>
             <span className="text-muted-foreground">
-              {source?.lastSyncStatus ?? 'never'}
-              {source?.lastSyncError ? ` · ${source.lastSyncError}` : ''}
+              {source.lastSyncStatus}
+              {source.lastSyncError ? ` · ${source.lastSyncError}` : ''}
             </span>
           </div>
         </SettingsRow>
@@ -809,7 +889,7 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
 
         <SettingsRow label="Scope" description="External app and projection scope">
           <div className="flex flex-col gap-1 text-[12px] text-foreground">
-            <span>{record?.app ?? 'unknown'}</span>
+            <span>{record.app}</span>
             <span className="text-muted-foreground">{link.profileId}</span>
           </div>
         </SettingsRow>
@@ -828,8 +908,8 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
 
         <SettingsRow label="Warnings" description="Snapshot warnings reported by the source">
           <div className="flex flex-col gap-1">
-            {(source?.warnings ?? record?.warnings ?? []).length > 0
-              ? (source?.warnings ?? record?.warnings ?? []).map((warning, index) => (
+            {warnings.length > 0
+              ? warnings.map((warning, index) => (
                 <div key={`${warning.code}-${index}`} className="text-[12px] text-muted-foreground">
                   {warning.severity}
                   {': '}
@@ -842,9 +922,9 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
 
         <SettingsRow label="Inventory" description="What else the source detected">
           <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground">
-            {Object.entries(source?.inventory ?? {}).length === 0
+            {inventoryEntries.length === 0
               ? <span>None</span>
-              : Object.entries(source?.inventory ?? {}).map(([key, value]) => (
+              : inventoryEntries.map(([key, value]) => (
                 <span key={key} className="rounded-full bg-muted px-2 py-0.5">
                   {key}
                   {': '}
@@ -989,18 +1069,15 @@ function ProfileCustomModelsSection({
   onSaved: () => void
 }) {
   const queryClient = useQueryClient()
-  const [models, setModels] = useState(() => parseCustomModelsJson(customModelsJson))
+  const [models, setModels] = useState(() => CustomModelsJsonSchema.parse(customModelsJson))
 
   // Sync from props when profile changes
   useEffect(() => {
-    setModels(parseCustomModelsJson(customModelsJson))
+    setModels(CustomModelsJsonSchema.parse(customModelsJson))
   }, [customModelsJson])
 
   const saveCustomModels = useCallback(async (next: EditableCustomModel[]) => {
-    const sanitized = next.flatMap((item) => {
-      const normalized = normalizeEditableCustomModel(item)
-      return normalized ? [normalized] : []
-    })
+    const sanitized = z.array(EditableCustomModelSchema).parse(next)
 
     setModels(sanitized)
     try {
@@ -1016,13 +1093,7 @@ function ProfileCustomModelsSection({
         }),
       })
       if (res.ok) {
-        const saved = await res.json() as unknown
-        setModels(Array.isArray(saved)
-          ? saved.flatMap((item) => {
-              const normalized = normalizeEditableCustomModel(item)
-              return normalized ? [normalized] : []
-            })
-          : sanitized)
+        setModels(z.array(EditableCustomModelSchema).parse(await res.json()))
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
         onSaved()
       }

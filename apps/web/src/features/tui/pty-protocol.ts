@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export type PtyClientEvent
   = | { type: 'input', data: string }
     | { type: 'resize', cols: number, rows: number }
@@ -33,74 +35,33 @@ export type PtyErrorEvent = {
 
 export type PtyServerEvent = PtySnapshotEvent | PtyOutputEvent | PtyExitEvent | PtyPongEvent | PtyErrorEvent
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function isNullableNumber(value: unknown): value is number | null {
-  return typeof value === 'number' || value === null
-}
-
-function isNullableString(value: unknown): value is string | null {
-  return typeof value === 'string' || value === null
-}
-
-export function parsePtyServerEvent(raw: string): PtyServerEvent | null {
-  let parsed: unknown
-
-  try {
-    parsed = JSON.parse(raw)
-  }
-  catch {
-    return null
-  }
-
-  if (!isRecord(parsed) || typeof parsed.type !== 'string') {
-    return null
-  }
-
-  switch (parsed.type) {
-    case 'snapshot':
-      return typeof parsed.seq === 'number'
-        && typeof parsed.buffer === 'string'
-        && typeof parsed.running === 'boolean'
-        ? {
-            type: 'snapshot',
-            seq: parsed.seq,
-            buffer: parsed.buffer,
-            running: parsed.running,
-          }
-        : null
-    case 'output':
-      return typeof parsed.seq === 'number' && typeof parsed.data === 'string'
-        ? {
-            type: 'output',
-            seq: parsed.seq,
-            data: parsed.data,
-          }
-        : null
-    case 'exit':
-      return typeof parsed.seq === 'number'
-        && isNullableNumber(parsed.exitCode)
-        && isNullableString(parsed.signal)
-        ? {
-            type: 'exit',
-            seq: parsed.seq,
-            exitCode: parsed.exitCode,
-            signal: parsed.signal,
-          }
-        : null
-    case 'pong':
-      return { type: 'pong' }
-    case 'error':
-      return typeof parsed.code === 'string' && typeof parsed.message === 'string'
-        ? {
-            type: 'error',
-            code: parsed.code,
-            message: parsed.message,
-          }
-        : null
-    default:
-      return null
-  }
-}
+export const PtyServerEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('snapshot'),
+    seq: z.number().finite(),
+    buffer: z.string(),
+    running: z.boolean(),
+  }),
+  z.object({
+    type: z.literal('output'),
+    seq: z.number().finite(),
+    data: z.string(),
+  }),
+  z.object({
+    type: z.literal('exit'),
+    seq: z.number().finite(),
+    exitCode: z.number().finite().nullable(),
+    signal: z.string().nullable(),
+  }),
+  z.object({
+    type: z.literal('pong'),
+  }),
+  z.object({
+    type: z.literal('error'),
+    code: z.string(),
+    message: z.string(),
+  }),
+])
+export const PtyServerEventJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(PtyServerEventSchema)

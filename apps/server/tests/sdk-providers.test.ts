@@ -4,10 +4,11 @@ import { join } from 'node:path'
 
 import { workspaces } from '@cradle/db'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-import { registerMcpServer, unregisterMcpServer } from '../src/plugins/mcp-registry'
+import { addHostMcpServer, removeHostMcpServer } from '../src/plugins/mcp-registry'
 
 const sdkMocks = vi.hoisted(() => ({
   claudeQuery: vi.fn(),
@@ -56,6 +57,13 @@ interface ChatStreamEvent {
 }
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
+
+const ChatStreamEventJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    type: z.string(),
+    data: z.record(z.string(), z.unknown()),
+  }))
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -111,7 +119,7 @@ async function collectSseEvents(response: Response): Promise<ChatStreamEvent[]> 
         .filter(line => line.startsWith('data: '))
         .map(line => line.slice('data: '.length))
         .join('\n')
-      return JSON.parse(data) as ChatStreamEvent
+      return ChatStreamEventJsonSchema.parse(data)
     })
 }
 
@@ -184,8 +192,8 @@ describe('sdk-backed providers in unified chat runtime', () => {
     const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
-    unregisterMcpServer('browser-use')
-    registerMcpServer({
+    removeHostMcpServer('browser-use')
+    addHostMcpServer({
       name: 'browser-use',
       command: 'node',
       args: ['/tmp/browser-use-mcp-server.mjs'],
@@ -226,7 +234,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     ]))
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url === 'https://api.anthropic.com/v1/models') {
         return new Response(JSON.stringify({
           data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
@@ -442,7 +450,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     }))
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url === 'https://api.openai.com/v1/models') {
         return new Response(JSON.stringify({ data: [{ id: 'gpt-5-codex' }] }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
@@ -487,13 +495,17 @@ describe('sdk-backed providers in unified chat runtime', () => {
       }))
       expect(sdkMocks.codexConstructor).toHaveBeenCalledWith(expect.objectContaining({
         config: expect.objectContaining({
-          mcp_servers: {
+          mcp_servers: expect.objectContaining({
             'browser-use': {
               command: 'node',
               args: ['/tmp/browser-use-mcp-server.mjs'],
               env: { BROWSER_BACKEND_SOCKET: '/tmp/cradle-browser.sock' },
             },
-          },
+            chronicle: expect.objectContaining({
+              command: 'node',
+              env: { CRADLE_URL: 'http://127.0.0.1:21423' },
+            }),
+          }),
         }),
       }))
 
@@ -506,7 +518,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
       }))
     }
     finally {
-      unregisterMcpServer('browser-use')
+      removeHostMcpServer('browser-use')
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
@@ -568,7 +580,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     ]))
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url === 'https://api.anthropic.com/v1/models') {
         return new Response(JSON.stringify({
           data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
@@ -686,7 +698,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     ]))
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url === 'https://api.anthropic.com/v1/models') {
         return new Response(JSON.stringify({
           data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
@@ -829,7 +841,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     ]))
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url === 'https://api.anthropic.com/v1/models') {
         return new Response(JSON.stringify({
           data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
@@ -941,7 +953,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     ]))
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url === 'https://api.anthropic.com/v1/models') {
         return new Response(JSON.stringify({
           data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],

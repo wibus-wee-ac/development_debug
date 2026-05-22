@@ -4,10 +4,24 @@ import { join } from 'node:path'
 
 import type { ExternalProviderRecord } from '@cradle/plugin-sdk/server'
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { shutdownInfra } from '../src/infra'
+import { ProfileConfigWithModelRegistryJsonSchema } from '../src/modules/providers/model-registry-mappings'
 import { registerExternalProviderSource } from '../src/plugins/external-provider-source-registry'
+
+const ProfileResponseSchema = z.object({
+  configJson: z.string(),
+  customModels: z.string().optional(),
+})
+
+const CustomModelsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.object({
+    id: z.string(),
+    label: z.string(),
+  }).passthrough()))
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -162,7 +176,7 @@ describe('external provider sources capability', () => {
         }),
       }))
       expect(updateCradleOwnedModelConfig.status).toBe(200)
-      expect(JSON.parse(((await updateCradleOwnedModelConfig.json()) as { configJson: string }).configJson)).toEqual(expect.objectContaining({
+      expect(ProfileConfigWithModelRegistryJsonSchema.parse(ProfileResponseSchema.parse(await updateCradleOwnedModelConfig.json()).configJson)).toEqual(expect.objectContaining({
         baseUrl: 'https://anthropic.example.test',
         model: 'claude-test',
         enabledModels: ['claude-sonnet-4-20250514'],
@@ -226,13 +240,13 @@ describe('external provider sources capability', () => {
       expect(refreshAfterModelConfig.status).toBe(200)
       const profileAfterRefreshRes = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`))
       expect(profileAfterRefreshRes.status).toBe(200)
-      const profileAfterRefresh = await profileAfterRefreshRes.json() as { configJson: string, customModels: string }
-      const configAfterRefresh = JSON.parse(profileAfterRefresh.configJson) as { enabledModels?: string[], modelRegistryMappings?: unknown[] }
+      const profileAfterRefresh = ProfileResponseSchema.parse(await profileAfterRefreshRes.json())
+      const configAfterRefresh = ProfileConfigWithModelRegistryJsonSchema.parse(profileAfterRefresh.configJson)
       expect(configAfterRefresh.enabledModels).toEqual(['claude-sonnet-4-20250514'])
       expect(configAfterRefresh.modelRegistryMappings).toEqual([
         expect.objectContaining({ modelId: 'vendor-sonnet', registryModelId: 'claude-sonnet-4' }),
       ])
-      expect(JSON.parse(profileAfterRefresh.customModels)).toEqual([
+      expect(CustomModelsJsonSchema.parse(profileAfterRefresh.customModels)).toEqual([
         expect.objectContaining({ id: 'vendor-sonnet', label: 'Vendor Sonnet' }),
       ])
 

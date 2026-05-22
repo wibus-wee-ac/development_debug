@@ -1,16 +1,18 @@
 import { useCallback, useEffect } from 'react'
+import { z } from 'zod'
 
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { usePluginStore } from '~/lib/plugin-store'
+import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleTabStore } from '~/tabs/registry'
 
-import type { TrayActionId, TrayActionRequest } from './types'
+import type { TrayActionRequest } from './types'
 
 interface DesktopTrayActionBridgeOptions {
   onOpenGlobalSearch: () => void
 }
 
-const ACTION_IDS = new Set<TrayActionId>([
+const TrayActionIdSchema = z.enum([
   'open-app',
   'open-chat',
   'new-chat',
@@ -30,36 +32,28 @@ const ACTION_IDS = new Set<TrayActionId>([
   'quit',
 ])
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
+const TrayActionRequestSchema = z.object({
+  actionId: TrayActionIdSchema,
+  payload: z.unknown().optional(),
+}).passthrough()
 
-function readActionRequest(value: unknown): TrayActionRequest | null {
-  if (!isRecord(value) || typeof value.actionId !== 'string' || !ACTION_IDS.has(value.actionId as TrayActionId)) {
-    return null
-  }
-  return {
-    actionId: value.actionId as TrayActionId,
-    payload: value.payload,
-  }
-}
+const TrayActionRequestsSchema = z.array(TrayActionRequestSchema)
 
-function readSessionId(payload: unknown): string | null {
-  if (!isRecord(payload) || typeof payload.sessionId !== 'string' || payload.sessionId.length === 0) {
-    return null
-  }
-  return payload.sessionId
-}
+const ChatPayloadSchema = z.object({
+  sessionId: z.string().min(1),
+}).passthrough()
 
 function openHome(): void {
+  preloadTabRoute('home')
   useCradleTabStore.getState().openTab('home', {})
 }
 
 function openChatFromPayload(payload: unknown): boolean {
-  const sessionId = readSessionId(payload)
-  if (!sessionId) {
+  if (payload === undefined) {
     return false
   }
+  const { sessionId } = ChatPayloadSchema.parse(payload)
+  preloadTabRoute('chat')
   useCradleTabStore.getState().openTab('chat', { sessionId })
   return true
 }
@@ -68,7 +62,10 @@ function openSettingsSection(section: string): void {
   const tabStore = useCradleTabStore.getState()
   const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
     ? tabStore.activeTabId
-    : tabStore.openTab('home', {}, { pinned: true })
+    : (() => {
+        preloadTabRoute('home')
+        return tabStore.openTab('home', {}, { pinned: true })
+      })()
   const settingsStore = useSettingsOverlayStore.getState()
   tabStore.setActiveTab(activeTabId)
   settingsStore.setSettingsSection(section)
@@ -80,22 +77,21 @@ function openFirstPluginPanel(): boolean {
   if (!firstPanel) {
     return false
   }
+  preloadTabRoute('plugin-panel')
   useCradleTabStore.getState().openTab('plugin-panel', { panelId: firstPanel.id })
   return true
 }
 
 export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayActionBridgeOptions): void {
   const handleRequest = useCallback((rawRequest: unknown) => {
-    const request = readActionRequest(rawRequest)
-    if (!request) {
-      return
-    }
+    const request = TrayActionRequestSchema.parse(rawRequest)
 
     switch (request.actionId) {
       case 'open-chat':
         openChatFromPayload(request.payload)
         return
       case 'new-chat':
+        preloadTabRoute('new-chat')
         useCradleTabStore.getState().openTab('new-chat', {})
         return
       case 'global-search':
@@ -108,12 +104,15 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         }
         return
       case 'open-approvals':
+        preloadTabRoute('approvals')
         useCradleTabStore.getState().openTab('approvals', {})
         return
       case 'open-awaits':
+        preloadTabRoute('awaits')
         useCradleTabStore.getState().openTab('awaits', {})
         return
       case 'open-automation':
+        preloadTabRoute('automation')
         useCradleTabStore.getState().openTab('automation', {})
         return
       case 'open-workspaces':
@@ -129,6 +128,7 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         openSettingsSection('chronicle')
         return
       case 'open-usage':
+        preloadTabRoute('usage')
         useCradleTabStore.getState().openTab('usage', {})
         return
       case 'open-plugins':
@@ -149,10 +149,7 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
     const unsubscribe = window.cradle?.desktopTray?.onActionRequested(handleRequest)
 
     void window.cradle?.desktopTray?.consumePendingActionRequests?.().then((requests) => {
-      if (!Array.isArray(requests)) {
-        return
-      }
-      for (const request of requests) {
+      for (const request of TrayActionRequestsSchema.parse(requests)) {
         handleRequest(request)
       }
     })

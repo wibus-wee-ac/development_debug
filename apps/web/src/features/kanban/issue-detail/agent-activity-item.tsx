@@ -1,4 +1,6 @@
 import { WrenchIcon } from 'lucide-react'
+import { memo } from 'react'
+import { z } from 'zod'
 
 import type { AgentActivity } from '~/lib/types'
 import { cn } from '~/lib/utils'
@@ -7,7 +9,13 @@ interface AgentActivityItemProps {
   activity: AgentActivity
 }
 
-export function AgentActivityItem({ activity }: AgentActivityItemProps) {
+const SelectSignalMetadataJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    options: z.array(z.string()),
+  }))
+
+export const AgentActivityItem = memo(function AgentActivityItem({ activity }: AgentActivityItemProps) {
   const base = 'py-1.5 px-3 text-[13px]'
 
   switch (activity.type) {
@@ -36,13 +44,7 @@ export function AgentActivityItem({ activity }: AgentActivityItemProps) {
     case 'elicitation': {
       let options: string[] = []
       if (activity.signal === 'select' && activity.signalMetadata) {
-        try {
-          const meta = JSON.parse(activity.signalMetadata)
-          if (Array.isArray(meta.options)) {
-            options = meta.options
-          }
-        }
- catch { /* ignore */ }
+        options = SelectSignalMetadataJsonSchema.parse(activity.signalMetadata).options
       }
       return (
         <div className={cn(base, 'border-l-2 border-yellow-500/50')}>
@@ -83,4 +85,4 @@ export function AgentActivityItem({ activity }: AgentActivityItemProps) {
         </div>
       )
   }
-}
+})

@@ -8,4 +8,5 @@ Place chat-related components in `features/chat/` or `features/new-chat/` instea
 
 ## Files
 
-- **home-dashboard.tsx**: Dashboard component — search bar, recent sessions across all workspaces, projects list, static activity card themes, and the Home projection/entry point for the automation registry.
+- **home-dashboard-loader.ts**: Home dashboard tab 的共享 lazy loader 与 route preload 入口。
+- **home-dashboard.tsx**: Dashboard component — search bar, recent sessions across all workspaces, projects list, fresh-install empty states, quick action routing to new chat, and the Home projection/entry point for the automation registry.

@@ -46,7 +46,7 @@ function renderGroupedToolCallBlock(props: ComponentProps<typeof GroupedToolCall
 }
 
 describe('tool call block file edit previews', () => {
-  it('shows a streaming Edit File preview before output is available', () => {
+  it('shows a streaming Edit File payload preview before output is available', () => {
     renderToolCallBlock(
       {
         toolName: 'Edit File',
@@ -61,8 +61,9 @@ describe('tool call block file edit previews', () => {
     const block = screen.getByTestId('chat-tool-call-call-edit-file-streaming')
 
     expect(block.getAttribute('data-tool-kind')).toBe('file-diff')
-    expect(within(block).getAllByText('app.tsx').length).toBeGreaterThan(0)
-    expect(within(block).getByTestId('chat-edit-file-block')).not.toBeNull()
+    expect(within(block).getByText('Receiving file edit')).not.toBeNull()
+    expect(within(block).getByText('93 chars')).not.toBeNull()
+    expect(within(block).queryByTestId('chat-edit-file-block')).toBeNull()
     expect(multiFileDiffSpy).not.toHaveBeenCalled()
   })
 

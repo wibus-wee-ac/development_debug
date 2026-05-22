@@ -1,5 +1,6 @@
 import type { TableUserConfig } from 'table'
 import { getBorderCharacters, table } from 'table'
+import { z } from 'zod'
 
 import type { CliOutputFormat } from './types'
 
@@ -9,27 +10,71 @@ export interface PrintResultOptions {
   forceJson?: boolean
 }
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 
-function isScalar(value: unknown): boolean {
-  return value === null || ['boolean', 'number', 'string'].includes(typeof value)
-}
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+)
 
-function readValue(row: unknown, key: string): string {
-  if (!isPlainRecord(row)) {
-    return ''
+const ScalarCellSchema = z.union([
+  z.string().transform(value => ({ text: value, scalar: true, textValue: value })),
+  z.number().transform(value => ({ text: JSON.stringify(value), scalar: true, textValue: null })),
+  z.boolean().transform(value => ({ text: JSON.stringify(value), scalar: true, textValue: null })),
+  z.null().transform(() => ({ text: '', scalar: true, textValue: null })),
+])
+
+const CellProjectionSchema = z.union([
+  ScalarCellSchema,
+  z.undefined().transform(() => ({ text: '', scalar: false, textValue: null })),
+  JsonValueSchema.transform(value => ({ text: JSON.stringify(value), scalar: false, textValue: null })),
+])
+
+const CliRecordSchema = z.record(z.string(), JsonValueSchema)
+
+const RecordProjectionSchema = CliRecordSchema.transform((record) => {
+  const cells = Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, CellProjectionSchema.parse(value)]),
+  )
+  const scalarKeys = Object.entries(cells)
+    .filter(([, cell]) => cell.scalar)
+    .map(([key]) => key)
+  const preferredText = ['markdown', 'content', 'text', 'output', 'message']
+    .map(key => cells[key]?.textValue ?? null)
+    .find(text => text !== null) ?? null
+  const entries = Object.entries(cells)
+  const singleText = entries.length === 1 ? entries[0][1].textValue : null
+
+  return {
+    raw: record,
+    cells,
+    scalarKeys,
+    textValue: preferredText ?? singleText,
+    keyValueRows: scalarKeys.map(key => [key, cells[key].text] as const),
+    okOnly: record.ok === true && Object.keys(record).length === 1,
   }
-  const value = row[key]
-  if (value === undefined || value === null) {
-    return ''
-  }
-  if (typeof value === 'string') {
-    return value
-  }
-  return JSON.stringify(value)
-}
+})
+
+const ResultItemProjectionSchema = z.union([
+  RecordProjectionSchema.transform(record => ({ kind: 'record' as const, raw: record.raw, record })),
+  JsonValueSchema.transform(value => ({ kind: 'value' as const, raw: value })),
+])
+
+const ResultProjectionSchema = z.union([
+  z.array(ResultItemProjectionSchema).transform(items => ({ kind: 'array' as const, raw: items.map(item => item.raw), items })),
+  RecordProjectionSchema.transform(record => ({ kind: 'record' as const, raw: record.raw, record })),
+  z.string().transform(value => ({ kind: 'string' as const, raw: value, value })),
+  JsonValueSchema.transform(value => ({ kind: 'value' as const, raw: value })),
+])
+
+type ResultProjection = z.infer<typeof ResultProjectionSchema>
+type ResultItemProjection = z.infer<typeof ResultItemProjectionSchema>
 
 function getDisplayWidth(value: string): number {
   return value.length
@@ -75,7 +120,7 @@ function getColumnWidths(rows: string[][]): Record<number, { truncate: number, w
   }))
 }
 
-function printTable(rows: unknown[], columns: string[]): void {
+function printTable(rows: ResultItemProjection[], columns: string[]): void {
   if (rows.length === 0) {
     console.log('No results')
     return
@@ -83,7 +128,7 @@ function printTable(rows: unknown[], columns: string[]): void {
 
   const tableRows = [
     columns,
-    ...rows.map(row => columns.map(column => readValue(row, column))),
+    ...rows.map(row => columns.map(column => row.kind === 'record' ? row.record.cells[column]?.text ?? '' : '')),
   ]
   const config = {
     border: getBorderCharacters('norc'),
@@ -99,14 +144,11 @@ function printTable(rows: unknown[], columns: string[]): void {
   console.log(table(tableRows, config).trimEnd())
 }
 
-function getTableColumns(rows: unknown[]): string[] {
+function getTableColumns(rows: ResultItemProjection[]): string[] {
   const columns = new Set<string>()
   for (const row of rows) {
-    if (!isPlainRecord(row)) {
-      continue
-    }
-    for (const [key, value] of Object.entries(row)) {
-      if (isScalar(value)) {
+    if (row.kind === 'record') {
+      for (const key of row.record.scalarKeys) {
         columns.add(key)
       }
     }
@@ -114,14 +156,14 @@ function getTableColumns(rows: unknown[]): string[] {
   return Array.from(columns)
 }
 
-function printNdjson(result: unknown): void {
-  if (Array.isArray(result)) {
-    for (const item of result) {
+function printNdjson(result: ResultProjection): void {
+  if (result.kind === 'array') {
+    for (const item of result.raw) {
       console.log(JSON.stringify(item))
     }
     return
   }
-  console.log(JSON.stringify(result))
+  console.log(JSON.stringify(result.raw))
 }
 
 function selectFieldsFromRecord(record: Record<string, unknown>, fields: string[]): Record<string, unknown> {
@@ -133,85 +175,69 @@ function selectJsonFields(result: unknown, fields: string[] | undefined): unknow
     return result
   }
 
-  if (Array.isArray(result)) {
-    return result.map(item => isPlainRecord(item) ? selectFieldsFromRecord(item, fields) : item)
+  const projection = ResultProjectionSchema.parse(result)
+
+  if (projection.kind === 'array') {
+    return projection.items.map(item => item.kind === 'record' ? selectFieldsFromRecord(item.record.raw, fields) : item.raw)
   }
 
-  if (isPlainRecord(result)) {
-    return selectFieldsFromRecord(result, fields)
+  if (projection.kind === 'record') {
+    return selectFieldsFromRecord(projection.record.raw, fields)
   }
 
   return result
 }
 
-function getTextValue(record: Record<string, unknown>): string | undefined {
-  const preferredKeys = ['markdown', 'content', 'text', 'output', 'message']
-  for (const key of preferredKeys) {
-    const value = record[key]
-    if (typeof value === 'string') {
-      return value
-    }
-  }
-
-  const entries = Object.entries(record)
-  if (entries.length === 1 && typeof entries[0][1] === 'string') {
-    return entries[0][1]
-  }
-
-  return undefined
-}
-
-function printKeyValue(record: Record<string, unknown>): boolean {
-  const entries = Object.entries(record).filter(([, value]) => isScalar(value))
-  if (entries.length === 0) {
+function printKeyValue(rows: Array<readonly [string, string]>): boolean {
+  if (rows.length === 0) {
     return false
   }
 
-  const width = Math.max(...entries.map(([key]) => key.length))
-  for (const [key, value] of entries) {
-    console.log(`${key.padEnd(width)}  ${value ?? ''}`)
+  const width = Math.max(...rows.map(([key]) => key.length))
+  for (const [key, value] of rows) {
+    console.log(`${key.padEnd(width)}  ${value}`)
   }
   return true
 }
 
-function printAuto(result: unknown): void {
-  if (Array.isArray(result)) {
-    const columns = getTableColumns(result)
-    if (columns.length > 0 || result.length === 0) {
-      printTable(result, columns)
+function printAuto(result: ResultProjection): void {
+  if (result.kind === 'array') {
+    const columns = getTableColumns(result.items)
+    if (columns.length > 0 || result.items.length === 0) {
+      printTable(result.items, columns)
       return
     }
-    console.log(JSON.stringify(result, null, 2))
+    console.log(JSON.stringify(result.raw, null, 2))
     return
   }
 
-  if (isPlainRecord(result)) {
-    if (result.ok === true && Object.keys(result).length === 1) {
+  if (result.kind === 'record') {
+    if (result.record.okOnly) {
       console.log('ok')
       return
     }
 
-    const textValue = getTextValue(result)
-    if (textValue !== undefined) {
-      console.log(textValue)
+    if (result.record.textValue !== null) {
+      console.log(result.record.textValue)
       return
     }
 
-    if (printKeyValue(result)) {
+    if (printKeyValue(result.record.keyValueRows)) {
       return
     }
   }
 
-  if (typeof result === 'string') {
-    console.log(result)
+  if (result.kind === 'string') {
+    console.log(result.value)
     return
   }
 
-  console.log(JSON.stringify(result, null, 2))
+  console.log(JSON.stringify(result.raw, null, 2))
 }
 
 export function printResult(result: unknown, options: PrintResultOptions): void {
   const selectedResult = selectJsonFields(result, options.jsonFields)
+  const projection = ResultProjectionSchema.parse(selectedResult)
 
   if (options.forceJson) {
     console.log(JSON.stringify(selectedResult, null, 2))
@@ -231,20 +257,20 @@ export function printResult(result: unknown, options: PrintResultOptions): void 
   }
 
   if (format === 'ndjson') {
-    printNdjson(selectedResult)
+    printNdjson(projection)
     return
   }
 
-  if (format === 'table' && Array.isArray(selectedResult)) {
-    const columns = getTableColumns(selectedResult)
-    if (columns.length > 0 || selectedResult.length === 0) {
-      printTable(selectedResult, columns)
+  if (format === 'table' && projection.kind === 'array') {
+    const columns = getTableColumns(projection.items)
+    if (columns.length > 0 || projection.items.length === 0) {
+      printTable(projection.items, columns)
       return
     }
   }
 
   if (format === 'auto') {
-    printAuto(selectedResult)
+    printAuto(projection)
     return
   }
 

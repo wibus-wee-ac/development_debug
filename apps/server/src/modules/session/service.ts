@@ -3,17 +3,36 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { Message, Session } from '@cradle/db'
 import { agentProfiles, agents, backendRuns, backendSessionBindings, messages, sessions } from '@cradle/db'
 import { desc, eq, inArray } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { AgentRuntimeConfigJsonSchema, buildSessionRuntimeConfigJson } from '../../helpers/agent-runtime-config'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { buildAgentAvatarUrl } from '../agent-identity/avatar'
-import type { RuntimeKind } from '../providers/types'
+import { runtimeKinds, type RuntimeKind } from '../providers/types'
 
 // ── session CRUD ──
 
 export type SessionView = Session & { modelId: string | null }
+
+const RuntimeKindSchema = z.enum(runtimeKinds)
+
+const SessionCreateInputSchema = z.object({
+  id: z.string().default(() => randomUUID()),
+  workspaceId: z.string().nullable().default(null),
+  title: z.string(),
+  agentProfileId: z.string().nullable().optional(),
+  runtimeKind: RuntimeKindSchema.optional(),
+  agentId: z.string().nullable().optional(),
+  linkedIssueId: z.string().nullable().default(null),
+  configJson: z.string().optional(),
+})
+
+const ProfileBackedSessionInputSchema = z.object({
+  agentProfileId: z.string().nullable().optional(),
+  runtimeKind: RuntimeKindSchema.default('standard'),
+})
 
 function listRequestedModelIdsBySessionIds(sessionIds: string[]): Map<string, string | null> {
   if (sessionIds.length === 0) {
@@ -145,20 +164,22 @@ export function create(input: {
   linkedIssueId?: string | null
   configJson?: string
 }): SessionView {
-  const id = input.id ?? randomUUID()
-  const resolved = resolveSessionCreateInput(input)
-  const finalConfigJson = input.configJson ?? resolved.configJson
+  const parsed = SessionCreateInputSchema.parse(input)
+  const resolved = resolveSessionCreateInput(parsed)
+  const rowInput = z.object({
+    configJson: z.string().default(() => resolved.configJson),
+  }).parse(parsed)
   const created = db()
     .insert(sessions)
     .values({
-      id,
-      workspaceId: input.workspaceId ?? null,
-      title: input.title,
+      id: parsed.id,
+      workspaceId: parsed.workspaceId,
+      title: parsed.title,
       agentProfileId: resolved.agentProfileId,
       runtimeKind: resolved.runtimeKind,
       agentId: resolved.agentId,
-      configJson: finalConfigJson,
-      linkedIssueId: input.linkedIssueId ?? null,
+      configJson: rowInput.configJson,
+      linkedIssueId: parsed.linkedIssueId,
     })
     .returning()
     .get()
@@ -222,7 +243,12 @@ function resolveSessionCreateInput(input: {
     }
   }
 
-  if ((input.runtimeKind ?? 'standard') === 'cli-tui') {
+  const profileInput = ProfileBackedSessionInputSchema.parse({
+    agentProfileId: input.agentProfileId,
+    runtimeKind: input.runtimeKind,
+  })
+
+  if (profileInput.runtimeKind === 'cli-tui') {
     throw new AppError({
       code: 'invalid_session_input',
       status: 400,
@@ -230,7 +256,7 @@ function resolveSessionCreateInput(input: {
     })
   }
 
-  if (!input.agentProfileId) {
+  if (!profileInput.agentProfileId) {
     throw new AppError({
       code: 'invalid_session_input',
       status: 400,
@@ -238,11 +264,10 @@ function resolveSessionCreateInput(input: {
     })
   }
 
-  const runtimeKind = input.runtimeKind ?? 'standard'
   return {
-    agentProfileId: input.agentProfileId,
-    runtimeKind,
-    agentId: resolveProfileBackedAgent({ agentProfileId: input.agentProfileId, runtimeKind }),
+    agentProfileId: profileInput.agentProfileId,
+    runtimeKind: profileInput.runtimeKind,
+    agentId: resolveProfileBackedAgent({ agentProfileId: profileInput.agentProfileId, runtimeKind: profileInput.runtimeKind }),
     configJson: '{}',
   }
 }

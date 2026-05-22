@@ -8,6 +8,7 @@ const mockedDeps = vi.hoisted(() => ({
   setActiveTab: vi.fn(),
   openSettings: vi.fn(),
   setSettingsSection: vi.fn(),
+  preloadTabRoute: vi.fn(),
   panels: [{ id: 'plugin:panel' }],
   tabState: {
     activeTabId: 'tab-home',
@@ -42,6 +43,10 @@ vi.mock('~/lib/plugin-store', () => ({
   },
 }))
 
+vi.mock('~/tabs/route-preload', () => ({
+  preloadTabRoute: mockedDeps.preloadTabRoute,
+}))
+
 function BridgeProbe({ onOpenGlobalSearch }: { onOpenGlobalSearch: () => void }) {
   useDesktopTrayActionBridge({ onOpenGlobalSearch })
   return null
@@ -57,6 +62,7 @@ describe('useDesktopTrayActionBridge', () => {
     mockedDeps.setActiveTab.mockReset()
     mockedDeps.openSettings.mockReset()
     mockedDeps.setSettingsSection.mockReset()
+    mockedDeps.preloadTabRoute.mockReset()
     onOpenGlobalSearch.mockReset()
     onActionRequested.mockReset()
     consumePendingActionRequests.mockReset()
@@ -104,6 +110,8 @@ describe('useDesktopTrayActionBridge', () => {
       expect(mockedDeps.openTab).toHaveBeenCalledWith('awaits', {})
       expect(mockedDeps.openTab).toHaveBeenCalledWith('automation', {})
       expect(mockedDeps.openTab).toHaveBeenCalledWith('usage', {})
+      expect(mockedDeps.preloadTabRoute).toHaveBeenCalledWith('approvals')
+      expect(mockedDeps.preloadTabRoute).toHaveBeenCalledWith('usage')
       expect(onOpenGlobalSearch).toHaveBeenCalled()
       expect(mockedDeps.setActiveTab).toHaveBeenCalledWith('tab-home')
       expect(mockedDeps.setSettingsSection).toHaveBeenCalledWith('desktop')
@@ -124,6 +132,7 @@ describe('useDesktopTrayActionBridge', () => {
     mockedDeps.openTab.mockReset()
     mockedDeps.setSettingsSection.mockReset()
     mockedDeps.openSettings.mockReset()
+    mockedDeps.preloadTabRoute.mockReset()
     mockedDeps.panels = []
     consumePendingActionRequests.mockResolvedValue([{ actionId: 'open-plugins' }])
 

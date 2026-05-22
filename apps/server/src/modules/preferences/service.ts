@@ -5,7 +5,7 @@ import type { Static } from 'elysia'
 
 import { getServerConfig } from '../../infra'
 import type { PreferencesModel } from './model'
-import { defaultChatPreferences, defaultJarvisPreferences, parseChatPreferences, parseJarvisPreferences } from './model'
+import { ChatPreferencesJsonSchema, JarvisPreferencesJsonSchema } from './model'
 
 function getPath(name: string): string {
   const config = getServerConfig()
@@ -16,20 +16,13 @@ function getPath(name: string): string {
 export async function getChatPreferences(): Promise<Static<typeof PreferencesModel['chatPreferences']>> {
   const filePath = getPath('chat')
   try {
-    const content = await readFile(filePath, 'utf8')
-    const parsed = JSON.parse(content)
-    const validated = parseChatPreferences(parsed)
-    if (validated.success) {
-      return validated.data
-    }
-    throw new Error('stored chat preferences payload is invalid')
+    return ChatPreferencesJsonSchema.parse(await readFile(filePath, 'utf8'))
   }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { ...defaultChatPreferences }
+      return ChatPreferencesJsonSchema.parse(undefined)
     }
-    console.warn('[preferences] failed to read chat preferences, falling back to defaults', { error, filePath })
-    return { ...defaultChatPreferences }
+    throw error
   }
 }
 
@@ -42,16 +35,13 @@ export async function setChatPreferences(preferences: Static<typeof PreferencesM
 export async function getJarvisPreferences(): Promise<Static<typeof PreferencesModel['jarvisPreferences']>> {
   const filePath = getPath('jarvis')
   try {
-    const content = await readFile(filePath, 'utf8')
-    const parsed = JSON.parse(content)
-    const validated = parseJarvisPreferences(parsed)
-    if (validated.success) {
-      return validated.data
-    }
-    return { ...defaultJarvisPreferences }
+    return JarvisPreferencesJsonSchema.parse(await readFile(filePath, 'utf8'))
   }
-  catch {
-    return { ...defaultJarvisPreferences }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return JarvisPreferencesJsonSchema.parse(undefined)
+    }
+    throw error
   }
 }
 

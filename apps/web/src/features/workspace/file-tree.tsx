@@ -2,15 +2,29 @@ import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { z } from 'zod'
 
 import { getWorkspacesByIdFiles, getWorkspacesByIdGitStatus } from '~/api-gen/sdk.gen'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 import type { GitFileStatus } from '~/lib/types'
 
 // ── Git status mapper ─────────────────────────────────────────────────────────
 
 type TreeGitStatus = { path: string, status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'ignored' }
+const WorkspaceFileListSchema = z.array(z.object({
+  type: z.enum(['file', 'directory']),
+  name: z.string(),
+  path: z.string(),
+})).default([])
+const GitFileStatusListSchema = z.array(z.object({
+  path: z.string(),
+  status: z.enum(['added', 'modified', 'deleted', 'renamed', 'untracked']),
+})).default([])
+const GitStatusFileListSchema = z.object({
+  files: GitFileStatusListSchema,
+}).default({ files: [] })
 
 function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
   return statuses.map(s => ({ path: s.path, status: s.status }))
@@ -42,27 +56,29 @@ interface FileTreeProps {
 }
 
 export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
-  const { data: files = [], isLoading } = useQuery({
+  const filesQuery = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesByIdFiles({ path: { id: workspaceId! } })
-      return (data ?? []) as Array<{ type: string, name: string, path: string }>
+      return WorkspaceFileListSchema.parse(data)
     },
     enabled: !!workspaceId,
     staleTime: 30_000,
   })
 
-  const { data: gitStatuses } = useQuery({
+  const gitStatusQuery = useQuery({
     queryKey: ['git-file-statuses', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesByIdGitStatus({ path: { id: workspaceId! } })
-      const status = data as { files?: GitFileStatus[] } | null
-      return (status?.files ?? []) as GitFileStatus[]
+      return GitStatusFileListSchema.parse(data).files satisfies GitFileStatus[]
     },
     enabled: !!workspaceId,
     staleTime: 10_000,
     refetchInterval: 15_000,
   })
+
+  const files = filesQuery.data ?? []
+  const gitStatuses = gitStatusQuery.data
 
   // Only pass file paths — @pierre/trees auto-creates directory nodes from path hierarchy
   const paths = useMemo(() => files.flatMap(f => f.type === 'file' ? [f.path] : []), [files])
@@ -85,7 +101,7 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
     )
   }
 
-  if (isLoading) {
+  if (filesQuery.isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
         <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" />
@@ -103,7 +119,9 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 
   return (
     <FileTreeInner
+      workspaceId={workspaceId}
       preparedInput={preparedInput}
+      ready={filesQuery.isSuccess && gitStatusQuery.isSuccess}
       gitStatus={treeGitStatus}
       workspacePath={workspacePath ?? undefined}
       onPackRequested={onPackRequested}
@@ -114,13 +132,15 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 // ── Inner tree (mounted once model exists) ────────────────────────────────────
 
 interface FileTreeInnerProps {
+  workspaceId: string
   preparedInput: ReturnType<typeof prepareFileTreeInput>
+  ready: boolean
   gitStatus?: TreeGitStatus[]
   workspacePath?: string
   onPackRequested?: (paths: string[]) => void
 }
 
-function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
+function FileTreeInner({ workspaceId, preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
   const { model } = useFileTree({
     preparedInput,
     initialSearchQuery: '',
@@ -145,6 +165,21 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequeste
   const selectedPaths = useFileTreeSelection(model)
   const search = useFileTreeSearch(model)
   const hasSearchValue = search.value.length > 0
+  const firstRenderedWorkspaceIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!ready || firstRenderedWorkspaceIdRef.current === workspaceId) {
+      return
+    }
+
+    firstRenderedWorkspaceIdRef.current = workspaceId
+    markCradlePerformance('cradle:first-right-aside-files-rendered')
+    measureCradlePerformance(
+      'cradle:right-aside-files-first-render',
+      'cradle:right-aside-files-open-requested',
+      'cradle:first-right-aside-files-rendered',
+    )
+  }, [ready, workspaceId])
 
   // Update git status when it changes
   useEffect(() => {
@@ -176,7 +211,11 @@ function FileTreeInner({ preparedInput, gitStatus, workspacePath, onPackRequeste
   }, [model, workspacePath])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden pt-2">
+    <div
+      className="flex flex-1 flex-col overflow-hidden pt-2"
+      data-testid="right-aside-file-tree"
+      data-right-aside-files-ready={ready ? 'true' : 'false'}
+    >
       <div className="shrink-0 px-2 pb-2">
         <div className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 focus-within:border-ring/50 focus-within:ring-2 focus-within:ring-ring/15">
           <SearchIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />

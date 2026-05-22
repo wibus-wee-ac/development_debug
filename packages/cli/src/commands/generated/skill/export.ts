@@ -36,6 +36,12 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "confirmedNonCradleOwnedWrite",
+      "required": true,
+      "target": "body.confirmedNonCradleOwnedWrite",
+      "type": "boolean"
+    },
+    {
       "name": "overwrite",
       "required": false,
       "target": "body.overwrite",

@@ -315,7 +315,7 @@ function ChatMinimapInner({
       {/* Hover peek popover */}
       {hoveredBar && uiState.hoverIdx !== null && (
         <div
-          className="pointer-events-none absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md transition-[top] duration-75 ease-out"
+          className="pointer-events-none absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md"
           style={{
             top: peekTop,
           }}

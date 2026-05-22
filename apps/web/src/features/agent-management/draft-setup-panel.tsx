@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
+import { z } from 'zod'
 
 import {
   postProvidersHealthCheck,
@@ -32,6 +33,10 @@ interface PresetSetupFormValues {
   name: string
   values: Record<string, string>
 }
+
+const SecretCreateResponseSchema = z.object({
+  id: z.string().min(1),
+})
 
 export function DraftSetupPanel({
   draft,
@@ -153,7 +158,7 @@ function PresetSetupForm({
         const { data: meta } = await postSecrets({
           body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey },
         })
-        credentialRef = (meta as Record<string, unknown>)?.id as string ?? null
+        credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
 
       const config: Record<string, unknown> = { ...preset.defaults }

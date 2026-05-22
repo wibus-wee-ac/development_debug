@@ -1,5 +1,13 @@
 import { EventEmitter } from 'node:events'
 
+import { z } from 'zod'
+
+const WaitForResponseInputSchema = z.object({
+  callId: z.string(),
+  threadTs: z.string(),
+  timeoutMs: z.number().positive().optional(),
+})
+
 /**
  * Manages pending zhi calls waiting for user replies from Slack.
  *
@@ -20,14 +28,20 @@ export class PendingCallManager extends EventEmitter {
    * Wait for a response to a pending call.
    * Returns when the user replies in Slack.
    */
-  waitForResponse(callId: string, threadTs: string, timeoutMs?: number): Promise<string> {
+  waitForResponse(rawCallId: string, rawThreadTs: string, rawTimeoutMs?: number): Promise<string> {
+    const { callId, threadTs, timeoutMs } = WaitForResponseInputSchema.parse({
+      callId: rawCallId,
+      threadTs: rawThreadTs,
+      timeoutMs: rawTimeoutMs,
+    })
+
     return new Promise<string>((resolve, reject) => {
-      const timeout = typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
-        ? setTimeout(() => {
+      const timeout = timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
             this.cleanup(callId)
             reject(new Error(`Zhi call ${callId} timed out after ${timeoutMs}ms`))
           }, timeoutMs)
-        : undefined
 
       this.pending.set(callId, { threadTs, resolve, reject, timeout })
       this.threadToCallId.set(threadTs, callId)

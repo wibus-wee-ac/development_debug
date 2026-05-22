@@ -9,6 +9,7 @@ describe('chronicle daemon manager', () => {
     const args = createDaemonArgs({
       storageRoot: '/tmp/cradle-chronicle',
       audioCaptureEnabled: false,
+      audioSource: 'microphone',
       audioSegmentMs: 5_000,
       audioSegmentIntervalMs: 60_000,
       audioRmsThreshold: 0.02,
@@ -41,6 +42,35 @@ describe('chronicle daemon manager', () => {
       '10000',
       '--audio-rms-threshold',
       '0.03',
+    ])
+  })
+
+  it('passes configured privacy rules as repeatable daemon flags', () => {
+    const args = createDaemonArgs({
+      storageRoot: '/tmp/cradle-chronicle',
+      audioCaptureEnabled: false,
+      audioSource: 'microphone',
+      audioSegmentMs: 5_000,
+      audioSegmentIntervalMs: 60_000,
+      audioRmsThreshold: 0.02,
+      privacySensitiveAppBundleIds: ['com.apple.Terminal', 'com.example.Secret'],
+      privacySensitiveTitlePatterns: ['Bank Dashboard'],
+      privacySensitiveUrlPatterns: ['admin.example.com'],
+    })
+
+    expect(args).toEqual([
+      '--daemon',
+      '--storage-root',
+      '/tmp/cradle-chronicle',
+      '--no-audio-capture',
+      '--privacy-sensitive-app',
+      'com.apple.Terminal',
+      '--privacy-sensitive-app',
+      'com.example.Secret',
+      '--privacy-sensitive-title',
+      'Bank Dashboard',
+      '--privacy-sensitive-url',
+      'admin.example.com',
     ])
   })
 })

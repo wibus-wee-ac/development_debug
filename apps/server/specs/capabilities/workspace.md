@@ -44,7 +44,7 @@
 
 - `listFiles(workspaceId)` → `WorkspaceFileEntry[]`（workspace 不存在时返回 `[]`）
 - `readTextFile(workspaceId, relativePath)` → `{ content: string | null }`
-- `writeTextFile(workspaceId, relativePath, content)` → `{ success: boolean }`
+- `writeTextFile(workspaceId, relativePath, content)` → `{ success: boolean, ownerBoundary }`
 
 ## Side Effects
 
@@ -89,12 +89,14 @@ HTTP 端点（Tsuki/Hono controller）：
 - `DELETE /workspaces/:id` → `{ ok: true }`
 - `GET /workspaces/:id/files` → `WorkspaceFileEntry[]`
 - `GET /workspaces/:id/files/content?path=` → `{ content: string | null }`
-- `PUT /workspaces/:id/files/content` `{ path, content }` → `{ success: boolean }`
+- `PUT /workspaces/:id/files/content` `{ path, content, confirmedNonCradleOwnedWrite: true }` → `{ success: boolean, ownerBoundary }`
 
 错误约定：
 
 - 重复 `path` 的创建返回 `AppError`（`workspace_path_exists`, HTTP 409）。
 - 输入缺失/非法返回 `AppError`（HTTP 400）。
+- 写 workspace file 是 non-Cradle-owned write。请求必须携带 `confirmedNonCradleOwnedWrite: true`，否则返回 `non_cradle_owned_write_confirmation_required`（HTTP 400），并且不写入文件。
+- 成功或路径被安全策略阻止时，响应都会包含 `ownerBoundary`，其中 `classification` 为 `non-cradle-owned`，`owner` 为 `workspace`，并包含 `workspacePath`、`relativePath` 和 resolved `targetPath`。
 
 ## Target Module Design
 
@@ -111,13 +113,15 @@ HTTP 端点（Tsuki/Hono controller）：
 ## Compatibility Requirements
 
 - 不包含 Electron 目录选择器与 shell 打开路径能力（由客户端自行实现）。
-- 保持旧语义：`listFiles` 对不存在 workspace 返回 `[]`，`readTextFile` 返回 `null`，`writeTextFile` 返回 `false`。
+- 保持旧语义：`listFiles` 对不存在 workspace 返回 `[]`，`readTextFile` 返回 `null`，`writeTextFile` 返回 `success: false`。
+- 写入 route 的兼容性变化是有意的：调用方必须显式确认 non-Cradle-owned workspace write，以满足 namespace ownership 规则。
 
 ## Test Plan
 
 - 通过 `createConfiguredApp()` 验证 `/workspaces` CRUD 与 `resolveByPath`。
 - 验证 `listFiles` 遵守 `.gitignore` 与默认忽略规则。
 - 验证 `readTextFile`/`writeTextFile` 的越界保护与成功写入。
+- 验证缺少或拒绝 `confirmedNonCradleOwnedWrite` 时返回 400，且目标文件内容保持不变。
 - 验证重复路径创建返回 409（若实现该约束）。
 
 ## Cutover Plan

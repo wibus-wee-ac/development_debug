@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { z } from 'zod'
 
 import { getServerUrl } from '~/lib/electron'
 
@@ -34,6 +35,39 @@ interface ObservabilityIncident {
   count: number
 }
 
+const ObservabilityEventSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  code: z.string(),
+  severity: z.string(),
+  category: z.string(),
+  message: z.string(),
+  attrs: z.record(z.string(), z.unknown()).optional(),
+  chatSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  occurredAt: z.number().finite(),
+  recordedAt: z.number().finite(),
+})
+
+const ObservabilityIncidentSchema = z.object({
+  id: z.string(),
+  dedupeKey: z.string(),
+  code: z.string(),
+  severity: z.string(),
+  status: z.enum(['open', 'resolved']),
+  source: z.string(),
+  message: z.string(),
+  chatSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  firstOccurredAt: z.number().finite(),
+  lastOccurredAt: z.number().finite(),
+  lastRecordedAt: z.number().finite(),
+  count: z.number().finite(),
+})
+
+const ObservabilityEventsSchema = z.array(ObservabilityEventSchema)
+const ObservabilityIncidentsSchema = z.array(ObservabilityIncidentSchema)
+
 export type ObservabilityEntry
   = | { kind: 'event', payload: ObservabilityEvent }
     | { kind: 'incident', payload: ObservabilityIncident }
@@ -60,8 +94,12 @@ export const useObservabilityDevtoolStore = create<ObservabilityDevtoolState>(se
         fetch(`${SERVER_BASE}/observability/events?limit=200`),
         fetch(`${SERVER_BASE}/observability/incidents?limit=50`),
       ])
-      const events: ObservabilityEvent[] = eventsRes.ok ? await eventsRes.json() : []
-      const incidents: ObservabilityIncident[] = incidentsRes.ok ? await incidentsRes.json() : []
+      if (!eventsRes.ok || !incidentsRes.ok) {
+        throw new Error('Failed to load observability entries')
+      }
+
+      const events = ObservabilityEventsSchema.parse(await eventsRes.json())
+      const incidents = ObservabilityIncidentsSchema.parse(await incidentsRes.json())
 
       const entries: ObservabilityEntry[] = [
         ...events.map(e => ({ kind: 'event' as const, payload: e })),

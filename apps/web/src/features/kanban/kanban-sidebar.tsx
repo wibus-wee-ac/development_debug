@@ -14,9 +14,13 @@ import { createPortal } from 'react-dom'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
+import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './use-kanban'
+
+let firstKanbanSidebarRendered = false
 
 // ── Create Board Popover ──────────────────────────────────────────────────────
 
@@ -234,6 +238,8 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
         <Link
           to="kanban-board"
           params={{ boardId: board.id }}
+          onFocus={() => preloadTabRoute('kanban-board')}
+          onMouseEnter={() => preloadTabRoute('kanban-board')}
           onDoubleClick={handleRenameStart}
           className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs text-sidebar-foreground/80"
         >
@@ -277,12 +283,28 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const boards = useAllBoards()
   const { openTab } = useCradleNavigation()
   const [isCreating, setIsCreating] = useState(false)
+  const ready = boards.isSuccess
+
+  useEffect(() => {
+    if (!ready || firstKanbanSidebarRendered) {
+      return
+    }
+
+    firstKanbanSidebarRendered = true
+    markCradlePerformance('cradle:first-kanban-sidebar-rendered')
+    measureCradlePerformance(
+      'cradle:kanban-sidebar-first-render',
+      'cradle:kanban-sidebar-render-requested',
+      'cradle:first-kanban-sidebar-rendered',
+    )
+  }, [ready])
 
   return (
     <div
       className="flex flex-col"
       style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
       data-testid="kanban-sidebar"
+      data-kanban-sidebar-ready={ready ? 'true' : 'false'}
     >
       <div className="flex items-center px-2.5 py-1.5">
         <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">看板</span>
@@ -307,7 +329,10 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
       <CreateBoardDialog
         open={isCreating}
         onOpenChange={setIsCreating}
-        onCreated={board => openTab('kanban-board', { boardId: board.id })}
+        onCreated={(board) => {
+          preloadTabRoute('kanban-board')
+          openTab('kanban-board', { boardId: board.id })
+        }}
       />
     </div>
   )

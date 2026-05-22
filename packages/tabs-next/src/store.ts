@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { z } from 'zod'
 
 import { installDebug, notifyDebugStateChanged, recordTabAction } from './debug'
 import { resolveLocation, resolveRouteTitle } from './route-definition'
 import type {
   NavigateTabOptions,
   OpenTabOptions,
-  PersistedTabsNextState,
   RestoreTabsInput,
   TabContextState,
   TabHistoryEntry,
@@ -93,55 +93,69 @@ function resolveHistoryEntryLabel(registry: TabRegistry, entry: TabHistoryEntry)
   return entry.title ?? (route ? resolveRouteTitle(route, entry.location.params) : entry.location.routeId)
 }
 
-function validateTab(value: unknown): value is TabInstance {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const tab = value as Partial<TabInstance>
-  return (
-    typeof tab.id === 'string'
-    && typeof tab.type === 'string'
-    && typeof tab.label === 'string'
-    && typeof tab.pinned === 'boolean'
-    && !!tab.params
-    && typeof tab.params === 'object'
-    && !Array.isArray(tab.params)
-  )
+const TabParamsSchema = z.record(z.string(), z.string().optional())
+
+const TabLocationSchema = z.object({
+  routeId: z.string(),
+  params: TabParamsSchema,
+  pathname: z.string(),
+  search: z.string().optional(),
+  state: z.unknown().optional(),
+})
+
+const TabHistoryEntrySchema = z.object({
+  location: TabLocationSchema,
+  title: z.string().optional(),
+})
+
+const TabInstanceSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  params: TabParamsSchema,
+  label: z.string(),
+  pinned: z.boolean(),
+})
+
+const TabContextStateSchema = z.object({
+  id: z.string(),
+  history: z.array(TabHistoryEntrySchema),
+  index: z.number().finite().transform(value => Math.trunc(value)),
+  pinned: z.boolean().default(false),
+  keepAlive: z.enum(['default', 'always', 'discardable']).default('default'),
+  createdAt: z.number().finite().default(now),
+  lastActiveAt: z.number().finite().default(now),
+  viewState: z.record(z.string(), z.unknown()).default({}),
+})
+
+const PersistedTabsNextStateObjectSchema = z.object({
+  tabs: z.array(TabInstanceSchema).default([]),
+  contexts: z.array(TabContextStateSchema).default([]),
+  activeTabId: z.string().nullable().default(null),
+})
+
+const PersistedTabsNextStateSchema = z.union([
+  PersistedTabsNextStateObjectSchema,
+  z.null().transform(() => ({})),
+  z.undefined().transform(() => ({})),
+]).pipe(PersistedTabsNextStateObjectSchema)
+
+const RestoreTabsInputSchema = z.object({
+  tabs: z.array(TabInstanceSchema),
+  activeTabId: z.string().nullable(),
+})
+
+function selectRegisteredTabs(tabs: TabInstance[], registry: TabRegistry): TabInstance[] {
+  return tabs.filter(tab => registry[tab.type])
 }
 
-function sanitizeTabs(tabs: unknown, registry: TabRegistry): TabInstance[] {
-  if (!Array.isArray(tabs)) {
-    return []
-  }
-  const validTabs: TabInstance[] = []
-  for (const tab of tabs) {
-    if (validateTab(tab) && registry[tab.type]) {
-      validTabs.push(tab)
-    }
-  }
-  return validTabs
-}
-
-function sanitizeContexts(contexts: unknown, tabs: TabInstance[], registry: TabRegistry): TabContextState[] {
-  if (!Array.isArray(contexts)) {
-    return []
-  }
+function selectRegisteredContexts(contexts: TabContextState[], tabs: TabInstance[], registry: TabRegistry): TabContextState[] {
   const tabIds = new Set<string>()
   for (const tab of tabs) {
     tabIds.add(tab.id)
   }
   const valid: TabContextState[] = []
-  for (const item of contexts) {
-    if (!item || typeof item !== 'object') {
-      continue
-    }
-    const context = item as Partial<TabContextState>
-    if (
-      typeof context.id !== 'string'
-      || !tabIds.has(context.id)
-      || !Array.isArray(context.history)
-      || typeof context.index !== 'number'
-    ) {
+  for (const context of contexts) {
+    if (!tabIds.has(context.id)) {
       continue
     }
     const originalIndex = Math.max(0, Math.min(context.index, context.history.length - 1))
@@ -149,16 +163,8 @@ function sanitizeContexts(contexts: unknown, tabs: TabInstance[], registry: TabR
     let originalEntryWasKept = false
     const history: TabHistoryEntry[] = []
     context.history.forEach((entry, entryIndex) => {
-      if (!entry || typeof entry !== 'object') {
-        return
-      }
-      const candidate = entry as Partial<TabHistoryEntry>
-      if (
-        !!candidate.location
-        && typeof candidate.location.routeId === 'string'
-        && !!registry[candidate.location.routeId]
-      ) {
-        history.push(candidate as TabHistoryEntry)
+      if (registry[entry.location.routeId]) {
+        history.push(entry)
         if (entryIndex === originalIndex) {
           nextIndex = history.length - 1
           originalEntryWasKept = true
@@ -175,11 +181,11 @@ function sanitizeContexts(contexts: unknown, tabs: TabInstance[], registry: TabR
       id: context.id,
       history,
       index: Math.max(0, Math.min(nextIndex, history.length - 1)),
-      pinned: context.pinned === true,
-      keepAlive: context.keepAlive ?? 'default',
-      createdAt: typeof context.createdAt === 'number' ? context.createdAt : now(),
-      lastActiveAt: typeof context.lastActiveAt === 'number' ? context.lastActiveAt : now(),
-      viewState: context.viewState && typeof context.viewState === 'object' ? context.viewState : {},
+      pinned: context.pinned,
+      keepAlive: context.keepAlive,
+      createdAt: context.createdAt,
+      lastActiveAt: context.lastActiveAt,
+      viewState: context.viewState,
     })
   }
   return valid
@@ -237,14 +243,14 @@ function fillMissingContexts(
 }
 
 function sanitizePersisted(value: unknown, registry: TabRegistry): Pick<TabStoreState, 'tabs' | 'contexts' | 'activeTabId'> {
-  const persisted = value as Partial<PersistedTabsNextState> | undefined
-  const tabs = sanitizeTabs(persisted?.tabs, registry)
-  const contexts = sanitizeContexts(persisted?.contexts, tabs, registry)
+  const persisted = PersistedTabsNextStateSchema.parse(value)
+  const tabs = selectRegisteredTabs(persisted.tabs, registry)
+  const contexts = selectRegisteredContexts(persisted.contexts, tabs, registry)
   const normalizedContexts = contexts.length > 0
     ? fillMissingContexts(tabs, contexts, registry)
     : contextsFromTabs(tabs, registry)
   const normalizedTabs = syncTabsToContextLocations(tabs, normalizedContexts, registry)
-  const activeTabId = typeof persisted?.activeTabId === 'string' && tabs.some(tab => tab.id === persisted.activeTabId)
+  const activeTabId = persisted.activeTabId !== null && tabs.some(tab => tab.id === persisted.activeTabId)
     ? persisted.activeTabId
     : normalizedTabs.at(-1)?.id ?? null
   return { tabs: normalizedTabs, contexts: normalizedContexts, activeTabId }
@@ -435,9 +441,10 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         },
 
         restoreTabs: (input) => {
-          const tabs = sanitizeTabs(input.tabs, registry)
-          const activeTabId = typeof input.activeTabId === 'string' && tabs.some(tab => tab.id === input.activeTabId)
-            ? input.activeTabId
+          const restored = RestoreTabsInputSchema.parse(input)
+          const tabs = selectRegisteredTabs(restored.tabs, registry)
+          const activeTabId = restored.activeTabId !== null && tabs.some(tab => tab.id === restored.activeTabId)
+            ? restored.activeTabId
             : tabs.at(-1)?.id ?? null
           set({ tabs, contexts: contextsFromTabs(tabs, registry), activeTabId })
         },

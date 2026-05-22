@@ -5,6 +5,8 @@ import { join } from 'node:path'
 
 import {
   agentProfiles,
+  chronicleKnowledgeCards,
+  chronicleMemories,
   messages,
   sessions,
   workspaces,
@@ -130,6 +132,127 @@ describe('search capability', () => {
       expect(await afterDeleteSearch.json()).toEqual([])
 
       const invalidQuery = await app.handle(new Request('http://localhost/search/threads?query='))
+      expect(invalidQuery.status).toBe(400)
+      expect((await invalidQuery.json()).code).toBe('validation_error')
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRootOne, { recursive: true, force: true })
+      rmSync(workspaceRootTwo, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('searches Chronicle memories and knowledge cards with workspace filtering', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRootOne = makeTempDir('cradle-workspace-one-')
+    const workspaceRootTwo = makeTempDir('cradle-workspace-two-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const d = db()
+      const workspaceOneId = randomUUID()
+      const workspaceTwoId = randomUUID()
+      const now = Math.floor(Date.now() / 1000)
+
+      d.insert(workspaces).values([
+        { id: workspaceOneId, name: 'Workspace One', path: workspaceRootOne },
+        { id: workspaceTwoId, name: 'Workspace Two', path: workspaceRootTwo },
+      ]).run()
+
+      d.insert(chronicleMemories).values([
+        {
+          id: 'memory-alpha',
+          sourceId: 'memory-alpha-source',
+          contentHash: 'memory-alpha-hash',
+          workspaceId: workspaceOneId,
+          type: '10min',
+          source: 'llm',
+          content: '# Checkout incident\nProject Nebula checkout failed because the gateway token expired.',
+          createdAt: now - 20,
+          updatedAt: now - 10,
+        },
+        {
+          id: 'memory-beta',
+          sourceId: 'memory-beta-source',
+          contentHash: 'memory-beta-hash',
+          workspaceId: workspaceTwoId,
+          type: '6h',
+          source: 'imported',
+          content: '# Design note\nUnrelated roadmap planning text.',
+          createdAt: now - 30,
+          updatedAt: now - 30,
+        },
+      ]).run()
+
+      d.insert(chronicleKnowledgeCards).values([
+        {
+          id: 'knowledge-alpha',
+          workspaceId: workspaceOneId,
+          title: 'Nebula checkout gateway token',
+          content: 'The durable fix is rotating the gateway token before checkout release windows.',
+          cardType: 'decision',
+          dimension: 'technical',
+          confidenceBps: 9200,
+          tagsJson: JSON.stringify(['nebula', 'checkout']),
+          stableKey: 'knowledge-alpha',
+          contentHash: 'knowledge-alpha-hash',
+          version: 1,
+          status: 'active',
+          createdAt: now - 5,
+          updatedAt: now,
+        },
+        {
+          id: 'knowledge-deleted',
+          workspaceId: workspaceOneId,
+          title: 'Deleted checkout card',
+          content: 'checkout content that should not be visible',
+          cardType: 'fact',
+          dimension: 'general',
+          confidenceBps: 10000,
+          stableKey: 'knowledge-deleted',
+          contentHash: 'knowledge-deleted-hash',
+          version: 1,
+          status: 'deleted',
+          createdAt: now - 4,
+          updatedAt: now - 4,
+        },
+      ]).run()
+
+      const searchRes = await app.handle(new Request('http://localhost/search/chronicle?query=checkout'))
+      expect(searchRes.status).toBe(200)
+      const hits = await searchRes.json()
+      expect(hits.map((hit: { id: string }) => hit.id)).toEqual(['knowledge-alpha', 'memory-alpha'])
+      expect(hits[0]).toEqual(expect.objectContaining({
+        type: 'knowledge',
+        workspaceId: workspaceOneId,
+        workspaceName: 'Workspace One',
+        cardType: 'decision',
+        dimension: 'technical',
+        status: 'active',
+      }))
+      expect(hits[1]).toEqual(expect.objectContaining({
+        type: 'memory',
+        workspaceId: workspaceOneId,
+        memoryType: '10min',
+        memorySource: 'llm',
+      }))
+      expect(hits.some((hit: { id: string }) => hit.id === 'knowledge-deleted')).toBe(false)
+
+      const scopedMiss = await app.handle(new Request(`http://localhost/search/chronicle?query=checkout&workspaceId=${encodeURIComponent(workspaceTwoId)}`))
+      expect(scopedMiss.status).toBe(200)
+      expect(await scopedMiss.json()).toEqual([])
+
+      const invalidQuery = await app.handle(new Request('http://localhost/search/chronicle?query='))
       expect(invalidQuery.status).toBe(400)
       expect((await invalidQuery.json()).code).toBe('validation_error')
     }

@@ -8,6 +8,5 @@ export const ProfileConfigSchema = z.object({
 }).passthrough()
 
 export const ProfileConfigJsonSchema = z.string()
-  .nullish()
-  .transform(raw => JSON.parse(raw ?? '{}'))
+  .transform(raw => JSON.parse(raw))
   .pipe(ProfileConfigSchema)

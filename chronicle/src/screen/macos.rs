@@ -47,13 +47,41 @@ mod native {
             Self::capture_displays(&display_ids, frame_index)
         }
 
+        pub fn capture_all_with_privacy_filter(
+            frame_index: u64,
+            privacy_filter: &PrivacyFilter,
+        ) -> ChronicleResult<Self> {
+            let display_ids = active_display_ids()?;
+            Self::capture_displays_with_privacy_filter(&display_ids, frame_index, privacy_filter)
+        }
+
         pub fn capture(display_id: u32, frame_index: u64) -> ChronicleResult<Self> {
             Self::capture_displays(&[display_id], frame_index)
         }
 
+        pub fn capture_with_privacy_filter(
+            display_id: u32,
+            frame_index: u64,
+            privacy_filter: &PrivacyFilter,
+        ) -> ChronicleResult<Self> {
+            Self::capture_displays_with_privacy_filter(&[display_id], frame_index, privacy_filter)
+        }
+
         fn capture_displays(display_ids: &[u32], frame_index: u64) -> ChronicleResult<Self> {
+            Self::capture_displays_with_privacy_filter(
+                display_ids,
+                frame_index,
+                &PrivacyFilter::default(),
+            )
+        }
+
+        fn capture_displays_with_privacy_filter(
+            display_ids: &[u32],
+            frame_index: u64,
+            privacy_filter: &PrivacyFilter,
+        ) -> ChronicleResult<Self> {
             let windows = read_window_inventory()?;
-            if PrivacyFilter.should_exclude_windows(&windows) {
+            if privacy_filter.should_exclude_windows(&windows) {
                 return Ok(Self {
                     frames: VecDeque::new(),
                 });
@@ -65,15 +93,37 @@ mod native {
             }
 
             let accessibility = read_accessibility_capture(&windows);
-            Self::capture_displays_with_accessibility(display_ids, frame_index, accessibility)
+            Self::capture_displays_with_accessibility(
+                display_ids,
+                frame_index,
+                accessibility,
+                privacy_filter,
+            )
         }
 
         pub fn capture_all_with_accessibility(
             frame_index: u64,
             accessibility: AccessibilityCapture,
         ) -> ChronicleResult<Self> {
+            Self::capture_all_with_accessibility_and_privacy_filter(
+                frame_index,
+                accessibility,
+                &PrivacyFilter::default(),
+            )
+        }
+
+        pub fn capture_all_with_accessibility_and_privacy_filter(
+            frame_index: u64,
+            accessibility: AccessibilityCapture,
+            privacy_filter: &PrivacyFilter,
+        ) -> ChronicleResult<Self> {
             let display_ids = active_display_ids()?;
-            Self::capture_displays_with_accessibility(&display_ids, frame_index, accessibility)
+            Self::capture_displays_with_accessibility(
+                &display_ids,
+                frame_index,
+                accessibility,
+                privacy_filter,
+            )
         }
 
         pub fn capture_with_accessibility(
@@ -81,16 +131,36 @@ mod native {
             frame_index: u64,
             accessibility: AccessibilityCapture,
         ) -> ChronicleResult<Self> {
-            Self::capture_displays_with_accessibility(&[display_id], frame_index, accessibility)
+            Self::capture_with_accessibility_and_privacy_filter(
+                display_id,
+                frame_index,
+                accessibility,
+                &PrivacyFilter::default(),
+            )
+        }
+
+        pub fn capture_with_accessibility_and_privacy_filter(
+            display_id: u32,
+            frame_index: u64,
+            accessibility: AccessibilityCapture,
+            privacy_filter: &PrivacyFilter,
+        ) -> ChronicleResult<Self> {
+            Self::capture_displays_with_accessibility(
+                &[display_id],
+                frame_index,
+                accessibility,
+                privacy_filter,
+            )
         }
 
         fn capture_displays_with_accessibility(
             display_ids: &[u32],
             frame_index: u64,
             accessibility: AccessibilityCapture,
+            privacy_filter: &PrivacyFilter,
         ) -> ChronicleResult<Self> {
             let windows = read_window_inventory()?;
-            if PrivacyFilter.should_exclude_windows(&windows) {
+            if privacy_filter.should_exclude_windows(&windows) {
                 return Ok(Self {
                     frames: VecDeque::new(),
                 });
@@ -250,7 +320,7 @@ mod native {
         event: &AxObserverNotification,
     ) -> AccessibilityCapture {
         match read_window_inventory() {
-            Ok(windows) if PrivacyFilter.should_exclude_windows(&windows) => {
+            Ok(windows) if PrivacyFilter::default().should_exclude_windows(&windows) => {
                 return AccessibilityCapture::from_elements(
                     "macos-ax-observer",
                     AccessibilityCaptureStatus::Unavailable,

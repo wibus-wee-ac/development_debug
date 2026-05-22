@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
 
 import {
   deleteIssueAgentSessionsByAgentSessionId,
@@ -38,14 +39,8 @@ import {
   postIssuesStatusesReorder,
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
-import type {
-  GetIssuesByIdResponse,
-  GetIssuesResponse,
-  GetIssuesSearchResponse,
-  PatchIssuesByIdResponse,
-  PostIssuesResponse,
-} from '~/api-gen/types.gen'
 import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { sessionsQueryKey } from '../workspace/use-session'
 
@@ -126,40 +121,119 @@ type DeleteCommentInput = { id: string, issueId: string }
 type AddRelationInput = { sourceIssueId: string, targetIssueId: string, type: 'blocks' | 'duplicates' | 'relates_to' }
 type DeleteRelationInput = { id: string, issueId: string }
 
-type ApiKanbanIssue
-  = | GetIssuesResponse[number]
-    | GetIssuesSearchResponse[number]
-    | GetIssuesByIdResponse
-    | PostIssuesResponse
-    | PatchIssuesByIdResponse
+type ApiKanbanIssue = KanbanIssue
 
-function nullableString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}
+const KanbanBoardSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  name: z.string(),
+  filterConfig: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+const KanbanBoardListSchema = z.array(KanbanBoardSchema).default([])
 
-function toKanbanIssue(row: ApiKanbanIssue): KanbanIssue {
-  return {
-    ...row,
-    number: (row as { number?: number }).number ?? 0,
-    statusId: nullableString(row.statusId),
-    milestoneId: nullableString(row.milestoneId),
-    parentIssueId: nullableString(row.parentIssueId),
-    description: nullableString(row.description),
-    assigneeKind: nullableString(row.assigneeKind),
-    assigneeId: nullableString(row.assigneeId),
-    createdByKind: ((row as { createdByKind?: 'user' | 'agent' | 'system' }).createdByKind ?? 'user'),
-    createdById: ((row as { createdById?: string }).createdById ?? '__self__'),
-    delegateAgentId: nullableString((row as { delegateAgentId?: unknown }).delegateAgentId),
-    delegateAgentProfileId: nullableString(row.delegateAgentProfileId),
-  }
-}
+const KanbanStatusSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  name: z.string(),
+  color: z.string().nullable(),
+  category: z.enum(['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled']),
+  order: z.number(),
+  createdAt: z.number(),
+})
+const KanbanStatusListSchema = z.array(KanbanStatusSchema).default([])
 
-function readKanbanIssue(row: ApiKanbanIssue | undefined, action: string): KanbanIssue {
-  if (!row) {
-    throw new Error(`Failed to ${action} issue`)
-  }
-  return toKanbanIssue(row)
-}
+const KanbanMilestoneSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  dueDate: z.number().nullable(),
+  status: z.enum(['open', 'closed']),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+const KanbanMilestoneListSchema = z.array(KanbanMilestoneSchema).default([])
+
+const KanbanIssueSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  number: z.number(),
+  statusId: z.string().nullable(),
+  milestoneId: z.string().nullable(),
+  parentIssueId: z.string().nullable(),
+  title: z.string(),
+  description: z.string().nullable(),
+  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
+  labels: z.array(z.string()),
+  assigneeKind: z.string().nullable(),
+  assigneeId: z.string().nullable(),
+  createdByKind: z.enum(['user', 'agent', 'system']),
+  createdById: z.string(),
+  delegateAgentId: z.string().nullable(),
+  delegateAgentProfileId: z.string().nullable(),
+  contextRefs: z.string(),
+  order: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+}).passthrough() satisfies z.ZodType<ApiKanbanIssue>
+const KanbanIssueListSchema = z.array(KanbanIssueSchema).default([])
+
+const IssueCommentAuthorSchema = z.object({
+  kind: z.enum(['user', 'agent', 'system']),
+  id: z.string().nullable(),
+  displayName: z.string(),
+  avatarUrl: z.string().nullable(),
+  label: z.string().nullable(),
+})
+const KanbanIssueCommentSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  content: z.string(),
+  authorKind: z.enum(['user', 'agent', 'system', 'system.delegated', 'system.undelegated']),
+  authorId: z.string().nullable(),
+  author: IssueCommentAuthorSchema,
+  agentActivityId: z.string().nullable(),
+  createdAt: z.number(),
+})
+const KanbanIssueCommentListSchema = z.array(KanbanIssueCommentSchema).default([])
+
+const KanbanIssueRelationSchema = z.object({
+  id: z.string(),
+  sourceIssueId: z.string(),
+  targetIssueId: z.string(),
+  type: z.enum(['blocks', 'duplicates', 'relates_to']),
+  createdAt: z.number(),
+})
+const KanbanIssueRelationListSchema = z.array(KanbanIssueRelationSchema).default([])
+
+const AgentSessionSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  agentProfileId: z.string(),
+  agentId: z.string().nullable(),
+  chatSessionId: z.string().nullable(),
+  status: z.enum(['created', 'active', 'completed', 'stopped', 'failed']),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+}).passthrough()
+const AgentSessionListSchema = z.array(AgentSessionSchema).default([])
+
+const AgentActivitySchema = z.object({
+  id: z.string(),
+  agentSessionId: z.string(),
+  type: z.enum(['thought', 'action', 'response', 'elicitation', 'error', 'prompt']),
+  content: z.string(),
+  signal: z.string().nullable(),
+  signalMetadata: z.string().nullable(),
+  createdAt: z.number(),
+})
+const AgentActivityListSchema = z.array(AgentActivitySchema).default([])
+
+const LinkedIssueRefSchema = z.object({
+  issueId: z.string().nullable(),
+}).nullable()
 
 // ── Boards ────────────────────────────────────────────────────────────────────
 
@@ -168,7 +242,7 @@ export function useBoards(workspaceId?: string) {
     queryKey: kanbanKeys.boards(workspaceId),
     queryFn: async () => {
       const { data } = await getKanbanBoards({ query: { workspaceId } })
-      return (data ?? []) as KanbanBoard[]
+      return KanbanBoardListSchema.parse(data) satisfies KanbanBoard[]
     },
   })
 }
@@ -193,7 +267,7 @@ export function useCreateBoard() {
       if (error || !data) {
         throw new Error('Failed to create board')
       }
-      return data as KanbanBoard
+      return KanbanBoardSchema.parse(data) satisfies KanbanBoard
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'boards'] }),
   })
@@ -204,7 +278,7 @@ export function useUpdateBoard() {
   return useMutation({
     mutationFn: async (vars: UpdateBoardInput) => {
       const { data } = await patchKanbanBoardsById({ path: { id: vars.id }, body: vars.patch })
-      return data as KanbanBoard
+      return KanbanBoardSchema.parse(data) satisfies KanbanBoard
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'boards'] }),
   })
@@ -225,7 +299,7 @@ export function useStatuses(workspaceId: string) {
     queryKey: kanbanKeys.statuses(workspaceId),
     queryFn: async () => {
       const { data } = await getIssuesStatuses({ query: { workspaceId } })
-      return (data ?? []) as KanbanStatus[]
+      return KanbanStatusListSchema.parse(data) satisfies KanbanStatus[]
     },
     enabled: !!workspaceId,
   })
@@ -236,7 +310,7 @@ export function useCreateStatus() {
   return useMutation({
     mutationFn: async (input: CreateStatusInput) => {
       const { data } = await postIssuesStatuses({ body: input })
-      return data as KanbanStatus
+      return KanbanStatusSchema.parse(data) satisfies KanbanStatus
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
   })
@@ -247,7 +321,7 @@ export function useUpdateStatus() {
   return useMutation({
     mutationFn: async (vars: UpdateStatusInput) => {
       const { data } = await patchIssuesStatusesById({ path: { id: vars.id }, body: vars.patch })
-      return data as KanbanStatus
+      return KanbanStatusSchema.parse(data) satisfies KanbanStatus
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
   })
@@ -283,7 +357,7 @@ export function useMilestones(workspaceId: string) {
     queryKey: kanbanKeys.milestones(workspaceId),
     queryFn: async () => {
       const { data } = await getIssuesMilestones({ query: { workspaceId } })
-      return (data ?? []) as KanbanMilestone[]
+      return KanbanMilestoneListSchema.parse(data) satisfies KanbanMilestone[]
     },
     enabled: !!workspaceId,
   })
@@ -295,7 +369,7 @@ function useCreateMilestone() {
   return useMutation({
     mutationFn: async (input: CreateMilestoneInput) => {
       const { data } = await postIssuesMilestones({ body: input })
-      return data as KanbanMilestone
+      return KanbanMilestoneSchema.parse(data) satisfies KanbanMilestone
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
   })
@@ -307,7 +381,7 @@ function useUpdateMilestone() {
   return useMutation({
     mutationFn: async (vars: UpdateMilestoneInput) => {
       const { data } = await patchIssuesMilestonesById({ path: { id: vars.id }, body: vars.patch })
-      return data as KanbanMilestone
+      return KanbanMilestoneSchema.parse(data) satisfies KanbanMilestone
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
   })
@@ -340,7 +414,7 @@ export function useIssues(params: IssueFilterParams) {
           labels: params.labels?.length ? params.labels.join(',') : undefined,
         },
       })
-      return (data ?? []).map(toKanbanIssue)
+      return KanbanIssueListSchema.parse(data) satisfies KanbanIssue[]
     },
     enabled: !!params.workspaceId,
   })
@@ -356,7 +430,7 @@ function useSearchIssues(query: string, limit = 20, enabled = true) {
       const { data } = await getIssuesSearch({
         query: { q: trimmed, limit: String(limit) },
       })
-      return (data ?? []).map(toKanbanIssue)
+      return KanbanIssueListSchema.parse(data) satisfies KanbanIssue[]
     },
     enabled: enabled && trimmed.length > 0,
     staleTime: 5_000,
@@ -368,7 +442,7 @@ export function useIssue(id: string) {
     queryKey: kanbanKeys.issue(id),
     queryFn: async () => {
       const { data } = await getIssuesById({ path: { id } })
-      return data ? toKanbanIssue(data) : undefined
+      return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     enabled: !!id,
   })
@@ -377,25 +451,45 @@ export function useIssue(id: string) {
 export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
+    onMutate: () => {
+      markCradlePerformance('cradle:issue-mutation-requested')
+    },
     mutationFn: async (input: CreateIssueInput) => {
       const { data, error } = await postIssues({ body: input })
       if (error || !data) {
         throw new Error('Failed to create issue')
       }
-      return readKanbanIssue(data, 'create')
+      return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
+    onSuccess: () => {
+      markCradlePerformance('cradle:issue-mutation-confirmed')
+      measureCradlePerformance(
+        'cradle:issue-mutation-confirm',
+        'cradle:issue-mutation-requested',
+        'cradle:issue-mutation-confirmed',
+      )
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+    },
   })
 }
 
 export function useUpdateIssue() {
   const qc = useQueryClient()
   return useMutation({
+    onMutate: () => {
+      markCradlePerformance('cradle:issue-mutation-requested')
+    },
     mutationFn: async (vars: UpdateIssueInput) => {
       const { data } = await patchIssuesById({ path: { id: vars.id }, body: vars.patch })
-      return readKanbanIssue(data, 'update')
+      return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     onSuccess: (_data, vars) => {
+      markCradlePerformance('cradle:issue-mutation-confirmed')
+      measureCradlePerformance(
+        'cradle:issue-mutation-confirm',
+        'cradle:issue-mutation-requested',
+        'cradle:issue-mutation-confirmed',
+      )
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.id) })
     },
@@ -408,7 +502,7 @@ export function useBulkUpdateIssues() {
     mutationFn: async (vars: BulkUpdateIssuesInput) => {
       const rows = await Promise.all(vars.ids.map(async (id) => {
         const { data } = await patchIssuesById({ path: { id }, body: vars.patch })
-        return readKanbanIssue(data, 'update')
+        return KanbanIssueSchema.parse(data) satisfies KanbanIssue
       }))
       return rows
     },
@@ -424,11 +518,22 @@ export function useBulkUpdateIssues() {
 export function useMoveIssue() {
   const qc = useQueryClient()
   return useMutation({
+    onMutate: () => {
+      markCradlePerformance('cradle:issue-mutation-requested')
+    },
     mutationFn: async (vars: MoveIssueInput) => {
       const { data } = await patchIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
-      return readKanbanIssue(data, 'move')
+      return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['kanban', 'issues'] }),
+    onSuccess: () => {
+      markCradlePerformance('cradle:issue-mutation-confirmed')
+      measureCradlePerformance(
+        'cradle:issue-mutation-confirm',
+        'cradle:issue-mutation-requested',
+        'cradle:issue-mutation-confirmed',
+      )
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+    },
   })
 }
 
@@ -447,7 +552,7 @@ export function useComments(issueId: string) {
     queryKey: kanbanKeys.comments(issueId),
     queryFn: async () => {
       const { data } = await getIssuesByIdComments({ path: { id: issueId } })
-      return (data ?? []) as KanbanIssueCommentView[]
+      return KanbanIssueCommentListSchema.parse(data) satisfies KanbanIssueCommentView[]
     },
     enabled: !!issueId,
   })
@@ -461,7 +566,7 @@ export function useAddComment() {
         path: { id: input.issueId },
         body: { content: input.content },
       })
-      return data as KanbanIssueCommentView
+      return KanbanIssueCommentSchema.parse(data) satisfies KanbanIssueCommentView
     },
     onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) }),
   })
@@ -483,7 +588,7 @@ export function useRelations(issueId: string) {
     queryKey: kanbanKeys.relations(issueId),
     queryFn: async () => {
       const { data } = await getIssuesByIdRelations({ path: { id: issueId } })
-      return (data ?? []) as KanbanIssueRelation[]
+      return KanbanIssueRelationListSchema.parse(data) satisfies KanbanIssueRelation[]
     },
     enabled: !!issueId,
   })
@@ -524,7 +629,7 @@ export function useDelegateIssue() {
         path: { id: vars.issueId },
         body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId },
       })
-      return data as AgentSession | null
+      return data === null ? null : AgentSessionSchema.parse(data) satisfies AgentSession
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
@@ -592,7 +697,7 @@ export function useAgentSessions(issueId: string) {
     queryKey: kanbanKeys.agentSessions(issueId),
     queryFn: async () => {
       const { data } = await getIssuesByIdAgentSessions({ path: { id: issueId } })
-      return (data ?? []) as AgentSession[]
+      return AgentSessionListSchema.parse(data) satisfies AgentSession[]
     },
     enabled: !!issueId,
     refetchInterval: (query) => {
@@ -611,7 +716,7 @@ export function useAgentActivities(agentSessionId: string | null, opts?: { refet
         return []
       }
       const { data } = await getIssueAgentSessionsByAgentSessionIdActivities({ path: { agentSessionId } })
-      return (data ?? []) as AgentActivity[]
+      return AgentActivityListSchema.parse(data) satisfies AgentActivity[]
     },
     enabled: !!agentSessionId,
     refetchInterval: opts?.refetchInterval,
@@ -660,7 +765,7 @@ export function useLinkedIssue(chatSessionId: string | null) {
         return null
       }
       const { data } = await getSessionsByIdLinkedIssue({ path: { id: chatSessionId } })
-      return (data ?? null) as LinkedIssueRef | null
+      return LinkedIssueRefSchema.parse(data) satisfies LinkedIssueRef | null
     },
     enabled: !!chatSessionId,
   })

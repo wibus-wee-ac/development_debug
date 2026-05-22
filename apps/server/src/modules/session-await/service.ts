@@ -2,10 +2,13 @@ import { randomUUID } from 'node:crypto'
 
 import { sessionAwaits, sessions, workspaces } from '@cradle/db'
 import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { createRun } from '../chat-runtime/service'
+import { GitHubCIFilterJsonSchema } from './sources/github-ci'
+import { GitHubReviewFilterJsonSchema } from './sources/github-review'
 import type {
   RegisterAwaitInput,
   SessionAwait,
@@ -13,15 +16,41 @@ import type {
   TriggerAwaitInput,
 } from './types'
 
+const SessionAwaitFilterJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+
+const RegisterAwaitInputSchema = z.object({
+  chatSessionId: z.string(),
+  workspaceId: z.string(),
+  source: z.string(),
+  filterJson: z.string(),
+  reason: z.string().nullable().default(null),
+  expiresAt: z.number().nullable().default(null),
+  fireAt: z.number().nullable().default(null),
+})
+
+const TriggerAwaitInputSchema = z.object({
+  awaitId: z.string(),
+  resumeText: z.string(),
+  resumePayloadJson: z.string().nullable().default(null),
+})
+
+const LastCheckedInputSchema = z.object({
+  errorText: z.string().nullable().default(null),
+})
+
 // ── write operations ──
 
-export function register(input: RegisterAwaitInput): SessionAwait {
-  // Validate filterJson is valid JSON
-  try {
-    JSON.parse(input.filterJson)
+export function register(rawInput: RegisterAwaitInput): SessionAwait {
+  const input = RegisterAwaitInputSchema.parse(rawInput)
+  if (input.source === 'github-ci') {
+    GitHubCIFilterJsonSchema.parse(input.filterJson)
   }
-  catch {
-    throw new AppError({ code: 'invalid_filter_json', status: 400, message: 'filterJson must be valid JSON' })
+  else if (input.source === 'github-review') {
+    GitHubReviewFilterJsonSchema.parse(input.filterJson)
+  }
+  else {
+    SessionAwaitFilterJsonSchema.parse(input.filterJson)
   }
 
   // Validate referenced session exists
@@ -45,9 +74,9 @@ export function register(input: RegisterAwaitInput): SessionAwait {
       workspaceId: input.workspaceId,
       source: input.source,
       filterJson: input.filterJson,
-      reason: input.reason ?? null,
-      expiresAt: input.expiresAt ?? null,
-      fireAt: input.fireAt ?? null,
+      reason: input.reason,
+      expiresAt: input.expiresAt,
+      fireAt: input.fireAt,
     })
     .returning()
     .get()
@@ -77,7 +106,8 @@ export function expire(awaitId: string): SessionAwait | null {
     .get() ?? null
 }
 
-export async function trigger(input: TriggerAwaitInput): Promise<SessionAwait | null> {
+export async function trigger(rawInput: TriggerAwaitInput): Promise<SessionAwait | null> {
+  const input = TriggerAwaitInputSchema.parse(rawInput)
   const row = db()
     .select()
     .from(sessionAwaits)
@@ -103,7 +133,7 @@ export async function trigger(input: TriggerAwaitInput): Promise<SessionAwait | 
     .set({
       status: 'triggered',
       triggeredAt: now,
-      resumePayloadJson: input.resumePayloadJson ?? null,
+      resumePayloadJson: input.resumePayloadJson,
     })
     .where(and(
       eq(sessionAwaits.id, input.awaitId),
@@ -158,12 +188,13 @@ export function markFailed(awaitId: string, errorText: string): void {
 }
 
 export function updateLastChecked(awaitId: string, errorText?: string): void {
+  const input = LastCheckedInputSchema.parse({ errorText })
   const now = Math.floor(Date.now() / 1000)
   db()
     .update(sessionAwaits)
     .set({
       lastCheckedAt: now,
-      lastErrorText: errorText ?? null,
+      lastErrorText: input.errorText,
     })
     .where(eq(sessionAwaits.id, awaitId))
     .run()

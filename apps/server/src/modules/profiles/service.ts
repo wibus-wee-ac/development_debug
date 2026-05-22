@@ -8,6 +8,8 @@ import {
   usageLogs,
 } from '@cradle/db'
 import { eq } from 'drizzle-orm'
+import stringify from 'safe-stable-stringify'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
@@ -34,49 +36,55 @@ export interface UpsertProfileInput {
 // ── public API ──
 
 const EXTERNAL_PROFILE_MODEL_CONFIG_KEYS = new Set(['enabledModels', 'modelRegistryMappings'])
-
-function stableJson(value: unknown): string {
-  if (value === null) {
-    return 'null'
-  }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return JSON.stringify(value)
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(item => stableJson(item)).join(',')}]`
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .sort(([a], [b]) => a.localeCompare(b))
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`
-  }
-  return JSON.stringify(String(value))
-}
-
-function parseProfileConfig(configJson: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(configJson) as unknown
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {}
-  }
-  catch {
-    return {}
-  }
-}
-
-function removeCradleOwnedModelConfig(config: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
+const JsonValueSchema = z.json()
+const JsonRecordSchema = z.record(z.string(), JsonValueSchema)
+const ProfileConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(JsonRecordSchema)
+const ProfileConfigProjectionJsonSchema = ProfileConfigJsonSchema.transform((config) => {
+  const modelConfig = Object.fromEntries(
+    Object.entries(config).filter(([key]) => EXTERNAL_PROFILE_MODEL_CONFIG_KEYS.has(key)),
+  )
+  const sourceConfig = Object.fromEntries(
     Object.entries(config).filter(([key, value]) => !EXTERNAL_PROFILE_MODEL_CONFIG_KEYS.has(key) && value !== undefined),
   )
-}
+  return { modelConfig, sourceConfig }
+})
+
+const ModelCapabilitiesSchema = z.object({
+  contextWindow: z.number().optional(),
+  maxOutput: z.number().optional(),
+  inputModalities: z.array(z.string()).optional(),
+  outputModalities: z.array(z.string()).optional(),
+  reasoning: z.boolean().optional(),
+  toolCall: z.boolean().optional(),
+  temperature: z.boolean().optional(),
+  structuredOutput: z.boolean().optional(),
+  cost: z.object({
+    input: z.number().optional(),
+    output: z.number().optional(),
+    cacheRead: z.number().optional(),
+    cacheWrite: z.number().optional(),
+  }).optional(),
+  family: z.string().optional(),
+  knowledgeCutoff: z.string().optional(),
+  releaseDate: z.string().optional(),
+  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+  registryModelId: z.string().optional(),
+  registryModelLabel: z.string().optional(),
+})
+
+const CustomModelInputSchema = z.object({
+  id: z.string(),
+  label: z.string().optional(),
+  capabilities: ModelCapabilitiesSchema.default({}),
+})
 
 function mergeExternalProfileModelConfig(currentConfigJson: string, requestedConfigJson: string): string {
-  const currentConfig = parseProfileConfig(currentConfigJson)
-  const requestedConfig = parseProfileConfig(requestedConfigJson)
-  const currentSourceConfig = removeCradleOwnedModelConfig(currentConfig)
-  const requestedSourceConfig = removeCradleOwnedModelConfig(requestedConfig)
+  const currentConfig = ProfileConfigProjectionJsonSchema.parse(currentConfigJson)
+  const requestedConfig = ProfileConfigProjectionJsonSchema.parse(requestedConfigJson)
 
-  if (stableJson(currentSourceConfig) !== stableJson(requestedSourceConfig)) {
+  if (stringify(currentConfig.sourceConfig) !== stringify(requestedConfig.sourceConfig)) {
     throw new AppError({
       code: 'profile_managed_by_external_source',
       status: 409,
@@ -84,17 +92,10 @@ function mergeExternalProfileModelConfig(currentConfigJson: string, requestedCon
     })
   }
 
-  const merged = { ...currentConfig }
-  for (const key of EXTERNAL_PROFILE_MODEL_CONFIG_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(requestedConfig, key) && requestedConfig[key] !== undefined) {
-      merged[key] = requestedConfig[key]
-    }
-    else {
-      delete merged[key]
-    }
-  }
-
-  return JSON.stringify(merged)
+  return JSON.stringify({
+    ...currentConfig.sourceConfig,
+    ...requestedConfig.modelConfig,
+  })
 }
 
 export function listProfiles(): AgentProfile[] {
@@ -245,6 +246,7 @@ export async function updateCustomModels(
   profileId: string,
   models: Array<{ id: string, label?: string, capabilities?: ModelCapabilities }>,
 ): Promise<CustomModelEntry[]> {
+  const parsedModels = z.array(CustomModelInputSchema).parse(models)
   if (!getProfile(profileId)) {
     throw new AppError({
       code: 'profile_not_found',
@@ -254,11 +256,11 @@ export async function updateCustomModels(
     })
   }
   // Build descriptors for enrichment
-  const descriptors = models.map(m => ({
+  const descriptors = parsedModels.map(m => ({
     id: m.id,
     label: m.label ?? m.id,
     providerKind: 'openai-compatible' as const,
-    capabilities: m.capabilities ?? {},
+    capabilities: m.capabilities,
   }))
 
   // Only enrich entries that don't already have contextWindow

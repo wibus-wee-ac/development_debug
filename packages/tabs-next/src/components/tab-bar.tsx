@@ -46,7 +46,7 @@ interface TabPillProps {
 }
 
 function renderIconSlot(slot: React.ReactNode | (() => React.ReactNode) | undefined) {
-  return typeof slot === 'function' ? slot() : slot
+  return slot instanceof Function ? slot() : slot
 }
 
 const SortableTabPill = memo(({

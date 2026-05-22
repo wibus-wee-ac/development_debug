@@ -2,6 +2,7 @@
 
 
 import { Activity, Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
+import { z } from 'zod'
 
 import { useTabsContext } from '../context'
 import { recordRendererCommit, recordRendererDuration, setMountedIdsSource, setRenderPolicySource } from '../debug'
@@ -29,6 +30,16 @@ interface ScrollPosition {
   left: number
   top: number
 }
+
+const ScrollPositionsSchema = z.union([
+  z.array(z.object({
+    key: z.string(),
+    left: z.number().finite(),
+    top: z.number().finite(),
+  })),
+  z.null().transform(() => []),
+  z.undefined().transform(() => []),
+])
 
 export function chooseMountedTabIds(
   tabs: TabInstance[],
@@ -181,7 +192,7 @@ function RetainedTabFrame({
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const savedPositions = useMemo(
-    () => readScrollPositions(context.viewState[SCROLL_VIEW_STATE_KEY]),
+    () => ScrollPositionsSchema.parse(context.viewState[SCROLL_VIEW_STATE_KEY]),
     [context.viewState],
   )
 
@@ -214,24 +225,6 @@ function RetainedTabFrame({
       {children}
     </div>
   )
-}
-
-function readScrollPositions(value: unknown): ScrollPosition[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return value.filter((item): item is ScrollPosition => {
-    if (!item || typeof item !== 'object') {
-      return false
-    }
-    const candidate = item as Partial<ScrollPosition>
-    return (
-      typeof candidate.key === 'string'
-      && typeof candidate.left === 'number'
-      && typeof candidate.top === 'number'
-    )
-  })
 }
 
 function captureScrollPositions(root: HTMLElement): ScrollPosition[] {

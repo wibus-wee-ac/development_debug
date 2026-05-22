@@ -1,5 +1,6 @@
 import { kvCache } from '@cradle/db'
 import { eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { db } from '../../infra'
 import type { ModelCapabilities, ModelDescriptor } from './types'
@@ -48,36 +49,60 @@ const MEM_TTL_MS = 1000 * 60 * 10 // 10 min in-memory to avoid repeated DB reads
 const DATE_SUFFIX_RE = /-\d{8}$/
 const VERSION_SUFFIX_RE = /-\d{4}-\d{2}-\d{2}$/
 
+const ModelsDevModelSchema = z.object({
+  id: z.string(),
+  name: z.string().optional(),
+  limit: z.object({
+    context: z.number().finite().optional(),
+    output: z.number().finite().optional(),
+  }).optional(),
+  modalities: z.object({
+    input: z.array(z.string()).optional(),
+    output: z.array(z.string()).optional(),
+  }).optional(),
+  reasoning: z.boolean().optional(),
+  tool_call: z.boolean().optional(),
+  temperature: z.boolean().optional(),
+  structured_output: z.boolean().optional(),
+  cost: z.object({
+    input: z.number().finite().optional(),
+    output: z.number().finite().optional(),
+    cache_read: z.number().finite().optional(),
+    cache_write: z.number().finite().optional(),
+  }).optional(),
+  family: z.string().optional(),
+  knowledge: z.string().optional(),
+  release_date: z.string().optional(),
+}).passthrough()
+
+const ModelsDevDataSchema = z.record(z.string(), z.object({
+  models: z.record(z.string(), ModelsDevModelSchema),
+}).passthrough())
+
+const ModelsDevDataJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ModelsDevDataSchema)
+
 async function fetchFromNetwork(): Promise<ModelsDevData | null> {
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000)
-    const response = await fetch(MODELS_DEV_URL, { signal: controller.signal })
-    clearTimeout(timeout)
-    if (!response.ok) {
-      return null
-    }
-    return await response.json() as ModelsDevData
-  }
-  catch {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
+  const response = await fetch(MODELS_DEV_URL, { signal: controller.signal })
+  clearTimeout(timeout)
+  if (!response.ok) {
     return null
   }
+  return ModelsDevDataSchema.parse(await response.json())
 }
 
 function readDbCache(): ModelsDevData | null {
-  try {
-    const row = db().select().from(kvCache).where(eq(kvCache.key, CACHE_KEY)).get()
-    if (!row) {
-      return null
-    }
-    if (Date.now() / 1000 > row.expiresAt) {
-      return null
-    }
-    return JSON.parse(row.value) as ModelsDevData
-  }
-  catch {
+  const row = db().select().from(kvCache).where(eq(kvCache.key, CACHE_KEY)).get()
+  if (!row) {
     return null
   }
+  if (Date.now() / 1000 > row.expiresAt) {
+    return null
+  }
+  return ModelsDevDataJsonSchema.parse(row.value)
 }
 
 function writeDbCache(data: ModelsDevData): void {
@@ -169,9 +194,6 @@ function findModelFuzzy(data: ModelsDevData, modelId: string): { model: ModelsDe
   // 4. Try finding registry models that are prefixes of this modelId
   const lower = modelId.toLowerCase()
   for (const provider of Object.values(data)) {
-    if (!provider.models) {
-      continue
-    }
     for (const [id, model] of Object.entries(provider.models)) {
       if (lower.startsWith(id.toLowerCase()) && lower.length - id.length <= 12) {
         return { model, matchType: 'fuzzy' }
@@ -181,9 +203,6 @@ function findModelFuzzy(data: ModelsDevData, modelId: string): { model: ModelsDe
 
   // 5. Try finding registry models where this modelId is a prefix
   for (const provider of Object.values(data)) {
-    if (!provider.models) {
-      continue
-    }
     for (const [id, model] of Object.entries(provider.models)) {
       if (id.toLowerCase().startsWith(lower) && id.length - lower.length <= 12) {
         return { model, matchType: 'fuzzy' }
@@ -218,9 +237,6 @@ function findModelFuzzyWithId(data: ModelsDevData, modelId: string): { id: strin
 
   const lower = modelId.toLowerCase()
   for (const provider of Object.values(data)) {
-    if (!provider.models) {
-      continue
-    }
     for (const [id, model] of Object.entries(provider.models)) {
       if (lower.startsWith(id.toLowerCase()) && lower.length - id.length <= 12) {
         return { id, model, matchType: 'fuzzy' }
@@ -229,9 +245,6 @@ function findModelFuzzyWithId(data: ModelsDevData, modelId: string): { id: strin
   }
 
   for (const provider of Object.values(data)) {
-    if (!provider.models) {
-      continue
-    }
     for (const [id, model] of Object.entries(provider.models)) {
       if (id.toLowerCase().startsWith(lower) && id.length - lower.length <= 12) {
         return { id, model, matchType: 'fuzzy' }
@@ -400,7 +413,10 @@ export async function lookupModelRaw(modelId: string): Promise<ModelsDevModel | 
     return null
   }
   const result = findModelFuzzy(data, modelId)
-  return result?.model ?? null
+  if (!result) {
+    return null
+  }
+  return result.model
 }
 
 export async function lookupModelRawExact(modelId: string): Promise<ModelsDevModel | null> {
@@ -425,9 +441,6 @@ export async function searchModels(query: string, limit = 20): Promise<ModelRegi
   const results: ModelRegistrySearchResult[] = []
 
   for (const provider of Object.values(data)) {
-    if (!provider.models) {
-      continue
-    }
     for (const [id, model] of Object.entries(provider.models)) {
       const name = model.name ?? id
       if (id.toLowerCase().includes(q) || name.toLowerCase().includes(q)) {

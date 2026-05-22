@@ -152,6 +152,25 @@ describe('skills capability', () => {
       }))
       expect(existsSync(join(workspaceRoot, '.agents', 'skills'))).toBe(false)
 
+      const rejectedExport = await app.handle(new Request('http://localhost/skills/export', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'agent',
+          name: 'agent-secret',
+          agentId: 'agent-007',
+          destinationDir: exportRoot,
+          confirmedNonCradleOwnedWrite: false,
+        }),
+      }))
+      expect(rejectedExport.status).toBe(400)
+      const rejectedExportBody = await rejectedExport.json() as { code: string, details?: { ownerBoundary?: { owner?: string } } }
+      expect(rejectedExportBody.code).toBe('non_cradle_owned_write_confirmation_required')
+      expect(rejectedExportBody.details?.ownerBoundary).toEqual(expect.objectContaining({
+        owner: 'user-selected-export-directory',
+      }))
+      expect(existsSync(join(exportRoot, 'agent-secret'))).toBe(false)
+
       const exportAgent = await app.handle(new Request('http://localhost/skills/export', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -160,10 +179,29 @@ describe('skills capability', () => {
           name: 'agent-secret',
           agentId: 'agent-007',
           destinationDir: exportRoot,
+          confirmedNonCradleOwnedWrite: true,
         }),
       }))
       expect(exportAgent.status).toBe(200)
-      const exported = await exportAgent.json() as { destinationDir: string }
+      const exported = await exportAgent.json() as {
+        destinationDir: string
+        ownerBoundary: {
+          classification: string
+          owner: string
+          consentRequired: boolean
+          consentConfirmed: boolean
+          destinationDir: string
+          targetPath: string
+        }
+      }
+      expect(exported.ownerBoundary).toEqual(expect.objectContaining({
+        classification: 'non-cradle-owned',
+        owner: 'user-selected-export-directory',
+        consentRequired: true,
+        consentConfirmed: true,
+        destinationDir: exportRoot,
+        targetPath: exported.destinationDir,
+      }))
       expect(readFileSync(join(exported.destinationDir, 'SKILL.md'), 'utf8')).toContain('Agent secret skill')
 
       const fetchSource = await app.handle(new Request('http://localhost/skills/fetch-source', {
@@ -226,7 +264,6 @@ describe('skills capability', () => {
       }
     }
   })
-
   it('returns structured errors for readonly scopes, missing workspace, invalid source, and missing fetch session', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const homeDir = makeTempDir('cradle-home-')

@@ -3,11 +3,19 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { z } from 'zod'
 
 import { getWorkflowRulesByWorkspaceId, putWorkflowRulesByWorkspaceId } from '~/api-gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
+
+const WorkflowRuleSchema = z.object({
+  global: z.string().nullable(),
+  profileSpecific: z.string().nullable(),
+})
 
 function useWorkflowRule(workspaceId: string, agentId: string | null) {
   return useQuery({
@@ -17,7 +25,7 @@ function useWorkflowRule(workspaceId: string, agentId: string | null) {
         path: { workspaceId },
         query: agentId ? { agentProfileId: agentId } : {},
       })
-      return data as { global: string | null, profileSpecific: string | null }
+      return WorkflowRuleSchema.parse(data)
     },
     enabled: !!workspaceId,
   })
@@ -46,25 +54,18 @@ function useSaveWorkflowRule() {
 }
 
 function RuleEditor({
-  workspaceId,
   agentId,
+  content,
   placeholder,
+  onSave,
 }: {
-  workspaceId: string
   agentId: string | null
+  content: string | null
   placeholder: string
+  onSave: (agentId: string | null, content: string) => void
 }) {
-  const { data } = useWorkflowRule(workspaceId, agentId)
-  const saveMutation = useSaveWorkflowRule()
-
-  const content = data === undefined
-    ? null
-    : agentId
-      ? (data.profileSpecific ?? null)
-      : (data.global ?? null)
-
   const handleSave = (md: string) => {
-    saveMutation.mutate({ workspaceId, agentId, content: md })
+    onSave(agentId, md)
   }
 
   return (
@@ -90,15 +91,44 @@ export function WorkspaceWorkflowRules({
   selectedAgentId: string | null
   onSelectedAgentId: (agentId: string | null) => void
 }) {
-  const { agents } = useAgents()
+  const firstRenderedRef = useRef(false)
+  const { agents, isSuccess: agentsReady } = useAgents()
+  const workflowRule = useWorkflowRule(workspaceId, selectedAgentId)
+  const saveMutation = useSaveWorkflowRule()
   const enabledAgents = agents.filter(a => a.enabled)
 
   const activeScope = selectedAgentId
     ? enabledAgents.find(a => a.id === selectedAgentId)
     : null
+  const content = selectedAgentId
+    ? (workflowRule.data?.profileSpecific ?? null)
+    : (workflowRule.data?.global ?? null)
+  const ready = agentsReady && workflowRule.isSuccess
+
+  useEffect(() => {
+    if (!ready || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-workspace-workflow-rules-rendered')
+    measureCradlePerformance(
+      'cradle:workspace-workflow-rules-first-render',
+      'cradle:workspace-workflow-rules-open-requested',
+      'cradle:first-workspace-workflow-rules-rendered',
+    )
+  }, [ready])
+
+  const handleSave = (agentId: string | null, content: string) => {
+    saveMutation.mutate({ workspaceId, agentId, content })
+  }
 
   return (
-    <div className="space-y-6" data-testid="workspace-workflow-rules-page">
+    <div
+      className="space-y-6"
+      data-testid="workspace-workflow-rules-page"
+      data-workspace-workflow-rules-ready={ready ? 'true' : 'false'}
+    >
       {/* Scope selector */}
       <div className="flex gap-1.5" data-testid="workspace-workflow-rules-scope-selector">
         <button
@@ -151,17 +181,19 @@ export function WorkspaceWorkflowRules({
           ? (
             <RuleEditor
               key="workflow-rule-global"
-              workspaceId={workspaceId}
               agentId={null}
+              content={content}
               placeholder="Define what agents should do when assigned a task..."
+              onSave={handleSave}
             />
           )
           : activeScope && (
             <RuleEditor
               key={`workflow-rule-agent-${selectedAgentId}`}
-              workspaceId={workspaceId}
               agentId={selectedAgentId}
+              content={content}
               placeholder={`Instructions specific to ${activeScope.name}...`}
+              onSave={handleSave}
             />
           )}
       </div>

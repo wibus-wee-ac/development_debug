@@ -3,7 +3,7 @@ import type { UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RuntimeSession } from '../../runtime-provider-types'
-import { registerMcpServer, unregisterMcpServer } from '../../../../plugins/mcp-registry'
+import { addHostMcpServer, removeHostMcpServer } from '../../../../plugins/mcp-registry'
 import { ClaudeAgentProvider } from './provider'
 
 const sdkMocks = vi.hoisted(() => ({
@@ -76,12 +76,12 @@ function createRuntimeSession(): RuntimeSession {
 
 describe('ClaudeAgentProvider MCP integration', () => {
   afterEach(() => {
-    unregisterMcpServer('browser-use')
+    removeHostMcpServer('browser-use')
     sdkMocks.query.mockReset()
   })
 
   it('passes plugin-registered browser-use MCP server config to the Claude Agent SDK', async () => {
-    registerMcpServer({
+    addHostMcpServer({
       name: 'browser-use',
       command: 'node',
       args: ['/plugins/browser-use/dist/mcp-server.mjs'],

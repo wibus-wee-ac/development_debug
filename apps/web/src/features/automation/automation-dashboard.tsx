@@ -10,11 +10,13 @@ import {
   RefreshCwIcon,
   TriangleAlertIcon,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger } from './types'
 import { useAutomationArtifacts, useAutomationDefinitions, useAutomationRuns, useRunAutomationNow } from './use-automations'
@@ -32,19 +34,25 @@ const STATUS_STYLES: Record<AutomationRunStatus, string> = {
   skipped: 'border-muted-foreground/20 bg-muted/60 text-muted-foreground',
 }
 
-function asUnixSeconds(value: number | string | null | undefined): number | null {
-  if (value === null || value === undefined) {
-    return null
-  }
-  if (typeof value === 'number') {
-    return value > 10_000_000_000 ? Math.floor(value / 1000) : value
-  }
-  const parsed = Date.parse(value)
-  return Number.isNaN(parsed) ? null : Math.floor(parsed / 1000)
-}
+const UnixSecondsValueSchema = z.union([
+  z.number().finite().transform(value => value > 10_000_000_000 ? Math.floor(value / 1000) : value),
+  z.string()
+    .transform(value => Math.floor(Date.parse(value) / 1000))
+    .pipe(z.number().finite()),
+])
+const UnixSecondsSchema = z.union([
+  UnixSecondsValueSchema,
+  z.null().transform(() => null),
+  z.undefined().transform(() => null),
+])
+const RunTimeSortKeySchema = z.union([
+  UnixSecondsValueSchema,
+  z.null().transform(() => 0),
+  z.undefined().transform(() => 0),
+])
 
 function formatDateTime(value: number | string | null | undefined): string {
-  const unixSeconds = asUnixSeconds(value)
+  const unixSeconds = UnixSecondsSchema.parse(value)
   if (unixSeconds === null) {
     return 'Not recorded'
   }
@@ -58,7 +66,7 @@ function formatDateTime(value: number | string | null | undefined): string {
 }
 
 function formatRelative(value: number | string | null | undefined): string {
-  const unixSeconds = asUnixSeconds(value)
+  const unixSeconds = UnixSecondsSchema.parse(value)
   if (unixSeconds === null) {
     return 'Not recorded'
   }
@@ -85,7 +93,7 @@ function getRecipe(definition: AutomationDefinition): AutomationRecipe | null {
 }
 
 function getRunTime(run: AutomationRun | null | undefined): number {
-  return asUnixSeconds(run?.createdAt ?? run?.startedAt ?? run?.scheduledFor) ?? 0
+  return RunTimeSortKeySchema.parse(run?.createdAt ?? run?.startedAt ?? run?.scheduledFor)
 }
 
 function getLatestRun(definition: AutomationDefinition, runs: AutomationRun[] | undefined): AutomationRun | null {
@@ -221,6 +229,7 @@ function ArtifactRow({
 }
 
 export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
+  const firstRenderedRef = useRef(false)
   const definitionsQuery = useAutomationDefinitions()
   const definitions = definitionsQuery.data ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -238,9 +247,29 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
     const artifacts = artifactsQuery.data ?? []
     return artifacts.find(artifact => artifact.id === selectedArtifactId) ?? artifacts[0] ?? null
   }, [artifactsQuery.data, selectedArtifactId])
+  const automationReady = definitionsQuery.isSuccess
+    && (!selectedAutomationId || (runsQuery.isSuccess && artifactsQuery.isSuccess))
+
+  useEffect(() => {
+    if (!automationReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-automation-rendered')
+    measureCradlePerformance(
+      'cradle:automation-first-render',
+      'cradle:automation-render-requested',
+      'cradle:first-automation-rendered',
+    )
+  }, [automationReady])
 
   return (
-    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-background" data-testid="automation-dashboard">
+    <div
+      className="flex h-full min-w-0 flex-col overflow-hidden bg-background"
+      data-testid="automation-dashboard"
+      data-automation-ready={automationReady ? 'true' : 'false'}
+    >
       <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-3">
         <div className="flex items-center gap-3">
           {onBack

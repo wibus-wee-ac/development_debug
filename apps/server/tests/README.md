@@ -13,14 +13,14 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **database.test.ts**: database lifecycle migrations.
 - **health.test.ts**: health endpoint response.
 - **approval.test.ts**: in-memory pending approval registry create/list/respond flows and structured errors.
-- **workspace.test.ts**: workspace capability CRUD + file IO.
+- **workspace.test.ts**: workspace capability CRUD + file IO，包含 non-Cradle-owned workspace write confirmation 与 owner-boundary response metadata。
 - **session.test.ts**: session capability CRUD + messages + markdown export.
 - **session-await.test.ts**: session await/resume lifecycle, pending states, and resume semantics.
 - **session-await-github.test.ts**: GitHub session-await source behavior for check runs, legacy commit statuses, no-signal grace, and PR review modes.
 - **chat-runtime.test.ts**: chat run execution, strict snapshot hydration, SSE `message_delta` sequencing, usage writes, active abort flow, and persisted streaming cleanup when an in-memory active run is missing.
 - **kanban.test.ts**: Kanban board shell plus Issue-owned status, issue, ID generation, and comment core loops.
 - **issue-agent.test.ts**: issue delegation, activity timeline, rerun, and undelegation flows.
-- **git.test.ts**: workspace-owned git status, branches, commit graph, checkout, and create-branch flows.
+- **git.test.ts**: workspace-owned git status, branches, commit graph, checkout, and create-branch flows against real local repositories.
 - **observability.test.ts**: observability event persistence, incident rules, empty-output failure semantics, and bundle export.
 - **preferences.test.ts**: server-owned chat preference defaults, JSON persistence, and invalid payload handling.
 - **fetch-retry.test.ts**: retry/backoff helpers for outbound HTTP integrations.
@@ -37,6 +37,6 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **acp-chat-runtime.test.ts**: unified ACP chat execution, approval routing, session-title sync, and usage persistence.
 - **skills.test.ts**: skills inventory, CRUD, import/export, and fetch-source flows across scopes.
 - **usage.test.ts**: usage analytics daily totals, summary, streak stats, and per-session totals.
-- **search.test.ts**: thread search over titles, user content, and assistant plain-text cache derived from `messages.content`.
+- **search.test.ts**: thread search over titles, user content, and assistant plain-text cache derived from `messages.content`, plus read-only Chronicle memory and knowledge search with workspace scoping.
 - **pack-codebase.test.ts**: workspace-owned repomix packing over HTTP and structured validation errors.
 - **test-reset.test.ts**: test-only reset route cleanup boundaries, including isolated HOME skills safety.

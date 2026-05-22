@@ -44,10 +44,9 @@ export const ProfileConfigWithModelRegistrySchema = z.object({
   [MODEL_REGISTRY_MAPPINGS_CONFIG_KEY]: z.array(ModelRegistryMappingEntrySchema).default([]),
 }).catchall(z.unknown())
 
-export const ProfileConfigWithModelRegistryJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
-  ProfileConfigWithModelRegistrySchema,
-)
+export const ProfileConfigWithModelRegistryJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ProfileConfigWithModelRegistrySchema)
 
 export function serializeProfileConfigWithMapping(
   configJson: string,

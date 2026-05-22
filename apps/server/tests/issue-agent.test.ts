@@ -136,7 +136,7 @@ describe('issue-agent capability', () => {
     let completionIndex = 0
     const completionBodies: string[] = []
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (!url.endsWith('/chat/completions')) {
         return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
       }

@@ -18,10 +18,10 @@ function resolvePreset(input?: AnimationPresetName | AnimationPreset): Animation
   if (!input) {
     return PRESETS.balanced
   }
-  if (typeof input === 'string') {
-    return PRESETS[input] ?? PRESETS.balanced
-  }
-  return input
+  const presetName = String(input) as AnimationPresetName
+  return Object(input) === input
+    ? input as AnimationPreset
+    : PRESETS[presetName] ?? PRESETS.balanced
 }
 
 function countChars(text: string): number {

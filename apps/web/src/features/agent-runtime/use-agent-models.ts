@@ -1,4 +1,5 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
+import { z } from 'zod'
 
 import { getProfilesById, getProvidersByProfileIdModelsCache, postProvidersModels } from '~/api-gen/sdk.gen'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
@@ -7,6 +8,46 @@ import { ModelVisibilitySchema, filterVisibleModels } from './model-visibility'
 import { ProfileConfigJsonSchema } from './profile-config-schema'
 
 export const AGENT_MODELS_QUERY_KEY = ['agent-models'] as const
+const AgentProfileSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  enabled: z.boolean(),
+  configJson: z.string(),
+  credentialRef: z.string().nullable(),
+  customModels: z.string(),
+  iconSlug: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+const ModelDescriptorSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  capabilities: z.object({
+    contextWindow: z.number().optional(),
+    maxOutput: z.number().optional(),
+    inputModalities: z.array(z.string()).optional(),
+    outputModalities: z.array(z.string()).optional(),
+    reasoning: z.boolean().optional(),
+    toolCall: z.boolean().optional(),
+    temperature: z.boolean().optional(),
+    structuredOutput: z.boolean().optional(),
+    cost: z.object({
+      input: z.number().optional(),
+      output: z.number().optional(),
+      cacheRead: z.number().optional(),
+      cacheWrite: z.number().optional(),
+    }).optional(),
+    family: z.string().optional(),
+    knowledgeCutoff: z.string().optional(),
+    releaseDate: z.string().optional(),
+    registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+    registryModelId: z.string().optional(),
+    registryModelLabel: z.string().optional(),
+  }).default({}),
+})
+const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
 
 async function fetchVisibleModelsForProfile(profile: AgentProfile): Promise<ModelDescriptor[]> {
   const config = ProfileConfigJsonSchema.parse(profile.configJson)
@@ -25,7 +66,7 @@ async function fetchVisibleModelsForProfile(profile: AgentProfile): Promise<Mode
       body: requestBody,
       throwOnError: true,
     })
-    allModels = (data ?? []) as ModelDescriptor[]
+    allModels = ModelDescriptorListSchema.parse(data) satisfies ModelDescriptor[]
   }
   catch (error) {
     const { data: cache } = await getProvidersByProfileIdModelsCache({
@@ -33,7 +74,7 @@ async function fetchVisibleModelsForProfile(profile: AgentProfile): Promise<Mode
       throwOnError: true,
     })
     if (cache.cached && cache.models.length > 0) {
-      allModels = cache.models as ModelDescriptor[]
+      allModels = ModelDescriptorListSchema.parse(cache.models) satisfies ModelDescriptor[]
     }
     else {
       throw error
@@ -51,10 +92,7 @@ export function useAgentModels(profileId: string | null) {
         return []
       }
       const { data: profileData } = await getProfilesById({ path: { id: profileId } })
-      const profile = profileData as AgentProfile | undefined
-      if (!profile) {
-        return []
-      }
+      const profile = AgentProfileSchema.parse(profileData) satisfies AgentProfile
       return fetchVisibleModelsForProfile(profile)
     },
     staleTime: 60_000,
@@ -79,17 +117,22 @@ export function useAgentModelMap(profiles: AgentProfile[]) {
 
   const modelsByProfileId: Record<string, ModelDescriptor[]> = {}
   const loadingProfileIds = new Set<string>()
+  const successfulProfileIds = new Set<string>()
 
   profiles.forEach((profile, index) => {
     const query = queries[index]
-    modelsByProfileId[profile.id] = (query?.data ?? []) as ModelDescriptor[]
+    modelsByProfileId[profile.id] = ModelDescriptorListSchema.parse(query?.data) satisfies ModelDescriptor[]
     if (query?.isLoading || query?.isFetching) {
       loadingProfileIds.add(profile.id)
+    }
+    if (query?.isSuccess) {
+      successfulProfileIds.add(profile.id)
     }
   })
 
   return {
     modelsByProfileId,
     loadingProfileIds,
+    successfulProfileIds,
   }
 }

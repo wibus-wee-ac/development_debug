@@ -1,4 +1,4 @@
-import { cpSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
@@ -22,6 +22,7 @@ const nativeRuntimePackages = [
 
 const distRoot = fileURLToPath(new URL('../dist/', import.meta.url))
 const distNodeModules = fileURLToPath(new URL('../dist/node_modules/', import.meta.url))
+const sourceRoot = fileURLToPath(new URL('../src/', import.meta.url))
 
 rmSync(distNodeModules, { recursive: true, force: true })
 
@@ -39,6 +40,12 @@ for (const packageName of runtimePackages) {
     },
   })
 }
+
+mkdirSync(join(distRoot, 'modules/chronicle'), { recursive: true })
+cpSync(
+  join(sourceRoot, 'modules/chronicle/mcp-server.mjs'),
+  join(distRoot, 'modules/chronicle/mcp-server.mjs'),
+)
 
 writeFileSync(
   join(distRoot, 'package.json'),

@@ -141,7 +141,7 @@ function StepDots({ current }: { current: DialogStep }) {
         <div
           key={step}
           className={cn(
-            'h-1 rounded-full transition-all duration-300',
+            'h-1 rounded-full transition-colors duration-150',
             i < idx
               ? 'w-2 bg-foreground/30'
               : i === idx
@@ -170,7 +170,7 @@ function RightPanelFetching({ source }: { source: string }) {
       <div className="relative h-px overflow-hidden rounded-full bg-foreground/10">
         <m.div
           className="absolute inset-y-0 w-1/3 rounded-full bg-foreground/40"
-          animate={{ left: ['-33%', '100%'] }}
+          animate={{ x: ['-100%', '300%'] }}
           transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
         />
       </div>
@@ -302,7 +302,7 @@ function InputForm({
         <div
           className={cn(
             'flex items-center gap-3 rounded-xl border border-foreground/8 bg-foreground/3 px-4 py-3',
-            'transition-all duration-150 focus-within:border-foreground/20 focus-within:bg-foreground/4',
+            'transition-[background-color,border-color] duration-150 focus-within:border-foreground/20 focus-within:bg-foreground/4',
             error && 'border-destructive/30',
           )}
         >
@@ -426,7 +426,7 @@ function SelectBody({
                 type="button"
                 onClick={() => onToggle(skill.skillDir)}
                 className={cn(
-                  'flex items-start gap-3.5 rounded-xl px-4 py-3.5 text-left transition-all',
+                  'flex items-start gap-3.5 rounded-xl px-4 py-3.5 text-left transition-[background-color,box-shadow] duration-150',
                   isSelected
                     ? 'bg-foreground/6 ring-1 ring-foreground/10 hover:bg-foreground/7'
                     : 'bg-foreground/2.5 ring-1 ring-transparent hover:bg-foreground/4',
@@ -434,7 +434,7 @@ function SelectBody({
               >
                 <div
                   className={cn(
-                    'mt-px flex size-4 shrink-0 items-center justify-center rounded transition-all',
+                    'mt-px flex size-4 shrink-0 items-center justify-center rounded transition-[background-color,box-shadow] duration-150',
                     isSelected
                       ? 'bg-foreground ring-1 ring-foreground'
                       : 'ring-1 ring-foreground/20 hover:ring-foreground/40',

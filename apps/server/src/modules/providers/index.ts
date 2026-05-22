@@ -14,7 +14,8 @@ export const providers = new Elysia({
   detail: { tags: ['providers'] },
 })
   .post('/models', async ({ body }) => {
-    const models = await Providers.listModels(Providers.parseProviderBody(body))
+    const request = Providers.ProviderRequestSchema.parse(body)
+    const models = await Providers.listModels(request)
     if (body.profileId) {
       setCachedModels(body.profileId, models)
     }
@@ -59,7 +60,7 @@ export const providers = new Elysia({
       }),
     },
   })
-  .post('/health-check', ({ body }) => Providers.healthCheck(Providers.parseProviderBody(body)), {
+  .post('/health-check', ({ body }) => Providers.healthCheck(Providers.ProviderRequestSchema.parse(body)), {
     detail: {
       'summary': 'Health check a provider',
       'x-cradle-cli': {

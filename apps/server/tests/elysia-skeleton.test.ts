@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
 import { agentProfiles, sessions, usageLogs, workspaces } from '@cradle/db'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { OPENAPI_DOCS_PATH, OPENAPI_JSON_ALIAS_PATH, OPENAPI_JSON_PATH } from '../src/http/openapi'
@@ -28,6 +28,31 @@ function isoDaysAgo(daysAgo: number): string {
   date.setDate(date.getDate() - daysAgo)
   return date.toISOString().slice(0, 10)
 }
+
+let defaultDataDir: string | undefined
+let previousDataDir: string | undefined
+
+beforeEach(() => {
+  previousDataDir = process.env.CRADLE_DATA_DIR
+  defaultDataDir = makeTempDir('cradle-elysia-default-data-')
+  process.env.CRADLE_DATA_DIR = defaultDataDir
+  shutdownInfra()
+})
+
+afterEach(() => {
+  shutdownInfra()
+  if (defaultDataDir) {
+    rmSync(defaultDataDir, { recursive: true, force: true })
+  }
+  defaultDataDir = undefined
+  if (previousDataDir === undefined) {
+    delete process.env.CRADLE_DATA_DIR
+  }
+  else {
+    process.env.CRADLE_DATA_DIR = previousDataDir
+  }
+  previousDataDir = undefined
+})
 
 describe('elysia migration skeleton', () => {
   it('serves /health with an x-request-id header', async () => {
@@ -372,27 +397,78 @@ describe('elysia migration skeleton', () => {
       const writeResponse = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: 'notes.md', content: 'updated text\n' }),
+        body: JSON.stringify({ path: 'notes.md', content: 'updated text\n', confirmedNonCradleOwnedWrite: true }),
       }))
       expect(writeResponse.status).toBe(200)
-      expect(await writeResponse.json()).toEqual({ success: true })
+      expect(await writeResponse.json()).toEqual({
+        success: true,
+        ownerBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: 'notes.md',
+          targetPath: join(workspaceRoot, 'notes.md'),
+        },
+      })
+      expect(readFileSync(join(workspaceRoot, 'notes.md'), 'utf8')).toBe('updated text\n')
+
+      const unconfirmedWrite = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'notes.md', content: 'unconfirmed text\n' }),
+      }))
+      expect(unconfirmedWrite.status).toBe(400)
+      expect(readFileSync(join(workspaceRoot, 'notes.md'), 'utf8')).toBe('updated text\n')
+
+      const rejectedConfirmationWrite = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'notes.md', content: 'rejected text\n', confirmedNonCradleOwnedWrite: false }),
+      }))
+      expect(rejectedConfirmationWrite.status).toBe(400)
+      const rejectedConfirmationBody = await rejectedConfirmationWrite.json()
+      expect(rejectedConfirmationBody.code).toBe('non_cradle_owned_write_confirmation_required')
       expect(readFileSync(join(workspaceRoot, 'notes.md'), 'utf8')).toBe('updated text\n')
 
       const blockedWrite = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: '../outside.md', content: 'bad\n' }),
+        body: JSON.stringify({ path: '../outside.md', content: 'bad\n', confirmedNonCradleOwnedWrite: true }),
       }))
       expect(blockedWrite.status).toBe(200)
-      expect(await blockedWrite.json()).toEqual({ success: false })
+      expect(await blockedWrite.json()).toEqual({
+        success: false,
+        ownerBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: '../outside.md',
+          targetPath: null,
+        },
+      })
 
       const missingWrite = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files/content', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path: 'notes.md', content: 'bad\n' }),
+        body: JSON.stringify({ path: 'notes.md', content: 'bad\n', confirmedNonCradleOwnedWrite: true }),
       }))
       expect(missingWrite.status).toBe(200)
-      expect(await missingWrite.json()).toEqual({ success: false })
+      expect(await missingWrite.json()).toEqual({
+        success: false,
+        ownerBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: null,
+          relativePath: 'notes.md',
+          targetPath: null,
+        },
+      })
 
       const invalidCreate = await app.handle(new Request('http://localhost/workspaces', {
         method: 'POST',

@@ -13,18 +13,12 @@ export interface AcpConnectionRecord {
 
 export function buildAcpConnectionRecord(configJson: string): AcpConnectionRecord {
   const parsed = acpChatConfigJsonSchema.parse(configJson)
-  const distributionType = parsed.distributionType ?? 'npx'
-  const cmd = parsed.cmd ?? parsed.packageName
-
-  if (!cmd) {
-    throw new Error('ACP agent command (cmd) is required in configJson')
-  }
 
   return {
-    distributionType,
-    installPath: parsed.installPath ?? null,
-    cmd,
-    args: JSON.stringify(parsed.args ?? []),
-    env: JSON.stringify(parsed.env ?? {}),
+    distributionType: parsed.distributionType,
+    installPath: parsed.installPath,
+    cmd: parsed.cmd,
+    args: JSON.stringify(parsed.args),
+    env: JSON.stringify(parsed.env),
   }
 }

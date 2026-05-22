@@ -9,6 +9,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { MessageBubble } from '~/features/chat/message-bubble'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { formatContextForAgent } from './format-context'
 import { useJarvisUiStore } from './jarvis-ui-store'
@@ -41,10 +42,26 @@ export function JarvisPopover({
   const addSession = useJarvisUiStore(s => s.addSession)
 
   const { centerColumnRect, footerRect } = useLayoutGeometry()
-  const { prefs } = useJarvisPreferences()
+  const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
 
-  const { messages, status, error, sendMessage, stop } = useChatSession(activeSessionId)
+  const { messages, status, error, sendMessage, stop, isReady: chatReady } = useChatSession(activeSessionId)
   const isStreaming = status === 'streaming'
+  const firstRenderedRef = React.useRef(false)
+  const jarvisReady = preferencesReady && (!activeSessionId || chatReady)
+
+  React.useEffect(() => {
+    if (!open || !jarvisReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-jarvis-popover-rendered')
+    measureCradlePerformance(
+      'cradle:jarvis-popover-first-render',
+      'cradle:jarvis-popover-open-requested',
+      'cradle:first-jarvis-popover-rendered',
+    )
+  }, [jarvisReady, open])
 
   // Send the initial message once the session ID becomes available
   React.useEffect(() => {
@@ -234,25 +251,21 @@ export function JarvisPopover({
   return (
     <m.div
       ref={panelRef}
+      data-testid="jarvis-popover"
+      data-jarvis-ready={jarvisReady ? 'true' : 'false'}
       initial={false}
       animate={{
         opacity: open ? 1 : 0,
         y: open ? 0 : 8,
-        ...targetBounds,
       }}
-      transition={
-        isResizing
-          ? { duration: 0 }
-          : {
-              opacity: { duration: 0.15 },
-              y: { duration: 0.2 },
-              top: { type: 'spring', duration: 0.4, bounce: 0 },
-              left: { type: 'spring', duration: 0.4, bounce: 0 },
-              width: { type: 'spring', duration: 0.35, bounce: 0 },
-              height: { type: 'spring', duration: 0.35, bounce: 0 },
-            }
-      }
-      style={{ pointerEvents: open ? 'auto' : 'none' }}
+      transition={isResizing ? { duration: 0 } : { opacity: { duration: 0.15 }, y: { duration: 0.2 } }}
+      style={{
+        pointerEvents: open ? 'auto' : 'none',
+        top: targetBounds.top,
+        left: targetBounds.left,
+        width: targetBounds.width,
+        height: targetBounds.height,
+      }}
       className={cn(
         'fixed z-50 flex flex-col',
         'rounded-xl bg-popover text-popover-foreground',

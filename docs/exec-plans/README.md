@@ -55,3 +55,6 @@ Current canonical backend implementation for active product work lives under `ap
 - **20260519-03-cradle-chronicle.md**: Execution plan for building the first Cradle-owned Rust Chronicle crate with synthetic smoke capture, artifact storage, privacy filtering, deduplication, and memory summary generation.
 - **20260521-05-cc-switch-provider-mirror.md**: CC Switch provider 与 CCDB catalog 镜像调研规格，覆盖外部 provider 到 Cradle-owned profiles 的投影、非 provider 对象的只读 snapshot，以及 plugin/SDK 可行性缺口。
 - **20260521-07-alma-cradle-gap-analysis.md**: Alma 与 Cradle 功能差异研究计划，覆盖 Alma packaged app 证据审计、Cradle 能力对比、缺口综合报告，以及 Alma-inspired specs 拆解。
+- **20260521-09-plugin-sdk-v1-architecture.md**: Plugin SDK v1 架构收敛计划，覆盖 VS Code-like lifecycle、server/web/desktop 三层 host、disposable cleanup、manifest/runtime registration 契约和验证路径。
+- **20260522-01-plugin-provided-chat-runtimes.md**: Bub 作为 plugin-provided ChatRuntime 替换 `jar-core` 的执行计划，覆盖 open runtime id、plugin runtime registration、Jarvis runtime selection、Bub transport semantics 和 `jar-core` compatibility。
+- **20260522-02-v001-preview-release-readiness.md**: v0.0.1 preview 发布准备计划，覆盖首次进入、非 Cradle-owned 写入提示、Velopack 增量更新、日常使用、反馈报错、分享、卸载和五轮 reviewer 验收门禁。

@@ -14,7 +14,7 @@ import { agentIdentity } from './modules/agent-identity'
 import { automation } from './modules/automation'
 import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
-import { chronicle } from './modules/chronicle'
+import { chronicle, chronicleApi, chronicleMemoryApi } from './modules/chronicle'
 import { cleanup as chronicleCleanup } from './modules/chronicle/daemon-manager'
 import {
   initDaemon as chronicleInitDaemon,
@@ -104,6 +104,8 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(acp)
   app.use(chatRuntime)
   app.use(chronicle)
+  app.use(chronicleApi)
+  app.use(chronicleMemoryApi)
   app.use(desktop)
   registerPtyRoutes(app)
   app.use(observability)

@@ -16,6 +16,7 @@
 //   bloat that makes browser Back unusable.
 
 import type { StoreApi, UseBoundStore } from 'zustand'
+import { z } from 'zod'
 
 import type { TabStoreState } from './store'
 import type { TabParams, TabRegistry } from './types'
@@ -38,21 +39,18 @@ export interface UrlSyncHandle {
 
 // ── Browser history.state encoding ──
 
-interface TabHistoryState {
-  __tabsNext: true
-  tabId: string
-  historyIndex: number
-}
+const TabHistoryStateSchema = z.object({
+  __tabsNext: z.literal(true),
+  tabId: z.string(),
+  historyIndex: z.number(),
+})
 
-function isTabHistoryState(value: unknown): value is TabHistoryState {
-  return (
-    !!value
-    && typeof value === 'object'
-    && (value as Record<string, unknown>).__tabsNext === true
-    && typeof (value as Record<string, unknown>).tabId === 'string'
-    && typeof (value as Record<string, unknown>).historyIndex === 'number'
-  )
-}
+const BrowserHistoryStateSchema = z.union([
+  TabHistoryStateSchema,
+  z.unknown().transform(() => null),
+])
+
+type TabHistoryState = z.infer<typeof TabHistoryStateSchema>
 
 // ── Hash utilities ──
 
@@ -208,9 +206,9 @@ export function createUrlSync({ store, registry }: UrlSyncOptions): UrlSyncHandl
   // ── URL → Store (popstate) ──
 
   function onPopstate(event: PopStateEvent): void {
-    const state = event.state
+    const state = BrowserHistoryStateSchema.parse(event.state)
 
-    if (!isTabHistoryState(state)) {
+    if (state === null) {
       // Not our entry — attempt cold URL parse
       handleColdUrl()
       return

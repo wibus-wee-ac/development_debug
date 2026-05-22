@@ -9,6 +9,7 @@ use crate::models::{ModelId, ModelManager};
 use super::asr::SenseVoiceAsr;
 use super::embedding::OnnxEmbeddingModel;
 use super::pii::GlinerPiiDetector;
+use super::speaker::SpeakerEmbeddingExtractor;
 use super::vad::SileroVad;
 
 /// Expected companion file paths for each model (server installs these with the model).
@@ -26,6 +27,7 @@ pub struct OnnxRuntime {
     asr: OnceCell<RefCell<SenseVoiceAsr>>,
     embedding: OnceCell<RefCell<OnnxEmbeddingModel>>,
     pii: OnceCell<RefCell<GlinerPiiDetector>>,
+    speaker: OnceCell<RefCell<SpeakerEmbeddingExtractor>>,
 }
 
 impl Default for OnnxRuntime {
@@ -42,6 +44,19 @@ impl OnnxRuntime {
             asr: OnceCell::new(),
             embedding: OnceCell::new(),
             pii: OnceCell::new(),
+            speaker: OnceCell::new(),
+        }
+    }
+
+    /// Create a runtime for standalone diagnostics that never contacts Cradle Server.
+    pub fn new_local_only() -> Self {
+        Self {
+            model_manager: ModelManager::from_default_dir_local_only(),
+            vad: OnceCell::new(),
+            asr: OnceCell::new(),
+            embedding: OnceCell::new(),
+            pii: OnceCell::new(),
+            speaker: OnceCell::new(),
         }
     }
 
@@ -88,6 +103,18 @@ impl OnnxRuntime {
         Ok(self.pii.get_or_init(|| RefCell::new(instance)))
     }
 
+    /// Get or initialize the speaker embedding extractor.
+    pub fn speaker(&self) -> ChronicleResult<&RefCell<SpeakerEmbeddingExtractor>> {
+        if let Some(v) = self.speaker.get() {
+            return Ok(v);
+        }
+        let model_path = self
+            .model_manager
+            .ensure_model(ModelId::SpeakerEmbeddingExtractor)?;
+        let instance = SpeakerEmbeddingExtractor::new(&model_path)?;
+        Ok(self.speaker.get_or_init(|| RefCell::new(instance)))
+    }
+
     /// Check which models are available (downloaded) on disk.
     pub fn available_models(&self) -> Vec<ModelId> {
         self.model_manager
@@ -103,6 +130,8 @@ impl OnnxRuntime {
         self.model_manager.ensure_model(ModelId::SenseVoiceAsr)?;
         self.model_manager.ensure_model(ModelId::EmbeddingModel)?;
         self.model_manager.ensure_model(ModelId::GlinerPii)?;
+        self.model_manager
+            .ensure_model(ModelId::SpeakerEmbeddingExtractor)?;
         Ok(())
     }
 }

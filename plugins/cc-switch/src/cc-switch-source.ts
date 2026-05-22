@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 
 import Database from 'better-sqlite3'
 import { parse as parseToml } from 'smol-toml'
+import { z } from 'zod'
 import type {
   ExternalProviderRecord,
   ExternalProviderSource,
@@ -16,6 +17,89 @@ import type {
 } from '@cradle/plugin-sdk/server'
 
 type JsonObject = Record<string, unknown>
+
+const NonEmptyStringSchema = z.string().trim().min(1)
+const NullableStringSchema = NonEmptyStringSchema.nullable().optional().default(null)
+const NullableNumberSchema = z.number().finite().nullable().optional().default(null)
+const SqlBooleanSchema = z.union([z.boolean(), z.literal(0), z.literal(1)])
+  .transform(value => value === true || value === 1)
+
+const ProviderEnvSchema = z.object({
+  ANTHROPIC_BASE_URL: NonEmptyStringSchema.optional(),
+  ANTHROPIC_MODEL: NonEmptyStringSchema.optional(),
+  ANTHROPIC_DEFAULT_SONNET_MODEL: NonEmptyStringSchema.optional(),
+  ANTHROPIC_DEFAULT_OPUS_MODEL: NonEmptyStringSchema.optional(),
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: NonEmptyStringSchema.optional(),
+  ANTHROPIC_AUTH_TOKEN: NonEmptyStringSchema.optional(),
+  ANTHROPIC_API_KEY: NonEmptyStringSchema.optional(),
+  GOOGLE_GEMINI_BASE_URL: NonEmptyStringSchema.optional(),
+  GEMINI_MODEL: NonEmptyStringSchema.optional(),
+  GEMINI_API_KEY: NonEmptyStringSchema.optional(),
+}).catchall(z.unknown())
+
+const ProviderAuthSchema = z.object({
+  OPENAI_API_KEY: NonEmptyStringSchema.optional(),
+}).catchall(z.unknown())
+
+const ProviderSettingsConfigSchema = z.object({
+  env: ProviderEnvSchema.default({}),
+  auth: ProviderAuthSchema.default({}),
+  config: NonEmptyStringSchema.optional(),
+}).passthrough()
+
+const ProviderMetaSchema = z.object({
+  apiFormat: NonEmptyStringSchema.optional(),
+}).passthrough()
+
+const ProviderSettingsConfigTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ProviderSettingsConfigSchema)
+
+const ProviderMetaTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ProviderMetaSchema)
+
+const ProviderEndpointRowSchema = z.object({
+  provider_id: z.string(),
+  app_type: z.string(),
+  url: z.string(),
+  added_at: NullableNumberSchema,
+})
+
+const ProviderHealthRowSchema = z.object({
+  provider_id: z.string(),
+  app_type: z.string(),
+  is_healthy: SqlBooleanSchema,
+})
+
+const ProviderDbRowSchema = z.object({
+  id: z.string(),
+  app_type: z.string(),
+  name: z.string(),
+  settings_config: z.string(),
+  website_url: NullableStringSchema,
+  category: NullableStringSchema,
+  created_at: NullableNumberSchema,
+  sort_index: NullableNumberSchema,
+  notes: NullableStringSchema,
+  icon: NullableStringSchema,
+  icon_color: NullableStringSchema,
+  meta: z.string(),
+  is_current: SqlBooleanSchema,
+  in_failover_queue: SqlBooleanSchema,
+})
+
+const CodexTomlModelProviderSchema = z.object({
+  base_url: NonEmptyStringSchema.optional(),
+  wire_api: NonEmptyStringSchema.optional(),
+}).passthrough()
+
+const CodexTomlConfigSchema = z.object({
+  model_provider: NonEmptyStringSchema.optional(),
+  model: NonEmptyStringSchema.optional(),
+  model_reasoning_effort: NonEmptyStringSchema.optional(),
+  model_providers: z.record(z.string(), CodexTomlModelProviderSchema).default({}),
+}).passthrough()
 
 interface CcSwitchSourceConfig {
   appConfigDir: string
@@ -27,7 +111,7 @@ interface CcSwitchProviderRow {
   id: string
   appType: string
   name: string
-  settingsConfig: JsonObject
+  settingsConfig: z.infer<typeof ProviderSettingsConfigSchema>
   settingsConfigRaw: string
   websiteUrl: string | null
   category: string | null
@@ -36,7 +120,7 @@ interface CcSwitchProviderRow {
   notes: string | null
   icon: string | null
   iconColor: string | null
-  meta: JsonObject
+  meta: z.infer<typeof ProviderMetaSchema>
   metaRaw: string
   isCurrent: boolean
   inFailoverQueue: boolean
@@ -56,7 +140,19 @@ interface CcSwitchSnapshotReadResult {
   warnings: ExternalProviderWarning[]
 }
 
-const CURRENT_PROVIDER_KEYS: Record<string, string> = {
+const LocalSettingsSchema = z.object({
+  currentProviderClaude: NonEmptyStringSchema.optional(),
+  currentProviderClaudeDesktop: NonEmptyStringSchema.optional(),
+  currentProviderCodex: NonEmptyStringSchema.optional(),
+  currentProviderGemini: NonEmptyStringSchema.optional(),
+  currentProviderOpenCode: NonEmptyStringSchema.optional(),
+  currentProviderOpenClaw: NonEmptyStringSchema.optional(),
+  currentProviderHermes: NonEmptyStringSchema.optional(),
+})
+
+type LocalSettings = z.infer<typeof LocalSettingsSchema>
+
+const CURRENT_PROVIDER_KEYS: Record<string, keyof LocalSettings> = {
   claude: 'currentProviderClaude',
   'claude-desktop': 'currentProviderClaudeDesktop',
   codex: 'currentProviderCodex',
@@ -72,40 +168,12 @@ function textHash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
-function objectValue(value: unknown): JsonObject {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : {}
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() !== '' ? value : undefined
-}
-
-function numberValue(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function booleanFromSql(value: unknown): boolean {
-  return value === true || value === 1
-}
-
-function parseJsonObject(raw: string | null | undefined): JsonObject {
-  if (!raw) return {}
-  try {
-    return objectValue(JSON.parse(raw))
-  }
-  catch {
-    return {}
-  }
-}
-
-function readJsonObject(path: string): JsonObject {
+function readLocalSettings(path: string): LocalSettings {
   if (!existsSync(path)) return {}
-  try {
-    return objectValue(JSON.parse(readFileSync(path, 'utf8')))
-  }
-  catch {
-    return {}
-  }
+  return z.string()
+    .transform(raw => JSON.parse(raw))
+    .pipe(LocalSettingsSchema)
+    .parse(readFileSync(path, 'utf8'))
 }
 
 function configValue(ctx: ExternalProviderSourceReadContext | null, key: string, fallback: string): string {
@@ -151,10 +219,10 @@ function readEndpoints(db: Database.Database): Map<string, Array<{ url: string, 
     added_at: number | null
   }>
   const endpoints = new Map<string, Array<{ url: string, addedAt: number | null }>>()
-  for (const row of rows) {
+  for (const row of z.array(ProviderEndpointRowSchema).parse(rows)) {
     const key = `${row.app_type}\0${row.provider_id}`
     const current = endpoints.get(key) ?? []
-    current.push({ url: row.url, addedAt: row.added_at ?? null })
+    current.push({ url: row.url, addedAt: row.added_at })
     endpoints.set(key, current)
   }
   return endpoints
@@ -167,10 +235,10 @@ function readHealth(db: Database.Database): Map<string, 'healthy' | 'unhealthy' 
     app_type: string
     is_healthy: number
   }>
-  return new Map(rows.map(row => [`${row.app_type}\0${row.provider_id}`, booleanFromSql(row.is_healthy) ? 'healthy' : 'unhealthy']))
+  return new Map(z.array(ProviderHealthRowSchema).parse(rows).map(row => [`${row.app_type}\0${row.provider_id}`, row.is_healthy ? 'healthy' : 'unhealthy']))
 }
 
-function effectiveCurrentIds(providers: CcSwitchProviderRow[], localSettings: JsonObject): Map<string, string | null> {
+function effectiveCurrentIds(providers: CcSwitchProviderRow[], localSettings: LocalSettings): Map<string, string | null> {
   const byApp = new Map<string, Set<string>>()
   for (const provider of providers) {
     const ids = byApp.get(provider.appType) ?? new Set<string>()
@@ -181,7 +249,7 @@ function effectiveCurrentIds(providers: CcSwitchProviderRow[], localSettings: Js
   const currentIds = new Map<string, string | null>()
   for (const appType of byApp.keys()) {
     const settingsKey = CURRENT_PROVIDER_KEYS[appType]
-    const localCurrent = settingsKey ? stringValue(localSettings[settingsKey]) : undefined
+    const localCurrent = settingsKey ? localSettings[settingsKey] : undefined
     if (localCurrent && byApp.get(appType)?.has(localCurrent)) {
       currentIds.set(appType, localCurrent)
       continue
@@ -223,30 +291,30 @@ function readProviderRows(db: Database.Database, settingsPath: string): CcSwitch
       ${columnSelect(columns, 'in_failover_queue', '0')}
     FROM providers
     ORDER BY app_type ASC, COALESCE(sort_index, 999999), created_at ASC, id ASC
-  `).all() as Array<Record<string, unknown>>
+  `).all()
 
-  const providers = rows.map(row => ({
-    id: String(row.id),
-    appType: String(row.app_type),
-    name: String(row.name),
-    settingsConfig: parseJsonObject(String(row.settings_config ?? '{}')),
-    settingsConfigRaw: String(row.settings_config ?? '{}'),
-    websiteUrl: stringValue(row.website_url) ?? null,
-    category: stringValue(row.category) ?? null,
-    createdAt: numberValue(row.created_at),
-    sortIndex: numberValue(row.sort_index),
-    notes: stringValue(row.notes) ?? null,
-    icon: stringValue(row.icon) ?? null,
-    iconColor: stringValue(row.icon_color) ?? null,
-    meta: parseJsonObject(String(row.meta ?? '{}')),
-    metaRaw: String(row.meta ?? '{}'),
-    isCurrent: booleanFromSql(row.is_current),
-    inFailoverQueue: booleanFromSql(row.in_failover_queue),
+  const providers = z.array(ProviderDbRowSchema).parse(rows).map(row => ({
+    id: row.id,
+    appType: row.app_type,
+    name: row.name,
+    settingsConfig: ProviderSettingsConfigTextSchema.parse(row.settings_config),
+    settingsConfigRaw: row.settings_config,
+    websiteUrl: row.website_url,
+    category: row.category,
+    createdAt: row.created_at,
+    sortIndex: row.sort_index,
+    notes: row.notes,
+    icon: row.icon,
+    iconColor: row.icon_color,
+    meta: ProviderMetaTextSchema.parse(row.meta),
+    metaRaw: row.meta,
+    isCurrent: row.is_current,
+    inFailoverQueue: row.in_failover_queue,
     endpoints: endpoints.get(`${row.app_type}\0${row.id}`) ?? [],
     health: health.get(`${row.app_type}\0${row.id}`) ?? 'unknown',
   }))
 
-  const currentIds = effectiveCurrentIds(providers, readJsonObject(settingsPath))
+  const currentIds = effectiveCurrentIds(providers, readLocalSettings(settingsPath))
   return providers.map(provider => ({
     ...provider,
     isCurrent: currentIds.get(provider.appType) === provider.id,
@@ -300,17 +368,17 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
 }
 
 function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
-  const env = objectValue(provider.settingsConfig.env)
-  const baseUrl = stringValue(env.ANTHROPIC_BASE_URL)
-  const model = stringValue(env.ANTHROPIC_MODEL)
-    ?? stringValue(env.ANTHROPIC_DEFAULT_SONNET_MODEL)
-    ?? stringValue(env.ANTHROPIC_DEFAULT_OPUS_MODEL)
-    ?? stringValue(env.ANTHROPIC_DEFAULT_HAIKU_MODEL)
-  const credential = stringValue(env.ANTHROPIC_AUTH_TOKEN) ?? stringValue(env.ANTHROPIC_API_KEY)
+  const env = provider.settingsConfig.env
+  const baseUrl = env.ANTHROPIC_BASE_URL
+  const model = env.ANTHROPIC_MODEL
+    ?? env.ANTHROPIC_DEFAULT_SONNET_MODEL
+    ?? env.ANTHROPIC_DEFAULT_OPUS_MODEL
+    ?? env.ANTHROPIC_DEFAULT_HAIKU_MODEL
+  const credential = env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY
   const modelAliases = {
-    haiku: stringValue(env.ANTHROPIC_DEFAULT_HAIKU_MODEL),
-    sonnet: stringValue(env.ANTHROPIC_DEFAULT_SONNET_MODEL),
-    opus: stringValue(env.ANTHROPIC_DEFAULT_OPUS_MODEL),
+    haiku: env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
+    sonnet: env.ANTHROPIC_DEFAULT_SONNET_MODEL,
+    opus: env.ANTHROPIC_DEFAULT_OPUS_MODEL,
   }
 
   return {
@@ -327,32 +395,25 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
       ...metadataBase(provider),
       baseUrl,
       model,
-      apiFormat: stringValue(provider.meta.apiFormat) ?? 'anthropic',
+      apiFormat: provider.meta.apiFormat ?? 'anthropic',
     },
   }
 }
 
 function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
-  const auth = objectValue(provider.settingsConfig.auth)
-  const configText = stringValue(provider.settingsConfig.config)
+  const auth = provider.settingsConfig.auth
+  const configText = provider.settingsConfig.config
   if (!configText) return null
 
-  let parsedToml: JsonObject
-  try {
-    parsedToml = objectValue(parseToml(configText))
-  }
-  catch {
-    return null
-  }
+  const parsedToml = CodexTomlConfigSchema.parse(parseToml(configText))
 
-  const activeProviderId = stringValue(parsedToml.model_provider)
-  const providerConfigs = objectValue(parsedToml.model_providers)
-  const activeProvider = activeProviderId ? objectValue(providerConfigs[activeProviderId]) : {}
-  const baseUrl = stringValue(activeProvider.base_url)
-  const model = stringValue(parsedToml.model)
-  const reasoningEffort = stringValue(parsedToml.model_reasoning_effort)
-  const wireApi = stringValue(activeProvider.wire_api)
-  const credential = stringValue(auth.OPENAI_API_KEY)
+  const activeProviderId = parsedToml.model_provider
+  const activeProvider = activeProviderId ? parsedToml.model_providers[activeProviderId] : undefined
+  const baseUrl = activeProvider?.base_url
+  const model = parsedToml.model
+  const reasoningEffort = parsedToml.model_reasoning_effort
+  const wireApi = activeProvider?.wire_api
+  const credential = auth.OPENAI_API_KEY
 
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
@@ -374,11 +435,11 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
 }
 
 function mapGeminiProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
-  const env = objectValue(provider.settingsConfig.env)
-  const baseUrl = stringValue(env.GOOGLE_GEMINI_BASE_URL)
-  const model = stringValue(env.GEMINI_MODEL)
-  const credential = stringValue(env.GEMINI_API_KEY)
-  const apiFormat = stringValue(provider.meta.apiFormat)
+  const env = provider.settingsConfig.env
+  const baseUrl = env.GOOGLE_GEMINI_BASE_URL
+  const model = env.GEMINI_MODEL
+  const credential = env.GEMINI_API_KEY
+  const apiFormat = provider.meta.apiFormat
   const isNativeGoogle = baseUrl ? /generativelanguage\.googleapis\.com/i.test(baseUrl) : true
   const isOpenAiCompatible = apiFormat === 'openai_chat' || apiFormat === 'openai_responses' || !isNativeGoogle
   if (!isOpenAiCompatible) return null

@@ -3,6 +3,7 @@
 Provides filesystem-backed skill inventory, CRUD, import/export, and source-fetch flows across builtin, standard `.agents`, Cradle-owned global, workspace, and agent scopes.
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 The module may read standard `.agents/skills` as the legacy compatibility scope, but Cradle-owned writes use `~/.cradle/skills`, workspace `.cradle/skills`, or agent `~/.cradle/agents/{agentId}/skills`.
+Skill export writes into a user-selected destination directory outside Cradle-owned storage, so `/skills/export` requires `confirmedNonCradleOwnedWrite: true` and returns `ownerBoundary` metadata naming that export directory.
 
 ## Files
 

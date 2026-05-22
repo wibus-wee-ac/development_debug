@@ -20,6 +20,7 @@ export function KanbanGroupHeader({ name, count, category, collapsed, onToggle, 
     <div className="group/header flex items-center h-8 px-2 gap-1.5 bg-muted/60 rounded-lg">
       <button
         onClick={onToggle}
+        aria-label={`Toggle ${name} group`}
         aria-expanded={!collapsed}
         className={cn(
           'flex flex-1 items-center gap-1.5 h-full text-[12px] font-medium text-muted-foreground',
@@ -47,7 +48,7 @@ export function KanbanGroupHeader({ name, count, category, collapsed, onToggle, 
           className={cn(
             'flex size-5 items-center justify-center rounded text-muted-foreground',
             'opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100',
-            'hover:bg-muted hover:text-foreground transition-all duration-150',
+            'hover:bg-muted hover:text-foreground transition-[background-color,color,opacity] duration-150',
           )}
         >
           <PlusIcon className="size-3" aria-hidden="true" />

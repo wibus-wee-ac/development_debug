@@ -1,5 +1,6 @@
 import { RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, SparklesIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { postProvidersModelSearch } from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
@@ -51,6 +52,35 @@ interface SearchResult {
   capabilities: ModelCapabilities
 }
 
+const ModelCapabilitiesSchema = z.object({
+  contextWindow: z.number().optional(),
+  maxOutput: z.number().optional(),
+  inputModalities: z.array(z.string()).optional(),
+  outputModalities: z.array(z.string()).optional(),
+  reasoning: z.boolean().optional(),
+  toolCall: z.boolean().optional(),
+  temperature: z.boolean().optional(),
+  structuredOutput: z.boolean().optional(),
+  cost: z.object({
+    input: z.number().optional(),
+    output: z.number().optional(),
+    cacheRead: z.number().optional(),
+    cacheWrite: z.number().optional(),
+  }).optional(),
+  family: z.string().optional(),
+  knowledgeCutoff: z.string().optional(),
+  releaseDate: z.string().optional(),
+  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+  registryModelId: z.string().optional(),
+  registryModelLabel: z.string().optional(),
+}).default({})
+
+const SearchResultListSchema = z.array(z.object({
+  id: z.string(),
+  label: z.string(),
+  capabilities: ModelCapabilitiesSchema,
+})).default([])
+
 interface ManualRegistryDraft {
   id: string
   name: string
@@ -71,6 +101,61 @@ interface ManualRegistryDraft {
   costCacheRead: string
   costCacheWrite: string
 }
+
+const OptionalNumberTextSchema = z.string()
+  .trim()
+  .transform(value => value === '' ? undefined : Number(value))
+  .pipe(z.number().finite().optional())
+
+const ManualRegistryDraftProjectionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  context: OptionalNumberTextSchema,
+  output: OptionalNumberTextSchema,
+  inputText: z.boolean(),
+  inputImage: z.boolean(),
+  outputText: z.boolean(),
+  reasoning: z.boolean(),
+  toolCall: z.boolean(),
+  temperature: z.boolean(),
+  structuredOutput: z.boolean(),
+  family: z.string().trim().transform(value => value || undefined),
+  knowledge: z.string().trim().transform(value => value || undefined),
+  releaseDate: z.string().trim().transform(value => value || undefined),
+  costInput: OptionalNumberTextSchema,
+  costOutput: OptionalNumberTextSchema,
+  costCacheRead: OptionalNumberTextSchema,
+  costCacheWrite: OptionalNumberTextSchema,
+}).transform(draft => ({
+  id: draft.id.trim(),
+  name: draft.name.trim() || draft.id.trim(),
+  inputModalities: [
+    ...(draft.inputText ? ['text'] : []),
+    ...(draft.inputImage ? ['image'] : []),
+  ],
+  outputModalities: draft.outputText ? ['text'] : [],
+  contextWindow: draft.context,
+  maxOutput: draft.output,
+  reasoning: draft.reasoning,
+  toolCall: draft.toolCall,
+  temperature: draft.temperature,
+  structuredOutput: draft.structuredOutput,
+  family: draft.family,
+  knowledgeCutoff: draft.knowledge,
+  releaseDate: draft.releaseDate,
+  modelsDevCost: {
+    input: draft.costInput,
+    output: draft.costOutput,
+    cache_read: draft.costCacheRead,
+    cache_write: draft.costCacheWrite,
+  },
+  capabilitiesCost: {
+    input: draft.costInput,
+    output: draft.costOutput,
+    cacheRead: draft.costCacheRead,
+    cacheWrite: draft.costCacheWrite,
+  },
+}))
 
 function createManualDraft(model: ModelDescriptor | null, query: string): ManualRegistryDraft {
   const id = query.trim() || model?.capabilities.registryModelId || model?.id || ''
@@ -96,69 +181,44 @@ function createManualDraft(model: ModelDescriptor | null, query: string): Manual
   }
 }
 
-function readOptionalNumber(value: string): number | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-  const parsed = Number(trimmed)
-  return Number.isFinite(parsed) ? parsed : undefined
-}
-
 function buildManualModelsDevModel(draft: ManualRegistryDraft) {
-  const input = [
-    ...(draft.inputText ? ['text'] : []),
-    ...(draft.inputImage ? ['image'] : []),
-  ]
-  const output = draft.outputText ? ['text'] : []
-  const cost = {
-    input: readOptionalNumber(draft.costInput),
-    output: readOptionalNumber(draft.costOutput),
-    cache_read: readOptionalNumber(draft.costCacheRead),
-    cache_write: readOptionalNumber(draft.costCacheWrite),
-  }
+  const projected = ManualRegistryDraftProjectionSchema.parse(draft)
 
   return {
-    id: draft.id.trim(),
-    name: draft.name.trim() || draft.id.trim(),
+    id: projected.id,
+    name: projected.name,
     limit: {
-      context: readOptionalNumber(draft.context),
-      output: readOptionalNumber(draft.output),
+      context: projected.contextWindow,
+      output: projected.maxOutput,
     },
-    modalities: { input, output },
-    reasoning: draft.reasoning,
-    tool_call: draft.toolCall,
-    temperature: draft.temperature,
-    structured_output: draft.structuredOutput,
-    cost,
-    family: draft.family.trim() || undefined,
-    knowledge: draft.knowledge.trim() || undefined,
-    release_date: draft.releaseDate.trim() || undefined,
+    modalities: { input: projected.inputModalities, output: projected.outputModalities },
+    reasoning: projected.reasoning,
+    tool_call: projected.toolCall,
+    temperature: projected.temperature,
+    structured_output: projected.structuredOutput,
+    cost: projected.modelsDevCost,
+    family: projected.family,
+    knowledge: projected.knowledgeCutoff,
+    release_date: projected.releaseDate,
   }
 }
 
 function capabilitiesFromManualDraft(draft: ManualRegistryDraft): ModelCapabilities {
+  const projected = ManualRegistryDraftProjectionSchema.parse(draft)
+
   return {
-    contextWindow: readOptionalNumber(draft.context),
-    maxOutput: readOptionalNumber(draft.output),
-    inputModalities: [
-      ...(draft.inputText ? ['text'] : []),
-      ...(draft.inputImage ? ['image'] : []),
-    ],
-    outputModalities: draft.outputText ? ['text'] : [],
-    reasoning: draft.reasoning,
-    toolCall: draft.toolCall,
-    temperature: draft.temperature,
-    structuredOutput: draft.structuredOutput,
-    cost: {
-      input: readOptionalNumber(draft.costInput),
-      output: readOptionalNumber(draft.costOutput),
-      cacheRead: readOptionalNumber(draft.costCacheRead),
-      cacheWrite: readOptionalNumber(draft.costCacheWrite),
-    },
-    family: draft.family.trim() || undefined,
-    knowledgeCutoff: draft.knowledge.trim() || undefined,
-    releaseDate: draft.releaseDate.trim() || undefined,
+    contextWindow: projected.contextWindow,
+    maxOutput: projected.maxOutput,
+    inputModalities: projected.inputModalities,
+    outputModalities: projected.outputModalities,
+    reasoning: projected.reasoning,
+    toolCall: projected.toolCall,
+    temperature: projected.temperature,
+    structuredOutput: projected.structuredOutput,
+    cost: projected.capabilitiesCost,
+    family: projected.family,
+    knowledgeCutoff: projected.knowledgeCutoff,
+    releaseDate: projected.releaseDate,
   }
 }
 
@@ -190,7 +250,7 @@ async function searchProviderModels(query: string): Promise<SearchResult[]> {
     body: { query },
     throwOnError: true,
   })
-  return (data ?? []) as SearchResult[]
+  return SearchResultListSchema.parse(data) satisfies SearchResult[]
 }
 
 export function ModelsPanel({

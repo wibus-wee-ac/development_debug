@@ -71,6 +71,12 @@ interface NativeServiceMethods {
 
   openExternal: (url: string) => Promise<void>
   showItemInFolder: (fullPath: string) => Promise<void>
+  getCradleDataPaths: () => Promise<{
+    userDataPath: string
+    serverDataPath: string
+    databasePath: string
+    serverLogPath: string
+  }>
 }
 
 interface WindowServiceMethods {

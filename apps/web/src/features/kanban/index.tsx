@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
+
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
 import { IssuePeekPanel } from './issue-peek-panel'
@@ -9,7 +11,6 @@ import type { IssueSelectionMode } from './kanban-selection'
 import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
 import { KanbanSelectionBar } from './kanban-selection-bar'
 import { KanbanToolbar } from './kanban-toolbar'
-import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
 import type { FilterState } from './use-view-config'
 import { useViewConfig } from './use-view-config'
@@ -36,6 +37,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const spaceDownTimeRef = useRef<number>(0)
   const peekWasOpenRef = useRef(false)
   const visibleIssuesRef = useRef<typeof allIssues>([])
+  const firstRenderedWorkspaceIdRef = useRef<string | null>(null)
 
   // Refs for keyboard handler (avoid stale closures + listener re-registration)
   const peekIssueIdRef = useRef<string | null>(null)
@@ -68,10 +70,29 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     onSelectIssueRef.current = onSelectIssue
   }, [onSelectIssue])
 
-  const { data: statuses = [] } = useStatuses(workspaceId)
-  const { data: milestones = [] } = useMilestones(workspaceId)
-  const { data: allIssues = [] } = useIssues({ workspaceId })
+  const { data: statuses = [], isSuccess: statusesReady } = useStatuses(workspaceId)
+  const { data: milestones = [], isSuccess: milestonesReady } = useMilestones(workspaceId)
+  const { data: allIssues = [], isSuccess: issuesReady } = useIssues({ workspaceId })
   const moveIssue = useMoveIssue()
+
+  useEffect(() => {
+    if (
+      firstRenderedWorkspaceIdRef.current === workspaceId
+      || !statusesReady
+      || !milestonesReady
+      || !issuesReady
+    ) {
+      return
+    }
+
+    firstRenderedWorkspaceIdRef.current = workspaceId
+    markCradlePerformance('cradle:first-kanban-rendered')
+    measureCradlePerformance(
+      'cradle:kanban-first-render',
+      'cradle:kanban-render-requested',
+      'cradle:first-kanban-rendered',
+    )
+  }, [issuesReady, milestonesReady, statusesReady, workspaceId])
 
   // Apply filters
   const filteredIssues = useMemo(() => {
@@ -84,10 +105,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
       result = result.filter(i => filter.priorities!.includes(i.priority as FilterState['priorities'] extends (infer T)[] | undefined ? T : never))
     }
     if (filter.labels?.length) {
-      result = result.filter((i) => {
-        const issueLabels = IssueLabelsJsonSchema.parse(i.labels)
-        return filter.labels!.some(l => issueLabels.includes(l))
-      })
+      result = result.filter(i => filter.labels!.some(l => i.labels.includes(l)))
     }
     if (filter.milestoneId) {
       result = result.filter(i => i.milestoneId === filter.milestoneId)

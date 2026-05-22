@@ -236,6 +236,11 @@ impl Pipeline {
         std::mem::take(&mut self.produced_chunks)
     }
 
+    /// Replace the buffered chunks after a maintenance pass.
+    pub fn replace_chunks(&mut self, chunks: Vec<MemoryChunk>) {
+        self.produced_chunks = chunks;
+    }
+
     /// Number of chunks currently buffered.
     pub fn chunk_count(&self) -> usize {
         self.produced_chunks.len()
@@ -287,7 +292,6 @@ mod tests {
 
     use super::*;
     use crate::screen::{AccessibilityCapture, AccessibilityCaptureStatus};
-    use crate::segmenter::SegmentType;
     use crate::time::Timestamp;
 
     fn mock_frame(index: u64, text: &str, app: &str, seconds: u64) -> PersistedFrame {
@@ -400,5 +404,30 @@ mod tests {
             report.chunks_produced + report.chunks_deduplicated,
             report.segments_kept
         );
+    }
+
+    #[test]
+    fn replace_chunks_restores_buffer_after_maintenance() {
+        let mut pipeline = Pipeline::new(PipelineConfig::default());
+        let chunk = MemoryChunk {
+            id: "maintained".to_string(),
+            content: "maintained content".to_string(),
+            summary: "maintained summary".to_string(),
+            source_segment_id: 1,
+            source_type: "test".to_string(),
+            category: crate::triage::TriageCategory::Unknown,
+            tags: vec![],
+            knowledge_cards: vec![],
+            embedding: None,
+            timestamp: Timestamp::from_seconds(1000),
+            dedup_verdict: DedupVerdict::New,
+        };
+
+        pipeline.replace_chunks(vec![chunk.clone()]);
+        assert_eq!(pipeline.chunk_count(), 1);
+        let restored = pipeline.drain_chunks();
+        assert_eq!(restored.len(), 1);
+        assert_eq!(restored[0].id, chunk.id);
+        assert_eq!(restored[0].content, chunk.content);
     }
 }

@@ -25,15 +25,17 @@ const sessionRuntimeConfigSchema = z.object({
   codexCliSession: codexCliSessionBindingSchema.optional(),
 }).passthrough()
 
-export const AgentRuntimeConfigJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  agentRuntimeConfigSchema,
-)
+export const AgentRuntimeConfigJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.null().transform(() => ({})),
+  z.undefined().transform(() => ({})),
+]).pipe(agentRuntimeConfigSchema)
 
-export const SessionRuntimeConfigJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  sessionRuntimeConfigSchema,
-)
+export const SessionRuntimeConfigJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.null().transform(() => ({})),
+  z.undefined().transform(() => ({})),
+]).pipe(sessionRuntimeConfigSchema)
 
 export type CliTuiLaunchSpec = z.infer<typeof cliTuiLaunchSpecSchema>
 export type CodexCliSessionBinding = z.infer<typeof codexCliSessionBindingSchema>
@@ -47,7 +49,7 @@ export function buildSessionRuntimeConfigJson(input: {
   if (input.cliTuiLaunch) {
     payload.cliTuiLaunch = {
       executable: input.cliTuiLaunch.executable,
-      args: input.cliTuiLaunch.args ?? [],
+      args: input.cliTuiLaunch.args,
       ...(input.cliTuiLaunch.env ? { env: input.cliTuiLaunch.env } : {}),
       ...(input.cliTuiLaunch.preset ? { preset: input.cliTuiLaunch.preset } : {}),
     }

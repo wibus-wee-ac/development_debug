@@ -100,6 +100,18 @@ export function useSmoothContent(
   // RAF release loop — stored in a ref to avoid forward-reference issues
   const tickRef = useRef<FrameRequestCallback>(() => {})
 
+  const cancelScheduledLoop = useCallback(() => {
+    const s = stateRef.current
+    if (s.rafId !== 0) {
+      cancelAnimationFrame(s.rafId)
+      s.rafId = 0
+    }
+    if (s.wakeTimerId) {
+      clearTimeout(s.wakeTimerId)
+      s.wakeTimerId = 0
+    }
+  }, [])
+
   useEffect(() => {
     const tick: FrameRequestCallback = (now: number) => {
       const s = stateRef.current
@@ -270,7 +282,8 @@ export function useSmoothContent(
       s.rafId = requestAnimationFrame(tick)
     }
     tickRef.current = tick
-  }, [])
+    return cancelScheduledLoop
+  }, [cancelScheduledLoop])
 
   const startLoop = useCallback(() => {
     const s = stateRef.current
@@ -370,21 +383,6 @@ export function useSmoothContent(
 
     s.wasStreaming = streaming
   }, [streaming, startLoop])
-
-  // Cleanup RAF and wake timer on unmount
-  useEffect(() => {
-    return () => {
-      const s = stateRef.current
-      if (s.rafId !== 0) {
-        cancelAnimationFrame(s.rafId)
-        s.rafId = 0
-      }
-      if (s.wakeTimerId) {
-        clearTimeout(s.wakeTimerId)
-        s.wakeTimerId = 0
-      }
-    }
-  }, [])
 
   return smoothedContent
 }

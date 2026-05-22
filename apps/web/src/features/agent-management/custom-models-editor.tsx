@@ -1,5 +1,6 @@
 import { PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { z } from 'zod'
 
 import { postProvidersModelLookup, postProvidersModelSearch } from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
@@ -19,12 +20,6 @@ interface SearchResult {
   id: string
   label: string
   capabilities: ModelCapabilities
-}
-
-interface ProviderModelLookupResult {
-  id?: unknown
-  label?: unknown
-  capabilities?: unknown
 }
 
 interface CustomModelsEditorState {
@@ -60,25 +55,19 @@ const initialCustomModelsEditorState: CustomModelsEditorState = {
   searchPending: false,
 }
 
-function readCapabilities(value: unknown): ModelCapabilities {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as ModelCapabilities : {}
-}
+const ModelCapabilitiesSchema = z.object({}).passthrough()
 
-function readLookupResult(modelId: string, value: unknown): CustomModelEntry | null {
-  if (!value || typeof value !== 'object') {
-    return null
-  }
+const CustomModelEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  label: z.string().trim().optional(),
+  capabilities: ModelCapabilitiesSchema.default({}),
+}).transform(model => ({
+  id: model.id,
+  label: model.label || model.id,
+  capabilities: model.capabilities,
+}))
 
-  const result = value as ProviderModelLookupResult
-  const id = typeof result.id === 'string' && result.id.trim() ? result.id.trim() : modelId
-  const label = typeof result.label === 'string' && result.label.trim() ? result.label.trim() : id
-
-  return {
-    id,
-    label,
-    capabilities: readCapabilities(result.capabilities),
-  }
-}
+const SearchResultsSchema = z.array(CustomModelEntrySchema)
 
 function occurrenceKey(id: string, counts: Map<string, number>): string {
   const count = counts.get(id) ?? 0
@@ -136,7 +125,7 @@ async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
     body: { modelId },
     throwOnError: true,
   })
-  return readLookupResult(modelId, data)
+  return CustomModelEntrySchema.parse(data)
 }
 
 async function searchProviderModels(query: string): Promise<SearchResult[]> {
@@ -144,7 +133,7 @@ async function searchProviderModels(query: string): Promise<SearchResult[]> {
     body: { query },
     throwOnError: true,
   })
-  return (data ?? []) as SearchResult[]
+  return SearchResultsSchema.parse(data)
 }
 
 export function CustomModelsEditor({
@@ -223,7 +212,7 @@ export function CustomModelsEditor({
       ? {
           ...m,
           label: result.label.trim() || targetModelId,
-          capabilities: readCapabilities(result.capabilities),
+          capabilities: result.capabilities,
         }
       : m))
     dispatch({ type: 'enrich/apply' })

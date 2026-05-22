@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export type ToolState
   = | 'input-streaming'
     | 'input-available'
@@ -61,43 +63,305 @@ const LOWER_TO_UPPER_PATTERN = /([a-z])([A-Z])/g
 const WHITESPACE_PATTERN = /\s+/
 const LINE_BREAK_PATTERN = /\r?\n/
 
+const NullableStringSchema = z.string().nullable().optional().default(null)
+const NullableNumberSchema = z.number().finite().nullable().optional().default(null)
+const NullableBooleanSchema = z.boolean().nullable().optional().default(null)
+const StringListSchema = z.array(z.string()).optional().default([])
+
+const ToolContentBlockSchema = z.object({
+  text: NullableStringSchema,
+  title: NullableStringSchema,
+  url: NullableStringSchema,
+  uri: NullableStringSchema,
+}).passthrough()
+
+const ToolContentValueSchema = z.union([
+  z.string().transform(value => ({ text: value, blocks: [] as ToolContentBlock[] })),
+  z.array(ToolContentBlockSchema).transform(value => ({ text: null, blocks: value })),
+  z.null().transform(() => ({ text: null, blocks: [] as ToolContentBlock[] })),
+  z.undefined().transform(() => ({ text: null, blocks: [] as ToolContentBlock[] })),
+])
+
+const ToolFileSchema = z.object({
+  filePath: NullableStringSchema,
+  type: NullableStringSchema,
+  base64: NullableStringSchema,
+  content: NullableStringSchema,
+  originalSize: NullableNumberSchema,
+  count: NullableNumberSchema,
+  outputDir: NullableStringSchema,
+  numLines: NullableNumberSchema,
+  totalLines: NullableNumberSchema,
+}).passthrough()
+
+const ToolFileValueSchema = z.union([
+  z.string().transform(value => ({ path: value, file: null as ToolFile | null })),
+  ToolFileSchema.transform(value => ({ path: value.filePath, file: value })),
+  z.null().transform(() => ({ path: null, file: null as ToolFile | null })),
+  z.undefined().transform(() => ({ path: null, file: null as ToolFile | null })),
+])
+
+const ToolGitDiffSchema = z.object({
+  additions: z.number().default(0),
+  deletions: z.number().default(0),
+  patch: z.string().default(''),
+}).passthrough()
+
+const ToolPatchHunkSchema = z.object({
+  lines: StringListSchema,
+}).passthrough()
+
+const ToolTodoSchema = z.object({
+  content: NullableStringSchema,
+  activeForm: NullableStringSchema,
+  status: NullableStringSchema,
+}).passthrough()
+
+const ToolWebResultSchema = z.object({
+  content: z.array(ToolContentBlockSchema).optional().default([]),
+}).passthrough()
+
+const ToolObjectPayloadSchema = z.object({
+  input: NullableStringSchema,
+  description: NullableStringSchema,
+  explanation: NullableStringSchema,
+  goal: NullableStringSchema,
+  type: NullableStringSchema,
+  file_path: NullableStringSchema,
+  filePath: NullableStringSchema,
+  path: NullableStringSchema,
+  file: ToolFileValueSchema,
+  filename: NullableStringSchema,
+  notebook_path: NullableStringSchema,
+  command: NullableStringSchema,
+  cmd: NullableStringSchema,
+  timeout: NullableNumberSchema,
+  pattern: NullableStringSchema,
+  query: NullableStringSchema,
+  glob: NullableStringSchema,
+  url: NullableStringSchema,
+  name: NullableStringSchema,
+  subagent_type: NullableStringSchema,
+  team_name: NullableStringSchema,
+  agentId: NullableStringSchema,
+  agentType: NullableStringSchema,
+  task_id: NullableStringSchema,
+  shell_id: NullableStringSchema,
+  task_type: NullableStringSchema,
+  plan: NullableStringSchema,
+  server: NullableStringSchema,
+  uri: NullableStringSchema,
+  tool: NullableStringSchema,
+  worktreePath: NullableStringSchema,
+  worktreeBranch: NullableStringSchema,
+  action: NullableStringSchema,
+  edit_mode: NullableStringSchema,
+  cell_type: NullableStringSchema,
+  message: NullableStringSchema,
+  stdout: NullableStringSchema,
+  stderr: NullableStringSchema,
+  output: NullableStringSchema,
+  result: NullableStringSchema,
+  content: ToolContentValueSchema,
+  text: NullableStringSchema,
+  backgroundTaskId: NullableStringSchema,
+  interrupted: NullableBooleanSchema,
+  noOutputExpected: NullableBooleanSchema,
+  numFiles: NullableNumberSchema,
+  numMatches: NullableNumberSchema,
+  code: NullableNumberSchema,
+  bytes: NullableNumberSchema,
+  durationSeconds: NullableNumberSchema,
+  status: NullableStringSchema,
+  totalToolUseCount: NullableNumberSchema,
+  totalTokens: NullableNumberSchema,
+  pages: NullableStringSchema,
+  old_string: NullableStringSchema,
+  oldString: NullableStringSchema,
+  new_string: NullableStringSchema,
+  newString: NullableStringSchema,
+  originalFile: NullableStringSchema,
+  original_file: NullableStringSchema,
+  replace_all: NullableBooleanSchema,
+  replaceAll: NullableBooleanSchema,
+  userModified: NullableBooleanSchema,
+  structuredPatch: z.array(ToolPatchHunkSchema).optional().default([]),
+  gitDiff: ToolGitDiffSchema.default({
+    additions: 0,
+    deletions: 0,
+    patch: '',
+  }),
+  filenames: StringListSchema,
+  results: z.array(ToolWebResultSchema).optional().default([]),
+  contents: z.array(ToolContentBlockSchema).optional().default([]),
+  outputFile: NullableStringSchema,
+  newTodos: z.array(ToolTodoSchema).optional().default([]),
+  todos: z.array(ToolTodoSchema).optional().default([]),
+  questions: z.array(z.unknown()).optional().default([]),
+  allowedPrompts: z.array(z.unknown()).optional().default([]),
+  answers: z.record(z.unknown()).nullable().optional().default(null),
+  mode: NullableStringSchema,
+}).passthrough()
+
+type ToolContentBlock = z.infer<typeof ToolContentBlockSchema>
+type ToolFile = z.infer<typeof ToolFileSchema>
+type ToolObjectPayload = z.infer<typeof ToolObjectPayloadSchema>
+
+export interface ToolPayload {
+  rawText: string | null
+  inputText: string | null
+  description: string | null
+  type: string | null
+  filePath: string | null
+  notebookPath: string | null
+  command: string | null
+  timeout: number | null
+  pattern: string | null
+  query: string | null
+  url: string | null
+  subagentName: string | null
+  agentId: string | null
+  agentType: string | null
+  taskId: string | null
+  taskType: string | null
+  plan: string | null
+  mcpTarget: string | null
+  worktreeTarget: string | null
+  worktreeBranch: string | null
+  action: string | null
+  editMode: string | null
+  cellType: string | null
+  message: string | null
+  stdout: string | null
+  stderr: string | null
+  outputText: string | null
+  contentText: string | null
+  text: string | null
+  backgroundTaskId: string | null
+  interrupted: boolean | null
+  noOutputExpected: boolean | null
+  numFiles: number | null
+  numMatches: number | null
+  code: number | null
+  bytes: number | null
+  durationSeconds: number | null
+  status: string | null
+  totalToolUseCount: number | null
+  totalTokens: number | null
+  pages: string | null
+  oldString: string | null
+  newString: string | null
+  originalFile: string | null
+  replaceAll: boolean | null
+  userModified: boolean | null
+  file: ToolFile | null
+  gitDiff: z.infer<typeof ToolGitDiffSchema>
+  structuredPatch: Array<z.infer<typeof ToolPatchHunkSchema>>
+  filenames: string[]
+  results: Array<z.infer<typeof ToolWebResultSchema>>
+  contentBlocks: ToolContentBlock[]
+  contents: ToolContentBlock[]
+  outputFile: string | null
+  todos: Array<z.infer<typeof ToolTodoSchema>>
+  newTodos: Array<z.infer<typeof ToolTodoSchema>>
+  questions: unknown[]
+  allowedPrompts: unknown[]
+  answers: Record<string, unknown> | null
+  mode: string | null
+}
+
+function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
+  return {
+    rawText: null,
+    inputText: value.input,
+    description: value.description ?? value.explanation ?? value.goal,
+    type: value.type,
+    filePath: value.file_path ?? value.filePath ?? value.path ?? value.file.path ?? value.filename,
+    notebookPath: value.notebook_path,
+    command: value.command ?? value.cmd,
+    timeout: value.timeout,
+    pattern: value.pattern ?? value.query ?? value.glob,
+    query: value.query,
+    url: value.url,
+    subagentName: value.name ?? value.subagent_type ?? value.team_name,
+    agentId: value.agentId,
+    agentType: value.agentType,
+    taskId: value.task_id ?? value.shell_id,
+    taskType: value.task_type,
+    plan: value.plan,
+    mcpTarget: value.server ?? value.uri ?? value.tool,
+    worktreeTarget: value.path ?? value.name ?? value.worktreePath ?? value.worktreeBranch,
+    worktreeBranch: value.worktreeBranch,
+    action: value.action,
+    editMode: value.edit_mode,
+    cellType: value.cell_type,
+    message: value.message,
+    stdout: value.stdout,
+    stderr: value.stderr,
+    outputText: value.output ?? value.result,
+    contentText: value.content.text,
+    text: value.text,
+    backgroundTaskId: value.backgroundTaskId,
+    interrupted: value.interrupted,
+    noOutputExpected: value.noOutputExpected,
+    numFiles: value.numFiles,
+    numMatches: value.numMatches,
+    code: value.code,
+    bytes: value.bytes,
+    durationSeconds: value.durationSeconds,
+    status: value.status,
+    totalToolUseCount: value.totalToolUseCount,
+    totalTokens: value.totalTokens,
+    pages: value.pages,
+    oldString: value.old_string ?? value.oldString,
+    newString: value.new_string ?? value.newString,
+    originalFile: value.originalFile ?? value.original_file,
+    replaceAll: value.replace_all ?? value.replaceAll,
+    userModified: value.userModified,
+    file: value.file.file,
+    gitDiff: value.gitDiff,
+    structuredPatch: value.structuredPatch,
+    filenames: value.filenames,
+    results: value.results,
+    contentBlocks: value.content.blocks,
+    contents: value.contents,
+    outputFile: value.outputFile,
+    todos: value.todos,
+    newTodos: value.newTodos,
+    questions: value.questions,
+    allowedPrompts: value.allowedPrompts,
+    answers: value.answers,
+    mode: value.mode,
+  }
+}
+
+export const ToolPayloadSchema = z.union([
+  z.string().transform((value): ToolPayload => ({
+    ...toolPayloadFromObject(ToolObjectPayloadSchema.parse({})),
+    rawText: value,
+  })),
+  z.array(ToolContentBlockSchema).transform((value): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({ contents: value }))),
+  ToolObjectPayloadSchema.transform(toolPayloadFromObject),
+  z.null().transform((): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({}))),
+  z.undefined().transform((): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({}))),
+])
+
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
   const toolName = part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
-  const input = materializeStreamingToolInput(part.input)
+  const input = ToolPayloadSchema.parse(part.input)
+  const output = ToolPayloadSchema.parse(part.output)
   const normalizedName = normalizeToolName(toolName)
-  const kind = classifyToolKind(normalizedName, input, part.output)
+  const kind = classifyToolKind(normalizedName, input, output)
   const displayName = formatToolName(toolName)
-  const target = readToolTarget(kind, input, part.output)
+  const target = readToolTarget(kind, input, output)
   return {
     kind,
     toolName,
     displayName,
-    title: readToolTitle(kind, displayName, input, part.output),
+    title: readToolTitle(kind, displayName, input, output),
     target,
-    summary: readToolSummary(kind, input, part.output),
+    summary: readToolSummary(kind, input, output),
   }
-}
-
-export function materializeStreamingToolInput(input: unknown): unknown {
-  if (typeof input === 'string') {
-    return parseToolInputText(input) ?? input
-  }
-
-  if (!isRecord(input)) {
-    return input
-  }
-
-  const text = typeof input.input === 'string' ? input.input : null
-  if (!text) {
-    return input
-  }
-
-  const parsed = parseToolInputText(text)
-  if (!parsed) {
-    return input
-  }
-
-  return { ...input, ...parsed }
 }
 
 export function normalizeToolName(toolName: string): string {
@@ -109,7 +373,7 @@ export function normalizeToolName(toolName: string): string {
     .toLowerCase()
 }
 
-export function classifyToolKind(toolName: string, input: unknown, output: unknown): ToolUiKind {
+export function classifyToolKind(toolName: string, input: ToolPayload, output: ToolPayload): ToolUiKind {
   if (isWorktreeTool(toolName)) {
     return 'worktree'
   }
@@ -152,49 +416,6 @@ export function classifyToolKind(toolName: string, input: unknown, output: unkno
   return 'generic'
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-export function readStringValue(value: unknown, keys: string[]): string | null {
-  if (!isRecord(value)) {
-    return null
-  }
-  for (const key of keys) {
-    const candidate = value[key]
-    if (typeof candidate === 'string' && candidate.length > 0) {
-      return candidate
-    }
-  }
-  return null
-}
-
-export function readNumberValue(value: unknown, keys: string[]): number | null {
-  if (!isRecord(value)) {
-    return null
-  }
-  for (const key of keys) {
-    const candidate = value[key]
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-      return candidate
-    }
-  }
-  return null
-}
-
-export function readStringArray(value: unknown, keys: string[]): string[] {
-  if (!isRecord(value)) {
-    return []
-  }
-  for (const key of keys) {
-    const candidate = value[key]
-    if (Array.isArray(candidate)) {
-      return candidate.filter((item): item is string => typeof item === 'string')
-    }
-  }
-  return []
-}
-
 export function formatToolName(toolName: string): string {
   const readable = toolName
     .replace(MCP_PREFIX_PATTERN, 'mcp ')
@@ -213,8 +434,8 @@ export function formatToolName(toolName: string): string {
     .join(' ')
 }
 
-function readToolTitle(kind: ToolUiKind, displayName: string, input: unknown, output: unknown): string {
-  const description = readStringValue(input, ['description', 'explanation', 'goal'])
+function readToolTitle(kind: ToolUiKind, displayName: string, input: ToolPayload, output: ToolPayload): string {
+  const description = input.description
   if (description) {
     return description
   }
@@ -223,7 +444,7 @@ function readToolTitle(kind: ToolUiKind, displayName: string, input: unknown, ou
     case 'file-read':
       return 'Read file'
     case 'file-diff':
-      return readStringValue(output, ['type']) === 'create' ? 'Create file' : 'Edit file'
+      return output.type === 'create' ? 'Create file' : 'Edit file'
     case 'notebook-diff':
       return 'Edit notebook'
     case 'terminal':
@@ -251,52 +472,50 @@ function readToolTitle(kind: ToolUiKind, displayName: string, input: unknown, ou
   }
 }
 
-function readToolTarget(kind: ToolUiKind, input: unknown, output: unknown): string | null {
+function readToolTarget(kind: ToolUiKind, input: ToolPayload, output: ToolPayload): string | null {
   switch (kind) {
     case 'file-read':
     case 'file-diff':
-      return readStringValue(input, ['file_path', 'filePath', 'path', 'file', 'filename'])
-        ?? readStringValue(output, ['filePath', 'filename'])
-        ?? readNestedString(output, ['file'], ['filePath'])
+      return input.filePath ?? output.filePath
     case 'notebook-diff':
-      return readStringValue(input, ['notebook_path']) ?? readStringValue(output, ['notebook_path'])
+      return input.notebookPath ?? output.notebookPath
     case 'terminal':
-      return readFirstLine(readStringValue(input, ['command', 'cmd']) ?? readStringValue(output, ['command']))
+      return readFirstLine(input.command ?? output.command)
     case 'search':
-      return readStringValue(input, ['pattern', 'query', 'glob']) ?? readStringValue(output, ['query'])
+      return input.pattern ?? output.query
     case 'web':
-      return readStringValue(input, ['url', 'query']) ?? readStringValue(output, ['url', 'query'])
+      return input.url ?? input.query ?? output.url ?? output.query
     case 'subagent':
-      return readStringValue(input, ['description', 'name', 'subagent_type']) ?? readStringValue(output, ['agentId', 'description'])
+      return input.subagentName ?? output.agentId ?? output.description
     case 'task-control':
-      return readStringValue(input, ['task_id', 'shell_id']) ?? readStringValue(output, ['task_id'])
+      return input.taskId ?? output.taskId
     case 'todo': {
       const count = readTodoCount(input, output)
       return count === null ? null : `${count} item${count === 1 ? '' : 's'}`
     }
     case 'plan':
-      return readStringValue(output, ['filePath'])
+      return output.filePath
     case 'question': {
       const count = readQuestionCount(input, output)
       return count === null ? null : `${count} question${count === 1 ? '' : 's'}`
     }
     case 'mcp':
-      return readStringValue(input, ['server', 'uri', 'tool']) ?? readStringValue(output, ['server', 'uri'])
+      return input.mcpTarget ?? output.mcpTarget
     case 'worktree':
-      return readStringValue(input, ['path', 'name']) ?? readStringValue(output, ['worktreePath', 'worktreeBranch'])
+      return input.worktreeTarget ?? output.worktreeTarget
     case 'generic':
-      return readStringValue(input, ['path', 'file_path', 'query', 'command', 'url'])
+      return input.filePath ?? input.query ?? input.command ?? input.url
   }
 }
 
-function readToolSummary(kind: ToolUiKind, input: unknown, output: unknown): string | null {
+function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPayload): string | null {
   switch (kind) {
     case 'file-read':
       return readFileReadSummary(output)
     case 'file-diff':
       return readDiffSummary(input, output)
     case 'notebook-diff':
-      return readStringValue(output, ['edit_mode', 'cell_type'])
+      return output.editMode ?? output.cellType
     case 'terminal':
       return readTerminalSummary(output)
     case 'search':
@@ -306,32 +525,32 @@ function readToolSummary(kind: ToolUiKind, input: unknown, output: unknown): str
     case 'subagent':
       return readSubagentSummary(output)
     case 'task-control':
-      return readStringValue(output, ['message'])
+      return output.message
     case 'todo':
       return readTodoSummary(input, output)
     case 'plan':
-      return readStringValue(output, ['filePath']) ? 'Plan saved' : null
+      return output.filePath ? 'Plan saved' : null
     case 'question':
-      return isRecord(output) && isRecord(output.answers) ? 'Answered' : null
+      return output.answers ? 'Answered' : null
     case 'mcp':
       return readMcpSummary(output)
     case 'worktree':
-      return readStringValue(output, ['message'])
+      return output.message
     case 'generic':
       return null
   }
 }
 
-function isReadTool(toolName: string, input: unknown, output: unknown): boolean {
+function isReadTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'read'
     || toolName === 'read_file'
     || toolName === 'fileread'
     || toolName === 'file_read'
-    || readNestedString(output, ['file'], ['filePath']) !== null
-    || readStringValue(input, ['pages']) !== null
+    || output.filePath !== null
+    || input.pages !== null
 }
 
-function isDiffTool(toolName: string, input: unknown, output: unknown): boolean {
+function isDiffTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'edit'
     || toolName === 'edit_file'
     || toolName === 'fileedit'
@@ -344,54 +563,61 @@ function isDiffTool(toolName: string, input: unknown, output: unknown): boolean 
     || toolName === 'multi_edit'
     || toolName === 'multi_edit_file'
     || toolName === 'multi_file_edit'
-    || (isRecord(output) && (Array.isArray(output.structuredPatch) || isRecord(output.gitDiff)))
-    || readStringValue(input, ['old_string', 'new_string', 'content']) !== null
+    || output.structuredPatch.length > 0
+    || output.gitDiff.additions !== 0
+    || output.gitDiff.deletions !== 0
+    || output.gitDiff.patch.length > 0
+    || input.oldString !== null
+    || input.newString !== null
+    || input.contentText !== null
 }
 
-function isNotebookTool(toolName: string, input: unknown, output: unknown): boolean {
+function isNotebookTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'notebookedit'
     || toolName === 'notebook_edit'
-    || readStringValue(input, ['notebook_path']) !== null
-    || readStringValue(output, ['notebook_path']) !== null
+    || input.notebookPath !== null
+    || output.notebookPath !== null
 }
 
-function isTerminalTool(toolName: string, input: unknown, output: unknown): boolean {
+function isTerminalTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'bash'
     || toolName === 'terminal'
     || toolName === 'run_command'
     || toolName === 'execute'
     || toolName === 'command_execution'
-    || readStringValue(input, ['command', 'cmd']) !== null
-    || readStringValue(output, ['stdout', 'stderr']) !== null
+    || input.command !== null
+    || output.stdout !== null
+    || output.stderr !== null
 }
 
-function isSearchTool(toolName: string, input: unknown, output: unknown): boolean {
+function isSearchTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'grep'
     || toolName === 'glob'
     || toolName === 'search'
     || toolName === 'file_search'
-    || (readStringValue(input, ['pattern', 'glob']) !== null && !isWebTool(toolName, input, output))
-    || readStringArray(output, ['filenames']).length > 0
+    || (input.pattern !== null && !isWebTool(toolName, input, output))
+    || output.filenames.length > 0
 }
 
-function isWebTool(toolName: string, input: unknown, output: unknown): boolean {
+function isWebTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'webfetch'
     || toolName === 'web_fetch'
     || toolName === 'websearch'
     || toolName === 'web_search'
-    || readStringValue(input, ['url']) !== null
-    || (readStringValue(input, ['query']) !== null && isRecord(output) && ('results' in output || 'durationSeconds' in output))
+    || input.url !== null
+    || (input.query !== null && (output.results.length > 0 || output.durationSeconds !== null))
 }
 
-function isSubagentTool(toolName: string, input: unknown, output: unknown): boolean {
+function isSubagentTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'agent'
     || toolName === 'task'
     || toolName === 'spawn_agent'
-    || readStringValue(input, ['subagent_type', 'team_name']) !== null
-    || readStringValue(output, ['agentId', 'agentType']) !== null
+    || input.subagentName !== null
+    || output.agentId !== null
+    || output.agentType !== null
 }
 
-function isTaskControlTool(toolName: string, input: unknown, output: unknown): boolean {
+function isTaskControlTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'taskoutput'
     || toolName === 'task_output'
     || toolName === 'taskstop'
@@ -400,30 +626,31 @@ function isTaskControlTool(toolName: string, input: unknown, output: unknown): b
     || toolName === 'task_status'
     || toolName === 'sendmessage'
     || toolName === 'send_message'
-    || readStringValue(input, ['task_id', 'shell_id']) !== null
-    || readStringValue(output, ['task_id', 'task_type']) !== null
+    || input.taskId !== null
+    || output.taskId !== null
+    || output.taskType !== null
 }
 
-function isTodoTool(toolName: string, input: unknown, output: unknown): boolean {
+function isTodoTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'todowrite'
     || toolName === 'todo_write'
     || readTodoCount(input, output) !== null
 }
 
-function isPlanTool(toolName: string, input: unknown, output: unknown): boolean {
+function isPlanTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'exitplanmode'
     || toolName === 'exit_plan_mode'
-    || readStringValue(output, ['plan']) !== null
-    || (isRecord(input) && Array.isArray(input.allowedPrompts))
+    || output.plan !== null
+    || input.allowedPrompts.length > 0
 }
 
-function isQuestionTool(toolName: string, input: unknown, output: unknown): boolean {
+function isQuestionTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'askuserquestion'
     || toolName === 'ask_user_question'
     || readQuestionCount(input, output) !== null
 }
 
-function isMcpTool(toolName: string, input: unknown, output: unknown): boolean {
+function isMcpTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName.startsWith('mcp__')
     || toolName.includes('/')
     || toolName === 'mcp'
@@ -431,8 +658,8 @@ function isMcpTool(toolName: string, input: unknown, output: unknown): boolean {
     || toolName === 'list_mcp_resources'
     || toolName === 'readmcpresource'
     || toolName === 'read_mcp_resource'
-    || readStringValue(input, ['server', 'uri']) !== null
-    || (Array.isArray(output) && output.some(item => isRecord(item) && typeof item.uri === 'string'))
+    || input.mcpTarget !== null
+    || output.contents.length > 0
 }
 
 function isWorktreeTool(toolName: string): boolean {
@@ -442,20 +669,6 @@ function isWorktreeTool(toolName: string): boolean {
     || toolName === 'exit_worktree'
 }
 
-function readNestedString(value: unknown, parentKeys: string[], childKeys: string[]): string | null {
-  if (!isRecord(value)) {
-    return null
-  }
-  for (const parentKey of parentKeys) {
-    const parent = value[parentKey]
-    const child = readStringValue(parent, childKeys)
-    if (child) {
-      return child
-    }
-  }
-  return null
-}
-
 function readFirstLine(value: string | null): string | null {
   if (!value) {
     return null
@@ -463,15 +676,12 @@ function readFirstLine(value: string | null): string | null {
   return value.split(LINE_BREAK_PATTERN, 1)[0] ?? value
 }
 
-function readFileReadSummary(output: unknown): string | null {
-  if (!isRecord(output)) {
-    return null
-  }
-  const type = typeof output.type === 'string' ? output.type : null
-  const file = isRecord(output.file) ? output.file : null
+function readFileReadSummary(output: ToolPayload): string | null {
+  const type = output.type
+  const file = output.file
   if (type === 'text' && file) {
-    const lines = readNumberValue(file, ['numLines'])
-    const total = readNumberValue(file, ['totalLines'])
+    const lines = file.numLines
+    const total = file.totalLines
     if (lines !== null && total !== null) {
       return `${lines}/${total} lines`
     }
@@ -489,7 +699,7 @@ function readFileReadSummary(output: unknown): string | null {
     return 'Notebook cells'
   }
   if (type === 'parts' && file) {
-    const count = readNumberValue(file, ['count'])
+    const count = file.count
     return count === null ? 'Extracted pages' : `${count} pages`
   }
   if (type === 'file_unchanged') {
@@ -498,205 +708,33 @@ function readFileReadSummary(output: unknown): string | null {
   return null
 }
 
-function readDiffSummary(input: unknown, output: unknown): string | null {
-  const additions = readNestedNumber(output, ['gitDiff'], ['additions'])
-  const deletions = readNestedNumber(output, ['gitDiff'], ['deletions'])
-  if (additions !== null || deletions !== null) {
-    return `+${additions ?? 0} -${deletions ?? 0}`
+function readDiffSummary(input: ToolPayload, output: ToolPayload): string | null {
+  const additions = output.gitDiff.additions
+  const deletions = output.gitDiff.deletions
+  if (additions !== 0 || deletions !== 0) {
+    return `+${additions} -${deletions}`
   }
-  const patch = isRecord(output) && Array.isArray(output.structuredPatch) ? output.structuredPatch : null
-  if (patch) {
-    return `${patch.length} hunk${patch.length === 1 ? '' : 's'}`
+  if (output.gitDiff.patch.length > 0) {
+    return 'Patch prepared'
   }
-  if (readStringValue(input, ['content']) !== null) {
+  if (output.structuredPatch.length > 0) {
+    return `${output.structuredPatch.length} hunk${output.structuredPatch.length === 1 ? '' : 's'}`
+  }
+  if (input.contentText !== null) {
     return 'Write content'
   }
   return null
 }
-
-function parseToolInputText(text: string): Record<string, unknown> | null {
-  const trimmed = text.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  const complete = parseCompleteToolInputText(trimmed)
-  if (complete) {
-    return complete
-  }
-
-  const fields: Record<string, unknown> = {}
-  for (const key of STREAMING_TOOL_INPUT_STRING_KEYS) {
-    const value = readJsonStringFieldPrefix(trimmed, key)
-    if (value !== null) {
-      fields[key] = value
-    }
-  }
-
-  for (const key of STREAMING_TOOL_INPUT_BOOLEAN_KEYS) {
-    const value = readJsonBooleanField(trimmed, key)
-    if (value !== null) {
-      fields[key] = value
-    }
-  }
-
-  return Object.keys(fields).length > 0 ? fields : null
-}
-
-function parseCompleteToolInputText(trimmed: string): Record<string, unknown> | null {
-  for (const candidate of readJsonObjectCandidates(trimmed)) {
-    try {
-      const parsed = JSON.parse(candidate) as unknown
-      if (isRecord(parsed)) {
-        return parsed
-      }
-    }
-    catch {
-      // Partial tool inputs are expected while the model is still emitting JSON.
-    }
-  }
-  return null
-}
-
-function readJsonObjectCandidates(trimmed: string): string[] {
-  if (trimmed.startsWith('{')) {
-    return [trimmed]
-  }
-  if (trimmed.includes(':')) {
-    return [`{${trimmed}}`]
-  }
-  return []
-}
-
-const STREAMING_TOOL_INPUT_STRING_KEYS = [
-  'file_path',
-  'filePath',
-  'path',
-  'file',
-  'filename',
-  'old_string',
-  'oldString',
-  'new_string',
-  'newString',
-  'content',
-  'command',
-  'cmd',
-  'pattern',
-  'query',
-  'url',
-  'description',
-  'prompt',
-  'notebook_path',
-] as const
-
-const STREAMING_TOOL_INPUT_BOOLEAN_KEYS = ['replace_all', 'replaceAll'] as const
-
-function readJsonStringFieldPrefix(source: string, key: string): string | null {
-  const keyNeedle = `"${key}"`
-  const keyStart = source.indexOf(keyNeedle)
-  if (keyStart === -1) {
-    return null
-  }
-
-  const colonIndex = source.indexOf(':', keyStart + keyNeedle.length)
-  if (colonIndex === -1) {
-    return null
-  }
-
-  let valueStart = colonIndex + 1
-  while (valueStart < source.length && /\s/.test(source[valueStart]!)) {
-    valueStart += 1
-  }
-  if (source[valueStart] !== '"') {
-    return null
-  }
-
-  let index = valueStart + 1
-  let escaped = false
-  while (index < source.length) {
-    const char = source[index]!
-    if (escaped) {
-      escaped = false
-      index += 1
-      continue
-    }
-    if (char === '\\') {
-      escaped = true
-      index += 1
-      continue
-    }
-    if (char === '"') {
-      return decodeJsonStringPrefix(source.slice(valueStart + 1, index))
-    }
-    index += 1
-  }
-
-  return decodeJsonStringPrefix(source.slice(valueStart + 1))
-}
-
-function readJsonBooleanField(source: string, key: string): boolean | null {
-  const keyNeedle = `"${key}"`
-  const keyStart = source.indexOf(keyNeedle)
-  if (keyStart === -1) {
-    return null
-  }
-
-  const colonIndex = source.indexOf(':', keyStart + keyNeedle.length)
-  if (colonIndex === -1) {
-    return null
-  }
-
-  const rest = source.slice(colonIndex + 1).trimStart()
-  if (rest.startsWith('true')) {
-    return true
-  }
-  if (rest.startsWith('false')) {
-    return false
-  }
-  return null
-}
-
-function decodeJsonStringPrefix(raw: string): string {
-  try {
-    return JSON.parse(`"${raw}"`) as string
-  }
-  catch {
-    return raw
-      .replace(/\\\\/g, '\\')
-      .replace(/\\"/g, '"')
-      .replace(/\\n/g, '\n')
-      .replace(/\\r/g, '\r')
-      .replace(/\\t/g, '\t')
-  }
-}
-
-function readNestedNumber(value: unknown, parentKeys: string[], childKeys: string[]): number | null {
-  if (!isRecord(value)) {
-    return null
-  }
-  for (const parentKey of parentKeys) {
-    const parent = value[parentKey]
-    const child = readNumberValue(parent, childKeys)
-    if (child !== null) {
-      return child
-    }
-  }
-  return null
-}
-
-function readTerminalSummary(output: unknown): string | null {
-  if (!isRecord(output)) {
-    return null
-  }
-  const backgroundTaskId = readStringValue(output, ['backgroundTaskId'])
+function readTerminalSummary(output: ToolPayload): string | null {
+  const backgroundTaskId = output.backgroundTaskId
   if (backgroundTaskId) {
     return `Background task ${backgroundTaskId}`
   }
   if (output.interrupted === true) {
     return 'Interrupted'
   }
-  const stdout = readStringValue(output, ['stdout'])
-  const stderr = readStringValue(output, ['stderr'])
+  const stdout = output.stdout
+  const stderr = output.stderr
   if (stderr) {
     return 'stderr available'
   }
@@ -709,9 +747,9 @@ function readTerminalSummary(output: unknown): string | null {
   return null
 }
 
-function readSearchSummary(output: unknown): string | null {
-  const files = readNumberValue(output, ['numFiles'])
-  const matches = readNumberValue(output, ['numMatches'])
+function readSearchSummary(output: ToolPayload): string | null {
+  const files = output.numFiles
+  const matches = output.numMatches
   if (files !== null && matches !== null) {
     return `${matches} matches in ${files} files`
   }
@@ -721,49 +759,41 @@ function readSearchSummary(output: unknown): string | null {
   return null
 }
 
-function readWebSummary(output: unknown): string | null {
-  if (!isRecord(output)) {
-    return null
-  }
-  const code = readNumberValue(output, ['code'])
-  const bytes = readNumberValue(output, ['bytes'])
+function readWebSummary(output: ToolPayload): string | null {
+  const code = output.code
+  const bytes = output.bytes
   if (code !== null && bytes !== null) {
     return `${code} · ${formatBytes(bytes)}`
   }
-  const seconds = readNumberValue(output, ['durationSeconds'])
+  const seconds = output.durationSeconds
   if (seconds !== null) {
     return `${seconds.toFixed(1)}s`
   }
   return null
 }
 
-function readSubagentSummary(output: unknown): string | null {
-  if (!isRecord(output)) {
-    return null
-  }
-  const status = readStringValue(output, ['status'])
+function readSubagentSummary(output: ToolPayload): string | null {
+  const status = output.status
   if (status === 'async_launched') {
     return 'Running in background'
   }
-  const totalToolUseCount = readNumberValue(output, ['totalToolUseCount'])
-  const totalTokens = readNumberValue(output, ['totalTokens'])
+  const totalToolUseCount = output.totalToolUseCount
+  const totalTokens = output.totalTokens
   if (totalToolUseCount !== null && totalTokens !== null) {
     return `${totalToolUseCount} tools · ${totalTokens} tokens`
   }
   return status
 }
 
-function readTodoCount(input: unknown, output: unknown): number | null {
-  if (isRecord(output) && Array.isArray(output.newTodos)) {
-    return output.newTodos.length
-  }
-  if (isRecord(input) && Array.isArray(input.todos)) {
-    return input.todos.length
-  }
-  return null
+function readTodoCount(input: ToolPayload, output: ToolPayload): number | null {
+  return output.newTodos.length > 0
+    ? output.newTodos.length
+    : input.todos.length > 0
+      ? input.todos.length
+      : null
 }
 
-function readTodoSummary(input: unknown, output: unknown): string | null {
+function readTodoSummary(input: ToolPayload, output: ToolPayload): string | null {
   const count = readTodoCount(input, output)
   if (count === null) {
     return null
@@ -771,24 +801,19 @@ function readTodoSummary(input: unknown, output: unknown): string | null {
   return `${count} todo${count === 1 ? '' : 's'}`
 }
 
-function readQuestionCount(input: unknown, output: unknown): number | null {
-  if (isRecord(output) && Array.isArray(output.questions)) {
-    return output.questions.length
-  }
-  if (isRecord(input) && Array.isArray(input.questions)) {
-    return input.questions.length
-  }
-  return null
+function readQuestionCount(input: ToolPayload, output: ToolPayload): number | null {
+  return output.questions.length > 0
+    ? output.questions.length
+    : input.questions.length > 0
+      ? input.questions.length
+      : null
 }
 
-function readMcpSummary(output: unknown): string | null {
-  if (Array.isArray(output)) {
-    return `${output.length} resource${output.length === 1 ? '' : 's'}`
-  }
-  if (isRecord(output) && Array.isArray(output.contents)) {
+function readMcpSummary(output: ToolPayload): string | null {
+  if (output.contents.length > 0) {
     return `${output.contents.length} content block${output.contents.length === 1 ? '' : 's'}`
   }
-  return typeof output === 'string' && output.length > 0 ? 'Tool result' : null
+  return output.rawText ? 'Tool result' : null
 }
 
 function formatBytes(bytes: number): string {

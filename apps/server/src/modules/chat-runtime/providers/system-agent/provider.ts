@@ -10,7 +10,6 @@ import * as Preferences from '../../../preferences/service'
 import { lookupModelRaw, lookupModelRawExact } from '../../../providers/model-info-registry'
 import { ProfileConfigWithModelRegistryJsonSchema } from '../../../providers/model-registry-mappings'
 import {
-  BaseProviderConfigJsonSchema,
   SystemAgentConfigJsonSchema,
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
@@ -57,7 +56,7 @@ function supportsExtendedThinking(modelId: string, family?: string): boolean {
   return EXTENDED_REASONING_MODEL_RE.test(`${modelId} ${family ?? ''}`.toLowerCase())
 }
 
-function normalizeThinkingLevel(
+function selectRuntimeThinkingLevel(
   modelId: string,
   requested: JarvisThinkingLevel,
   registryModel: Awaited<ReturnType<typeof lookupModelRaw>>,
@@ -114,7 +113,7 @@ export class SystemAgentProvider implements ChatRuntime {
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
-    const currentModelId = input.modelId ?? jarvisPrefs.model ?? null
+    const currentModelId = input.modelId ?? jarvisPrefs.model
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
@@ -146,26 +145,25 @@ export class SystemAgentProvider implements ChatRuntime {
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
     const config = SystemAgentConfigJsonSchema.parse(input.profile.configJson)
-    const baseConfig = BaseProviderConfigJsonSchema.parse(input.profile.configJson)
 
     const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
     const model = jarvisPrefs.model
-    const baseUrl = config.baseUrl ?? baseConfig.baseUrl
+    const { baseUrl } = config
     if (!model) {
       throw new Error('No model configured for Jarvis. Set a model in Settings → Jarvis.')
     }
 
-    const secretRef = input.profile.credentialRef ?? null
+    const secretRef = input.profile.credentialRef
     const apiKey = secretRef
       ? this.deps.readSecret(secretRef)
-      : (config.apiKey ?? baseConfig.apiKey ?? null)
+      : config.apiKey
 
     const registryModel = await lookupModelRaw(model)
     const mappedRegistryModel = await resolveMappedRegistryModel(input.profile.configJson, model)
     const runtimeRegistryModel = mappedRegistryModel ?? registryModel
-    const thinkingLevel = normalizeThinkingLevel(
+    const thinkingLevel = selectRuntimeThinkingLevel(
       model,
-      (jarvisPrefs.thinkingLevel ?? config.thinkingLevel ?? 'medium') as JarvisThinkingLevel,
+      (jarvisPrefs.thinkingLevel ?? config.thinkingLevel) as JarvisThinkingLevel,
       runtimeRegistryModel,
     )
     const systemPrompt = input.systemPrompt ?? 'You are Jarvis, a helpful system assistant.'

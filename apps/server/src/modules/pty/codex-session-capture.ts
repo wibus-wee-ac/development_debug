@@ -3,6 +3,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, normalize } from 'node:path'
 import { createInterface } from 'node:readline'
+import { z } from 'zod'
 
 import type { CodexCliSessionBinding } from '../../helpers/agent-runtime-config'
 
@@ -12,6 +13,9 @@ const CAPTURE_LOOKBACK_MS = 5_000
 const CAPTURE_LOOKAHEAD_MS = 120_000
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ROLLOUT_FILENAME_RE = /^rollout-.+\.jsonl$/
+const TimestampMsTextSchema = z.string()
+  .transform(value => Date.parse(value))
+  .pipe(z.number().finite())
 
 export interface CaptureCodexCliSessionInput {
   workspacePath: string
@@ -32,20 +36,35 @@ interface CodexSessionMeta {
   originator: string
 }
 
-interface CodexSessionMetaLine {
-  type?: unknown
-  payload?: {
-    id?: unknown
-    timestamp?: unknown
-    cwd?: unknown
-    originator?: unknown
-  }
-}
+const CodexSessionMetaLineSchema = z.object({
+  type: z.literal('session_meta'),
+  payload: z.object({
+    id: z.string().regex(UUID_RE),
+    timestamp: z.string(),
+    cwd: z.string().min(1),
+    originator: z.string(),
+  }),
+}).transform(({ payload }) => ({
+  id: payload.id,
+  timestampMs: TimestampMsTextSchema.parse(payload.timestamp),
+  cwd: payload.cwd,
+  originator: payload.originator,
+}))
+const CodexSessionMetaLineJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(CodexSessionMetaLineSchema)
 
-export async function captureCodexCliSession(input: CaptureCodexCliSessionInput): Promise<CodexCliSessionBinding | null> {
-  const root = input.codexSessionsRoot ?? defaultCodexSessionsRoot()
+const CaptureCodexCliSessionInputSchema = z.object({
+  workspacePath: z.string(),
+  startedAt: z.number().finite(),
+  codexSessionsRoot: z.string().default(defaultCodexSessionsRoot),
+  now: z.custom<() => number>().default(() => Date.now),
+})
+
+export async function captureCodexCliSession(rawInput: CaptureCodexCliSessionInput): Promise<CodexCliSessionBinding | null> {
+  const input = CaptureCodexCliSessionInputSchema.parse(rawInput)
   const files = await listRecentSessionFiles({
-    root,
+    root: input.codexSessionsRoot,
     startedAt: input.startedAt,
   })
 
@@ -78,7 +97,7 @@ export async function captureCodexCliSession(input: CaptureCodexCliSessionInput)
   const match = matches[0]!
   return {
     sessionId: match.id,
-    capturedAt: Math.floor((input.now?.() ?? Date.now()) / 1000),
+    capturedAt: Math.floor(input.now() / 1000),
     startedAt: Math.floor(input.startedAt / 1000),
     workspacePath,
     sourcePath: match.sourcePath,
@@ -164,34 +183,7 @@ async function readSessionMeta(path: string): Promise<CodexSessionMeta | null> {
   }
 
   try {
-    const parsed = JSON.parse(line) as CodexSessionMetaLine
-    if (parsed.type !== 'session_meta') {
-      return null
-    }
-
-    const id = parsed.payload?.id
-    const timestamp = parsed.payload?.timestamp
-    const cwd = parsed.payload?.cwd
-    const originator = parsed.payload?.originator
-    if (typeof id !== 'string' || !UUID_RE.test(id)) {
-      return null
-    }
-    if (typeof timestamp !== 'string') {
-      return null
-    }
-    if (typeof cwd !== 'string' || !cwd.trim()) {
-      return null
-    }
-    if (typeof originator !== 'string') {
-      return null
-    }
-
-    const timestampMs = Date.parse(timestamp)
-    if (!Number.isFinite(timestampMs)) {
-      return null
-    }
-
-    return { id, timestampMs, cwd, originator }
+    return CodexSessionMetaLineJsonSchema.parse(line)
   }
   catch {
     return null

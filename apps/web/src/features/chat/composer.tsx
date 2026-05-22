@@ -180,7 +180,7 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
                 strokeWidth="2"
                 fill="none"
                 className={cn(
-                  'transition-all',
+                  'transition-[stroke] duration-150',
                   isDanger ? 'stroke-destructive/70' : isWarning ? 'stroke-amber-500/70' : 'stroke-primary/50',
                 )}
                 strokeDasharray={TOKEN_CIRCUMFERENCE}
@@ -483,7 +483,7 @@ export function Composer({
       />
 
       {/* Input card — modern clean style, no border-t separator */}
-      <div className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-all">
+      <div className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150">
         {/* Textarea */}
         <div className="relative">
           {slashArgumentHint && (

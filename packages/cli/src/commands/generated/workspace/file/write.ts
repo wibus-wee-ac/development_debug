@@ -29,6 +29,12 @@ const spec = {
       "required": true,
       "target": "body.content",
       "type": "string"
+    },
+    {
+      "name": "confirmedNonCradleOwnedWrite",
+      "required": true,
+      "target": "body.confirmedNonCradleOwnedWrite",
+      "type": "boolean"
     }
   ],
   "method": "put",

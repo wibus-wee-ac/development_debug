@@ -107,7 +107,7 @@ describe('observability capability', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'observability-secret'
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         return new Response(new ReadableStream({
           start(controller) {
@@ -206,7 +206,7 @@ describe('observability capability', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'observability-secret'
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         throw new Error('provider stream exploded')
       }

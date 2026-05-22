@@ -3,6 +3,7 @@ import type { ServerConfig } from '../config/server-config'
 export interface DatabaseOptions {
   dbPath: string
   dataDir?: string
+  migrationsDir: string
 }
 
 export class DatabaseConfig {
@@ -10,6 +11,6 @@ export class DatabaseConfig {
 
   getOptions(): DatabaseOptions {
     const cfg = this.config.get()
-    return { dbPath: cfg.dbPath, dataDir: cfg.dataDir }
+    return { dbPath: cfg.dbPath, dataDir: cfg.dataDir, migrationsDir: cfg.migrationsDir }
   }
 }

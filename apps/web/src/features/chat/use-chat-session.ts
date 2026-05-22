@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { z } from 'zod'
 
 import {
   getChatSessionsBySessionIdMessagesOptions,
@@ -102,11 +103,24 @@ function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 const PASSIVE_STREAM_REFETCH_MS = 500
-const EMPTY_SNAPSHOT_ROWS: ChatSessionMessageRow[] = []
-
-function selectSnapshotRows(data: unknown): ChatSessionMessageRow[] {
-  return Array.isArray(data) ? data as ChatSessionMessageRow[] : EMPTY_SNAPSHOT_ROWS
-}
+const UIMessageSchema: z.ZodType<UIMessage> = z.object({
+  id: z.string(),
+  role: z.enum(['system', 'user', 'assistant']),
+  parts: z.array(z.unknown()),
+}).passthrough() as z.ZodType<UIMessage>
+const ChatMessageSnapshotRowSchema = z.object({
+  messageId: z.string(),
+  role: z.enum(['user', 'assistant']),
+  status: z.string(),
+  errorText: z.string().nullable().optional(),
+  content: z.string(),
+  message: UIMessageSchema,
+  parentMessageId: z.string().nullable(),
+  parentToolCallId: z.string().nullable(),
+  taskId: z.string().nullable(),
+  depth: z.number().finite(),
+})
+const ChatMessageSnapshotRowsSchema = z.array(ChatMessageSnapshotRowSchema)
 
 export function useChatSession(chatSessionId: string | null) {
   const queryClient = useQueryClient()
@@ -172,7 +186,7 @@ export function useChatSession(chatSessionId: string | null) {
         ? PASSIVE_STREAM_REFETCH_MS
         : false
     },
-    select: selectSnapshotRows,
+    select: data => ChatMessageSnapshotRowsSchema.parse(data),
   })
 
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {

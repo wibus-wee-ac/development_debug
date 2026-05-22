@@ -1,8 +1,9 @@
 import { Link } from '@cradle/tabs-next'
 import { ExternalLinkIcon, SquareIcon } from 'lucide-react'
-import { useMemo } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 
 import { cn } from '~/lib/utils'
+import type { AgentActivity, AgentSession } from '~/lib/types'
 
 import { useAgentActivities, useAgentSessions, useStartAgentSession, useStopAgentSession } from '../use-kanban'
 import { AgentActivityItem } from './agent-activity-item'
@@ -21,10 +22,8 @@ const statusConfig: Record<string, { label: string, dotClass: string }> = {
   failed: { label: 'Failed', dotClass: 'bg-red-400' },
 }
 
-export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelProps) {
+export const AgentSessionPanel = memo(function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelProps) {
   const { data: sessions = [] } = useAgentSessions(issueId)
-  const stopSession = useStopAgentSession()
-  const startSession = useStartAgentSession()
 
   const activeSession = useMemo(() => {
     // Prefer active/created, else take latest
@@ -45,11 +44,46 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
     return null
   }
 
+  return (
+    <ActiveAgentSessionPanel
+      activeSession={activeSession}
+      activities={activities}
+      issueId={issueId}
+      workspaceId={workspaceId}
+    />
+  )
+})
+
+const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
+  activeSession,
+  activities,
+  issueId,
+  workspaceId,
+}: {
+  activeSession: AgentSession
+  activities: AgentActivity[]
+  issueId: string
+  workspaceId: string
+}) {
+  const stopSession = useStopAgentSession()
+  const startSession = useStartAgentSession()
   const status = activeSession.status ?? 'created'
   const config = statusConfig[status] ?? statusConfig.created
 
   const canStop = status === 'active' || status === 'created'
   const canRerun = status === 'completed' || status === 'stopped' || status === 'failed'
+
+  const handleStop = useCallback(() => {
+    stopSession.mutate({ agentSessionId: activeSession.id, issueId })
+  }, [activeSession.id, issueId, stopSession])
+
+  const handleRerun = useCallback(() => {
+    startSession.mutate({
+      agentSessionId: activeSession.id,
+      issueId,
+      workspaceId,
+    })
+  }, [activeSession.id, issueId, startSession, workspaceId])
 
   return (
     <div className="rounded-lg border border-border bg-card shadow-xs" data-testid="issue-agent-session">
@@ -67,7 +101,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
             <button
               type="button"
               className="flex items-center gap-1 rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
-              onClick={() => stopSession.mutate({ agentSessionId: activeSession.id, issueId })}
+              onClick={handleStop}
             >
               <SquareIcon className="size-3" aria-hidden="true" />
               Stop
@@ -78,11 +112,7 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
               type="button"
               className="rounded px-2 py-0.5 text-[12px] text-text-tertiary transition-colors hover:bg-fill hover:text-foreground"
               data-testid="issue-agent-rerun-btn"
-              onClick={() => startSession.mutate({
-                agentSessionId: activeSession.id,
-                issueId,
-                workspaceId,
-              })}
+              onClick={handleRerun}
             >
               Rerun
             </button>
@@ -118,4 +148,4 @@ export function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelPro
       />
     </div>
   )
-}
+})

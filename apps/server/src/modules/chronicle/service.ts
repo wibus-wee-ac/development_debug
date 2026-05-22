@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
-import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
 import { pipeline } from 'node:stream/promises'
@@ -8,6 +8,7 @@ import { Readable } from 'node:stream'
 
 import { generateText, type LanguageModel } from 'ai'
 import {
+  chronicleAccessibilityEvents,
   chronicleAccessibilitySnapshots,
   chronicleActivitySegments,
   chronicleActivitySessions,
@@ -18,6 +19,7 @@ import {
   chronicleDreamRuns,
   chronicleEvents,
   chronicleKnowledgeCards,
+  chronicleKnowledgeFiles,
   chronicleKnowledgeSources,
   chronicleKnowledgeVersions,
   chronicleMemories,
@@ -32,6 +34,7 @@ import {
   chronicleSnapshots,
 } from '@cradle/db'
 import { count, desc, eq, inArray, sql } from 'drizzle-orm'
+import sharp from 'sharp'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
@@ -50,12 +53,20 @@ interface ChronicleConfig {
   activityPipelineEnabled: boolean
   activityPipelineIntervalMs: number
   activityPipelineBatchSize: number
+  dreamSchedulerEnabled: boolean
+  dreamSchedulerIntervalMs: number
+  dreamSchedulerApplyMerge: boolean
   audioCaptureEnabled: boolean
   audioSource: 'microphone' | 'system' | 'mixed'
   audioSegmentMs: number
   audioSegmentIntervalMs: number
   audioRmsThreshold: number
   storageRoot: string
+  privacySensitiveAppBundleIds: string[]
+  privacySensitiveTitlePatterns: string[]
+  privacySensitiveUrlPatterns: string[]
+  closedEyesDiscardEnabled: boolean
+  closedEyesMode: 'auto' | 'always-record' | 'always-pause'
 }
 
 const defaultConfig: ChronicleConfig = {
@@ -66,13 +77,25 @@ const defaultConfig: ChronicleConfig = {
   activityPipelineEnabled: true,
   activityPipelineIntervalMs: 120_000,
   activityPipelineBatchSize: 3,
+  dreamSchedulerEnabled: true,
+  dreamSchedulerIntervalMs: 86_400_000,
+  dreamSchedulerApplyMerge: false,
   audioCaptureEnabled: false,
   audioSource: 'microphone',
   audioSegmentMs: 5_000,
   audioSegmentIntervalMs: 60_000,
   audioRmsThreshold: 0.02,
   storageRoot: resolve(homedir(), '.cradle', 'chronicle'),
+  privacySensitiveAppBundleIds: [],
+  privacySensitiveTitlePatterns: [],
+  privacySensitiveUrlPatterns: [],
+  closedEyesDiscardEnabled: false,
+  closedEyesMode: 'auto',
 }
+
+const ChroniclePrivacyRuleListSchema = z.array(z.string())
+  .default([])
+  .transform(values => Array.from(new Set(values.map(value => value.trim()).filter(Boolean))))
 
 const ChronicleConfigSchema = z.object({
   profileId: z.string().default(defaultConfig.profileId),
@@ -82,18 +105,28 @@ const ChronicleConfigSchema = z.object({
   activityPipelineEnabled: z.boolean().default(defaultConfig.activityPipelineEnabled),
   activityPipelineIntervalMs: z.number().finite().positive().default(defaultConfig.activityPipelineIntervalMs),
   activityPipelineBatchSize: z.number().finite().positive().default(defaultConfig.activityPipelineBatchSize),
+  dreamSchedulerEnabled: z.boolean().default(defaultConfig.dreamSchedulerEnabled),
+  dreamSchedulerIntervalMs: z.number().finite().positive().default(defaultConfig.dreamSchedulerIntervalMs),
+  dreamSchedulerApplyMerge: z.boolean().default(defaultConfig.dreamSchedulerApplyMerge),
   audioCaptureEnabled: z.boolean().default(defaultConfig.audioCaptureEnabled),
   audioSource: z.enum(['microphone', 'system', 'mixed']).default(defaultConfig.audioSource),
   audioSegmentMs: z.number().finite().positive().default(defaultConfig.audioSegmentMs),
   audioSegmentIntervalMs: z.number().finite().positive().default(defaultConfig.audioSegmentIntervalMs),
   audioRmsThreshold: z.number().finite().nonnegative().default(defaultConfig.audioRmsThreshold),
   storageRoot: z.string().default(defaultConfig.storageRoot),
+  privacySensitiveAppBundleIds: ChroniclePrivacyRuleListSchema,
+  privacySensitiveTitlePatterns: ChroniclePrivacyRuleListSchema,
+  privacySensitiveUrlPatterns: ChroniclePrivacyRuleListSchema,
+  closedEyesDiscardEnabled: z.boolean().default(defaultConfig.closedEyesDiscardEnabled),
+  closedEyesMode: z.enum(['auto', 'always-record', 'always-pause']).default(defaultConfig.closedEyesMode),
 })
 
-const ChronicleConfigJsonSchema = z.preprocess(
-  value => JSON.parse(value as string),
+const ChronicleConfigJsonSchema = z.union([
   ChronicleConfigSchema,
-)
+  z.string()
+    .transform(value => JSON.parse(value))
+    .pipe(ChronicleConfigSchema),
+])
 
 const ProfileConfigSchema = z.object({
   baseUrl: z.string().optional(),
@@ -103,14 +136,356 @@ const ProfileConfigSchema = z.object({
   apiMode: z.enum(['responses', 'chat-completions']).optional(),
 })
 
-const ProfileConfigJsonSchema = z.preprocess(
-  raw => JSON.parse(raw as string),
+const ProfileConfigJsonSchema = z.union([
   ProfileConfigSchema,
-)
+  z.string()
+    .transform(raw => JSON.parse(raw))
+    .pipe(ProfileConfigSchema),
+])
+
+const NullableStringSchema = z.string()
+  .trim()
+  .transform(value => value.length > 0 ? value : null)
+  .nullable()
+  .default(null)
+
+const NullableStringPatchSchema = z.string()
+  .trim()
+  .transform(value => value.length > 0 ? value : null)
+  .nullable()
+  .optional()
+
+const AccessibilityEventProviderSchema = z.union([
+  z.string().trim().pipe(z.union([
+    z.string().min(1),
+    z.literal('').transform(() => 'macos-ax-observer'),
+  ])),
+  z.null().transform(() => 'macos-ax-observer'),
+  z.undefined().transform(() => 'macos-ax-observer'),
+])
+
+const JsonRecordSchema = z.record(z.string(), z.unknown()).default({})
+
+const RatioBpsSchema = z.number()
+  .finite()
+  .min(0)
+  .max(1)
+  .transform(value => Math.round(value * 10_000))
+
+const ClosedEyesVerdictSchema = z.object({
+  status: z.enum(['open', 'closed', 'absent', 'unknown']).default('unknown'),
+  confidence: RatioBpsSchema.nullable().optional().default(null),
+  detector: NullableStringSchema,
+  discard: z.boolean().nullable().optional().default(null),
+  reason: NullableStringSchema,
+  metadata: JsonRecordSchema,
+}).transform(({ confidence, ...verdict }) => ({
+  ...verdict,
+  confidenceBps: confidence,
+}))
+
+const TimestampDateTextSchema = z.string()
+  .trim()
+  .regex(/\D/)
+  .transform(value => Date.parse(value.replace(/(\d{2})-(\d{2})-(\d{2})Z$/, '$1:$2:$3Z')))
+  .pipe(z.number().finite())
+  .transform(value => Math.floor(value / 1000))
+
+const TimestampSecondsTextSchema = z.string()
+  .trim()
+  .regex(/^-?\d+(?:\.\d+)?$/)
+  .transform(Number)
+  .pipe(z.number().finite())
+  .transform(value => Math.floor(value))
+
+const UnixTimestampTextSchema = z.union([
+  TimestampDateTextSchema,
+  TimestampSecondsTextSchema,
+])
+
+const NullableUnixTimestampTextSchema = NullableStringSchema.pipe(z.union([
+  UnixTimestampTextSchema,
+  z.null(),
+]))
+
+const SlackTimestampTextSchema = z.string()
+  .trim()
+  .regex(/^\d+(?:\.\d+)?$/)
+  .transform(value => Number(value.split('.')[0]))
+  .pipe(z.number().int().nonnegative())
+
+const SlackMessageTsTextSchema = z.string()
+  .trim()
+  .regex(/^\d+(?:\.\d+)?$/)
+
+const SlackSignatureInputSchema = z.object({
+  rawBody: z.string(),
+  signature: z.string().min(1),
+  timestamp: SlackMessageTsTextSchema,
+  signingSecret: z.string(),
+}).transform(input => ({
+  ...input,
+  timestampSeconds: SlackTimestampTextSchema.parse(input.timestamp),
+}))
+
+const EmbeddingBatchSchema = z.object({
+  modelId: z.string(),
+  modelVersion: z.string(),
+  dimensions: z.number().int().positive(),
+  embeddings: z.array(z.array(z.number().finite())),
+}).superRefine((response, ctx) => {
+  for (const [index, embedding] of response.embeddings.entries()) {
+    if (embedding.length !== response.dimensions) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['embeddings', index],
+        message: 'Embedding vector dimensions do not match the response dimensions',
+      })
+    }
+  }
+})
+
+const ChannelIdsSchema = z.array(z.string())
+  .transform(channelIds => [...new Set(channelIds.map(channelId => channelId.trim()).filter(Boolean))])
+
+const SpeakerDisplayNameSchema = z.string()
+  .trim()
+  .min(1, 'Speaker displayName is required')
+  .transform(value => value.replace(/\s+/g, ' '))
+
+const SpeakerAliasesSchema = z.array(z.string())
+  .default([])
+  .transform((values) => {
+    const aliases = values
+      .map(value => value.trim().replace(/\s+/g, ' '))
+      .filter(value => value.length > 0)
+    return [...new Map(aliases.map(value => [value.toLocaleLowerCase(), value])).values()]
+  })
+
+const SpeakerEmbeddingSchema = z.array(z.coerce.number().finite())
+  .min(1, 'Speaker embedding must contain finite numeric values')
+  .nullable()
+  .optional()
+
+const NonNegativeIntegerSchema = z.number()
+  .finite()
+  .nonnegative()
+  .transform(value => Math.floor(value))
 
 const SlackSourceConfigSchema = z.object({
-  realtimeMode: z.enum(['polling', 'events-api', 'socket-mode']).optional(),
-  signingSecretRef: z.string().nullable().optional(),
+  realtimeMode: z.enum(['polling', 'events-api', 'socket-mode']).default('polling'),
+  signingSecretRef: NullableStringSchema,
+  socketAppTokenRef: NullableStringSchema,
+})
+
+const ConfigurableSlackRealtimeModeSchema = z.enum(['polling', 'events-api'])
+
+const SlackSourceConfigPatchSchema = z.object({
+  current: SlackSourceConfigSchema,
+  patch: z.object({
+    realtimeMode: ConfigurableSlackRealtimeModeSchema.optional(),
+    signingSecretRef: NullableStringPatchSchema,
+    socketAppTokenRef: NullableStringPatchSchema,
+  }),
+}).transform(({ current, patch }) => ({
+  realtimeMode: patch.realtimeMode ?? current.realtimeMode,
+  signingSecretRef: patch.signingSecretRef === undefined ? current.signingSecretRef : patch.signingSecretRef,
+  socketAppTokenRef: patch.socketAppTokenRef === undefined ? current.socketAppTokenRef : patch.socketAppTokenRef,
+}))
+
+const ModelResourceLocalFileInputSchema = z.object({
+  relativePath: z.string(),
+  sourcePath: z.string().trim().min(1),
+})
+
+const ModelResourceInstallInputSchema = z.object({
+  source: z.enum(['manifest', 'local-files']).default('manifest'),
+  sourceRoot: NullableStringSchema,
+  files: z.array(ModelResourceLocalFileInputSchema).default([]),
+})
+
+const MessageSourceInputSchema = z.object({
+  platform: z.literal('slack'),
+  label: z.string(),
+  enabled: z.boolean(),
+  workspaceId: NullableStringSchema,
+  teamId: NullableStringSchema,
+  botTokenRef: NullableStringSchema,
+  channelIds: ChannelIdsSchema,
+  realtimeMode: ConfigurableSlackRealtimeModeSchema.optional(),
+  signingSecretRef: NullableStringSchema,
+  socketAppTokenRef: NullableStringSchema,
+})
+
+const MessageSourcePatchInputSchema = z.object({
+  label: z.string().optional(),
+  enabled: z.boolean().optional(),
+  workspaceId: NullableStringPatchSchema,
+  teamId: NullableStringPatchSchema,
+  botTokenRef: NullableStringPatchSchema,
+  channelIds: ChannelIdsSchema.optional(),
+  realtimeMode: ConfigurableSlackRealtimeModeSchema.optional(),
+  signingSecretRef: NullableStringPatchSchema,
+  socketAppTokenRef: NullableStringPatchSchema,
+})
+
+const MemoryCrystallizeInputSchema = z.object({
+  segmentId: z.string().optional(),
+}).default({})
+
+const AudioTranscriptSegmentInputSchema = z.object({
+  startMs: z.number().finite().transform(value => Math.floor(value)),
+  endMs: z.number().finite().nullable().optional().default(null).transform(value => value === null ? null : Math.floor(value)),
+  speakerLabel: NullableStringSchema,
+  text: z.string(),
+  confidence: RatioBpsSchema.nullable().optional().default(null),
+  language: NullableStringSchema,
+  metadata: JsonRecordSchema,
+}).superRefine((segment, ctx) => {
+  if (segment.endMs !== null && segment.endMs < segment.startMs) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endMs'],
+      message: 'Audio transcript segment endMs must be greater than or equal to startMs',
+    })
+  }
+}).transform(({ confidence, ...segment }) => {
+  return {
+    ...segment,
+    confidenceBps: confidence,
+  }
+})
+
+const AudioTranscriptReportInputSchema = z.object({
+  sourceId: z.string(),
+  title: NullableStringSchema,
+  source: z.enum(['asr', 'manual', 'imported']).default('imported'),
+  status: z.enum(['recording', 'completed', 'imported', 'error']).optional(),
+  startedAt: UnixTimestampTextSchema,
+  endedAt: NullableUnixTimestampTextSchema,
+  language: NullableStringSchema,
+  appBundleId: NullableStringSchema,
+  windowTitle: NullableStringSchema,
+  audioPath: NullableStringSchema,
+  transcriptPath: NullableStringSchema,
+  segments: z.array(AudioTranscriptSegmentInputSchema),
+  metadata: JsonRecordSchema,
+}).superRefine((input, ctx) => {
+  if (input.endedAt !== null && input.endedAt < input.startedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endedAt'],
+      message: 'Audio transcript endedAt must be greater than or equal to startedAt',
+    })
+  }
+}).transform((input) => {
+  const status = input.status === undefined
+    ? input.source === 'asr' ? 'completed' : 'imported'
+    : input.status
+  const activityFrontApp = input.appBundleId === null ? 'audio' : input.appBundleId
+  let activityTitle = 'Audio transcript'
+  if (input.title !== null) {
+    activityTitle = input.title
+  }
+  else if (input.windowTitle !== null) {
+    activityTitle = input.windowTitle
+  }
+  return {
+    ...input,
+    status,
+    activityFrontApp,
+    activityTitle,
+  }
+})
+
+const SpeakerProfileInputSchema = z.object({
+  displayName: SpeakerDisplayNameSchema,
+  aliases: SpeakerAliasesSchema,
+  embedding: SpeakerEmbeddingSchema,
+  embeddingModelId: NullableStringSchema,
+  sampleCount: NonNegativeIntegerSchema.optional(),
+  lastSeenAt: NullableStringSchema.transform(value => value === null ? null : UnixTimestampTextSchema.parse(value)),
+  metadata: JsonRecordSchema,
+})
+
+const AccessibilitySnapshotReportInputSchema = z.object({
+  sourceId: z.string(),
+  status: z.enum(['ready', 'permission-denied', 'unavailable', 'error']).default('ready'),
+  provider: z.string().default('macos-accessibility'),
+  accessibilityPath: NullableStringSchema,
+  text: NullableStringSchema,
+  elementCount: z.number().default(0),
+  appBundleId: NullableStringSchema,
+  windowTitle: NullableStringSchema,
+  tree: z.array(z.unknown()).default([]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+})
+
+const AccessibilityEventReportInputSchema = z.object({
+  sourceId: z.string(),
+  capturedAt: UnixTimestampTextSchema,
+  provider: AccessibilityEventProviderSchema,
+  appBundleId: NullableStringSchema,
+  pid: z.number().nullable().default(null).transform(value => value === null ? null : Math.trunc(value)),
+  notification: z.string().trim().min(1).transform(value => boundedString(value, 160)),
+  droppedBefore: z.number().default(0).transform(value => Math.max(0, Math.floor(value))),
+  snapshotId: NullableStringSchema,
+  accessibilitySnapshotId: NullableStringSchema,
+  metadata: z.record(z.string(), z.unknown()).default({}),
+})
+
+const ChronicleSnapshotReportInputSchema = z.object({
+  sourceId: z.string(),
+  displayId: z.number(),
+  frameIndex: z.number().nullable().default(null),
+  capturedAt: UnixTimestampTextSchema,
+  segmentDir: z.string(),
+  framePath: z.string(),
+  capturePath: NullableStringSchema,
+  ocrPath: NullableStringSchema,
+  snapshotPath: NullableStringSchema,
+  ocrText: NullableStringSchema,
+  appBundleId: NullableStringSchema,
+  windowTitle: NullableStringSchema,
+  closedEyes: ClosedEyesVerdictSchema.optional(),
+  accessibility: AccessibilitySnapshotReportInputSchema.optional(),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+})
+type ChronicleSnapshotReport = z.infer<typeof ChronicleSnapshotReportInputSchema>
+
+const ChronicleMemoryReportInputSchema = z.object({
+  sourceId: z.string(),
+  windowType: z.enum(['10min', '6h']),
+  createdAt: UnixTimestampTextSchema,
+  memoryPath: z.string().optional(),
+  content: z.string(),
+  summaryKind: z.enum(['llm', 'local', 'imported']),
+  sourceSnapshotPaths: z.array(z.string()).default([]),
+  sourceFramePaths: z.array(z.string()).default([]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+})
+type ChronicleMemoryReport = z.infer<typeof ChronicleMemoryReportInputSchema>
+
+const ChronicleMemoryUpdateInputSchema = z.object({
+  content: z.string().trim().min(1).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  sourceSnapshotPaths: z.array(z.string()).optional(),
+  sourceFramePaths: z.array(z.string()).optional(),
+})
+
+const ChronicleMemoryUsageSchema = z.object({
+  promptTokens: z.number().finite().nonnegative(),
+  completionTokens: z.number().finite().nonnegative(),
+  totalTokens: z.number().finite().nonnegative(),
+})
+
+const ChronicleMemoryRecordOptionsSchema = z.object({
+  prompt: z.string().optional(),
+  modelId: z.string().optional(),
+  profileId: z.string().optional(),
+  usage: ChronicleMemoryUsageSchema.or(JsonRecordSchema).default({}),
+  sourceSnapshotIds: z.array(z.string()).optional(),
+  skipActivityAssignment: z.boolean().optional(),
 })
 
 const SLACK_SYNC_INTERVAL_MS = 60_000
@@ -132,16 +507,34 @@ const MEMORY_SEMANTIC_SCORE_WEIGHT = 12
 const MEMORY_SEMANTIC_MIN_SCORE = 0.28
 const ACTIVITY_IDLE_BOUNDARY_SECONDS = 10 * 60
 const ACTIVITY_MAX_SEGMENT_SECONDS = 30 * 60
+const MODEL_RESOURCE_FETCH_TIMEOUT_MS = 30_000
+const EMBEDDING_RUNTIME_HEALTH_TIMEOUT_MS = 5_000
+const EMBEDDING_RUNTIME_HEALTH_CACHE_MS = 60_000
+const DREAM_SCHEDULER_MIN_INTERVAL_MS = 3_600_000
+const DREAM_SCHEDULER_MAX_INTERVAL_MS = 7 * 86_400_000
 const ACTIVITY_SESSION_GAP_SECONDS = 6 * 60 * 60
+
+const ModelResourceFetchTimeoutMsSchema = z.string()
+  .transform(value => Number.parseInt(value, 10))
+  .pipe(z.number().int().positive())
+  .default(MODEL_RESOURCE_FETCH_TIMEOUT_MS)
+
+let embeddingRuntimeHealth: {
+  checkedAtMs: number
+  ok: boolean
+  error: string | null
+} | null = null
 
 type ChronicleDb = ReturnType<typeof db>
 type ChronicleTx = Parameters<Parameters<ChronicleDb['transaction']>[0]>[0]
 
 type ModelResourceCategory = 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii'
+const ModelResourceCategorySchema = z.enum(['ocr', 'audio-vad', 'audio-asr', 'speaker', 'embedding', 'pii'])
 type ModelResourceStatus = 'available' | 'missing' | 'installing' | 'installed' | 'error'
 type AudioProcessingStatus = 'not-implemented' | 'pending' | 'ready' | 'error'
 type SlackSyncTrigger = 'manual' | 'background'
 type SlackRealtimeMode = 'polling' | 'events-api' | 'socket-mode'
+type SlackConfigurableRealtimeMode = Extract<SlackRealtimeMode, 'polling' | 'events-api'>
 type ActivitySegmentType = 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown'
 type ActivityPipelineTrigger = 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize'
 type ActivityPipelineStage = 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization'
@@ -150,6 +543,7 @@ type KnowledgeCardType = 'fact' | 'insight' | 'decision' | 'task' | 'pattern'
 type KnowledgeDimension = 'technical' | 'business' | 'personal' | 'project' | 'general'
 type KnowledgeCardStatus = 'active' | 'merged' | 'archived' | 'deleted'
 type DreamRunType = 'archive' | 'merge' | 'prune' | 'restore' | 'dry-run'
+type DreamStartRunType = DreamRunType
 type DreamRunStatus = 'running' | 'completed' | 'failed'
 
 interface SlackSourceConfig {
@@ -163,8 +557,8 @@ interface ModelResourceFileManifest {
   sha256?: string
   sizeBytes?: number
   sourceUrl?: string
-  fallbackUrls?: string[]
-  required?: boolean
+  fallbackUrls: string[]
+  required: boolean
 }
 
 interface ModelResourceManifest {
@@ -175,7 +569,7 @@ interface ModelResourceManifest {
   required: boolean
   message: string
   files: ModelResourceFileManifest[]
-  metadata?: Record<string, unknown>
+  metadata: Record<string, unknown>
 }
 
 interface ModelResourceFileCheck {
@@ -201,15 +595,39 @@ interface TextEmbeddingVector {
   provider: 'onnx' | 'lexical'
 }
 
+const ModelResourceFileManifestSchema = z.object({
+  path: z.string(),
+  sha256: z.string().optional(),
+  sizeBytes: z.number().finite().positive().optional(),
+  sourceUrl: z.string().optional(),
+  fallbackUrls: z.array(z.string()).default([]),
+  required: z.boolean().default(true),
+})
+
+const ModelResourceManifestSchema = z.object({
+  category: ModelResourceCategorySchema,
+  displayName: z.string(),
+  version: z.string(),
+  runtime: z.string(),
+  required: z.boolean(),
+  message: z.string(),
+  files: z.array(ModelResourceFileManifestSchema),
+  metadata: JsonRecordSchema,
+})
+
 interface ChronicleLanguageModelContext {
   model: LanguageModel
   modelId: string
   profileId: string
 }
 
+type ChronicleLanguageModelContextResult
+  = | { ok: true, context: ChronicleLanguageModelContext }
+    | { ok: false, message: string }
+
 interface ActivitySegmentContext {
   segment: typeof chronicleActivitySegments.$inferSelect
-  sourceRefs: Record<string, string[]>
+  sourceRefs: z.infer<typeof ActivitySourceRefsSchema>
   evidenceText: string
   evidenceCounts: Record<string, number>
 }
@@ -246,19 +664,169 @@ interface ActivityCrystallizationResult {
   rejectedCount: number
 }
 
-const ModelTextJsonObjectSchema = z.preprocess(
-  (raw) => {
-    const text = z.string().parse(raw).trim()
-    return JSON.parse(text)
-  },
-  z.record(z.string(), z.unknown()),
-)
+const ModelTextJsonObjectSchema = z.string()
+  .transform(raw => JSON.parse(raw.trim()))
+  .pipe(z.record(z.string(), z.unknown()))
 
 const ActivitySegmentTypeSchema = z.enum(['work', 'meeting', 'browsing', 'chat', 'audio', 'idle', 'unknown'])
 const ActivityPrioritySchema = z.enum(['low', 'normal', 'high'])
 const KnowledgeCardTypeSchema = z.enum(['fact', 'insight', 'decision', 'task', 'pattern'])
 const KnowledgeDimensionSchema = z.enum(['technical', 'business', 'personal', 'project', 'general'])
+const KnowledgeCardStatusSchema = z.enum(['active', 'merged', 'archived', 'deleted'])
+const DreamStartRunTypeSchema = z.enum(['archive', 'merge', 'prune', 'restore', 'dry-run'])
 const ModelStringListSchema = z.array(z.string().min(1)).default([])
+const KnowledgeCardMutationBaseInputSchema = z.object({
+  title: z.string().trim().min(1).transform(value => boundedString(value, 240)),
+  content: z.string().trim().min(1).transform(value => boundedString(value, 4_000)),
+  cardType: KnowledgeCardTypeSchema.default('fact'),
+  dimension: KnowledgeDimensionSchema.default('general'),
+  confidence: z.number().finite().min(0).max(1).default(1),
+  sourceMemoryIds: ModelStringListSchema.default([]),
+  sourceSegmentIds: ModelStringListSchema.default([]),
+  sourceChunkIds: ModelStringListSchema.default([]),
+  tags: ModelStringListSchema.default([]).transform(values => uniqueStrings(values.map(tag => boundedString(tag.trim(), 64)).filter(Boolean)).slice(0, 24)),
+  stableKey: z.string().trim().optional(),
+  pinned: z.boolean().default(false),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+})
+const KnowledgeCardMutationInputSchema = KnowledgeCardMutationBaseInputSchema.transform((input) => {
+  const stableKey = input.stableKey === undefined
+    ? hashText(`${input.dimension}:${input.cardType}:${canonicalizeMemoryContent(input.title)}:${canonicalizeMemoryContent(input.content).slice(0, 256)}`).slice(0, 32)
+    : input.stableKey
+  return {
+    ...input,
+    stableKey: boundedString(stableKey, 160),
+  }
+})
+const KnowledgeCardPatchInputSchema = z.object({
+  title: z.string().trim().min(1).transform(value => boundedString(value, 240)).optional(),
+  content: z.string().trim().min(1).transform(value => boundedString(value, 4_000)).optional(),
+  cardType: KnowledgeCardTypeSchema.optional(),
+  dimension: KnowledgeDimensionSchema.optional(),
+  confidence: z.number().finite().min(0).max(1).optional(),
+  sourceMemoryIds: ModelStringListSchema.optional(),
+  sourceSegmentIds: ModelStringListSchema.optional(),
+  sourceChunkIds: ModelStringListSchema.optional(),
+  tags: ModelStringListSchema.transform(values => uniqueStrings(values.map(tag => boundedString(tag.trim(), 64)).filter(Boolean)).slice(0, 24)).optional(),
+  pinned: z.boolean().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+  status: KnowledgeCardStatusSchema.optional(),
+  mergedIntoId: z.string().nullable().optional(),
+})
+const BoundedRealtimeLimitSchema = z.number()
+  .default(50)
+  .transform(value => Math.min(Math.max(Math.floor(value), 1), 500))
+const BoundedPrivacyExportLimitSchema = z.number()
+  .default(50)
+  .transform(value => Math.max(1, Math.min(value, 200)))
+const BoundedKnowledgeCardLimitSchema = z.number()
+  .default(50)
+  .transform(value => Math.max(1, Math.min(value, 200)))
+const BoundedDreamRunListLimitSchema = z.number()
+  .default(20)
+  .transform(value => Math.max(1, Math.min(value, 100)))
+const BoundedDreamRunLimitSchema = z.number()
+  .default(80)
+  .transform(value => Math.max(2, Math.min(value, 300)))
+const BoundedDreamThresholdSchema = z.number()
+  .default(0.76)
+  .transform(value => boundedNumber(value, 0.1, 1))
+const NonNegativeDayCountSchema = z.number()
+  .default(30)
+  .transform(value => Math.max(0, Math.floor(value)))
+const JsonRecordTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(JsonRecordSchema)
+const RealtimeAttrsTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    privacyKind: z.string().optional(),
+  }).passthrough())
+const StringListTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ModelStringListSchema.default([]))
+const ActivitySourceCountsSchema = z.object({
+  snapshotIds: z.number().finite().nonnegative().default(0),
+  messageIds: z.number().finite().nonnegative().default(0),
+  audioTranscriptIds: z.number().finite().nonnegative().default(0),
+  audioRawSegmentIds: z.number().finite().nonnegative().default(0),
+  memoryIds: z.number().finite().nonnegative().default(0),
+  accessibilitySnapshotIds: z.number().finite().nonnegative().default(0),
+})
+const ActivitySourceCountsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ActivitySourceCountsSchema)
+const JsonListTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.unknown()).default([]))
+const NumberListTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.number().finite()))
+const MemoryActivityMetadataSchema = z.object({
+  appBundleId: z.string().nullable().default(null),
+  title: z.string().nullable().default(null),
+}).passthrough()
+const SnapshotOcrMetadataTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    ocrPath: z.string().nullable().default(null),
+  }).passthrough())
+const DuplicateMemoryMetadataTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    duplicateSourceIds: ModelStringListSchema.default([]),
+  }).passthrough())
+const SlackSourceConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(SlackSourceConfigSchema)
+const SlackUrlVerificationPayloadSchema = z.object({
+  type: z.literal('url_verification'),
+  challenge: z.string().min(1),
+}).passthrough()
+const SlackMessageEventBaseSchema = z.object({
+  type: z.union([z.literal('message'), z.literal('app_mention')]),
+  subtype: z.string().optional(),
+  channel: z.string().min(1),
+  ts: SlackMessageTsTextSchema,
+  text: z.string(),
+  channel_name: z.string().nullable().default(null),
+  user: z.string().optional(),
+  bot_id: z.string().optional(),
+  username: z.string().nullable().default(null),
+  thread_ts: SlackMessageTsTextSchema.optional(),
+}).passthrough()
+const SlackMessageEventSchema = SlackMessageEventBaseSchema.transform(message => ({
+  ...message,
+  userId: message.user || message.bot_id || null,
+  threadId: message.thread_ts || message.ts,
+}))
+const SlackEventCallbackPayloadSchema = z.object({
+  type: z.literal('event_callback'),
+  team_id: z.string().optional(),
+  event: SlackMessageEventSchema,
+}).passthrough()
+const SlackEventsPayloadJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({ type: z.string() }).passthrough())
+const SlackEventCallbackPayloadParseSchema = z.object({
+  type: z.literal('event_callback'),
+  team_id: z.string().optional(),
+  event: SlackMessageEventBaseSchema.safeExtend({
+    text: z.string().trim().min(1),
+  }).transform(message => ({
+    ...message,
+    userId: message.user || message.bot_id || null,
+    threadId: message.thread_ts || message.ts,
+  })),
+}).passthrough()
+const SlackHistoryMessageSchema = SlackMessageEventBaseSchema.omit({ type: true, channel: true }).safeExtend({
+  text: z.string().trim().min(1),
+}).transform(message => ({
+  ...message,
+  userId: message.user || message.bot_id || null,
+  threadId: message.thread_ts || message.ts,
+}))
+const SlackAttachmentsSchema = z.array(z.unknown()).default([])
 
 const ActivitySourceRefsSchema = z.object({
   snapshotIds: ModelStringListSchema.default([]),
@@ -268,54 +836,193 @@ const ActivitySourceRefsSchema = z.object({
   memoryIds: ModelStringListSchema.default([]),
   accessibilitySnapshotIds: ModelStringListSchema.default([]),
 })
+const AudioProcessingStatusSchema = z.enum(['not-implemented', 'pending', 'ready', 'error'])
+const AudioRawSegmentReportInputSchema = z.object({
+  sourceId: z.string(),
+  recordedAt: UnixTimestampTextSchema,
+  source: z.enum(['microphone', 'system', 'mixed']).default('microphone'),
+  status: z.enum(['captured', 'queued', 'processed', 'ignored', 'error']).default('captured'),
+  audioPath: z.string(),
+  metadataPath: z.string(),
+  sampleRate: z.number().finite().positive().transform(value => Math.floor(value)),
+  channels: z.number().finite().positive().transform(value => Math.floor(value)),
+  sampleCount: z.number().finite().nonnegative().transform(value => Math.floor(value)),
+  droppedSamples: z.number().finite().nonnegative().default(0).transform(value => Math.floor(value)),
+  durationMs: z.number().finite().nonnegative().optional(),
+  rms: z.number().finite().transform(value => Math.round(Math.max(0, Math.min(1, value)) * 10_000)),
+  peak: z.number().finite().transform(value => Math.round(Math.max(0, Math.min(1, value)) * 10_000)),
+  active: z.boolean(),
+  vadImplemented: z.boolean().default(false),
+  asrImplemented: z.boolean().default(false),
+  speakerLabelingImplemented: z.boolean().default(false),
+  metadata: JsonRecordSchema,
+}).transform(input => ({
+  ...input,
+  durationMs: z.number().default(() => Math.round((input.sampleCount / input.sampleRate) * 1000)).parse(input.durationMs),
+}))
+const AudioRawSegmentProcessingResultInputSchema = z.object({
+  status: z.enum(['captured', 'queued', 'processed', 'ignored', 'error']).optional(),
+  vadStatus: AudioProcessingStatusSchema.optional(),
+  asrStatus: AudioProcessingStatusSchema.optional(),
+  speakerStatus: AudioProcessingStatusSchema.optional(),
+  transcriptSourceId: NullableStringSchema,
+  speakerProfileIds: ModelStringListSchema.default([]),
+  errorMessage: NullableStringSchema,
+  metadata: JsonRecordSchema,
+})
+const AudioRawSegmentProcessingStateSchema = z.object({
+  status: z.enum(['captured', 'queued', 'processed', 'ignored', 'error']),
+  vadStatus: AudioProcessingStatusSchema,
+  asrStatus: AudioProcessingStatusSchema,
+  speakerStatus: AudioProcessingStatusSchema,
+})
+const ActivityAssignmentInputSchema = z.object({
+  trigger: z.enum(['snapshot', 'message', 'audio-raw', 'audio-transcript', 'memory', 'manual', 'summarize']),
+  workspaceId: z.string().nullable(),
+  occurredAt: z.number().finite().transform(value => Math.floor(value)),
+  segmentType: ActivitySegmentTypeSchema,
+  frontApp: z.string().nullable(),
+  title: z.string().nullable(),
+  summary: z.string().nullable().default(null),
+  refs: ActivitySourceRefsSchema,
+  metadata: JsonRecordSchema,
+})
+const ChronicleEventInputSchema = z.object({
+  type: z.enum(['config', 'daemon', 'snapshot', 'memory', 'summarize', 'model-resource', 'message', 'audio', 'activity']),
+  status: z.enum(['info', 'success', 'warning', 'error']),
+  message: z.string(),
+  snapshotId: z.string().nullable().default(null),
+  memoryId: z.string().nullable().default(null),
+  attrs: JsonRecordSchema,
+})
 
-const ActivitySourceRefsJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  ActivitySourceRefsSchema,
-)
+const PrivacyBreadcrumbInputSchema = z.object({
+  kind: z.string(),
+  status: z.enum(['info', 'success', 'warning', 'error']),
+  message: z.string(),
+  snapshotId: z.string().nullable().default(null),
+  memoryId: z.string().nullable().default(null),
+  attrs: JsonRecordSchema,
+})
 
-const ActivityPipelineMemoryIdsJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '[]') as string),
-  ModelStringListSchema.default([]),
-)
+const PrivacyFrameMaskRegionSchema = z.object({
+  x: z.number().finite().nonnegative(),
+  y: z.number().finite().nonnegative(),
+  width: z.number().finite().positive(),
+  height: z.number().finite().positive(),
+})
 
-const ActivityCrystallizationRunResultJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  z.object({
+const PrivacyFrameMaskInputSchema = z.object({
+  mode: z.literal('blur').default('blur'),
+  fullFrame: z.boolean().default(false),
+  blurSigma: z.number().finite().min(1).max(100).default(24),
+  regions: z.array(PrivacyFrameMaskRegionSchema).default([]),
+})
+
+const RealtimeEventsInputSchema = z.object({
+  limit: BoundedRealtimeLimitSchema,
+  after: z.number().optional().transform(value => value === undefined ? null : Math.max(Math.floor(value), 0)),
+}).prefault({})
+
+const PrivacyExportInputSchema = z.object({
+  workspaceId: z.string().nullable().optional(),
+  limit: BoundedPrivacyExportLimitSchema,
+  includeMemories: z.boolean().default(true),
+  includeMessages: z.boolean().default(true),
+  includeAudioTranscripts: z.boolean().default(true),
+  includeSnapshots: z.boolean().default(true),
+  outputFormat: z.enum(['markdown', 'json']).default('markdown'),
+}).prefault({})
+
+const KnowledgeCardListInputSchema = z.object({
+  limit: BoundedKnowledgeCardLimitSchema,
+  dimension: KnowledgeDimensionSchema.optional(),
+  cardType: KnowledgeCardTypeSchema.optional(),
+  status: KnowledgeCardStatusSchema.optional(),
+  includeDeleted: z.boolean().default(false),
+}).prefault({})
+
+const DreamRunListLimitSchema = BoundedDreamRunListLimitSchema
+
+const DreamRunInputSchema = z.object({
+  runType: DreamStartRunTypeSchema.default('merge'),
+  dryRun: z.boolean().optional(),
+  limit: BoundedDreamRunLimitSchema,
+  similarityThreshold: BoundedDreamThresholdSchema,
+  applyMerge: z.boolean().optional(),
+  olderThanDays: NonNegativeDayCountSchema,
+  knowledgeIds: ModelStringListSchema,
+}).prefault({}).transform(input => ({
+  ...input,
+  dryRun: input.dryRun !== false && input.applyMerge !== true,
+}))
+
+const PrivacyBreadcrumbAttrsSchema = z.object({
+  privacyKind: z.string().default('unknown'),
+  source: z.string().nullable().default(null),
+}).passthrough()
+const PrivacyBreadcrumbAttrsTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(PrivacyBreadcrumbAttrsSchema)
+
+const ActivitySourceRefsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ActivitySourceRefsSchema)
+
+const ActivityPipelineMemoryIdsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ModelStringListSchema.default([]))
+
+const ActivityCrystallizationRunResultJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
     knowledgeCardIds: ModelStringListSchema.default([]),
-  }),
-)
+  }))
 
-const ActivitySegmentMetadataJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  z.object({
+const ActivitySegmentMetadataJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
     summarization: z.object({
       memoryId: z.string().nullable().default(null),
     }).default({ memoryId: null }),
-  }).passthrough(),
-)
+  }).passthrough())
 
-const ActivityTriageModelTextSchema = z.preprocess(
-  raw => ModelTextJsonObjectSchema.parse(raw),
-  z.object({
+const ActivityTriageModelTextSchema = ModelTextJsonObjectSchema.pipe(z.object({
     keep: z.boolean().default(false),
     reason: z.string().default('No useful activity evidence'),
     segmentType: ActivitySegmentTypeSchema.default('unknown'),
     title: z.string().nullable().default(null),
     priority: ActivityPrioritySchema.default('normal'),
-  }),
-)
+  }))
 
-const ActivitySummaryModelTextSchema = z.preprocess(
-  raw => ModelTextJsonObjectSchema.parse(raw),
-  z.object({
+const ActivitySummaryModelTextSchema = ModelTextJsonObjectSchema.pipe(z.object({
     title: z.string().default('Activity summary'),
     summary: z.string().default(''),
     keyPoints: ModelStringListSchema.default([]),
     entities: ModelStringListSchema.default([]),
     followUps: ModelStringListSchema.default([]),
-  }),
-)
+  }))
+
+const ChronicleSummarizeInputSchema = z.object({
+  prompt: z.string(),
+  windowType: z.enum(['10min', '6h']),
+  sourceSnapshotIds: ModelStringListSchema.default([]),
+  sourceArtifactPaths: ModelStringListSchema.default([]),
+})
+
+const SpeakerProfileUpsertInputSchema = z.object({
+  workspaceId: z.string().nullable(),
+  displayName: SpeakerDisplayNameSchema,
+  aliases: SpeakerAliasesSchema,
+  embedding: SpeakerEmbeddingSchema,
+  embeddingModelId: NullableStringSchema,
+  sampleCount: z.number().finite().nonnegative().default(1).transform(value => Math.floor(value)),
+  seenAt: z.number().finite().nullable().optional(),
+  transcriptId: NullableStringSchema,
+  segmentId: NullableStringSchema,
+  metadata: JsonRecordSchema,
+  now: z.number().finite().default(() => currentUnixSeconds()),
+})
 
 const CrystallizedKnowledgeCardDraftSchema = z.object({
   title: z.string().trim().min(1).transform(value => boundedString(value, 240)),
@@ -332,20 +1039,17 @@ const CrystallizedKnowledgeCardDraftSchema = z.object({
     content: card.content,
     cardType: card.type,
     dimension: card.dimension,
-    confidenceBps: ratioToBps(card.confidence),
+    confidenceBps: RatioBpsSchema.parse(card.confidence),
     tags: card.tags,
     stableKey: boundedString(card.stableKey ?? fallbackStableKey, 160) || fallbackStableKey,
   }
 })
 
-const ActivityCrystallizationModelTextSchema = z.preprocess(
-  raw => ModelTextJsonObjectSchema.parse(raw),
-  z.object({
+const ActivityCrystallizationModelTextSchema = ModelTextJsonObjectSchema.pipe(z.object({
     summary: z.string().default('').transform(value => boundedString(value, 4_000)),
     knowledgeCards: z.array(CrystallizedKnowledgeCardDraftSchema).default([]),
     rejectedCount: z.number().finite().nonnegative().transform(value => Math.floor(value)).default(0),
-  }),
-)
+  }))
 
 interface DreamMergeCandidateDraft {
   workspaceId: string | null
@@ -357,6 +1061,23 @@ interface DreamMergeCandidateDraft {
   score: number
   reason: string
   vectorMode: string
+}
+
+interface KnowledgeCardMaterialPatch {
+  title: string
+  content: string
+  cardType: KnowledgeCardType
+  dimension: KnowledgeDimension
+  confidenceBps: number
+  sourceMemoryIdsJson: string
+  sourceSegmentIdsJson: string
+  sourceChunkIdsJson: string
+  tagsJson: string
+  contentHash: string
+  status: KnowledgeCardStatus
+  mergedIntoId: string | null
+  pinned: boolean
+  metadataJson: string
 }
 
 export interface ModelResourceEntry {
@@ -387,6 +1108,8 @@ let slackSyncTimer: ReturnType<typeof setInterval> | null = null
 let slackSyncRunning = false
 let activityPipelineTimer: ReturnType<typeof setInterval> | null = null
 let activityPipelineRunning = false
+let dreamSchedulerTimer: ReturnType<typeof setInterval> | null = null
+let dreamSchedulerRunning = false
 let memorySearchIndexReconciledDbPath: string | null = null
 const activeSlackSyncs = new Set<string>()
 
@@ -421,7 +1144,7 @@ function emitDownloadProgress(entry: DownloadProgressEntry): void {
 }
 // --- End download progress tracking ---
 
-const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest> = {
+const rawBuiltInModelManifests = {
   'ocr': {
     category: 'ocr',
     displayName: 'Screen OCR',
@@ -459,11 +1182,17 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
       {
         path: 'audio-asr/sensevoice/model.int8.onnx',
         sourceUrl: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx',
+        fallbackUrls: [
+          'https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx',
+        ],
         required: true,
       },
       {
         path: 'audio-asr/sensevoice/tokens.txt',
         sourceUrl: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt',
+        fallbackUrls: [
+          'https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt',
+        ],
         required: true,
       },
     ],
@@ -498,8 +1227,22 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
     required: false,
     message: 'all-MiniLM-L6-v2 ONNX model for local text embedding and future neural memory ranking.',
     files: [
-      { path: 'embedding/model.onnx', sourceUrl: 'https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx', required: true },
-      { path: 'embedding/tokenizer.json', sourceUrl: 'https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json', required: true },
+      {
+        path: 'embedding/model.onnx',
+        sourceUrl: 'https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx',
+        fallbackUrls: [
+          'https://hf-mirror.com/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx',
+        ],
+        required: true,
+      },
+      {
+        path: 'embedding/tokenizer.json',
+        sourceUrl: 'https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json',
+        fallbackUrls: [
+          'https://hf-mirror.com/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json',
+        ],
+        required: true,
+      },
     ],
     metadata: { requiredFor: ['neural-memory-ranking'], currentRuntime: 'chronicle-lexical', distance: 'cosine' },
   },
@@ -511,12 +1254,31 @@ const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest
     required: false,
     message: 'Place GLiNER PII model and tokenizer for local PII entity detection and redaction.',
     files: [
-      { path: 'pii/gliner-pii-basemodel_fp16.onnx', sourceUrl: 'https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model_fp16.onnx', required: true },
-      { path: 'pii/tokenizer.json', sourceUrl: 'https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json', required: true },
+      {
+        path: 'pii/gliner-pii-basemodel.onnx',
+        sourceUrl: 'https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model.onnx',
+        fallbackUrls: [
+          'https://hf-mirror.com/knowledgator/gliner-pii-base-v1.0/resolve/main/onnx/model.onnx',
+        ],
+        required: true,
+      },
+      {
+        path: 'pii/tokenizer.json',
+        sourceUrl: 'https://huggingface.co/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json',
+        fallbackUrls: [
+          'https://hf-mirror.com/knowledgator/gliner-pii-base-v1.0/resolve/main/tokenizer.json',
+        ],
+        required: true,
+      },
     ],
     metadata: { requiredFor: ['pii-redaction'], entities: ['person', 'email', 'phone_number', 'credit_card', 'address', 'api_key', 'ssn', 'ip_address'] },
   },
 }
+
+const builtInModelManifests: Record<ModelResourceCategory, ModelResourceManifest> = z.record(
+  ModelResourceCategorySchema,
+  ModelResourceManifestSchema,
+).parse(rawBuiltInModelManifests)
 
 export interface TimelineEntry {
   id: string
@@ -548,6 +1310,87 @@ export interface MemoryEntry {
   semanticScore: number | null
 }
 
+export interface ChronicleMemoryUpdateInput {
+  content?: string
+  metadata?: Record<string, unknown>
+  sourceSnapshotPaths?: string[]
+  sourceFramePaths?: string[]
+}
+
+export interface PrivacyEntity {
+  type: string
+  start: number
+  end: number
+  text: string
+}
+
+export interface PrivacyRedactionResult {
+  text: string
+  redactedText: string
+  entityCount: number
+  entities: PrivacyEntity[]
+}
+
+export interface PrivacyExportSource {
+  type: string
+  id: string
+  title: string
+  redactedEntityCount: number
+}
+
+export interface PrivacyExportResult {
+  format: 'markdown' | 'json'
+  content: string
+  entityCount: number
+  sources: PrivacyExportSource[]
+}
+
+export interface PrivacyBreadcrumbEntry {
+  id: string
+  kind: string
+  status: 'info' | 'success' | 'warning' | 'error'
+  message: string
+  snapshotId: string | null
+  memoryId: string | null
+  attrs: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+}
+
+export type ChronicleRealtimeChannel =
+  | 'activity'
+  | 'cron'
+  | 'meeting'
+  | 'memory'
+  | 'notification'
+  | 'error'
+  | 'message'
+  | 'audio'
+  | 'snapshot'
+  | 'model'
+
+export interface ChronicleRealtimeEventEntry {
+  id: string
+  channel: ChronicleRealtimeChannel
+  event: string
+  type: 'config' | 'daemon' | 'snapshot' | 'memory' | 'summarize' | 'model-resource' | 'message' | 'audio' | 'activity'
+  status: 'info' | 'success' | 'warning' | 'error'
+  message: string
+  snapshotId: string | null
+  memoryId: string | null
+  attrs: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+}
+
+export interface ChronicleSnapshotIgnoredResponse {
+  status: 'ignored'
+  reason: string
+  sourceId: string
+  capturedAt: string
+  capturedAtUnix: number
+}
+
 export interface EmbeddingRequestInput {
   texts: string[]
 }
@@ -575,6 +1418,8 @@ export interface ChronicleStatus {
   lastMessageAt: number | null
   totalAccessibilitySnapshots: number
   lastAccessibilitySnapshotAt: number | null
+  totalAccessibilityEvents: number
+  lastAccessibilityEventAt: number | null
   totalAudioTranscripts: number
   lastAudioTranscriptAt: number | null
   totalAudioRawSegments: number
@@ -587,6 +1432,10 @@ export interface ChronicleStatus {
   lastKnowledgeCardAt: number | null
   totalDreamRuns: number
   lastDreamRunAt: number | null
+  dreamSchedulerEnabled: boolean
+  dreamSchedulerRunning: boolean
+  dreamSchedulerIntervalMs: number
+  dreamSchedulerApplyMerge: boolean
   activityPipelineEnabled: boolean
   activityPipelineRunning: boolean
   activityPipelineIntervalMs: number
@@ -594,7 +1443,128 @@ export interface ChronicleStatus {
   audioCaptureEnabled: boolean
   audioSource: 'microphone' | 'system' | 'mixed'
   audioRuntimeStatus: 'disabled' | 'armed' | 'unavailable'
+  closedEyesDiscardEnabled: boolean
+  closedEyesMode: 'auto' | 'always-record' | 'always-pause'
   configuredModel: string | null
+}
+
+export interface ActivityMonitorStatusEntry {
+  enabled: boolean
+  available: boolean
+  running: boolean
+  pid: number | null
+  monitorStatus: 'disabled' | 'running' | 'unavailable'
+  captureStatus: 'idle' | 'capturing' | 'error'
+  pipelineStatus: 'disabled' | 'running' | 'idle'
+  audioStatus: 'disabled' | 'armed' | 'unavailable'
+  lastCaptureAt: string | null
+  lastCaptureAtUnix: number | null
+  lastActivityAt: string | null
+  lastActivityAtUnix: number | null
+  lastPipelineRunAt: string | null
+  lastPipelineRunAtUnix: number | null
+  lastErrorAt: string | null
+  lastErrorAtUnix: number | null
+  lastError: string | null
+  totals: {
+    snapshots: number
+    activitySessions: number
+    activitySegments: number
+    pipelineRuns: number
+    accessibilitySnapshots: number
+    accessibilityEvents: number
+    audioTranscripts: number
+    audioRawSegments: number
+    memories: number
+    messages: number
+  }
+  config: {
+    activityPipelineEnabled: boolean
+    activityPipelineIntervalMs: number
+    activityPipelineBatchSize: number
+    audioCaptureEnabled: boolean
+    audioSource: 'microphone' | 'system' | 'mixed'
+    closedEyesDiscardEnabled: boolean
+    closedEyesMode: 'auto' | 'always-record' | 'always-pause'
+  }
+}
+
+export interface ActivityStorageStatsEntry {
+  storageRoot: string
+  modelsRoot: string
+  storage: {
+    exists: boolean
+    fileCount: number
+    directoryCount: number
+    totalBytes: number
+  }
+  models: {
+    exists: boolean
+    fileCount: number
+    directoryCount: number
+    totalBytes: number
+  }
+  database: {
+    snapshots: number
+    activitySessions: number
+    activitySegments: number
+    memories: number
+    memoryChunks: number
+    knowledgeCards: number
+    pipelineRuns: number
+    dreamRuns: number
+    accessibilitySnapshots: number
+    accessibilityEvents: number
+    audioTranscripts: number
+    audioRawSegments: number
+    messages: number
+    modelResources: number
+  }
+}
+
+export interface MemoryStatusEntry {
+  available: boolean
+  totalMemories: number
+  totalChunks: number
+  totalKeywords: number
+  totalEmbeddings: number
+  totalKnowledgeCards: number
+  totalKnowledgeVersions: number
+  totalActivitySegments: number
+  pendingActivitySegments: number
+  crystallizedActivitySegments: number
+  totalPipelineRuns: number
+  lastMemoryAt: string | null
+  lastMemoryAtUnix: number | null
+  lastKnowledgeCardAt: string | null
+  lastKnowledgeCardAtUnix: number | null
+  lastPipelineRunAt: string | null
+  lastPipelineRunAtUnix: number | null
+  searchIndex: {
+    chunkCount: number
+    keywordCount: number
+    embeddingCount: number
+    embeddingReadyCount: number
+    embeddingPendingCount: number
+    embeddingErrorCount: number
+  }
+  pipeline: {
+    activityPipelineEnabled: boolean
+    activityPipelineRunning: boolean
+    dreamSchedulerEnabled: boolean
+    dreamSchedulerRunning: boolean
+  }
+}
+
+export interface MemoryCrystallizeInput {
+  segmentId?: string
+}
+
+export interface MemoryCrystallizeEntry {
+  status: 'success' | 'error' | 'skipped'
+  message: string
+  segmentId: string | null
+  result: ActivityPipelineActionResult | null
 }
 
 export interface ActivitySegmentEntry {
@@ -614,6 +1584,60 @@ export interface ActivitySegmentEntry {
   pipelineStatus: 'collecting' | 'triaged' | 'summarized' | 'crystallized' | 'error'
   isCrystallized: boolean
   metadata: Record<string, unknown>
+}
+
+export interface ActivitySessionEntry {
+  id: string
+  workspaceId: string | null
+  startedAt: string
+  startedAtUnix: number
+  endedAt: string | null
+  endedAtUnix: number | null
+  durationSeconds: number | null
+  frontApp: string | null
+  title: string | null
+  segmentCount: number
+  snapshotCount: number
+  messageCount: number
+  audioTranscriptCount: number
+  audioRawSegmentCount: number
+  accessibilitySnapshotCount: number
+  isMeeting: boolean
+  meetingTitle: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface ActivitySessionDetailEntry extends ActivitySessionEntry {
+  segments: ActivitySegmentEntry[]
+}
+
+export interface ActivitySnapshotEntry {
+  id: string
+  sourceId: string
+  workspaceId: string | null
+  capturedAt: string
+  capturedAtUnix: number
+  displayId: number
+  segmentDir: string
+  framePath: string
+  artifactPath: string | null
+  ocrText: string | null
+  appBundleId: string | null
+  windowTitle: string | null
+  metadata: Record<string, unknown>
+  createdAt: string
+  createdAtUnix: number
+  updatedAt: string
+  updatedAtUnix: number
+}
+
+export interface ActivitySnapshotOcrEntry {
+  snapshotId: string
+  sourceId: string
+  ocrText: string | null
+  ocrPath: string | null
+  capturedAt: string
+  capturedAtUnix: number
 }
 
 export interface PipelineRunEntry {
@@ -670,6 +1694,24 @@ export interface KnowledgeCardEntry {
   updatedAtUnix: number
 }
 
+export interface KnowledgeFileEntry {
+  id: string
+  knowledgeId: string
+  source: 'attached' | 'memory' | 'snapshot' | 'activity'
+  filename: string
+  contentType: string | null
+  sizeBytes: number | null
+  filePath: string | null
+  embedded: boolean
+  evidenceType: string | null
+  evidenceId: string | null
+  metadata: Record<string, unknown>
+  createdAt: string | null
+  createdAtUnix: number | null
+  updatedAt: string | null
+  updatedAtUnix: number | null
+}
+
 export interface KnowledgeVersionEntry {
   id: string
   knowledgeId: string
@@ -709,11 +1751,33 @@ export interface DreamRunEntry {
 }
 
 export interface DreamRunInput {
-  runType?: DreamRunType
+  runType?: DreamStartRunType
   dryRun?: boolean
   limit?: number
   similarityThreshold?: number
   applyMerge?: boolean
+  olderThanDays?: number
+  knowledgeIds?: string[]
+}
+
+export interface KnowledgeCardMutationInput {
+  title: string
+  content: string
+  cardType?: KnowledgeCardType
+  dimension?: KnowledgeDimension
+  confidence?: number
+  sourceMemoryIds?: string[]
+  sourceSegmentIds?: string[]
+  sourceChunkIds?: string[]
+  tags?: string[]
+  stableKey?: string
+  pinned?: boolean
+  metadata?: Record<string, unknown>
+}
+
+export interface KnowledgeCardPatchInput extends Partial<KnowledgeCardMutationInput> {
+  status?: KnowledgeCardStatus
+  mergedIntoId?: string | null
 }
 
 export interface MessageSourceEntry {
@@ -744,7 +1808,7 @@ export interface MessageSourceInput {
   teamId?: string | null
   botTokenRef?: string | null
   channelIds: string[]
-  realtimeMode?: SlackRealtimeMode
+  realtimeMode?: SlackConfigurableRealtimeMode
   signingSecretRef?: string | null
   socketAppTokenRef?: string | null
 }
@@ -756,7 +1820,7 @@ export interface MessageSourcePatchInput {
   teamId?: string | null
   botTokenRef?: string | null
   channelIds?: string[]
-  realtimeMode?: SlackRealtimeMode
+  realtimeMode?: SlackConfigurableRealtimeMode
   signingSecretRef?: string | null
   socketAppTokenRef?: string | null
 }
@@ -960,6 +2024,34 @@ export interface AccessibilitySnapshotEntry {
   metadata: Record<string, unknown>
 }
 
+export interface AccessibilityEventReportInput {
+  sourceId: string
+  capturedAt: string
+  provider?: string
+  appBundleId?: string | null
+  pid?: number | null
+  notification: string
+  droppedBefore?: number
+  snapshotId?: string | null
+  accessibilitySnapshotId?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface AccessibilityEventEntry {
+  id: string
+  sourceId: string
+  snapshotId: string | null
+  accessibilitySnapshotId: string | null
+  capturedAt: string
+  capturedAtUnix: number
+  provider: string
+  appBundleId: string | null
+  pid: number | null
+  notification: string
+  droppedBefore: number
+  metadata: Record<string, unknown>
+}
+
 export interface ChronicleSnapshotReportInput {
   sourceId: string
   displayId: number
@@ -973,6 +2065,14 @@ export interface ChronicleSnapshotReportInput {
   ocrText?: string
   appBundleId?: string
   windowTitle?: string
+  closedEyes?: {
+    status?: 'open' | 'closed' | 'absent' | 'unknown'
+    confidence?: number | null
+    detector?: string | null
+    discard?: boolean | null
+    reason?: string | null
+    metadata?: Record<string, unknown>
+  }
   accessibility?: AccessibilitySnapshotReportInput
   metadata?: Record<string, unknown>
 }
@@ -997,13 +2097,11 @@ function getConfigPath(): string {
 
 export async function getConfig(): Promise<ChronicleConfig> {
   const filePath = getConfigPath()
-  try {
-    const content = await readFile(filePath, 'utf8')
-    return ChronicleConfigJsonSchema.parse(content)
+  if (!existsSync(filePath)) {
+    return ChronicleConfigSchema.parse({})
   }
-  catch {
-    return { ...defaultConfig }
-  }
+  const content = await readFile(filePath, 'utf8')
+  return ChronicleConfigJsonSchema.parse(content)
 }
 
 async function saveConfig(config: ChronicleConfig): Promise<void> {
@@ -1020,6 +2118,9 @@ function toDaemonOptions(config: ChronicleConfig): DaemonManager.ChronicleDaemon
     audioSegmentMs: config.audioSegmentMs,
     audioSegmentIntervalMs: config.audioSegmentIntervalMs,
     audioRmsThreshold: config.audioRmsThreshold,
+    privacySensitiveAppBundleIds: config.privacySensitiveAppBundleIds,
+    privacySensitiveTitlePatterns: config.privacySensitiveTitlePatterns,
+    privacySensitiveUrlPatterns: config.privacySensitiveUrlPatterns,
   }
 }
 
@@ -1030,6 +2131,13 @@ function daemonLaunchConfigChanged(previous: ChronicleConfig, next: ChronicleCon
     || previous.audioSegmentMs !== next.audioSegmentMs
     || previous.audioSegmentIntervalMs !== next.audioSegmentIntervalMs
     || previous.audioRmsThreshold !== next.audioRmsThreshold
+    || stringArraysDiffer(previous.privacySensitiveAppBundleIds, next.privacySensitiveAppBundleIds)
+    || stringArraysDiffer(previous.privacySensitiveTitlePatterns, next.privacySensitiveTitlePatterns)
+    || stringArraysDiffer(previous.privacySensitiveUrlPatterns, next.privacySensitiveUrlPatterns)
+}
+
+function stringArraysDiffer(previous: string[], next: string[]): boolean {
+  return previous.length !== next.length || previous.some((value, index) => value !== next[index])
 }
 
 function getAudioRuntimeStatus(
@@ -1042,17 +2150,19 @@ function getAudioRuntimeStatus(
   return daemonInfo.running && daemonInfo.audioCaptureEnabled ? 'armed' : 'unavailable'
 }
 
-export async function updateConfig(config: ChronicleConfig): Promise<ChronicleConfig> {
+export async function updateConfig(input: unknown): Promise<ChronicleConfig> {
+  const config = ChronicleConfigSchema.parse(input)
   const previous = await getConfig()
   const next = {
     ...config,
-    activityPipelineIntervalMs: clampNumber(config.activityPipelineIntervalMs, ACTIVITY_PIPELINE_MIN_INTERVAL_MS, ACTIVITY_PIPELINE_MAX_INTERVAL_MS, defaultConfig.activityPipelineIntervalMs),
-    activityPipelineBatchSize: Math.floor(clampNumber(config.activityPipelineBatchSize, ACTIVITY_PIPELINE_MIN_BATCH_SIZE, ACTIVITY_PIPELINE_MAX_BATCH_SIZE, defaultConfig.activityPipelineBatchSize)),
-    audioSegmentMs: clampNumber(config.audioSegmentMs, 100, 30_000, defaultConfig.audioSegmentMs),
-    audioSegmentIntervalMs: clampNumber(config.audioSegmentIntervalMs, 100, 3_600_000, defaultConfig.audioSegmentIntervalMs),
-    audioRmsThreshold: clampNumber(config.audioRmsThreshold, 0, 1, defaultConfig.audioRmsThreshold),
-    storageRoot: resolve(config.storageRoot || defaultConfig.storageRoot),
-    audioSource: config.audioSource ?? defaultConfig.audioSource,
+    activityPipelineIntervalMs: boundedNumber(config.activityPipelineIntervalMs, ACTIVITY_PIPELINE_MIN_INTERVAL_MS, ACTIVITY_PIPELINE_MAX_INTERVAL_MS),
+    activityPipelineBatchSize: Math.floor(boundedNumber(config.activityPipelineBatchSize, ACTIVITY_PIPELINE_MIN_BATCH_SIZE, ACTIVITY_PIPELINE_MAX_BATCH_SIZE)),
+    dreamSchedulerIntervalMs: boundedNumber(config.dreamSchedulerIntervalMs, DREAM_SCHEDULER_MIN_INTERVAL_MS, DREAM_SCHEDULER_MAX_INTERVAL_MS),
+    audioSegmentMs: boundedNumber(config.audioSegmentMs, 100, 30_000),
+    audioSegmentIntervalMs: boundedNumber(config.audioSegmentIntervalMs, 100, 3_600_000),
+    audioRmsThreshold: boundedNumber(config.audioRmsThreshold, 0, 1),
+    storageRoot: resolve(config.storageRoot),
+    audioSource: config.audioSource,
   }
   await saveConfig(next)
   recordEvent({
@@ -1066,6 +2176,9 @@ export async function updateConfig(config: ChronicleConfig): Promise<ChronicleCo
       activityPipelineEnabled: next.activityPipelineEnabled,
       activityPipelineIntervalMs: next.activityPipelineIntervalMs,
       activityPipelineBatchSize: next.activityPipelineBatchSize,
+      dreamSchedulerEnabled: next.dreamSchedulerEnabled,
+      dreamSchedulerIntervalMs: next.dreamSchedulerIntervalMs,
+      dreamSchedulerApplyMerge: next.dreamSchedulerApplyMerge,
       audioCaptureEnabled: next.audioCaptureEnabled,
       audioSource: next.audioSource,
       audioSegmentMs: next.audioSegmentMs,
@@ -1096,22 +2209,20 @@ export async function updateConfig(config: ChronicleConfig): Promise<ChronicleCo
   }
 
   restartActivityPipelineScheduler(next)
+  restartDreamScheduler(next)
 
   return next
 }
 
-export async function summarize(body: {
-  prompt: string
-  windowType: '10min' | '6h'
-  sourceSnapshotIds?: string[]
-  sourceArtifactPaths?: string[]
-}): Promise<{ summary: string, memoryId: string | null, status: 'success' | 'error' }> {
+export async function summarize(rawBody: z.input<typeof ChronicleSummarizeInputSchema>): Promise<{ summary: string, memoryId: string | null, status: 'success' | 'error' }> {
+  const body = ChronicleSummarizeInputSchema.parse(rawBody)
   const config = await getConfig()
-  const modelContext = resolveChronicleLanguageModelContext(config)
-  if (typeof modelContext === 'string') {
-    recordEvent({ type: 'summarize', status: 'error', message: modelContext })
-    return { summary: `[Chronicle error - ${modelContext}]`, memoryId: null, status: 'error' }
+  const modelContextResult = resolveChronicleLanguageModelContext(config)
+  if (!modelContextResult.ok) {
+    recordEvent({ type: 'summarize', status: 'error', message: modelContextResult.message })
+    return { summary: `[Chronicle error - ${modelContextResult.message}]`, memoryId: null, status: 'error' }
   }
+  const modelContext = modelContextResult.context
 
   try {
     const result = await generateText({
@@ -1127,14 +2238,14 @@ export async function summarize(body: {
       createdAt: new Date().toISOString(),
       content: result.text,
       summaryKind: 'llm',
-      sourceSnapshotPaths: body.sourceArtifactPaths ?? [],
+      sourceSnapshotPaths: body.sourceArtifactPaths,
       metadata: { prompt: body.prompt },
     }, {
       prompt: body.prompt,
       modelId: modelContext.modelId,
       profileId: modelContext.profileId,
       usage,
-      sourceSnapshotIds: body.sourceSnapshotIds ?? [],
+      sourceSnapshotIds: body.sourceSnapshotIds,
     })
     recordEvent({
       type: 'summarize',
@@ -1157,17 +2268,17 @@ export async function summarize(body: {
   }
 }
 
-function resolveChronicleLanguageModelContext(config: ChronicleConfig): ChronicleLanguageModelContext | string {
+function resolveChronicleLanguageModelContext(config: ChronicleConfig): ChronicleLanguageModelContextResult {
   const failure = validateSummaryConfig(config)
   if (failure) {
-    return failure
+    return { ok: false, message: failure }
   }
 
   const profile = Profiles.getProfile(config.profileId)!
   const parsedConfig = ProfileConfigJsonSchema.parse(profile.configJson)
   const apiKey = resolveProfileApiKey(profile.credentialRef, parsedConfig.apiKey)
   if (!apiKey) {
-    return 'no API key available for profile'
+    return { ok: false, message: 'no API key available for profile' }
   }
 
   const modelId = config.modelId || parsedConfig.modelId || parsedConfig.model || 'gpt-4o-mini'
@@ -1179,7 +2290,7 @@ function resolveChronicleLanguageModelContext(config: ChronicleConfig): Chronicl
     modelId,
     apiMode: parsedConfig.apiMode,
   })
-  return { model, modelId, profileId: config.profileId }
+  return { ok: true, context: { model, modelId, profileId: config.profileId } }
 }
 
 function normalizeLanguageModelUsage(usage: {
@@ -1212,6 +2323,10 @@ export async function getStatus(): Promise<ChronicleStatus> {
     .select({ value: count() })
     .from(chronicleAccessibilitySnapshots)
     .get()?.value ?? 0
+  const accessibilityEventCount = db()
+    .select({ value: count() })
+    .from(chronicleAccessibilityEvents)
+    .get()?.value ?? 0
   const audioTranscriptCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_transcripts`)?.count ?? 0
   const audioRawSegmentCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_raw_segments`)?.count ?? 0
   const activitySegmentCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_activity_segments`)?.count ?? 0
@@ -1235,6 +2350,8 @@ export async function getStatus(): Promise<ChronicleStatus> {
     lastMessageAt: db().select({ messageAt: chronicleMessages.messageAt }).from(chronicleMessages).orderBy(desc(chronicleMessages.messageAt)).limit(1).get()?.messageAt ?? null,
     totalAccessibilitySnapshots: accessibilitySnapshotCount,
     lastAccessibilitySnapshotAt: db().select({ capturedAt: chronicleAccessibilitySnapshots.capturedAt }).from(chronicleAccessibilitySnapshots).orderBy(desc(chronicleAccessibilitySnapshots.capturedAt)).limit(1).get()?.capturedAt ?? null,
+    totalAccessibilityEvents: accessibilityEventCount,
+    lastAccessibilityEventAt: db().select({ capturedAt: chronicleAccessibilityEvents.capturedAt }).from(chronicleAccessibilityEvents).orderBy(desc(chronicleAccessibilityEvents.capturedAt)).limit(1).get()?.capturedAt ?? null,
     totalAudioTranscripts: audioTranscriptCount,
     lastAudioTranscriptAt: db().select({ startedAt: chronicleAudioTranscripts.startedAt }).from(chronicleAudioTranscripts).orderBy(desc(chronicleAudioTranscripts.startedAt)).limit(1).get()?.startedAt ?? null,
     totalAudioRawSegments: audioRawSegmentCount,
@@ -1247,6 +2364,10 @@ export async function getStatus(): Promise<ChronicleStatus> {
     lastKnowledgeCardAt: db().select({ updatedAt: chronicleKnowledgeCards.updatedAt }).from(chronicleKnowledgeCards).orderBy(desc(chronicleKnowledgeCards.updatedAt)).limit(1).get()?.updatedAt ?? null,
     totalDreamRuns: dreamRunCount,
     lastDreamRunAt: db().select({ startedAt: chronicleDreamRuns.startedAt }).from(chronicleDreamRuns).orderBy(desc(chronicleDreamRuns.startedAt)).limit(1).get()?.startedAt ?? null,
+    dreamSchedulerEnabled: config.dreamSchedulerEnabled,
+    dreamSchedulerRunning,
+    dreamSchedulerIntervalMs: config.dreamSchedulerIntervalMs,
+    dreamSchedulerApplyMerge: config.dreamSchedulerApplyMerge,
     activityPipelineEnabled: config.activityPipelineEnabled,
     activityPipelineRunning,
     activityPipelineIntervalMs: config.activityPipelineIntervalMs,
@@ -1254,6 +2375,8 @@ export async function getStatus(): Promise<ChronicleStatus> {
     audioCaptureEnabled: config.audioCaptureEnabled,
     audioSource: config.audioSource,
     audioRuntimeStatus: getAudioRuntimeStatus(config, daemonInfo),
+    closedEyesDiscardEnabled: config.closedEyesDiscardEnabled,
+    closedEyesMode: config.closedEyesMode,
     configuredModel: await getConfiguredModel(config),
   }
 }
@@ -1268,6 +2391,7 @@ export async function initDaemon(): Promise<void> {
     DaemonManager.startDaemon(toDaemonOptions(config))
   }
   restartActivityPipelineScheduler(config)
+  restartDreamScheduler(config)
 }
 
 export function startSlackBackgroundSync(): void {
@@ -1305,10 +2429,18 @@ export function stopActivityPipelineScheduler(): void {
   activityPipelineRunning = false
 }
 
-export function restartActivityPipelineScheduler(config?: ChronicleConfig): void {
+export function stopDreamScheduler(): void {
+  if (!dreamSchedulerTimer) {
+    return
+  }
+  clearInterval(dreamSchedulerTimer)
+  dreamSchedulerTimer = null
+  dreamSchedulerRunning = false
+}
+
+export function restartActivityPipelineScheduler(config: ChronicleConfig): void {
   stopActivityPipelineScheduler()
-  const current = config ?? syncConfig()
-  if (!current.enabled || !current.activityPipelineEnabled) {
+  if (!config.enabled || !config.activityPipelineEnabled) {
     return
   }
   void runActivityPipelineTick().catch((error) => {
@@ -1318,7 +2450,40 @@ export function restartActivityPipelineScheduler(config?: ChronicleConfig): void
     void runActivityPipelineTick().catch((error) => {
       console.error('[chronicle] Activity pipeline tick failed:', error)
     })
-  }, current.activityPipelineIntervalMs)
+  }, config.activityPipelineIntervalMs)
+}
+
+export function restartDreamScheduler(config: ChronicleConfig): void {
+  stopDreamScheduler()
+  if (!config.enabled || !config.dreamSchedulerEnabled) {
+    return
+  }
+  dreamSchedulerTimer = setInterval(() => {
+    void runDreamSchedulerTick().catch((error) => {
+      console.error('[chronicle] Dream scheduler tick failed:', error)
+    })
+  }, config.dreamSchedulerIntervalMs)
+}
+
+export async function runDreamSchedulerTick(): Promise<DreamRunEntry | null> {
+  if (dreamSchedulerRunning) {
+    return null
+  }
+
+  dreamSchedulerRunning = true
+  try {
+    const config = await getConfig()
+    if (!config.enabled || !config.dreamSchedulerEnabled) {
+      return null
+    }
+    return startDreamRun({
+      dryRun: !config.dreamSchedulerApplyMerge,
+      applyMerge: config.dreamSchedulerApplyMerge,
+    })
+  }
+  finally {
+    dreamSchedulerRunning = false
+  }
 }
 
 export async function runActivityPipelineTick(): Promise<{
@@ -1512,6 +2677,398 @@ export function getMemories(limit = 20): MemoryEntry[] {
     .map(row => toMemoryEntry(row))
 }
 
+export function getMemory(memoryId: string): MemoryEntry {
+  const row = db()
+    .select()
+    .from(chronicleMemories)
+    .where(eq(chronicleMemories.id, memoryId))
+    .get()
+  if (!row) {
+    throw new AppError({ code: 'chronicle_memory_not_found', status: 404, message: 'Chronicle memory not found' })
+  }
+  return toMemoryEntry(row)
+}
+
+export function updateMemory(memoryId: string, rawInput: ChronicleMemoryUpdateInput): MemoryEntry {
+  const input = ChronicleMemoryUpdateInputSchema.parse(rawInput)
+  const existing = db().select().from(chronicleMemories).where(eq(chronicleMemories.id, memoryId)).get()
+  if (!existing) {
+    throw new AppError({ code: 'chronicle_memory_not_found', status: 404, message: 'Chronicle memory not found' })
+  }
+  const config = syncConfig()
+  const now = currentUnixSeconds()
+  const content = input.content ?? existing.content
+  const contentHash = hashText(canonicalizeMemoryContent(content))
+  const sourceSnapshotPaths = input.sourceSnapshotPaths === undefined ? [] : input.sourceSnapshotPaths
+  const sourceFramePaths = input.sourceFramePaths === undefined ? [] : input.sourceFramePaths
+  const sourcePaths = input.sourceSnapshotPaths || input.sourceFramePaths
+    ? uniqueStrings([
+        ...StringListTextSchema.parse(existing.sourcePathsJson),
+        ...sourceSnapshotPaths.map(path => toRootRelative(config.storageRoot, path)),
+        ...sourceFramePaths.map(path => toRootRelative(config.storageRoot, path)),
+      ])
+    : StringListTextSchema.parse(existing.sourcePathsJson)
+  const sourceSnapshotIds = input.sourceSnapshotPaths
+    ? uniqueStrings([
+        ...StringListTextSchema.parse(existing.sourceSnapshotIdsJson),
+        ...findSnapshotIdsByPaths(input.sourceSnapshotPaths),
+      ])
+    : StringListTextSchema.parse(existing.sourceSnapshotIdsJson)
+  const metadata = input.metadata === undefined
+    ? JsonRecordTextSchema.parse(existing.metadataJson)
+    : {
+        ...JsonRecordTextSchema.parse(existing.metadataJson),
+        ...input.metadata,
+        updatedBy: 'chronicle-memory-update',
+      }
+  const updated = db().transaction((tx) => {
+    tx.update(chronicleMemories).set({
+      content,
+      contentHash,
+      sourceSnapshotIdsJson: JSON.stringify(sourceSnapshotIds),
+      sourcePathsJson: JSON.stringify(sourcePaths),
+      metadataJson: JSON.stringify(metadata),
+      updatedAt: now,
+    }).where(eq(chronicleMemories.id, memoryId)).run()
+    const row = tx.select().from(chronicleMemories).where(eq(chronicleMemories.id, memoryId)).get()!
+    syncMemorySearchIndex(tx, row)
+    return row
+  })
+  recordEvent({
+    type: 'memory',
+    status: 'success',
+    message: 'Chronicle memory updated',
+    memoryId,
+    attrs: { contentChanged: content !== existing.content },
+  })
+  return toMemoryEntry(updated)
+}
+
+export function deleteMemory(memoryId: string): { ok: true } {
+  const existing = db().select().from(chronicleMemories).where(eq(chronicleMemories.id, memoryId)).get()
+  if (!existing) {
+    throw new AppError({ code: 'chronicle_memory_not_found', status: 404, message: 'Chronicle memory not found' })
+  }
+  recordEvent({
+    type: 'memory',
+    status: 'success',
+    message: 'Chronicle memory deleted',
+    memoryId,
+    attrs: { sourceId: existing.sourceId, contentHash: existing.contentHash },
+  })
+  db().delete(chronicleMemories).where(eq(chronicleMemories.id, memoryId)).run()
+  return { ok: true }
+}
+
+const PII_PATTERNS: Array<{ type: string, pattern: RegExp }> = [
+  { type: 'api_key', pattern: /\bsk-[A-Za-z0-9_-]{8,}\b/g },
+  { type: 'api_key', pattern: /\bxox[abprs]-[A-Za-z0-9-]{8,}\b/g },
+  { type: 'api_key', pattern: /\b(?:ghp|github_pat|glpat|hf)_[A-Za-z0-9_-]{12,}\b/g },
+  { type: 'email', pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi },
+  { type: 'ssn', pattern: /\b\d{3}-\d{2}-\d{4}\b/g },
+  { type: 'phone_number', pattern: /(?<!\w)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\w)/g },
+  { type: 'ip_address', pattern: /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g },
+  { type: 'credit_card', pattern: /\b(?:\d[ -]*?){13,19}\b/g },
+]
+
+function isLikelyCreditCardNumber(digits: string): boolean {
+  if (digits.length < 13 || digits.length > 19) {
+    return false
+  }
+  let sum = 0
+  let doubleDigit = false
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    let value = Number(digits[index])
+    if (doubleDigit) {
+      value *= 2
+      if (value > 9) {
+        value -= 9
+      }
+    }
+    sum += value
+    doubleDigit = !doubleDigit
+  }
+  return sum % 10 === 0
+}
+
+function detectPrivacyEntities(text: string): PrivacyEntity[] {
+  const entities: PrivacyEntity[] = []
+  for (const { type, pattern } of PII_PATTERNS) {
+    pattern.lastIndex = 0
+    for (const match of text.matchAll(pattern)) {
+      const value = match[0]
+      const start = match.index ?? 0
+      if (type === 'credit_card' && !isLikelyCreditCardNumber(value.replace(/\D/g, ''))) {
+        continue
+      }
+      entities.push({
+        type,
+        start,
+        end: start + value.length,
+        text: value,
+      })
+    }
+  }
+
+  entities.sort((left, right) => left.start - right.start || right.end - left.end)
+  const deduped: PrivacyEntity[] = []
+  for (const entity of entities) {
+    const previous = deduped.at(-1)
+    if (previous && entity.start < previous.end) {
+      continue
+    }
+    deduped.push(entity)
+  }
+  return deduped
+}
+
+export function redactPrivacyText(input: { text: string }): PrivacyRedactionResult {
+  const entities = detectPrivacyEntities(input.text)
+  let redactedText = input.text
+  for (const entity of entities.slice().reverse()) {
+    redactedText = `${redactedText.slice(0, entity.start)}[${entity.type.toUpperCase()}]${redactedText.slice(entity.end)}`
+  }
+  recordPrivacyBreadcrumb({
+    kind: 'text-redaction',
+    status: entities.length > 0 ? 'success' : 'info',
+    message: entities.length > 0 ? 'Chronicle privacy redacted text' : 'Chronicle privacy found no sensitive text',
+    attrs: { entityCount: entities.length, entityTypes: [...new Set(entities.map(entity => entity.type))] },
+  })
+  return {
+    text: input.text,
+    redactedText,
+    entityCount: entities.length,
+    entities,
+  }
+}
+
+function recordPrivacyBreadcrumb(rawInput: z.input<typeof PrivacyBreadcrumbInputSchema>): void {
+  const input = PrivacyBreadcrumbInputSchema.parse(rawInput)
+  recordEvent({
+    type: 'activity',
+    status: input.status,
+    message: input.message,
+    snapshotId: input.snapshotId,
+    memoryId: input.memoryId,
+    attrs: {
+      ...input.attrs,
+      privacyKind: input.kind,
+      source: 'chronicle-privacy',
+    },
+  })
+}
+
+function toPrivacyBreadcrumbEntry(row: typeof chronicleEvents.$inferSelect): PrivacyBreadcrumbEntry {
+  const attrs = PrivacyBreadcrumbAttrsTextSchema.parse(row.attrsJson)
+  return {
+    id: row.id,
+    kind: attrs.privacyKind,
+    status: row.status,
+    message: row.message,
+    snapshotId: row.snapshotId,
+    memoryId: row.memoryId,
+    attrs,
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+  }
+}
+
+export function listPrivacyBreadcrumbs(limit = 50): PrivacyBreadcrumbEntry[] {
+  const rows = db()
+    .select()
+    .from(chronicleEvents)
+    .orderBy(desc(chronicleEvents.createdAt))
+    .limit(Math.max(1, Math.min(limit, 200)))
+    .all()
+
+  return rows
+    .filter((row) => {
+      const attrs = PrivacyBreadcrumbAttrsTextSchema.parse(row.attrsJson)
+      return attrs.source === 'chronicle-privacy' || attrs.privacyKind !== 'unknown'
+    })
+    .map(toPrivacyBreadcrumbEntry)
+}
+
+export function listRealtimeEvents(rawInput: { limit?: number, after?: number } = {}): ChronicleRealtimeEventEntry[] {
+  const input = RealtimeEventsInputSchema.parse(rawInput)
+  let query = db()
+    .select()
+    .from(chronicleEvents)
+    .$dynamic()
+  if (input.after !== null) {
+    query = query.where(sql`${chronicleEvents.createdAt} > ${input.after}`)
+  }
+  return query
+    .orderBy(desc(chronicleEvents.createdAt))
+    .limit(input.limit)
+    .all()
+    .map(toRealtimeEventEntry)
+    .reverse()
+}
+
+function toRealtimeEventEntry(row: typeof chronicleEvents.$inferSelect): ChronicleRealtimeEventEntry {
+  const attrs = RealtimeAttrsTextSchema.parse(row.attrsJson)
+  const channel = toRealtimeChannel(row.type, row.status, attrs)
+  return {
+    id: row.id,
+    channel,
+    event: `chronicle.${channel}.${row.status}`,
+    type: row.type,
+    status: row.status,
+    message: row.message,
+    snapshotId: row.snapshotId,
+    memoryId: row.memoryId,
+    attrs,
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+  }
+}
+
+function toRealtimeChannel(
+  type: ChronicleRealtimeEventEntry['type'],
+  status: ChronicleRealtimeEventEntry['status'],
+  attrs: z.infer<typeof RealtimeAttrsTextSchema>,
+): ChronicleRealtimeChannel {
+  if (status === 'error') {
+    return 'error'
+  }
+  if (type === 'memory' || type === 'summarize') {
+    return 'memory'
+  }
+  if (type === 'model-resource') {
+    return 'model'
+  }
+  if (type === 'snapshot') {
+    return 'snapshot'
+  }
+  if (type === 'message') {
+    return 'message'
+  }
+  if (type === 'audio') {
+    return 'audio'
+  }
+  if (type === 'activity') {
+    return attrs.privacyKind ? 'notification' : 'activity'
+  }
+  return 'notification'
+}
+
+interface ExportItem {
+  type: string
+  id: string
+  title: string
+  body: string
+}
+
+function collectPrivacyExportItems(rawInput: {
+  workspaceId?: string | null
+  limit?: number
+  includeMemories?: boolean
+  includeMessages?: boolean
+  includeAudioTranscripts?: boolean
+  includeSnapshots?: boolean
+}): ExportItem[] {
+  const input = PrivacyExportInputSchema.parse(rawInput)
+  const items: ExportItem[] = []
+
+  if (input.includeMemories) {
+    const rows = input.workspaceId
+      ? db().select().from(chronicleMemories).where(eq(chronicleMemories.workspaceId, input.workspaceId)).orderBy(desc(chronicleMemories.createdAt)).limit(input.limit).all()
+      : db().select().from(chronicleMemories).orderBy(desc(chronicleMemories.createdAt)).limit(input.limit).all()
+    items.push(...rows.map(row => ({
+      type: 'memory',
+      id: row.id,
+      title: `Memory ${new Date(row.createdAt * 1000).toISOString()}`,
+      body: row.content,
+    })))
+  }
+
+  if (input.includeMessages) {
+    const rows = input.workspaceId
+      ? db().select().from(chronicleMessages).where(eq(chronicleMessages.workspaceId, input.workspaceId)).orderBy(desc(chronicleMessages.messageAt)).limit(input.limit).all()
+      : db().select().from(chronicleMessages).orderBy(desc(chronicleMessages.messageAt)).limit(input.limit).all()
+    items.push(...rows.map(row => ({
+      type: 'message',
+      id: row.id,
+      title: row.channelName ?? row.channelId,
+      body: row.text,
+    })))
+  }
+
+  if (input.includeAudioTranscripts) {
+    const rows = input.workspaceId
+      ? db().select().from(chronicleAudioTranscripts).where(eq(chronicleAudioTranscripts.workspaceId, input.workspaceId)).orderBy(desc(chronicleAudioTranscripts.startedAt)).limit(input.limit).all()
+      : db().select().from(chronicleAudioTranscripts).orderBy(desc(chronicleAudioTranscripts.startedAt)).limit(input.limit).all()
+    items.push(...rows.map(row => ({
+      type: 'audio-transcript',
+      id: row.id,
+      title: row.title ?? 'Audio transcript',
+      body: buildAudioTranscriptPreview(row.id),
+    })))
+  }
+
+  if (input.includeSnapshots) {
+    const rows = input.workspaceId
+      ? db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.workspaceId, input.workspaceId)).orderBy(desc(chronicleSnapshots.capturedAt)).limit(input.limit).all()
+      : db().select().from(chronicleSnapshots).orderBy(desc(chronicleSnapshots.capturedAt)).limit(input.limit).all()
+    items.push(...rows.map(row => ({
+      type: 'snapshot',
+      id: row.id,
+      title: row.windowTitle ?? row.appBundleId ?? 'Snapshot',
+      body: row.ocrText ?? '',
+    })).filter(item => item.body.length > 0))
+  }
+
+  return items.slice(0, input.limit)
+}
+
+export function exportPrivacyRedacted(rawInput: {
+  workspaceId?: string | null
+  limit?: number
+  includeMemories?: boolean
+  includeMessages?: boolean
+  includeAudioTranscripts?: boolean
+  includeSnapshots?: boolean
+  outputFormat?: 'markdown' | 'json'
+}): PrivacyExportResult {
+  const input = PrivacyExportInputSchema.parse(rawInput)
+  const format = input.outputFormat
+  const items = collectPrivacyExportItems(input)
+  const redacted = items.map((item) => {
+    const result = redactPrivacyText({ text: item.body })
+    return { item, result }
+  })
+  const entityCount = redacted.reduce((total, entry) => total + entry.result.entityCount, 0)
+  const sources = redacted.map(({ item, result }) => ({
+    type: item.type,
+    id: item.id,
+    title: item.title,
+    redactedEntityCount: result.entityCount,
+  }))
+  const content = format === 'json'
+    ? JSON.stringify(redacted.map(({ item, result }) => ({
+      type: item.type,
+      id: item.id,
+      title: item.title,
+      text: result.redactedText,
+      redactedEntityCount: result.entityCount,
+    })), null, 2)
+    : redacted.map(({ item, result }) => [
+      `## ${item.title}`,
+      `Source: ${item.type}/${item.id}`,
+      '',
+      result.redactedText,
+    ].join('\n')).join('\n\n')
+
+  recordPrivacyBreadcrumb({
+    kind: 'redacted-export',
+    status: 'success',
+    message: 'Chronicle privacy generated redacted export',
+    attrs: { format, sourceCount: sources.length, entityCount },
+  })
+  return { format, content, entityCount, sources }
+}
+
 export function searchMemories(query: string, limit = 20): MemoryEntry[] {
   reconcileMemorySearchIndex()
   const needle = query.trim()
@@ -1545,9 +3102,18 @@ export function searchMemories(query: string, limit = 20): MemoryEntry[] {
     .all()
 
   for (const row of embeddingRows) {
-    const vector = parseEmbeddingVector(row.vectorJson, row.dimensions)
-    if (!vector) {
-      continue
+    const vector = NumberListTextSchema.parse(row.vectorJson)
+    if (vector.length !== row.dimensions) {
+      throw new AppError({
+        code: 'chronicle_memory_embedding_invalid',
+        status: 500,
+        message: 'Stored Chronicle memory embedding has invalid dimensions',
+        details: {
+          embeddingId: row.id,
+          expectedDimensions: row.dimensions,
+          actualDimensions: vector.length,
+        },
+      })
     }
     const semanticScore = cosineSimilarity(queryEmbedding.vector, vector)
     if (semanticScore < MEMORY_SEMANTIC_MIN_SCORE) {
@@ -1592,16 +3158,19 @@ export function embedTexts(input: EmbeddingRequestInput): EmbeddingResponse {
       message: 'Embedding request must include 1-64 non-empty texts',
     })
   }
-  if (!onnxEmbeddingResourceAvailable()) {
+  const health = getOnnxEmbeddingRuntimeHealth()
+  if (!health.ok) {
     throw new AppError({
       code: 'chronicle_embedding_model_unavailable',
       status: 503,
-      message: 'Chronicle ONNX embedding model is not installed',
+      message: health.error ?? 'Chronicle ONNX embedding runtime is not available',
     })
   }
   try {
-    const response = DaemonManager.runEmbeddingBatch(texts, getModelResourcesRoot())
-    validateEmbeddingBatch(response.embeddings, texts.length, response.dimensions)
+    const response = EmbeddingBatchSchema.parse(DaemonManager.runEmbeddingBatch(texts, getModelResourcesRoot()))
+    if (response.embeddings.length !== texts.length) {
+      throw new Error('embedding response has an invalid embedding count')
+    }
     return {
       modelId: response.modelId,
       modelVersion: response.modelVersion,
@@ -1653,6 +3222,9 @@ export async function verifyModelResource(
   category: ModelResourceCategory,
   options: { recordEventOnSuccess?: boolean } = {},
 ): Promise<ModelResourceEntry> {
+  if (category === 'embedding') {
+    clearEmbeddingRuntimeHealth()
+  }
   const manifest = getModelResourceManifest(category)
   const current = getModelResourceRow(category)
   const now = currentUnixSeconds()
@@ -1747,16 +3319,20 @@ export async function verifyModelResource(
 
 export async function installModelResource(
   category: ModelResourceCategory,
-  input: ModelResourceInstallInput,
+  rawInput: ModelResourceInstallInput,
 ): Promise<ModelResourceEntry> {
+  if (category === 'embedding') {
+    clearEmbeddingRuntimeHealth()
+  }
+  const input = ModelResourceInstallInputSchema.parse(rawInput)
   const manifest = getModelResourceManifest(category)
   if (manifest.files.length === 0) {
     return verifyModelResource(category)
   }
 
-  const source = input.source ?? 'manifest'
-  const localFiles = input.files ?? []
-  const sourceRoot = normalizeNullableString(input.sourceRoot)
+  const source = input.source
+  const localFiles = input.files
+  const sourceRoot = input.sourceRoot
   if (source === 'local-files' && localFiles.length === 0 && !sourceRoot) {
     throw new AppError({
       code: 'chronicle_model_resource_source_missing',
@@ -1840,6 +3416,9 @@ export async function installModelResource(
 }
 
 export async function removeModelResource(category: ModelResourceCategory): Promise<ModelResourceEntry> {
+  if (category === 'embedding') {
+    clearEmbeddingRuntimeHealth()
+  }
   const manifest = getModelResourceManifest(category)
   for (const file of manifest.files) {
     await rm(getModelResourceAbsolutePath(file.path), { force: true }).catch(() => {})
@@ -1874,10 +3453,11 @@ export function listMessageSources(): MessageSourceEntry[] {
     .map(toMessageSourceEntry)
 }
 
-export function createMessageSource(input: MessageSourceInput): MessageSourceEntry {
+export function createMessageSource(rawInput: MessageSourceInput): MessageSourceEntry {
+  const input = MessageSourceInputSchema.parse(rawInput)
   const now = currentUnixSeconds()
   const id = randomUUID()
-  const sourceConfig = buildSlackSourceConfig({
+  const sourceConfig = SlackSourceConfigSchema.parse({
     realtimeMode: input.realtimeMode,
     signingSecretRef: input.signingSecretRef,
     socketAppTokenRef: input.socketAppTokenRef,
@@ -1887,10 +3467,10 @@ export function createMessageSource(input: MessageSourceInput): MessageSourceEnt
     platform: input.platform,
     label: input.label,
     enabled: input.enabled,
-    workspaceId: normalizeNullableString(input.workspaceId),
-    teamId: normalizeNullableString(input.teamId),
-    botTokenRef: normalizeNullableString(input.botTokenRef),
-    channelIdsJson: JSON.stringify(normalizeChannelIds(input.channelIds)),
+    workspaceId: input.workspaceId,
+    teamId: input.teamId,
+    botTokenRef: input.botTokenRef,
+    channelIdsJson: JSON.stringify(input.channelIds),
     configJson: JSON.stringify(sourceConfig),
     status: input.enabled ? 'idle' : 'disabled',
     createdAt: now,
@@ -1905,7 +3485,8 @@ export function createMessageSource(input: MessageSourceInput): MessageSourceEnt
   return getMessageSourceEntry(id)
 }
 
-export function updateMessageSource(sourceId: string, input: MessageSourcePatchInput): MessageSourceEntry {
+export function updateMessageSource(sourceId: string, rawInput: MessageSourcePatchInput): MessageSourceEntry {
+  const input = MessageSourcePatchInputSchema.parse(rawInput)
   const existing = db().select().from(chronicleMessageSources).where(eq(chronicleMessageSources.id, sourceId)).get()
   if (!existing) {
     throw new AppError({ code: 'chronicle_message_source_not_found', status: 404, message: 'Chronicle message source not found' })
@@ -1919,10 +3500,10 @@ export function updateMessageSource(sourceId: string, input: MessageSourcePatchI
   db().update(chronicleMessageSources).set({
     label: input.label ?? existing.label,
     enabled: nextEnabled,
-    workspaceId: input.workspaceId === undefined ? existing.workspaceId : normalizeNullableString(input.workspaceId),
-    teamId: input.teamId === undefined ? existing.teamId : normalizeNullableString(input.teamId),
-    botTokenRef: input.botTokenRef === undefined ? existing.botTokenRef : normalizeNullableString(input.botTokenRef),
-    channelIdsJson: input.channelIds === undefined ? existing.channelIdsJson : JSON.stringify(normalizeChannelIds(input.channelIds)),
+    workspaceId: input.workspaceId === undefined ? existing.workspaceId : input.workspaceId,
+    teamId: input.teamId === undefined ? existing.teamId : input.teamId,
+    botTokenRef: input.botTokenRef === undefined ? existing.botTokenRef : input.botTokenRef,
+    channelIdsJson: input.channelIds === undefined ? existing.channelIdsJson : JSON.stringify(input.channelIds),
     configJson: JSON.stringify(nextConfig),
     status: nextEnabled ? existing.status === 'disabled' ? 'idle' : existing.status : 'disabled',
     updatedAt: currentUnixSeconds(),
@@ -1981,6 +3562,16 @@ export function listAccessibilitySnapshots(limit = 20): AccessibilitySnapshotEnt
     .map(toAccessibilitySnapshotEntry)
 }
 
+export function listAccessibilityEvents(limit = 50): AccessibilityEventEntry[] {
+  return db()
+    .select()
+    .from(chronicleAccessibilityEvents)
+    .orderBy(desc(chronicleAccessibilityEvents.capturedAt))
+    .limit(limit)
+    .all()
+    .map(toAccessibilityEventEntry)
+}
+
 export function listActivitySegments(limit = 20): ActivitySegmentEntry[] {
   return db()
     .select()
@@ -1989,6 +3580,278 @@ export function listActivitySegments(limit = 20): ActivitySegmentEntry[] {
     .limit(limit)
     .all()
     .map(toActivitySegmentEntry)
+}
+
+export async function getActivityMonitorStatus(): Promise<ActivityMonitorStatusEntry> {
+  const status = await getStatus()
+  const config = await getConfig()
+  const monitorStatus = !config.enabled
+    ? 'disabled'
+    : status.running ? 'running' : 'unavailable'
+  const captureStatus = status.lastErrorAt !== null && status.lastCaptureAt === null
+    ? 'error'
+    : status.running ? 'capturing' : 'idle'
+  const pipelineStatus = !status.activityPipelineEnabled
+    ? 'disabled'
+    : status.activityPipelineRunning ? 'running' : 'idle'
+
+  return {
+    enabled: config.enabled,
+    available: status.available,
+    running: status.running,
+    pid: status.pid,
+    monitorStatus,
+    captureStatus,
+    pipelineStatus,
+    audioStatus: status.audioRuntimeStatus,
+    lastCaptureAt: unixSecondsToIso(status.lastCaptureAt),
+    lastCaptureAtUnix: status.lastCaptureAt,
+    lastActivityAt: unixSecondsToIso(status.lastActivitySegmentAt),
+    lastActivityAtUnix: status.lastActivitySegmentAt,
+    lastPipelineRunAt: unixSecondsToIso(status.lastPipelineRunAt),
+    lastPipelineRunAtUnix: status.lastPipelineRunAt,
+    lastErrorAt: unixSecondsToIso(status.lastErrorAt),
+    lastErrorAtUnix: status.lastErrorAt,
+    lastError: status.lastError,
+    totals: {
+      snapshots: status.totalSnapshots,
+      activitySessions: countTable('chronicle_activity_sessions'),
+      activitySegments: status.totalActivitySegments,
+      pipelineRuns: status.totalPipelineRuns,
+      accessibilitySnapshots: status.totalAccessibilitySnapshots,
+      accessibilityEvents: status.totalAccessibilityEvents,
+      audioTranscripts: status.totalAudioTranscripts,
+      audioRawSegments: status.totalAudioRawSegments,
+      memories: status.totalSummaries,
+      messages: status.totalMessages,
+    },
+    config: {
+      activityPipelineEnabled: status.activityPipelineEnabled,
+      activityPipelineIntervalMs: status.activityPipelineIntervalMs,
+      activityPipelineBatchSize: status.activityPipelineBatchSize,
+      audioCaptureEnabled: status.audioCaptureEnabled,
+      audioSource: status.audioSource,
+      closedEyesDiscardEnabled: status.closedEyesDiscardEnabled,
+      closedEyesMode: status.closedEyesMode,
+    },
+  }
+}
+
+export async function getActivityStorageStats(): Promise<ActivityStorageStatsEntry> {
+  const config = await getConfig()
+  const storageRoot = resolve(config.storageRoot)
+  const modelsRoot = getModelResourcesRoot()
+  const [storage, models] = await Promise.all([
+    collectDirectoryStats(storageRoot),
+    collectDirectoryStats(modelsRoot),
+  ])
+
+  return {
+    storageRoot,
+    modelsRoot,
+    storage,
+    models,
+    database: {
+      snapshots: countTable('chronicle_snapshots'),
+      activitySessions: countTable('chronicle_activity_sessions'),
+      activitySegments: countTable('chronicle_activity_segments'),
+      memories: countTable('chronicle_memories'),
+      memoryChunks: countTable('chronicle_memory_chunks'),
+      knowledgeCards: db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_knowledge_cards WHERE status != 'deleted'`)?.count ?? 0,
+      pipelineRuns: countTable('chronicle_pipeline_runs'),
+      dreamRuns: countTable('chronicle_dream_runs'),
+      accessibilitySnapshots: countTable('chronicle_accessibility_snapshots'),
+      accessibilityEvents: countTable('chronicle_accessibility_events'),
+      audioTranscripts: countTable('chronicle_audio_transcripts'),
+      audioRawSegments: countTable('chronicle_audio_raw_segments'),
+      messages: countTable('chronicle_messages'),
+      modelResources: countTable('chronicle_model_resources'),
+    },
+  }
+}
+
+export async function getMemoryStatus(): Promise<MemoryStatusEntry> {
+  const status = await getStatus()
+  const embeddingStatusCounts = db()
+    .select({
+      status: chronicleMemoryEmbeddings.status,
+      value: count(),
+    })
+    .from(chronicleMemoryEmbeddings)
+    .groupBy(chronicleMemoryEmbeddings.status)
+    .all()
+  const embeddingCount = (target: 'ready' | 'pending' | 'error') =>
+    embeddingStatusCounts.find(row => row.status === target)?.value ?? 0
+
+  return {
+    available: status.available,
+    totalMemories: status.totalSummaries,
+    totalChunks: countTable('chronicle_memory_chunks'),
+    totalKeywords: countTable('chronicle_memory_keywords'),
+    totalEmbeddings: countTable('chronicle_memory_embeddings'),
+    totalKnowledgeCards: status.totalKnowledgeCards,
+    totalKnowledgeVersions: countTable('chronicle_knowledge_versions'),
+    totalActivitySegments: status.totalActivitySegments,
+    pendingActivitySegments: db().get<{ count: number }>(
+      sql`SELECT COUNT(*) AS count FROM chronicle_activity_segments WHERE is_crystallized = 0`,
+    )?.count ?? 0,
+    crystallizedActivitySegments: db().get<{ count: number }>(
+      sql`SELECT COUNT(*) AS count FROM chronicle_activity_segments WHERE is_crystallized = 1`,
+    )?.count ?? 0,
+    totalPipelineRuns: status.totalPipelineRuns,
+    lastMemoryAt: unixSecondsToIso(status.lastSummaryAt),
+    lastMemoryAtUnix: status.lastSummaryAt,
+    lastKnowledgeCardAt: unixSecondsToIso(status.lastKnowledgeCardAt),
+    lastKnowledgeCardAtUnix: status.lastKnowledgeCardAt,
+    lastPipelineRunAt: unixSecondsToIso(status.lastPipelineRunAt),
+    lastPipelineRunAtUnix: status.lastPipelineRunAt,
+    searchIndex: {
+      chunkCount: countTable('chronicle_memory_chunks'),
+      keywordCount: countTable('chronicle_memory_keywords'),
+      embeddingCount: countTable('chronicle_memory_embeddings'),
+      embeddingReadyCount: embeddingCount('ready'),
+      embeddingPendingCount: embeddingCount('pending'),
+      embeddingErrorCount: embeddingCount('error'),
+    },
+    pipeline: {
+      activityPipelineEnabled: status.activityPipelineEnabled,
+      activityPipelineRunning: status.activityPipelineRunning,
+      dreamSchedulerEnabled: status.dreamSchedulerEnabled,
+      dreamSchedulerRunning: status.dreamSchedulerRunning,
+    },
+  }
+}
+
+export async function crystallizeMemory(rawInput: MemoryCrystallizeInput = {}): Promise<MemoryCrystallizeEntry> {
+  const input = MemoryCrystallizeInputSchema.parse(rawInput)
+  const segmentId = input.segmentId ?? db()
+    .select({ id: chronicleActivitySegments.id })
+    .from(chronicleActivitySegments)
+    .where(sql`${chronicleActivitySegments.isCrystallized} = 0`)
+    .orderBy(chronicleActivitySegments.startedAt)
+    .limit(1)
+    .get()?.id
+
+  if (!segmentId) {
+    return {
+      status: 'skipped',
+      message: 'No activity segment is ready for memory crystallization',
+      segmentId: null,
+      result: null,
+    }
+  }
+
+  const result = await crystallizeActivitySegment(segmentId)
+  return {
+    status: result.status,
+    message: result.message,
+    segmentId,
+    result,
+  }
+}
+
+export function listActivitySessions(limit = 20): ActivitySessionEntry[] {
+  return db()
+    .select()
+    .from(chronicleActivitySessions)
+    .orderBy(desc(chronicleActivitySessions.startedAt))
+    .limit(Math.max(1, Math.min(Math.floor(limit), 200)))
+    .all()
+    .map(toActivitySessionEntry)
+}
+
+export function getActivitySession(sessionId: string): ActivitySessionDetailEntry {
+  const row = db()
+    .select()
+    .from(chronicleActivitySessions)
+    .where(eq(chronicleActivitySessions.id, sessionId))
+    .get()
+  if (!row) {
+    throw new AppError({ code: 'chronicle_activity_session_not_found', status: 404, message: 'Chronicle activity session not found' })
+  }
+  const segments = db()
+    .select()
+    .from(chronicleActivitySegments)
+    .where(eq(chronicleActivitySegments.sessionId, sessionId))
+    .orderBy(desc(chronicleActivitySegments.startedAt))
+    .all()
+    .map(toActivitySegmentEntry)
+  return {
+    ...toActivitySessionEntry(row),
+    segments,
+  }
+}
+
+export function listActivitySessionSnapshots(sessionId: string): ActivitySnapshotEntry[] {
+  const session = db()
+    .select({ id: chronicleActivitySessions.id })
+    .from(chronicleActivitySessions)
+    .where(eq(chronicleActivitySessions.id, sessionId))
+    .get()
+  if (!session) {
+    throw new AppError({ code: 'chronicle_activity_session_not_found', status: 404, message: 'Chronicle activity session not found' })
+  }
+  const snapshotIds = db()
+    .select()
+    .from(chronicleActivitySegments)
+    .where(eq(chronicleActivitySegments.sessionId, sessionId))
+    .all()
+    .flatMap(segment => ActivitySourceRefsJsonSchema.parse(segment.sourceRefsJson).snapshotIds)
+  const uniqueSnapshotIds = uniqueStrings(snapshotIds)
+  if (uniqueSnapshotIds.length === 0) {
+    return []
+  }
+  return db()
+    .select()
+    .from(chronicleSnapshots)
+    .where(inArray(chronicleSnapshots.id, uniqueSnapshotIds))
+    .orderBy(desc(chronicleSnapshots.capturedAt))
+    .all()
+    .map(toActivitySnapshotEntry)
+}
+
+export function getActivitySegment(segmentId: string): ActivitySegmentEntry {
+  const row = db()
+    .select()
+    .from(chronicleActivitySegments)
+    .where(eq(chronicleActivitySegments.id, segmentId))
+    .get()
+  if (!row) {
+    throw new AppError({ code: 'chronicle_activity_segment_not_found', status: 404, message: 'Chronicle activity segment not found' })
+  }
+  return toActivitySegmentEntry(row)
+}
+
+export function getActivitySnapshot(snapshotId: string): ActivitySnapshotEntry {
+  const row = db()
+    .select()
+    .from(chronicleSnapshots)
+    .where(eq(chronicleSnapshots.id, snapshotId))
+    .get()
+  if (!row) {
+    throw new AppError({ code: 'chronicle_snapshot_not_found', status: 404, message: 'Chronicle snapshot not found' })
+  }
+  return toActivitySnapshotEntry(row)
+}
+
+export function getActivitySnapshotOcr(snapshotId: string): ActivitySnapshotOcrEntry {
+  const row = db()
+    .select()
+    .from(chronicleSnapshots)
+    .where(eq(chronicleSnapshots.id, snapshotId))
+    .get()
+  if (!row) {
+    throw new AppError({ code: 'chronicle_snapshot_not_found', status: 404, message: 'Chronicle snapshot not found' })
+  }
+  const metadata = SnapshotOcrMetadataTextSchema.parse(row.metadataJson)
+  return {
+    snapshotId: row.id,
+    sourceId: row.sourceId,
+    ocrText: row.ocrText,
+    ocrPath: metadata.ocrPath,
+    capturedAt: new Date(row.capturedAt * 1000).toISOString(),
+    capturedAtUnix: row.capturedAt,
+  }
 }
 
 export function listPipelineRuns(limit = 20): PipelineRunEntry[] {
@@ -2001,22 +3864,222 @@ export function listPipelineRuns(limit = 20): PipelineRunEntry[] {
     .map(toPipelineRunEntry)
 }
 
-export function listKnowledgeCards(input: {
+export function listKnowledgeCards(rawInput: {
   limit?: number
   dimension?: KnowledgeDimension
   cardType?: KnowledgeCardType
+  status?: KnowledgeCardStatus
   includeDeleted?: boolean
 } = {}): KnowledgeCardEntry[] {
+  const input = KnowledgeCardListInputSchema.parse(rawInput)
   return db()
     .select()
     .from(chronicleKnowledgeCards)
     .orderBy(desc(chronicleKnowledgeCards.updatedAt))
-    .limit(Math.max(1, Math.min(input.limit ?? 50, 200)))
+    .limit(input.limit)
     .all()
     .filter(row => input.includeDeleted || row.status !== 'deleted')
+    .filter(row => !input.status || row.status === input.status)
     .filter(row => !input.dimension || row.dimension === input.dimension)
     .filter(row => !input.cardType || row.cardType === input.cardType)
     .map(toKnowledgeCardEntry)
+}
+
+export function getKnowledgeCard(knowledgeId: string): KnowledgeCardEntry {
+  const row = db()
+    .select()
+    .from(chronicleKnowledgeCards)
+    .where(eq(chronicleKnowledgeCards.id, knowledgeId))
+    .get()
+  if (!row || row.status === 'deleted') {
+    throw new AppError({ code: 'chronicle_knowledge_card_not_found', status: 404, message: 'Chronicle knowledge card not found' })
+  }
+  return toKnowledgeCardEntry(row)
+}
+
+export function createKnowledgeCard(rawInput: KnowledgeCardMutationInput): KnowledgeCardEntry {
+  const input = KnowledgeCardMutationInputSchema.parse(rawInput)
+  const now = currentUnixSeconds()
+  const id = randomUUID()
+  const stableKey = input.stableKey
+  const contentHash = hashText(canonicalizeMemoryContent(`${input.title}\n${input.content}`))
+  const row = db().transaction((tx) => {
+    tx.insert(chronicleKnowledgeCards).values({
+      id,
+      workspaceId: null,
+      title: input.title,
+      content: input.content,
+      cardType: input.cardType,
+      dimension: input.dimension,
+      confidenceBps: RatioBpsSchema.parse(input.confidence),
+      sourceMemoryIdsJson: JSON.stringify(input.sourceMemoryIds),
+      sourceSegmentIdsJson: JSON.stringify(input.sourceSegmentIds),
+      sourceChunkIdsJson: JSON.stringify(input.sourceChunkIds),
+      tagsJson: JSON.stringify(input.tags),
+      stableKey,
+      contentHash,
+      version: 1,
+      status: 'active',
+      mergedIntoId: null,
+      pinned: input.pinned,
+      sortOrder: 0,
+      metadataJson: JSON.stringify({
+        ...input.metadata,
+        createdBy: 'chronicle-knowledge-api',
+      }),
+      createdAt: now,
+      updatedAt: now,
+    }).run()
+    getOrCreateKnowledgeVersion(tx, {
+      knowledgeId: id,
+      version: 1,
+      title: input.title,
+      content: input.content,
+      cardType: input.cardType,
+      dimension: input.dimension,
+      confidenceBps: RatioBpsSchema.parse(input.confidence),
+      sourceMemoryIds: input.sourceMemoryIds,
+      sourceSegmentIds: input.sourceSegmentIds,
+      sourceChunkIds: input.sourceChunkIds,
+      tags: input.tags,
+      metadata: { source: 'chronicle-knowledge-api-create' },
+      now,
+    })
+    return tx.select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, id)).get()!
+  })
+  recordEvent({
+    type: 'activity',
+    status: 'success',
+    message: 'Chronicle knowledge card created',
+    attrs: { knowledgeId: id, stableKey },
+  })
+  return toKnowledgeCardEntry(row)
+}
+
+export function updateKnowledgeCard(knowledgeId: string, rawInput: KnowledgeCardPatchInput): KnowledgeCardEntry {
+  const input = KnowledgeCardPatchInputSchema.parse(rawInput)
+  const existing = db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()
+  if (!existing || existing.status === 'deleted') {
+    throw new AppError({ code: 'chronicle_knowledge_card_not_found', status: 404, message: 'Chronicle knowledge card not found' })
+  }
+  const next = buildKnowledgeCardPatch(existing, input)
+  const materialChanged = next.title !== existing.title
+    || next.content !== existing.content
+    || next.cardType !== existing.cardType
+    || next.dimension !== existing.dimension
+    || next.confidenceBps !== existing.confidenceBps
+    || next.sourceMemoryIdsJson !== existing.sourceMemoryIdsJson
+    || next.sourceSegmentIdsJson !== existing.sourceSegmentIdsJson
+    || next.sourceChunkIdsJson !== existing.sourceChunkIdsJson
+    || next.tagsJson !== existing.tagsJson
+    || next.status !== existing.status
+    || next.mergedIntoId !== existing.mergedIntoId
+  const now = currentUnixSeconds()
+  const version = materialChanged ? existing.version + 1 : existing.version
+  const row = db().transaction((tx) => {
+    tx.update(chronicleKnowledgeCards).set({
+      ...next,
+      version,
+      updatedAt: now,
+    }).where(eq(chronicleKnowledgeCards.id, knowledgeId)).run()
+    if (materialChanged) {
+      getOrCreateKnowledgeVersion(tx, {
+        knowledgeId,
+        version,
+        title: next.title,
+        content: next.content,
+        cardType: next.cardType,
+        dimension: next.dimension,
+        confidenceBps: next.confidenceBps,
+        sourceMemoryIds: StringListTextSchema.parse(next.sourceMemoryIdsJson),
+        sourceSegmentIds: StringListTextSchema.parse(next.sourceSegmentIdsJson),
+        sourceChunkIds: StringListTextSchema.parse(next.sourceChunkIdsJson),
+        tags: StringListTextSchema.parse(next.tagsJson),
+        metadata: {
+          source: 'chronicle-knowledge-api-update',
+          previousVersion: existing.version,
+          previousStatus: existing.status,
+        },
+        now,
+      })
+    }
+    return tx.select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()!
+  })
+  recordEvent({
+    type: 'activity',
+    status: 'success',
+    message: 'Chronicle knowledge card updated',
+    attrs: { knowledgeId, version, materialChanged },
+  })
+  return toKnowledgeCardEntry(row)
+}
+
+export function deleteKnowledgeCard(knowledgeId: string): { ok: true } {
+  const existing = db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()
+  if (!existing || existing.status === 'deleted') {
+    throw new AppError({ code: 'chronicle_knowledge_card_not_found', status: 404, message: 'Chronicle knowledge card not found' })
+  }
+  updateKnowledgeCard(knowledgeId, { status: 'deleted' })
+  return { ok: true }
+}
+
+export function listKnowledgeFiles(knowledgeId: string): KnowledgeFileEntry[] {
+  const card = db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()
+  if (!card || card.status === 'deleted') {
+    throw new AppError({ code: 'chronicle_knowledge_card_not_found', status: 404, message: 'Chronicle knowledge card not found' })
+  }
+  const explicitFiles = db()
+    .select()
+    .from(chronicleKnowledgeFiles)
+    .where(eq(chronicleKnowledgeFiles.knowledgeId, knowledgeId))
+    .all()
+    .map(toKnowledgeFileEntry)
+  const sources = db()
+    .select()
+    .from(chronicleKnowledgeSources)
+    .where(eq(chronicleKnowledgeSources.knowledgeId, knowledgeId))
+    .all()
+  const inferredFiles = sources.flatMap(source => inferKnowledgeFilesFromSource(knowledgeId, source))
+  const seen = new Set<string>()
+  return [...explicitFiles, ...inferredFiles].filter((file) => {
+    const key = `${file.source}:${file.filePath ?? file.filename}:${file.evidenceType ?? ''}:${file.evidenceId ?? ''}`
+    if (seen.has(key)) {
+      return false
+    }
+    seen.add(key)
+    return true
+  })
+}
+
+export function restoreKnowledgeVersion(knowledgeId: string, version: number): KnowledgeCardEntry {
+  const existing = db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()
+  if (!existing) {
+    throw new AppError({ code: 'chronicle_knowledge_card_not_found', status: 404, message: 'Chronicle knowledge card not found' })
+  }
+  const targetVersion = db()
+    .select()
+    .from(chronicleKnowledgeVersions)
+    .where(sql`${chronicleKnowledgeVersions.knowledgeId} = ${knowledgeId} AND ${chronicleKnowledgeVersions.version} = ${Math.floor(version)}`)
+    .get()
+  if (!targetVersion) {
+    throw new AppError({ code: 'chronicle_knowledge_version_not_found', status: 404, message: 'Chronicle knowledge version not found' })
+  }
+  return updateKnowledgeCard(knowledgeId, {
+    title: targetVersion.title,
+    content: targetVersion.content,
+    cardType: targetVersion.cardType,
+    dimension: targetVersion.dimension,
+    confidence: bpsToRatio(targetVersion.confidenceBps),
+    sourceMemoryIds: StringListTextSchema.parse(targetVersion.sourceMemoryIdsJson),
+    sourceSegmentIds: StringListTextSchema.parse(targetVersion.sourceSegmentIdsJson),
+    sourceChunkIds: StringListTextSchema.parse(targetVersion.sourceChunkIdsJson),
+    tags: StringListTextSchema.parse(targetVersion.tagsJson),
+    status: 'active',
+    metadata: {
+      ...JsonRecordTextSchema.parse(existing.metadataJson),
+      restoredFromVersion: targetVersion.version,
+    },
+  })
 }
 
 export function listKnowledgeVersions(knowledgeId: string): KnowledgeVersionEntry[] {
@@ -2029,21 +4092,65 @@ export function listKnowledgeVersions(knowledgeId: string): KnowledgeVersionEntr
     .map(toKnowledgeVersionEntry)
 }
 
+function buildKnowledgeCardPatch(
+  existing: typeof chronicleKnowledgeCards.$inferSelect,
+  input: z.infer<typeof KnowledgeCardPatchInputSchema>,
+): KnowledgeCardMaterialPatch {
+  const title = input.title ?? existing.title
+  const content = input.content ?? existing.content
+  const cardType = input.cardType ?? existing.cardType
+  const dimension = input.dimension ?? existing.dimension
+  const confidenceBps = input.confidence === undefined ? existing.confidenceBps : RatioBpsSchema.parse(input.confidence)
+  const sourceMemoryIdsJson = input.sourceMemoryIds === undefined ? existing.sourceMemoryIdsJson : JSON.stringify(input.sourceMemoryIds)
+  const sourceSegmentIdsJson = input.sourceSegmentIds === undefined ? existing.sourceSegmentIdsJson : JSON.stringify(input.sourceSegmentIds)
+  const sourceChunkIdsJson = input.sourceChunkIds === undefined ? existing.sourceChunkIdsJson : JSON.stringify(input.sourceChunkIds)
+  const tagsJson = input.tags === undefined ? existing.tagsJson : JSON.stringify(input.tags)
+  const contentHash = hashText(canonicalizeMemoryContent(`${title}\n${content}`))
+  const metadata = input.metadata === undefined
+    ? JsonRecordTextSchema.parse(existing.metadataJson)
+    : {
+        ...JsonRecordTextSchema.parse(existing.metadataJson),
+        ...input.metadata,
+        updatedBy: 'chronicle-knowledge-api',
+      }
+  return {
+    title,
+    content,
+    cardType,
+    dimension,
+    confidenceBps,
+    sourceMemoryIdsJson,
+    sourceSegmentIdsJson,
+    sourceChunkIdsJson,
+    tagsJson,
+    contentHash,
+    status: input.status ?? existing.status,
+    mergedIntoId: input.mergedIntoId === undefined ? existing.mergedIntoId : input.mergedIntoId,
+    pinned: input.pinned ?? existing.pinned,
+    metadataJson: JSON.stringify(metadata),
+  }
+}
+
 export function listDreamRuns(limit = 20): DreamRunEntry[] {
+  const parsedLimit = DreamRunListLimitSchema.parse(limit)
   return db()
     .select()
     .from(chronicleDreamRuns)
     .orderBy(desc(chronicleDreamRuns.startedAt))
-    .limit(Math.max(1, Math.min(limit, 100)))
+    .limit(parsedLimit)
     .all()
     .map(toDreamRunEntry)
 }
 
-export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
-  const dryRun = input.dryRun !== false && input.applyMerge !== true
-  const runType: DreamRunType = dryRun ? 'dry-run' : input.runType ?? 'merge'
-  const threshold = clampNumber(input.similarityThreshold, 0.1, 1, 0.76)
-  const limit = Math.max(2, Math.min(input.limit ?? 80, 300))
+export function startDreamRun(rawInput: DreamRunInput = {}): DreamRunEntry {
+  const input = DreamRunInputSchema.parse(rawInput)
+  const requestedRunType = input.runType
+  const dryRun = input.dryRun
+  const runType: DreamRunType = dryRun ? 'dry-run' : requestedRunType
+  const threshold = input.similarityThreshold
+  const limit = input.limit
+  const olderThanDays = input.olderThanDays
+  const knowledgeIds = uniqueStrings(input.knowledgeIds)
   const vectorMode = currentTextEmbeddingVectorMode()
   const now = currentUnixSeconds()
   const runId = randomUUID()
@@ -2062,9 +4169,12 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
     outputKnowledgeIdsJson: '[]',
     configJson: JSON.stringify({
       dryRun,
+      requestedRunType,
       runType,
       limit,
       similarityThreshold: threshold,
+      olderThanDays,
+      knowledgeIds,
       vectorMode,
     }),
     resultJson: '{}',
@@ -2074,13 +4184,19 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
   }).run()
 
   try {
-    const cards = db()
-      .select()
-      .from(chronicleKnowledgeCards)
-      .orderBy(desc(chronicleKnowledgeCards.updatedAt))
-      .limit(limit)
-      .all()
-      .filter(card => card.status === 'active')
+    if (requestedRunType !== 'merge' && requestedRunType !== 'dry-run') {
+      return runDreamLifecycleOperation({
+        runId,
+        runType: requestedRunType,
+        dryRun,
+        limit,
+        olderThanDays,
+        knowledgeIds,
+        now,
+      })
+    }
+
+    const cards = selectDreamKnowledgeCards({ status: 'active', limit, knowledgeIds })
     const candidates = buildDreamMergeCandidates(cards, threshold)
     const result = db().transaction((tx) => {
       const outputKnowledgeIds: string[] = []
@@ -2095,7 +4211,7 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
           runId,
           workspaceId: candidate.workspaceId,
           candidateType: 'merge',
-          scoreBps: ratioToBps(candidate.score),
+          scoreBps: RatioBpsSchema.parse(candidate.score),
           sourceKnowledgeIdsJson: JSON.stringify(candidate.sourceKnowledgeIds),
           proposedTitle: candidate.proposedTitle,
           proposedContent: candidate.proposedContent,
@@ -2151,6 +4267,178 @@ export function startDreamRun(input: DreamRunInput = {}): DreamRunEntry {
   }
 }
 
+function selectDreamKnowledgeCards(input: {
+  status: KnowledgeCardStatus
+  limit: number
+  knowledgeIds: string[]
+}): Array<typeof chronicleKnowledgeCards.$inferSelect> {
+  const rows = input.knowledgeIds.length > 0
+    ? db()
+        .select()
+        .from(chronicleKnowledgeCards)
+        .where(inArray(chronicleKnowledgeCards.id, input.knowledgeIds))
+        .all()
+    : db()
+        .select()
+        .from(chronicleKnowledgeCards)
+        .orderBy(desc(chronicleKnowledgeCards.updatedAt))
+        .limit(input.limit)
+        .all()
+  return rows
+    .filter(card => card.status === input.status)
+    .slice(0, input.limit)
+}
+
+function runDreamLifecycleOperation(input: {
+  runId: string
+  runType: Extract<DreamRunType, 'archive' | 'prune' | 'restore'>
+  dryRun: boolean
+  limit: number
+  olderThanDays: number
+  knowledgeIds: string[]
+  now: number
+}): DreamRunEntry {
+  const sourceStatus: KnowledgeCardStatus = input.runType === 'restore' ? 'archived' : input.runType === 'prune' ? 'archived' : 'active'
+  const targetStatus: KnowledgeCardStatus = input.runType === 'restore' ? 'active' : input.runType === 'prune' ? 'deleted' : 'archived'
+  const cutoff = input.now - input.olderThanDays * 86_400
+  const cards = selectDreamKnowledgeCards({
+    status: sourceStatus,
+    limit: input.limit,
+    knowledgeIds: input.knowledgeIds,
+  }).filter((card) => {
+    if (input.knowledgeIds.length > 0 || input.runType === 'restore') {
+      return true
+    }
+    return !card.pinned && card.updatedAt <= cutoff
+  })
+
+  const result = db().transaction((tx) => {
+    const changedKnowledgeIds: string[] = []
+    for (const card of cards) {
+      if (!input.dryRun) {
+        updateDreamLifecycleKnowledgeCard(tx, {
+          card,
+          runType: input.runType,
+          targetStatus,
+          runId: input.runId,
+          now: input.now,
+        })
+        changedKnowledgeIds.push(card.id)
+      }
+      tx.insert(chronicleDreamCandidates).values({
+        id: randomUUID(),
+        runId: input.runId,
+        workspaceId: card.workspaceId,
+        candidateType: input.runType,
+        scoreBps: input.dryRun ? 0 : 10_000,
+        sourceKnowledgeIdsJson: JSON.stringify([card.id]),
+        proposedTitle: card.title,
+        proposedContent: card.content,
+        proposedCardType: card.cardType,
+        proposedDimension: card.dimension,
+        outputKnowledgeId: input.runType === 'prune' ? null : card.id,
+        status: input.dryRun ? 'proposed' : 'applied',
+        reason: buildDreamLifecycleReason(input.runType, sourceStatus, targetStatus, input.olderThanDays),
+        metadataJson: JSON.stringify({
+          sourceStatus,
+          targetStatus,
+          dryRun: input.dryRun,
+          olderThanDays: input.olderThanDays,
+        }),
+        createdAt: input.now,
+        updatedAt: input.now,
+      }).run()
+    }
+    tx.update(chronicleDreamRuns).set({
+      status: 'completed',
+      endedAt: input.now,
+      inputCount: cards.length,
+      outputCount: input.runType === 'prune' ? 0 : changedKnowledgeIds.length,
+      mergedCount: 0,
+      deletedCount: input.runType === 'prune' && !input.dryRun ? changedKnowledgeIds.length : 0,
+      sourceKnowledgeIdsJson: JSON.stringify(cards.map(card => card.id)),
+      outputKnowledgeIdsJson: JSON.stringify(input.runType === 'prune' ? [] : changedKnowledgeIds),
+      resultJson: JSON.stringify({
+        dryRun: input.dryRun,
+        candidateCount: cards.length,
+        changedCount: changedKnowledgeIds.length,
+        sourceStatus,
+        targetStatus,
+        olderThanDays: input.olderThanDays,
+      }),
+      updatedAt: input.now,
+    }).where(eq(chronicleDreamRuns.id, input.runId)).run()
+    return tx.select().from(chronicleDreamRuns).where(eq(chronicleDreamRuns.id, input.runId)).get()!
+  })
+  recordEvent({
+    type: 'activity',
+    status: 'success',
+    message: input.dryRun
+      ? `Chronicle dream ${input.runType} dry run completed`
+      : `Chronicle dream ${input.runType} completed`,
+    attrs: { runId: input.runId, candidateCount: cards.length, dryRun: input.dryRun },
+  })
+  return toDreamRunEntry(result)
+}
+
+function updateDreamLifecycleKnowledgeCard(
+  tx: ChronicleTx,
+  input: {
+    card: typeof chronicleKnowledgeCards.$inferSelect
+    runType: Extract<DreamRunType, 'archive' | 'prune' | 'restore'>
+    targetStatus: KnowledgeCardStatus
+    runId: string
+    now: number
+  },
+): void {
+  const nextVersion = input.card.version + 1
+  tx.update(chronicleKnowledgeCards).set({
+    version: nextVersion,
+    status: input.targetStatus,
+    mergedIntoId: input.runType === 'restore' ? null : input.card.mergedIntoId,
+    updatedAt: input.now,
+    metadataJson: JSON.stringify({
+      ...JsonRecordTextSchema.parse(input.card.metadataJson),
+      lastDreamRunId: input.runId,
+      lastDreamAction: input.runType,
+      previousStatus: input.card.status,
+    }),
+  }).where(eq(chronicleKnowledgeCards.id, input.card.id)).run()
+  tx.insert(chronicleKnowledgeVersions).values({
+    id: randomUUID(),
+    knowledgeId: input.card.id,
+    version: nextVersion,
+    title: input.card.title,
+    content: input.card.content,
+    cardType: input.card.cardType,
+    dimension: input.card.dimension,
+    confidenceBps: input.card.confidenceBps,
+    sourceMemoryIdsJson: input.card.sourceMemoryIdsJson,
+    sourceSegmentIdsJson: input.card.sourceSegmentIdsJson,
+    sourceChunkIdsJson: input.card.sourceChunkIdsJson,
+    tagsJson: input.card.tagsJson,
+    metadataJson: JSON.stringify({
+      source: `dream-${input.runType}`,
+      runId: input.runId,
+      previousStatus: input.card.status,
+      status: input.targetStatus,
+    }),
+    createdAt: input.now,
+  }).run()
+}
+
+function buildDreamLifecycleReason(
+  runType: Extract<DreamRunType, 'archive' | 'prune' | 'restore'>,
+  sourceStatus: KnowledgeCardStatus,
+  targetStatus: KnowledgeCardStatus,
+  olderThanDays: number,
+): string {
+  if (runType === 'restore') {
+    return `Restore ${sourceStatus} knowledge card to ${targetStatus}`
+  }
+  return `Move ${sourceStatus} knowledge card to ${targetStatus} after ${olderThanDays} days`
+}
+
 export async function triageActivitySegment(segmentId: string): Promise<ActivityPipelineActionResult> {
   const context = getActivitySegmentContext(segmentId)
   const evidenceHash = buildActivityEvidenceHash(context)
@@ -2169,10 +4457,11 @@ export async function triageActivitySegment(segmentId: string): Promise<Activity
     metadata: { evidenceCounts: context.evidenceCounts, evidenceHash },
   })
   const config = await getConfig()
-  const modelContext = resolveChronicleLanguageModelContext(config)
-  if (typeof modelContext === 'string') {
-    return failActivityPipelineRun(context.segment.id, run.id, 'triage', modelContext)
+  const modelContextResult = resolveChronicleLanguageModelContext(config)
+  if (!modelContextResult.ok) {
+    return failActivityPipelineRun(context.segment.id, run.id, 'triage', modelContextResult.message)
   }
+  const modelContext = modelContextResult.context
 
   try {
     const prompt = buildActivityTriagePrompt(context)
@@ -2182,10 +4471,10 @@ export async function triageActivitySegment(segmentId: string): Promise<Activity
       maxRetries: 1,
       timeout: 120_000,
     })
-    const triage = parseActivityTriageResult(result.text)
+    const triage = ActivityTriageModelTextSchema.parse(result.text)
     const endedAt = currentUnixSeconds()
     const metadata = {
-      ...parseJson<Record<string, unknown>>(context.segment.metadataJson, {}),
+      ...JsonRecordTextSchema.parse(context.segment.metadataJson),
       triage: {
         keep: triage.keep,
         reason: triage.reason,
@@ -2269,10 +4558,11 @@ export async function summarizeActivitySegment(segmentId: string): Promise<Activ
     metadata: { evidenceCounts: context.evidenceCounts, evidenceHash },
   })
   const config = await getConfig()
-  const modelContext = resolveChronicleLanguageModelContext(config)
-  if (typeof modelContext === 'string') {
-    return failActivityPipelineRun(context.segment.id, run.id, 'summarization', modelContext)
+  const modelContextResult = resolveChronicleLanguageModelContext(config)
+  if (!modelContextResult.ok) {
+    return failActivityPipelineRun(context.segment.id, run.id, 'summarization', modelContextResult.message)
   }
+  const modelContext = modelContextResult.context
 
   try {
     const prompt = buildActivitySummaryPrompt(context)
@@ -2282,7 +4572,7 @@ export async function summarizeActivitySegment(segmentId: string): Promise<Activ
       maxRetries: 1,
       timeout: 120_000,
     })
-    const summary = parseActivitySummaryResult(result.text)
+    const summary = ActivitySummaryModelTextSchema.parse(result.text)
     const usage = normalizeLanguageModelUsage(result.usage)
     const memory = recordMemory({
       sourceId: `activity-segment:${segmentId}:summary`,
@@ -2303,12 +4593,12 @@ export async function summarizeActivitySegment(segmentId: string): Promise<Activ
       modelId: modelContext.modelId,
       profileId: modelContext.profileId,
       usage,
-      sourceSnapshotIds: context.sourceRefs.snapshotIds ?? [],
+      sourceSnapshotIds: context.sourceRefs.snapshotIds,
       skipActivityAssignment: true,
     })
     const endedAt = currentUnixSeconds()
     const metadata = {
-      ...parseJson<Record<string, unknown>>(context.segment.metadataJson, {}),
+      ...JsonRecordTextSchema.parse(context.segment.metadataJson),
       summarization: {
         memoryId: memory.id,
         modelId: modelContext.modelId,
@@ -2395,10 +4685,11 @@ export async function crystallizeActivitySegment(segmentId: string): Promise<Act
     metadata: { evidenceCounts: context.evidenceCounts, evidenceHash },
   })
   const config = await getConfig()
-  const modelContext = resolveChronicleLanguageModelContext(config)
-  if (typeof modelContext === 'string') {
-    return failActivityPipelineRun(context.segment.id, run.id, 'crystallization', modelContext)
+  const modelContextResult = resolveChronicleLanguageModelContext(config)
+  if (!modelContextResult.ok) {
+    return failActivityPipelineRun(context.segment.id, run.id, 'crystallization', modelContextResult.message)
   }
+  const modelContext = modelContextResult.context
 
   try {
     const prompt = buildActivityCrystallizationPrompt(context)
@@ -2408,7 +4699,7 @@ export async function crystallizeActivitySegment(segmentId: string): Promise<Act
       maxRetries: 1,
       timeout: 120_000,
     })
-    const parsed = parseActivityCrystallizationResult(result.text)
+    const parsed = ActivityCrystallizationModelTextSchema.parse(result.text)
     const usage = normalizeLanguageModelUsage(result.usage)
     const endedAt = currentUnixSeconds()
     const memoryIds = getActivityCrystallizationMemoryIds(context)
@@ -2433,7 +4724,7 @@ export async function crystallizeActivitySegment(segmentId: string): Promise<Act
       }
 
       const metadata = {
-        ...parseJson<Record<string, unknown>>(context.segment.metadataJson, {}),
+        ...JsonRecordTextSchema.parse(context.segment.metadataJson),
         crystallization: {
           knowledgeCardIds: writtenCards.map(card => card.id),
           modelId: modelContext.modelId,
@@ -2560,20 +4851,21 @@ function getActivitySegmentContext(segmentId: string): ActivitySegmentContext {
   if (!segment) {
     throw new AppError({ code: 'chronicle_activity_segment_not_found', status: 404, message: 'Chronicle activity segment not found' })
   }
-  const sourceRefs = parseJson<Record<string, string[]>>(segment.sourceRefsJson, {})
-  const evidenceText = [
+  const sourceRefs = ActivitySourceRefsJsonSchema.parse(segment.sourceRefsJson)
+  const rawEvidenceText = [
     `Segment: ${segment.title ?? 'Untitled activity'}`,
     `Type: ${segment.segmentType}`,
     `Window: ${segment.frontApp ?? 'unknown'} / ${segment.title ?? 'unknown'}`,
     `Time: ${new Date(segment.startedAt * 1000).toISOString()} - ${new Date(segment.endedAt * 1000).toISOString()}`,
     `Existing summary: ${segment.summary ?? ''}`,
-    buildSnapshotEvidenceText(sourceRefs.snapshotIds ?? []),
-    buildAccessibilityEvidenceText(sourceRefs.accessibilitySnapshotIds ?? []),
-    buildSlackEvidenceText(sourceRefs.messageIds ?? []),
-    buildAudioTranscriptEvidenceText(sourceRefs.audioTranscriptIds ?? []),
-    buildAudioRawEvidenceText(sourceRefs.audioRawSegmentIds ?? []),
-    buildMemoryEvidenceText(sourceRefs.memoryIds ?? []),
+    buildSnapshotEvidenceText(sourceRefs.snapshotIds),
+    buildAccessibilityEvidenceText(sourceRefs.accessibilitySnapshotIds),
+    buildSlackEvidenceText(sourceRefs.messageIds),
+    buildAudioTranscriptEvidenceText(sourceRefs.audioTranscriptIds),
+    buildAudioRawEvidenceText(sourceRefs.audioRawSegmentIds),
+    buildMemoryEvidenceText(sourceRefs.memoryIds),
   ].filter(section => section.trim().length > 0).join('\n\n')
+  const evidenceText = redactActivityEvidenceText(rawEvidenceText)
 
   return {
     segment,
@@ -2581,6 +4873,47 @@ function getActivitySegmentContext(segmentId: string): ActivitySegmentContext {
     evidenceText,
     evidenceCounts: countActivitySourceRefs(sourceRefs),
   }
+}
+
+function redactActivityEvidenceText(text: string): string {
+  return [
+    redactApiKeys,
+    redactEmails,
+    redactSsns,
+    redactCreditCards,
+    redactPhoneNumbers,
+    redactIpv4Addresses,
+  ].reduce((value, redact) => redact(value), text)
+}
+
+function redactApiKeys(text: string): string {
+  return text
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[API_KEY]')
+    .replace(/\bxox[abprs]-[A-Za-z0-9-]{8,}\b/g, '[API_KEY]')
+    .replace(/\b(?:ghp|github_pat|glpat|hf)_[A-Za-z0-9_-]{12,}\b/g, '[API_KEY]')
+}
+
+function redactEmails(text: string): string {
+  return text.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]')
+}
+
+function redactSsns(text: string): string {
+  return text.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
+}
+
+function redactCreditCards(text: string): string {
+  return text.replace(/\b(?:\d[ -]*?){13,19}\b/g, (candidate) => {
+    const digits = candidate.replace(/\D/g, '')
+    return isLikelyCreditCardNumber(digits) ? '[CREDIT_CARD]' : candidate
+  })
+}
+
+function redactPhoneNumbers(text: string): string {
+  return text.replace(/(?<!\w)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\w)/g, '[PHONE_NUMBER]')
+}
+
+function redactIpv4Addresses(text: string): string {
+  return text.replace(/\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g, '[IP_ADDRESS]')
 }
 
 function buildSnapshotEvidenceText(snapshotIds: string[]): string {
@@ -2739,13 +5072,14 @@ function normalizeActivityEvidenceRefs(sourceRefs: Record<string, string[]>): Re
 }
 
 function buildActivityEvidenceSourceVersions(sourceRefs: Record<string, string[]>): Record<string, Array<{ id: string, updatedAt: number }>> {
+  const refs = ActivitySourceRefsSchema.parse(sourceRefs)
   return {
-    snapshotIds: readActivityEvidenceVersions('snapshotIds', sourceRefs.snapshotIds ?? []),
-    accessibilitySnapshotIds: readActivityEvidenceVersions('accessibilitySnapshotIds', sourceRefs.accessibilitySnapshotIds ?? []),
-    messageIds: readActivityEvidenceVersions('messageIds', sourceRefs.messageIds ?? []),
-    audioTranscriptIds: readActivityEvidenceVersions('audioTranscriptIds', sourceRefs.audioTranscriptIds ?? []),
-    audioRawSegmentIds: readActivityEvidenceVersions('audioRawSegmentIds', sourceRefs.audioRawSegmentIds ?? []),
-    memoryIds: readActivityEvidenceVersions('memoryIds', sourceRefs.memoryIds ?? []),
+    snapshotIds: readActivityEvidenceVersions('snapshotIds', refs.snapshotIds),
+    accessibilitySnapshotIds: readActivityEvidenceVersions('accessibilitySnapshotIds', refs.accessibilitySnapshotIds),
+    messageIds: readActivityEvidenceVersions('messageIds', refs.messageIds),
+    audioTranscriptIds: readActivityEvidenceVersions('audioTranscriptIds', refs.audioTranscriptIds),
+    audioRawSegmentIds: readActivityEvidenceVersions('audioRawSegmentIds', refs.audioRawSegmentIds),
+    memoryIds: readActivityEvidenceVersions('memoryIds', refs.memoryIds),
   }
 }
 
@@ -2791,7 +5125,7 @@ function upsertActivityPipelineRun(input: {
   metadata: Record<string, unknown>
 }): typeof chroniclePipelineRuns.$inferSelect {
   const now = currentUnixSeconds()
-  const sourceRefs = parseJson<Record<string, string[]>>(input.segment.sourceRefsJson, {})
+  const sourceRefs = ActivitySourceRefsJsonSchema.parse(input.segment.sourceRefsJson)
   const values = {
     sessionId: input.segment.sessionId,
     segmentId: input.segment.id,
@@ -2803,17 +5137,17 @@ function upsertActivityPipelineRun(input: {
     startedAt: input.startedAt,
     endedAt: null,
     errorMessage: null,
-    snapshotIdsJson: JSON.stringify(sourceRefs.snapshotIds ?? []),
-    messageIdsJson: JSON.stringify(sourceRefs.messageIds ?? []),
-    audioTranscriptIdsJson: JSON.stringify(sourceRefs.audioTranscriptIds ?? []),
-    audioRawSegmentIdsJson: JSON.stringify(sourceRefs.audioRawSegmentIds ?? []),
-    memoryIdsJson: JSON.stringify(sourceRefs.memoryIds ?? []),
+    snapshotIdsJson: JSON.stringify(sourceRefs.snapshotIds),
+    messageIdsJson: JSON.stringify(sourceRefs.messageIds),
+    audioTranscriptIdsJson: JSON.stringify(sourceRefs.audioTranscriptIds),
+    audioRawSegmentIdsJson: JSON.stringify(sourceRefs.audioRawSegmentIds),
+    memoryIdsJson: JSON.stringify(sourceRefs.memoryIds),
     segmentIdsJson: JSON.stringify([input.segment.id]),
-    snapshotsCount: sourceRefs.snapshotIds?.length ?? 0,
-    messagesCount: sourceRefs.messageIds?.length ?? 0,
-    audioTranscriptsCount: sourceRefs.audioTranscriptIds?.length ?? 0,
-    audioRawSegmentsCount: sourceRefs.audioRawSegmentIds?.length ?? 0,
-    memoriesCount: sourceRefs.memoryIds?.length ?? 0,
+    snapshotsCount: sourceRefs.snapshotIds.length,
+    messagesCount: sourceRefs.messageIds.length,
+    audioTranscriptsCount: sourceRefs.audioTranscriptIds.length,
+    audioRawSegmentsCount: sourceRefs.audioRawSegmentIds.length,
+    memoriesCount: sourceRefs.memoryIds.length,
     segmentsCount: 1,
     metadataJson: JSON.stringify(input.metadata),
     updatedAt: now,
@@ -2901,18 +5235,6 @@ function buildActivityCrystallizationPrompt(context: ActivitySegmentContext): st
   ].join('\n')
 }
 
-function parseActivityTriageResult(text: string): ActivityTriageResult {
-  return ActivityTriageModelTextSchema.parse(text)
-}
-
-function parseActivitySummaryResult(text: string): ActivitySummaryResult {
-  return ActivitySummaryModelTextSchema.parse(text)
-}
-
-function parseActivityCrystallizationResult(text: string): ActivityCrystallizationResult {
-  return ActivityCrystallizationModelTextSchema.parse(text)
-}
-
 function buildActivitySummaryMemoryContent(context: ActivitySegmentContext, summary: ActivitySummaryResult): string {
   const parts = [
     `Activity: ${summary.title}`,
@@ -2953,19 +5275,19 @@ function upsertKnowledgeCardFromDraft(
     .all()
     .find(row => row.workspaceId === input.context.segment.workspaceId && row.status !== 'deleted')
   const sourceSegmentIds = uniqueStrings([
-    ...(existing ? parseJson<string[]>(existing.sourceSegmentIdsJson, []) : []),
+    ...(existing ? StringListTextSchema.parse(existing.sourceSegmentIdsJson) : []),
     input.context.segment.id,
   ])
   const sourceMemoryIds = uniqueStrings([
-    ...(existing ? parseJson<string[]>(existing.sourceMemoryIdsJson, []) : []),
+    ...(existing ? StringListTextSchema.parse(existing.sourceMemoryIdsJson) : []),
     ...input.memoryIds,
   ])
-  const sourceChunkIds = existing ? parseJson<string[]>(existing.sourceChunkIdsJson, []) : []
+  const sourceChunkIds = existing ? StringListTextSchema.parse(existing.sourceChunkIdsJson) : []
   const tags = uniqueStrings([
-    ...(existing ? parseJson<string[]>(existing.tagsJson, []) : []),
+    ...(existing ? StringListTextSchema.parse(existing.tagsJson) : []),
     ...input.draft.tags,
   ]).slice(0, 24)
-  const previousMetadata = existing ? parseJson<Record<string, unknown>>(existing.metadataJson, {}) : {}
+  const previousMetadata = existing ? JsonRecordTextSchema.parse(existing.metadataJson) : {}
   const metadata = {
     ...previousMetadata,
     stableKey: input.draft.stableKey,
@@ -3231,10 +5553,10 @@ function applyDreamMergeCandidate(
     .from(chronicleKnowledgeCards)
     .where(inArray(chronicleKnowledgeCards.id, candidate.sourceKnowledgeIds))
     .all()
-  const sourceMemoryIds = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.sourceMemoryIdsJson, [])))
-  const sourceSegmentIds = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.sourceSegmentIdsJson, [])))
-  const sourceChunkIds = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.sourceChunkIdsJson, [])))
-  const tags = uniqueStrings(sourceCards.flatMap(card => parseJson<string[]>(card.tagsJson, []))).slice(0, 24)
+  const sourceMemoryIds = uniqueStrings(sourceCards.flatMap(card => StringListTextSchema.parse(card.sourceMemoryIdsJson)))
+  const sourceSegmentIds = uniqueStrings(sourceCards.flatMap(card => StringListTextSchema.parse(card.sourceSegmentIdsJson)))
+  const sourceChunkIds = uniqueStrings(sourceCards.flatMap(card => StringListTextSchema.parse(card.sourceChunkIdsJson)))
+  const tags = uniqueStrings(sourceCards.flatMap(card => StringListTextSchema.parse(card.tagsJson))).slice(0, 24)
   const stableKey = `dream-merge:${hashText(candidate.sourceKnowledgeIds.slice().sort().join('|')).slice(0, 32)}`
   const contentHash = hashText(canonicalizeMemoryContent(`${candidate.proposedTitle}\n${candidate.proposedContent}`))
   const outputId = randomUUID()
@@ -3246,7 +5568,7 @@ function applyDreamMergeCandidate(
     content: candidate.proposedContent,
     cardType: candidate.proposedCardType,
     dimension: candidate.proposedDimension,
-    confidenceBps: Math.max(1, Math.min(10_000, ratioToBps(candidate.score))),
+    confidenceBps: Math.max(1, RatioBpsSchema.parse(candidate.score)),
     sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
     sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
     sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
@@ -3276,7 +5598,7 @@ function applyDreamMergeCandidate(
     content: candidate.proposedContent,
     cardType: candidate.proposedCardType,
     dimension: candidate.proposedDimension,
-    confidenceBps: Math.max(1, Math.min(10_000, ratioToBps(candidate.score))),
+    confidenceBps: Math.max(1, RatioBpsSchema.parse(candidate.score)),
     sourceMemoryIdsJson: JSON.stringify(sourceMemoryIds),
     sourceSegmentIdsJson: JSON.stringify(sourceSegmentIds),
     sourceChunkIdsJson: JSON.stringify(sourceChunkIds),
@@ -3296,7 +5618,7 @@ function applyDreamMergeCandidate(
       mergedIntoId: outputId,
       updatedAt: now,
       metadataJson: JSON.stringify({
-        ...parseJson<Record<string, unknown>>(source.metadataJson, {}),
+        ...JsonRecordTextSchema.parse(source.metadataJson),
         mergedByRunId: runId,
         mergedIntoId: outputId,
       }),
@@ -3345,12 +5667,13 @@ interface ActivityAssignmentInput {
   segmentType: ActivitySegmentType
   frontApp: string | null
   title: string | null
-  summary?: string | null
-  refs: Partial<Record<'snapshotIds' | 'messageIds' | 'audioTranscriptIds' | 'audioRawSegmentIds' | 'memoryIds' | 'accessibilitySnapshotIds', string[]>>
-  metadata?: Record<string, unknown>
+  summary: string | null
+  refs: z.infer<typeof ActivitySourceRefsSchema>
+  metadata: Record<string, unknown>
 }
 
-function assignActivityEvidence(input: ActivityAssignmentInput): { sessionId: string, segmentId: string } {
+function assignActivityEvidence(rawInput: z.input<typeof ActivityAssignmentInputSchema>): { sessionId: string, segmentId: string } {
+  const input = ActivityAssignmentInputSchema.parse(rawInput)
   const now = currentUnixSeconds()
   return db().transaction((tx) => {
     const session = findActivitySession(tx, input.workspaceId, input.occurredAt, now, input)
@@ -3360,8 +5683,8 @@ function assignActivityEvidence(input: ActivityAssignmentInput): { sessionId: st
     const sourceRefs = mergeActivitySourceRefs(candidate?.sourceRefsJson, input.refs)
     const sourceCounts = countActivitySourceRefs(sourceRefs)
     const metadata = {
-      ...(candidate ? parseJson<Record<string, unknown>>(candidate.metadataJson, {}) : {}),
-      ...(input.metadata ?? {}),
+      ...(candidate ? JsonRecordTextSchema.parse(candidate.metadataJson) : {}),
+      ...input.metadata,
     }
     const startedAt = candidate && shouldAppend ? Math.min(candidate.startedAt, input.occurredAt) : input.occurredAt
     const endedAt = candidate && shouldAppend ? Math.max(candidate.endedAt, input.occurredAt) : input.occurredAt
@@ -3396,7 +5719,7 @@ function assignActivityEvidence(input: ActivityAssignmentInput): { sessionId: st
         segmentType: input.segmentType,
         frontApp: input.frontApp,
         title: input.title,
-        summary: input.summary ?? null,
+        summary: input.summary,
         sourceCountsJson: JSON.stringify(sourceCounts),
         sourceRefsJson: JSON.stringify(sourceRefs),
         metadataJson: JSON.stringify(metadata),
@@ -3438,22 +5761,22 @@ function recordSegmentationRun(
     startedAt: input.occurredAt,
     endedAt: null,
     errorMessage: null,
-    snapshotIdsJson: JSON.stringify(input.refs.snapshotIds ?? []),
-    messageIdsJson: JSON.stringify(input.refs.messageIds ?? []),
-    audioTranscriptIdsJson: JSON.stringify(input.refs.audioTranscriptIds ?? []),
-    audioRawSegmentIdsJson: JSON.stringify(input.refs.audioRawSegmentIds ?? []),
-    memoryIdsJson: JSON.stringify(input.refs.memoryIds ?? []),
+    snapshotIdsJson: JSON.stringify(input.refs.snapshotIds),
+    messageIdsJson: JSON.stringify(input.refs.messageIds),
+    audioTranscriptIdsJson: JSON.stringify(input.refs.audioTranscriptIds),
+    audioRawSegmentIdsJson: JSON.stringify(input.refs.audioRawSegmentIds),
+    memoryIdsJson: JSON.stringify(input.refs.memoryIds),
     segmentIdsJson: JSON.stringify([segmentId]),
-    snapshotsCount: input.refs.snapshotIds?.length ?? 0,
-    messagesCount: input.refs.messageIds?.length ?? 0,
-    audioTranscriptsCount: input.refs.audioTranscriptIds?.length ?? 0,
-    audioRawSegmentsCount: input.refs.audioRawSegmentIds?.length ?? 0,
-    memoriesCount: input.refs.memoryIds?.length ?? 0,
+    snapshotsCount: input.refs.snapshotIds.length,
+    messagesCount: input.refs.messageIds.length,
+    audioTranscriptsCount: input.refs.audioTranscriptIds.length,
+    audioRawSegmentsCount: input.refs.audioRawSegmentIds.length,
+    memoriesCount: input.refs.memoryIds.length,
     segmentsCount: 1,
     triageResultsJson: '{}',
     summaryResultsJson: '{}',
     metadataJson: JSON.stringify({
-      ...(input.metadata ?? {}),
+      ...input.metadata,
       pendingStages: ['triage', 'summarization', 'crystallization'],
     }),
     updatedAt: now,
@@ -3594,12 +5917,12 @@ function refreshActivitySession(tx: ChronicleTx, sessionId: string, now: number)
   const startedAt = Math.min(...segments.map(segment => segment.startedAt))
   const endedAt = Math.max(...segments.map(segment => segment.endedAt))
   const counts = segments.reduce((accumulator, segment) => {
-    const sourceCounts = parseJson<Record<string, number>>(segment.sourceCountsJson, {})
-    accumulator.snapshotCount += readCount(sourceCounts.snapshotIds)
-    accumulator.messageCount += readCount(sourceCounts.messageIds)
-    accumulator.audioTranscriptCount += readCount(sourceCounts.audioTranscriptIds)
-    accumulator.audioRawSegmentCount += readCount(sourceCounts.audioRawSegmentIds)
-    accumulator.accessibilitySnapshotCount += readCount(sourceCounts.accessibilitySnapshotIds)
+    const sourceCounts = ActivitySourceCountsJsonSchema.parse(segment.sourceCountsJson)
+    accumulator.snapshotCount += Math.floor(sourceCounts.snapshotIds)
+    accumulator.messageCount += Math.floor(sourceCounts.messageIds)
+    accumulator.audioTranscriptCount += Math.floor(sourceCounts.audioTranscriptIds)
+    accumulator.audioRawSegmentCount += Math.floor(sourceCounts.audioRawSegmentIds)
+    accumulator.accessibilitySnapshotCount += Math.floor(sourceCounts.accessibilitySnapshotIds)
     return accumulator
   }, {
     snapshotCount: 0,
@@ -3633,7 +5956,9 @@ function mergeActivitySourceRefs(
   currentJson: string | undefined,
   next: ActivityAssignmentInput['refs'],
 ): Record<string, string[]> {
-  const current = ActivitySourceRefsJsonSchema.parse(currentJson)
+  const current = currentJson
+    ? ActivitySourceRefsJsonSchema.parse(currentJson)
+    : ActivitySourceRefsSchema.parse({})
   const nextRefs = ActivitySourceRefsSchema.parse(next)
   const merged: Record<string, string[]> = {}
   for (const key of ['snapshotIds', 'messageIds', 'audioTranscriptIds', 'audioRawSegmentIds', 'memoryIds', 'accessibilitySnapshotIds']) {
@@ -3661,10 +5986,6 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.filter(value => value.length > 0))]
 }
 
-function readCount(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
-}
-
 interface SpeakerProfileUpsertInput {
   workspaceId: string | null
   displayName: string
@@ -3681,10 +6002,11 @@ interface SpeakerProfileUpsertInput {
 
 function upsertSpeakerProfileFromLabel(
   d: ChronicleDb | ChronicleTx,
-  input: SpeakerProfileUpsertInput,
+  rawInput: SpeakerProfileUpsertInput,
 ): typeof chronicleSpeakerProfiles.$inferSelect {
-  const now = input.now ?? currentUnixSeconds()
-  const displayName = normalizeSpeakerDisplayName(input.displayName)
+  const input = SpeakerProfileUpsertInputSchema.parse(rawInput)
+  const now = input.now
+  const displayName = input.displayName
   const normalizedLabel = normalizeSpeakerLabel(displayName)
   const workspaceId = input.workspaceId || null
   const stableKey = buildSpeakerStableKey(workspaceId, normalizedLabel)
@@ -3694,16 +6016,16 @@ function upsertSpeakerProfileFromLabel(
     .where(eq(chronicleSpeakerProfiles.stableKey, stableKey))
     .get()
   const nextAliases = normalizeSpeakerAliases([
-    ...(existing ? parseJson<string[]>(existing.aliasesJson, []) : []),
-    ...(input.aliases ?? []),
+    ...(existing ? StringListTextSchema.parse(existing.aliasesJson) : []),
+    ...input.aliases,
     displayName,
   ])
-  const sampleDelta = input.sampleCount ?? 1
+  const sampleDelta = input.sampleCount
   const nextSampleCount = Math.max(0, (existing?.sampleCount ?? 0) + sampleDelta)
-  const existingMetadata = existing ? parseJson<Record<string, unknown>>(existing.metadataJson, {}) : {}
+  const existingMetadata = existing ? JsonRecordTextSchema.parse(existing.metadataJson) : {}
   const metadata = {
     ...existingMetadata,
-    ...(input.metadata ?? {}),
+    ...input.metadata,
   }
   const embeddingJson = input.embedding === undefined
     ? existing?.embeddingJson ?? null
@@ -3720,7 +6042,9 @@ function upsertSpeakerProfileFromLabel(
     : input.embedding === null
       ? null
       : input.embeddingModelId ?? existing?.embeddingModelId ?? 'speaker-embedding-extractor'
-  const lastSeenAt = input.seenAt ?? existing?.lastSeenAt ?? null
+  const lastSeenAt = input.seenAt === undefined || input.seenAt === null
+    ? existing ? existing.lastSeenAt : null
+    : input.seenAt
 
   if (existing) {
     d.update(chronicleSpeakerProfiles).set({
@@ -3732,8 +6056,8 @@ function upsertSpeakerProfileFromLabel(
       embeddingModelId,
       sampleCount: nextSampleCount,
       lastSeenAt,
-      sourceTranscriptId: input.transcriptId ?? existing.sourceTranscriptId,
-      sourceSegmentId: input.segmentId ?? existing.sourceSegmentId,
+      sourceTranscriptId: input.transcriptId === null ? existing.sourceTranscriptId : input.transcriptId,
+      sourceSegmentId: input.segmentId === null ? existing.sourceSegmentId : input.segmentId,
       metadataJson: JSON.stringify(metadata),
       updatedAt: now,
     }).where(eq(chronicleSpeakerProfiles.id, existing.id)).run()
@@ -3753,8 +6077,8 @@ function upsertSpeakerProfileFromLabel(
     embeddingModelId,
     sampleCount: nextSampleCount,
     lastSeenAt,
-    sourceTranscriptId: input.transcriptId ?? null,
-    sourceSegmentId: input.segmentId ?? null,
+    sourceTranscriptId: input.transcriptId,
+    sourceSegmentId: input.segmentId,
     metadataJson: JSON.stringify(metadata),
     createdAt: now,
     updatedAt: now,
@@ -3785,21 +6109,6 @@ function normalizeSpeakerAliases(values: string[]): string[] {
   return [...new Map(aliases.map(value => [value.toLocaleLowerCase(), value])).values()]
 }
 
-function normalizeSpeakerEmbedding(value: number[] | null): number[] | null {
-  if (value === null) {
-    return null
-  }
-  const vector = value.map(item => Number(item))
-  if (vector.length === 0 || vector.some(item => !Number.isFinite(item))) {
-    throw new AppError({
-      code: 'chronicle_speaker_profile_embedding_invalid',
-      status: 400,
-      message: 'Speaker embedding must contain finite numeric values',
-    })
-  }
-  return vector
-}
-
 function buildSpeakerStableKey(workspaceId: string | null, normalizedLabel: string): string {
   return `${workspaceId ?? 'global'}:${normalizedLabel}`
 }
@@ -3808,38 +6117,49 @@ function normalizeActivityBoundary(value: string | null): string {
   return (value ?? '').trim().toLowerCase()
 }
 
-export function recordAudioRawSegment(input: AudioRawSegmentReportInput): AudioRawSegmentEntry {
+export function recordAudioRawSegment(rawInput: AudioRawSegmentReportInput): AudioRawSegmentEntry {
+  let input: z.infer<typeof AudioRawSegmentReportInputSchema>
+  try {
+    input = AudioRawSegmentReportInputSchema.parse(rawInput)
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'invalid_chronicle_audio_raw_segment_input',
+      status: 400,
+      message: 'Invalid Chronicle input',
+      details: { issues: error instanceof z.ZodError ? error.issues : [] },
+    })
+  }
   const config = syncConfig()
   const now = currentUnixSeconds()
-  const recordedAt = readRequiredAudioRawSegmentTimestamp(input.recordedAt)
+  const recordedAt = input.recordedAt
   const existing = db()
     .select()
     .from(chronicleAudioRawSegments)
     .where(eq(chronicleAudioRawSegments.sourceId, input.sourceId))
     .get()
   const id = existing?.id ?? randomUUID()
-  const durationMs = input.durationMs ?? estimateAudioDurationMs(input.sampleCount, input.sampleRate)
   const metadata = {
-    ...(input.metadata ?? {}),
-    vadImplemented: input.vadImplemented ?? false,
-    asrImplemented: input.asrImplemented ?? false,
-    speakerLabelingImplemented: input.speakerLabelingImplemented ?? false,
+    ...input.metadata,
+    vadImplemented: input.vadImplemented,
+    asrImplemented: input.asrImplemented,
+    speakerLabelingImplemented: input.speakerLabelingImplemented,
   }
   const values = {
     sourceId: input.sourceId,
     workspaceId: config.workspaceId || null,
     recordedAt,
-    source: input.source ?? 'microphone',
-    status: input.status ?? 'captured',
+    source: input.source,
+    status: input.status,
     audioPath: toRootRelative(config.storageRoot, input.audioPath),
     metadataPath: toRootRelative(config.storageRoot, input.metadataPath),
-    sampleRate: Math.floor(input.sampleRate),
-    channels: Math.floor(input.channels),
-    sampleCount: Math.floor(input.sampleCount),
-    droppedSamples: Math.floor(input.droppedSamples ?? 0),
-    durationMs,
-    rmsBps: ratioToBps(input.rms),
-    peakBps: ratioToBps(input.peak),
+    sampleRate: input.sampleRate,
+    channels: input.channels,
+    sampleCount: input.sampleCount,
+    droppedSamples: input.droppedSamples,
+    durationMs: input.durationMs,
+    rmsBps: input.rms,
+    peakBps: input.peak,
     active: input.active,
     vadStatus: input.vadImplemented ? 'pending' as const : 'not-implemented' as const,
     asrStatus: input.asrImplemented ? 'pending' as const : 'not-implemented' as const,
@@ -3867,7 +6187,7 @@ export function recordAudioRawSegment(input: AudioRawSegmentReportInput): AudioR
       sourceId: input.sourceId,
       rawSegmentId: id,
       active: input.active,
-      durationMs,
+      durationMs: input.durationMs,
       audioPath: values.audioPath,
     },
   })
@@ -3877,7 +6197,7 @@ export function recordAudioRawSegment(input: AudioRawSegmentReportInput): AudioR
       workspaceId: config.workspaceId || null,
       occurredAt: recordedAt,
       segmentType: 'audio',
-      frontApp: input.source ?? 'microphone',
+      frontApp: input.source,
       title: input.active ? 'Audio activity' : 'Audio quiet segment',
       refs: { audioRawSegmentIds: [id] },
       metadata: {
@@ -3893,8 +6213,9 @@ export function recordAudioRawSegment(input: AudioRawSegmentReportInput): AudioR
 
 export function recordAudioRawSegmentProcessingResult(
   sourceId: string,
-  input: AudioRawSegmentProcessingResultInput,
+  rawInput: AudioRawSegmentProcessingResultInput,
 ): AudioRawSegmentEntry {
+  const input = AudioRawSegmentProcessingResultInputSchema.parse(rawInput)
   const row = db()
     .select()
     .from(chronicleAudioRawSegments)
@@ -3908,36 +6229,41 @@ export function recordAudioRawSegmentProcessingResult(
     })
   }
   const metadata = {
-    ...parseJson<Record<string, unknown>>(row.metadataJson, {}),
-    ...(input.metadata ?? {}),
+    ...JsonRecordTextSchema.parse(row.metadataJson),
+    ...input.metadata,
     processingResult: {
-      transcriptSourceId: input.transcriptSourceId ?? null,
-      speakerProfileIds: input.speakerProfileIds ?? [],
-      errorMessage: input.errorMessage ?? null,
+      transcriptSourceId: input.transcriptSourceId,
+      speakerProfileIds: input.speakerProfileIds,
+      errorMessage: input.errorMessage,
       updatedAt: currentUnixSeconds(),
     },
   }
-  const status = input.status ?? deriveRawAudioStatus(input, row.status)
+  const processingState = AudioRawSegmentProcessingStateSchema.parse({
+    status: input.status === undefined ? deriveRawAudioStatus(input, row.status) : input.status,
+    vadStatus: input.vadStatus === undefined ? row.vadStatus : input.vadStatus,
+    asrStatus: input.asrStatus === undefined ? row.asrStatus : input.asrStatus,
+    speakerStatus: input.speakerStatus === undefined ? row.speakerStatus : input.speakerStatus,
+  })
   db().update(chronicleAudioRawSegments).set({
-    status,
-    vadStatus: input.vadStatus ?? row.vadStatus,
-    asrStatus: input.asrStatus ?? row.asrStatus,
-    speakerStatus: input.speakerStatus ?? row.speakerStatus,
+    status: processingState.status,
+    vadStatus: processingState.vadStatus,
+    asrStatus: processingState.asrStatus,
+    speakerStatus: processingState.speakerStatus,
     metadataJson: JSON.stringify(metadata),
     updatedAt: currentUnixSeconds(),
   }).where(eq(chronicleAudioRawSegments.id, row.id)).run()
   recordEvent({
     type: 'audio',
-    status: status === 'error' ? 'error' : 'success',
+    status: processingState.status === 'error' ? 'error' : 'success',
     message: 'Chronicle raw audio processing result recorded',
     attrs: {
       sourceId,
       rawSegmentId: row.id,
-      status,
-      vadStatus: input.vadStatus ?? row.vadStatus,
-      asrStatus: input.asrStatus ?? row.asrStatus,
-      speakerStatus: input.speakerStatus ?? row.speakerStatus,
-      transcriptSourceId: input.transcriptSourceId ?? null,
+      status: processingState.status,
+      vadStatus: processingState.vadStatus,
+      asrStatus: processingState.asrStatus,
+      speakerStatus: processingState.speakerStatus,
+      transcriptSourceId: input.transcriptSourceId,
     },
   })
   return toAudioRawSegmentEntry(db().select().from(chronicleAudioRawSegments).where(eq(chronicleAudioRawSegments.id, row.id)).get()!)
@@ -3959,21 +6285,25 @@ function deriveRawAudioStatus(
   return currentStatus
 }
 
-export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioTranscriptEntry {
-  const config = syncConfig()
-  const now = currentUnixSeconds()
-  const startedAt = readRequiredAudioTimestamp(input.startedAt, 'startedAt')
-  const endedAt = input.endedAt ? readRequiredAudioTimestamp(input.endedAt, 'endedAt') : null
-  if (endedAt !== null && endedAt < startedAt) {
+export function recordAudioTranscript(rawInput: AudioTranscriptReportInput): AudioTranscriptEntry {
+  let input: z.infer<typeof AudioTranscriptReportInputSchema>
+  try {
+    input = AudioTranscriptReportInputSchema.parse(rawInput)
+  }
+  catch (error) {
     throw new AppError({
-      code: 'chronicle_audio_transcript_time_range_invalid',
+      code: 'invalid_chronicle_audio_transcript_input',
       status: 400,
-      message: 'Audio transcript endedAt must be greater than or equal to startedAt',
+      message: 'Invalid Chronicle input',
+      details: { issues: error instanceof z.ZodError ? error.issues : [] },
     })
   }
-  validateAudioTranscriptSegments(input.segments)
-  const status = input.status ?? (input.source === 'asr' ? 'completed' : 'imported')
-  const source = input.source ?? 'imported'
+  const config = syncConfig()
+  const now = currentUnixSeconds()
+  const startedAt = input.startedAt
+  const endedAt = input.endedAt
+  const status = input.status
+  const source = input.source
   const existing = db()
     .select()
     .from(chronicleAudioTranscripts)
@@ -3981,7 +6311,7 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
     .get()
   const transcriptId = existing?.id ?? randomUUID()
   const transcriptText = buildAudioTranscriptMemoryContent({
-    title: input.title ?? null,
+    title: input.title,
     startedAt,
     segments: input.segments,
   })
@@ -3994,17 +6324,17 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
     if (existing) {
       tx.update(chronicleAudioTranscripts).set({
         workspaceId: config.workspaceId || null,
-        title: normalizeNullableString(input.title),
+        title: input.title,
         source,
         status,
         startedAt,
         endedAt,
-        language: normalizeNullableString(input.language),
-        appBundleId: normalizeNullableString(input.appBundleId),
-        windowTitle: normalizeNullableString(input.windowTitle),
+        language: input.language,
+        appBundleId: input.appBundleId,
+        windowTitle: input.windowTitle,
         audioPath: input.audioPath ? toRootRelative(config.storageRoot, input.audioPath) : null,
         transcriptPath: input.transcriptPath ? toRootRelative(config.storageRoot, input.transcriptPath) : null,
-        metadataJson: JSON.stringify(input.metadata ?? {}),
+        metadataJson: JSON.stringify(input.metadata),
         updatedAt: now,
       }).where(eq(chronicleAudioTranscripts.id, transcriptId)).run()
       tx.delete(chronicleAudioSegments).where(eq(chronicleAudioSegments.transcriptId, transcriptId)).run()
@@ -4015,17 +6345,17 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
         sourceId: input.sourceId,
         workspaceId: config.workspaceId || null,
         memoryId: null,
-        title: normalizeNullableString(input.title),
+        title: input.title,
         source,
         status,
         startedAt,
         endedAt,
-        language: normalizeNullableString(input.language),
-        appBundleId: normalizeNullableString(input.appBundleId),
-        windowTitle: normalizeNullableString(input.windowTitle),
+        language: input.language,
+        appBundleId: input.appBundleId,
+        windowTitle: input.windowTitle,
         audioPath: input.audioPath ? toRootRelative(config.storageRoot, input.audioPath) : null,
         transcriptPath: input.transcriptPath ? toRootRelative(config.storageRoot, input.transcriptPath) : null,
-        metadataJson: JSON.stringify(input.metadata ?? {}),
+        metadataJson: JSON.stringify(input.metadata),
         createdAt: now,
         updatedAt: now,
       }).run()
@@ -4033,20 +6363,18 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
 
     for (const [segmentIndex, segment] of input.segments.entries()) {
       const segmentId = randomUUID()
-      const speakerLabel = normalizeNullableString(segment.speakerLabel)
+      const speakerLabel = segment.speakerLabel
       tx.insert(chronicleAudioSegments).values({
         id: segmentId,
         transcriptId,
         segmentIndex,
-        startMs: Math.floor(segment.startMs),
-        endMs: segment.endMs === undefined || segment.endMs === null ? null : Math.floor(segment.endMs),
+        startMs: segment.startMs,
+        endMs: segment.endMs,
         speakerLabel,
         text: segment.text,
-        confidenceBps: segment.confidence === undefined || segment.confidence === null
-          ? null
-          : Math.round(Math.max(0, Math.min(1, segment.confidence)) * 10_000),
-        language: normalizeNullableString(segment.language) ?? normalizeNullableString(input.language),
-        metadataJson: JSON.stringify(segment.metadata ?? {}),
+        confidenceBps: segment.confidenceBps,
+        language: segment.language ?? input.language,
+        metadataJson: JSON.stringify(segment.metadata),
         createdAt: now,
         updatedAt: now,
       }).run()
@@ -4060,7 +6388,7 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
           metadata: {
             source: 'audio-transcript',
             transcriptSourceId: input.sourceId,
-            transcriptTitle: input.title ?? null,
+            transcriptTitle: input.title,
           },
         })
       }
@@ -4078,11 +6406,11 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
       source: 'audio-transcript',
       transcriptId,
       transcriptSourceId: input.sourceId,
-      title: input.title ?? null,
+      title: input.title,
       transcriptStatus: status,
-      language: input.language ?? null,
+      language: input.language,
       segmentCount: input.segments.length,
-      ...(input.metadata ?? {}),
+      ...input.metadata,
     },
   }, { skipActivityAssignment: true })
 
@@ -4104,8 +6432,8 @@ export function recordAudioTranscript(input: AudioTranscriptReportInput): AudioT
       workspaceId: config.workspaceId || null,
       occurredAt: startedAt,
       segmentType: 'meeting',
-      frontApp: normalizeNullableString(input.appBundleId) ?? 'audio',
-      title: normalizeNullableString(input.title) ?? normalizeNullableString(input.windowTitle) ?? 'Audio transcript',
+      frontApp: input.activityFrontApp,
+      title: input.activityTitle,
       summary: transcriptText.slice(0, 500),
       refs: { audioTranscriptIds: [transcriptId], memoryIds: [memory.id] },
       metadata: {
@@ -4137,26 +6465,26 @@ export function listSpeakerProfiles(): SpeakerProfileEntry[] {
   return rows.map(toSpeakerProfileEntry)
 }
 
-export function upsertSpeakerProfile(input: SpeakerProfileInput): SpeakerProfileEntry {
+export function upsertSpeakerProfile(rawInput: SpeakerProfileInput): SpeakerProfileEntry {
+  const input = SpeakerProfileInputSchema.parse(rawInput)
   const config = syncConfig()
   const now = currentUnixSeconds()
-  const displayName = normalizeSpeakerDisplayName(input.displayName)
-  const aliases = normalizeSpeakerAliases(input.aliases ?? [])
-  const embedding = input.embedding === undefined ? undefined : normalizeSpeakerEmbedding(input.embedding)
-  const lastSeenAt = input.lastSeenAt ? readRequiredAudioTimestamp(input.lastSeenAt, 'lastSeenAt') : null
-  const sampleCount = input.sampleCount === undefined ? undefined : Math.max(0, Math.floor(input.sampleCount))
-  const metadata = input.metadata ?? {}
+  const displayName = input.displayName
+  const aliases = input.aliases
+  const embedding = input.embedding
+  const lastSeenAt = input.lastSeenAt
+  const sampleCount = input.sampleCount
   const row = upsertSpeakerProfileFromLabel(db(), {
     workspaceId: config.workspaceId || null,
     displayName,
     aliases,
     embedding,
-    embeddingModelId: normalizeNullableString(input.embeddingModelId),
+    embeddingModelId: input.embeddingModelId,
     sampleCount,
     seenAt: lastSeenAt,
     metadata: {
       source: 'manual',
-      ...metadata,
+      ...input.metadata,
     },
     now,
   })
@@ -4192,7 +6520,7 @@ export async function handleSlackEvents(
     throw new AppError({ code: 'chronicle_message_source_unsupported', status: 400, message: 'Only Slack message sources can receive Slack events' })
   }
 
-  const sourceConfig = readSlackSourceConfig(source.configJson)
+  const sourceConfig = SlackSourceConfigJsonSchema.parse(source.configJson)
   if (sourceConfig.realtimeMode !== 'events-api') {
     throw new AppError({
       code: 'chronicle_slack_events_disabled',
@@ -4216,22 +6544,15 @@ export async function handleSlackEvents(
     signingSecret,
   })
 
-  const payload = parseSlackEventsPayload(input.rawBody)
+  const payload = SlackEventsPayloadJsonSchema.parse(input.rawBody)
   if (payload.type === 'url_verification') {
-    const challenge = readString(payload.challenge)
-    if (!challenge) {
-      throw new AppError({
-        code: 'chronicle_slack_challenge_missing',
-        status: 400,
-        message: 'Slack URL verification challenge is missing',
-      })
-    }
+    const challengePayload = SlackUrlVerificationPayloadSchema.parse(payload)
     return {
       sourceId: source.id,
       status: 'ok',
       ingested: 0,
       message: 'Slack URL verification accepted',
-      challenge,
+      challenge: challengePayload.challenge,
     }
   }
 
@@ -4242,45 +6563,39 @@ export async function handleSlackEvents(
     return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack event type ignored' }
   }
 
-  const event = isRecord(payload.event) ? payload.event : null
-  if (!event) {
-    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack event payload missing' }
-  }
-  const eventType = readString(event.type)
+  const eventPayload = SlackEventCallbackPayloadParseSchema.parse(payload)
+  const event = eventPayload.event
+  const eventType = event.type
   if (eventType !== 'message' && eventType !== 'app_mention') {
     return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack event subtype ignored' }
   }
-  const subtype = readString(event.subtype)
+  const subtype = event.subtype
   if (subtype && subtype !== 'bot_message') {
     return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack message subtype ignored' }
   }
 
-  const channelId = readString(event.channel)
-  const messageTs = readString(event.ts)
-  const text = readString(event.text) ?? ''
-  if (!channelId || !messageTs || !text.trim()) {
-    return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack message event missing required fields' }
-  }
-
-  const channelIds = parseJson<string[]>(source.channelIdsJson, [])
+  const channelId = event.channel
+  const messageTs = event.ts
+  const text = event.text
+  const channelIds = StringListTextSchema.parse(source.channelIdsJson)
   if (!channelIds.includes(channelId)) {
     return { sourceId: source.id, status: 'ignored', ingested: 0, message: 'Slack channel is outside Chronicle allowlist' }
   }
 
-  const teamId = readString(payload.team_id) ?? source.teamId
+  const teamId = eventPayload.team_id ?? source.teamId
   const inserted = recordSlackMessage({
     sourceId: source.id,
     workspaceId: source.workspaceId,
     teamId,
     channelId,
-    channelName: readString(event.channel_name) ?? null,
-    userId: readString(event.user) ?? readString(event.bot_id) ?? null,
-    userName: readString(event.username) ?? null,
+    channelName: event.channel_name,
+    userId: event.userId,
+    userName: event.username,
     text,
     messageTs,
-    threadId: readString(event.thread_ts) ?? messageTs,
+    threadId: event.threadId,
     permalink: null,
-    raw: payload,
+    raw: eventPayload,
   })
   const now = currentUnixSeconds()
   const messageAt = slackTsToUnix(messageTs)
@@ -4326,7 +6641,7 @@ async function syncSlackSourceNow(
     }
     throw new AppError({ code: 'chronicle_slack_token_missing', status: 400, message: 'Slack bot token secret is not configured' })
   }
-  const channelIds = parseJson<string[]>(source.channelIdsJson, []).filter(channelId => channelId.trim().length > 0)
+  const channelIds = StringListTextSchema.parse(source.channelIdsJson).filter(channelId => channelId.trim().length > 0)
   if (channelIds.length === 0) {
     if (trigger === 'background') {
       return failSlackSync(source.id, 'At least one Slack channel id is required')
@@ -4343,28 +6658,23 @@ async function syncSlackSourceNow(
     for (const channelId of channelIds) {
       const messages = await fetchSlackHistory(token, channelId, source.lastSyncAt)
       for (const message of messages) {
-        const text = readString(message.text) ?? ''
-        if (!text.trim()) {
-          continue
-        }
-        const messageTs = readString(message.ts)
-        if (!messageTs) {
-          continue
-        }
+        const parsedMessage = SlackHistoryMessageSchema.parse(message)
+        const text = parsedMessage.text
+        const messageTs = parsedMessage.ts
         const messageAt = slackTsToUnix(messageTs)
         const inserted = recordSlackMessage({
           sourceId: source.id,
           workspaceId: source.workspaceId,
           teamId: source.teamId,
           channelId,
-          channelName: channelNames.get(channelId) ?? null,
-          userId: readString(message.user) ?? readString(message.bot_id) ?? null,
-          userName: readString(message.username) ?? null,
+          channelName: parsedMessage.channel_name ?? channelNames.get(channelId) ?? null,
+          userId: parsedMessage.userId,
+          userName: parsedMessage.username,
           text,
           messageTs,
-          threadId: readString(message.thread_ts) ?? messageTs,
+          threadId: parsedMessage.threadId,
           permalink: null,
-          raw: message,
+          raw: parsedMessage,
         })
         if (inserted) {
           ingested += 1
@@ -4394,11 +6704,47 @@ async function syncSlackSourceNow(
   }
 }
 
-export function recordSnapshot(input: ChronicleSnapshotReportInput) {
+export function recordSnapshot(rawInput: ChronicleSnapshotReportInput): typeof chronicleSnapshots.$inferSelect | ChronicleSnapshotIgnoredResponse {
+  const input = ChronicleSnapshotReportInputSchema.parse(rawInput)
   const config = syncConfig()
   const now = currentUnixSeconds()
-  const capturedAt = parseTimestamp(input.capturedAt) ?? now
+  const capturedAt = input.capturedAt
   const existing = db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.sourceId, input.sourceId)).get()
+  const closedEyesDecision = getClosedEyesSnapshotDecision(config, input)
+  if (!existing && closedEyesDecision.discard) {
+    const closedEyesBreadcrumbAttrs = input.closedEyes === undefined
+      ? {
+          closedEyesStatus: 'unknown',
+          detector: null,
+          confidenceBps: null,
+        }
+      : {
+          closedEyesStatus: input.closedEyes.status,
+          detector: input.closedEyes.detector,
+          confidenceBps: input.closedEyes.confidenceBps,
+        }
+    recordPrivacyBreadcrumb({
+      kind: 'closed-eyes-discard',
+      status: 'success',
+      message: 'Chronicle discarded snapshot because the user was absent or eyes were closed',
+      attrs: {
+        sourceId: input.sourceId,
+        displayId: input.displayId,
+        frameIndex: input.frameIndex,
+        framePath: toRootRelative(config.storageRoot, input.framePath),
+        ...closedEyesBreadcrumbAttrs,
+        closedEyesMode: config.closedEyesMode,
+        reason: closedEyesDecision.reason,
+      },
+    })
+    return {
+      status: 'ignored',
+      reason: closedEyesDecision.reason,
+      sourceId: input.sourceId,
+      capturedAt: new Date(capturedAt * 1000).toISOString(),
+      capturedAtUnix: capturedAt,
+    }
+  }
   const id = existing?.id ?? randomUUID()
   const values = {
     sourceId: input.sourceId,
@@ -4408,15 +6754,25 @@ export function recordSnapshot(input: ChronicleSnapshotReportInput) {
     segmentDir: toRootRelative(config.storageRoot, input.segmentDir),
     framePath: toRootRelative(config.storageRoot, input.framePath),
     artifactPath: input.snapshotPath ? toRootRelative(config.storageRoot, input.snapshotPath) : null,
-    ocrText: input.ocrText ?? null,
-    appBundleId: input.appBundleId ?? null,
-    windowTitle: input.windowTitle ?? null,
+    ocrText: input.ocrText,
+    appBundleId: input.appBundleId,
+    windowTitle: input.windowTitle,
     metadataJson: JSON.stringify({
-      frameIndex: input.frameIndex ?? null,
+      frameIndex: input.frameIndex,
       capturePath: input.capturePath ? toRootRelative(config.storageRoot, input.capturePath) : null,
       ocrPath: input.ocrPath ? toRootRelative(config.storageRoot, input.ocrPath) : null,
       snapshotPath: input.snapshotPath ? toRootRelative(config.storageRoot, input.snapshotPath) : null,
-      ...(input.metadata ?? {}),
+      closedEyes: input.closedEyes
+        ? {
+            status: input.closedEyes.status,
+            confidenceBps: input.closedEyes.confidenceBps,
+            detector: input.closedEyes.detector,
+            discard: input.closedEyes.discard,
+            reason: input.closedEyes.reason,
+            metadata: input.closedEyes.metadata,
+          }
+        : null,
+      ...input.metadata,
     }),
     updatedAt: now,
   }
@@ -4441,8 +6797,8 @@ export function recordSnapshot(input: ChronicleSnapshotReportInput) {
       workspaceId: config.workspaceId || null,
       capturedAt,
       storageRoot: config.storageRoot,
-      appBundleId: input.appBundleId ?? null,
-      windowTitle: input.windowTitle ?? null,
+      appBundleId: input.appBundleId,
+      windowTitle: input.windowTitle,
     })
   }
   if (!existing) {
@@ -4450,10 +6806,10 @@ export function recordSnapshot(input: ChronicleSnapshotReportInput) {
       trigger: 'snapshot',
       workspaceId: config.workspaceId || null,
       occurredAt: capturedAt,
-      segmentType: inferScreenActivitySegmentType(input.appBundleId ?? null, input.windowTitle ?? null),
-      frontApp: input.appBundleId ?? null,
-      title: input.windowTitle ?? null,
-      summary: input.ocrText ?? input.accessibility?.text ?? null,
+      segmentType: inferScreenActivitySegmentType(input.appBundleId, input.windowTitle),
+      frontApp: input.appBundleId,
+      title: input.windowTitle,
+      summary: input.ocrText === null && input.accessibility ? input.accessibility.text : input.ocrText,
       refs: {
         snapshotIds: [id],
         accessibilitySnapshotIds: accessibilitySnapshotId ? [accessibilitySnapshotId] : [],
@@ -4469,8 +6825,36 @@ export function recordSnapshot(input: ChronicleSnapshotReportInput) {
   return db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, id)).get()!
 }
 
+function getClosedEyesSnapshotDecision(
+  config: ChronicleConfig,
+  input: ChronicleSnapshotReport,
+): { discard: boolean, reason: string } {
+  if (!config.closedEyesDiscardEnabled || config.closedEyesMode === 'always-record') {
+    return { discard: false, reason: 'closed-eyes discard disabled' }
+  }
+  if (config.closedEyesMode === 'always-pause') {
+    return { discard: true, reason: 'closed-eyes mode is always-pause' }
+  }
+  if (!input.closedEyes) {
+    return { discard: false, reason: 'closed-eyes verdict missing' }
+  }
+  if (input.closedEyes.discard !== null) {
+    return {
+      discard: input.closedEyes.discard,
+      reason: input.closedEyes.reason ?? 'closed-eyes detector provided explicit discard decision',
+    }
+  }
+  if (input.closedEyes.status === 'closed' || input.closedEyes.status === 'absent') {
+    return {
+      discard: true,
+      reason: input.closedEyes.reason ?? `closed-eyes detector reported ${input.closedEyes.status}`,
+    }
+  }
+  return { discard: false, reason: `closed-eyes detector reported ${input.closedEyes.status}` }
+}
+
 function recordAccessibilitySnapshot(
-  input: AccessibilitySnapshotReportInput,
+  rawInput: AccessibilitySnapshotReportInput,
   context: {
     snapshotId: string
     workspaceId: string | null
@@ -4480,6 +6864,7 @@ function recordAccessibilitySnapshot(
     windowTitle: string | null
   },
 ): string {
+  const input = AccessibilitySnapshotReportInputSchema.parse(rawInput)
   const now = currentUnixSeconds()
   const existing = db()
     .select()
@@ -4491,7 +6876,7 @@ function recordAccessibilitySnapshot(
     ? toRootRelative(context.storageRoot, input.accessibilityPath)
     : null
   const metadata = {
-    ...(input.metadata ?? {}),
+    ...input.metadata,
     ...(artifactPath ? { artifactPath } : {}),
   }
   const values = {
@@ -4499,13 +6884,13 @@ function recordAccessibilitySnapshot(
     snapshotId: context.snapshotId,
     workspaceId: context.workspaceId,
     capturedAt: context.capturedAt,
-    status: input.status ?? 'ready',
-    provider: input.provider ?? 'macos-accessibility',
-    appBundleId: normalizeNullableString(input.appBundleId) ?? context.appBundleId,
-    windowTitle: normalizeNullableString(input.windowTitle) ?? context.windowTitle,
-    elementCount: Math.max(0, Math.floor(input.elementCount ?? 0)),
-    text: normalizeNullableString(input.text),
-    treeJson: JSON.stringify(input.tree ?? []),
+    status: input.status,
+    provider: input.provider,
+    appBundleId: input.appBundleId ?? context.appBundleId,
+    windowTitle: input.windowTitle ?? context.windowTitle,
+    elementCount: Math.max(0, Math.floor(input.elementCount)),
+    text: input.text,
+    treeJson: JSON.stringify(input.tree),
     metadataJson: JSON.stringify(metadata),
     updatedAt: now,
   }
@@ -4523,30 +6908,85 @@ function recordAccessibilitySnapshot(
   return id
 }
 
+export function recordAccessibilityEvent(rawInput: AccessibilityEventReportInput): AccessibilityEventEntry {
+  const input = AccessibilityEventReportInputSchema.parse(rawInput)
+  const config = syncConfig()
+  const now = currentUnixSeconds()
+  const capturedAt = input.capturedAt
+  const existing = db()
+    .select()
+    .from(chronicleAccessibilityEvents)
+    .where(eq(chronicleAccessibilityEvents.sourceId, input.sourceId))
+    .get()
+  const id = existing?.id ?? randomUUID()
+  const metadata = {
+    ...input.metadata,
+    source: 'accessibility-event',
+  }
+  const values = {
+    sourceId: input.sourceId,
+    snapshotId: input.snapshotId,
+    accessibilitySnapshotId: input.accessibilitySnapshotId,
+    workspaceId: config.workspaceId || null,
+    capturedAt,
+    provider: input.provider,
+    appBundleId: input.appBundleId,
+    pid: input.pid,
+    notification: input.notification,
+    droppedBefore: input.droppedBefore,
+    metadataJson: JSON.stringify(metadata),
+    updatedAt: now,
+  }
+  if (!values.notification) {
+    throw new AppError({
+      code: 'chronicle_accessibility_event_notification_required',
+      status: 400,
+      message: 'Accessibility event notification is required',
+    })
+  }
+
+  if (existing) {
+    db().update(chronicleAccessibilityEvents).set(values).where(eq(chronicleAccessibilityEvents.id, id)).run()
+  }
+  else {
+    db().insert(chronicleAccessibilityEvents).values({
+      id,
+      ...values,
+      createdAt: now,
+    }).run()
+    recordEvent({
+      type: 'activity',
+      status: 'success',
+      message: 'Chronicle accessibility event ingested',
+      attrs: {
+        sourceId: input.sourceId,
+        notification: values.notification,
+        provider: values.provider,
+      },
+    })
+  }
+  return toAccessibilityEventEntry(db().select().from(chronicleAccessibilityEvents).where(eq(chronicleAccessibilityEvents.id, id)).get()!)
+}
+
 export function recordMemory(
-  input: ChronicleMemoryReportInput,
-  options: {
-    prompt?: string
-    modelId?: string
-    profileId?: string
-    usage?: { promptTokens: number, completionTokens: number, totalTokens: number }
-    sourceSnapshotIds?: string[]
-    skipActivityAssignment?: boolean
-  } = {},
+  rawInput: ChronicleMemoryReportInput,
+  rawOptions: z.input<typeof ChronicleMemoryRecordOptionsSchema> = {},
 ) {
+  const input = ChronicleMemoryReportInputSchema.parse(rawInput)
+  const options = ChronicleMemoryRecordOptionsSchema.parse(rawOptions)
   reconcileMemorySearchIndex()
   const config = syncConfig()
   const now = currentUnixSeconds()
-  const createdAt = parseTimestamp(input.createdAt) ?? now
+  const createdAt = input.createdAt
   const canonicalContent = canonicalizeMemoryContent(input.content)
   const contentHash = hashText(canonicalContent)
   const existing = db().select().from(chronicleMemories).where(eq(chronicleMemories.sourceId, input.sourceId)).get()
   const duplicate = findDuplicateMemory(contentHash, canonicalContent, existing?.id)
-  const sourceSnapshotIds = options.sourceSnapshotIds ?? findSnapshotIdsByPaths(input.sourceSnapshotPaths ?? [])
+  const sourceSnapshotIds = options.sourceSnapshotIds ?? findSnapshotIdsByPaths(input.sourceSnapshotPaths)
   const sourcePaths = [...new Set([
     ...(input.memoryPath ? [toRootRelative(config.storageRoot, input.memoryPath)] : []),
-    ...(input.sourceSnapshotPaths ?? []).map(path => toRootRelative(config.storageRoot, path)),
-    ...(input.sourceFramePaths ?? []).map(path => toRootRelative(config.storageRoot, path)),
+    ...input.sourceSnapshotPaths.map(path => toRootRelative(config.storageRoot, path)),
+    ...input.sourceFramePaths.map(path => toRootRelative(config.storageRoot, path)),
   ])]
   const values = {
     sourceId: input.sourceId,
@@ -4560,8 +7000,8 @@ export function recordMemory(
     sourcePathsJson: JSON.stringify(sourcePaths),
     modelProfileId: (options.profileId ?? config.profileId) || null,
     modelId: (options.modelId ?? config.modelId) || null,
-    usageJson: JSON.stringify(options.usage ?? {}),
-    metadataJson: JSON.stringify(input.metadata ?? {}),
+    usageJson: JSON.stringify(options.usage),
+    metadataJson: JSON.stringify(input.metadata),
     createdAt,
     updatedAt: now,
   }
@@ -4638,7 +7078,7 @@ export function recordMemory(
 }
 
 function assignMemoryToActivity(
-  input: ChronicleMemoryReportInput,
+  input: ChronicleMemoryReport,
   memoryId: string,
   createdAt: number,
   workspaceId: string | null,
@@ -4652,8 +7092,8 @@ function assignMemoryToActivity(
     workspaceId,
     occurredAt: createdAt,
     segmentType: 'work',
-    frontApp: readString(input.metadata?.appBundleId) ?? null,
-    title: readString(input.metadata?.title) ?? null,
+    frontApp: MemoryActivityMetadataSchema.parse(input.metadata).appBundleId,
+    title: MemoryActivityMetadataSchema.parse(input.metadata).title,
     summary: input.content.slice(0, 500),
     refs: { memoryIds: [memoryId] },
     metadata: {
@@ -4687,19 +7127,75 @@ export async function getFrameImageBySnapshot(snapshotId: string): Promise<Respo
   return readFrameImage(snapshot.framePath)
 }
 
+export async function getPrivacyMaskedFrameImageBySnapshot(snapshotId: string, input: unknown): Promise<Response | null> {
+  const snapshot = db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, snapshotId)).get()
+  if (!snapshot) {
+    return null
+  }
+
+  const mask = PrivacyFrameMaskInputSchema.parse(input)
+  if (!mask.fullFrame && mask.regions.length === 0) {
+    throw new AppError({
+      code: 'chronicle_privacy_frame_mask_empty',
+      status: 400,
+      message: 'Frame mask requires fullFrame or at least one region',
+    })
+  }
+
+  const source = await readFrameImageData(snapshot.framePath)
+  if (!source) {
+    return null
+  }
+
+  const base = sharp(source.data)
+  const metadata = await base.metadata()
+  const width = metadata.width ?? 0
+  const height = metadata.height ?? 0
+  if (width <= 0 || height <= 0) {
+    throw new AppError({
+      code: 'chronicle_privacy_frame_mask_invalid_image',
+      status: 422,
+      message: 'Snapshot frame image dimensions could not be read',
+    })
+  }
+
+  const output = mask.fullFrame
+    ? await base.blur(mask.blurSigma).toBuffer()
+    : await maskFrameRegions(source.data, width, height, mask)
+
+  recordPrivacyBreadcrumb({
+    kind: 'screenshot-mask',
+    status: 'success',
+    message: mask.fullFrame ? 'Chronicle privacy blurred full snapshot frame' : 'Chronicle privacy blurred snapshot frame regions',
+    snapshotId,
+    attrs: {
+      mode: mask.mode,
+      fullFrame: mask.fullFrame,
+      blurSigma: mask.blurSigma,
+      regionCount: mask.fullFrame ? 1 : mask.regions.length,
+      framePath: snapshot.framePath,
+    },
+  })
+
+  return new Response(new Uint8Array(output), {
+    headers: {
+      'Content-Type': source.contentType,
+      'Cache-Control': 'no-store',
+    },
+  })
+}
+
 export async function getFrameImage(segment: string, frame: string): Promise<Response | null> {
   return readFrameImage(resolveRelativeJoin(segment, frame))
 }
 
 function syncConfig(): ChronicleConfig {
   const filePath = getConfigPath()
-  try {
-    const content = readFileSync(filePath, 'utf8')
-    return ChronicleConfigJsonSchema.parse(content)
+  if (!existsSync(filePath)) {
+    return ChronicleConfigSchema.parse({})
   }
-  catch {
-    return { ...defaultConfig }
-  }
+  const content = readFileSync(filePath, 'utf8')
+  return ChronicleConfigJsonSchema.parse(content)
 }
 
 function validateSummaryConfig(config: ChronicleConfig): string | null {
@@ -4731,7 +7227,7 @@ function getMessageSourceEntry(sourceId: string): MessageSourceEntry {
 }
 
 function toMessageSourceEntry(row: typeof chronicleMessageSources.$inferSelect): MessageSourceEntry {
-  const sourceConfig = readSlackSourceConfig(row.configJson)
+  const sourceConfig = SlackSourceConfigJsonSchema.parse(row.configJson)
   return {
     id: row.id,
     platform: row.platform,
@@ -4740,7 +7236,7 @@ function toMessageSourceEntry(row: typeof chronicleMessageSources.$inferSelect):
     workspaceId: row.workspaceId,
     teamId: row.teamId,
     botTokenRef: row.botTokenRef,
-    channelIds: parseJson<string[]>(row.channelIdsJson, []),
+    channelIds: StringListTextSchema.parse(row.channelIdsJson),
     realtimeMode: sourceConfig.realtimeMode,
     signingSecretRef: sourceConfig.signingSecretRef,
     socketAppTokenRef: sourceConfig.socketAppTokenRef,
@@ -4790,12 +7286,12 @@ function toAudioRawSegmentEntry(row: typeof chronicleAudioRawSegments.$inferSele
     vadStatus: row.vadStatus,
     asrStatus: row.asrStatus,
     speakerStatus: row.speakerStatus,
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
   }
 }
 
 function toAccessibilitySnapshotEntry(row: typeof chronicleAccessibilitySnapshots.$inferSelect): AccessibilitySnapshotEntry {
-  const tree = parseJson<unknown>(row.treeJson, [])
+  const tree = JsonListTextSchema.parse(row.treeJson)
   return {
     id: row.id,
     sourceId: row.sourceId,
@@ -4808,8 +7304,25 @@ function toAccessibilitySnapshotEntry(row: typeof chronicleAccessibilitySnapshot
     windowTitle: row.windowTitle,
     elementCount: row.elementCount,
     text: row.text,
-    tree: Array.isArray(tree) ? tree : [],
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    tree,
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
+  }
+}
+
+function toAccessibilityEventEntry(row: typeof chronicleAccessibilityEvents.$inferSelect): AccessibilityEventEntry {
+  return {
+    id: row.id,
+    sourceId: row.sourceId,
+    snapshotId: row.snapshotId,
+    accessibilitySnapshotId: row.accessibilitySnapshotId,
+    capturedAt: new Date(row.capturedAt * 1000).toISOString(),
+    capturedAtUnix: row.capturedAt,
+    provider: row.provider,
+    appBundleId: row.appBundleId,
+    pid: row.pid,
+    notification: row.notification,
+    droppedBefore: row.droppedBefore,
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
   }
 }
 
@@ -4826,11 +7339,56 @@ function toActivitySegmentEntry(row: typeof chronicleActivitySegments.$inferSele
     frontApp: row.frontApp,
     title: row.title,
     summary: row.summary,
-    sourceCounts: parseJson<Record<string, number>>(row.sourceCountsJson, {}),
-    sourceRefs: parseJson<Record<string, string[]>>(row.sourceRefsJson, {}),
+    sourceCounts: ActivitySourceCountsJsonSchema.parse(row.sourceCountsJson),
+    sourceRefs: ActivitySourceRefsJsonSchema.parse(row.sourceRefsJson),
     pipelineStatus: row.pipelineStatus,
     isCrystallized: row.isCrystallized,
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
+  }
+}
+
+function toActivitySessionEntry(row: typeof chronicleActivitySessions.$inferSelect): ActivitySessionEntry {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    startedAt: new Date(row.startedAt * 1000).toISOString(),
+    startedAtUnix: row.startedAt,
+    endedAt: row.endedAt === null ? null : new Date(row.endedAt * 1000).toISOString(),
+    endedAtUnix: row.endedAt,
+    durationSeconds: row.durationSeconds,
+    frontApp: row.frontApp,
+    title: row.title,
+    segmentCount: row.segmentCount,
+    snapshotCount: row.snapshotCount,
+    messageCount: row.messageCount,
+    audioTranscriptCount: row.audioTranscriptCount,
+    audioRawSegmentCount: row.audioRawSegmentCount,
+    accessibilitySnapshotCount: row.accessibilitySnapshotCount,
+    isMeeting: row.isMeeting,
+    meetingTitle: row.meetingTitle,
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
+  }
+}
+
+function toActivitySnapshotEntry(row: typeof chronicleSnapshots.$inferSelect): ActivitySnapshotEntry {
+  return {
+    id: row.id,
+    sourceId: row.sourceId,
+    workspaceId: row.workspaceId,
+    capturedAt: new Date(row.capturedAt * 1000).toISOString(),
+    capturedAtUnix: row.capturedAt,
+    displayId: row.displayId,
+    segmentDir: row.segmentDir,
+    framePath: row.framePath,
+    artifactPath: row.artifactPath,
+    ocrText: row.ocrText,
+    appBundleId: row.appBundleId,
+    windowTitle: row.windowTitle,
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+    updatedAt: new Date(row.updatedAt * 1000).toISOString(),
+    updatedAtUnix: row.updatedAt,
   }
 }
 
@@ -4853,8 +7411,8 @@ function toPipelineRunEntry(row: typeof chroniclePipelineRuns.$inferSelect): Pip
     audioRawSegmentsCount: row.audioRawSegmentsCount,
     memoriesCount: row.memoriesCount,
     segmentsCount: row.segmentsCount,
-    segmentIds: parseJson<string[]>(row.segmentIdsJson, []),
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    segmentIds: StringListTextSchema.parse(row.segmentIdsJson),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
   }
 }
 
@@ -4866,21 +7424,151 @@ function toKnowledgeCardEntry(row: typeof chronicleKnowledgeCards.$inferSelect):
     cardType: row.cardType,
     dimension: row.dimension,
     confidence: bpsToRatio(row.confidenceBps),
-    sourceMemoryIds: parseJson<string[]>(row.sourceMemoryIdsJson, []),
-    sourceSegmentIds: parseJson<string[]>(row.sourceSegmentIdsJson, []),
-    sourceChunkIds: parseJson<string[]>(row.sourceChunkIdsJson, []),
-    tags: parseJson<string[]>(row.tagsJson, []),
+    sourceMemoryIds: StringListTextSchema.parse(row.sourceMemoryIdsJson),
+    sourceSegmentIds: StringListTextSchema.parse(row.sourceSegmentIdsJson),
+    sourceChunkIds: StringListTextSchema.parse(row.sourceChunkIdsJson),
+    tags: StringListTextSchema.parse(row.tagsJson),
     contentHash: row.contentHash,
     version: row.version,
     status: row.status,
     mergedIntoId: row.mergedIntoId,
     pinned: row.pinned,
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
     createdAt: new Date(row.createdAt * 1000).toISOString(),
     createdAtUnix: row.createdAt,
     updatedAt: new Date(row.updatedAt * 1000).toISOString(),
     updatedAtUnix: row.updatedAt,
   }
+}
+
+function toKnowledgeFileEntry(row: typeof chronicleKnowledgeFiles.$inferSelect): KnowledgeFileEntry {
+  return {
+    id: row.id,
+    knowledgeId: row.knowledgeId,
+    source: 'attached',
+    filename: row.filename,
+    contentType: row.contentType,
+    sizeBytes: row.sizeBytes,
+    filePath: row.filePath,
+    embedded: row.embedded,
+    evidenceType: null,
+    evidenceId: null,
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
+    createdAt: new Date(row.createdAt * 1000).toISOString(),
+    createdAtUnix: row.createdAt,
+    updatedAt: new Date(row.updatedAt * 1000).toISOString(),
+    updatedAtUnix: row.updatedAt,
+  }
+}
+
+function inferKnowledgeFilesFromSource(
+  knowledgeId: string,
+  source: typeof chronicleKnowledgeSources.$inferSelect,
+): KnowledgeFileEntry[] {
+  const files: KnowledgeFileEntry[] = []
+  if (source.memoryId) {
+    const memory = db().select().from(chronicleMemories).where(eq(chronicleMemories.id, source.memoryId)).get()
+    if (memory) {
+      for (const filePath of StringListTextSchema.parse(memory.sourcePathsJson)) {
+        files.push(buildInferredKnowledgeFile({
+          knowledgeId,
+          source: 'memory',
+          filePath,
+          evidenceType: source.evidenceType,
+          evidenceId: source.evidenceId,
+          metadata: { memoryId: memory.id, sourceId: memory.sourceId },
+        }))
+      }
+      for (const snapshotId of StringListTextSchema.parse(memory.sourceSnapshotIdsJson)) {
+        files.push(...inferKnowledgeFilesFromSnapshotId(knowledgeId, snapshotId, source))
+      }
+    }
+  }
+  if (source.evidenceType === 'activity-segment' && source.segmentId) {
+    const segment = db().select().from(chronicleActivitySegments).where(eq(chronicleActivitySegments.id, source.segmentId)).get()
+    if (segment) {
+      const refs = ActivitySourceRefsJsonSchema.parse(segment.sourceRefsJson)
+      for (const snapshotId of refs.snapshotIds) {
+        files.push(...inferKnowledgeFilesFromSnapshotId(knowledgeId, snapshotId, source))
+      }
+    }
+  }
+  if (source.evidenceType === 'snapshot') {
+    files.push(...inferKnowledgeFilesFromSnapshotId(knowledgeId, source.evidenceId, source))
+  }
+  return files
+}
+
+function inferKnowledgeFilesFromSnapshotId(
+  knowledgeId: string,
+  snapshotId: string,
+  source: typeof chronicleKnowledgeSources.$inferSelect,
+): KnowledgeFileEntry[] {
+  const snapshot = db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, snapshotId)).get()
+  if (!snapshot) {
+    return []
+  }
+  const candidates = [
+    { path: snapshot.framePath, contentType: guessKnowledgeFileContentType(snapshot.framePath), label: 'frame' },
+    { path: snapshot.artifactPath, contentType: 'application/json', label: 'artifact' },
+  ].filter((item): item is { path: string, contentType: string | null, label: string } => Boolean(item.path))
+  return candidates.map(item => buildInferredKnowledgeFile({
+    knowledgeId,
+    source: 'snapshot',
+    filePath: item.path,
+    contentType: item.contentType,
+    evidenceType: source.evidenceType,
+    evidenceId: source.evidenceId,
+    metadata: { snapshotId, sourceId: snapshot.sourceId, label: item.label },
+  }))
+}
+
+function buildInferredKnowledgeFile(input: {
+  knowledgeId: string
+  source: Exclude<KnowledgeFileEntry['source'], 'attached'>
+  filePath: string
+  contentType?: string | null
+  evidenceType: string | null
+  evidenceId: string | null
+  metadata: Record<string, unknown>
+}): KnowledgeFileEntry {
+  const evidenceTypeHashPart = input.evidenceType === null ? '' : input.evidenceType
+  const evidenceIdHashPart = input.evidenceId === null ? '' : input.evidenceId
+
+  return {
+    id: `inferred:${hashText(`${input.knowledgeId}:${input.source}:${input.filePath}:${evidenceTypeHashPart}:${evidenceIdHashPart}`).slice(0, 32)}`,
+    knowledgeId: input.knowledgeId,
+    source: input.source,
+    filename: basename(input.filePath),
+    contentType: input.contentType ?? guessKnowledgeFileContentType(input.filePath),
+    sizeBytes: null,
+    filePath: input.filePath,
+    embedded: false,
+    evidenceType: input.evidenceType,
+    evidenceId: input.evidenceId,
+    metadata: input.metadata,
+    createdAt: null,
+    createdAtUnix: null,
+    updatedAt: null,
+    updatedAtUnix: null,
+  }
+}
+
+function guessKnowledgeFileContentType(filePath: string): string | null {
+  const lower = filePath.toLowerCase()
+  if (lower.endsWith('.png')) {
+    return 'image/png'
+  }
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    return 'image/jpeg'
+  }
+  if (lower.endsWith('.json')) {
+    return 'application/json'
+  }
+  if (lower.endsWith('.md') || lower.endsWith('.txt')) {
+    return 'text/plain'
+  }
+  return null
 }
 
 function toKnowledgeVersionEntry(row: typeof chronicleKnowledgeVersions.$inferSelect): KnowledgeVersionEntry {
@@ -4893,11 +7581,11 @@ function toKnowledgeVersionEntry(row: typeof chronicleKnowledgeVersions.$inferSe
     cardType: row.cardType,
     dimension: row.dimension,
     confidence: bpsToRatio(row.confidenceBps),
-    sourceMemoryIds: parseJson<string[]>(row.sourceMemoryIdsJson, []),
-    sourceSegmentIds: parseJson<string[]>(row.sourceSegmentIdsJson, []),
-    sourceChunkIds: parseJson<string[]>(row.sourceChunkIdsJson, []),
-    tags: parseJson<string[]>(row.tagsJson, []),
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    sourceMemoryIds: StringListTextSchema.parse(row.sourceMemoryIdsJson),
+    sourceSegmentIds: StringListTextSchema.parse(row.sourceSegmentIdsJson),
+    sourceChunkIds: StringListTextSchema.parse(row.sourceChunkIdsJson),
+    tags: StringListTextSchema.parse(row.tagsJson),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
     createdAt: new Date(row.createdAt * 1000).toISOString(),
     createdAtUnix: row.createdAt,
   }
@@ -4917,10 +7605,10 @@ function toDreamRunEntry(row: typeof chronicleDreamRuns.$inferSelect): DreamRunE
     outputCount: row.outputCount,
     mergedCount: row.mergedCount,
     deletedCount: row.deletedCount,
-    sourceKnowledgeIds: parseJson<string[]>(row.sourceKnowledgeIdsJson, []),
-    outputKnowledgeIds: parseJson<string[]>(row.outputKnowledgeIdsJson, []),
-    config: parseJson<Record<string, unknown>>(row.configJson, {}),
-    result: parseJson<Record<string, unknown>>(row.resultJson, {}),
+    sourceKnowledgeIds: StringListTextSchema.parse(row.sourceKnowledgeIdsJson),
+    outputKnowledgeIds: StringListTextSchema.parse(row.outputKnowledgeIdsJson),
+    config: JsonRecordTextSchema.parse(row.configJson),
+    result: JsonRecordTextSchema.parse(row.resultJson),
     errorMessage: row.errorMessage,
   }
 }
@@ -4968,14 +7656,14 @@ function toAudioSegmentEntry(row: typeof chronicleAudioSegments.$inferSelect): A
 }
 
 function toSpeakerProfileEntry(row: typeof chronicleSpeakerProfiles.$inferSelect): SpeakerProfileEntry {
-  const embedding = row.embeddingJson ? parseJson<unknown>(row.embeddingJson, null) : null
+  const embedding = row.embeddingJson ? NumberListTextSchema.parse(row.embeddingJson) : null
   return {
     id: row.id,
     workspaceId: row.workspaceId,
     displayName: row.displayName,
     normalizedLabel: row.normalizedLabel,
-    aliases: parseJson<string[]>(row.aliasesJson, []),
-    embedding: Array.isArray(embedding) && embedding.every(item => typeof item === 'number') ? embedding : null,
+    aliases: StringListTextSchema.parse(row.aliasesJson),
+    embedding,
     embeddingDimensions: row.embeddingDimensions,
     embeddingModelId: row.embeddingModelId,
     sampleCount: row.sampleCount,
@@ -4983,7 +7671,7 @@ function toSpeakerProfileEntry(row: typeof chronicleSpeakerProfiles.$inferSelect
     lastSeenAtUnix: row.lastSeenAt,
     sourceTranscriptId: row.sourceTranscriptId,
     sourceSegmentId: row.sourceSegmentId,
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
     createdAt: new Date(row.createdAt * 1000).toISOString(),
     createdAtUnix: row.createdAt,
     updatedAt: new Date(row.updatedAt * 1000).toISOString(),
@@ -5056,60 +7744,39 @@ function failSlackSync(
   return { sourceId, status: 'error', ingested: 0, message }
 }
 
-function readSlackSourceConfig(configJson: string): SlackSourceConfig {
-  const parsed = SlackSourceConfigSchema.safeParse(parseJson<unknown>(configJson, {}))
-  if (!parsed.success) {
-    return { realtimeMode: 'polling', signingSecretRef: null, socketAppTokenRef: null }
-  }
-  return buildSlackSourceConfig(parsed.data)
-}
-
-function buildSlackSourceConfig(input: {
-  realtimeMode?: SlackRealtimeMode
-  signingSecretRef?: string | null
-  socketAppTokenRef?: string | null
-}): SlackSourceConfig {
-  return {
-    realtimeMode: input.realtimeMode ?? 'polling',
-    signingSecretRef: normalizeNullableString(input.signingSecretRef),
-    socketAppTokenRef: normalizeNullableString(input.socketAppTokenRef),
-  }
-}
-
 function mergeSlackSourceConfig(
   configJson: string,
   patch: {
-    realtimeMode?: SlackRealtimeMode
+    realtimeMode?: SlackConfigurableRealtimeMode
     signingSecretRef?: string | null
     socketAppTokenRef?: string | null
   },
 ): SlackSourceConfig {
-  const current = readSlackSourceConfig(configJson)
-  return buildSlackSourceConfig({
-    realtimeMode: patch.realtimeMode ?? current.realtimeMode,
-    signingSecretRef: patch.signingSecretRef === undefined ? current.signingSecretRef : patch.signingSecretRef,
-    socketAppTokenRef: patch.socketAppTokenRef === undefined ? current.socketAppTokenRef : patch.socketAppTokenRef,
+  const current = SlackSourceConfigJsonSchema.parse(configJson)
+  return SlackSourceConfigPatchSchema.parse({
+    current,
+    patch: {
+      realtimeMode: patch.realtimeMode,
+      signingSecretRef: patch.signingSecretRef,
+      socketAppTokenRef: patch.socketAppTokenRef,
+    },
   })
 }
 
-function normalizeChannelIds(channelIds: string[]): string[] {
-  return [...new Set(channelIds.map(channelId => channelId.trim()).filter(Boolean))]
-}
+const SlackHistoryResponseSchema = z.object({
+  ok: z.boolean().optional(),
+  error: z.string().optional(),
+  messages: z.array(z.record(z.string(), z.unknown())).default([]),
+})
 
-function normalizeNullableString(value: string | null | undefined): string | null {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-interface SlackApiResponse<T> {
-  ok?: boolean
-  error?: string
-  messages?: T[]
-  channel?: { id?: string, name?: string, is_channel?: boolean, is_group?: boolean, is_im?: boolean }
-}
+const SlackChannelInfoResponseSchema = z.object({
+  ok: z.boolean().optional(),
+  error: z.string().optional(),
+  channel: z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+  }).optional(),
+})
 
 function verifySlackSignature(input: {
   rawBody: string
@@ -5117,25 +7784,9 @@ function verifySlackSignature(input: {
   timestamp: string | null
   signingSecret: string
 }): void {
-  if (!input.signature || !input.timestamp) {
-    throw new AppError({
-      code: 'chronicle_slack_signature_missing',
-      status: 401,
-      message: 'Slack signature headers are required',
-    })
-  }
-
-  const timestampSeconds = Number(input.timestamp)
-  if (!Number.isFinite(timestampSeconds)) {
-    throw new AppError({
-      code: 'chronicle_slack_timestamp_invalid',
-      status: 401,
-      message: 'Slack request timestamp is invalid',
-    })
-  }
-
+  const parsedInput = SlackSignatureInputSchema.parse(input)
   const now = currentUnixSeconds()
-  if (Math.abs(now - timestampSeconds) > SLACK_SIGNATURE_TOLERANCE_SECONDS) {
+  if (Math.abs(now - parsedInput.timestampSeconds) > SLACK_SIGNATURE_TOLERANCE_SECONDS) {
     throw new AppError({
       code: 'chronicle_slack_timestamp_stale',
       status: 401,
@@ -5143,9 +7794,9 @@ function verifySlackSignature(input: {
     })
   }
 
-  const base = `${SLACK_SIGNATURE_VERSION}:${input.timestamp}:${input.rawBody}`
-  const expected = `${SLACK_SIGNATURE_VERSION}=${createHmac('sha256', input.signingSecret).update(base).digest('hex')}`
-  if (!safeEqualText(input.signature, expected)) {
+  const base = `${SLACK_SIGNATURE_VERSION}:${parsedInput.timestamp}:${parsedInput.rawBody}`
+  const expected = `${SLACK_SIGNATURE_VERSION}=${createHmac('sha256', parsedInput.signingSecret).update(base).digest('hex')}`
+  if (!safeEqualText(parsedInput.signature, expected)) {
     throw new AppError({
       code: 'chronicle_slack_signature_invalid',
       status: 401,
@@ -5158,22 +7809,6 @@ function safeEqualText(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left)
   const rightBuffer = Buffer.from(right)
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer)
-}
-
-function parseSlackEventsPayload(rawBody: string): Record<string, unknown> {
-  const parsed = parseJson<unknown>(rawBody, null)
-  if (!isRecord(parsed)) {
-    throw new AppError({
-      code: 'chronicle_slack_payload_invalid',
-      status: 400,
-      message: 'Slack event payload must be a JSON object',
-    })
-  }
-  return parsed
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function fetchSlackHistory(token: string, channelId: string, oldestUnix: number | null): Promise<Record<string, unknown>[]> {
@@ -5190,30 +7825,27 @@ async function fetchSlackHistory(token: string, channelId: string, oldestUnix: n
   if (!response.ok) {
     throw new Error(`Slack history request failed: ${response.status}`)
   }
-  const payload = await response.json() as SlackApiResponse<Record<string, unknown>>
+  const payload = SlackHistoryResponseSchema.parse(await response.json())
   if (!payload.ok) {
     throw new Error(`Slack history request failed: ${payload.error ?? 'unknown_error'}`)
   }
-  return payload.messages ?? []
+  return payload.messages
 }
 
 async function fetchSlackChannelNames(token: string, channelIds: string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>()
   for (const channelId of channelIds) {
-    try {
-      const url = new URL('https://slack.com/api/conversations.info')
-      url.searchParams.set('channel', channelId)
-      const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      if (!response.ok) {
-        continue
-      }
-      const payload = await response.json() as SlackApiResponse<never>
-      if (payload.ok && payload.channel?.name) {
-        names.set(channelId, payload.channel.name)
-      }
+    const url = new URL('https://slack.com/api/conversations.info')
+    url.searchParams.set('channel', channelId)
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) {
+      continue
     }
-    catch {
-      // Channel names improve display only; message ingest should still proceed.
+    const payload = SlackChannelInfoResponseSchema.parse(await response.json())
+    if (payload.ok && payload.channel?.name) {
+      names.set(channelId, payload.channel.name)
     }
   }
   return names
@@ -5271,7 +7903,7 @@ function recordSlackMessage(input: {
     messageTs: input.messageTs,
     messageAt,
     permalink: input.permalink,
-    attachmentsJson: JSON.stringify(readArray(input.raw.attachments)),
+    attachmentsJson: JSON.stringify(SlackAttachmentsSchema.parse(input.raw.attachments)),
     rawJson: JSON.stringify(input.raw),
     dedupHash,
     createdAt: now,
@@ -5314,13 +7946,8 @@ function recordSlackMessage(input: {
   return true
 }
 
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : []
-}
-
 function slackTsToUnix(value: string): number {
-  const seconds = Number(value.split('.')[0])
-  return Number.isFinite(seconds) ? Math.floor(seconds) : currentUnixSeconds()
+  return SlackTimestampTextSchema.parse(value)
 }
 
 async function getConfiguredModel(config: ChronicleConfig): Promise<string | null> {
@@ -5335,22 +7962,16 @@ async function getConfiguredModel(config: ChronicleConfig): Promise<string | nul
   return config.modelId || parsedConfig.modelId || parsedConfig.model || null
 }
 
-function recordEvent(input: {
-  type: 'config' | 'daemon' | 'snapshot' | 'memory' | 'summarize' | 'model-resource' | 'message' | 'audio' | 'activity'
-  status: 'info' | 'success' | 'warning' | 'error'
-  message: string
-  snapshotId?: string
-  memoryId?: string
-  attrs?: Record<string, unknown>
-}) {
+function recordEvent(rawInput: z.input<typeof ChronicleEventInputSchema>) {
+  const input = ChronicleEventInputSchema.parse(rawInput)
   db().insert(chronicleEvents).values({
     id: randomUUID(),
     type: input.type,
     status: input.status,
     message: input.message,
-    snapshotId: input.snapshotId ?? null,
-    memoryId: input.memoryId ?? null,
-    attrsJson: JSON.stringify(input.attrs ?? {}),
+    snapshotId: input.snapshotId,
+    memoryId: input.memoryId,
+    attrsJson: JSON.stringify(input.attrs),
     createdAt: currentUnixSeconds(),
   }).run()
 }
@@ -5401,7 +8022,7 @@ function listModelResourceRows(): ModelResourceEntry[] {
       version: row.version,
       message: row.message,
       sizeBytes: row.sizeBytes,
-      metadata: parseJson(row.metadataJson, {}),
+      metadata: JsonRecordTextSchema.parse(row.metadataJson),
       updatedAt: row.updatedAt,
     }))
 }
@@ -5430,7 +8051,7 @@ function getModelResourceEntry(category: ModelResourceCategory): ModelResourceEn
     version: row.version,
     message: row.message,
     sizeBytes: row.sizeBytes,
-    metadata: parseJson(row.metadataJson, {}),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
     updatedAt: row.updatedAt,
   }
 }
@@ -5472,7 +8093,7 @@ function buildModelResourceMetadata(
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
-    ...(manifest.metadata ?? {}),
+    ...manifest.metadata,
     manifest: {
       category: manifest.category,
       version: manifest.version,
@@ -5526,7 +8147,7 @@ async function resolveModelResourceLocalSource(
   const direct = files.find(file => file.relativePath === manifestFile.path)
   const fallbackName = basename(manifestFile.path)
   const byName = fallbackName ? files.find(file => file.relativePath === fallbackName) : undefined
-  const sourcePath = normalizeNullableString((direct ?? byName)?.sourcePath)
+  const sourcePath = (direct ?? byName)?.sourcePath ?? null
   if (sourcePath) {
     return assertLocalModelSourceFile(sourcePath, manifestFile.path)
   }
@@ -5601,7 +8222,7 @@ async function sha256File(path: string): Promise<string> {
 }
 
 async function downloadModelResourceFile(file: ModelResourceFileManifest, targetPath: string, category: string): Promise<void> {
-  const urls = [file.sourceUrl, ...(file.fallbackUrls ?? [])].filter((url): url is string => !!url)
+  const urls = [file.sourceUrl, ...file.fallbackUrls].filter((url): url is string => !!url)
   let lastError: unknown = null
   const progressContext = { category, file: file.path }
   for (const url of urls) {
@@ -5634,10 +8255,26 @@ async function downloadToFile(sourceUrl: string, targetPath: string, progressCon
       message: 'Model resource URL must use http or https',
     })
   }
-  const response = await fetch(sourceUrl, {
-    headers: { 'User-Agent': 'Cradle/1.0' },
-    redirect: 'follow',
-  })
+  const controller = new AbortController()
+  const timeoutMs = ModelResourceFetchTimeoutMsSchema.parse(process.env.CRADLE_MODEL_RESOURCE_FETCH_TIMEOUT_MS)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  let response: Response
+  try {
+    response = await fetch(sourceUrl, {
+      headers: { 'User-Agent': 'Cradle/1.0' },
+      redirect: 'follow',
+      signal: controller.signal,
+    })
+  }
+  catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`Model resource download timed out after ${timeoutMs} ms`)
+    }
+    throw error
+  }
+  finally {
+    clearTimeout(timeout)
+  }
   if (!response.ok) {
     throw new Error(`Model resource download failed: ${response.status} ${response.statusText}`)
   }
@@ -5692,6 +8329,29 @@ async function downloadToFile(sourceUrl: string, targetPath: string, progressCon
 }
 
 async function readFrameImage(relativeOrAbsolutePath: string): Promise<Response | null> {
+  const image = await readFrameImageData(relativeOrAbsolutePath)
+  if (!image) {
+    return null
+  }
+
+  return new Response(new Uint8Array(image.data), { headers: { 'Content-Type': image.contentType } })
+}
+
+async function readFrameImageData(relativeOrAbsolutePath: string): Promise<{ data: Buffer, contentType: string } | null> {
+  const resolvedPath = await resolveFrameImagePath(relativeOrAbsolutePath)
+  if (!resolvedPath) {
+    return null
+  }
+  try {
+    const data = await readFile(resolvedPath)
+    return { data, contentType: getFrameImageContentType(resolvedPath) }
+  }
+  catch {
+    return null
+  }
+}
+
+async function resolveFrameImagePath(relativeOrAbsolutePath: string): Promise<string | null> {
   const config = await getConfig()
   const storageRoot = resolve(config.storageRoot)
   const resolvedPath = isAbsolute(relativeOrAbsolutePath)
@@ -5701,20 +8361,52 @@ async function readFrameImage(relativeOrAbsolutePath: string): Promise<Response 
   if (rel.startsWith('..') || isAbsolute(rel)) {
     return null
   }
+  return resolvedPath
+}
 
-  try {
-    const data = await readFile(resolvedPath)
-    const ext = resolvedPath.split('.').pop()?.toLowerCase()
-    const contentType = ext === 'png'
-      ? 'image/png'
-      : ext === 'jpg' || ext === 'jpeg'
-        ? 'image/jpeg'
-        : 'application/octet-stream'
-    return new Response(data, { headers: { 'Content-Type': contentType } })
+function getFrameImageContentType(path: string): string {
+  const ext = path.split('.').pop()?.toLowerCase()
+  if (ext === 'png') {
+    return 'image/png'
   }
-  catch {
-    return null
+  if (ext === 'jpg' || ext === 'jpeg') {
+    return 'image/jpeg'
   }
+  return 'application/octet-stream'
+}
+
+async function maskFrameRegions(
+  source: Buffer,
+  imageWidth: number,
+  imageHeight: number,
+  mask: z.infer<typeof PrivacyFrameMaskInputSchema>,
+): Promise<Buffer> {
+  const overlays = await Promise.all(mask.regions.flatMap((region) => {
+    const left = Math.max(0, Math.floor(region.x))
+    const top = Math.max(0, Math.floor(region.y))
+    const width = Math.min(imageWidth - left, Math.floor(region.width))
+    const height = Math.min(imageHeight - top, Math.floor(region.height))
+    if (width <= 0 || height <= 0) {
+      return []
+    }
+    return [sharp(source)
+      .extract({ left, top, width, height })
+      .blur(mask.blurSigma)
+      .toBuffer()
+      .then(input => ({ input, left, top }))]
+  }))
+
+  if (overlays.length === 0) {
+    throw new AppError({
+      code: 'chronicle_privacy_frame_mask_regions_outside_image',
+      status: 400,
+      message: 'Frame mask regions are outside the source image',
+    })
+  }
+
+  return sharp(source)
+    .composite(overlays)
+    .toBuffer()
 }
 
 function toMemoryEntry(
@@ -5816,19 +8508,19 @@ function mergeDuplicateMemory(
   },
 ): typeof chronicleMemories.$inferSelect {
   const mergedSourceIds = [...new Set([
-    ...readStringArrayFromMetadata(duplicate.metadataJson, 'duplicateSourceIds'),
+    ...DuplicateMemoryMetadataTextSchema.parse(duplicate.metadataJson).duplicateSourceIds,
     input.sourceId,
   ])]
   const mergedSourcePaths = [...new Set([
-    ...parseJson<string[]>(duplicate.sourcePathsJson, []),
+    ...StringListTextSchema.parse(duplicate.sourcePathsJson),
     ...input.sourcePaths,
   ])]
   const mergedSourceSnapshotIds = [...new Set([
-    ...parseJson<string[]>(duplicate.sourceSnapshotIdsJson, []),
+    ...StringListTextSchema.parse(duplicate.sourceSnapshotIdsJson),
     ...input.sourceSnapshotIds,
   ])]
   const metadata = {
-    ...parseJson<Record<string, unknown>>(duplicate.metadataJson, {}),
+    ...JsonRecordTextSchema.parse(duplicate.metadataJson),
     duplicateSourceIds: mergedSourceIds,
     duplicateLastSeenAt: input.now,
   }
@@ -5987,16 +8679,18 @@ function buildCombinedMemorySearchScore(match: MemorySearchScore, phraseContaine
 }
 
 function currentTextEmbeddingVectorMode(): string {
-  return onnxEmbeddingResourceAvailable()
+  return getOnnxEmbeddingRuntimeHealth().ok
     ? `${ONNX_TEXT_EMBEDDING_MODEL_ID}/${ONNX_TEXT_EMBEDDING_MODEL_VERSION}`
     : `${MEMORY_EMBEDDING_MODEL_ID}/${MEMORY_EMBEDDING_MODEL_VERSION}`
 }
 
 function buildTextEmbeddingVector(text: string): TextEmbeddingVector {
-  if (onnxEmbeddingResourceAvailable()) {
+  if (getOnnxEmbeddingRuntimeHealth().ok) {
     try {
-      const response = DaemonManager.runEmbeddingBatch([text], getModelResourcesRoot())
-      validateEmbeddingBatch(response.embeddings, 1, response.dimensions)
+      const response = EmbeddingBatchSchema.parse(DaemonManager.runEmbeddingBatch([text], getModelResourcesRoot()))
+      if (response.embeddings.length !== 1) {
+        throw new Error('embedding response has an invalid embedding count')
+      }
       return {
         vector: response.embeddings[0]!,
         modelId: response.modelId,
@@ -6029,17 +8723,59 @@ function onnxEmbeddingResourceAvailable(): boolean {
     .every(file => existsSync(getModelResourceAbsolutePath(file.path)))
 }
 
-function validateEmbeddingBatch(embeddings: number[][], expectedCount: number, dimensions: number): void {
-  if (!Number.isInteger(dimensions) || dimensions <= 0) {
-    throw new Error('embedding response has invalid dimensions')
-  }
-  if (embeddings.length !== expectedCount) {
-    throw new Error('embedding response has an invalid embedding count')
-  }
-  for (const embedding of embeddings) {
-    if (embedding.length !== dimensions || embedding.some(value => !Number.isFinite(value))) {
-      throw new Error('embedding response contains an invalid vector')
+function clearEmbeddingRuntimeHealth(): void {
+  embeddingRuntimeHealth = null
+}
+
+function getOnnxEmbeddingRuntimeHealth(): { ok: boolean, error: string | null } {
+  if (!onnxEmbeddingResourceAvailable()) {
+    return {
+      ok: false,
+      error: 'Chronicle ONNX embedding model is not installed',
     }
+  }
+
+  const now = Date.now()
+  if (embeddingRuntimeHealth && now - embeddingRuntimeHealth.checkedAtMs < EMBEDDING_RUNTIME_HEALTH_CACHE_MS) {
+    return {
+      ok: embeddingRuntimeHealth.ok,
+      error: embeddingRuntimeHealth.error,
+    }
+  }
+
+  try {
+    const response = EmbeddingBatchSchema.parse(DaemonManager.runEmbeddingBatch(
+      ['chronicle embedding health probe'],
+      getModelResourcesRoot(),
+      { timeoutMs: EMBEDDING_RUNTIME_HEALTH_TIMEOUT_MS },
+    ))
+    if (response.embeddings.length !== 1) {
+      throw new Error('embedding response has an invalid embedding count')
+    }
+    embeddingRuntimeHealth = {
+      checkedAtMs: now,
+      ok: true,
+      error: null,
+    }
+  }
+  catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    embeddingRuntimeHealth = {
+      checkedAtMs: now,
+      ok: false,
+      error: errorMessage,
+    }
+    recordEvent({
+      type: 'model-resource',
+      status: 'error',
+      message: errorMessage,
+      attrs: { category: 'embedding', runtime: 'local-onnx', phase: 'health-check' },
+    })
+  }
+
+  return {
+    ok: embeddingRuntimeHealth.ok,
+    error: embeddingRuntimeHealth.error,
   }
 }
 
@@ -6078,15 +8814,6 @@ function normalizeVector(vector: number[]): number[] {
   return vector.map(value => Number((value / norm).toFixed(6)))
 }
 
-function parseEmbeddingVector(vectorJson: string, dimensions: number): number[] | null {
-  const parsed = parseJson<unknown>(vectorJson, null)
-  if (!Array.isArray(parsed) || parsed.length !== dimensions) {
-    return null
-  }
-  const vector = parsed.map(value => typeof value === 'number' && Number.isFinite(value) ? value : null)
-  return vector.every(value => value !== null) ? vector as number[] : null
-}
-
 function cosineSimilarity(left: number[], right: number[]): number {
   if (left.length !== right.length || left.length === 0) {
     return 0
@@ -6107,12 +8834,6 @@ function cosineSimilarity(left: number[], right: number[]): number {
   return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm))
 }
 
-function readStringArrayFromMetadata(metadataJson: string, key: string): string[] {
-  const metadata = parseJson<Record<string, unknown>>(metadataJson, {})
-  const value = metadata[key]
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
-}
-
 function findSnapshotIdsByPaths(paths: string[]): string[] {
   if (paths.length === 0) {
     return []
@@ -6125,94 +8846,97 @@ function findSnapshotIdsByPaths(paths: string[]): string[] {
     .map(row => row.id)
 }
 
-function parseTimestamp(value: string): number | null {
-  const normalized = value.trim()
-  if (!normalized) {
-    return null
-  }
-  const asDate = Date.parse(normalized.replace(/(\d{2})-(\d{2})-(\d{2})Z$/, '$1:$2:$3Z'))
-  if (!Number.isNaN(asDate)) {
-    return Math.floor(asDate / 1000)
-  }
-  const asNumber = Number(normalized)
-  return Number.isFinite(asNumber) ? Math.floor(asNumber) : null
-}
-
-function readRequiredAudioTimestamp(value: string, field: 'startedAt' | 'endedAt' | 'lastSeenAt'): number {
-  const parsed = parseTimestamp(value)
-  if (parsed !== null) {
-    return parsed
-  }
-  throw new AppError({
-    code: 'chronicle_audio_transcript_timestamp_invalid',
-    status: 400,
-    message: `Audio transcript ${field} must be a valid timestamp`,
-  })
-}
-
-function readRequiredAudioRawSegmentTimestamp(value: string): number {
-  const parsed = parseTimestamp(value)
-  if (parsed !== null) {
-    return parsed
-  }
-  throw new AppError({
-    code: 'chronicle_audio_raw_segment_timestamp_invalid',
-    status: 400,
-    message: 'Audio raw segment recordedAt must be a valid timestamp',
-  })
-}
-
-function estimateAudioDurationMs(sampleCount: number, sampleRate: number): number {
-  if (!Number.isFinite(sampleCount) || !Number.isFinite(sampleRate) || sampleRate <= 0) {
-    return 0
-  }
-  return Math.round((Math.max(0, sampleCount) / sampleRate) * 1000)
-}
-
-function ratioToBps(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0
-  }
-  return Math.round(Math.max(0, Math.min(1, value)) * 10_000)
-}
-
 function bpsToRatio(value: number): number {
   return Number((value / 10_000).toFixed(4))
-}
-
-function validateAudioTranscriptSegments(segments: AudioTranscriptSegmentInput[]): void {
-  for (const [index, segment] of segments.entries()) {
-    if (segment.endMs !== undefined && segment.endMs !== null && segment.endMs < segment.startMs) {
-      throw new AppError({
-        code: 'chronicle_audio_transcript_segment_range_invalid',
-        status: 400,
-        message: `Audio transcript segment ${index} endMs must be greater than or equal to startMs`,
-      })
-    }
-  }
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
 }
 
 function boundedString(value: string, maxLength: number): string {
   return value.length <= maxLength ? value : value.slice(0, maxLength)
 }
 
-function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback
-  }
+function boundedNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-function parseJson<T>(value: string, fallback: T): T {
+function unixSecondsToIso(value: number | null): string | null {
+  return value === null ? null : new Date(value * 1000).toISOString()
+}
+
+type ChronicleCountTable =
+  | 'chronicle_accessibility_events'
+  | 'chronicle_accessibility_snapshots'
+  | 'chronicle_activity_segments'
+  | 'chronicle_activity_sessions'
+  | 'chronicle_audio_raw_segments'
+  | 'chronicle_audio_transcripts'
+  | 'chronicle_dream_runs'
+  | 'chronicle_knowledge_cards'
+  | 'chronicle_knowledge_versions'
+  | 'chronicle_memories'
+  | 'chronicle_memory_chunks'
+  | 'chronicle_memory_embeddings'
+  | 'chronicle_memory_keywords'
+  | 'chronicle_messages'
+  | 'chronicle_model_resources'
+  | 'chronicle_pipeline_runs'
+  | 'chronicle_snapshots'
+
+function countTable(tableName: ChronicleCountTable): number {
+  return db().get<{ count: number }>(sql.raw(`SELECT COUNT(*) AS count FROM ${tableName}`))?.count ?? 0
+}
+
+async function collectDirectoryStats(root: string): Promise<{
+  exists: boolean
+  fileCount: number
+  directoryCount: number
+  totalBytes: number
+}> {
   try {
-    return JSON.parse(value) as T
+    const rootStat = await stat(root)
+    if (!rootStat.isDirectory()) {
+      return {
+        exists: true,
+        fileCount: 1,
+        directoryCount: 0,
+        totalBytes: rootStat.size,
+      }
+    }
   }
   catch {
-    return fallback
+    return {
+      exists: false,
+      fileCount: 0,
+      directoryCount: 0,
+      totalBytes: 0,
+    }
+  }
+
+  let fileCount = 0
+  let directoryCount = 0
+  let totalBytes = 0
+  const entries = await readdir(root, { withFileTypes: true })
+  for (const entry of entries) {
+    const entryPath = resolve(root, entry.name)
+    if (entry.isDirectory()) {
+      directoryCount += 1
+      const child = await collectDirectoryStats(entryPath)
+      fileCount += child.fileCount
+      directoryCount += child.directoryCount
+      totalBytes += child.totalBytes
+      continue
+    }
+    if (!entry.isFile()) {
+      continue
+    }
+    const entryStat = await stat(entryPath)
+    fileCount += 1
+    totalBytes += entryStat.size
+  }
+  return {
+    exists: true,
+    fileCount,
+    directoryCount,
+    totalBytes,
   }
 }
 

@@ -21,8 +21,9 @@ import {
 } from 'lucide-react'
 import { m } from 'motion/react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Children, useEffect, useMemo, useRef, useState } from 'react'
 import type { Highlighter } from 'shiki'
+import { z } from 'zod'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -31,14 +32,10 @@ import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
-import type { RenderableToolPart, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
+import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
 import {
   describeToolCall,
-  isRecord,
-  materializeStreamingToolInput,
-  readNumberValue,
-  readStringArray,
-  readStringValue,
+  ToolPayloadSchema,
 } from '../tool-ui-classifier'
 import { EditFileBlock } from './edit-file-block'
 
@@ -86,6 +83,23 @@ const BACKSLASH_PATTERN = /\\/g
 const TRAILING_NEWLINE_PATTERN = /\n$/
 const TERMINAL_HIGHLIGHT_MAX_CHARS = 12_000
 const TERMINAL_HIGHLIGHT_MAX_LINES = 240
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number().finite(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(JsonValueSchema),
+  ]),
+)
+const DisplayValueTextSchema = z.union([
+  z.string(),
+  z.null().transform(() => ''),
+  z.undefined().transform(() => ''),
+  JsonValueSchema.transform(value => JSON.stringify(value, null, 2)),
+])
 
 let bashHighlighterPromise: Promise<Highlighter> | null = null
 
@@ -115,18 +129,7 @@ function isError(state: ToolState): boolean {
 }
 
 function formatValue(value: unknown): string {
-  if (value === undefined || value === null) {
-    return ''
-  }
-  if (typeof value === 'string') {
-    return value
-  }
-  try {
-    return JSON.stringify(value, null, 2)
-  }
-  catch {
-    return String(value)
-  }
+  return DisplayValueTextSchema.parse(value)
 }
 
 function basename(value: string): string {
@@ -144,33 +147,17 @@ function safePercent(value: number | null, max: number): number {
   return Math.min(100, Math.max(0, (value / max) * 100))
 }
 
-function readObjectArray(value: unknown, key: string): Record<string, unknown>[] {
-  if (!isRecord(value) || !Array.isArray(value[key])) {
-    return []
-  }
-  return value[key].filter(isRecord)
-}
-
-function readNestedRecord(value: unknown, key: string): Record<string, unknown> | null {
-  if (!isRecord(value) || !isRecord(value[key])) {
-    return null
-  }
-  return value[key]
-}
-
 interface TerminalOutputSection {
   label: string
   text: string
   destructive: boolean
 }
 
-function readTerminalOutputSections(output: unknown, errorText?: string): TerminalOutputSection[] {
+function readTerminalOutputSections(output: ToolPayload, errorText?: string): TerminalOutputSection[] {
   const sections: TerminalOutputSection[] = []
-  const stderr = readStringValue(output, ['stderr'])
-  const stdout = readStringValue(output, ['stdout'])
-  const fallback = typeof output === 'string'
-    ? output
-    : readStringValue(output, ['output', 'result', 'content', 'text'])
+  const stderr = output.stderr
+  const stdout = output.stdout
+  const fallback = output.rawText ?? output.outputText ?? output.contentText ?? output.text
 
   if (errorText) {
     sections.push({ label: 'Error', text: errorText, destructive: true })
@@ -198,15 +185,17 @@ function summarizeTerminalOutput(sections: TerminalOutputSection[]): string {
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function hasTerminalOutput(output: unknown, errorText?: string): boolean {
-  return readTerminalOutputSections(output, errorText).length > 0
+  return readTerminalOutputSections(ToolPayloadSchema.parse(output), errorText).length > 0
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function hasTerminalDetails(input: unknown, output: unknown, errorText?: string): boolean {
-  return readStringValue(input, ['command', 'cmd']) !== null
-    || readNumberValue(input, ['timeout']) !== null
-    || readStringValue(output, ['backgroundTaskId']) !== null
-    || hasTerminalOutput(output, errorText)
+  const inputPayload = ToolPayloadSchema.parse(input)
+  const outputPayload = ToolPayloadSchema.parse(output)
+  return inputPayload.command !== null
+    || inputPayload.timeout !== null
+    || outputPayload.backgroundTaskId !== null
+    || readTerminalOutputSections(outputPayload, errorText).length > 0
 }
 
 interface EditDiffPreview {
@@ -215,20 +204,16 @@ interface EditDiffPreview {
   newContent: string
 }
 
-function readEditDiffPreview(input: unknown, output: unknown): EditDiffPreview | null {
-  const filePath = readStringValue(input, ['file_path', 'filePath', 'path'])
-    ?? readStringValue(output, ['filePath', 'file_path', 'path'])
+function readEditDiffPreview(input: ToolPayload, output: ToolPayload): EditDiffPreview | null {
+  const filePath = input.filePath ?? output.filePath
   if (!filePath) {
     return null
   }
 
-  const oldString = readStringValue(input, ['old_string', 'oldString'])
-    ?? readStringValue(output, ['oldString', 'old_string'])
-  const newString = readStringValue(input, ['new_string', 'newString'])
-    ?? readStringValue(output, ['newString', 'new_string'])
-  const originalFile = readStringValue(output, ['originalFile', 'original_file'])
-  const writtenContent = readStringValue(input, ['content'])
-    ?? readStringValue(output, ['content'])
+  const oldString = input.oldString ?? output.oldString
+  const newString = input.newString ?? output.newString
+  const originalFile = output.originalFile
+  const writtenContent = input.contentText ?? output.contentText
 
   if (originalFile && oldString && newString) {
     return {
@@ -257,35 +242,29 @@ function readEditDiffPreview(input: unknown, output: unknown): EditDiffPreview |
   return null
 }
 
-function readStreamingInputText(input: unknown): string | null {
-  if (typeof input === 'string') {
-    return input
-  }
-  return readStringValue(input, ['input'])
+function readStreamingInputText(input: ToolPayload): string | null {
+  return input.rawText ?? input.inputText
 }
 
-function readEditTarget(input: unknown, output: unknown): string | null {
-  return readStringValue(input, ['file_path', 'filePath', 'path', 'file', 'filename'])
-    ?? readStringValue(output, ['filePath', 'file_path', 'path', 'filename'])
+function readEditTarget(input: ToolPayload, output: ToolPayload): string | null {
+  return input.filePath ?? output.filePath
 }
 
-function readEditPayloadSize(input: unknown): number {
+function readEditPayloadSize(input: ToolPayload): number {
   const streamingText = readStreamingInputText(input)
   if (streamingText) {
     return streamingText.length
   }
   const parts = [
-    readStringValue(input, ['old_string', 'oldString']),
-    readStringValue(input, ['new_string', 'newString']),
-    readStringValue(input, ['content']),
-  ].filter((value): value is string => typeof value === 'string')
+    input.oldString,
+    input.newString,
+    input.contentText,
+  ].filter((value): value is string => value !== null)
   return parts.reduce((total, value) => total + value.length, 0)
 }
 
-function readReplaceAll(input: unknown, output: unknown): boolean {
-  return (isRecord(input) && input.replace_all === true)
-    || (isRecord(input) && input.replaceAll === true)
-    || (isRecord(output) && output.replaceAll === true)
+function readReplaceAll(input: ToolPayload, output: ToolPayload): boolean {
+  return input.replaceAll === true || output.replaceAll === true
 }
 
 function applyEditPreview(originalFile: string, oldString: string, newString: string, replaceAll: boolean): string {
@@ -411,10 +390,12 @@ export function TerminalExecutionDetails({
   errorText?: string
   className?: string
 }) {
-  const sections = readTerminalOutputSections(output, errorText)
-  const command = readStringValue(input, ['command', 'cmd'])
-  const timeout = readNumberValue(input, ['timeout'])
-  const backgroundTaskId = readStringValue(output, ['backgroundTaskId'])
+  const inputPayload = ToolPayloadSchema.parse(input)
+  const outputPayload = ToolPayloadSchema.parse(output)
+  const sections = readTerminalOutputSections(outputPayload, errorText)
+  const command = inputPayload.command
+  const timeout = inputPayload.timeout
+  const backgroundTaskId = outputPayload.backgroundTaskId
 
   if (!command && timeout === null && !backgroundTaskId && sections.length === 0) {
     return null
@@ -459,7 +440,7 @@ export function TerminalExecutionDetails({
   )
 }
 
-function TerminalCollapsedSummary({ output, errorText }: { output: unknown, errorText?: string }) {
+function TerminalCollapsedSummary({ output, errorText }: { output: ToolPayload, errorText?: string }) {
   const sections = readTerminalOutputSections(output, errorText)
   if (sections.length === 0) {
     return null
@@ -521,7 +502,7 @@ function PathList({ paths, emptyText = 'No paths returned' }: { paths: string[],
   )
 }
 
-function ToolHero({ descriptor, state, input, output, errorText }: { descriptor: ToolUiDescriptor, state: ToolState, input: unknown, output: unknown, errorText?: string }) {
+function ToolHero({ descriptor, state, input, output, errorText }: { descriptor: ToolUiDescriptor, state: ToolState, input: ToolPayload, output: ToolPayload, errorText?: string }) {
   switch (descriptor.kind) {
     case 'terminal':
       return <TerminalSummary output={output} errorText={errorText} />
@@ -554,19 +535,19 @@ function ToolHero({ descriptor, state, input, output, errorText }: { descriptor:
   }
 }
 
-function TerminalSummary({ output, errorText }: { output: unknown, errorText?: string }) {
+function TerminalSummary({ output, errorText }: { output: ToolPayload, errorText?: string }) {
   return <TerminalCollapsedSummary output={output} errorText={errorText} />
 }
 
-function FileReadSummary({ output }: { output: unknown }) {
-  const outputType = readStringValue(output, ['type'])
-  const file = readNestedRecord(output, 'file')
+function FileReadSummary({ output }: { output: ToolPayload }) {
+  const outputType = output.type
+  const file = output.file
   if (!file) {
     return null
   }
   if (outputType === 'image') {
-    const mimeType = readStringValue(file, ['type']) ?? 'image/png'
-    const base64 = readStringValue(file, ['base64'])
+    const mimeType = file.type ?? 'image/png'
+    const base64 = file.base64
     return base64
       ? (
           <img
@@ -578,23 +559,22 @@ function FileReadSummary({ output }: { output: unknown }) {
       : null
   }
   if (outputType === 'text') {
-    const content = readStringValue(file, ['content'])
-    return <RawValue value={content} />
+    return <RawValue value={file.content} />
   }
   return (
     <KeyValueTable
       rows={[
         ['Type', outputType],
-        ['Path', readStringValue(file, ['filePath'])],
-        ['Size', readNumberValue(file, ['originalSize'])],
-        ['Pages', readNumberValue(file, ['count'])],
-        ['Output', readStringValue(file, ['outputDir'])],
+        ['Path', file.filePath],
+        ['Size', file.originalSize],
+        ['Pages', file.count],
+        ['Output', file.outputDir],
       ]}
     />
   )
 }
 
-function DiffSummary({ input, output, state }: { input: unknown, output: unknown, state: ToolState }) {
+function DiffSummary({ input, output, state }: { input: ToolPayload, output: ToolPayload, state: ToolState }) {
   const editPreview = readEditDiffPreview(input, output)
   if (editPreview) {
     return (
@@ -631,39 +611,31 @@ function DiffSummary({ input, output, state }: { input: unknown, output: unknown
     )
   }
 
-  const gitDiff = readNestedRecord(output, 'gitDiff')
-  const patch = readStringValue(gitDiff, ['patch'])
+  const patch = output.gitDiff.patch
   if (patch) {
     return <RawValue value={patch} className="max-h-64" />
   }
-  const structuredPatch = readObjectArray(output, 'structuredPatch')
-  if (structuredPatch.length > 0) {
-    const lines = structuredPatch.flatMap(hunk => Array.isArray(hunk.lines) ? hunk.lines : [])
+  if (output.structuredPatch.length > 0) {
+    const lines = output.structuredPatch.flatMap(hunk => hunk.lines)
     return <RawValue value={lines.join('\n')} className="max-h-64" />
   }
   return <p className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">File change prepared.</p>
 }
 
-function SearchSummary({ output }: { output: unknown }) {
-  const filenames = readStringArray(output, ['filenames'])
-  const content = readStringValue(output, ['content'])
+function SearchSummary({ output }: { output: ToolPayload }) {
+  const filenames = output.filenames
+  const content = output.contentText
   if (content) {
     return <RawValue value={content} />
   }
   return <PathList paths={filenames} emptyText="Search returned no files." />
 }
 
-function WebSummary({ output }: { output: unknown }) {
-  const results = isRecord(output) && Array.isArray(output.results) ? output.results : []
-  const links = results.flatMap((item) => {
-    if (!isRecord(item) || !Array.isArray(item.content)) {
-      return []
-    }
-    return item.content.filter(isRecord).map(hit => ({
-      title: readStringValue(hit, ['title']) ?? 'Untitled',
-      url: readStringValue(hit, ['url']) ?? '',
-    }))
-  })
+function WebSummary({ output }: { output: ToolPayload }) {
+  const links = output.results.flatMap(item => item.content.map(hit => ({
+    title: hit.title ?? 'Untitled',
+    url: hit.url ?? '',
+  })))
   if (links.length > 0) {
     return (
       <div className="grid gap-1">
@@ -685,11 +657,9 @@ function WebSummary({ output }: { output: unknown }) {
   return null
 }
 
-function SubagentSummary({ output }: { output: unknown }) {
-  const status = readStringValue(output, ['status'])
-  const content = isRecord(output) && Array.isArray(output.content)
-    ? output.content.filter(isRecord).map(item => readStringValue(item, ['text'])).filter(Boolean).join('\n\n')
-    : ''
+function SubagentSummary({ output }: { output: ToolPayload }) {
+  const status = output.status
+  const content = output.contentBlocks.map(item => item.text).filter(Boolean).join('\n\n')
 
   if (!status && !content) {
     return null
@@ -701,7 +671,7 @@ function SubagentSummary({ output }: { output: unknown }) {
         <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300">
           <ClockIcon className="size-4" aria-hidden />
           <AlertTitle>Background agent launched</AlertTitle>
-          <AlertDescription>{readStringValue(output, ['outputFile']) ?? 'Output will be available when the task completes.'}</AlertDescription>
+          <AlertDescription>{output.outputFile ?? 'Output will be available when the task completes.'}</AlertDescription>
         </Alert>
       )}
       {content && <RawValue value={content} />}
@@ -709,26 +679,26 @@ function SubagentSummary({ output }: { output: unknown }) {
   )
 }
 
-function TodoSummary({ output }: { output: unknown }) {
-  const todos = readObjectArray(output, 'newTodos')
+function TodoSummary({ output }: { output: ToolPayload }) {
+  const todos = output.newTodos
   if (todos.length === 0) {
     return <RawValue value={output} />
   }
-  const completed = todos.filter(todo => readStringValue(todo, ['status']) === 'completed').length
+  const completed = todos.filter(todo => todo.status === 'completed').length
   return (
     <div className="grid gap-2">
       <Progress value={safePercent(completed, todos.length)} className="h-1.5" />
       <div className="grid gap-1">
         {todos.map(todo => (
-          <div key={readStringValue(todo, ['content']) ?? readStringValue(todo, ['activeForm']) ?? JSON.stringify(todo)} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5">
+          <div key={todo.content ?? todo.activeForm ?? JSON.stringify(todo)} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5">
             <CheckCircle2Icon
               className={cn(
                 'mt-0.5 size-3.5 shrink-0',
-                readStringValue(todo, ['status']) === 'completed' ? 'text-emerald-500' : 'text-muted-foreground',
+                todo.status === 'completed' ? 'text-emerald-500' : 'text-muted-foreground',
               )}
               aria-hidden
             />
-            <span className="text-xs text-foreground/85">{readStringValue(todo, ['content'])}</span>
+            <span className="text-xs text-foreground/85">{todo.content}</span>
           </div>
         ))}
       </div>
@@ -736,8 +706,8 @@ function TodoSummary({ output }: { output: unknown }) {
   )
 }
 
-function QuestionSummary({ output }: { output: unknown }) {
-  const answers = isRecord(output) && isRecord(output.answers) ? output.answers : null
+function QuestionSummary({ output }: { output: ToolPayload }) {
+  const answers = output.answers
   if (!answers) {
     return <RawValue value={output} />
   }
@@ -750,8 +720,8 @@ function QuestionSummary({ output }: { output: unknown }) {
 
 function _ToolDetails({ descriptor, input, output, errorText, children }: {
   descriptor: ToolUiDescriptor
-  input: unknown
-  output: unknown
+  input: ToolPayload
+  output: ToolPayload
   errorText?: string
   children?: ReactNode
 }) {
@@ -777,15 +747,15 @@ function _ToolDetails({ descriptor, input, output, errorText, children }: {
   )
 }
 
-function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUiDescriptor, input: unknown, output: unknown }) {
+function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUiDescriptor, input: ToolPayload, output: ToolPayload }) {
   switch (descriptor.kind) {
     case 'terminal':
       return (
         <KeyValueTable
           rows={[
-            ['Command', readStringValue(input, ['command', 'cmd'])],
-            ['Timeout', readNumberValue(input, ['timeout'])],
-            ['Background', readStringValue(output, ['backgroundTaskId'])],
+            ['Command', input.command],
+            ['Timeout', input.timeout],
+            ['Background', output.backgroundTaskId],
           ]}
         />
       )
@@ -795,11 +765,11 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
       return (
         <KeyValueTable
           rows={[
-            ['Pattern', readStringValue(input, ['pattern'])],
-            ['Path', readStringValue(input, ['path'])],
-            ['Mode', readStringValue(input, ['output_mode']) ?? readStringValue(output, ['mode'])],
-            ['Files', readNumberValue(output, ['numFiles'])],
-            ['Matches', readNumberValue(output, ['numMatches'])],
+            ['Pattern', input.pattern],
+            ['Path', input.filePath],
+            ['Mode', output.mode],
+            ['Files', output.numFiles],
+            ['Matches', output.numMatches],
           ]}
         />
       )
@@ -807,9 +777,9 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
       return (
         <KeyValueTable
           rows={[
-            ['URL', readStringValue(input, ['url']) ?? readStringValue(output, ['url'])],
-            ['Query', readStringValue(input, ['query']) ?? readStringValue(output, ['query'])],
-            ['Status', readNumberValue(output, ['code'])],
+            ['URL', input.url ?? output.url],
+            ['Query', input.query ?? output.query],
+            ['Status', output.code],
           ]}
         />
       )
@@ -817,9 +787,9 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
       return (
         <KeyValueTable
           rows={[
-            ['Path', readStringValue(output, ['worktreePath']) ?? readStringValue(input, ['path'])],
-            ['Branch', readStringValue(output, ['worktreeBranch'])],
-            ['Action', readStringValue(output, ['action'])],
+            ['Path', output.worktreeTarget ?? input.worktreeTarget],
+            ['Branch', output.worktreeBranch],
+            ['Action', output.action],
           ]}
         />
       )
@@ -828,17 +798,17 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
   }
 }
 
-function FileDiffDetails({ input, output }: { input: unknown, output: unknown }) {
+function FileDiffDetails({ input, output }: { input: ToolPayload, output: ToolPayload }) {
   const editPreview = readEditDiffPreview(input, output)
 
   return (
     <div className="grid gap-2">
       <KeyValueTable
         rows={[
-          ['File', readStringValue(input, ['file_path', 'filePath']) ?? readStringValue(output, ['filePath'])],
-          ['Mode', readStringValue(output, ['type'])],
-          ['Replace all', isRecord(input) && input.replace_all === true ? 'Yes' : null],
-          ['User modified', isRecord(output) && output.userModified === true ? 'Yes' : null],
+          ['File', input.filePath ?? output.filePath],
+          ['Mode', output.type],
+          ['Replace all', input.replaceAll === true ? 'Yes' : null],
+          ['User modified', output.userModified === true ? 'Yes' : null],
         ]}
       />
       {editPreview && (
@@ -872,50 +842,54 @@ function StatusIcon({ state }: { state: ToolState }) {
   return <ClockIcon className={cn('size-3.5 text-muted-foreground', isRunning(state) && 'animate-pulse')} aria-hidden />
 }
 
-function hasHeroContent(descriptor: ToolUiDescriptor, input: unknown, output: unknown, errorText?: string): boolean {
+function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output: ToolPayload, errorText?: string): boolean {
   if (errorText) {
     return true
   }
   switch (descriptor.kind) {
     case 'terminal':
-      return hasTerminalOutput(output, errorText)
+      return readTerminalOutputSections(output, errorText).length > 0
     case 'file-read':
-      return readNestedRecord(output, 'file') !== null
+      return output.file !== null
     case 'file-diff':
       return readEditDiffPreview(input, output) !== null
         || readEditTarget(input, output) !== null
         || readEditPayloadSize(input) > 0
-    case 'web': {
-      const results = isRecord(output) && Array.isArray(output.results) ? output.results : []
-      return results.some(item => isRecord(item) && Array.isArray((item as Record<string, unknown>).content))
-    }
-    case 'subagent': {
-      const status = readStringValue(output, ['status'])
-      const content = isRecord(output) && Array.isArray(output.content) ? output.content : []
-      return !!(status || content.length > 0)
-    }
+    case 'web':
+      return output.results.some(item => item.content.length > 0)
+    case 'subagent':
+      return !!(output.status || output.contentBlocks.length > 0)
     default:
-      return output !== undefined && output !== null
+      return output.rawText !== null
+        || output.outputText !== null
+        || output.contentText !== null
+        || output.text !== null
   }
 }
 
 export function ToolCallBlock({ toolName, toolCallId, state, input, output, errorText, children }: ToolCallBlockProps) {
-  const displayInput = useMemo(() => materializeStreamingToolInput(input), [input])
+  const inputPayload = useMemo(() => ToolPayloadSchema.parse(input), [input])
+  const outputPayload = useMemo(() => ToolPayloadSchema.parse(output), [output])
   const descriptor = useMemo(() => {
     const part: RenderableToolPart = {
       type: 'dynamic-tool',
       toolName,
       toolCallId,
       state,
-      input: displayInput,
+      input,
       output,
       errorText,
     }
     return describeToolCall(part)
-  }, [displayInput, errorText, output, state, toolCallId, toolName])
+  }, [errorText, input, output, state, toolCallId, toolName])
 
-  const hasTerminalPanel = descriptor.kind === 'terminal' && hasTerminalDetails(displayInput, output, errorText)
-  const hasChildren = Array.isArray(children) ? children.some(c => c !== null && c !== undefined && c !== false) : !!children
+  const hasTerminalPanel = descriptor.kind === 'terminal' && (
+    inputPayload.command !== null
+    || inputPayload.timeout !== null
+    || outputPayload.backgroundTaskId !== null
+    || readTerminalOutputSections(outputPayload, errorText).length > 0
+  )
+  const hasChildren = Children.toArray(children).length > 0
   const expandable = hasTerminalPanel || hasChildren
   const [expanded, setExpanded] = useState(() => isError(state) && hasTerminalPanel)
   const Icon = TOOL_ICON_MAP[descriptor.kind]
@@ -1040,13 +1014,13 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
 
         {hasTerminalPanel && expanded && (
           <div className="px-3 pb-3">
-            <TerminalExecutionDetails input={displayInput} output={output} errorText={errorText} />
+            <TerminalExecutionDetails input={input} output={output} errorText={errorText} />
           </div>
         )}
 
-        {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, displayInput, output, errorText) && (
+        {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
           <div className="px-3 pb-3">
-            <ToolHero descriptor={descriptor} state={state} input={displayInput} output={output} errorText={errorText} />
+            <ToolHero descriptor={descriptor} state={state} input={inputPayload} output={outputPayload} errorText={errorText} />
           </div>
         )}
       </div>

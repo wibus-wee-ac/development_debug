@@ -6,43 +6,48 @@ import { printResult } from './output'
 import type { CliOperationSpec, CliOutputFormat, CliValueType } from './types'
 
 const OutputFormatSchema = z.enum(['auto', 'json', 'pretty', 'table', 'ndjson'])
+const CliHttpMethodSchema = z.enum(['delete', 'get', 'patch', 'post', 'put'])
+const CliValueTypeSchema = z.enum(['boolean', 'json', 'number', 'string', 'string[]'])
+const CliArgumentSpecSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  target: z.string(),
+  required: z.boolean().optional(),
+  type: CliValueTypeSchema.default('string'),
+})
+const CliFlagSpecSchema = CliArgumentSpecSchema.extend({
+  values: z.array(z.string()).optional(),
+})
+const CliOperationSpecSchema = z.object({
+  command: z.array(z.string()).min(1),
+  description: z.string().optional(),
+  method: CliHttpMethodSchema,
+  path: z.string(),
+  arguments: z.array(CliArgumentSpecSchema).default([]),
+  flags: z.array(CliFlagSpecSchema).default([]),
+})
+
 const JsonFieldsOptionSchema = z.union([
   z.string()
     .transform(value => value.split(',').map(field => field.trim()).filter(Boolean))
-    .transform(fields => fields.length > 0 ? fields : undefined),
+    .pipe(z.array(z.string()).min(1)),
   z.boolean().transform(() => undefined),
   z.undefined(),
 ])
 
 const CliValueSchemas = {
-  string: z.unknown(),
-  number: z.coerce.number(),
+  string: z.string().optional(),
+  number: z.coerce.number().optional(),
   boolean: z.union([
     z.boolean(),
     z.enum(['true', 'false']).transform(value => value === 'true'),
-  ]),
+  ]).optional(),
   'string[]': z.union([
     z.array(z.string()),
     z.string().transform(value => value.split(',').map(item => item.trim()).filter(Boolean)),
-  ]),
-  json: z.union([
-    z.string().transform(value => JSON.parse(value)),
-    z.unknown(),
-  ]),
+  ]).optional(),
+  json: z.string().transform(value => JSON.parse(value)).optional(),
 } satisfies Record<CliValueType, z.ZodTypeAny>
-
-function parseBooleanValue(value: unknown): boolean {
-  if (typeof value === 'boolean') {
-    return value
-  }
-  if (value === 'true') {
-    return true
-  }
-  if (value === 'false') {
-    return false
-  }
-  throw new Error('Expected a boolean')
-}
 
 function findSubcommand(parent: Command, name: string): Command | undefined {
   return parent.commands.find(command => command.name() === name)
@@ -121,25 +126,13 @@ function setTarget(target: string, value: unknown, containers: {
   containers[scope][key] = value
 }
 
-function parseValue(value: unknown, type: CliValueType | undefined): unknown {
-  if (value === undefined) {
-    return undefined
-  }
-  if (type === 'boolean') {
-    return parseBooleanValue(value)
-  }
-  return CliValueSchemas[type ?? 'string'].parse(value)
-}
-
 function hasValues(record: Record<string, unknown>): boolean {
   return Object.values(record).some(value => value !== undefined)
 }
 
-export function registerOperationCommand(root: Command, spec: CliOperationSpec): void {
+export function registerOperationCommand(root: Command, rawSpec: CliOperationSpec): void {
+  const spec = CliOperationSpecSchema.parse(rawSpec)
   const segments = spec.command
-  if (segments.length === 0) {
-    throw new Error(`${spec.method.toUpperCase()} ${spec.path} has no command path`)
-  }
 
   let parent = root
   for (const segment of segments.slice(0, -1)) {
@@ -151,12 +144,12 @@ export function registerOperationCommand(root: Command, spec: CliOperationSpec):
   leaf.option('--format <format>', 'Output format: auto, json, pretty, table, ndjson', 'auto')
   leaf.option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
 
-  for (const argument of spec.arguments ?? []) {
+  for (const argument of spec.arguments) {
     const name = argument.required === false ? `[${argument.name}]` : `<${argument.name}>`
     leaf.argument(name, argument.description)
   }
 
-  for (const flag of spec.flags ?? []) {
+  for (const flag of spec.flags) {
     const optionName = toKebabCase(flag.name)
     const description = flag.values?.length
       ? `${flag.description ?? ''}${flag.description ? ' ' : ''}Allowed: ${flag.values.join(', ')}`
@@ -186,12 +179,20 @@ export function registerOperationCommand(root: Command, spec: CliOperationSpec):
       query: Record<string, unknown>
     }
 
-    for (const [index, argument] of (spec.arguments ?? []).entries()) {
-      setTarget(argument.target, parseValue(args[index], argument.type), containers)
+    for (const [index, argument] of spec.arguments.entries()) {
+      setTarget(
+        argument.target,
+        CliValueSchemas[argument.type].parse(args[index]),
+        containers,
+      )
     }
 
-    for (const flag of spec.flags ?? []) {
-      setTarget(flag.target, parseValue(opts[flag.name], flag.type), containers)
+    for (const flag of spec.flags) {
+      setTarget(
+        flag.target,
+        CliValueSchemas[flag.type].parse(opts[flag.name]),
+        containers,
+      )
     }
 
     const context = getCommandContext(command)

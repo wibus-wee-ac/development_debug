@@ -6,6 +6,27 @@ const CRADLE_CHAT_SESSION_ID_HEADER = 'x-cradle-chat-session-id'
 const HttpErrorPayloadJsonSchema = z.string()
   .transform(value => JSON.parse(value))
   .pipe(z.object({ message: z.string() }).passthrough())
+const HttpResponseJsonSchema = z.string()
+  .transform(value => JSON.parse(value))
+  .pipe(z.unknown())
+const PathParamValueSchema = z.union([
+  z.string().min(1),
+  z.number(),
+  z.boolean(),
+]).transform(value => encodeURIComponent(String(value)))
+const QueryParamValuesSchema = z.union([
+  z.array(z.unknown()).transform(values => values.map(value => String(value))),
+  z.string().transform(value => value ? [value] : []),
+  z.number().transform(value => [String(value)]),
+  z.boolean().transform(value => [String(value)]),
+  z.null().transform(() => []),
+  z.undefined().transform(() => []),
+])
+const QueryEntriesSchema = z.record(z.string(), z.unknown()).transform(query =>
+  Object.entries(query).flatMap(([key, value]) =>
+    QueryParamValuesSchema.parse(value).map(item => [key, item] as const),
+  ),
+)
 
 interface RequestInput {
   body?: unknown
@@ -18,26 +39,13 @@ interface RequestInput {
 
 function serializePath(template: string, values: Record<string, unknown>): string {
   return template.replace(PATH_PARAM_RE, (_, key: string) => {
-    const value = values[key]
-    if (value === undefined || value === null || value === '') {
-      throw new Error(`Missing path parameter: ${key}`)
-    }
-    return encodeURIComponent(String(value))
+    return PathParamValueSchema.parse(values[key])
   })
 }
 
 function appendQuery(url: URL, query: Record<string, unknown>): void {
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === null || value === '') {
-      continue
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        url.searchParams.append(key, String(item))
-      }
-      continue
-    }
-    url.searchParams.set(key, String(value))
+  for (const [key, value] of QueryEntriesSchema.parse(query)) {
+    url.searchParams.append(key, value)
   }
 }
 
@@ -49,7 +57,7 @@ async function readError(response: Response): Promise<string> {
   return HttpErrorPayloadJsonSchema.parse(text).message
 }
 
-export async function requestJson<T = unknown>(input: RequestInput): Promise<T> {
+export async function requestJson(input: RequestInput): Promise<unknown> {
   const path = serializePath(input.template, input.path)
   const url = new URL(path, input.serverUrl)
   appendQuery(url, input.query)
@@ -81,7 +89,7 @@ export async function requestJson<T = unknown>(input: RequestInput): Promise<T> 
 
   const text = await response.text()
   if (!text) {
-    return undefined as T
+    return undefined
   }
-  return JSON.parse(text) as T
+  return HttpResponseJsonSchema.parse(text)
 }

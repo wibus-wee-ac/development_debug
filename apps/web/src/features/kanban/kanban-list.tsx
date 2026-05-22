@@ -1,4 +1,3 @@
-import { AnimatePresence, m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -7,7 +6,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
 import type { IssueSelectionMode } from './kanban-selection'
-import { normalizeStatusCategory } from './shared/status-icon'
+import { StatusCategorySchema } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
 interface ListProps {
@@ -48,7 +47,7 @@ export function KanbanList({
       return statuses.map(s => ({
         id: s.id,
         name: s.name,
-        category: normalizeStatusCategory(s.category),
+        category: StatusCategorySchema.parse(s.category),
       }))
     }
     if (config.groupBy === 'priority') {
@@ -68,7 +67,7 @@ export function KanbanList({
     return statuses.map(s => ({
       id: s.id,
       name: s.name,
-      category: normalizeStatusCategory(s.category),
+      category: StatusCategorySchema.parse(s.category),
     }))
   }, [config.groupBy, statuses, milestones])
 
@@ -124,35 +123,28 @@ export function KanbanList({
               onToggle={() => toggleCollapse(group.id)}
               onCreateIssue={onCreateIssue ? () => onCreateIssue(group.id) : undefined}
             />
-            <AnimatePresence initial={false}>
-              {!isCollapsed && (
-                <m.div
-                  key={`${group.id}-content`}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-                  className={cn(
-                    'overflow-hidden flex flex-col gap-0.5',
-                  )}
-                >
-                  {groupIssues.map(issue => (
-                    <KanbanListRow
-                      key={issue.id}
-                      issue={issue}
-                      statuses={statuses}
-                      milestones={milestones}
-                      displayProperties={config.displayProperties}
-                      onClick={() => onIssueClick(issue.id)}
-                      onSelectionGesture={onIssueSelectionGesture}
-                      onHover={onIssueHover ? (id: string | null) => onIssueHover(id) : undefined}
-                      highlighted={issue.id === highlightedIssueId}
-                      selected={selectedIssueIds?.has(issue.id)}
-                    />
-                  ))}
-                </m.div>
-              )}
-            </AnimatePresence>
+            {!isCollapsed && (
+              <div
+                className={cn(
+                  'overflow-hidden flex flex-col gap-0.5',
+                )}
+              >
+                {groupIssues.map(issue => (
+                  <KanbanListRow
+                    key={issue.id}
+                    issue={issue}
+                    statuses={statuses}
+                    milestones={milestones}
+                    displayProperties={config.displayProperties}
+                    onOpenIssue={onIssueClick}
+                    onSelectionGesture={onIssueSelectionGesture}
+                    onHover={onIssueHover}
+                    highlighted={issue.id === highlightedIssueId}
+                    selected={selectedIssueIds?.has(issue.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )
       })}

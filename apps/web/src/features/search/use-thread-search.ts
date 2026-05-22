@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { getSearchThreads } from '~/api-gen/sdk.gen'
 import type { ThreadSearchHit } from '~/lib/types'
 
-import { normalizeThreadSearchHits } from './thread-search-normalize'
+import { ThreadSearchHitsSchema } from './thread-search-normalize'
 
 const DEBOUNCE_MS = 150
 
@@ -33,6 +33,7 @@ export function useThreadSearch({
     return () => clearTimeout(timer)
   }, [query])
 
+  const currentTrimmed = query.trim()
   const trimmed = debouncedQuery.trim()
 
   const { data = [], isFetching } = useQuery<ThreadSearchHit[]>({
@@ -44,16 +45,16 @@ export function useThreadSearch({
       const { data: result } = await getSearchThreads({
         query: { query: trimmed, workspaceId: workspaceId ?? undefined },
       })
-      return (result ?? []) as ThreadSearchHit[]
+      return ThreadSearchHitsSchema.parse(result) satisfies ThreadSearchHit[]
     },
     enabled: enabled && !!trimmed,
     staleTime: 5_000,
   })
 
-  const isPending = enabled && trimmed.length > 0 && (isFetching || debouncedQuery !== query)
+  const isPending = enabled && currentTrimmed.length > 0 && (isFetching || debouncedQuery !== query)
 
   return {
-    hits: normalizeThreadSearchHits(data),
+    hits: data,
     isPending,
     hasQuery: trimmed.length > 0,
   }

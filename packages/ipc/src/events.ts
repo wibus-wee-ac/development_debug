@@ -6,6 +6,7 @@ import {
   trace,
 } from '@opentelemetry/api'
 import superjson from 'superjson'
+import { z } from 'zod'
 
 export const IPC_DEVTOOL_METADATA_KEY = '__ipcDevtool'
 
@@ -23,6 +24,15 @@ export interface IpcTraceEnvelope {
   callerStack: string[]
   startedAt: number
 }
+
+export const IpcTraceEnvelopeSchema = z.object({
+  [IPC_DEVTOOL_METADATA_KEY]: z.literal(true),
+  traceId: z.string(),
+  spanId: z.string(),
+  parentSpanId: z.string().nullable(),
+  callerStack: z.array(z.string()),
+  startedAt: z.number(),
+})
 
 export interface IpcObservedPayload {
   json: string
@@ -60,6 +70,24 @@ export interface SerializeValueOptions {
 
 const DEFAULT_MAX_LENGTH = 16_384
 
+const ValueSummarySchema = z.union([
+  z.null().transform(() => 'null'),
+  z.undefined().transform(() => 'undefined'),
+  z.array(z.unknown()).transform(value => `Array(${value.length})`),
+  z.instanceof(Error).transform(value => `${value.name}: ${value.message}`),
+  z.string().transform(value => value.length > 80 ? `${value.slice(0, 80)}…` : value),
+  z.unknown().transform((value) => {
+    const boxed = Object(value)
+    if (boxed === value) {
+      const name = boxed.constructor?.name
+      return name && name !== 'Object'
+        ? name
+        : `Object(${Object.keys(boxed).length})`
+    }
+    return String(value)
+  }),
+])
+
 function createUuid(): string {
   return globalThis.crypto.randomUUID()
 }
@@ -89,10 +117,6 @@ export function createTraceEnvelope(
     callerStack,
     startedAt: Date.now(),
   }
-}
-
-export function isTraceEnvelope(value: unknown): value is IpcTraceEnvelope {
-  return typeof value === 'object' && value !== null && IPC_DEVTOOL_METADATA_KEY in value
 }
 
 export function captureCallerStack(): string[] {
@@ -152,29 +176,7 @@ export function createObservedEvent(input: Omit<IpcObservedEvent, 'id'>): IpcObs
 }
 
 export function summarizeValue(value: unknown): string {
-  if (value === null) {
-    return 'null'
-  }
-  if (value === undefined) {
-    return 'undefined'
-  }
-  if (Array.isArray(value)) {
-    return `Array(${value.length})`
-  }
-  if (value instanceof Error) {
-    return `${value.name}: ${value.message}`
-  }
-  if (typeof value === 'object') {
-    const name = value?.constructor?.name
-    if (name && name !== 'Object') {
-      return name
-    }
-    return `Object(${Object.keys(value as Record<string, unknown>).length})`
-  }
-  if (typeof value === 'string') {
-    return value.length > 80 ? `${value.slice(0, 80)}…` : value
-  }
-  return String(value)
+  return ValueSummarySchema.parse(value)
 }
 
 export function markSpanSuccess(): void {

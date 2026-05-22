@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, ExternalLinkIcon } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -13,7 +14,9 @@ import {
 import { readTrayAwaits } from '~/features/desktop-tray/api'
 import type { TrayAwaitItem } from '~/features/desktop-tray/types'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useCradleTabStore } from '~/tabs/registry'
+import { preloadTabRoute } from '~/tabs/route-preload'
 
 function formatRelativeTime(unixSeconds: number): string {
   const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds)
@@ -30,7 +33,12 @@ function formatRelativeTime(unixSeconds: number): string {
 }
 
 function AwaitRow({ item }: { item: TrayAwaitItem }) {
+  const preloadChatRoute = () => {
+    preloadTabRoute('chat')
+  }
+
   const openChat = () => {
+    preloadChatRoute()
     useCradleTabStore.getState().openTab('chat', { sessionId: item.sessionId })
   }
 
@@ -51,7 +59,15 @@ function AwaitRow({ item }: { item: TrayAwaitItem }) {
         </div>
         {item.reason ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.reason}</p> : null}
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={openChat} className="shrink-0">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={openChat}
+        onFocus={preloadChatRoute}
+        onMouseEnter={preloadChatRoute}
+        className="shrink-0"
+      >
         <ExternalLinkIcon className="size-3.5" />
         Open Chat
       </Button>
@@ -60,6 +76,7 @@ function AwaitRow({ item }: { item: TrayAwaitItem }) {
 }
 
 export function AwaitsOverview() {
+  const firstRenderedRef = useRef(false)
   const awaitsQuery = useQuery({
     queryKey: ['desktop-tray', 'awaits'],
     queryFn: readTrayAwaits,
@@ -68,8 +85,26 @@ export function AwaitsOverview() {
   })
   const awaits = awaitsQuery.data ?? []
 
+  useEffect(() => {
+    if (!awaitsQuery.isSuccess || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-awaits-rendered')
+    measureCradlePerformance(
+      'cradle:awaits-first-render',
+      'cradle:awaits-render-requested',
+      'cradle:first-awaits-rendered',
+    )
+  }, [awaitsQuery.isSuccess])
+
   return (
-    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-background">
+    <div
+      className="flex h-full min-w-0 flex-col overflow-hidden bg-background"
+      data-testid="awaits-overview"
+      data-awaits-ready={awaitsQuery.isSuccess ? 'true' : 'false'}
+    >
       <div className="shrink-0 border-b border-border/50 px-5 py-4">
         <h1 className="text-base font-semibold text-foreground">Awaits</h1>
         <p className="text-xs text-muted-foreground">Sessions waiting on external signals</p>

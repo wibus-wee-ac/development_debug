@@ -10,12 +10,10 @@ const WorkspaceProviderStateSnapshotSchema = ProviderStateSnapshotSchema.extend(
   workspacePath: z.string().optional(),
 })
 
-export const ProviderStateSnapshotJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  ProviderStateSnapshotSchema,
-)
+export const ProviderStateSnapshotJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ProviderStateSnapshotSchema)
 
-export const WorkspaceProviderStateSnapshotJsonSchema = z.preprocess(
-  raw => JSON.parse((raw ?? '{}') as string),
-  WorkspaceProviderStateSnapshotSchema,
-)
+export const WorkspaceProviderStateSnapshotJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(WorkspaceProviderStateSnapshotSchema)

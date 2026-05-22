@@ -321,7 +321,7 @@ export function BranchPicker({
     try {
       await postWorkspacesByIdGitCheckout({
         path: { id: workspaceId },
-        body: { branch } as unknown as never,
+        body: { branch },
       })
       invalidateAll()
     }
@@ -359,7 +359,7 @@ export function BranchPicker({
     try {
       await postWorkspacesByIdGitBranches({
         path: { id: workspaceId },
-        body: { name } as unknown as never,
+        body: { name },
       })
       invalidateAll()
       dispatch({ type: 'complete-create' })

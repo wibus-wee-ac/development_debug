@@ -83,10 +83,7 @@ export const skills = new Elysia({
     body: SkillsModel.importBody,
     response: { 200: SkillsModel.skillDocument },
   })
-  .post('/export', async ({ body }) => {
-    const destinationDir = await Skills.exportSkill(body)
-    return { destinationDir }
-  }, {
+  .post('/export', ({ body }) => Skills.exportSkill(body), {
     detail: {
       'summary': 'Export skill',
       'x-cradle-cli': {

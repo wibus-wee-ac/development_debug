@@ -1,6 +1,6 @@
 import { AppError } from '../../errors/app-error'
+import { z } from 'zod'
 import {
-  BaseProviderConfigJsonSchema,
   normalizeBaseUrl,
   OpenAICompatibleConfigJsonSchema,
 } from './provider-base'
@@ -13,6 +13,23 @@ export interface ProviderMetadataProvider {
 }
 
 const TRAILING_SLASH_RE = /\/$/
+const OpenAICompatibleModelsResponseSchema = z.object({
+  data: z.array(z.object({
+    id: z.string(),
+  })).min(1),
+})
+
+const AnthropicModelsResponseSchema = z.object({
+  data: z.array(z.object({
+    id: z.string(),
+    display_name: z.string().optional(),
+  })).min(1),
+})
+const AnthropicProviderConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    baseUrl: z.string().default('https://api.anthropic.com/v1'),
+  }).passthrough())
 
 export class ProviderCatalog {
   private readonly providers = new Map<ProviderKind, ProviderMetadataProvider>()
@@ -83,10 +100,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
         throw providerModelsUnavailable(this.providerKind, `Provider models request failed with status ${response.status}`)
       }
 
-      const payload = await response.json() as { data?: Array<{ id: string }> }
-      if (!Array.isArray(payload.data) || payload.data.length === 0) {
-        throw providerModelsUnavailable(this.providerKind, 'Provider models response was empty')
-      }
+      const payload = OpenAICompatibleModelsResponseSchema.parse(await response.json())
 
       return payload.data.map(item => ({
         id: item.id,
@@ -103,10 +117,9 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
 
 class AnthropicMetadataProvider implements ProviderMetadataProvider {
   readonly providerKind = 'anthropic' as const
-  private readonly defaultBaseUrl = 'https://api.anthropic.com/v1'
 
   async checkHealth(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ProviderHealthCheckResult> {
-    const config = BaseProviderConfigJsonSchema.parse(input.configJson)
+    const config = AnthropicProviderConfigJsonSchema.parse(input.configJson)
     if (!input.secretRef) {
       return {
         ok: false,
@@ -123,16 +136,16 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
       ok: true,
       label: input.label,
       version: null,
-      details: { baseUrl: config.baseUrl ?? this.defaultBaseUrl },
+      details: { baseUrl: config.baseUrl },
       errorText: null,
     }
   }
 
   async listModels(input: ProviderRequest, deps: { readSecret: (secretRef: string) => string }): Promise<ModelDescriptor[]> {
-    const config = BaseProviderConfigJsonSchema.parse(input.configJson)
+    const config = AnthropicProviderConfigJsonSchema.parse(input.configJson)
 
     const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
-    const baseUrl = normalizeBaseUrl(config.baseUrl ?? this.defaultBaseUrl).replace(TRAILING_SLASH_RE, '')
+    const baseUrl = normalizeBaseUrl(config.baseUrl).replace(TRAILING_SLASH_RE, '')
 
     try {
       const response = await fetch(`${baseUrl}/models`, {
@@ -142,10 +155,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
         throw providerModelsUnavailable(this.providerKind, `Anthropic models request failed with status ${response.status}`)
       }
 
-      const payload = await response.json() as { data?: Array<{ id: string, display_name?: string }> }
-      if (!Array.isArray(payload.data) || payload.data.length === 0) {
-        throw providerModelsUnavailable(this.providerKind, 'Anthropic models response was empty')
-      }
+      const payload = AnthropicModelsResponseSchema.parse(await response.json())
 
       return payload.data.map(item => ({
         id: item.id,

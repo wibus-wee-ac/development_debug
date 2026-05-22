@@ -1,4 +1,5 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
+import { z } from 'zod'
 
 type AssistantMessagePart = UIMessage['parts'][number]
 
@@ -34,6 +35,49 @@ export interface AssistantChunkProjection {
   toolPartIndices: ReadonlyMap<string, number>
 }
 
+const ProviderMetadataSchema = z.record(z.string(), z.unknown())
+
+const TextStartChunkSchema = z.object({
+  type: z.literal('text-start'),
+  providerMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
+const TextDeltaChunkSchema = z.object({
+  type: z.literal('text-delta'),
+  delta: z.string(),
+}).passthrough()
+
+const ReasoningDeltaChunkSchema = z.object({
+  type: z.literal('reasoning-delta'),
+  delta: z.string(),
+}).passthrough()
+
+const ToolInputStartChunkSchema = z.object({
+  type: z.literal('tool-input-start'),
+  toolCallId: z.string(),
+  toolName: z.string(),
+  providerMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
+const ToolInputAvailableChunkSchema = z.object({
+  type: z.literal('tool-input-available'),
+  toolCallId: z.string(),
+  input: z.unknown(),
+}).passthrough()
+
+const ToolInputErrorChunkSchema = z.object({
+  type: z.literal('tool-input-error'),
+  toolCallId: z.string(),
+  input: z.unknown(),
+  errorText: z.string(),
+}).passthrough()
+
+const ToolOutputAvailableChunkSchema = z.object({
+  type: z.literal('tool-output-available'),
+  toolCallId: z.string(),
+  output: z.unknown(),
+}).passthrough()
+
 export function createAssistantChunkProjection(): AssistantChunkProjection {
   return {
     parts: [],
@@ -49,9 +93,9 @@ export function applyAssistantChunk(
 ): AssistantChunkProjection {
   switch (chunk.type) {
     case 'text-start': {
-      const meta = (chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata
-      const textPart: AssistantTextPart = meta
-        ? { type: 'text', text: '', providerMetadata: meta }
+      const textChunk = TextStartChunkSchema.parse(chunk)
+      const textPart: AssistantTextPart = textChunk.providerMetadata
+        ? { type: 'text', text: '', providerMetadata: textChunk.providerMetadata }
         : { type: 'text', text: '' }
       const parts = [...state.parts, textPart as AssistantMessagePart]
       return {
@@ -62,7 +106,7 @@ export function applyAssistantChunk(
     }
 
     case 'text-delta': {
-      const delta = (chunk as { delta: string }).delta
+      const textChunk = TextDeltaChunkSchema.parse(chunk)
       const activeIndex = state.activeTextPartIndex
       if (activeIndex !== null) {
         const currentPart = state.parts[activeIndex]
@@ -71,13 +115,13 @@ export function applyAssistantChunk(
             ...state,
             parts: replacePart(state.parts, activeIndex, {
               ...(currentPart as AssistantTextPart),
-              text: currentPart.text + delta,
+              text: currentPart.text + textChunk.delta,
             } as AssistantMessagePart),
           }
         }
       }
 
-      const parts = [...state.parts, { type: 'text', text: delta } as AssistantMessagePart]
+      const parts = [...state.parts, { type: 'text', text: textChunk.delta } as AssistantMessagePart]
       return {
         ...state,
         parts,
@@ -118,19 +162,19 @@ export function applyAssistantChunk(
         return state
       }
 
-      const delta = (chunk as { delta: string }).delta
+      const reasoningChunk = ReasoningDeltaChunkSchema.parse(chunk)
       const reasoningPart = currentPart as AssistantReasoningPart
       const currentDetails = reasoningPart.details ?? []
       const nextDetails = currentDetails.length > 0
-        ? [{ ...currentDetails[0]!, text: (currentDetails[0]?.text ?? '') + delta }, ...currentDetails.slice(1)]
-        : [{ type: 'text' as const, text: delta }]
+        ? [{ ...currentDetails[0]!, text: (currentDetails[0]?.text ?? '') + reasoningChunk.delta }, ...currentDetails.slice(1)]
+        : [{ type: 'text' as const, text: reasoningChunk.delta }]
 
       return {
         ...state,
         parts: replacePart(state.parts, activeIndex, {
           ...reasoningPart,
-          text: reasoningPart.text + delta,
-          reasoning: (reasoningPart.reasoning ?? '') + delta,
+          text: reasoningPart.text + reasoningChunk.delta,
+          reasoning: (reasoningPart.reasoning ?? '') + reasoningChunk.delta,
           details: nextDetails,
         } as AssistantMessagePart),
       }
@@ -158,11 +202,7 @@ export function applyAssistantChunk(
     }
 
     case 'tool-input-start': {
-      const toolChunk = chunk as {
-        toolCallId: string
-        toolName: string
-        providerMetadata?: Record<string, unknown>
-      }
+      const toolChunk = ToolInputStartChunkSchema.parse(chunk)
       const toolPart: AssistantToolPart = {
         type: 'dynamic-tool',
         toolCallId: toolChunk.toolCallId,
@@ -186,14 +226,14 @@ export function applyAssistantChunk(
     }
 
     case 'tool-input-available':
-      return updateToolPart(state, chunk as { toolCallId: string, input: unknown }, (toolPart, toolChunk) => ({
+      return updateToolPart(state, ToolInputAvailableChunkSchema.parse(chunk), (toolPart, toolChunk) => ({
         ...toolPart,
         state: 'input-available',
         input: toolChunk.input,
       }))
 
     case 'tool-input-error':
-      return updateToolPart(state, chunk as { toolCallId: string, input: unknown, errorText: string }, (toolPart, toolChunk) => ({
+      return updateToolPart(state, ToolInputErrorChunkSchema.parse(chunk), (toolPart, toolChunk) => ({
         ...toolPart,
         state: 'output-error',
         input: toolChunk.input,
@@ -201,7 +241,7 @@ export function applyAssistantChunk(
       }))
 
     case 'tool-output-available':
-      return updateToolPart(state, chunk as { toolCallId: string, output: unknown }, (toolPart, toolChunk) => ({
+      return updateToolPart(state, ToolOutputAvailableChunkSchema.parse(chunk), (toolPart, toolChunk) => ({
         ...toolPart,
         state: 'output-available',
         output: toolChunk.output,

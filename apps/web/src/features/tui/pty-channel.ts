@@ -1,7 +1,8 @@
 import { getServerWebSocketUrl } from '~/lib/electron'
+import { z } from 'zod'
 
 import type { PtyClientEvent, PtyErrorEvent, PtyExitEvent, PtyOutputEvent, PtySnapshotEvent } from './pty-protocol'
-import { parsePtyServerEvent } from './pty-protocol'
+import { PtyServerEventJsonSchema } from './pty-protocol'
 
 interface PtyChannelOptions {
   socketPath: string
@@ -28,19 +29,32 @@ export interface PtyChannel {
 
 const DEFAULT_RECONNECT_DELAY_MS = 750
 const DEFAULT_PING_INTERVAL_MS = 15_000
+const PtyChannelOptionsSchema = z.object({
+  socketPath: z.string(),
+  fromSeq: z.number().nullable().optional().default(null),
+  reconnect: z.boolean().default(true),
+  reconnectDelayMs: z.number().finite().nonnegative().default(DEFAULT_RECONNECT_DELAY_MS),
+  pingIntervalMs: z.number().finite().nonnegative().default(DEFAULT_PING_INTERVAL_MS),
+  onSnapshot: z.custom<PtyChannelOptions['onSnapshot']>(),
+  onOutput: z.custom<PtyChannelOptions['onOutput']>(),
+  onExit: z.custom<PtyChannelOptions['onExit']>(),
+  onError: z.custom<PtyChannelOptions['onError']>().optional(),
+  onOpen: z.custom<PtyChannelOptions['onOpen']>().optional(),
+  onClose: z.custom<PtyChannelOptions['onClose']>().optional(),
+})
+const WebSocketMessageSchema = z.object({
+  data: z.string(),
+}).passthrough()
 
-export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
+export function createPtyChannel(rawOptions: PtyChannelOptions): PtyChannel {
+  const options = PtyChannelOptionsSchema.parse(rawOptions)
   let socket: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let pingTimer: ReturnType<typeof setInterval> | null = null
   let closedManually = false
   let exitSeen = false
-  let lastSeq = options.fromSeq ?? null
+  let lastSeq = options.fromSeq
   const pendingMessages: PtyClientEvent[] = []
-
-  const reconnectEnabled = options.reconnect ?? true
-  const reconnectDelayMs = options.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS
-  const pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS
 
   function clearReconnectTimer() {
     if (!reconnectTimer) {
@@ -62,7 +76,7 @@ export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
     stopPingLoop()
     pingTimer = setInterval(() => {
       send({ type: 'ping' }, false)
-    }, pingIntervalMs)
+    }, options.pingIntervalMs)
   }
 
   function flushPendingMessages() {
@@ -95,22 +109,18 @@ export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
   }
 
   function scheduleReconnect() {
-    if (!reconnectEnabled || closedManually || exitSeen || reconnectTimer) {
+    if (!options.reconnect || closedManually || exitSeen || reconnectTimer) {
       return
     }
 
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       connect()
-    }, reconnectDelayMs)
+    }, options.reconnectDelayMs)
   }
 
   function handleMessage(raw: string) {
-    const event = parsePtyServerEvent(raw)
-    if (!event) {
-      emitError('INVALID_MESSAGE', '收到无法解析的 PTY socket 消息')
-      return
-    }
+    const event = PtyServerEventJsonSchema.parse(raw)
 
     switch (event.type) {
       case 'snapshot':
@@ -153,11 +163,7 @@ export function createPtyChannel(options: PtyChannelOptions): PtyChannel {
     })
 
     socket.addEventListener('message', (event) => {
-      if (typeof event.data !== 'string') {
-        emitError('UNSUPPORTED_MESSAGE', '收到非文本 PTY socket 消息')
-        return
-      }
-      handleMessage(event.data)
+      handleMessage(WebSocketMessageSchema.parse(event).data)
     })
 
     socket.addEventListener('error', () => {

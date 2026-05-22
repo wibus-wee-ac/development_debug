@@ -7,14 +7,10 @@ import {
   externalProviderSources,
 } from '@cradle/db'
 import { and, eq, inArray } from 'drizzle-orm'
+import stringify from 'safe-stable-stringify'
+import { z } from 'zod'
 
-import type {
-  ExternalProviderCredential,
-  ExternalProviderInventory,
-  ExternalProviderRecord,
-  ExternalProviderSourceSnapshot,
-  ExternalProviderWarning,
-} from '@cradle/plugin-sdk/server'
+import type { ExternalProviderWarning } from '@cradle/plugin-sdk/server'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
@@ -79,25 +75,104 @@ export interface ExternalProviderRefreshResult {
 
 type Tx = ReturnType<typeof db>
 
+const JsonValueSchema = z.json()
+const JsonRecordSchema = z.record(z.string(), JsonValueSchema)
+
+const ExternalProviderWarningSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  severity: z.enum(['info', 'warning', 'error']),
+})
+
+const ExternalProviderWarningsSchema = z.array(ExternalProviderWarningSchema).default([])
+
+const ExternalProviderSourceCapabilitiesSchema = z.object({
+  refresh: z.boolean().optional(),
+  revealSourceFile: z.boolean().optional(),
+  importAsNative: z.boolean().optional(),
+}).default({})
+
+const ExternalProviderCredentialSchema = z.object({
+  kind: z.literal('api-key'),
+  value: z.string(),
+  label: z.string().optional(),
+})
+
+const ExternalProviderRecordSchema = z.object({
+  externalId: z.string(),
+  app: z.string(),
+  name: z.string(),
+  providerKind: z.enum(['anthropic', 'openai-compatible']),
+  config: JsonRecordSchema,
+  credential: ExternalProviderCredentialSchema.optional(),
+  current: z.boolean().default(false),
+  enabled: z.boolean().default(true),
+  readonly: z.boolean().default(false),
+  metadata: JsonRecordSchema.default({}),
+  warnings: ExternalProviderWarningsSchema,
+})
+
+const RegisteredExternalProviderSourceSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().nullable().default(null),
+  capabilities: ExternalProviderSourceCapabilitiesSchema,
+})
+
+const ExternalProviderSnapshotSchema = z.object({
+  source: z.object({
+    status: z.enum(['ok', 'warning', 'error']),
+    message: z.string().optional(),
+    observedAt: z.string().optional(),
+  }),
+  providers: z.array(ExternalProviderRecordSchema),
+  inventory: JsonRecordSchema.default({}),
+  warnings: ExternalProviderWarningsSchema,
+})
+
+type ParsedExternalProviderRecord = z.infer<typeof ExternalProviderRecordSchema>
+
+const ExternalProviderRecordFingerprintSchema = z.object({
+  app: z.string(),
+  name: z.string(),
+  providerKind: z.enum(['anthropic', 'openai-compatible']),
+  config: JsonRecordSchema,
+  credential: ExternalProviderCredentialSchema.optional(),
+  current: z.boolean(),
+  enabled: z.boolean(),
+  readonly: z.boolean(),
+  metadata: JsonRecordSchema,
+  warnings: ExternalProviderWarningsSchema,
+})
+
+const SourceOwnedFieldsSchema = z.array(z.string()).default([])
+
+const AgentProfileConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(JsonRecordSchema.default({}))
+const AgentProfileModelConfigJsonSchema = AgentProfileConfigJsonSchema.transform((config) => {
+  return Object.fromEntries(
+    Object.entries({
+      enabledModels: config.enabledModels,
+      modelRegistryMappings: config.modelRegistryMappings,
+    }).filter(([, value]) => value !== undefined),
+  )
+})
+
+const JsonRecordTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(JsonRecordSchema.default({}))
+
+const WarningListTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ExternalProviderWarningsSchema)
+
+const SourceOwnedFieldsTextSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(SourceOwnedFieldsSchema)
+
 function nowUnix(): number {
   return Math.floor(Date.now() / 1000)
-}
-
-function stableJson(value: unknown): string {
-  if (value === null) {
-    return 'null'
-  }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return JSON.stringify(value)
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(item => stableJson(item)).join(',')}]`
-  }
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`
-  }
-  return JSON.stringify(String(value))
 }
 
 function hashText(text: string): string {
@@ -112,43 +187,21 @@ function deriveCredentialId(sourceKey: string, externalId: string): string {
   return `external_credential_${hashText(`${sourceKey}\0${externalId}`).slice(0, 24)}`
 }
 
-function parseJson<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T
-  }
-  catch {
-    return fallback
-  }
-}
-
-function normalizeWarnings(warnings?: ExternalProviderWarning[]): ExternalProviderWarning[] {
-  return warnings ?? []
-}
-
-function normalizeInventory(inventory?: ExternalProviderInventory): Record<string, unknown> {
-  return { ...(inventory ?? {}) }
-}
-
-function normalizeCredential(credential?: ExternalProviderCredential): Record<string, unknown> | null {
-  if (!credential) {
-    return null
-  }
-  return { kind: credential.kind, label: credential.label ?? null, value: credential.value }
-}
-
-function recordFingerprint(record: ExternalProviderRecord): string {
-  return hashText(stableJson({
+function recordFingerprint(record: ParsedExternalProviderRecord): string {
+  const payload = ExternalProviderRecordFingerprintSchema.parse({
     app: record.app,
     name: record.name,
     providerKind: record.providerKind,
     config: record.config,
-    credential: normalizeCredential(record.credential),
-    current: record.current ?? false,
-    enabled: record.enabled ?? true,
-    readonly: record.readonly ?? false,
-    metadata: record.metadata ?? {},
-    warnings: normalizeWarnings(record.warnings),
-  }))
+    credential: record.credential,
+    current: record.current,
+    enabled: record.enabled,
+    readonly: record.readonly,
+    metadata: record.metadata,
+    warnings: record.warnings,
+  })
+
+  return hashText(stringify(payload))
 }
 
 function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | 'warning' | 'error' {
@@ -159,32 +212,46 @@ function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | '
       : 'ok'
 }
 
-function toSourceView(row: typeof externalProviderSources.$inferSelect | null, fallback: {
+function toPersistedSourceView(row: typeof externalProviderSources.$inferSelect, registeredAt: number): ExternalProviderSourceView {
+  return {
+    id: row.id,
+    pluginName: row.pluginName,
+    sourceId: row.sourceId,
+    label: row.label,
+    description: row.description,
+    enabled: row.enabled,
+    capabilities: JsonRecordTextSchema.parse(row.capabilitiesJson),
+    inventory: JsonRecordTextSchema.parse(row.inventoryJson),
+    warnings: WarningListTextSchema.parse(row.warningsJson),
+    lastSyncStatus: row.lastSyncStatus,
+    lastSyncMessage: row.lastSyncMessage,
+    lastSyncError: row.lastSyncError,
+    lastSyncAt: row.lastSyncAt,
+    registeredAt,
+  }
+}
+
+function toRegisteredSourceView(input: {
   id: string
   pluginName: string
-  sourceId: string
-  label: string
-  description?: string
-  capabilities?: Record<string, unknown>
-  warnings?: ExternalProviderWarning[]
-  inventory?: Record<string, unknown>
   registeredAt: number
+  source: z.infer<typeof RegisteredExternalProviderSourceSchema>
 }): ExternalProviderSourceView {
   return {
-    id: fallback.id,
-    pluginName: row?.pluginName ?? fallback.pluginName,
-    sourceId: row?.sourceId ?? fallback.sourceId,
-    label: row?.label ?? fallback.label,
-    description: row?.description ?? fallback.description ?? null,
-    enabled: row?.enabled ?? true,
-    capabilities: row ? parseJson<Record<string, unknown>>(row.capabilitiesJson, fallback.capabilities ?? {}) : (fallback.capabilities ?? {}),
-    inventory: row ? parseJson<Record<string, unknown>>(row.inventoryJson, fallback.inventory ?? {}) : (fallback.inventory ?? {}),
-    warnings: row ? parseJson<ExternalProviderWarning[]>(row.warningsJson, fallback.warnings ?? []) : (fallback.warnings ?? []),
-    lastSyncStatus: row?.lastSyncStatus ?? 'never',
-    lastSyncMessage: row?.lastSyncMessage ?? null,
-    lastSyncError: row?.lastSyncError ?? null,
-    lastSyncAt: row?.lastSyncAt ?? null,
-    registeredAt: fallback.registeredAt,
+    id: input.id,
+    pluginName: input.pluginName,
+    sourceId: input.source.id,
+    label: input.source.label,
+    description: input.source.description,
+    enabled: true,
+    capabilities: input.source.capabilities,
+    inventory: {},
+    warnings: [],
+    lastSyncStatus: 'never',
+    lastSyncMessage: null,
+    lastSyncError: null,
+    lastSyncAt: null,
+    registeredAt: input.registeredAt,
   }
 }
 
@@ -198,8 +265,8 @@ function toRecordView(row: typeof externalProviderRecords.$inferSelect): Externa
     providerKind: row.providerKind,
     status: row.status,
     fingerprint: row.fingerprint,
-    metadata: parseJson<Record<string, unknown>>(row.metadataJson, {}),
-    warnings: parseJson<ExternalProviderWarning[]>(row.warningsJson, []),
+    metadata: JsonRecordTextSchema.parse(row.metadataJson),
+    warnings: WarningListTextSchema.parse(row.warningsJson),
     lastSeenAt: row.lastSeenAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -213,7 +280,7 @@ function toLinkView(row: typeof externalProviderProfileLinks.$inferSelect): Exte
     externalRecordId: row.externalRecordId,
     profileId: row.profileId,
     credentialRef: row.credentialRef,
-    sourceOwnedFields: parseJson<string[]>(row.sourceOwnedFieldsJson, []),
+    sourceOwnedFields: SourceOwnedFieldsTextSchema.parse(row.sourceOwnedFieldsJson),
     lastProjectedFingerprint: row.lastProjectedFingerprint,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -228,7 +295,7 @@ function syncSourceRow(
   label: string,
   description: string | null,
   capabilities: Record<string, unknown>,
-  snapshot: ExternalProviderSourceSnapshot,
+  snapshot: z.infer<typeof ExternalProviderSnapshotSchema>,
   status: 'ok' | 'warning' | 'error',
   message?: string,
   error?: string,
@@ -242,8 +309,8 @@ function syncSourceRow(
     description,
     enabled: true,
     capabilitiesJson: JSON.stringify(capabilities),
-    inventoryJson: JSON.stringify(normalizeInventory(snapshot.inventory)),
-    warningsJson: JSON.stringify(normalizeWarnings(snapshot.warnings)),
+    inventoryJson: JSON.stringify(snapshot.inventory),
+    warningsJson: JSON.stringify(snapshot.warnings),
     lastSyncStatus: status,
     lastSyncMessage: message ?? snapshot.source.message ?? null,
     lastSyncError: error ?? null,
@@ -259,8 +326,8 @@ function syncSourceRow(
       description,
       enabled: true,
       capabilitiesJson: JSON.stringify(capabilities),
-      inventoryJson: JSON.stringify(normalizeInventory(snapshot.inventory)),
-      warningsJson: JSON.stringify(normalizeWarnings(snapshot.warnings)),
+      inventoryJson: JSON.stringify(snapshot.inventory),
+      warningsJson: JSON.stringify(snapshot.warnings),
       lastSyncStatus: status,
       lastSyncMessage: message ?? snapshot.source.message ?? null,
       lastSyncError: error ?? null,
@@ -270,7 +337,7 @@ function syncSourceRow(
   }).run()
 }
 
-function syncRecordRow(database: Tx, sourceKey: string, record: ExternalProviderRecord, status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'): string {
+function syncRecordRow(database: Tx, sourceKey: string, record: ParsedExternalProviderRecord, status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'): string {
   const now = nowUnix()
   const id = deriveProfileId(sourceKey, record.externalId)
   database.insert(externalProviderRecords).values({
@@ -282,8 +349,8 @@ function syncRecordRow(database: Tx, sourceKey: string, record: ExternalProvider
     providerKind: record.providerKind,
     status,
     fingerprint: recordFingerprint(record),
-    metadataJson: JSON.stringify(record.metadata ?? {}),
-    warningsJson: JSON.stringify(normalizeWarnings(record.warnings)),
+    metadataJson: JSON.stringify(record.metadata),
+    warningsJson: JSON.stringify(record.warnings),
     lastSeenAt: now,
     createdAt: now,
     updatedAt: now,
@@ -295,8 +362,8 @@ function syncRecordRow(database: Tx, sourceKey: string, record: ExternalProvider
       providerKind: record.providerKind,
       status,
       fingerprint: recordFingerprint(record),
-      metadataJson: JSON.stringify(record.metadata ?? {}),
-      warningsJson: JSON.stringify(normalizeWarnings(record.warnings)),
+      metadataJson: JSON.stringify(record.metadata),
+      warningsJson: JSON.stringify(record.warnings),
       lastSeenAt: now,
       updatedAt: now,
     },
@@ -304,15 +371,14 @@ function syncRecordRow(database: Tx, sourceKey: string, record: ExternalProvider
   return id
 }
 
-function syncProfileProjection(database: Tx, sourceKey: string, record: ExternalProviderRecord): void {
+function syncProfileProjection(database: Tx, sourceKey: string, record: ParsedExternalProviderRecord): void {
   const profileId = deriveProfileId(sourceKey, record.externalId)
   const existingProfile = database.select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()
-  const enabled = existingProfile?.enabled ?? record.enabled ?? true
-  const existingConfig = existingProfile ? parseJson<Record<string, unknown>>(existingProfile.configJson, {}) : {}
+  const enabled = existingProfile?.enabled ?? record.enabled
+  const existingModelConfig = existingProfile ? AgentProfileModelConfigJsonSchema.parse(existingProfile.configJson) : {}
   const projectedConfig = {
     ...record.config,
-    ...(Object.prototype.hasOwnProperty.call(existingConfig, 'enabledModels') ? { enabledModels: existingConfig.enabledModels } : {}),
-    ...(Object.prototype.hasOwnProperty.call(existingConfig, 'modelRegistryMappings') ? { modelRegistryMappings: existingConfig.modelRegistryMappings } : {}),
+    ...existingModelConfig,
   }
   const credentialRef = record.credential
       ? upsertSecretInDb(database, {
@@ -364,17 +430,19 @@ export function listExternalProviderSources(): ExternalProviderSourceView[] {
   const registered = listRegisteredExternalProviderSources()
   const rows = db().select().from(externalProviderSources).all()
   const byId = new Map(rows.map(row => [row.id, row]))
-  return registered.map(source => toSourceView(byId.get(source.key) ?? null, {
-    id: source.key,
-    pluginName: source.owner,
-    sourceId: source.source.id,
-    label: source.source.label,
-    description: source.source.description,
-    capabilities: { ...(source.source.capabilities ?? {}) },
-    warnings: [],
-    inventory: {},
-    registeredAt: source.registeredAt,
-  }))
+  return registered.map((source) => {
+    const registeredSource = RegisteredExternalProviderSourceSchema.parse(source.source)
+    const row = byId.get(source.key)
+    if (row) {
+      return toPersistedSourceView(row, source.registeredAt)
+    }
+    return toRegisteredSourceView({
+      id: source.key,
+      pluginName: source.owner,
+      registeredAt: source.registeredAt,
+      source: registeredSource,
+    })
+  })
 }
 
 export function listExternalProviderRecords(): ExternalProviderRecordView[] {
@@ -400,9 +468,10 @@ export async function refreshExternalProviderSource(sourceKey: string): Promise<
       details: { sourceKey },
     })
   }
+  const registeredSource = RegisteredExternalProviderSourceSchema.parse(registered.source)
 
   try {
-    const snapshot = await registered.source.readSnapshot({
+    const snapshot = ExternalProviderSnapshotSchema.parse(await registered.source.readSnapshot({
       signal: new AbortController().signal,
       logger: {
         info() {},
@@ -411,9 +480,9 @@ export async function refreshExternalProviderSource(sourceKey: string): Promise<
         debug() {},
       },
       sharedConfig: new Map(),
-    })
+    }))
 
-    const status = sourceStatusFromWarnings(normalizeWarnings(snapshot.warnings))
+    const status = sourceStatusFromWarnings(snapshot.warnings)
     const seenRecordIds = new Set<string>()
     let missingCount = 0
 
@@ -422,10 +491,10 @@ export async function refreshExternalProviderSource(sourceKey: string): Promise<
         tx,
         sourceKey,
         registered.owner,
-        registered.source.id,
-        registered.source.label,
-        registered.source.description ?? null,
-        { ...(registered.source.capabilities ?? {}) },
+        registeredSource.id,
+        registeredSource.label,
+        registeredSource.description,
+        registeredSource.capabilities,
         snapshot,
         status,
         snapshot.source.message,
@@ -474,11 +543,11 @@ export async function refreshExternalProviderSource(sourceKey: string): Promise<
     db().insert(externalProviderSources).values({
       id: sourceKey,
       pluginName: registered.owner,
-      sourceId: registered.source.id,
-      label: registered.source.label,
-      description: registered.source.description ?? null,
+      sourceId: registeredSource.id,
+      label: registeredSource.label,
+      description: registeredSource.description,
       enabled: true,
-      capabilitiesJson: JSON.stringify(registered.source.capabilities ?? {}),
+      capabilitiesJson: JSON.stringify(registeredSource.capabilities),
       inventoryJson: '{}',
       warningsJson: '[]',
       lastSyncStatus: 'error',

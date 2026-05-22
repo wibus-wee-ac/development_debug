@@ -22,3 +22,17 @@ export const search = new Elysia({
     query: SearchModel.searchQuery,
     response: { 200: SearchModel.threadSearchResponse },
   })
+  .get('/chronicle', ({ query }) => Search.searchChronicle({
+    query: query.query,
+    workspaceId: query.workspaceId,
+    limit: query.limit,
+  }), {
+    detail: {
+      'summary': 'Search Chronicle memories and knowledge',
+      'x-cradle-cli': {
+        command: ['search', 'chronicle'],
+      },
+    },
+    query: SearchModel.chronicleSearchQuery,
+    response: { 200: SearchModel.chronicleSearchResponse },
+  })

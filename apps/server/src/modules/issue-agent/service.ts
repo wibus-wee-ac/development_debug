@@ -8,6 +8,7 @@ import {
   agentSessions,
 } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
@@ -41,6 +42,14 @@ interface IssueAgentDelegationState {
 // ── in-memory state ──
 
 const activeRuns = new Map<string, ActiveAgentRun>()
+
+const AgentActivityInputSchema = z.object({
+  agentSessionId: z.string(),
+  type: z.custom<AgentActivity['type']>(),
+  body: z.string(),
+  signal: z.string().nullable().default(null),
+  signalMetadata: z.record(z.string(), z.unknown()).nullable().optional(),
+})
 
 // ── DB queries (merged from store) ──
 
@@ -91,19 +100,20 @@ function updateAgentSessionStatus(agentSessionId: string, status: AgentSession['
   return getAgentSession(agentSessionId)
 }
 
-function createActivity(input: {
+function createActivity(rawInput: {
   agentSessionId: string
   type: AgentActivity['type']
   body: string
   signal?: string | null
   signalMetadata?: Record<string, unknown> | null
 }): AgentActivity {
+  const input = AgentActivityInputSchema.parse(rawInput)
   return db().insert(agentActivities).values({
     id: randomUUID(),
     agentSessionId: input.agentSessionId,
     type: input.type,
     content: JSON.stringify({ body: input.body }),
-    signal: input.signal ?? null,
+    signal: input.signal,
     signalMetadata: input.signalMetadata ? JSON.stringify(input.signalMetadata) : null,
     createdAt: currentUnixSeconds(),
   }).returning().get()
@@ -187,7 +197,7 @@ function requireAgentSession(agentSessionId: string) {
 // ── prompt builder ──
 
 function buildIssuePrompt(
-  issue: { id: string, title: string, description: string | null, priority: string, labels: string, contextRefs: string },
+  issue: { id: string, title: string, description: string | null, priority: string, labels: string[], contextRefs: string },
   rules: { global: string | null, profileSpecific: string | null },
 ): string {
   const parts = [`# Issue: ${issue.title}`, '', `Issue ID: ${issue.id}`, '']
@@ -198,9 +208,8 @@ function buildIssuePrompt(
 
   parts.push(`Priority: ${issue.priority}`)
 
-  const labels = Issue.IssueLabelsJsonSchema.parse(issue.labels)
-  if (labels.length > 0) {
-    parts.push(`Labels: ${labels.join(', ')}`)
+  if (issue.labels.length > 0) {
+    parts.push(`Labels: ${issue.labels.join(', ')}`)
   }
 
   const refs = Issue.IssuePromptContextRefsJsonSchema.parse(issue.contextRefs)

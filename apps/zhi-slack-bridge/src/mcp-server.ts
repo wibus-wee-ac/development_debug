@@ -30,7 +30,7 @@ server.tool(
         socketPath: SOCKET_PATH,
         retryDelayMs: RETRY_DELAY_MS,
       })
-      if (response.success && response.result) {
+      if (response.success) {
         return {
           content: [
             {

@@ -58,6 +58,15 @@ const importFromFetchResult = t.Object({
 
 const okResponse = t.Object({ ok: t.Literal(true) })
 
+const exportOwnerBoundary = t.Object({
+  classification: t.Literal('non-cradle-owned'),
+  owner: t.Literal('user-selected-export-directory'),
+  consentRequired: t.Literal(true),
+  consentConfirmed: t.Literal(true),
+  destinationDir: t.String(),
+  targetPath: t.String(),
+}, { additionalProperties: false })
+
 export const SkillsModel = {
   skillScope,
   skillInventoryEntry,
@@ -113,12 +122,16 @@ export const SkillsModel = {
     scope: skillScope,
     name: nonBlankString,
     destinationDir: nonBlankString,
+    confirmedNonCradleOwnedWrite: t.Boolean(),
     overwrite: t.Optional(t.Boolean()),
     workspaceId: t.Optional(t.Nullable(nonBlankString)),
     agentId: t.Optional(t.Nullable(nonBlankString)),
   }),
 
-  exportResponse: t.Object({ destinationDir: t.String() }),
+  exportResponse: t.Object({
+    destinationDir: t.String(),
+    ownerBoundary: exportOwnerBoundary,
+  }),
 
   fetchSourceBody: t.Object({
     source: nonBlankString,

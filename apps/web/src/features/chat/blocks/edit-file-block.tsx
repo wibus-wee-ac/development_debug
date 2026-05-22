@@ -1,7 +1,7 @@
 import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
 import { MultiFileDiff } from '@pierre/diffs/react'
 import { ChevronRightIcon, Columns2Icon, FilePenLineIcon, Rows3Icon } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
+import { m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -151,57 +151,46 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
         </CollapsibleTrigger>
 
         {/* ── Diff pane ── */}
-        <AnimatePresence initial={false}>
-          {open && (
-            <CollapsibleContent forceMount asChild>
-              <m.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
-                className="overflow-hidden rounded-b-md"
+        {open && (
+          <CollapsibleContent className="overflow-hidden rounded-b-md">
+            {/* Controls bar */}
+            <div className="flex items-center justify-between bg-muted/30 px-2 py-1">
+              <span className="truncate font-mono text-[10px] text-muted-foreground/40" title={filePath}>
+                {filePath}
+              </span>
+              <ToggleGroup
+                type="single"
+                value={layout}
+                onValueChange={(v) => {
+                  if (v === 'split' || v === 'stacked') {
+                    setLayout(v)
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="h-5 shrink-0 gap-px"
+                aria-label="Diff layout"
               >
-                {/* Controls bar */}
-                <div className="flex items-center justify-between bg-muted/30 px-2 py-1">
-                  <span className="truncate font-mono text-[10px] text-muted-foreground/40" title={filePath}>
-                    {filePath}
-                  </span>
-                  <ToggleGroup
-                    type="single"
-                    value={layout}
-                    onValueChange={(v) => {
-                      if (v === 'split' || v === 'stacked') {
-                        setLayout(v)
-                      }
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="h-5 shrink-0 gap-px"
-                    aria-label="Diff layout"
-                  >
-                    <ToggleGroupItem value="split" aria-label="Split" className="h-5 gap-1 px-1.5 text-[10px]">
-                      <Columns2Icon className="size-2.5" />
-                      Split
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="stacked" aria-label="Stacked" className="h-5 gap-1 px-1.5 text-[10px]">
-                      <Rows3Icon className="size-2.5" />
-                      Stacked
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
+                <ToggleGroupItem value="split" aria-label="Split" className="h-5 gap-1 px-1.5 text-[10px]">
+                  <Columns2Icon className="size-2.5" />
+                  Split
+                </ToggleGroupItem>
+                <ToggleGroupItem value="stacked" aria-label="Stacked" className="h-5 gap-1 px-1.5 text-[10px]">
+                  <Rows3Icon className="size-2.5" />
+                  Stacked
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
 
-                <MultiFileDiff
-                  oldFile={oldFile}
-                  newFile={newFile}
-                  options={diffOptions}
-                  className="max-h-128 overflow-auto [--diffs-font-size:11px] [--diffs-line-height:18px]"
-                />
-              </m.div>
-            </CollapsibleContent>
-          )}
-        </AnimatePresence>
+            <MultiFileDiff
+              oldFile={oldFile}
+              newFile={newFile}
+              options={diffOptions}
+              className="max-h-128 overflow-auto [--diffs-font-size:11px] [--diffs-line-height:18px]"
+            />
+          </CollapsibleContent>
+        )}
       </Collapsible>
     </m.div>
   )
 }
-

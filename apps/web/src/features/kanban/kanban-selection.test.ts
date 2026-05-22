@@ -19,7 +19,7 @@ function issue(id: string, statusId: string, createdAt: number): KanbanIssue {
     title: id,
     description: null,
     priority: 'none',
-    labels: '[]',
+    labels: [],
     assigneeKind: null,
     assigneeId: null,
     createdByKind: 'user',

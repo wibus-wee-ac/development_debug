@@ -14,7 +14,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { KanbanCard } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
 import type { IssueSelectionMode } from './kanban-selection'
-import { normalizeStatusCategory } from './shared/status-icon'
+import { StatusCategorySchema } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
 interface BoardProps {
@@ -63,7 +63,7 @@ export function KanbanBoard({
       return statuses.map(s => ({
         id: s.id,
         name: s.name,
-        category: normalizeStatusCategory(s.category),
+        category: StatusCategorySchema.parse(s.category),
       }))
     }
     if (config.groupBy === 'priority') {
@@ -83,7 +83,7 @@ export function KanbanBoard({
     return statuses.map(s => ({
       id: s.id,
       name: s.name,
-      category: normalizeStatusCategory(s.category),
+      category: StatusCategorySchema.parse(s.category),
     }))
   }, [config.groupBy, statuses, milestones])
 
@@ -179,7 +179,7 @@ export function KanbanBoard({
               statuses={statuses}
               milestones={milestones}
               displayProperties={config.displayProperties}
-              onClick={() => {}}
+              onOpenIssue={() => {}}
               selected={selectedIssueIds?.has(activeIssue.id)}
             />
           </m.div>

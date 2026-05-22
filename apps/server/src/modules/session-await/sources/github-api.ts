@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process'
 
+import { z } from 'zod'
 
 let cachedToken: string | null | undefined
 
@@ -38,6 +39,10 @@ export function resetTokenCache() {
 
 const etagCache = new Map<string, { etag: string, data: unknown }>()
 
+interface JsonSchema<T> {
+  parse: (data: unknown) => T
+}
+
 let rateLimitRemaining = 5000
 let rateLimitReset = 0
 
@@ -60,7 +65,7 @@ function recordRateLimit(headers: Headers): void {
   }
 }
 
-async function githubGet<T>(path: string): Promise<T | null> {
+async function githubGet<T>(path: string, schema: JsonSchema<T>): Promise<T | null> {
   const token = resolveGitHubToken()
   const url = `https://api.github.com${path}`
   const headers: Record<string, string> = {
@@ -80,13 +85,13 @@ async function githubGet<T>(path: string): Promise<T | null> {
   recordRateLimit(res.headers)
 
   if (res.status === 304) {
-    return cached?.data as T
+    return cached ? schema.parse(cached.data) : null
   }
   if (!res.ok) {
     return null
   }
 
-  const data = await res.json() as T
+  const data = schema.parse(await res.json())
   const etag = res.headers.get('ETag')
   if (etag) {
     etagCache.set(url, { etag, data })
@@ -94,11 +99,11 @@ async function githubGet<T>(path: string): Promise<T | null> {
   return data
 }
 
-async function githubGetPaged<T>(path: string, maxPages = 10): Promise<T[] | null> {
+async function githubGetPaged<T>(path: string, schema: JsonSchema<T[]>, maxPages = 10): Promise<T[] | null> {
   const items: T[] = []
   for (let page = 1; page <= maxPages; page++) {
     const separator = path.includes('?') ? '&' : '?'
-    const batch = await githubGet<T[]>(`${path}${separator}per_page=100&page=${page}`)
+    const batch = await githubGet(`${path}${separator}per_page=100&page=${page}`, schema)
     if (!batch) {
       return null
     }
@@ -212,19 +217,120 @@ interface GitHubWorkflowJobsResponse {
   jobs: GitHubWorkflowJob[]
 }
 
+const GitHubPullRequestSchema = z.object({
+  number: z.number().finite(),
+  title: z.string(),
+  state: z.enum(['open', 'closed']),
+  merged: z.boolean(),
+  mergeable: z.boolean().nullable(),
+  mergeable_state: z.string().optional(),
+  head: z.object({ sha: z.string(), ref: z.string() }),
+  base: z.object({ ref: z.string() }),
+}).passthrough()
+
+const GitHubCheckRunSchema = z.object({
+  id: z.number().finite().optional(),
+  name: z.string(),
+  status: z.enum(['queued', 'in_progress', 'completed']),
+  conclusion: z.string().nullable(),
+  html_url: z.string().nullable().optional(),
+  details_url: z.string().nullable().optional(),
+}).passthrough()
+
+const GitHubCheckRunsResponseSchema = z.object({
+  total_count: z.number().finite(),
+  check_runs: z.array(GitHubCheckRunSchema),
+}).passthrough()
+
+const GitHubCommitStatusSchema = z.object({
+  context: z.string(),
+  state: z.enum(['error', 'failure', 'pending', 'success']),
+  description: z.string().nullable(),
+  target_url: z.string().nullable(),
+}).passthrough()
+
+const GitHubCombinedStatusSchema = z.object({
+  state: z.enum(['error', 'failure', 'pending', 'success']),
+  total_count: z.number().finite(),
+  statuses: z.array(GitHubCommitStatusSchema),
+}).passthrough()
+
+const GitHubPullRequestReviewSchema = z.object({
+  id: z.number().finite(),
+  user: z.object({ login: z.string() }).nullable(),
+  state: z.enum(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED', 'DISMISSED', 'PENDING']),
+  commit_id: z.string(),
+  submitted_at: z.string().nullable(),
+  body: z.string().nullable(),
+}).passthrough()
+
+const GitHubWorkflowRunSchema = z.object({
+  id: z.number().finite(),
+  name: z.string().nullable(),
+  display_title: z.string().nullable(),
+  run_number: z.number().finite(),
+  run_attempt: z.number().finite(),
+  status: z.enum(['queued', 'in_progress', 'completed', 'waiting', 'requested', 'pending']),
+  conclusion: z.string().nullable(),
+  head_sha: z.string(),
+  html_url: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+}).passthrough()
+
+const GitHubWorkflowRunsResponseSchema = z.object({
+  total_count: z.number().finite(),
+  workflow_runs: z.array(GitHubWorkflowRunSchema),
+}).passthrough()
+
+const GitHubWorkflowJobStepSchema = z.object({
+  name: z.string(),
+  status: z.enum(['queued', 'in_progress', 'completed', 'pending']),
+  conclusion: z.string().nullable(),
+  number: z.number().finite(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+}).passthrough()
+
+const GitHubWorkflowJobSchema = z.object({
+  id: z.number().finite(),
+  run_id: z.number().finite(),
+  run_attempt: z.number().finite(),
+  name: z.string(),
+  status: z.enum(['queued', 'in_progress', 'completed', 'waiting', 'requested', 'pending']),
+  conclusion: z.string().nullable(),
+  workflow_name: z.string().nullable(),
+  head_sha: z.string(),
+  html_url: z.string().nullable(),
+  check_run_url: z.string().nullable(),
+  started_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  runner_name: z.string().nullable(),
+  labels: z.array(z.string()),
+  steps: z.array(GitHubWorkflowJobStepSchema),
+}).passthrough()
+
+const GitHubWorkflowJobsResponseSchema = z.object({
+  total_count: z.number().finite(),
+  jobs: z.array(GitHubWorkflowJobSchema),
+}).passthrough()
+
 export function hasGitHubToken(): boolean {
   return resolveGitHubToken() !== null
 }
 
 export function fetchPullRequest(owner: string, repo: string, pr: number): Promise<GitHubPullRequest | null> {
-  return githubGet<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls/${pr}`)
+  return githubGet(`/repos/${owner}/${repo}/pulls/${pr}`, GitHubPullRequestSchema)
 }
 
 export async function fetchCheckRuns(owner: string, repo: string, ref: string): Promise<GitHubCheckRunsResponse | null> {
   const runs: GitHubCheckRun[] = []
   let totalCount = 0
   for (let page = 1; page <= 10; page++) {
-    const data = await githubGet<GitHubCheckRunsResponse>(`/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=100&page=${page}`)
+    const data = await githubGet(
+      `/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=100&page=${page}`,
+      GitHubCheckRunsResponseSchema,
+    )
     if (!data) {
       return null
     }
@@ -241,7 +347,10 @@ export async function fetchWorkflowRunsForHead(owner: string, repo: string, head
   const runs: GitHubWorkflowRun[] = []
   let totalCount = 0
   for (let page = 1; page <= 3; page++) {
-    const data = await githubGet<GitHubWorkflowRunsResponse>(`/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100&page=${page}`)
+    const data = await githubGet(
+      `/repos/${owner}/${repo}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100&page=${page}`,
+      GitHubWorkflowRunsResponseSchema,
+    )
     if (!data) {
       return null
     }
@@ -258,7 +367,10 @@ export async function fetchWorkflowRunJobs(owner: string, repo: string, runId: n
   const jobs: GitHubWorkflowJob[] = []
   let totalCount = 0
   for (let page = 1; page <= 10; page++) {
-    const data = await githubGet<GitHubWorkflowJobsResponse>(`/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100&page=${page}`)
+    const data = await githubGet(
+      `/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100&page=${page}`,
+      GitHubWorkflowJobsResponseSchema,
+    )
     if (!data) {
       return null
     }
@@ -272,9 +384,9 @@ export async function fetchWorkflowRunJobs(owner: string, repo: string, runId: n
 }
 
 export function fetchCombinedStatus(owner: string, repo: string, ref: string): Promise<GitHubCombinedStatus | null> {
-  return githubGet<GitHubCombinedStatus>(`/repos/${owner}/${repo}/commits/${ref}/status`)
+  return githubGet(`/repos/${owner}/${repo}/commits/${ref}/status`, GitHubCombinedStatusSchema)
 }
 
 export function fetchPullRequestReviews(owner: string, repo: string, pr: number): Promise<GitHubPullRequestReview[] | null> {
-  return githubGetPaged<GitHubPullRequestReview>(`/repos/${owner}/${repo}/pulls/${pr}/reviews`)
+  return githubGetPaged(`/repos/${owner}/${repo}/pulls/${pr}/reviews`, z.array(GitHubPullRequestReviewSchema))
 }

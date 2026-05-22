@@ -19,14 +19,7 @@ const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'bloc
 const SKIP_TAGS = new Set(['pre', 'code', 'table', 'svg', 'math'])
 
 function hasClass(node: Element, cls: string): boolean {
-  const cn = node.properties?.className
-  if (Array.isArray(cn)) {
-    return cn.some(c => String(c).includes(cls))
-  }
-  if (typeof cn === 'string') {
-    return cn.includes(cls)
-  }
-  return false
+  return String(node.properties?.className ?? '').includes(cls)
 }
 
 /**
@@ -49,7 +42,7 @@ const rehypeStreamAnimate: Plugin<[RehypeStreamAnimateOptions], Root> = (options
     mode = 'word',
   } = options
 
-  const hasBirths = !revealed && Array.isArray(births) && typeof nowMs === 'number'
+  const hasBirths = !revealed && births !== undefined && nowMs !== undefined
 
   return (tree) => {
     let globalCharIndex = 0

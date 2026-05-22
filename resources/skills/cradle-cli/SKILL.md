@@ -136,6 +136,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `automation` | 13 | Manage scheduled automations, runs, and artifacts. | `cradle man automation` |
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
 | `chat` | 2 | Control chat runtime commands. | `cradle man chat` |
+| `chronicle` | 49 | Generated Cradle CLI module. | `cradle man chronicle` |
 | `health` | 1 | Check server health. | `cradle man health` |
 | `issue` | 27 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
@@ -143,7 +144,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `preferences` | 4 | Read and update server preferences. | `cradle man preferences` |
 | `profile` | 5 | Manage agent profiles. | `cradle man profile` |
 | `provider` | 2 | Inspect provider health and model availability. | `cradle man provider` |
-| `search` | 1 | Search Cradle data. | `cradle man search` |
+| `search` | 2 | Search Cradle data. | `cradle man search` |
 | `secret` | 2 | Manage secret metadata. | `cradle man secret` |
 | `session` | 16 | Manage chat sessions and session links. | `cradle man session` |
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
@@ -152,3 +153,4 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `workspace` | 17 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
+

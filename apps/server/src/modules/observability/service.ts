@@ -1,6 +1,7 @@
 import type { ObservabilityEventRow, ObservabilityIncidentRow } from '@cradle/db'
 import { observabilityEvents, observabilityIncidents } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
@@ -14,6 +15,27 @@ import { exportObservabilityBundle } from './exporter'
 import { evaluateIncidentRules } from './rules'
 
 const logger = createChildLogger({ module: 'observability' })
+
+const HandlerAttrsSchema = z.object({
+  handlerName: z.string().min(1).nullable().default(null),
+}).passthrough().prefault(() => ({ handlerName: null }))
+
+const EventDedupeProjectionSchema = z.object({
+  dedupeKey: z.string(),
+})
+
+const EventPersistenceProjectionSchema = z.object({
+  chatSessionId: z.string().nullable().default(null),
+  runId: z.string().nullable().default(null),
+  messageId: z.string().nullable().default(null),
+  traceId: z.string().nullable().default(null),
+  dedupeKey: z.string().nullable().default(null),
+  parentEventId: z.string().nullable().default(null),
+})
+
+const ObservabilityAttrsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.record(z.string(), z.unknown()))
 
 // ---------------------------------------------------------------------------
 // Filter types
@@ -60,17 +82,20 @@ let droppedEvents = 0
 
 export function record(input: CreateEventInput): void {
   try {
-    const dedupeKey = input.dedupeKey ?? createDedupeKey({
-      code: input.code,
-      chatSessionId: input.chatSessionId ?? null,
-      runId: input.runId ?? null,
-      handlerName: readHandlerName(input.attrs),
-    })
-    const event = createObservabilityEvent({ ...input, dedupeKey })
+    const event = createObservabilityEvent(input)
+    const dedupeProjection = EventDedupeProjectionSchema.partial().extend({
+      dedupeKey: z.string().default(() => createDedupeKey({
+        code: event.code,
+        chatSessionId: event.chatSessionId,
+        runId: event.runId,
+        handlerName: HandlerAttrsSchema.parse(event.attrs).handlerName,
+      })),
+    }).parse(event)
+    const recordedEvent = { ...event, dedupeKey: dedupeProjection.dedupeKey }
 
-    enqueueEvent(event)
-    applyRules(event)
-    appendRecentEvent(event)
+    enqueueEvent(recordedEvent)
+    applyRules(recordedEvent)
+    appendRecentEvent(recordedEvent)
   }
   catch (error) {
     logger.error('failed to record event', { input, error })
@@ -295,7 +320,9 @@ function persistBatch(batch: ObservabilityEvent[]): void {
     return
   }
 
-  db().insert(observabilityEvents).values(batch.map(event => ({
+  db().insert(observabilityEvents).values(batch.map((event) => {
+    const persisted = EventPersistenceProjectionSchema.parse(event)
+    return {
       id: event.id,
       schemaVersion: event.schemaVersion,
       source: event.source,
@@ -304,23 +331,16 @@ function persistBatch(batch: ObservabilityEvent[]): void {
       category: event.category,
       message: event.message,
       attrsJson: event.attrs ? JSON.stringify(event.attrs) : null,
-      chatSessionId: event.chatSessionId ?? null,
-      runId: event.runId ?? null,
-      messageId: event.messageId ?? null,
-      traceId: event.traceId ?? null,
-      dedupeKey: event.dedupeKey ?? null,
-      parentEventId: event.parentEventId ?? null,
+      chatSessionId: persisted.chatSessionId,
+      runId: persisted.runId,
+      messageId: persisted.messageId,
+      traceId: persisted.traceId,
+      dedupeKey: persisted.dedupeKey,
+      parentEventId: persisted.parentEventId,
       occurredAt: event.occurredAt,
       recordedAt: event.recordedAt,
-    }))).run()
-}
-
-function readHandlerName(attrs: Record<string, unknown> | undefined): string | null {
-  if (!attrs) {
-    return null
-  }
-  const candidate = attrs.handlerName
-  return typeof candidate === 'string' && candidate.length > 0 ? candidate : null
+    }
+  })).run()
 }
 
 function mergeSeverity(current: string, next: string): ObservabilityIncident['severity'] {
@@ -349,7 +369,7 @@ function toObservabilityEvent(row: ObservabilityEventRow): ObservabilityEvent {
     severity: row.severity as ObservabilityEvent['severity'],
     category: row.category as ObservabilityEvent['category'],
     message: row.message,
-    attrs: row.attrsJson ? safeJsonParse(row.attrsJson) : undefined,
+    attrs: row.attrsJson ? ObservabilityAttrsJsonSchema.parse(row.attrsJson) : undefined,
     chatSessionId: row.chatSessionId ?? undefined,
     runId: row.runId ?? undefined,
     messageId: row.messageId ?? undefined,
@@ -378,19 +398,6 @@ function toObservabilityIncident(row: ObservabilityIncidentRow): ObservabilityIn
     lastRecordedAt: row.lastRecordedAt,
     count: row.count,
     lastEventId: row.lastEventId ?? undefined,
-    attrs: row.attrsJson ? safeJsonParse(row.attrsJson) : undefined,
-  }
-}
-
-function safeJsonParse(value: string): Record<string, unknown> {
-  try {
-    const parsed = JSON.parse(value)
-    if (typeof parsed === 'object' && parsed !== null) {
-      return parsed as Record<string, unknown>
-    }
-    return { value: parsed }
-  }
-  catch {
-    return { parseError: true }
+    attrs: row.attrsJson ? ObservabilityAttrsJsonSchema.parse(row.attrsJson) : undefined,
   }
 }

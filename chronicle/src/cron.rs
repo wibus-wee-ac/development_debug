@@ -262,6 +262,20 @@ pub fn default_jobs(now: Timestamp) -> Vec<CronJob> {
             next_run_at: Some(created + 3600),
             created_at: created,
         },
+        CronJob {
+            id: "cleanup".into(),
+            name: "Cleanup".into(),
+            description: "Remove stale temporary files and processed inbox manifests".into(),
+            enabled: true,
+            schedule_kind: ScheduleKind::Daily,
+            interval_seconds: 0,
+            daily_hour: 5,
+            task_kind: TaskKind::Cleanup,
+            last_run_at: None,
+            last_run_status: None,
+            next_run_at: Some(start_of_day(created) + 5 * 3600 + 86_400),
+            created_at: created,
+        },
     ]
 }
 
@@ -444,11 +458,12 @@ mod tests {
     #[test]
     fn default_jobs_created() {
         let jobs = default_jobs(Timestamp::from_seconds(10_000));
-        assert_eq!(jobs.len(), 5);
+        assert_eq!(jobs.len(), 6);
         assert_eq!(jobs[0].id, "summarize");
         assert_eq!(jobs[1].id, "crystallize");
         assert_eq!(jobs[2].id, "dream-archive");
         assert_eq!(jobs[3].id, "dream-merge");
         assert_eq!(jobs[4].id, "health-check");
+        assert_eq!(jobs[5].id, "cleanup");
     }
 }

@@ -1,10 +1,19 @@
 import { createContext, use, useCallback, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { DirectoryBrowserDialog } from '~/features/filesystem/directory-browser-dialog'
 import { isElectron, nativeIpc } from '~/lib/electron'
 
+const DirectoryPickerOptionsSchema = z.object({
+  title: z.string().default('Select Directory'),
+  description: z.string().optional(),
+}).default({ title: 'Select Directory' })
+
+type DirectoryPickerOptions = z.input<typeof DirectoryPickerOptionsSchema>
+type ParsedDirectoryPickerOptions = z.infer<typeof DirectoryPickerOptionsSchema>
+
 interface DirectoryPickerContextValue {
-  selectDirectory: (options?: { title?: string, description?: string }) => Promise<string | null>
+  selectDirectory: (options?: DirectoryPickerOptions) => Promise<string | null>
 }
 
 const DirectoryPickerContext = createContext<DirectoryPickerContextValue | null>(null)
@@ -20,14 +29,15 @@ export function useDirectoryPicker() {
 
 export function DirectoryPickerProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
-  const [dialogProps, setDialogProps] = useState<{ title?: string, description?: string }>({})
+  const [dialogProps, setDialogProps] = useState<ParsedDirectoryPickerOptions>(() => DirectoryPickerOptionsSchema.parse(undefined))
   const resolverRef = useRef<((value: string | null) => void) | null>(null)
 
-  const selectDirectory = useCallback(async (options?: { title?: string, description?: string }) => {
+  const selectDirectory = useCallback(async (rawOptions?: DirectoryPickerOptions) => {
+    const options = DirectoryPickerOptionsSchema.parse(rawOptions)
     // In Electron, use the native OS dialog
     if (isElectron && nativeIpc) {
       const result = await nativeIpc.native.showOpenDialog({
-        title: options?.title ?? 'Select Directory',
+        title: options.title,
         properties: ['openDirectory'],
       })
       return result.canceled ? null : (result.filePaths[0] ?? null)
@@ -36,7 +46,7 @@ export function DirectoryPickerProvider({ children }: { children: React.ReactNod
     // In browser, fall back to the custom dialog
     return new Promise<string | null>((resolve) => {
       resolverRef.current = resolve
-      setDialogProps(options ?? {})
+      setDialogProps(options)
       setOpen(true)
     })
   }, [])

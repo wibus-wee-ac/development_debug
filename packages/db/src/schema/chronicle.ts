@@ -50,6 +50,32 @@ export const chronicleAccessibilitySnapshots = sqliteTable('chronicle_accessibil
   byStatus: index('chronicle_accessibility_snapshots_status_idx').on(table.status),
 }))
 
+export const chronicleAccessibilityEvents = sqliteTable('chronicle_accessibility_events', {
+  id: textPk(),
+  sourceId: text('source_id').notNull(),
+  snapshotId: text('snapshot_id')
+    .references(() => chronicleSnapshots.id, { onDelete: 'set null' }),
+  accessibilitySnapshotId: text('accessibility_snapshot_id')
+    .references(() => chronicleAccessibilitySnapshots.id, { onDelete: 'set null' }),
+  workspaceId: text('workspace_id')
+    .references(() => workspaces.id, { onDelete: 'set null' }),
+  capturedAt: int('captured_at').notNull(),
+  provider: text('provider').notNull().default('macos-ax-observer'),
+  appBundleId: text('app_bundle_id'),
+  pid: int('pid'),
+  notification: text('notification').notNull(),
+  droppedBefore: int('dropped_before').notNull().default(0),
+  metadataJson: text('metadata_json').notNull().default('{}'),
+  ...timestamps(),
+}, table => ({
+  bySourceId: uniqueIndex('chronicle_accessibility_events_source_id_unique').on(table.sourceId),
+  byCapturedAt: index('chronicle_accessibility_events_captured_at_idx').on(table.capturedAt),
+  byWorkspaceCapturedAt: index('chronicle_accessibility_events_workspace_captured_at_idx').on(table.workspaceId, table.capturedAt),
+  byNotification: index('chronicle_accessibility_events_notification_idx').on(table.notification),
+  bySnapshot: index('chronicle_accessibility_events_snapshot_id_idx').on(table.snapshotId),
+  byAccessibilitySnapshot: index('chronicle_accessibility_events_accessibility_snapshot_id_idx').on(table.accessibilitySnapshotId),
+}))
+
 export const chronicleActivitySessions = sqliteTable('chronicle_activity_sessions', {
   id: textPk(),
   workspaceId: text('workspace_id')
@@ -640,6 +666,8 @@ export type ChronicleSnapshot = typeof chronicleSnapshots.$inferSelect
 export type NewChronicleSnapshot = typeof chronicleSnapshots.$inferInsert
 export type ChronicleAccessibilitySnapshot = typeof chronicleAccessibilitySnapshots.$inferSelect
 export type NewChronicleAccessibilitySnapshot = typeof chronicleAccessibilitySnapshots.$inferInsert
+export type ChronicleAccessibilityEvent = typeof chronicleAccessibilityEvents.$inferSelect
+export type NewChronicleAccessibilityEvent = typeof chronicleAccessibilityEvents.$inferInsert
 export type ChronicleActivitySession = typeof chronicleActivitySessions.$inferSelect
 export type NewChronicleActivitySession = typeof chronicleActivitySessions.$inferInsert
 export type ChronicleActivitySegment = typeof chronicleActivitySegments.$inferSelect

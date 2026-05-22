@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { backendRuns, backendSessionBindings, messages, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
@@ -25,6 +26,22 @@ interface ChatStreamEvent {
 }
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
+
+const ChatStreamEventJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    type: z.string(),
+    data: z.record(z.string(), z.unknown()),
+  }))
+
+const ChatCompletionRequestBodyJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    messages: z.array(z.object({
+      role: z.string(),
+      content: z.string(),
+    })),
+  }))
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -73,10 +90,12 @@ async function createProfileAndSession(
 }
 
 async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedStatus: ChatMessageRow['status']): Promise<ChatMessageRow[]> {
+  let latestGroups: ChatMessageRow[] = []
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
     if (response.status === 200) {
       const groups = await response.json() as ChatMessageRow[]
+      latestGroups = groups
       const assistant = groups.find(group => group.role === 'assistant')
       if (assistant?.status === expectedStatus) {
         return groups
@@ -85,7 +104,7 @@ async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedS
     await new Promise(resolve => setTimeout(resolve, 20))
   }
 
-  throw new Error(`Timed out waiting for assistant status ${expectedStatus}`)
+  throw new Error(`Timed out waiting for assistant status ${expectedStatus}; latest=${JSON.stringify(latestGroups)}`)
 }
 
 async function getChatMessages(app: ElysiaApp, sessionId: string): Promise<ChatMessageRow[]> {
@@ -129,7 +148,7 @@ async function collectSseEvents(response: Response): Promise<ChatStreamEvent[]> 
         .filter(line => line.startsWith('data: '))
         .map(line => line.slice('data: '.length))
         .join('\n')
-      return JSON.parse(data) as ChatStreamEvent
+      return ChatStreamEventJsonSchema.parse(data)
     })
 }
 
@@ -143,10 +162,10 @@ describe('chat runtime capability', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         expect(init?.method).toBe('POST')
-        const payload = JSON.parse(String(init?.body)) as { messages: Array<{ role: string, content: string }> }
+        const payload = ChatCompletionRequestBodyJsonSchema.parse(String(init?.body))
         expect(payload.messages.at(-1)).toEqual({ role: 'user', content: 'Explain server runtime' })
         return buildSseResponse([
           'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Hello "},"finish_reason":null}]}\n\n',
@@ -222,6 +241,107 @@ describe('chat runtime capability', () => {
     }
   })
 
+  it('injects relevant Chronicle long-term memory into chat runtime system context', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+    const chatCompletionPayloads: Array<{
+      messages: Array<{ role: string, content: string }>
+    }> = []
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        expect(init?.method).toBe('POST')
+        const payload = ChatCompletionRequestBodyJsonSchema.parse(String(init?.body))
+        chatCompletionPayloads.push(payload)
+        return buildSseResponse([
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Use Stripe Checkout."},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":21,"completion_tokens":4,"total_tokens":25}}\n\n',
+          'data: [DONE]\n\n',
+        ])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-memory',
+        name: 'Workspace Chat Memory',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-memory', {
+        profileId: 'profile-chat-memory',
+        sessionId: 'session-chat-memory',
+      })
+
+      const memoryRes = await app.handle(new Request('http://localhost/chronicle/memories', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: 'chat-memory-project-nebula',
+          windowType: '10min',
+          createdAt: '2026-05-21T10:04:00Z',
+          content: 'Project Nebula checkout decision: Remember that Project Nebula uses Stripe Checkout and contact alice@example.com only through approved support channels.',
+          summaryKind: 'imported',
+          sourceSnapshotPaths: [],
+          sourceFramePaths: [],
+          metadata: { source: 'test' },
+        }),
+      }))
+      expect(memoryRes.status).toBe(200)
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-memory/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'What should I remember about Project Nebula checkout?',
+          modelId: 'gpt-4o-mini',
+        }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const rows = await waitForMessageStatus(app, 'session-chat-memory', 'complete')
+      expect(rows.find(row => row.role === 'assistant')?.content).toBe('Use Stripe Checkout.')
+      const turnPayload = chatCompletionPayloads.find(payload =>
+        payload.messages.at(-1)?.content === 'What should I remember about Project Nebula checkout?',
+      )
+      expect(turnPayload).toBeTruthy()
+      const systemMessage = turnPayload?.messages.find(message => message.role === 'system')
+      expect(systemMessage?.content).toContain('Chronicle long-term memory context follows')
+      expect(systemMessage?.content).toContain('Project Nebula checkout decision')
+      expect(systemMessage?.content).toContain('Remember that Project Nebula uses Stripe Checkout')
+      expect(systemMessage?.content).toContain('[EMAIL]')
+      expect(systemMessage?.content).not.toContain('alice@example.com')
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions')).length).toBeGreaterThanOrEqual(1)
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      fetchSpy.mockRestore()
+    }
+  })
+
   it('streams sequenced message_delta events and ends with run_completed', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
@@ -231,7 +351,7 @@ describe('chat runtime capability', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         expect(init?.method).toBe('POST')
         return buildSseResponse([
@@ -309,7 +429,7 @@ describe('chat runtime capability', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         return buildSseResponse([
           'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Starting "},"finish_reason":null}]}\n\n',
@@ -492,7 +612,6 @@ describe('chat runtime capability', () => {
       }
     }
   })
-
   it('fails fast when a stored message snapshot is invalid instead of rebuilding from content', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

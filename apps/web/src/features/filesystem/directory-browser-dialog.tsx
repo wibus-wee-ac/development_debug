@@ -12,6 +12,7 @@ import {
   MonitorIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { getFilesystemBrowse, getFilesystemFavorites } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
@@ -27,23 +28,29 @@ import { cn } from '~/lib/cn'
 
 const LAST_PATH_KEY = 'directory-browser-last-path'
 
-interface FilesystemFavoriteEntry {
-  name: string
-  path: string
-  icon: string
-}
+const FilesystemFavoriteEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  icon: z.string(),
+})
 
-interface FilesystemBrowseEntry {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-}
+const FilesystemFavoriteEntryListSchema = z.array(FilesystemFavoriteEntrySchema)
 
-interface FilesystemBrowseResult {
-  current: string
-  parent?: string
-  entries: FilesystemBrowseEntry[]
-}
+const FilesystemBrowseEntrySchema = z.object({
+  name: z.string(),
+  path: z.string(),
+  type: z.enum(['file', 'directory']),
+})
+
+const FilesystemBrowseResultSchema = z.object({
+  current: z.string(),
+  parent: z.string().nullable().default(null),
+  entries: z.array(FilesystemBrowseEntrySchema),
+})
+
+type FilesystemFavoriteEntry = z.infer<typeof FilesystemFavoriteEntrySchema>
+type FilesystemBrowseEntry = z.infer<typeof FilesystemBrowseEntrySchema>
+type FilesystemBrowseResult = z.infer<typeof FilesystemBrowseResultSchema>
 
 interface DirectoryBrowserDialogProps {
   open: boolean
@@ -70,7 +77,7 @@ export function DirectoryBrowserDialog({
     queryKey: ['filesystem-favorites'],
     queryFn: async () => {
       const result = await getFilesystemFavorites()
-      return (result.data ?? []) as FilesystemFavoriteEntry[]
+      return FilesystemFavoriteEntryListSchema.parse(result.data)
     },
     enabled: open,
     staleTime: 60_000,
@@ -82,7 +89,7 @@ export function DirectoryBrowserDialog({
       const result = await getFilesystemBrowse({
         query: currentPath ? { path: currentPath } : {},
       })
-      return result.data as FilesystemBrowseResult
+      return FilesystemBrowseResultSchema.parse(result.data)
     },
     enabled: open,
     staleTime: 10_000,
@@ -318,7 +325,7 @@ function PathBar({
       const result = await getFilesystemBrowse({
         query: parentDir ? { path: parentDir } : {},
       })
-      return result.data as FilesystemBrowseResult
+      return FilesystemBrowseResultSchema.parse(result.data)
     },
     enabled: editing && !!parentDir,
     staleTime: 10_000,

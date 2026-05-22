@@ -1,6 +1,5 @@
 import { useDroppable } from '@dnd-kit/core'
 import { PlusIcon } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -106,7 +105,7 @@ export function KanbanColumn({
             milestones={milestones}
             displayProperties={displayProperties}
             category={category}
-            onClick={() => onIssueClick(issue.id)}
+            onOpenIssue={onIssueClick}
             onSelectionGesture={onIssueSelectionGesture}
             onHover={onIssueHover}
             highlighted={issue.id === highlightedIssueId}
@@ -114,39 +113,30 @@ export function KanbanColumn({
           />
         ))}
 
-        <AnimatePresence initial={false}>
-          {showInlineInput && (
-            <m.div
-              key="inline-input"
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-              className="overflow-hidden"
-            >
-              <div className="p-0.5">
-                <input
-                  ref={inputRef}
-                  value={inlineTitle}
-                  onChange={e => setInlineTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      handleConfirmInlineCreate()
-                    }
- else if (e.key === 'Escape') {
-                      setShowInlineInput(false)
-                    }
-                  }}
-                  onBlur={handleConfirmInlineCreate}
-                  placeholder="事项标题"
-                  data-testid="kanban-new-issue-input"
-                  className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
-                />
-              </div>
-            </m.div>
-          )}
-        </AnimatePresence>
+        {showInlineInput && (
+          <div className="overflow-hidden">
+            <div className="p-0.5">
+              <input
+                ref={inputRef}
+                value={inlineTitle}
+                onChange={e => setInlineTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleConfirmInlineCreate()
+                  }
+                  else if (e.key === 'Escape') {
+                    setShowInlineInput(false)
+                  }
+                }}
+                onBlur={handleConfirmInlineCreate}
+                placeholder="事项标题"
+                data-testid="kanban-new-issue-input"
+                className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Quick create button */}
         <button

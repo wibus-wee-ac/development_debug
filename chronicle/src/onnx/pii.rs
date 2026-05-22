@@ -6,12 +6,14 @@
 use std::fmt::{self, Display};
 use std::path::Path;
 
-use ndarray::{Array1, Array2, Array3, Axis};
+use ndarray::{Array2, Array3, Array4, Axis};
 use ort::session::Session;
 use ort::value::Tensor;
 use tokenizers::Tokenizer;
 
 use crate::error::{ChronicleError, ChronicleResult};
+
+const GLINER_MAX_WIDTH: usize = 12;
 
 /// PII entity types detectable by GLiNER.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -39,7 +41,7 @@ impl PiiEntityType {
         PiiEntityType::IpAddress,
     ];
 
-    /// Label string used during model training.
+    /// Stable API label exposed by Chronicle.
     pub fn label(&self) -> &'static str {
         match self {
             Self::Person => "person",
@@ -50,6 +52,20 @@ impl PiiEntityType {
             Self::ApiKey => "api_key",
             Self::Ssn => "ssn",
             Self::IpAddress => "ip_address",
+        }
+    }
+
+    /// Natural-language prompt label used by GLiNER zero-shot models.
+    pub fn gliner_label(&self) -> &'static str {
+        match self {
+            Self::Person => "name",
+            Self::Email => "email address",
+            Self::PhoneNumber => "phone number",
+            Self::CreditCard => "credit card",
+            Self::Address => "location address",
+            Self::ApiKey => "api key",
+            Self::Ssn => "ssn",
+            Self::IpAddress => "ip address",
         }
     }
 
@@ -119,11 +135,11 @@ impl GlinerPiiDetector {
             session,
             tokenizer,
             entity_types: PiiEntityType::ALL.to_vec(),
-            threshold: 0.5,
+            threshold: 0.3,
         })
     }
 
-    /// Set confidence threshold (default 0.5).
+    /// Set confidence threshold (default 0.3).
     pub fn with_threshold(mut self, threshold: f32) -> Self {
         self.threshold = threshold;
         self
@@ -135,66 +151,67 @@ impl GlinerPiiDetector {
             return Ok(Vec::new());
         }
 
+        let text_tokens = split_text_tokens(text);
+        if text_tokens.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut input_words = Vec::new();
+        for entity_type in &self.entity_types {
+            input_words.push("<<ENT>>".to_string());
+            input_words.push(entity_type.gliner_label().to_string());
+        }
+        input_words.push("<<SEP>>".to_string());
+        let prompt_len = input_words.len();
+        input_words.extend(text_tokens.iter().map(|token| token.text.clone()));
+
         let encoding = self
             .tokenizer
-            .encode(text, true)
+            .encode(input_words, true)
             .map_err(|e| ChronicleError::Process(format!("tokenization failed: {e}")))?;
 
         let ids = encoding.get_ids();
-        let offsets = encoding.get_offsets();
         let word_ids = encoding.get_word_ids();
         let seq_len = ids.len();
-
-        // Build input tensors.
         let input_ids: Vec<i64> = ids.iter().map(|&id| id as i64).collect();
         let attention_mask: Vec<i64> = vec![1i64; seq_len];
+        let words_mask = build_words_mask(word_ids, prompt_len);
+        let text_lengths = vec![text_tokens.len() as i64];
+        let candidate_spans = build_candidate_spans(text_tokens.len(), GLINER_MAX_WIDTH);
 
-        // word_mask: 1 for tokens that start a new word (first subword), 0 otherwise.
-        let word_mask: Vec<i64> = word_ids
-            .iter()
-            .enumerate()
-            .map(|(i, wid)| {
-                match wid {
-                    None => 0, // special tokens
-                    Some(w) => {
-                        if i == 0 {
-                            1
-                        } else {
-                            // New word if word_id differs from previous token's word_id.
-                            let prev = word_ids.get(i - 1).copied().flatten();
-                            if prev == Some(*w) { 0 } else { 1 }
-                        }
-                    }
-                }
-            })
-            .collect();
-
-        let text_lengths: Vec<i64> = vec![seq_len as i64];
-
-        // Convert to ndarray tensors.
         let input_ids_arr = Array2::from_shape_vec((1, seq_len), input_ids)
             .map_err(|e| ChronicleError::Process(format!("ndarray shape error: {e}")))?;
         let attention_mask_arr = Array2::from_shape_vec((1, seq_len), attention_mask)
             .map_err(|e| ChronicleError::Process(format!("ndarray shape error: {e}")))?;
-        let word_mask_arr = Array2::from_shape_vec((1, seq_len), word_mask.clone())
+        let words_mask_arr = Array2::from_shape_vec((1, seq_len), words_mask)
             .map_err(|e| ChronicleError::Process(format!("ndarray shape error: {e}")))?;
-        let text_lengths_arr = Array1::from_vec(text_lengths);
+        let text_lengths_arr = Array2::from_shape_vec((1, 1), text_lengths)
+            .map_err(|e| ChronicleError::Process(format!("ndarray shape error: {e}")))?;
+        let span_idx_arr = Array3::from_shape_vec((1, candidate_spans.len(), 2), {
+            let mut values = Vec::with_capacity(candidate_spans.len() * 2);
+            for span in &candidate_spans {
+                values.push(span.start as i64);
+                values.push(span.end as i64);
+            }
+            values
+        })
+        .map_err(|e| ChronicleError::Process(format!("ndarray shape error: {e}")))?;
+        let span_mask_arr = Array2::from_shape_vec(
+            (1, candidate_spans.len()),
+            candidate_spans.iter().map(|span| span.valid).collect(),
+        )
+        .map_err(|e| ChronicleError::Process(format!("ndarray shape error: {e}")))?;
 
-        // Try GLiNER-style inference (4 inputs).
-        let outputs = self
-            .run_gliner(
-                &input_ids_arr,
-                &attention_mask_arr,
-                &word_mask_arr,
-                &text_lengths_arr,
-            )
-            .or_else(|_| {
-                // Fallback: simpler NER model with only input_ids + attention_mask.
-                self.run_simple_ner(&input_ids_arr, &attention_mask_arr)
-            })?;
+        let outputs = self.run_gliner_span(
+            &input_ids_arr,
+            &attention_mask_arr,
+            &words_mask_arr,
+            &text_lengths_arr,
+            &span_idx_arr,
+            &span_mask_arr,
+        )?;
 
-        // Extract spans from output scores.
-        let spans = self.extract_spans(&outputs, text, offsets, &word_mask, word_ids);
+        let spans = self.extract_spans(&outputs, text, &text_tokens);
         Ok(spans)
     }
 
@@ -218,21 +235,27 @@ impl GlinerPiiDetector {
         Ok(result)
     }
 
-    /// Run GLiNER-style 4-input inference.
-    fn run_gliner(
+    /// Run GLiNER UniEncoderSpan 6-input inference.
+    fn run_gliner_span(
         &mut self,
         input_ids: &Array2<i64>,
         attention_mask: &Array2<i64>,
-        word_mask: &Array2<i64>,
-        text_lengths: &Array1<i64>,
-    ) -> ChronicleResult<Array3<f32>> {
+        words_mask: &Array2<i64>,
+        text_lengths: &Array2<i64>,
+        span_idx: &Array3<i64>,
+        span_mask: &Array2<bool>,
+    ) -> ChronicleResult<Array4<f32>> {
         let input_ids_tensor = Tensor::from_array(input_ids.clone())
             .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
         let attention_mask_tensor = Tensor::from_array(attention_mask.clone())
             .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
-        let word_mask_tensor = Tensor::from_array(word_mask.clone())
+        let words_mask_tensor = Tensor::from_array(words_mask.clone())
             .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
         let text_lengths_tensor = Tensor::from_array(text_lengths.clone())
+            .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
+        let span_idx_tensor = Tensor::from_array(span_idx.clone())
+            .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
+        let span_mask_tensor = Tensor::from_array(span_mask.clone())
             .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
 
         let outputs = self
@@ -240,8 +263,10 @@ impl GlinerPiiDetector {
             .run(ort::inputs![
                 "input_ids" => input_ids_tensor,
                 "attention_mask" => attention_mask_tensor,
-                "word_mask" => word_mask_tensor,
+                "words_mask" => words_mask_tensor,
                 "text_lengths" => text_lengths_tensor,
+                "span_idx" => span_idx_tensor,
+                "span_mask" => span_mask_tensor,
             ])
             .map_err(|e| ChronicleError::Process(format!("ONNX inference failed: {e}")))?;
 
@@ -249,147 +274,67 @@ impl GlinerPiiDetector {
             .try_extract_tensor::<f32>()
             .map_err(|e| ChronicleError::Process(format!("output extraction failed: {e}")))?;
 
-        // Shape derefs to &[i64].
-        // Expected shape: [batch=1, num_spans, num_entity_types].
-        if shape.len() == 3 {
-            let arr = Array3::from_shape_vec(
-                (shape[0] as usize, shape[1] as usize, shape[2] as usize),
-                output_data.to_vec(),
-            )
-            .map_err(|e| ChronicleError::Process(format!("output reshape failed: {e}")))?;
-            Ok(arr)
-        } else if shape.len() == 2 {
-            // [num_spans, num_entity_types] — add batch dim.
-            let arr = Array3::from_shape_vec(
-                (1, shape[0] as usize, shape[1] as usize),
+        if shape.len() == 4 {
+            let arr = Array4::from_shape_vec(
+                (
+                    shape[0] as usize,
+                    shape[1] as usize,
+                    shape[2] as usize,
+                    shape[3] as usize,
+                ),
                 output_data.to_vec(),
             )
             .map_err(|e| ChronicleError::Process(format!("output reshape failed: {e}")))?;
             Ok(arr)
         } else {
             Err(ChronicleError::Process(format!(
-                "unexpected output shape: {shape:?}"
-            )))
-        }
-    }
-
-    /// Fallback: simpler NER model with input_ids + attention_mask only.
-    fn run_simple_ner(
-        &mut self,
-        input_ids: &Array2<i64>,
-        attention_mask: &Array2<i64>,
-    ) -> ChronicleResult<Array3<f32>> {
-        let input_ids_tensor = Tensor::from_array(input_ids.clone())
-            .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
-        let attention_mask_tensor = Tensor::from_array(attention_mask.clone())
-            .map_err(|e| ChronicleError::Process(format!("tensor creation failed: {e}")))?;
-
-        let outputs = self
-            .session
-            .run(ort::inputs![
-                "input_ids" => input_ids_tensor,
-                "attention_mask" => attention_mask_tensor,
-            ])
-            .map_err(|e| {
-                ChronicleError::Process(format!("ONNX inference (fallback) failed: {e}"))
-            })?;
-
-        let (shape, output_data) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| ChronicleError::Process(format!("output extraction failed: {e}")))?;
-
-        if shape.len() == 3 {
-            let arr = Array3::from_shape_vec(
-                (shape[0] as usize, shape[1] as usize, shape[2] as usize),
-                output_data.to_vec(),
-            )
-            .map_err(|e| ChronicleError::Process(format!("output reshape failed: {e}")))?;
-            Ok(arr)
-        } else if shape.len() == 2 {
-            let arr = Array3::from_shape_vec(
-                (1, shape[0] as usize, shape[1] as usize),
-                output_data.to_vec(),
-            )
-            .map_err(|e| ChronicleError::Process(format!("output reshape failed: {e}")))?;
-            Ok(arr)
-        } else {
-            Err(ChronicleError::Process(format!(
-                "unexpected fallback output shape: {shape:?}"
+                "unexpected GLiNER span output shape: {shape:?}"
             )))
         }
     }
 
     /// Extract PII spans from model output scores.
-    ///
-    /// GLiNER outputs a score matrix of shape [batch, num_word_spans, num_entity_types].
-    /// Each "word span" index `i` corresponds to the i-th word-starting token.
-    /// We find entries above threshold and map back to character offsets.
     fn extract_spans(
         &self,
-        scores: &Array3<f32>,
+        scores: &Array4<f32>,
         text: &str,
-        offsets: &[(usize, usize)],
-        word_mask: &[i64],
-        word_ids: &[Option<u32>],
+        text_tokens: &[TextToken],
     ) -> Vec<PiiSpan> {
-        let batch_scores = scores.index_axis(Axis(0), 0); // [num_spans, num_entity_types]
-        let num_spans = batch_scores.shape()[0];
-        let num_types = batch_scores.shape()[1];
-
-        // Collect indices of word-starting tokens.
-        let word_token_indices: Vec<usize> = word_mask
-            .iter()
-            .enumerate()
-            .filter(|&(_, m)| *m == 1)
-            .map(|(i, _)| i)
-            .collect();
+        let batch_scores = scores.index_axis(Axis(0), 0); // [text_words, max_width, entity_types]
+        let num_words = batch_scores.shape()[0].min(text_tokens.len());
+        let max_width = batch_scores.shape()[1];
+        let num_types = batch_scores.shape()[2];
 
         let mut spans = Vec::new();
 
-        for span_idx in 0..num_spans {
-            for type_idx in 0..num_types.min(self.entity_types.len()) {
-                let score = batch_scores[[span_idx, type_idx]];
-                if score <= self.threshold {
+        for start in 0..num_words {
+            for width in 0..max_width {
+                let end = start + width;
+                if end >= text_tokens.len() {
                     continue;
                 }
 
-                // Map span_idx to the corresponding word-starting token.
-                let Some(&token_idx) = word_token_indices.get(span_idx) else {
-                    continue;
-                };
-
-                // Find the extent of this word span: consecutive tokens with same word_id.
-                let current_word_id = word_ids.get(token_idx).copied().flatten();
-                let Some(wid) = current_word_id else {
-                    continue;
-                };
-
-                // Find last token belonging to this word.
-                let mut end_token_idx = token_idx;
-                for ti in (token_idx + 1)..offsets.len() {
-                    if word_ids.get(ti).copied().flatten() == Some(wid) {
-                        end_token_idx = ti;
-                    } else {
-                        break;
+                for type_idx in 0..num_types.min(self.entity_types.len()) {
+                    let score = sigmoid(batch_scores[[start, width, type_idx]]);
+                    if score <= self.threshold {
+                        continue;
                     }
+
+                    let start_offset = text_tokens[start].start;
+                    let end_offset = text_tokens[end].end;
+                    if start_offset >= end_offset || end_offset > text.len() {
+                        continue;
+                    }
+
+                    let span_text = &text[start_offset..end_offset];
+                    spans.push(PiiSpan {
+                        entity_type: self.entity_types[type_idx],
+                        text: span_text.to_string(),
+                        start: byte_to_char_offset(text, start_offset),
+                        end: byte_to_char_offset(text, end_offset),
+                        confidence: score,
+                    });
                 }
-
-                // Get character offsets.
-                let (char_start, _) = offsets[token_idx];
-                let (_, char_end) = offsets[end_token_idx];
-
-                if char_start >= char_end || char_end > text.len() {
-                    continue;
-                }
-
-                let span_text = &text[char_start..char_end];
-                spans.push(PiiSpan {
-                    entity_type: self.entity_types[type_idx],
-                    text: span_text.to_string(),
-                    start: char_start,
-                    end: char_end,
-                    confidence: score,
-                });
             }
         }
 
@@ -403,6 +348,128 @@ impl GlinerPiiDetector {
 
         spans
     }
+}
+
+#[derive(Debug, Clone)]
+struct TextToken {
+    text: String,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug, Clone)]
+struct CandidateSpan {
+    start: usize,
+    end: usize,
+    valid: bool,
+}
+
+fn split_text_tokens(text: &str) -> Vec<TextToken> {
+    let mut tokens = Vec::new();
+    let mut iter = text.char_indices().peekable();
+
+    while let Some((start, ch)) = iter.next() {
+        if ch.is_whitespace() {
+            continue;
+        }
+
+        if is_word_char(ch) {
+            let mut end = start + ch.len_utf8();
+            let mut last_word_end = end;
+            while let Some(&(next_start, next_ch)) = iter.peek() {
+                if is_word_char(next_ch) {
+                    iter.next();
+                    end = next_start + next_ch.len_utf8();
+                    last_word_end = end;
+                    continue;
+                }
+
+                if (next_ch == '-' || next_ch == '_') && has_word_char_after(&mut iter.clone()) {
+                    iter.next();
+                    end = next_start + next_ch.len_utf8();
+                    continue;
+                }
+
+                break;
+            }
+
+            let final_end = last_word_end.max(end);
+            tokens.push(TextToken {
+                text: text[start..final_end].to_string(),
+                start,
+                end: final_end,
+            });
+            continue;
+        }
+
+        let end = start + ch.len_utf8();
+        tokens.push(TextToken {
+            text: text[start..end].to_string(),
+            start,
+            end,
+        });
+    }
+
+    tokens
+}
+
+fn is_word_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_'
+}
+
+fn has_word_char_after(iter: &mut std::iter::Peekable<std::str::CharIndices<'_>>) -> bool {
+    let mut lookahead = iter.clone();
+    lookahead.next();
+    lookahead
+        .peek()
+        .map(|(_, ch)| is_word_char(*ch))
+        .unwrap_or(false)
+}
+
+fn build_words_mask(word_ids: &[Option<u32>], prompt_len: usize) -> Vec<i64> {
+    let mut mask = Vec::with_capacity(word_ids.len());
+    let mut prev_word_id = None;
+    let mut seen_words = 0usize;
+
+    for word_id in word_ids {
+        match word_id {
+            None => mask.push(0),
+            Some(id) => {
+                if Some(*id) != prev_word_id {
+                    seen_words += 1;
+                    if seen_words > prompt_len {
+                        mask.push((seen_words - prompt_len) as i64);
+                    } else {
+                        mask.push(0);
+                    }
+                } else {
+                    mask.push(0);
+                }
+                prev_word_id = Some(*id);
+            }
+        }
+    }
+
+    mask
+}
+
+fn build_candidate_spans(num_tokens: usize, max_width: usize) -> Vec<CandidateSpan> {
+    let mut spans = Vec::with_capacity(num_tokens * max_width);
+    for start in 0..num_tokens {
+        for width in 0..max_width {
+            let end = start + width;
+            spans.push(CandidateSpan {
+                start,
+                end,
+                valid: end < num_tokens,
+            });
+        }
+    }
+    spans
+}
+
+fn sigmoid(value: f32) -> f32 {
+    1.0 / (1.0 + (-value).exp())
 }
 
 /// Remove overlapping spans, keeping the higher-confidence one.
@@ -428,6 +495,10 @@ fn char_to_byte_offset(s: &str, char_offset: usize) -> usize {
         .nth(char_offset)
         .map(|(byte_idx, _)| byte_idx)
         .unwrap_or(s.len())
+}
+
+fn byte_to_char_offset(s: &str, byte_offset: usize) -> usize {
+    s[..byte_offset.min(s.len())].chars().count()
 }
 
 /// Redact PII in text given pre-computed spans (useful for external callers).

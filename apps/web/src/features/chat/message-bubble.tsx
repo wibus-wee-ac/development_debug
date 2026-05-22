@@ -1,7 +1,7 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
+import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -73,22 +73,13 @@ function ExecutionPhaseFold({ children }: { children: React.ReactNode }) {
       >
         {expanded ? 'Hide execution details' : 'Show execution details'}
       </Button>
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <m.div
-            key="exec-fold"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-            className="overflow-hidden -mx-3 px-3"
-          >
-            <div className="mt-1 space-y-1">
-              {children}
-            </div>
-          </m.div>
-        )}
-      </AnimatePresence>
+      {expanded && (
+        <div className="overflow-hidden -mx-3 px-3">
+          <div className="mt-1 space-y-1">
+            {children}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

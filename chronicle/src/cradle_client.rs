@@ -76,6 +76,22 @@ pub struct ChronicleAccessibilitySnapshotReport {
     pub metadata: serde_json::Value,
 }
 
+/// Accessibility observer event captured before snapshot evidence is produced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChronicleAccessibilityEventReport {
+    pub source_id: String,
+    pub captured_at: String,
+    pub provider: String,
+    pub app_bundle_id: Option<String>,
+    pub pid: i32,
+    pub notification: String,
+    pub dropped_before: u64,
+    pub snapshot_id: Option<String>,
+    pub accessibility_snapshot_id: Option<String>,
+    pub metadata: serde_json::Value,
+}
+
 impl ChronicleSnapshotReport {
     pub fn from_persisted_frame(frame: &PersistedFrame) -> Self {
         Self {
@@ -624,6 +640,27 @@ impl CradleClient {
         self.post_json("/chronicle/snapshots", snapshot)
     }
 
+    /// Report an accessibility observer event to Cradle Server.
+    ///
+    /// This is best-effort event history. Snapshot/accessibility artifacts remain
+    /// the local recovery source if the server cannot ingest the event.
+    pub fn record_accessibility_event(
+        &self,
+        event: &ChronicleAccessibilityEventReport,
+    ) -> ChronicleResult<()> {
+        if event.source_id.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "accessibility event source_id must not be empty".to_string(),
+            ));
+        }
+        if event.notification.trim().is_empty() {
+            return Err(ChronicleError::InvalidArgument(
+                "accessibility event notification must not be empty".to_string(),
+            ));
+        }
+        self.post_json("/chronicle/accessibility-events", event)
+    }
+
     /// Report a persisted memory to Cradle Server.
     ///
     /// The caller must treat errors as non-fatal because the markdown file is
@@ -634,8 +671,9 @@ impl CradleClient {
 
     /// Report a persisted audio transcript to Cradle Server.
     ///
-    /// This is only the transport contract. Real audio capture, VAD, ASR, and
-    /// speaker labeling are separate runtime capabilities.
+    /// Local audio capture, VAD, ASR, and speaker labeling are runtime
+    /// capabilities owned by the daemon. This transport remains the canonical
+    /// Server handoff for transcript evidence.
     pub fn record_audio_transcript(
         &self,
         transcript: &ChronicleAudioTranscriptReport,
@@ -770,12 +808,13 @@ mod tests {
     use crate::time::Timestamp;
 
     use super::{
-        ChronicleAudioProcessingStatus, ChronicleAudioRawSegmentProcessingResultReport,
-        ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource,
-        ChronicleAudioRawSegmentStatus, ChronicleAudioTranscriptReport,
-        ChronicleAudioTranscriptSegmentReport, ChronicleAudioTranscriptSource,
-        ChronicleAudioTranscriptStatus, ChronicleMemoryReport, ChronicleSnapshotReport,
-        ChronicleSpeakerProfileReport, ChronicleTranscriptConfidence, CradleClient,
+        ChronicleAccessibilityEventReport, ChronicleAudioProcessingStatus,
+        ChronicleAudioRawSegmentProcessingResultReport, ChronicleAudioRawSegmentReport,
+        ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus,
+        ChronicleAudioTranscriptReport, ChronicleAudioTranscriptSegmentReport,
+        ChronicleAudioTranscriptSource, ChronicleAudioTranscriptStatus, ChronicleMemoryReport,
+        ChronicleSnapshotReport, ChronicleSpeakerProfileReport, ChronicleTranscriptConfidence,
+        CradleClient,
     };
 
     #[test]
@@ -843,6 +882,42 @@ mod tests {
         assert_eq!(json["summaryKind"], "llm");
         assert_eq!(json["sourceSnapshotPaths"][0], "/tmp/segment/snapshot.json");
         assert_eq!(json["sourceFramePaths"][0], "/tmp/segment/frame-00003.jpg");
+    }
+
+    #[test]
+    fn accessibility_event_report_serializes_server_contract() {
+        let report = ChronicleAccessibilityEventReport {
+            source_id:
+                "accessibility-event:app-cradle-desktop:4321:AXFocusedWindowChanged:1779357600:0"
+                    .to_string(),
+            captured_at: "2026-05-21T10:00:00Z".to_string(),
+            provider: "macos-ax-observer".to_string(),
+            app_bundle_id: Some("app.cradle.desktop".to_string()),
+            pid: 4321,
+            notification: "AXFocusedWindowChanged".to_string(),
+            dropped_before: 0,
+            snapshot_id: Some("snapshot-1".to_string()),
+            accessibility_snapshot_id: None,
+            metadata: serde_json::json!({
+                "runtime": "ax-observer"
+            }),
+        };
+
+        let json = serde_json::to_value(&report).expect("accessibility event should serialize");
+
+        assert_eq!(
+            json["sourceId"],
+            "accessibility-event:app-cradle-desktop:4321:AXFocusedWindowChanged:1779357600:0"
+        );
+        assert_eq!(json["capturedAt"], "2026-05-21T10:00:00Z");
+        assert_eq!(json["provider"], "macos-ax-observer");
+        assert_eq!(json["appBundleId"], "app.cradle.desktop");
+        assert_eq!(json["pid"], 4321);
+        assert_eq!(json["notification"], "AXFocusedWindowChanged");
+        assert_eq!(json["droppedBefore"], 0);
+        assert_eq!(json["snapshotId"], "snapshot-1");
+        assert!(json["accessibilitySnapshotId"].is_null());
+        assert_eq!(json["metadata"]["runtime"], "ax-observer");
     }
 
     #[test]

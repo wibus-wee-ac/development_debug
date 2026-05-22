@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 
 // Electron webview element — not in React's JSX types
@@ -63,7 +64,22 @@ export function BrowserPanel() {
   const { tabs, activeTabId, requestedTab, createTab, fulfillRequestedTab, closeTab, setActiveTab, updateTab, navigateTo } = useBrowserPanelStore()
   const activeTab = tabs.find(t => t.id === activeTabId)
   const [urlInput, setUrlInput] = useState('')
+  const firstRenderedRef = useRef(false)
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
+
+  useEffect(() => {
+    if (!isElectron || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-browser-panel-rendered')
+    measureCradlePerformance(
+      'cradle:browser-panel-first-render',
+      'cradle:browser-panel-open-requested',
+      'cradle:first-browser-panel-rendered',
+    )
+  }, [])
 
   useEffect(() => {
     if (!requestedTab) {
@@ -199,7 +215,11 @@ export function BrowserPanel() {
   // Empty state
   if (tabs.length === 0) {
     return (
-      <div className="flex flex-col flex-1 items-center justify-center gap-4 text-muted-foreground/60">
+      <div
+        className="flex flex-col flex-1 items-center justify-center gap-4 text-muted-foreground/60"
+        data-testid="browser-panel"
+        data-browser-panel-ready="true"
+      >
         <GlobeIcon className="size-10 opacity-30" />
         <p className="text-xs">No tabs open</p>
         <button
@@ -214,7 +234,11 @@ export function BrowserPanel() {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div
+      className="flex flex-col flex-1 overflow-hidden"
+      data-testid="browser-panel"
+      data-browser-panel-ready="true"
+    >
       {/* Tab bar */}
       <div className="flex items-center gap-0.5 px-2 py-1 shrink-0 border-b border-border/30 bg-card">
         {tabs.map(tab => (

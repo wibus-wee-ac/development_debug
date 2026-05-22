@@ -28,6 +28,7 @@ function profile(input: Partial<AgentProfile> = {}): AgentProfile {
     configJson: '{}',
     credentialRef: 'secret-1',
     customModels: '[]',
+    iconSlug: null,
     createdAt: 1,
     updatedAt: 1,
     ...input,

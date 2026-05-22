@@ -6,6 +6,7 @@ import {
   workspaces,
 } from '@cradle/db'
 import { desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
@@ -65,14 +66,11 @@ const DEFAULT_SESSION_TITLE = 'Waiting session'
 const RUNNING_LIMIT = 8
 const RESIDENT_LIMIT = 10
 const AWAIT_LIMIT = 20
-
-function readCount(row: { count: unknown } | undefined): number {
-  const value = row?.count ?? 0
-  return typeof value === 'number' ? value : Number(value) || 0
-}
+const WorkspaceIdsSchema = z.array(z.string().nullable())
+  .transform(workspaceIds => [...new Set(workspaceIds.flatMap(id => id ? [id] : []))])
 
 function readWorkspaceNames(workspaceIds: Array<string | null>): Map<string, string> {
-  const ids = [...new Set(workspaceIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
+  const ids = WorkspaceIdsSchema.parse(workspaceIds)
   if (ids.length === 0) {
     return new Map()
   }
@@ -166,27 +164,27 @@ function readResidentItems(activeSessionIds: Set<string>): TraySessionItem[] {
 }
 
 function readAutomationCounts(): { enabled: number, running: number } {
-  const enabled = readCount(db()
+  const enabled = db()
     .select({ count: sql<number>`count(*)` })
     .from(automationDefinitions)
     .where(eq(automationDefinitions.enabled, true))
-    .get())
+    .get()?.count ?? 0
 
-  const running = readCount(db()
+  const running = db()
     .select({ count: sql<number>`count(*)` })
     .from(automationRuns)
     .where(or(eq(automationRuns.status, 'queued'), eq(automationRuns.status, 'running')))
-    .get())
+    .get()?.count ?? 0
 
   return { enabled, running }
 }
 
 function readAwaitCount(): number {
-  return readCount(db()
+  return db()
     .select({ count: sql<number>`count(*)` })
     .from(sessionAwaits)
     .where(eq(sessionAwaits.status, 'pending'))
-    .get())
+    .get()?.count ?? 0
 }
 
 export function getTrayAwaits(): TrayAwaitItem[] {
@@ -213,10 +211,10 @@ export function getTrayAwaits(): TrayAwaitItem[] {
 }
 
 function readWorkspaceCount(): number {
-  return readCount(db()
+  return db()
     .select({ count: sql<number>`count(*)` })
     .from(workspaces)
-    .get())
+    .get()?.count ?? 0
 }
 
 async function readChronicleMetric(): Promise<TrayMetric> {

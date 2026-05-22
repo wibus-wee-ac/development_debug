@@ -1,6 +1,7 @@
 import type { Workspace } from '@cradle/db'
 import { sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import {
@@ -22,6 +23,10 @@ const shellLeaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const codexCaptureTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const CODEX_CAPTURE_ATTEMPTS = 12
 const CODEX_CAPTURE_RETRY_MS = 500
+const ShellLeaseMsSchema = z.string()
+  .prefault('15000')
+  .transform(value => Number.parseInt(value, 10))
+  .pipe(z.number().int().positive())
 const CODEX_VALUE_OPTIONS = new Set([
   '-a',
   '-c',
@@ -480,9 +485,5 @@ function persistCodexSessionBinding(
 }
 
 function getShellLeaseMs(): number {
-  const value = Number.parseInt(process.env.CRADLE_PTY_SHELL_LEASE_MS ?? '', 10)
-  if (Number.isFinite(value) && value > 0) {
-    return value
-  }
-  return 15_000
+  return ShellLeaseMsSchema.parse(process.env.CRADLE_PTY_SHELL_LEASE_MS)
 }

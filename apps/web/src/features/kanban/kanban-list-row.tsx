@@ -1,6 +1,6 @@
 import { BotIcon, CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
@@ -9,7 +9,6 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
-import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -20,7 +19,7 @@ interface ListRowProps {
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   displayProperties: ViewConfig['displayProperties']
-  onClick: () => void
+  onOpenIssue: (id: string) => void
   onSelectionGesture?: (id: string, mode: 'toggle' | 'range') => void
   onHover?: (id: string | null) => void
   highlighted?: boolean
@@ -41,12 +40,12 @@ function formatRelativeTime(ts: number): string {
   return `${days}d`
 }
 
-export function KanbanListRow({
+function KanbanListRowView({
   issue,
   statuses,
   milestones,
   displayProperties,
-  onClick,
+  onOpenIssue,
   onSelectionGesture,
   onHover,
   highlighted,
@@ -57,7 +56,7 @@ export function KanbanListRow({
   const { workspaces } = useWorkspaces()
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
-  const labels = IssueLabelsJsonSchema.parse(issue.labels)
+  const labels = issue.labels
 
   useEffect(() => {
     return () => {
@@ -67,17 +66,21 @@ export function KanbanListRow({
     }
   }, [])
 
+  const handleOpenIssue = useCallback(() => {
+    onOpenIssue(issue.id)
+  }, [issue.id, onOpenIssue])
+
   const openIssue = (delayMs: number) => {
     if (openTimerRef.current !== null) {
       window.clearTimeout(openTimerRef.current)
     }
     if (delayMs <= 0) {
-      onClick()
+      handleOpenIssue()
       return
     }
     openTimerRef.current = window.setTimeout(() => {
       openTimerRef.current = null
-      onClick()
+      handleOpenIssue()
     }, delayMs)
   }
 
@@ -103,7 +106,7 @@ export function KanbanListRow({
   }
 
   return (
-    <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={onClick}>
+    <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={handleOpenIssue}>
       <button
         type="button"
         aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
@@ -206,3 +209,5 @@ export function KanbanListRow({
     </IssueContextMenu>
   )
 }
+
+export const KanbanListRow = memo(KanbanListRowView)

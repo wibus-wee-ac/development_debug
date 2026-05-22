@@ -124,26 +124,25 @@ export function parseCradlePluginPackageJson(value: unknown): ParsedCradlePlugin
 }
 
 export function parseCradlePluginPackageJsonText(value: string): ParsedCradlePluginPackage {
-  let parsed: unknown
   try {
-    parsed = JSON.parse(value)
+    return CradlePluginPackageJsonTextSchema.parse(value)
   } catch (error) {
     throw new CradlePluginManifestError(formatManifestParseError(error), { cause: error })
   }
-
-  return parseCradlePluginPackageJson(parsed)
 }
 
 export function validatePluginEntryPath(value: unknown, path = 'entry'): string {
-  const result = PluginEntryPathSchema.safeParse(value)
-  if (!result.success) {
+  try {
+    return PluginEntryPathSchema.parse(value)
+  }
+  catch (error) {
     throw new CradlePluginManifestError(
-      result.error.issues
-        .map(issue => `${path}: ${issue.message}`)
-        .join('; '),
-      { cause: result.error },
+      error instanceof z.ZodError
+        ? error.issues
+          .map(issue => `${path}: ${issue.message}`)
+          .join('; ')
+        : formatManifestParseError(error),
+      { cause: error },
     )
   }
-
-  return result.data
 }

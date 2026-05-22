@@ -2,6 +2,8 @@ import { existsSync, unlinkSync } from 'node:fs'
 import type { Server, Socket } from 'node:net'
 import { createServer } from 'node:net'
 
+import { z } from 'zod'
+
 import type { PendingCallManager } from './pending-calls.js'
 import type { SlackBot } from './slack-bot.js'
 import type { BridgeStore } from './store.js'
@@ -10,12 +12,14 @@ export interface BridgeServerConfig {
   socketPath: string
 }
 
-interface ZhiToolRequest {
-  method: 'zhi'
-  params: {
-    message: string
-  }
-}
+const ZhiToolRequestJsonSchema = z.string().transform(raw => JSON.parse(raw)).pipe(z.object({
+  method: z.literal('zhi'),
+  params: z.object({
+    message: z.string(),
+  }),
+}))
+
+type ZhiToolRequest = z.infer<typeof ZhiToolRequestJsonSchema>
 
 interface BridgeResponse {
   success: boolean
@@ -94,16 +98,10 @@ export class BridgeServer {
     let response: BridgeResponse
 
     try {
-      const request: ZhiToolRequest = JSON.parse(raw)
-
-      if (request.method !== 'zhi') {
-        response = { success: false, error: `Unknown method: ${request.method}` }
-      }
- else {
-        response = await this.handleZhi(request.params)
-      }
+      const request = ZhiToolRequestJsonSchema.parse(raw)
+      response = await this.handleZhi(request.params)
     }
- catch (err) {
+    catch (err) {
       response = { success: false, error: (err as Error).message }
     }
 
@@ -131,7 +129,7 @@ export class BridgeServer {
         },
       }
     }
- catch (err) {
+    catch (err) {
       return { success: false, error: (err as Error).message }
     }
   }

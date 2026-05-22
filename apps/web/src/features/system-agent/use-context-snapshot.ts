@@ -11,17 +11,22 @@ import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
+import { z } from 'zod'
 
 import { useSettingsOverlayStore } from '../settings/settings-overlay-store'
 import type { SystemAgentContext } from './context-schema'
 
 const MAX_RECENT_MESSAGES = 5
 const CONTENT_PREVIEW_LENGTH = 120
+const TextMessagePartSchema = z.object({
+  type: z.literal('text'),
+  text: z.string(),
+}).passthrough()
 
 function getMessageContentPreview(message: { parts?: Array<{ type: string } & Record<string, unknown>> }): string {
   const text = message.parts
-    ?.filter(part => part.type === 'text' && typeof part.text === 'string')
-    .map(part => part.text as string)
+    ?.filter(part => part.type === 'text')
+    .map(part => TextMessagePartSchema.parse(part).text)
     .join('\n')
     .trim()
 

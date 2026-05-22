@@ -1,7 +1,41 @@
 import type { UIMessage } from 'ai'
+import { z } from 'zod'
 
 type MessagePart = UIMessage['parts'][number]
 type TextPartKind = 'text' | 'reasoning'
+
+const MutableTextPartSchema = z.custom<{ type: TextPartKind, text: string }>((part) => {
+  z.object({
+    type: z.enum(['text', 'reasoning']),
+    text: z.string(),
+  }).passthrough().parse(part)
+  return true
+})
+
+const MutablePartStateSchema = z.custom<{ state?: string } | undefined>((part) => {
+  if (part === undefined) {
+    return true
+  }
+  z.object({
+    state: z.string().optional(),
+  }).passthrough().parse(part)
+  return true
+})
+
+const MutableToolPartSchema = z.custom<{ toolCallId: string, state?: string, input?: unknown, output?: unknown, errorText?: string }>((part) => {
+  z.object({
+    toolCallId: z.string(),
+    state: z.string().optional(),
+    input: z.unknown().optional(),
+    output: z.unknown().optional(),
+    errorText: z.string().optional(),
+  }).passthrough().parse(part)
+  return true
+})
+
+const MessageMetadataCarrierSchema = z.object({
+  metadata: z.unknown().optional(),
+}).passthrough()
 
 export type ChatPartDelta
   = | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
@@ -70,7 +104,7 @@ export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[])
         break
       case 'tool_output_streaming':
         updateToolPart(next.parts, delta.partIndex, (part) => {
-          part.output = `${typeof part.output === 'string' ? part.output : ''}${delta.text}`
+          part.output = `${z.string().parse(part.output)}${delta.text}`
         })
         break
       case 'tool_output_set':
@@ -83,7 +117,7 @@ export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[])
         })
         break
       case 'metadata_update':
-        ;(next as { metadata?: unknown }).metadata = delta.metadata
+        Object.assign(MessageMetadataCarrierSchema.parse(next), { metadata: delta.metadata })
         break
     }
   }
@@ -97,41 +131,33 @@ function updateTextPart(
   partType: TextPartKind,
   update: (text: string) => string,
 ): void {
-  const part = parts[index] as unknown as { type?: string, text?: string }
-  if (!part || part.type !== partType) {
-    return
+  const part = MutableTextPartSchema.parse(parts[index])
+  if (part.type === partType) {
+    part.text = update(part.text)
   }
-  part.text = update(part.text ?? '')
 }
 
 function updatePartState(parts: MessagePart[], index: number, state: 'done'): void {
-  const part = parts[index] as unknown as { state?: string } | undefined
+  const part = MutablePartStateSchema.parse(parts[index])
   if (part) {
     part.state = state
   }
 }
 
 function updateToolPart(parts: MessagePart[], index: number, update: (part: { state?: string, input?: unknown, output?: unknown, errorText?: string }) => void): void {
-  const part = parts[index] as unknown as { toolCallId?: string, state?: string, input?: unknown, output?: unknown, errorText?: string } | undefined
-  if (!part?.toolCallId) {
-    return
-  }
+  const part = MutableToolPartSchema.parse(parts[index])
   update(part)
 }
 
-function appendInputText(input: unknown, inputKey: string, text: string): Record<string, unknown> {
-  if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
-    const current = input as Record<string, unknown>
-    return {
-      ...current,
-      [inputKey]: `${typeof current[inputKey] === 'string' ? current[inputKey] : ''}${text}`,
-    }
+function appendInputText(input: unknown, inputKey: string, text: string): Record<string, string> {
+  const current = z.object({ [inputKey]: z.string() }).catchall(z.string()).parse(input)
+  const existingText = current[inputKey]
+  return {
+    ...current,
+    [inputKey]: `${existingText}${text}`,
   }
-  return { [inputKey]: text }
 }
 
 function clonePart(part: MessagePart): MessagePart {
-  return typeof structuredClone === 'function'
-    ? structuredClone(part)
-    : JSON.parse(JSON.stringify(part)) as MessagePart
+  return structuredClone(part)
 }

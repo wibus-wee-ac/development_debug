@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { UIMessageChunk } from 'ai'
+import { z } from 'zod'
 
 import * as Approval from '../../../approval/service'
 import type { RuntimeKind } from '../../../providers/types'
@@ -16,9 +17,46 @@ import type {
 import type { ClaudeAgentChunkMapperState } from '../claude-agent/mapper'
 import { mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
+import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 
 const RUNTIME_KIND = 'claude-agent' as RuntimeKind
 const TRAILING_SLASH_RE = /\/$/
+const DEFAULT_MOCK_BASE_URL = process.env.CRADLE_MOCK_LLM_URL?.trim() || 'http://127.0.0.1:56344/v1'
+const MockClaudeAgentConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
+    baseUrl: z.union([
+      z.string().trim().min(1),
+      z.literal('').transform(() => DEFAULT_MOCK_BASE_URL),
+    ]).default(DEFAULT_MOCK_BASE_URL),
+  }).passthrough())
+const ClaudeAgentToolUseStreamEventSchema = z.object({
+  type: z.literal('stream_event'),
+  event: z.object({
+    type: z.literal('content_block_start'),
+    content_block: z.object({
+      type: z.literal('tool_use'),
+      name: z.string(),
+    }).passthrough(),
+  }).passthrough(),
+})
+const ClaudeAgentSdkMessageSchema = z.object({
+  type: z.string(),
+}).passthrough()
+  .transform((message) => {
+    const approvalToolName = z.union([
+      ClaudeAgentToolUseStreamEventSchema.transform(value => value.event.content_block.name),
+      z.object({ type: z.string() }).passthrough().transform(() => null),
+    ]).parse(message)
+    return {
+      message: z.custom<SDKMessage>().parse(message),
+      approvalToolName,
+    }
+  })
+const SdkMessageJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(ClaudeAgentSdkMessageSchema)
+type ClaudeAgentSdkMessage = z.infer<typeof ClaudeAgentSdkMessageSchema>
 
 export class MockClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
@@ -45,7 +83,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         workspacePath: input.workspacePath,
-        models: { currentModelId: input.modelId ?? null },
+        models: { currentModelId: input.modelId },
       }),
     }
   }
@@ -58,27 +96,15 @@ export class MockClaudeAgentProvider implements ChatRuntime {
         ...snapshot,
         workspacePath: input.workspacePath,
         models: {
-          currentModelId: input.modelId ?? snapshot.models?.currentModelId ?? null,
+          currentModelId: input.modelId ?? snapshot.models.currentModelId,
         },
       }),
     }
   }
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
-    let configBaseUrl: string | undefined
-    try {
-      const parsed = JSON.parse(input.profile.configJson ?? '{}') as { baseUrl?: string }
-      configBaseUrl = parsed.baseUrl
-    }
-    catch { /* ignore */ }
-
-    const baseUrl = configBaseUrl
-      || process.env.CRADLE_MOCK_LLM_URL?.trim()
-      || 'http://127.0.0.1:56344/v1'
-
-    if (!baseUrl) {
-      throw new Error('Mock Claude Agent provider requires CRADLE_MOCK_LLM_URL or a baseUrl in profile config')
-    }
+    const config = MockClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
+    const { baseUrl } = config
 
     const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
@@ -136,23 +162,18 @@ export class MockClaudeAgentProvider implements ChatRuntime {
             continue
           }
 
-          try {
-            const msg = JSON.parse(jsonStr) as Record<string, unknown>
+          const parsedMessage = SdkMessageJsonSchema.parse(jsonStr)
 
-            // Intercept tool_use blocks to gate through approval (like the real Claude Agent SDK)
-            if (await this.shouldGateToolUse(msg, input.runtimeSession.chatSessionId, abortController.signal)) {
-              // Approval was denied — skip this tool execution
-              continue
-            }
-
-            const result = mapClaudeAgentMessageToChunks(msg as Parameters<typeof mapClaudeAgentMessageToChunks>[0], mapperState)
-            mapperState.assistantStarted = result.assistantStarted
-            for (const chunk of result.chunks) {
-              yield chunk
-            }
+          // Intercept tool_use blocks to gate through approval (like the real Claude Agent SDK)
+          if (await this.shouldGateToolUse(parsedMessage, input.runtimeSession.chatSessionId, abortController.signal)) {
+            // Approval was denied — skip this tool execution
+            continue
           }
-          catch {
-            // Skip malformed JSON lines
+
+          const result = mapClaudeAgentMessageToChunks(parsedMessage.message, mapperState)
+          mapperState.assistantStarted = result.assistantStarted
+          for (const chunk of result.chunks) {
+            yield chunk
           }
         }
 
@@ -174,20 +195,12 @@ export class MockClaudeAgentProvider implements ChatRuntime {
    * Check if a streamed SDKMessage is a tool_use that requires approval.
    * Returns true if the tool was DENIED (caller should skip), false to proceed.
    */
-  private async shouldGateToolUse(msg: Record<string, unknown>, chatSessionId: string, signal: AbortSignal): Promise<boolean> {
-    if (msg.type !== 'stream_event') {
-      return false
-    }
-    const event = msg.event as Record<string, unknown> | undefined
-    if (!event || event.type !== 'content_block_start') {
-      return false
-    }
-    const block = event.content_block as Record<string, unknown> | undefined
-    if (!block || block.type !== 'tool_use') {
+  private async shouldGateToolUse(parsedMessage: ClaudeAgentSdkMessage, chatSessionId: string, signal: AbortSignal): Promise<boolean> {
+    if (parsedMessage.approvalToolName === null) {
       return false
     }
 
-    const toolName = block.name as string
+    const toolName = parsedMessage.approvalToolName
     // Skip Agent tool — subagent spawning doesn't need approval
     if (toolName === 'Agent') {
       return false

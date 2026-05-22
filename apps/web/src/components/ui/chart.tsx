@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as RechartsPrimitive from "recharts"
 import type { TooltipValueType } from "recharts"
+import { z } from "zod"
 
 import { cn } from "~/lib/cn"
 
@@ -26,6 +27,20 @@ export type ChartConfig = Record<
 type ChartContextProps = {
   config: ChartConfig
 }
+
+const ChartPayloadProjectionSchema = z.object({
+  payload: z.record(z.string(), z.unknown()).default({}),
+}).catchall(z.unknown())
+
+const ChartPayloadConfigKeySchema = z.string().optional()
+const ChartPayloadConfigLookupSchema = z.object({
+  payload: ChartPayloadProjectionSchema,
+  key: z.string(),
+}).transform(({ payload, key }) =>
+  ChartPayloadConfigKeySchema.parse(payload[key])
+  ?? ChartPayloadConfigKeySchema.parse(payload.payload[key])
+  ?? key
+)
 
 const ChartContext = React.createContext<ChartContextProps | null>(null)
 
@@ -253,9 +268,7 @@ function ChartTooltipContent({
                       </div>
                       {item.value != null && (
                         <span className="font-mono font-medium text-foreground tabular-nums">
-                          {typeof item.value === "number"
-                            ? item.value.toLocaleString()
-                            : String(item.value)}
+                          {item.value.toLocaleString()}
                         </span>
                       )}
                     </div>
@@ -330,33 +343,7 @@ function getPayloadConfigFromPayload(
   payload: unknown,
   key: string
 ) {
-  if (typeof payload !== "object" || payload === null) {
-    return undefined
-  }
-
-  const payloadPayload =
-    "payload" in payload &&
-      typeof payload.payload === "object" &&
-      payload.payload !== null
-      ? payload.payload
-      : undefined
-
-  let configLabelKey: string = key
-
-  if (
-    key in payload &&
-    typeof payload[key as keyof typeof payload] === "string"
-  ) {
-    configLabelKey = payload[key as keyof typeof payload] as string
-  } else if (
-    payloadPayload &&
-    key in payloadPayload &&
-    typeof payloadPayload[key as keyof typeof payloadPayload] === "string"
-  ) {
-    configLabelKey = payloadPayload[
-      key as keyof typeof payloadPayload
-    ] as string
-  }
+  const configLabelKey = ChartPayloadConfigLookupSchema.parse({ payload, key })
 
   return configLabelKey in config ? config[configLabelKey] : config[key]
 }

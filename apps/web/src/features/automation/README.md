@@ -7,6 +7,7 @@ Agent-authored automation registry and viewer UI.
 ## Files
 
 - **api-client.ts**: Small local fetch boundary for `/automations` endpoints until generated OpenAPI SDK functions are available.
+- **automation-dashboard-loader.ts**: Automation dashboard 的共享 lazy loader 与 route / home quick-action preload 入口。
 - **automation-dashboard.tsx**: Registry/viewer surface for definitions, latest run state, run history, chat/backend run links, recipe snapshots, inputs, and artifacts.
 - **index.ts**: Public feature exports used by Home.
 - **types.ts**: Temporary local API payload contracts owned by this feature.

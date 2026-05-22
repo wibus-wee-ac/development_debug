@@ -22,7 +22,7 @@ describe('acp capability', () => {
     process.env.CRADLE_DATA_DIR = dataDir
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url = new Request(input).url
       expect(url).toBe('https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json')
       return new Response(JSON.stringify({
         version: '1',

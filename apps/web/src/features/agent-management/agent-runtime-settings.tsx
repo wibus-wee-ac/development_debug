@@ -9,8 +9,7 @@ import {
   ServerIcon,
   SparklesIcon,
 } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { getExternalProviderSourcesRecordsOptions, postExternalProviderSourcesRefreshMutation } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
@@ -30,6 +29,7 @@ import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-vis
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { AgentProfile, ProviderKind } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
@@ -76,14 +76,20 @@ export function providerVisuals(presetId: string | null) {
 // ─── Root component ───────────────────────────────────────────────────────────
 
 export function AgentRuntimeSettings() {
-  const { profiles, refetch, updateProfile, removeProfile } = useAgentProfiles()
+  const firstRenderedRef = useRef(false)
+  const { profiles, isSuccess: profilesReady, refetch, updateProfile, removeProfile } = useAgentProfiles()
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<DraftProvider | null>(null)
   const [filter, setFilter] = useState('')
-  const { data: externalRecords = [], refetch: refetchExternalRecords } = useQuery({
+  const {
+    data: externalRecords = [],
+    isSuccess: externalRecordsReady,
+    refetch: refetchExternalRecords
+  } = useQuery({
     ...getExternalProviderSourcesRecordsOptions(),
     retry: false,
   })
+  const settingsProvidersReady = profilesReady && externalRecordsReady
 
   const refreshExternalSources = useMutation({
     ...postExternalProviderSourcesRefreshMutation(),
@@ -123,6 +129,20 @@ export function AgentRuntimeSettings() {
       setSelectedId(null)
     }
   }, [draft, profiles, selectedId])
+
+  useEffect(() => {
+    if (!settingsProvidersReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-providers-rendered')
+    measureCradlePerformance(
+      'cradle:settings-providers-first-render',
+      'cradle:settings-providers-render-requested',
+      'cradle:first-settings-providers-rendered',
+    )
+  }, [settingsProvidersReady])
 
   const startDraft = useCallback(() => {
     const id = `draft-${Date.now()}`
@@ -167,6 +187,7 @@ export function AgentRuntimeSettings() {
   return (
     <div
       data-testid="agent-runtime-settings"
+      data-settings-providers-ready={settingsProvidersReady ? 'true' : 'false'}
       className="flex h-full flex-col overflow-hidden"
     >
       {/* Header */}
@@ -222,30 +243,20 @@ export function AgentRuntimeSettings() {
           {/* List */}
           <ScrollArea className="-mx-1 flex-1">
             <div className="flex flex-col gap-0.5 px-1">
-              <AnimatePresence initial={false}>
-                {draft && (
-                  <m.div
-                    key={draft.id}
-                    initial={{ opacity: 0, y: -4, height: 0 }}
-                    animate={{ opacity: 1, y: 0, height: 'auto' }}
-                    exit={{ opacity: 0, y: -4, height: 0 }}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
-                  >
-                    <SidebarRow
-                      active={isDraftSelected}
-                      onClick={() => setSelectedId(draft.id)}
-                      icon={(
-                        <span className="flex size-5 items-center justify-center rounded-sm border border-dashed border-foreground/15 text-muted-foreground -ml-0.5">
-                          <SparklesIcon className="size-2.5" />
-                        </span>
-                      )}
-                      title="New provider"
-                      subtitle="Pick a template"
-                      isDraft
-                    />
-                  </m.div>
-                )}
-              </AnimatePresence>
+              {draft && (
+                <SidebarRow
+                  active={isDraftSelected}
+                  onClick={() => setSelectedId(draft.id)}
+                  icon={(
+                    <span className="flex size-5 items-center justify-center rounded-sm border border-dashed border-foreground/15 text-muted-foreground -ml-0.5">
+                      <SparklesIcon className="size-2.5" />
+                    </span>
+                  )}
+                  title="New provider"
+                  subtitle="Pick a template"
+                  isDraft
+                />
+              )}
 
               {visibleProfiles.map((profile) => {
                 const preset = presetForProfile(profile)

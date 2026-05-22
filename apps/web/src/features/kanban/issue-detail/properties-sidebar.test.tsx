@@ -65,7 +65,7 @@ const issue: KanbanIssue = {
   title: 'Improve labels',
   description: null,
   priority: 'medium',
-  labels: '["bug"]',
+  labels: ['bug'],
   assigneeKind: null,
   assigneeId: null,
   createdByKind: 'user',

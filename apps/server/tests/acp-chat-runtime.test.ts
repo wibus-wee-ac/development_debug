@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -8,12 +8,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-import { registerMcpServer, unregisterMcpServer } from '../src/plugins/mcp-registry'
+import { addHostMcpServer, removeHostMcpServer } from '../src/plugins/mcp-registry'
 
 const acpMocks = vi.hoisted(() => {
   let client: {
     requestPermission: (params: unknown) => Promise<unknown>
     sessionUpdate: (params: unknown) => Promise<void>
+    writeTextFile?: (params: { sessionId: string, path: string, content: string }) => Promise<unknown>
+    readTextFile?: (params: { sessionId: string, path: string }) => Promise<{ content: string }>
   } | null = null
 
   return {
@@ -43,6 +45,8 @@ vi.mock('@agentclientprotocol/sdk', () => {
       acpMocks.setClient(createClient({}) as {
         requestPermission: (params: unknown) => Promise<unknown>
         sessionUpdate: (params: unknown) => Promise<void>
+        writeTextFile?: (params: { sessionId: string, path: string, content: string }) => Promise<unknown>
+        readTextFile?: (params: { sessionId: string, path: string }) => Promise<{ content: string }>
       })
     }
 
@@ -176,8 +180,8 @@ describe('acp chat runtime capability', () => {
     acpMocks.setSessionModel.mockReset()
     acpMocks.setSessionConfigOption.mockReset()
     acpMocks.spawn.mockReset()
-    unregisterMcpServer('browser-use')
-    registerMcpServer({
+    removeHostMcpServer('browser-use')
+    addHostMcpServer({
       name: 'browser-use',
       command: 'node',
       args: ['/tmp/browser-use-mcp-server.mjs'],
@@ -275,7 +279,7 @@ describe('acp chat runtime capability', () => {
   })
 
   afterEach(() => {
-    unregisterMcpServer('browser-use')
+    removeHostMcpServer('browser-use')
     vi.restoreAllMocks()
   })
 
@@ -351,14 +355,19 @@ describe('acp chat runtime capability', () => {
       }))
       expect(acpMocks.newSession).toHaveBeenCalledWith({
         cwd: workspaceRoot,
-        mcpServers: [
-          {
+        mcpServers: expect.arrayContaining([
+          expect.objectContaining({
             name: 'browser-use',
             command: 'node',
             args: ['/tmp/browser-use-mcp-server.mjs'],
             env: [{ name: 'BROWSER_BACKEND_SOCKET', value: '/tmp/cradle-browser.sock' }],
-          },
-        ],
+          }),
+          expect.objectContaining({
+            name: 'chronicle',
+            command: 'node',
+            env: [{ name: 'CRADLE_URL', value: 'http://127.0.0.1:21423' }],
+          }),
+        ]),
       })
     }
     finally {
@@ -402,22 +411,141 @@ describe('acp chat runtime capability', () => {
     await manager.resumeSession('profile-acp', 'acp-session-resume', '/tmp/workspace')
 
     const expectedMcpServers = [
-      {
+      expect.objectContaining({
+        name: 'chronicle',
+        command: 'node',
+        env: [{ name: 'CRADLE_URL', value: 'http://127.0.0.1:21423' }],
+      }),
+      expect.objectContaining({
         name: 'browser-use',
         command: 'node',
         args: ['/tmp/browser-use-mcp-server.mjs'],
         env: [{ name: 'BROWSER_BACKEND_SOCKET', value: '/tmp/cradle-browser.sock' }],
-      },
+      }),
     ]
     expect(acpMocks.loadSession).toHaveBeenCalledWith({
       sessionId: 'acp-session-load',
       cwd: '/tmp/workspace',
-      mcpServers: expectedMcpServers,
+      mcpServers: expect.arrayContaining(expectedMcpServers),
     })
     expect(acpMocks.resumeSession).toHaveBeenCalledWith({
       sessionId: 'acp-session-resume',
       cwd: '/tmp/workspace',
-      mcpServers: expectedMcpServers,
+      mcpServers: expect.arrayContaining(expectedMcpServers),
     })
+    expect(acpMocks.initialize).toHaveBeenCalledWith(expect.objectContaining({
+      clientCapabilities: {
+        fs: {
+          readTextFile: true,
+          writeTextFile: true,
+        },
+      },
+    }))
+  })
+
+  it('requires explicit approval before ACP agents write client filesystem paths', async () => {
+    const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
+    const workspaceRoot = makeTempDir('cradle-acp-write-')
+    const targetPath = join(workspaceRoot, 'notes.md')
+    const permissionRequests: unknown[] = []
+    const manager = new AcpConnectionManager({
+      spawn: () => ({
+        agentId: 'profile-acp',
+        proc: {} as never,
+        startedAt: Date.now(),
+        stderrBuf: [],
+        stdinWeb: new WritableStream<Uint8Array>(),
+        stdoutWeb: new ReadableStream<Uint8Array>(),
+      }),
+      stop: async () => {},
+      getMetrics: () => [],
+      disposeAll: () => {},
+    } as never)
+
+    manager.setPermissionHandler(async (request) => {
+      permissionRequests.push(request)
+      return { outcome: 'selected', optionId: 'allow_file_write_once' }
+    })
+
+    try {
+      await manager.connect('profile-acp', {
+        distributionType: 'npx',
+        cmd: '@demo/acp-agent',
+        args: '[]',
+        env: '{}',
+        installPath: null,
+      })
+
+      const client = acpMocks.getClient()
+      expect(client?.writeTextFile).toBeTypeOf('function')
+      await client?.writeTextFile?.({
+        sessionId: 'acp-session-write',
+        path: targetPath,
+        content: 'allowed write\n',
+      })
+
+      expect(readFileSync(targetPath, 'utf8')).toBe('allowed write\n')
+      expect(permissionRequests).toEqual([
+        expect.objectContaining({
+          agentId: 'profile-acp',
+          sessionId: 'acp-session-write',
+          toolTitle: expect.stringContaining(targetPath),
+          options: [
+            { optionId: 'allow_file_write_once', name: 'Allow write once', kind: 'allow_once' },
+            { optionId: 'reject_file_write_once', name: 'Deny write', kind: 'reject_once' },
+          ],
+        }),
+      ])
+      expect((permissionRequests[0] as { toolTitle: string }).toolTitle).toContain('non-Cradle-owned filesystem write')
+      expect((permissionRequests[0] as { toolTitle: string }).toolTitle).toContain('Owner boundary: client filesystem outside Cradle-owned data.')
+    }
+    finally {
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      await manager.disconnect('profile-acp').catch(() => {})
+    }
+  })
+
+  it('does not write ACP client filesystem paths when approval is rejected', async () => {
+    const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
+    const workspaceRoot = makeTempDir('cradle-acp-write-reject-')
+    const targetPath = join(workspaceRoot, 'notes.md')
+    const manager = new AcpConnectionManager({
+      spawn: () => ({
+        agentId: 'profile-acp',
+        proc: {} as never,
+        startedAt: Date.now(),
+        stderrBuf: [],
+        stdinWeb: new WritableStream<Uint8Array>(),
+        stdoutWeb: new ReadableStream<Uint8Array>(),
+      }),
+      stop: async () => {},
+      getMetrics: () => [],
+      disposeAll: () => {},
+    } as never)
+
+    manager.setPermissionHandler(async () => ({ outcome: 'selected', optionId: 'reject_file_write_once' }))
+
+    try {
+      await manager.connect('profile-acp', {
+        distributionType: 'npx',
+        cmd: '@demo/acp-agent',
+        args: '[]',
+        env: '{}',
+        installPath: null,
+      })
+
+      const client = acpMocks.getClient()
+      await expect(client?.writeTextFile?.({
+        sessionId: 'acp-session-write',
+        path: targetPath,
+        content: 'rejected write\n',
+      })).rejects.toThrow('User denied ACP client filesystem write')
+
+      expect(existsSync(targetPath)).toBe(false)
+    }
+    finally {
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      await manager.disconnect('profile-acp').catch(() => {})
+    }
   })
 })

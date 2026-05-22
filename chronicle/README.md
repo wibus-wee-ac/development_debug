@@ -26,13 +26,16 @@ smoke 运行会把 frame artifacts 写入 `/tmp/cradle-chronicle-smoke/{display_
 
 - `Cargo.toml`: library 与 CLI binary 的 crate metadata。
 - `src/lib.rs`: public library exports。
-- `src/main.rs`: 用于 smoke validation 的最小 CLI。
+- `src/main.rs`: smoke、daemon、audio diagnostics、local ONNX embedding worker、PII redaction、WAV transcription 与 speaker embedding diagnostic 的 CLI entry point。
 - `src/config.rs`: runtime configuration 与 CLI/environment parsing。
 - `src/error.rs`: crate error type。
 - `src/json.rs`: artifact writers 使用的最小 JSON escaping helpers。
 - `src/time.rs`: 不依赖外部 crate 的 UTC timestamp formatting。
 - `src/ocr.rs`: OCR trait 与 observed-text extractor。
 - `src/screen/`: capture traits、window observations、privacy filtering 与 synthetic capture source。
+- `src/audio/`: microphone/system/mixed capture、WAV artifact writing、WAV diagnostics 与 platform audio capture adapters。
+- `src/onnx/`: ONNX Runtime helpers、OCR/VAD/ASR/embedding/PII/speaker local model execution。
+- `src/models.rs`: Chronicle local model resource path resolution and manifest metadata。
 - `src/recorder/`: artifact storage、fingerprint deduplication 与 recorder orchestration。
 - `src/memory_pipeline/`: memory naming、prompt building、recursive summarization 与 summary writer traits。
 - `src/codex_exec.rs`: 面向未来 LLM-backed summarization 的 child process boundary。

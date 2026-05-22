@@ -26,7 +26,7 @@ impl ModelId {
         match self {
             ModelId::SileroVad => ("audio-vad", "audio-vad/silero_vad.onnx"),
             ModelId::SenseVoiceAsr => ("audio-asr", "audio-asr/sensevoice/model.int8.onnx"),
-            ModelId::GlinerPii => ("pii", "pii/gliner-pii-basemodel_fp16.onnx"),
+            ModelId::GlinerPii => ("pii", "pii/gliner-pii-basemodel.onnx"),
             ModelId::EmbeddingModel => ("embedding", "embedding/model.onnx"),
             ModelId::SpeakerEmbeddingExtractor => (
                 "speaker",
@@ -56,9 +56,16 @@ pub enum ModelStatus {
     Missing,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelInstallStrategy {
+    LocalOnly,
+    RequestServer,
+}
+
 /// Model cache manager — reads from server-managed model directory.
 pub struct ModelManager {
     models_dir: PathBuf,
+    install_strategy: ModelInstallStrategy,
 }
 
 impl ModelManager {
@@ -66,6 +73,15 @@ impl ModelManager {
     pub fn new(cache_dir: impl Into<PathBuf>) -> Self {
         Self {
             models_dir: cache_dir.into(),
+            install_strategy: ModelInstallStrategy::RequestServer,
+        }
+    }
+
+    /// Create a model manager that never contacts Cradle Server.
+    pub fn new_local_only(cache_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            models_dir: cache_dir.into(),
+            install_strategy: ModelInstallStrategy::LocalOnly,
         }
     }
 
@@ -83,6 +99,16 @@ impl ModelManager {
                 .join("models")
         };
         Self::new(models_dir)
+    }
+
+    /// Create a default model manager for standalone local diagnostics.
+    ///
+    /// Uses the same directory resolution as `from_default_dir`, but does not request
+    /// Server-side installs when a model is missing.
+    pub fn from_default_dir_local_only() -> Self {
+        let mut manager = Self::from_default_dir();
+        manager.install_strategy = ModelInstallStrategy::LocalOnly;
+        manager
     }
 
     /// Check the status of a model on disk.
@@ -105,6 +131,15 @@ impl ModelManager {
         let path = self.model_path(model_id);
         if path.exists() {
             return Ok(path);
+        }
+
+        if self.install_strategy == ModelInstallStrategy::LocalOnly {
+            return Err(ChronicleError::Process(format!(
+                "model {} is not installed at {}; install it with Cradle Server first or set CRADLE_MODELS_DIR to a directory containing {}",
+                model_id.category(),
+                path.display(),
+                model_id.relative_path()
+            )));
         }
 
         // Request server to install the model.
@@ -204,6 +239,18 @@ mod tests {
     fn status_returns_missing_for_nonexistent_model() {
         let mgr = ModelManager::new("/tmp/nonexistent-chronicle-models-test");
         assert_eq!(mgr.status(ModelId::SileroVad), ModelStatus::Missing);
+    }
+
+    #[test]
+    fn local_only_missing_model_does_not_request_server() {
+        let mgr = ModelManager::new_local_only("/tmp/nonexistent-chronicle-models-local-only-test");
+        let error = mgr
+            .ensure_model(ModelId::SpeakerEmbeddingExtractor)
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("speaker"));
+        assert!(message.contains("CRADLE_MODELS_DIR"));
+        assert!(!message.contains("failed to request model install"));
     }
 
     #[test]

@@ -32,7 +32,7 @@ describe('KanbanGroupHeader', () => {
       />,
     )
 
-    const toggleButton = screen.getByRole('button', { name: /In Progress/ })
+    const toggleButton = screen.getByRole('button', { name: 'Toggle In Progress group' })
 
     expect(toggleButton.getAttribute('aria-expanded')).toBe('true')
     expect(toggleButton.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
@@ -54,7 +54,7 @@ describe('KanbanGroupHeader', () => {
       />,
     )
 
-    const toggleButton = screen.getByRole('button', { name: /Backlog/ })
+    const toggleButton = screen.getByRole('button', { name: 'Toggle Backlog group' })
     const createButton = screen.getByRole('button', { name: 'Create issue in Backlog' })
 
     expect(toggleButton.getAttribute('aria-expanded')).toBe('false')

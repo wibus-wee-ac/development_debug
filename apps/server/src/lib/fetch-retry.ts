@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export interface FetchRetryOptions {
   /** Max number of retries. Default 3. */
   maxRetries?: number
@@ -10,6 +12,12 @@ export interface FetchRetryOptions {
 }
 
 const DEFAULT_RETRYABLE_STATUSES = [429, 500, 502, 503, 504]
+const FetchRetryOptionsSchema = z.object({
+  maxRetries: z.number().int().nonnegative().default(3),
+  baseDelay: z.number().finite().nonnegative().default(1000),
+  maxDelay: z.number().finite().nonnegative().default(30_000),
+  retryableStatuses: z.array(z.number().int()).default(DEFAULT_RETRYABLE_STATUSES),
+}).prefault({})
 
 function isNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -30,16 +38,13 @@ export async function fetchWithRetry(
   init?: RequestInit,
   options?: FetchRetryOptions,
 ): Promise<Response> {
-  const maxRetries = options?.maxRetries ?? 3
-  const baseDelay = options?.baseDelay ?? 1000
-  const maxDelay = options?.maxDelay ?? 30_000
-  const retryableStatuses = options?.retryableStatuses ?? DEFAULT_RETRYABLE_STATUSES
+  const retryOptions = FetchRetryOptionsSchema.parse(options)
   const signal = init?.signal as AbortSignal | undefined
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= retryOptions.maxRetries; attempt++) {
     try {
       const response = await fetch(url, init)
-      if (!retryableStatuses.includes(response.status) || attempt === maxRetries) {
+      if (!retryOptions.retryableStatuses.includes(response.status) || attempt === retryOptions.maxRetries) {
         return response
       }
     }
@@ -47,7 +52,7 @@ export async function fetchWithRetry(
       if (signal?.aborted) {
         throw error
       }
-      if (!isNetworkError(error) || attempt === maxRetries) {
+      if (!isNetworkError(error) || attempt === retryOptions.maxRetries) {
         throw error
       }
     }
@@ -56,7 +61,7 @@ export async function fetchWithRetry(
       throw new DOMException('The operation was aborted.', 'AbortError')
     }
 
-    const delay = Math.min(baseDelay * 2 ** attempt, maxDelay)
+    const delay = Math.min(retryOptions.baseDelay * 2 ** attempt, retryOptions.maxDelay)
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(resolve, delay)
       if (signal) {

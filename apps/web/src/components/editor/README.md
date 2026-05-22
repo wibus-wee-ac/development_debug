@@ -16,4 +16,5 @@ Extensions: StarterKit, HeadingWithId, Markdown, SlashCommand, ShikiCodeBlock, B
 - **slash-command-list.tsx**: Dropdown UI for slash command suggestions
 - **heading-with-id.ts**: Heading extension with auto-slugified anchor IDs
 - **shiki-code-block.tsx**: Code block extension with Shiki syntax highlighting
+- **shiki-highlighter.ts**: Lazy Shiki highlighter loader，延后加载 themes、languages 和 tokenizer，避免 Markdown editor 入口同步拉取完整 Shiki runtime
 - **code-block-view.tsx**: React NodeView for code blocks with language selector

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  chronicleAccessibilityEvents,
   chronicleAccessibilitySnapshots,
   chronicleActivitySegments,
   chronicleAudioRawSegments,
@@ -13,6 +14,7 @@ import {
   chronicleDreamRuns,
   chronicleEvents,
   chronicleKnowledgeCards,
+  chronicleKnowledgeFiles,
   chronicleKnowledgeSources,
   chronicleKnowledgeVersions,
   chronicleMemories,
@@ -28,14 +30,27 @@ import {
 import { generateText } from 'ai'
 import { desc, eq, sql } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-import { runSlackSyncTick, stopActivityPipelineScheduler, stopSlackBackgroundSync } from '../src/modules/chronicle/service'
+import { runDreamSchedulerTick, runSlackSyncTick, stopActivityPipelineScheduler, stopDreamScheduler, stopSlackBackgroundSync } from '../src/modules/chronicle/service'
+
+const runEmbeddingBatchMock = vi.hoisted(() => vi.fn(() => {
+  throw new Error('embedding runtime unavailable')
+}))
 
 vi.mock('ai', () => ({
   generateText: vi.fn(),
 }))
+
+vi.mock('../src/modules/chronicle/daemon-manager', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/modules/chronicle/daemon-manager')>()
+  return {
+    ...actual,
+    runEmbeddingBatch: runEmbeddingBatchMock,
+  }
+})
 
 const mockedGenerateText = vi.mocked(generateText)
 
@@ -56,13 +71,45 @@ function signSlackBody(rawBody: string, signingSecret: string, timestamp: number
   return `v0=${createHmac('sha256', signingSecret).update(base).digest('hex')}`
 }
 
-function readJson<T>(value: string, fallback: T): T {
-  try {
-    return JSON.parse(value) as T
-  }
-  catch {
-    return fallback
-  }
+const SourceRefsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.record(z.string(), z.array(z.string())))
+
+const StringListJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.string()))
+
+function insertKnowledgeCard(input: {
+  id: string
+  title: string
+  content: string
+  status?: 'active' | 'merged' | 'archived' | 'deleted'
+  pinned?: boolean
+  updatedAt: number
+}): void {
+  db().insert(chronicleKnowledgeCards).values({
+    id: input.id,
+    workspaceId: null,
+    title: input.title,
+    content: input.content,
+    cardType: 'fact',
+    dimension: 'technical',
+    confidenceBps: 9000,
+    sourceMemoryIdsJson: '[]',
+    sourceSegmentIdsJson: '[]',
+    sourceChunkIdsJson: '[]',
+    tagsJson: '[]',
+    stableKey: input.id,
+    contentHash: `${input.id}-hash`,
+    version: 1,
+    status: input.status ?? 'active',
+    mergedIntoId: null,
+    pinned: input.pinned ?? false,
+    sortOrder: 0,
+    metadataJson: '{}',
+    createdAt: input.updatedAt,
+    updatedAt: input.updatedAt,
+  }).run()
 }
 
 function writeChroniclePreference(dataDir: string, storageRoot: string, patch: Record<string, unknown>): void {
@@ -76,6 +123,9 @@ function writeChroniclePreference(dataDir: string, storageRoot: string, patch: R
     activityPipelineEnabled: true,
     activityPipelineIntervalMs: 120_000,
     activityPipelineBatchSize: 3,
+    dreamSchedulerEnabled: true,
+    dreamSchedulerIntervalMs: 86_400_000,
+    dreamSchedulerApplyMerge: false,
     audioCaptureEnabled: false,
     audioSegmentMs: 5_000,
     audioSegmentIntervalMs: 60_000,
@@ -120,6 +170,9 @@ async function putChronicleConfig(
       activityPipelineEnabled: true,
       activityPipelineIntervalMs: 120_000,
       activityPipelineBatchSize: 3,
+      dreamSchedulerEnabled: true,
+      dreamSchedulerIntervalMs: 86_400_000,
+      dreamSchedulerApplyMerge: false,
       audioCaptureEnabled: false,
       audioSegmentMs: 5_000,
       audioSegmentIntervalMs: 60_000,
@@ -186,6 +239,73 @@ async function postMemory(
 }
 
 describe('chronicle module', () => {
+  it('round-trips configured privacy rules through Chronicle config', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    shutdownInfra()
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp({ startBackgroundTasks: false })
+      const response = await requestJson(app, '/chronicle/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          profileId: '',
+          modelId: '',
+          workspaceId: '',
+          enabled: false,
+          activityPipelineEnabled: true,
+          activityPipelineIntervalMs: 120_000,
+          activityPipelineBatchSize: 3,
+          audioCaptureEnabled: false,
+          audioSegmentMs: 5_000,
+          audioSegmentIntervalMs: 60_000,
+          audioRmsThreshold: 0.02,
+          storageRoot,
+          privacySensitiveAppBundleIds: [' com.apple.Terminal ', 'com.apple.Terminal'],
+          privacySensitiveTitlePatterns: ['Bank Dashboard', ''],
+          privacySensitiveUrlPatterns: [' admin.example.com '],
+        }),
+      })
+
+      expect(response.status).toBe(200)
+      const updated = await response.json() as {
+        privacySensitiveAppBundleIds: string[]
+        privacySensitiveTitlePatterns: string[]
+        privacySensitiveUrlPatterns: string[]
+      }
+      expect(updated.privacySensitiveAppBundleIds).toEqual(['com.apple.Terminal'])
+      expect(updated.privacySensitiveTitlePatterns).toEqual(['Bank Dashboard'])
+      expect(updated.privacySensitiveUrlPatterns).toEqual(['admin.example.com'])
+
+      const getResponse = await requestJson(app, '/chronicle/config')
+      expect(getResponse.status).toBe(200)
+      const saved = await getResponse.json() as {
+        privacySensitiveAppBundleIds: string[]
+        privacySensitiveTitlePatterns: string[]
+        privacySensitiveUrlPatterns: string[]
+      }
+      expect(saved.privacySensitiveAppBundleIds).toEqual(['com.apple.Terminal'])
+      expect(saved.privacySensitiveTitlePatterns).toEqual(['Bank Dashboard'])
+      expect(saved.privacySensitiveUrlPatterns).toEqual(['admin.example.com'])
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      process.env.CRADLE_DATA_DIR = previousDataDir
+      process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+    }
+  })
+
   it('persists daemon reports, deduplicates sources, exposes model resources, and searches DB-backed memories', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const storageRoot = makeTempDir('cradle-chronicle-')
@@ -259,12 +379,12 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.snapshotIds?.includes(snapshot!.id)
         })
       expect(snapshotActivitySegment?.segmentType).toBe('work')
       expect(snapshotActivitySegment?.frontApp).toBe('app.cradle.desktop')
-      const snapshotRefs = readJson<Record<string, string[]>>(snapshotActivitySegment!.sourceRefsJson, {})
+      const snapshotRefs = SourceRefsJsonSchema.parse(snapshotActivitySegment!.sourceRefsJson)
       expect(snapshotRefs.snapshotIds).toEqual([snapshot!.id])
       expect(snapshotRefs.accessibilitySnapshotIds).toEqual([accessibilityRows[0].id])
       expect(db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_pipeline_runs WHERE trigger = 'snapshot'`)?.count).toBe(1)
@@ -287,6 +407,93 @@ describe('chronicle module', () => {
       expect(accessibilityList[0].tree[0].depth).toBe(0)
       expect(accessibilityList[0].tree[0].path).toBe('root')
       expect(accessibilityList[0].metadata.artifactPath).toBe('1/20260521100000/accessibility.json')
+
+      const accessibilityEventResponse = await requestJson(app, '/chronicle/accessibility-events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: 'accessibility-event:app-cradle-desktop:4321:AXFocusedWindowChanged:1779357600:0',
+          capturedAt: '2026-05-21T10:00:00Z',
+          provider: 'macos-ax-observer',
+          appBundleId: 'app.cradle.desktop',
+          pid: 4321,
+          notification: 'AXFocusedWindowChanged',
+          droppedBefore: 0,
+          snapshotId: snapshot?.id,
+          accessibilitySnapshotId: accessibilityRows[0].id,
+          metadata: { source: 'test-ax-observer' },
+        }),
+      })
+      expect(accessibilityEventResponse.status).toBe(200)
+      const accessibilityEvent = await accessibilityEventResponse.json() as {
+        id: string
+        sourceId: string
+        snapshotId: string | null
+        accessibilitySnapshotId: string | null
+        capturedAtUnix: number
+        provider: string
+        appBundleId: string | null
+        pid: number | null
+        notification: string
+        droppedBefore: number
+        metadata: { source?: string }
+      }
+      expect(accessibilityEvent.sourceId).toBe('accessibility-event:app-cradle-desktop:4321:AXFocusedWindowChanged:1779357600:0')
+      expect(accessibilityEvent.snapshotId).toBe(snapshot?.id)
+      expect(accessibilityEvent.accessibilitySnapshotId).toBe(accessibilityRows[0].id)
+      expect(accessibilityEvent.capturedAtUnix).toBe(1779357600)
+      expect(accessibilityEvent.provider).toBe('macos-ax-observer')
+      expect(accessibilityEvent.appBundleId).toBe('app.cradle.desktop')
+      expect(accessibilityEvent.pid).toBe(4321)
+      expect(accessibilityEvent.notification).toBe('AXFocusedWindowChanged')
+      expect(accessibilityEvent.droppedBefore).toBe(0)
+      expect(accessibilityEvent.metadata.source).toBe('accessibility-event')
+
+      const duplicateAccessibilityEventResponse = await requestJson(app, '/chronicle/accessibility-events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: 'accessibility-event:app-cradle-desktop:4321:AXFocusedWindowChanged:1779357600:0',
+          capturedAt: '2026-05-21T10:00:01Z',
+          notification: 'AXFocusedUIElementChanged',
+          droppedBefore: 2,
+          metadata: { source: 'test-ax-observer-updated' },
+        }),
+      })
+      expect(duplicateAccessibilityEventResponse.status).toBe(200)
+      const updatedAccessibilityEvent = await duplicateAccessibilityEventResponse.json() as {
+        id: string
+        capturedAtUnix: number
+        provider: string
+        appBundleId: string | null
+        pid: number | null
+        notification: string
+        droppedBefore: number
+      }
+      expect(updatedAccessibilityEvent.id).toBe(accessibilityEvent.id)
+      expect(updatedAccessibilityEvent.capturedAtUnix).toBe(1779357601)
+      expect(updatedAccessibilityEvent.provider).toBe('macos-ax-observer')
+      expect(updatedAccessibilityEvent.appBundleId).toBeNull()
+      expect(updatedAccessibilityEvent.pid).toBeNull()
+      expect(updatedAccessibilityEvent.notification).toBe('AXFocusedUIElementChanged')
+      expect(updatedAccessibilityEvent.droppedBefore).toBe(2)
+      expect(db().select().from(chronicleAccessibilityEvents).all()).toHaveLength(1)
+
+      const accessibilityEventListResponse = await requestJson(app, '/chronicle/accessibility-events?limit=5')
+      expect(accessibilityEventListResponse.status).toBe(200)
+      const accessibilityEventList = await accessibilityEventListResponse.json() as Array<{
+        id: string
+        sourceId: string
+        notification: string
+        droppedBefore: number
+      }>
+      expect(accessibilityEventList).toHaveLength(1)
+      expect(accessibilityEventList[0]).toMatchObject({
+        id: accessibilityEvent.id,
+        sourceId: 'accessibility-event:app-cradle-desktop:4321:AXFocusedWindowChanged:1779357600:0',
+        notification: 'AXFocusedUIElementChanged',
+        droppedBefore: 2,
+      })
 
       const axTreeSnapshotResponse = await requestJson(app, '/chronicle/snapshots', {
         method: 'POST',
@@ -365,7 +572,7 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.snapshotIds?.includes(laterSameTitleSnapshot!.id)
         })
       const segmentWithBackfilledSnapshot = db()
@@ -373,7 +580,7 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.snapshotIds?.includes(backfilledSameTitleSnapshot!.id)
         })
       expect(segmentWithLaterSnapshot?.id).not.toBe(segmentWithBackfilledSnapshot?.id)
@@ -425,6 +632,147 @@ describe('chronicle module', () => {
       expect(frameResponse.status).toBe(200)
       expect(frameResponse.headers.get('content-type')).toBe('image/jpeg')
       expect(await frameResponse.arrayBuffer()).toHaveProperty('byteLength', 4)
+
+      const activitySessionsResponse = await requestJson(app, '/api/activity/sessions?limit=5')
+      expect(activitySessionsResponse.status).toBe(200)
+      const activitySessions = await activitySessionsResponse.json() as Array<{
+        id: string
+        snapshotCount: number
+        segmentCount: number
+        frontApp: string | null
+        metadata: { createdFrom?: string }
+      }>
+      const activitySession = activitySessions.find(session => session.id === snapshotActivitySegment!.sessionId)
+      expect(activitySession).toBeTruthy()
+      expect(activitySession?.snapshotCount).toBeGreaterThanOrEqual(1)
+      expect(activitySession?.segmentCount).toBeGreaterThanOrEqual(1)
+      expect(activitySession?.frontApp).toBe('app.cradle.desktop')
+
+      const activitySessionResponse = await requestJson(app, `/api/activity/session/${snapshotActivitySegment!.sessionId}`)
+      expect(activitySessionResponse.status).toBe(200)
+      const activitySessionDetail = await activitySessionResponse.json() as {
+        id: string
+        segments: Array<{ id: string, sourceRefs: { snapshotIds?: string[] } }>
+      }
+      expect(activitySessionDetail.id).toBe(snapshotActivitySegment!.sessionId)
+      expect(activitySessionDetail.segments.some(segment => segment.id === snapshotActivitySegment!.id)).toBe(true)
+      expect(activitySessionDetail.segments.some(segment => segment.sourceRefs.snapshotIds?.includes(snapshot!.id))).toBe(true)
+
+      const activitySessionSnapshotsResponse = await requestJson(app, `/api/activity/session/${snapshotActivitySegment!.sessionId}/snapshots`)
+      expect(activitySessionSnapshotsResponse.status).toBe(200)
+      const activitySessionSnapshots = await activitySessionSnapshotsResponse.json() as Array<{
+        id: string
+        sourceId: string
+        framePath: string
+        ocrText: string | null
+        metadata: { ocrPath?: string }
+      }>
+      expect(activitySessionSnapshots.some(entry => entry.id === snapshot!.id && entry.ocrText?.includes('TargetAlpha'))).toBe(true)
+
+      const activitySnapshotResponse = await requestJson(app, `/api/activity/snapshot/${snapshot!.id}`)
+      expect(activitySnapshotResponse.status).toBe(200)
+      const activitySnapshot = await activitySnapshotResponse.json() as {
+        id: string
+        sourceId: string
+        framePath: string
+        ocrText: string | null
+        metadata: { ocrPath?: string }
+      }
+      expect(activitySnapshot).toMatchObject({
+        id: snapshot!.id,
+        sourceId: 'snapshot-source-1',
+        framePath: '1/20260521100000/frame-00007.jpg',
+      })
+      expect(activitySnapshot.ocrText).toContain('TargetAlpha')
+      expect(activitySnapshot.metadata.ocrPath).toBe('1/20260521100000/ocr-00007.json')
+
+      const activitySnapshotOcrResponse = await requestJson(app, `/api/activity/snapshot/${snapshot!.id}/ocr`)
+      expect(activitySnapshotOcrResponse.status).toBe(200)
+      expect(await activitySnapshotOcrResponse.json()).toEqual({
+        snapshotId: snapshot!.id,
+        sourceId: 'snapshot-source-1',
+        ocrText: 'TargetAlpha visible in the active Cradle window',
+        ocrPath: '1/20260521100000/ocr-00007.json',
+        capturedAt: expect.any(String),
+        capturedAtUnix: 1779357600,
+      })
+
+      const monitorStatusResponse = await requestJson(app, '/api/activity/monitor-status')
+      expect(monitorStatusResponse.status).toBe(200)
+      const monitorStatus = await monitorStatusResponse.json() as {
+        enabled: boolean
+        monitorStatus: string
+        captureStatus: string
+        pipelineStatus: string
+        audioStatus: string
+        lastCaptureAtUnix: number | null
+        totals: {
+          snapshots: number
+          activitySessions: number
+          activitySegments: number
+          pipelineRuns: number
+          accessibilitySnapshots: number
+          audioTranscripts: number
+          audioRawSegments: number
+          memories: number
+        }
+        config: {
+          activityPipelineEnabled: boolean
+          audioCaptureEnabled: boolean
+          audioSource: string
+        }
+      }
+      expect(monitorStatus.enabled).toBe(false)
+      expect(monitorStatus.monitorStatus).toBe('disabled')
+      expect(monitorStatus.captureStatus).toBe('idle')
+      expect(monitorStatus.pipelineStatus).toBe('idle')
+      expect(monitorStatus.audioStatus).toBe('disabled')
+      expect(monitorStatus.lastCaptureAtUnix).toBeGreaterThanOrEqual(1779357600)
+      expect(monitorStatus.totals.snapshots).toBeGreaterThanOrEqual(1)
+      expect(monitorStatus.totals.activitySessions).toBeGreaterThanOrEqual(1)
+      expect(monitorStatus.totals.activitySegments).toBeGreaterThanOrEqual(1)
+      expect(monitorStatus.totals.pipelineRuns).toBeGreaterThanOrEqual(1)
+      expect(monitorStatus.totals.accessibilitySnapshots).toBe(3)
+      expect(monitorStatus.totals.audioTranscripts).toBeGreaterThanOrEqual(0)
+      expect(monitorStatus.totals.audioRawSegments).toBeGreaterThanOrEqual(0)
+      expect(monitorStatus.totals.memories).toBeGreaterThanOrEqual(0)
+      expect(monitorStatus.config.activityPipelineEnabled).toBe(true)
+      expect(monitorStatus.config.audioCaptureEnabled).toBe(true)
+      expect(monitorStatus.config.audioSource).toBe('microphone')
+
+      const storageStatsResponse = await requestJson(app, '/api/activity/storage-stats')
+      expect(storageStatsResponse.status).toBe(200)
+      const storageStats = await storageStatsResponse.json() as {
+        storageRoot: string
+        modelsRoot: string
+        storage: { exists: boolean, fileCount: number, directoryCount: number, totalBytes: number }
+        models: { exists: boolean, fileCount: number, totalBytes: number }
+        database: {
+          snapshots: number
+          activitySessions: number
+          activitySegments: number
+          memories: number
+          pipelineRuns: number
+          accessibilitySnapshots: number
+          audioTranscripts: number
+          audioRawSegments: number
+        }
+      }
+      expect(storageStats.storageRoot).toBe(storageRoot)
+      expect(storageStats.modelsRoot).toContain(join(dataDir, 'chronicle', 'models'))
+      expect(storageStats.storage.exists).toBe(true)
+      expect(storageStats.storage.fileCount).toBeGreaterThanOrEqual(1)
+      expect(storageStats.storage.totalBytes).toBeGreaterThanOrEqual(4)
+      expect(storageStats.models.fileCount).toBeGreaterThanOrEqual(0)
+      expect(storageStats.models.totalBytes).toBeGreaterThanOrEqual(0)
+      expect(storageStats.database.snapshots).toBeGreaterThanOrEqual(1)
+      expect(storageStats.database.activitySessions).toBeGreaterThanOrEqual(1)
+      expect(storageStats.database.activitySegments).toBeGreaterThanOrEqual(1)
+      expect(storageStats.database.pipelineRuns).toBeGreaterThanOrEqual(1)
+      expect(storageStats.database.accessibilitySnapshots).toBe(3)
+      expect(storageStats.database.audioTranscripts).toBeGreaterThanOrEqual(0)
+      expect(storageStats.database.audioRawSegments).toBeGreaterThanOrEqual(0)
+      expect(storageStats.database.memories).toBeGreaterThanOrEqual(0)
 
       db().insert(chronicleMemories).values({
         id: 'legacy-memory-without-index',
@@ -596,6 +944,39 @@ describe('chronicle module', () => {
       ])
       expect(resources.find(resource => resource.category === 'ocr')?.status).toBe('available')
       expect(resources.find(resource => resource.category === 'audio-asr')?.path).toBeNull()
+      const embeddingDir = join(dataDir, 'chronicle', 'models', 'embedding')
+      mkdirSync(embeddingDir, { recursive: true })
+      writeFileSync(join(embeddingDir, 'model.onnx'), Buffer.from('invalid embedding model bytes'))
+      writeFileSync(join(embeddingDir, 'tokenizer.json'), JSON.stringify({ model: 'invalid' }))
+      const embeddingEndpointResponse = await requestJson(app, '/chronicle/embeddings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ texts: ['TargetAlpha'] }),
+      })
+      expect(embeddingEndpointResponse.status).toBe(503)
+      expect(await embeddingEndpointResponse.text()).toContain('embedding runtime unavailable')
+      const fallbackMemoryResponse = await postMemory(app, {
+        sourceId: 'memory-runtime-fallback',
+        createdAt: '2026-05-21T10-08-00Z',
+        content: 'RuntimeFallbackAlpha should still index when ONNX runtime is unhealthy.',
+      })
+      expect(fallbackMemoryResponse.status).toBe(200)
+      const fallbackMemory = db().select().from(chronicleMemories).where(eq(chronicleMemories.sourceId, 'memory-runtime-fallback')).get()
+      const fallbackEmbedding = db()
+        .select()
+        .from(chronicleMemoryEmbeddings)
+        .where(eq(chronicleMemoryEmbeddings.memoryId, fallbackMemory!.id))
+        .get()
+      expect(fallbackEmbedding?.modelId).toBe('chronicle-lexical')
+      expect(fallbackEmbedding?.dimensions).toBe(64)
+      const fallbackChunk = db().select().from(chronicleMemoryChunks).where(eq(chronicleMemoryChunks.memoryId, fallbackMemory!.id)).get()
+      expect(fallbackChunk?.embeddingStatus).toBe('missing')
+      expect(fallbackChunk?.embeddingModelId).toBeNull()
+      expect(runEmbeddingBatchMock).toHaveBeenCalledWith(
+        ['chronicle embedding health probe'],
+        join(dataDir, 'chronicle', 'models'),
+        { timeoutMs: 5_000 },
+      )
       const speakerResource = resources.find(resource => resource.category === 'speaker')
       expect(speakerResource?.displayName).toBe('Speaker Embedding Extractor')
       expect(speakerResource?.metadata.function).toBe('speaker-embedding-extractor')
@@ -625,6 +1006,7 @@ describe('chronicle module', () => {
         expect.objectContaining({
           headers: { 'User-Agent': 'Cradle/1.0' },
           redirect: 'follow',
+          signal: expect.any(AbortSignal),
         }),
       )
       speakerManifestFetchMock.mockRestore()
@@ -820,12 +1202,12 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.audioTranscriptIds?.includes(transcriptBody.id)
         })
       expect(transcriptActivitySegment?.segmentType).toBe('meeting')
       expect(transcriptActivitySegment?.title).toBe('Chronicle Planning Meeting')
-      const transcriptActivityRefs = readJson<Record<string, string[]>>(transcriptActivitySegment!.sourceRefsJson, {})
+      const transcriptActivityRefs = SourceRefsJsonSchema.parse(transcriptActivitySegment!.sourceRefsJson)
       expect(transcriptActivityRefs.audioTranscriptIds).toEqual([transcriptBody.id])
       expect(transcriptActivityRefs.memoryIds).toEqual([transcriptBody.memoryId])
 
@@ -1015,7 +1397,7 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.audioRawSegmentIds?.includes(rawAudioBody.id)
         })
       expect(rawAudioActivitySegment?.segmentType).toBe('audio')
@@ -1156,13 +1538,13 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.messageIds?.includes(message!.id)
         })
       expect(slackActivitySegment?.segmentType).toBe('chat')
       expect(slackActivitySegment?.frontApp).toBe('slack')
       expect(slackActivitySegment?.title).toBe('chronicle-lab')
-      const slackActivityRefs = readJson<Record<string, string[]>>(slackActivitySegment!.sourceRefsJson, {})
+      const slackActivityRefs = SourceRefsJsonSchema.parse(slackActivitySegment!.sourceRefsJson)
       expect(slackActivityRefs.messageIds).toEqual([message!.id])
       expect(slackActivityRefs.memoryIds).toEqual([slackMemory!.id])
 
@@ -1350,8 +1732,8 @@ describe('chronicle module', () => {
       expect(knowledgeRows).toHaveLength(1)
       expect(knowledgeRows[0].stableKey).toBe('targetalpha-chronicle-work')
       expect(knowledgeRows[0].confidenceBps).toBe(9100)
-      expect(readJson<string[]>(knowledgeRows[0].sourceSegmentIdsJson, [])).toContain(snapshotActivitySegment!.id)
-      expect(readJson<string[]>(knowledgeRows[0].sourceMemoryIdsJson, [])).toContain(activitySummarizeBody.memoryId!)
+      expect(StringListJsonSchema.parse(knowledgeRows[0].sourceSegmentIdsJson)).toContain(snapshotActivitySegment!.id)
+      expect(StringListJsonSchema.parse(knowledgeRows[0].sourceMemoryIdsJson)).toContain(activitySummarizeBody.memoryId!)
       expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, knowledgeRows[0].id)).all()).toHaveLength(1)
       expect(db().select().from(chronicleKnowledgeSources).where(eq(chronicleKnowledgeSources.knowledgeId, knowledgeRows[0].id)).all().length).toBeGreaterThanOrEqual(2)
 
@@ -1368,11 +1750,110 @@ describe('chronicle module', () => {
       expect(versions).toHaveLength(1)
       expect(versions[0]).toMatchObject({ knowledgeId: knowledgeRows[0].id, version: 1 })
 
+      db().insert(chronicleKnowledgeFiles).values({
+        id: 'knowledge-file-targetalpha-note',
+        knowledgeId: knowledgeRows[0].id,
+        filename: 'targetalpha-note.md',
+        contentType: 'text/markdown',
+        sizeBytes: 42,
+        filePath: 'notes/targetalpha-note.md',
+        embedded: false,
+        metadataJson: JSON.stringify({ source: 'test-attachment' }),
+        createdAt: 1779363000,
+        updatedAt: 1779363000,
+      }).run()
+      const knowledgeFilesResponse = await requestJson(app, `/chronicle/knowledge-cards/${knowledgeRows[0].id}/files`)
+      expect(knowledgeFilesResponse.status).toBe(200)
+      const knowledgeFiles = await knowledgeFilesResponse.json() as Array<{
+        source: string
+        filename: string
+        filePath: string | null
+        evidenceType: string | null
+        evidenceId: string | null
+      }>
+      expect(knowledgeFiles).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          source: 'attached',
+          filename: 'targetalpha-note.md',
+          filePath: 'notes/targetalpha-note.md',
+        }),
+        expect.objectContaining({
+          source: 'snapshot',
+          filePath: '1/20260521100000/frame-00007.jpg',
+        }),
+        expect.objectContaining({
+          source: 'snapshot',
+          filePath: '1/20260521100000/snapshot.json',
+          evidenceType: 'memory',
+          evidenceId: activitySummarizeBody.memoryId!,
+        }),
+      ]))
+
       const duplicateCrystallizeResponse = await requestJson(app, `/chronicle/activity-segments/${snapshotActivitySegment!.id}/crystallize`, { method: 'POST' })
       expect(duplicateCrystallizeResponse.status).toBe(200)
       const duplicateCrystallizeBody = await duplicateCrystallizeResponse.json() as { status: string, knowledgeCards: Array<{ id: string }> }
       expect(duplicateCrystallizeBody.status).toBe('success')
       expect(duplicateCrystallizeBody.knowledgeCards[0].id).toBe(knowledgeRows[0].id)
+      expect(mockedGenerateText).toHaveBeenCalledTimes(3)
+      expect(db().select().from(chronicleKnowledgeCards).all()).toHaveLength(1)
+      expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, knowledgeRows[0].id)).all()).toHaveLength(1)
+
+      const memoryStatusResponse = await requestJson(app, '/api/memory/status')
+      expect(memoryStatusResponse.status).toBe(200)
+      const memoryStatus = await memoryStatusResponse.json() as {
+        totalMemories: number
+        totalChunks: number
+        totalKeywords: number
+        totalKnowledgeCards: number
+        totalKnowledgeVersions: number
+        totalActivitySegments: number
+        crystallizedActivitySegments: number
+        totalPipelineRuns: number
+        lastMemoryAtUnix: number | null
+        lastKnowledgeCardAtUnix: number | null
+        searchIndex: {
+          chunkCount: number
+          keywordCount: number
+          embeddingCount: number
+        }
+      }
+      expect(memoryStatus.totalMemories).toBeGreaterThanOrEqual(1)
+      expect(memoryStatus.totalChunks).toBeGreaterThanOrEqual(1)
+      expect(memoryStatus.totalKeywords).toBeGreaterThanOrEqual(1)
+      expect(memoryStatus.totalKnowledgeCards).toBe(1)
+      expect(memoryStatus.totalKnowledgeVersions).toBe(1)
+      expect(memoryStatus.totalActivitySegments).toBeGreaterThanOrEqual(1)
+      expect(memoryStatus.crystallizedActivitySegments).toBeGreaterThanOrEqual(1)
+      expect(memoryStatus.totalPipelineRuns).toBeGreaterThanOrEqual(3)
+      expect(memoryStatus.lastMemoryAtUnix).toBeGreaterThan(0)
+      expect(memoryStatus.lastKnowledgeCardAtUnix).toBeGreaterThan(0)
+      expect(memoryStatus.searchIndex.chunkCount).toBe(memoryStatus.totalChunks)
+      expect(memoryStatus.searchIndex.keywordCount).toBe(memoryStatus.totalKeywords)
+      expect(memoryStatus.searchIndex.embeddingCount).toBeGreaterThanOrEqual(0)
+
+      const memoryCrystallizeResponse = await requestJson(app, '/api/memory/crystallize', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ segmentId: snapshotActivitySegment!.id }),
+      })
+      expect(memoryCrystallizeResponse.status).toBe(200)
+      const memoryCrystallize = await memoryCrystallizeResponse.json() as {
+        status: string
+        segmentId: string
+        result: {
+          status: string
+          knowledgeCards: Array<{ id: string }>
+          segment: { id: string, pipelineStatus: string, isCrystallized: boolean }
+          run: { stage: string, status: string }
+        }
+      }
+      expect(memoryCrystallize.status).toBe('success')
+      expect(memoryCrystallize.segmentId).toBe(snapshotActivitySegment!.id)
+      expect(memoryCrystallize.result.segment.id).toBe(snapshotActivitySegment!.id)
+      expect(memoryCrystallize.result.segment.pipelineStatus).toBe('crystallized')
+      expect(memoryCrystallize.result.segment.isCrystallized).toBe(true)
+      expect(memoryCrystallize.result.run.stage).toBe('crystallization')
+      expect(memoryCrystallize.result.knowledgeCards[0].id).toBe(knowledgeRows[0].id)
       expect(mockedGenerateText).toHaveBeenCalledTimes(3)
       expect(db().select().from(chronicleKnowledgeCards).all()).toHaveLength(1)
       expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, knowledgeRows[0].id)).all()).toHaveLength(1)
@@ -1399,7 +1880,7 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.snapshotIds?.includes(schedulerSnapshot!.id)
         })
       expect(schedulerActivitySegment?.pipelineStatus).toBe('collecting')
@@ -1424,7 +1905,7 @@ describe('chronicle module', () => {
             reason: 'Automatic scheduler evidence should be retained.',
             segmentType: 'work',
             title: 'Chronicle automatic scheduler',
-            priority: 'medium',
+            priority: 'normal',
           }),
           usage: { inputTokens: 19, outputTokens: 8, totalTokens: 27 },
         } as Awaited<ReturnType<typeof generateText>>)
@@ -1521,7 +2002,7 @@ describe('chronicle module', () => {
         .from(chronicleActivitySegments)
         .all()
         .find((segment) => {
-          const refs = readJson<Record<string, string[]>>(segment.sourceRefsJson, {})
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
           return refs.snapshotIds?.includes(disabledSchedulerSnapshot!.id)
         })
       expect(disabledSchedulerActivitySegment?.pipelineStatus).toBe('collecting')
@@ -1607,6 +2088,8 @@ describe('chronicle module', () => {
         lastMessageAt: number | null
         totalAccessibilitySnapshots: number
         lastAccessibilitySnapshotAt: number | null
+        totalAccessibilityEvents: number
+        lastAccessibilityEventAt: number | null
         totalAudioTranscripts: number
         lastAudioTranscriptAt: number | null
         totalAudioRawSegments: number
@@ -1617,6 +2100,10 @@ describe('chronicle module', () => {
         lastPipelineRunAt: number | null
         totalKnowledgeCards: number
         totalDreamRuns: number
+        dreamSchedulerEnabled: boolean
+        dreamSchedulerRunning: boolean
+        dreamSchedulerIntervalMs: number
+        dreamSchedulerApplyMerge: boolean
         activityPipelineEnabled: boolean
         activityPipelineRunning: boolean
         activityPipelineIntervalMs: number
@@ -1628,6 +2115,8 @@ describe('chronicle module', () => {
       expect(status.lastMessageAt).toBe(1779303000)
       expect(status.totalAccessibilitySnapshots).toBe(3)
       expect(status.lastAccessibilitySnapshotAt).toBe(1779357660)
+      expect(status.totalAccessibilityEvents).toBe(1)
+      expect(status.lastAccessibilityEventAt).toBe(1779357601)
       expect(status.totalAudioTranscripts).toBe(1)
       expect(status.lastAudioTranscriptAt).toBe(1779359400)
       expect(status.totalAudioRawSegments).toBe(1)
@@ -1638,12 +2127,72 @@ describe('chronicle module', () => {
       expect(status.lastPipelineRunAt).toBeGreaterThanOrEqual(1779360660)
       expect(status.totalKnowledgeCards).toBe(3)
       expect(status.totalDreamRuns).toBe(1)
+      expect(status.dreamSchedulerEnabled).toBe(true)
+      expect(status.dreamSchedulerRunning).toBe(false)
+      expect(status.dreamSchedulerIntervalMs).toBe(86_400_000)
+      expect(status.dreamSchedulerApplyMerge).toBe(false)
       expect(status.activityPipelineEnabled).toBe(true)
       expect(status.activityPipelineRunning).toBe(false)
       expect(status.activityPipelineIntervalMs).toBe(120_000)
       expect(status.activityPipelineBatchSize).toBe(1)
       expect(status.audioCaptureEnabled).toBe(true)
       expect(status.audioRuntimeStatus).toBe('unavailable')
+
+      const scheduledDreamRun = await runDreamSchedulerTick()
+      expect(scheduledDreamRun?.status).toBe('completed')
+      expect(scheduledDreamRun?.mergedCount).toBe(0)
+      expect(scheduledDreamRun?.result.dryRun).toBe(true)
+      expect(db().select().from(chronicleDreamRuns).all()).toHaveLength(2)
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.status, 'merged')).all()).toHaveLength(0)
+
+      const dreamMergeResponse = await requestJson(app, '/chronicle/dream-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runType: 'merge', dryRun: false, applyMerge: true, similarityThreshold: 0.6, limit: 10 }),
+      })
+      expect(dreamMergeResponse.status).toBe(200)
+      const dreamMergeRun = await dreamMergeResponse.json() as {
+        id: string
+        status: string
+        inputCount: number
+        outputCount: number
+        mergedCount: number
+        outputKnowledgeIds: string[]
+        result: { candidateCount?: number, dryRun?: boolean, vectorMode?: string }
+      }
+      expect(dreamMergeRun.status).toBe('completed')
+      expect(dreamMergeRun.inputCount).toBeGreaterThanOrEqual(2)
+      expect(dreamMergeRun.outputCount).toBeGreaterThanOrEqual(1)
+      expect(dreamMergeRun.mergedCount).toBeGreaterThanOrEqual(1)
+      expect(dreamMergeRun.outputKnowledgeIds).toHaveLength(dreamMergeRun.mergedCount)
+      expect(dreamMergeRun.result.dryRun).toBe(false)
+      expect(dreamMergeRun.result.vectorMode).toBe('chronicle-lexical/v1')
+      expect(dreamMergeRun.result.candidateCount).toBeGreaterThanOrEqual(1)
+
+      const appliedCandidates = db()
+        .select()
+        .from(chronicleDreamCandidates)
+        .where(eq(chronicleDreamCandidates.runId, dreamMergeRun.id))
+        .all()
+      expect(appliedCandidates.length).toBeGreaterThanOrEqual(1)
+      expect(appliedCandidates.every(candidate => candidate.status === 'applied')).toBe(true)
+      expect(appliedCandidates.every(candidate => Boolean(candidate.outputKnowledgeId))).toBe(true)
+
+      const mergedKnowledgeRows = db()
+        .select()
+        .from(chronicleKnowledgeCards)
+        .where(eq(chronicleKnowledgeCards.status, 'merged'))
+        .all()
+      expect(mergedKnowledgeRows.length).toBeGreaterThanOrEqual(2)
+      const outputKnowledgeRows = dreamMergeRun.outputKnowledgeIds.map((knowledgeId) => {
+        const row = db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, knowledgeId)).get()
+        expect(row?.status).toBe('active')
+        expect(row?.metadataJson).toContain('dream-merge')
+        return row
+      })
+      expect(outputKnowledgeRows).toHaveLength(dreamMergeRun.mergedCount)
+      expect(mergedKnowledgeRows.every(row => dreamMergeRun.outputKnowledgeIds.includes(row.mergedIntoId ?? ''))).toBe(true)
+      expect(db().select().from(chronicleDreamRuns).all()).toHaveLength(3)
 
       const signingSecretValue = 'slack-signing-secret'
       const signingSecretResponse = await requestJson(app, '/secrets/', {
@@ -1657,6 +2206,20 @@ describe('chronicle module', () => {
       })
       expect(signingSecretResponse.status).toBe(200)
       const signingSecret = await signingSecretResponse.json() as { id: string }
+
+      const socketModeSourceResponse = await requestJson(app, '/chronicle/message-sources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          platform: 'slack',
+          label: 'Slack Socket Mode Lab',
+          enabled: true,
+          botTokenRef: secret.id,
+          channelIds: ['C456'],
+          realtimeMode: 'socket-mode',
+        }),
+      })
+      expect(socketModeSourceResponse.status).toBe(400)
 
       const realtimeSourceResponse = await requestJson(app, '/chronicle/message-sources', {
         method: 'POST',
@@ -1776,6 +2339,472 @@ describe('chronicle module', () => {
     finally {
       vi.restoreAllMocks()
       stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+    }
+  })
+
+  it('redacts sensitive activity evidence before remote activity triage prompts', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    shutdownInfra()
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      mockedGenerateText.mockReset()
+      app = await createServerApp({ startBackgroundTasks: false })
+      const configResponse = await putChronicleConfig(app, storageRoot)
+      expect(configResponse.status).toBe(200)
+
+      const profileSecretResponse = await requestJson(app, '/secrets/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'provider.api-key',
+          label: 'Chronicle prompt redaction key',
+          secret: 'sk-chronicle-redaction-test',
+        }),
+      })
+      expect(profileSecretResponse.status).toBe(200)
+      const profileSecret = await profileSecretResponse.json() as { id: string }
+      const profileResponse = await requestJson(app, '/profiles/profile-chronicle-redaction', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Chronicle Redaction',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: { baseUrl: 'https://example.com/v1', model: 'chronicle-test-model' },
+          credentialRef: profileSecret.id,
+        }),
+      })
+      expect(profileResponse.status).toBe(200)
+      writeChroniclePreference(dataDir, storageRoot, {
+        profileId: 'profile-chronicle-redaction',
+        modelId: 'chronicle-test-model',
+        enabled: true,
+      })
+
+      const snapshotResponse = await requestJson(app, '/chronicle/snapshots', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: 'snapshot-source-sensitive',
+          displayId: 1,
+          frameIndex: 9,
+          capturedAt: '2026-05-21T10:01:00Z',
+          segmentDir: '1/20260521100100',
+          framePath: '1/20260521100100/frame-00009.jpg',
+          capturePath: '1/20260521100100/capture-00009.json',
+          ocrPath: '1/20260521100100/ocr-00009.json',
+          snapshotPath: '1/20260521100100/snapshot.json',
+          ocrText: 'Contact Alice at alice@example.com, 555-123-4567, SSN 123-45-6789, card 4111 1111 1111 1111, token sk-secretABC123456, host 192.168.1.42.',
+          appBundleId: 'app.cradle.desktop',
+          windowTitle: 'Sensitive Evidence',
+          accessibility: {
+            sourceId: 'accessibility:snapshot-source-sensitive',
+            status: 'ready',
+            provider: 'macos-accessibility-window-inventory',
+            text: 'Slack token xoxb-123456789012-sensitive and email alice@example.com are visible.',
+          },
+          metadata: { source: 'test' },
+        }),
+      })
+      expect(snapshotResponse.status).toBe(200)
+      const snapshot = db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.sourceId, 'snapshot-source-sensitive')).get()
+      expect(snapshot?.ocrText).toContain('alice@example.com')
+
+      const memoryResponse = await postMemory(app, {
+        sourceId: 'memory-sensitive',
+        createdAt: '2026-05-21T10:01:01Z',
+        content: 'Remember Alice can be reached at alice@example.com and 555-123-4567 with key sk-secretABC123456.',
+      })
+      expect(memoryResponse.status).toBe(200)
+      const persistedMemory = db().select().from(chronicleMemories).where(eq(chronicleMemories.sourceId, 'memory-sensitive')).get()
+      expect(persistedMemory?.content).toContain('alice@example.com')
+
+      const activitySegment = db()
+        .select()
+        .from(chronicleActivitySegments)
+        .all()
+        .find((segment) => {
+          const refs = SourceRefsJsonSchema.parse(segment.sourceRefsJson)
+          return refs.snapshotIds?.includes(snapshot!.id)
+        })
+      expect(activitySegment).toBeTruthy()
+
+      mockedGenerateText.mockResolvedValueOnce({
+        text: JSON.stringify({
+          keep: true,
+          reason: 'Sensitive evidence should be retained only after prompt redaction.',
+          segmentType: 'work',
+          title: 'Sensitive evidence redaction',
+          priority: 'normal',
+        }),
+        usage: { inputTokens: 31, outputTokens: 10, totalTokens: 41 },
+      } as Awaited<ReturnType<typeof generateText>>)
+
+      const triageResponse = await requestJson(app, `/chronicle/activity-segments/${activitySegment!.id}/triage`, { method: 'POST' })
+      expect(triageResponse.status).toBe(200)
+      expect(mockedGenerateText).toHaveBeenCalledTimes(1)
+      const prompt = mockedGenerateText.mock.calls[0]?.[0]?.prompt
+      expect(prompt).toContain('[EMAIL]')
+      expect(prompt).toContain('[PHONE_NUMBER]')
+      expect(prompt).toContain('[SSN]')
+      expect(prompt).toContain('[CREDIT_CARD]')
+      expect(prompt).toContain('[API_KEY]')
+      expect(prompt).toContain('[IP_ADDRESS]')
+      expect(prompt).not.toContain('alice@example.com')
+      expect(prompt).not.toContain('555-123-4567')
+      expect(prompt).not.toContain('123-45-6789')
+      expect(prompt).not.toContain('4111 1111 1111 1111')
+      expect(prompt).not.toContain('sk-secretABC123456')
+      expect(prompt).not.toContain('xoxb-123456789012-sensitive')
+      expect(prompt).not.toContain('192.168.1.42')
+      expect(db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.id, snapshot!.id)).get()?.ocrText).toContain('alice@example.com')
+      expect(db().select().from(chronicleMemories).where(eq(chronicleMemories.id, persistedMemory!.id)).get()?.content).toContain('alice@example.com')
+    }
+    finally {
+      vi.restoreAllMocks()
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+    }
+  })
+
+  it('projects Chronicle events as realtime-compatible backlog and SSE frames', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    shutdownInfra()
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp({ startBackgroundTasks: false })
+      const configResponse = await putChronicleConfig(app, storageRoot)
+      expect(configResponse.status).toBe(200)
+
+      const memoryResponse = await postMemory(app, {
+        sourceId: 'realtime-memory-source',
+        createdAt: '2026-05-21T12:00:00Z',
+        content: 'RealtimeEventAlpha should be visible in the Chronicle event stream.',
+      })
+      expect(memoryResponse.status).toBe(200)
+
+      const backlogResponse = await requestJson(app, '/chronicle/events?limit=10')
+      expect(backlogResponse.status).toBe(200)
+      const backlog = await backlogResponse.json() as Array<{
+        channel: string
+        event: string
+        type: string
+        status: string
+        message: string
+        createdAtUnix: number
+      }>
+      const memoryEvent = backlog.find(event => event.channel === 'memory')
+      expect(memoryEvent?.event).toBe('chronicle.memory.success')
+      expect(memoryEvent?.type).toBe('memory')
+      expect(memoryEvent?.status).toBe('success')
+      expect(memoryEvent?.createdAtUnix).toBeGreaterThan(0)
+
+      const streamResponse = await requestJson(app, '/chronicle/events/stream?limit=10&once=true')
+      expect(streamResponse.status).toBe(200)
+      expect(streamResponse.headers.get('content-type')).toContain('text/event-stream')
+      const streamText = await streamResponse.text()
+      expect(streamText).toContain('event: chronicle.memory.success')
+      expect(streamText).toContain('data: ')
+      expect(streamText).toContain('"channel":"memory"')
+
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+    }
+  })
+
+  it('applies dream archive, restore, and prune lifecycle operations through HTTP', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    shutdownInfra()
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp({ startBackgroundTasks: false })
+      const configResponse = await putChronicleConfig(app, storageRoot)
+      expect(configResponse.status).toBe(200)
+
+      insertKnowledgeCard({
+        id: 'dream-old-active',
+        title: 'Old active knowledge',
+        content: 'Old active knowledge can be archived by Chronicle dream maintenance.',
+        updatedAt: 1,
+      })
+      insertKnowledgeCard({
+        id: 'dream-new-active',
+        title: 'New active knowledge',
+        content: 'New active knowledge should not be archived by stale maintenance.',
+        updatedAt: 4_000_000_000,
+      })
+      insertKnowledgeCard({
+        id: 'dream-pinned-active',
+        title: 'Pinned active knowledge',
+        content: 'Pinned active knowledge should not be archived automatically.',
+        pinned: true,
+        updatedAt: 1,
+      })
+
+      const archiveDryRunResponse = await requestJson(app, '/chronicle/dream-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runType: 'archive', dryRun: true, olderThanDays: 0, limit: 10 }),
+      })
+      expect(archiveDryRunResponse.status).toBe(200)
+      const archiveDryRun = await archiveDryRunResponse.json() as { inputCount: number, outputCount: number, result: { dryRun?: boolean, candidateCount?: number } }
+      expect(archiveDryRun.inputCount).toBe(1)
+      expect(archiveDryRun.outputCount).toBe(0)
+      expect(archiveDryRun.result.dryRun).toBe(true)
+      expect(archiveDryRun.result.candidateCount).toBe(1)
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-old-active')).get()?.status).toBe('active')
+
+      const archiveResponse = await requestJson(app, '/chronicle/dream-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runType: 'archive', dryRun: false, olderThanDays: 0, limit: 10 }),
+      })
+      expect(archiveResponse.status).toBe(200)
+      const archiveRun = await archiveResponse.json() as { id: string, runType: string, inputCount: number, outputCount: number, result: { targetStatus?: string } }
+      expect(archiveRun.runType).toBe('archive')
+      expect(archiveRun.inputCount).toBe(1)
+      expect(archiveRun.outputCount).toBe(1)
+      expect(archiveRun.result.targetStatus).toBe('archived')
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-old-active')).get()?.status).toBe('archived')
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-new-active')).get()?.status).toBe('active')
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-pinned-active')).get()?.status).toBe('active')
+      expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, 'dream-old-active')).all()).toHaveLength(1)
+      expect(db().select().from(chronicleDreamCandidates).where(eq(chronicleDreamCandidates.runId, archiveRun.id)).get()?.status).toBe('applied')
+
+      const restoreResponse = await requestJson(app, '/chronicle/dream-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runType: 'restore', dryRun: false, knowledgeIds: ['dream-old-active'], limit: 10 }),
+      })
+      expect(restoreResponse.status).toBe(200)
+      const restoreRun = await restoreResponse.json() as { runType: string, inputCount: number, outputCount: number, result: { targetStatus?: string } }
+      expect(restoreRun.runType).toBe('restore')
+      expect(restoreRun.inputCount).toBe(1)
+      expect(restoreRun.outputCount).toBe(1)
+      expect(restoreRun.result.targetStatus).toBe('active')
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-old-active')).get()?.status).toBe('active')
+
+      const archiveByIdResponse = await requestJson(app, '/chronicle/dream-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runType: 'archive', dryRun: false, knowledgeIds: ['dream-old-active'], limit: 10 }),
+      })
+      expect(archiveByIdResponse.status).toBe(200)
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-old-active')).get()?.status).toBe('archived')
+
+      const pruneResponse = await requestJson(app, '/chronicle/dream-runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runType: 'prune', dryRun: false, knowledgeIds: ['dream-old-active'], limit: 10 }),
+      })
+      expect(pruneResponse.status).toBe(200)
+      const pruneRun = await pruneResponse.json() as { runType: string, inputCount: number, outputCount: number, deletedCount: number, result: { targetStatus?: string } }
+      expect(pruneRun.runType).toBe('prune')
+      expect(pruneRun.inputCount).toBe(1)
+      expect(pruneRun.outputCount).toBe(0)
+      expect(pruneRun.deletedCount).toBe(1)
+      expect(pruneRun.result.targetStatus).toBe('deleted')
+      expect(db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, 'dream-old-active')).get()?.status).toBe('deleted')
+      expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, 'dream-old-active')).all()).toHaveLength(4)
+      expect(db().select().from(chronicleEvents).where(eq(chronicleEvents.type, 'activity')).all().length).toBeGreaterThanOrEqual(4)
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+    }
+  })
+
+  it('mutates Chronicle memories and knowledge cards through owned HTTP APIs', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    shutdownInfra()
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp({ startBackgroundTasks: false })
+      const configResponse = await putChronicleConfig(app, storageRoot)
+      expect(configResponse.status).toBe(200)
+
+      const memoryResponse = await postMemory(app, {
+        sourceId: 'mutation-memory-source',
+        createdAt: '2026-05-21T13:00:00Z',
+        content: 'MutationAlpha original memory text.',
+      })
+      expect(memoryResponse.status).toBe(200)
+      const memory = await memoryResponse.json() as { id: string, content: string }
+      expect(memory.content).toContain('MutationAlpha original')
+      expect(db().select().from(chronicleMemoryChunks).where(eq(chronicleMemoryChunks.memoryId, memory.id)).all().length).toBeGreaterThan(0)
+
+      const updateMemoryResponse = await requestJson(app, `/chronicle/memories/${memory.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          content: 'MutationBeta updated memory text.',
+          metadata: { reviewed: true },
+        }),
+      })
+      expect(updateMemoryResponse.status).toBe(200)
+      const updatedMemory = await updateMemoryResponse.json() as { id: string, content: string }
+      expect(updatedMemory.content).toBe('MutationBeta updated memory text.')
+      expect(db().select().from(chronicleMemoryKeywords).where(eq(chronicleMemoryKeywords.term, 'mutationalpha')).all()).toHaveLength(0)
+      expect(db().select().from(chronicleMemoryKeywords).where(eq(chronicleMemoryKeywords.term, 'mutationbeta')).all().length).toBeGreaterThan(0)
+      const updatedMemorySearchResponse = await requestJson(app, '/chronicle/memories/search?q=MutationBeta&limit=5')
+      expect(updatedMemorySearchResponse.status).toBe(200)
+      expect((await updatedMemorySearchResponse.json() as Array<{ id: string }>)[0]?.id).toBe(memory.id)
+
+      const deleteMemoryResponse = await requestJson(app, `/chronicle/memories/${memory.id}`, { method: 'DELETE' })
+      expect(deleteMemoryResponse.status).toBe(200)
+      expect(await deleteMemoryResponse.json()).toEqual({ ok: true })
+      expect(db().select().from(chronicleMemories).where(eq(chronicleMemories.id, memory.id)).all()).toHaveLength(0)
+      expect(db().select().from(chronicleMemoryChunks).where(eq(chronicleMemoryChunks.memoryId, memory.id)).all()).toHaveLength(0)
+
+      const createKnowledgeResponse = await requestJson(app, '/chronicle/knowledge-cards', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Mutation knowledge',
+          content: 'Knowledge version one.',
+          cardType: 'fact',
+          dimension: 'technical',
+          confidence: 0.8,
+          tags: ['mutation'],
+        }),
+      })
+      expect(createKnowledgeResponse.status).toBe(200)
+      const createdKnowledge = await createKnowledgeResponse.json() as { id: string, version: number, content: string }
+      expect(createdKnowledge.version).toBe(1)
+      expect(createdKnowledge.content).toBe('Knowledge version one.')
+      expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, createdKnowledge.id)).all()).toHaveLength(1)
+
+      const updateKnowledgeResponse = await requestJson(app, `/chronicle/knowledge-cards/${createdKnowledge.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          content: 'Knowledge version two.',
+          confidence: 0.9,
+          tags: ['mutation', 'updated'],
+        }),
+      })
+      expect(updateKnowledgeResponse.status).toBe(200)
+      const updatedKnowledge = await updateKnowledgeResponse.json() as { id: string, version: number, content: string, confidence: number, tags: string[] }
+      expect(updatedKnowledge.version).toBe(2)
+      expect(updatedKnowledge.content).toBe('Knowledge version two.')
+      expect(updatedKnowledge.confidence).toBe(0.9)
+      expect(updatedKnowledge.tags).toEqual(['mutation', 'updated'])
+
+      const restoreKnowledgeResponse = await requestJson(app, `/chronicle/knowledge-cards/${createdKnowledge.id}/versions/restore`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ version: 1 }),
+      })
+      expect(restoreKnowledgeResponse.status).toBe(200)
+      const restoredKnowledge = await restoreKnowledgeResponse.json() as { id: string, version: number, content: string, status: string }
+      expect(restoredKnowledge.version).toBe(3)
+      expect(restoredKnowledge.content).toBe('Knowledge version one.')
+      expect(restoredKnowledge.status).toBe('active')
+      expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, createdKnowledge.id)).all()).toHaveLength(3)
+
+      const deleteKnowledgeResponse = await requestJson(app, `/chronicle/knowledge-cards/${createdKnowledge.id}`, { method: 'DELETE' })
+      expect(deleteKnowledgeResponse.status).toBe(200)
+      expect(await deleteKnowledgeResponse.json()).toEqual({ ok: true })
+      const deletedKnowledge = db().select().from(chronicleKnowledgeCards).where(eq(chronicleKnowledgeCards.id, createdKnowledge.id)).get()
+      expect(deletedKnowledge?.status).toBe('deleted')
+      expect(deletedKnowledge?.version).toBe(4)
+      expect(db().select().from(chronicleEvents).where(eq(chronicleEvents.type, 'memory')).all().length).toBeGreaterThanOrEqual(3)
+      expect(db().select().from(chronicleEvents).where(eq(chronicleEvents.type, 'activity')).all().length).toBeGreaterThanOrEqual(4)
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
       stopSlackBackgroundSync()
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })

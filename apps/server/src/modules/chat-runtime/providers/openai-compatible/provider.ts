@@ -53,7 +53,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     const config = OpenAICompatibleConfigJsonSchema.parse(input.profile.configJson)
-    const currentModelId = input.modelId ?? config.model ?? null
+    const currentModelId = input.modelId ?? config.model
 
     return {
       id: input.chatSessionId,
@@ -62,7 +62,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       runtimeKind: this.runtimeKind,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
-        baseUrl: config.baseUrl ?? null,
+        baseUrl: config.baseUrl,
         models: { currentModelId },
       }),
     }
@@ -117,7 +117,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       const messages = buildModelMessages(
         input.history,
         message,
-        config.maxMessages ?? 50,
+        config.maxMessages,
       )
 
       const contextWindow = await lookupContextWindow(effectiveModel) ?? 128_000
@@ -182,7 +182,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       const messages = buildModelMessages(
         input.history,
         message,
-        config.maxMessages ?? 50,
+        config.maxMessages,
       )
 
       const contextWindow = await lookupContextWindow(effectiveModel) ?? 128_000

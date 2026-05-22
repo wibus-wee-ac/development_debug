@@ -1,17 +1,25 @@
 //! SenseVoice ASR (Automatic Speech Recognition) ONNX inference.
 //!
-//! Implements end-to-end speech recognition using FunASR's SenseVoice model:
-//! - Audio preprocessing: 16kHz mono f32 → 80-dim log-mel fbank features
-//! - ONNX inference via `ort`
-//! - Greedy decoding with tokens.txt vocabulary
+//! Implements speech recognition using SenseVoice.
+//!
+//! When the `sherpa-asr` feature is enabled, ASR delegates preprocessing and
+//! decoding to sherpa-onnx. The default build uses direct ONNX inference so the
+//! crate remains buildable without downloading sherpa-onnx native archives.
 
-use std::f32::consts::PI;
-use std::fs;
 use std::path::Path;
+#[cfg(not(feature = "sherpa-asr"))]
+use std::{f32::consts::PI, fs};
 
-use ndarray::{Array1, Array2, s};
+#[cfg(not(feature = "sherpa-asr"))]
+use ndarray::Array1;
+#[cfg(not(feature = "sherpa-asr"))]
+use ndarray::{Array2, s};
+#[cfg(not(feature = "sherpa-asr"))]
 use ort::session::Session;
+#[cfg(not(feature = "sherpa-asr"))]
 use ort::value::Tensor;
+#[cfg(feature = "sherpa-asr")]
+use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
 
 use crate::error::{ChronicleError, ChronicleResult};
 
@@ -47,6 +55,7 @@ impl Default for FbankConfig {
     }
 }
 
+#[cfg(not(feature = "sherpa-asr"))]
 impl FbankConfig {
     /// Frame length in samples.
     fn frame_length_samples(&self) -> usize {
@@ -90,21 +99,50 @@ pub struct AsrResult {
 
 /// SenseVoice ASR inference engine.
 pub struct SenseVoiceAsr {
+    #[cfg(feature = "sherpa-asr")]
+    recognizer: OfflineRecognizer,
+    #[cfg(not(feature = "sherpa-asr"))]
     session: Session,
+    #[cfg(not(feature = "sherpa-asr"))]
     tokens: Vec<String>,
+    #[cfg(not(feature = "sherpa-asr"))]
     fbank_config: FbankConfig,
 }
 
 impl SenseVoiceAsr {
     /// Create a new ASR engine from model and tokens paths.
     pub fn new(model_path: &Path, tokens_path: &Path) -> ChronicleResult<Self> {
-        let session = super::load_session(model_path)?;
-        let tokens = load_tokens(tokens_path)?;
-        Ok(Self {
-            session,
-            tokens,
-            fbank_config: FbankConfig::default(),
-        })
+        #[cfg(feature = "sherpa-asr")]
+        {
+            let mut config = OfflineRecognizerConfig::default();
+            config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
+                model: Some(model_path.to_string_lossy().to_string()),
+                language: Some("auto".to_string()),
+                use_itn: true,
+            };
+            config.model_config.tokens = Some(tokens_path.to_string_lossy().to_string());
+            config.model_config.num_threads = 2;
+
+            let recognizer = OfflineRecognizer::create(&config).ok_or_else(|| {
+                ChronicleError::Process(format!(
+                    "failed to create sherpa-onnx SenseVoice recognizer for {}",
+                    model_path.display()
+                ))
+            })?;
+
+            Ok(Self { recognizer })
+        }
+
+        #[cfg(not(feature = "sherpa-asr"))]
+        {
+            let session = super::load_session(model_path)?;
+            let tokens = load_tokens(tokens_path)?;
+            Ok(Self {
+                session,
+                tokens,
+                fbank_config: FbankConfig::default(),
+            })
+        }
     }
 
     /// Transcribe raw audio samples (f32, expected 16kHz mono).
@@ -119,47 +157,87 @@ impl SenseVoiceAsr {
             });
         }
 
-        // 1. Extract fbank features: [num_frames, 560] (80 mels × 7 context)
-        let features = extract_fbank_with_context(samples, &self.fbank_config)?;
-        let num_frames = features.shape()[0] as i32;
+        #[cfg(feature = "sherpa-asr")]
+        {
+            let stream = self.recognizer.create_stream();
+            stream.accept_waveform(_sample_rate as i32, samples);
+            self.recognizer.decode(&stream);
+            let result = stream.get_result().ok_or_else(|| {
+                ChronicleError::Process("sherpa-onnx SenseVoice returned no result".to_string())
+            })?;
 
-        // 2. Reshape to [1, num_frames, 560] for batch dim
-        let speech = features.insert_axis(ndarray::Axis(0));
+            Ok(AsrResult {
+                text: result.text.trim().to_string(),
+                language: None,
+                tokens: result
+                    .tokens
+                    .into_iter()
+                    .map(|token| TokenInfo {
+                        token,
+                        confidence: 1.0,
+                    })
+                    .collect(),
+            })
+        }
 
-        let lengths = Array1::from_vec(vec![num_frames]);
+        #[cfg(not(feature = "sherpa-asr"))]
+        {
+            let features = extract_fbank_with_context(samples, &self.fbank_config)?;
+            let num_frames = features.shape()[0] as i32;
+            let speech = features.insert_axis(ndarray::Axis(0));
 
-        // 3. Run ONNX inference
-        let speech_tensor = Tensor::from_array(speech)
-            .map_err(|e| ChronicleError::Process(format!("speech tensor: {e}")))?;
-        let lengths_tensor = Tensor::from_array(lengths)
-            .map_err(|e| ChronicleError::Process(format!("lengths tensor: {e}")))?;
+            let lengths = Array1::from_vec(vec![num_frames]);
+            let language = Array1::from_vec(vec![sense_voice_control_value(
+                "CRADLE_CHRONICLE_SENSEVOICE_LANGUAGE",
+                0,
+            )]);
+            let text_norm = Array1::from_vec(vec![sense_voice_control_value(
+                "CRADLE_CHRONICLE_SENSEVOICE_TEXT_NORM",
+                15,
+            )]);
 
-        let outputs = self
-            .session
-            .run(ort::inputs![
-                "speech" => speech_tensor,
-                "speech_lengths" => lengths_tensor,
-            ])
-            .map_err(|e| ChronicleError::Process(format!("ONNX run failed: {e}")))?;
+            let speech_tensor = Tensor::from_array(speech)
+                .map_err(|error| ChronicleError::Process(format!("speech tensor: {error}")))?;
+            let lengths_tensor = Tensor::from_array(lengths)
+                .map_err(|error| ChronicleError::Process(format!("lengths tensor: {error}")))?;
+            let language_tensor = Tensor::from_array(language)
+                .map_err(|error| ChronicleError::Process(format!("language tensor: {error}")))?;
+            let text_norm_tensor = Tensor::from_array(text_norm)
+                .map_err(|error| ChronicleError::Process(format!("text norm tensor: {error}")))?;
 
-        // 4. Extract logits [1, seq_len, vocab_size]
-        let (shape, logits_data) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| ChronicleError::Process(format!("extract logits: {e}")))?;
+            let outputs = self
+                .session
+                .run(ort::inputs![
+                    "x" => speech_tensor,
+                    "x_length" => lengths_tensor,
+                    "language" => language_tensor,
+                    "text_norm" => text_norm_tensor,
+                ])
+                .map_err(|error| ChronicleError::Process(format!("ONNX run failed: {error}")))?;
 
-        let seq_len = shape[1] as usize;
-        let vocab_size = shape[2] as usize;
+            let (shape, logits_data) = outputs["logits"]
+                .try_extract_tensor::<f32>()
+                .map_err(|error| ChronicleError::Process(format!("extract logits: {error}")))?;
 
-        let logits = Array2::from_shape_vec(
-            (seq_len, vocab_size),
-            logits_data[..seq_len * vocab_size].to_vec(),
-        )
-        .map_err(|e| ChronicleError::Process(format!("logits reshape: {e}")))?;
+            let seq_len = shape[1] as usize;
+            let vocab_size = shape[2] as usize;
+            let logits = Array2::from_shape_vec(
+                (seq_len, vocab_size),
+                logits_data[..seq_len * vocab_size].to_vec(),
+            )
+            .map_err(|error| ChronicleError::Process(format!("logits reshape: {error}")))?;
 
-        // 5. Greedy decode
-        let result = greedy_decode(&logits.to_owned(), &self.tokens);
-        Ok(result)
+            Ok(greedy_decode(&logits.to_owned(), &self.tokens))
+        }
     }
+}
+
+#[cfg(not(feature = "sherpa-asr"))]
+fn sense_voice_control_value(env_name: &str, default_value: i32) -> i32 {
+    std::env::var(env_name)
+        .ok()
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(default_value)
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +246,7 @@ impl SenseVoiceAsr {
 
 /// Load tokens.txt vocabulary file.
 /// Format: each line is "token_id<space_or_tab>token_string" or "token_string<space_or_tab>token_id"
+#[cfg(not(feature = "sherpa-asr"))]
 fn load_tokens(path: &Path) -> ChronicleResult<Vec<String>> {
     let content =
         fs::read_to_string(path).map_err(|e| ChronicleError::io_at(path.to_path_buf(), e))?;
@@ -175,18 +254,34 @@ fn load_tokens(path: &Path) -> ChronicleResult<Vec<String>> {
     let mut max_id: usize = 0;
     let mut entries: Vec<(usize, String)> = Vec::new();
 
-    for line in content.lines() {
+    let raw_lines: Vec<&str> = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let token_id_format = raw_lines.iter().take(32).enumerate().all(|(index, line)| {
+        let mut parts = line.split_whitespace();
+        let _token = parts.next();
+        parts
+            .next()
+            .and_then(|value| value.parse::<usize>().ok())
+            .is_some_and(|id| id == index)
+    });
+
+    for line in raw_lines {
         let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
         // Split on first whitespace
         let mut parts = line.splitn(2, [' ', '\t']);
         let first = parts.next().unwrap_or("");
         let second = parts.next().unwrap_or("");
 
         // Determine which is the id and which is the token
-        let (id, token) = if let Ok(id) = first.parse::<usize>() {
+        let (id, token) = if token_id_format {
+            let id = second.parse::<usize>().map_err(|error| {
+                ChronicleError::Process(format!("invalid token id in tokens file: {error}"))
+            })?;
+            (id, first.to_string())
+        } else if let Ok(id) = first.parse::<usize>() {
             // "id token" format
             (id, second.to_string())
         } else if let Ok(id) = second.parse::<usize>() {
@@ -218,6 +313,7 @@ fn load_tokens(path: &Path) -> ChronicleResult<Vec<String>> {
 // ---------------------------------------------------------------------------
 
 /// Special tokens to skip during decoding.
+#[cfg(not(feature = "sherpa-asr"))]
 const SKIP_TOKENS: &[&str] = &[
     "<blank>",
     "<sos>",
@@ -250,9 +346,11 @@ const SKIP_TOKENS: &[&str] = &[
 ];
 
 /// Language detection tokens.
+#[cfg(not(feature = "sherpa-asr"))]
 const LANGUAGE_TOKENS: &[&str] = &["<|zh|>", "<|en|>", "<|ja|>", "<|ko|>", "<|yue|>"];
 
 /// Greedy argmax decoding over logits.
+#[cfg(not(feature = "sherpa-asr"))]
 fn greedy_decode(logits: &Array2<f32>, tokens: &[String]) -> AsrResult {
     let seq_len = logits.shape()[0];
     let mut decoded_tokens: Vec<TokenInfo> = Vec::new();
@@ -312,6 +410,7 @@ fn greedy_decode(logits: &Array2<f32>, tokens: &[String]) -> AsrResult {
 }
 
 /// Check if a token should be skipped.
+#[cfg(not(feature = "sherpa-asr"))]
 fn should_skip_token(token: &str) -> bool {
     if token.is_empty() {
         return true;
@@ -329,12 +428,14 @@ fn should_skip_token(token: &str) -> bool {
 }
 
 /// Compute approximate confidence from logits via softmax on the argmax.
+#[cfg(not(feature = "sherpa-asr"))]
 fn compute_confidence(logits: &[f32], max_logit: f32) -> f32 {
     let sum_exp: f64 = logits.iter().map(|&x| ((x - max_logit) as f64).exp()).sum();
     (1.0 / sum_exp as f32).clamp(0.0, 1.0)
 }
 
 /// Join tokens handling sentencepiece ▁ (U+2581) as word boundaries.
+#[cfg(not(feature = "sherpa-asr"))]
 fn join_tokens(tokens: &[TokenInfo]) -> String {
     let mut result = String::new();
     for tok in tokens {
@@ -356,6 +457,7 @@ fn join_tokens(tokens: &[TokenInfo]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Extract fbank features and stack with context frames (×7 → 560 dim).
+#[cfg(not(feature = "sherpa-asr"))]
 fn extract_fbank_with_context(
     samples: &[f32],
     config: &FbankConfig,
@@ -388,7 +490,8 @@ fn extract_fbank_with_context(
 }
 
 /// Extract 80-dim log-mel filterbank features from raw audio.
-fn extract_fbank(samples: &[f32], config: &FbankConfig) -> ChronicleResult<Array2<f32>> {
+#[cfg(not(feature = "sherpa-asr"))]
+pub fn extract_fbank(samples: &[f32], config: &FbankConfig) -> ChronicleResult<Array2<f32>> {
     let frame_len = config.frame_length_samples();
     let frame_shift = config.frame_shift_samples();
     let fft_size = config.fft_size();
@@ -461,6 +564,7 @@ fn extract_fbank(samples: &[f32], config: &FbankConfig) -> ChronicleResult<Array
 }
 
 /// Apply cepstral mean and variance normalization per feature dimension.
+#[cfg(not(feature = "sherpa-asr"))]
 fn apply_cmvn(features: &mut Array2<f32>) {
     let num_frames = features.shape()[0];
     if num_frames == 0 {
@@ -482,6 +586,7 @@ fn apply_cmvn(features: &mut Array2<f32>) {
 }
 
 /// Generate a Hamming window of given length.
+#[cfg(not(feature = "sherpa-asr"))]
 fn hamming_window(length: usize) -> Vec<f32> {
     (0..length)
         .map(|n| 0.54 - 0.46 * (2.0 * PI * n as f32 / (length as f32 - 1.0)).cos())
@@ -489,16 +594,19 @@ fn hamming_window(length: usize) -> Vec<f32> {
 }
 
 /// Convert frequency in Hz to mel scale.
+#[cfg(not(feature = "sherpa-asr"))]
 fn hz_to_mel(hz: f32) -> f32 {
     2595.0 * (1.0 + hz / 700.0).log10()
 }
 
 /// Convert mel scale to Hz.
+#[cfg(not(feature = "sherpa-asr"))]
 fn mel_to_hz(mel: f32) -> f32 {
     700.0 * (10.0f32.powf(mel / 2595.0) - 1.0)
 }
 
 /// Compute mel filterbank matrix as flat vec [num_mels × num_bins].
+#[cfg(not(feature = "sherpa-asr"))]
 fn mel_filterbank(num_mels: usize, fft_size: usize, sample_rate: u32) -> Vec<f32> {
     let num_bins = fft_size / 2 + 1;
     let high_freq = sample_rate as f32 / 2.0;
@@ -552,6 +660,7 @@ fn mel_filterbank(num_mels: usize, fft_size: usize, sample_rate: u32) -> Vec<f32
 // ---------------------------------------------------------------------------
 
 /// In-place radix-2 FFT. Input length must be a power of 2.
+#[cfg(not(feature = "sherpa-asr"))]
 fn fft_radix2(input: &[f32], real_out: &mut [f32], imag_out: &mut [f32]) {
     let n = input.len();
     debug_assert!(n.is_power_of_two(), "FFT size must be power of two");
@@ -601,6 +710,7 @@ fn fft_radix2(input: &[f32], real_out: &mut [f32], imag_out: &mut [f32]) {
 }
 
 /// Reverse bits of a value for FFT bit-reversal permutation.
+#[cfg(not(feature = "sherpa-asr"))]
 fn bit_reverse(mut x: u32, num_bits: u32) -> u32 {
     let mut result: u32 = 0;
     for _ in 0..num_bits {
@@ -616,11 +726,15 @@ fn bit_reverse(mut x: u32, num_bits: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "sherpa-asr"))]
     use super::*;
+    #[cfg(not(feature = "sherpa-asr"))]
     use std::fs;
+    #[cfg(not(feature = "sherpa-asr"))]
     use std::io::Write;
 
     /// Helper to write content to a temp file and return its path.
+    #[cfg(not(feature = "sherpa-asr"))]
     fn write_temp_file(name: &str, content: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join("chronicle_asr_tests");
         fs::create_dir_all(&dir).unwrap();
@@ -630,6 +744,7 @@ mod tests {
         path
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_load_tokens_id_first() {
         let content = "0 <blank>\n1 hello\n2 world\n3 ▁the\n";
@@ -642,6 +757,7 @@ mod tests {
         assert_eq!(tokens[3], "▁the");
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_load_tokens_token_first() {
         let content = "<blank> 0\nhello 1\nworld 2\n";
@@ -653,6 +769,19 @@ mod tests {
         assert_eq!(tokens[2], "world");
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
+    #[test]
+    fn test_load_tokens_token_first_preserves_numeric_tokens() {
+        let content = "<unk> 0\n<s> 1\n</s> 2\n0 3\n9690 4\n";
+        let path = write_temp_file("tokens_numeric_token_first.txt", content);
+
+        let tokens = load_tokens(&path).unwrap();
+        assert_eq!(tokens[0], "<unk>");
+        assert_eq!(tokens[3], "0");
+        assert_eq!(tokens[4], "9690");
+    }
+
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_fbank_shape() {
         let samples = vec![0.01f32; 16000];
@@ -664,6 +793,7 @@ mod tests {
         assert_eq!(fbank.shape()[1], 80);
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_fbank_with_context_shape() {
         let samples: Vec<f32> = (0..16000).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
@@ -676,6 +806,7 @@ mod tests {
         assert_eq!(features.shape()[0], expected_output);
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_greedy_decode_basic() {
         let tokens = vec![
@@ -694,6 +825,7 @@ mod tests {
         assert_eq!(result.text, "hello world");
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_greedy_decode_skip_special() {
         let tokens = vec![
@@ -715,6 +847,7 @@ mod tests {
         assert_eq!(result.language, Some("zh".to_string()));
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_fft_radix2_dc() {
         let n = 8;
@@ -731,6 +864,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_fft_radix2_impulse() {
         let n = 8;
@@ -747,6 +881,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_hamming_window() {
         let win = hamming_window(400);
@@ -756,6 +891,7 @@ mod tests {
         assert!((win[199] - 1.0).abs() < 0.05);
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_mel_filterbank_shape() {
         let filters = mel_filterbank(80, 512, 16000);
@@ -767,6 +903,7 @@ mod tests {
         }
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_join_tokens_sentencepiece() {
         let tokens = vec![
@@ -787,6 +924,7 @@ mod tests {
         assert_eq!(text, "Hello world!");
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_confidence_computation() {
         let logits = vec![10.0, -5.0, -5.0, -5.0];
@@ -798,6 +936,7 @@ mod tests {
         assert!((conf_uniform - 0.25).abs() < 0.01);
     }
 
+    #[cfg(not(feature = "sherpa-asr"))]
     #[test]
     fn test_audio_too_short() {
         let samples = vec![0.0f32; 100];

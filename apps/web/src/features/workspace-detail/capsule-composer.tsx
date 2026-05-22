@@ -236,7 +236,6 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
           rows={1}
           className={cn(
             'block w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none disabled:opacity-50',
-            'transition-[padding,min-height,max-height] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
             owner.expanded
               ? 'px-4 pt-3.5 pb-2 min-h-16 max-h-60'
               : 'px-5 py-3 min-h-11 max-h-11',
@@ -245,7 +244,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
 
         <div
           className={cn(
-            'grid transition-[grid-template-rows,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]',
+            'grid transition-opacity duration-150 ease-[cubic-bezier(0.32,0.72,0,1)]',
             owner.expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
           )}
         >

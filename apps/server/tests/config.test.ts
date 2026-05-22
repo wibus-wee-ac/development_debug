@@ -12,6 +12,7 @@ describe('server config', () => {
     expect(cfg.host).toBe('127.0.0.1')
     expect(cfg.port).toBe(21423)
     expect(cfg.dbPath).toBe('/tmp/cradle-data/cradle.db')
+    expect(cfg.migrationsDir).toContain('drizzle')
   })
 
   it('throws when no db path provided', () => {
@@ -44,10 +45,12 @@ describe('server config', () => {
       const cfg = loadServerConfig({
         CRADLE_DATA_DIR: `   ${root}   `,
         CRADLE_DB_PATH: '   ',
+        CRADLE_MIGRATIONS_DIR: `   ${join(root, 'drizzle')}   `,
       })
 
       expect(cfg.dataDir).toBe(root)
       expect(cfg.dbPath).toBe(join(root, 'cradle.db'))
+      expect(cfg.migrationsDir).toBe(join(root, 'drizzle'))
       expect(() => loadServerConfig({ CRADLE_DATA_DIR: '  ', CRADLE_DB_PATH: '' })).toThrow(
         /CRADLE_DATA_DIR or CRADLE_DB_PATH/,
       )

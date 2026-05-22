@@ -10,29 +10,36 @@ import {
   HardDriveIcon,
   ImageIcon,
   KeyRoundIcon,
+  LayersIcon,
   MessageSquareIcon,
   RefreshCwIcon,
   SearchIcon,
+  ShieldIcon,
   TriangleAlertIcon,
   UserRoundIcon,
 } from 'lucide-react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Switch } from '~/components/ui/switch'
+import { Textarea } from '~/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
+import type { ChronicleFocusTarget } from '~/features/settings/settings-overlay-store'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import type {
+  ChronicleAccessibilityEvent,
   ChronicleAccessibilitySnapshot,
   ChronicleActivitySegment,
   ChronicleAudioRawSegment,
@@ -50,6 +57,7 @@ import type {
   TimelineEntry,
 } from './use-chronicle.ts'
 import {
+  useChronicleAccessibilityEvents,
   useChronicleAccessibilitySnapshots,
   useChronicleActivityPipelineActions,
   useChronicleActivitySegments,
@@ -59,7 +67,9 @@ import {
   useChronicleDownloadProgress,
   useChronicleDreamActions,
   useChronicleDreamRuns,
+  useChronicleKnowledgeCard,
   useChronicleKnowledgeCards,
+  useChronicleMemory,
   useChronicleMemories,
   useChronicleMemorySearch,
   useChronicleMessageSources,
@@ -74,27 +84,47 @@ import {
 } from './use-chronicle.ts'
 
 const MEMORY_SEARCH_LIMIT = 50
+const AccessibilityTreeNodeSchema = z.object({
+  role: z.string().min(1).default('AXElement'),
+  label: z.string().default(''),
+  value: z.string().default(''),
+  depth: z.number().finite().default(0),
+  path: z.string().min(1).optional(),
+}).passthrough().transform(node => ({
+  role: node.role,
+  label: node.label,
+  value: node.value,
+  depth: node.depth,
+  path: node.path ?? `${node.role}:${node.label}:${node.depth}`,
+}))
+const ModelResourceManifestSchema = z.object({
+  files: z.array(z.object({
+    sourceUrl: z.string(),
+  }).passthrough()).default([]),
+}).passthrough().default({ files: [] })
+const AccessibilitySnapshotMetadataSchema = z.object({
+  artifactPath: z.string().optional(),
+}).passthrough()
+const TimestampMsSchema = z.union([
+  z.number().finite().transform(value => value < 1_000_000_000_000 ? value * 1000 : value),
+  z.string()
+    .transform(value => new Date(value).getTime())
+    .pipe(z.number().finite()),
+  z.null().transform(() => null),
+])
 
 function formatDateTime(value: string | number | null): string {
-  if (!value) {
+  const time = TimestampMsSchema.parse(value)
+  if (time === null) {
     return '从未'
   }
 
-  const date = typeof value === 'number' ? new Date(toMilliseconds(value)) : new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return '从未'
-  }
-
-  return date.toLocaleString('zh-CN')
+  return new Date(time).toLocaleString('zh-CN')
 }
 
 function formatRelativeTime(value: string | number | null): string {
-  if (!value) {
-    return '从未'
-  }
-
-  const time = typeof value === 'number' ? toMilliseconds(value) : new Date(value).getTime()
-  if (Number.isNaN(time)) {
+  const time = TimestampMsSchema.parse(value)
+  if (time === null) {
     return '从未'
   }
 
@@ -115,10 +145,6 @@ function formatRelativeTime(value: string | number | null): string {
   return `${days} 天前`
 }
 
-function toMilliseconds(value: number): number {
-  return value < 1_000_000_000_000 ? value * 1000 : value
-}
-
 function getResourceTone(resource: ChronicleModelResource): 'ready' | 'optional' | 'warning' | 'error' | 'loading' {
   if (resource.state === 'available') {
     return 'ready'
@@ -136,19 +162,7 @@ function getResourceTone(resource: ChronicleModelResource): 'ready' | 'optional'
 }
 
 function hasVerifiedManifestDownload(resource: ChronicleModelResource): boolean {
-  const manifest = readRecord(resource.metadata?.manifest)
-  const files = Array.isArray(manifest?.files) ? manifest.files : []
-  return files.length > 0 && files.every((file) => {
-    const item = readRecord(file)
-    return typeof item?.sourceUrl === 'string'
-  })
-}
-
-function readRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return null
-  }
-  return value as Record<string, unknown>
+  return ModelResourceManifestSchema.parse(resource.metadata?.manifest).files.length > 0
 }
 
 function getResourceStateLabel(resource: ChronicleModelResource): string {
@@ -225,12 +239,25 @@ function getControlDisabledReason({
   return blocked ? reason : null
 }
 
+function prependFocusedItem<T extends { id: string }>(items: T[], focusedItem: T | null): T[] {
+  if (!focusedItem) {
+    return items
+  }
+
+  return [
+    focusedItem,
+    ...items.filter(item => item.id !== focusedItem.id),
+  ]
+}
+
 export function ChronicleSettings() {
+  const firstRenderedRef = useRef(false)
   const { config, loading: configLoading, saving, updateConfig } = useChronicleConfig()
   const { status, loading: statusLoading } = useChronicleStatus()
   const { resources, loading: resourcesLoading } = useChronicleModelResources()
   const { sources: messageSources, loading: messageSourcesLoading } = useChronicleMessageSources()
   const { snapshots: accessibilitySnapshots, loading: accessibilitySnapshotsLoading } = useChronicleAccessibilitySnapshots()
+  const { events: accessibilityEvents, loading: accessibilityEventsLoading } = useChronicleAccessibilityEvents()
   const { transcripts: audioTranscripts, loading: audioTranscriptsLoading } = useChronicleAudioTranscripts()
   const { segments: audioRawSegments, loading: audioRawSegmentsLoading } = useChronicleAudioRawSegments()
   const { profiles: speakerProfiles, loading: speakerProfilesLoading } = useChronicleSpeakerProfiles()
@@ -247,9 +274,19 @@ export function ChronicleSettings() {
     searching: searchingMemories,
   } = useChronicleMemorySearch(searchQuery, MEMORY_SEARCH_LIMIT)
   const refreshChronicle = useRefreshChronicleQueries()
-  const { profiles } = useAgentProfiles()
+  const { profiles, isLoading: profilesLoading } = useAgentProfiles()
   const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
   const setSettingsSection = useSettingsOverlayStore(state => state.setSettingsSection)
+  const chronicleFocusTarget = useSettingsOverlayStore(state => state.chronicleFocusTarget)
+  const clearChronicleFocusTarget = useSettingsOverlayStore(state => state.clearChronicleFocusTarget)
+  const { entry: focusedMemoryEntry, loading: focusedMemoryLoading } = useChronicleMemory(
+    chronicleFocusTarget?.type === 'memory' ? chronicleFocusTarget.id : null,
+  )
+  const { card: focusedKnowledgeCard, loading: focusedKnowledgeLoading } = useChronicleKnowledgeCard(
+    chronicleFocusTarget?.type === 'knowledge' ? chronicleFocusTarget.id : null,
+  )
+  const memorySectionRef = useRef<HTMLDivElement>(null)
+  const knowledgeSectionRef = useRef<HTMLDivElement>(null)
 
   const selectedProfile = useMemo(
     () => profiles.find(profile => profile.id === config?.profileId) ?? null,
@@ -257,7 +294,19 @@ export function ChronicleSettings() {
   )
   const selectedModels = selectedProfile ? modelsByProfileId[selectedProfile.id] ?? [] : []
   const selectedModel = selectedModels.find(model => model.id === config?.modelId) ?? null
-  const visibleMemoryEntries = hasSearchQuery ? searchedMemoryEntries : memoryEntries
+  const baseMemoryEntries = hasSearchQuery ? searchedMemoryEntries : memoryEntries
+  const visibleMemoryEntries = useMemo(
+    () => prependFocusedItem(baseMemoryEntries, focusedMemoryEntry),
+    [baseMemoryEntries, focusedMemoryEntry],
+  )
+  const visibleKnowledgeCards = useMemo(
+    () => prependFocusedItem(knowledgeCards, focusedKnowledgeCard),
+    [knowledgeCards, focusedKnowledgeCard],
+  )
+  const focusedMemoryVisible = chronicleFocusTarget?.type === 'memory'
+    && visibleMemoryEntries.some(entry => entry.id === chronicleFocusTarget.id)
+  const focusedKnowledgeVisible = chronicleFocusTarget?.type === 'knowledge'
+    && visibleKnowledgeCards.some(card => card.id === chronicleFocusTarget.id)
   const modelLabel = status?.configuredModel ?? selectedModel?.id ?? config?.modelId ?? null
   const canEnable = Boolean(config?.profileId && config?.modelId)
   const disabledRootReason = canEnable ? '需要先开启记录活动' : '需要先选择整理模型，再开启记录活动'
@@ -292,13 +341,67 @@ export function ChronicleSettings() {
         description: '自动整理、会议与音频都依赖「记录活动」。先打开记录活动后，这些能力才会变成可操作状态。',
       }
     : null
+  const settingsChronicleReady = !configLoading
+    && !statusLoading
+    && !resourcesLoading
+    && !messageSourcesLoading
+    && !accessibilitySnapshotsLoading
+    && !accessibilityEventsLoading
+    && !audioTranscriptsLoading
+    && !audioRawSegmentsLoading
+    && !speakerProfilesLoading
+    && !activitySegmentsLoading
+    && !pipelineRunsLoading
+    && !knowledgeCardsLoading
+    && !dreamRunsLoading
+    && !timelineLoading
+    && !memoriesLoading
+    && !profilesLoading
+    && loadingProfileIds.size === 0
+    && !focusedMemoryLoading
+    && !focusedKnowledgeLoading
+    && !searchingMemories
+
+  useEffect(() => {
+    if (!settingsChronicleReady || firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-settings-chronicle-rendered')
+    measureCradlePerformance(
+      'cradle:settings-chronicle-first-render',
+      'cradle:settings-chronicle-render-requested',
+      'cradle:first-settings-chronicle-rendered',
+    )
+  }, [settingsChronicleReady])
+
+  useEffect(() => {
+    if (!chronicleFocusTarget) {
+      return
+    }
+
+    const sectionRef = chronicleFocusTarget.type === 'memory' ? memorySectionRef : knowledgeSectionRef
+    const focusVisible = chronicleFocusTarget.type === 'memory' ? focusedMemoryVisible : focusedKnowledgeVisible
+    if (!focusVisible) {
+      return
+    }
+
+    sectionRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    const timeout = window.setTimeout(clearChronicleFocusTarget, 4_000)
+    return () => window.clearTimeout(timeout)
+  }, [chronicleFocusTarget, clearChronicleFocusTarget, focusedKnowledgeVisible, focusedMemoryVisible])
 
   if (configLoading) {
     return null
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
+    <div
+      className="flex flex-col gap-6 pb-8"
+      data-testid="chronicle-settings"
+      data-settings-chronicle-ready={settingsChronicleReady ? 'true' : 'false'}
+    >
       <ChronicleHero
         running={status?.running ?? false}
         available={status?.available ?? false}
@@ -376,45 +479,54 @@ export function ChronicleSettings() {
               : <TimelineScrubber entries={timelineEntries} />}
         </UserSection>
 
-        <UserSection
-          title="搜索记忆"
-          description="搜索已经整理出来的活动记忆，找回最近做过的事、讨论过的问题和相关上下文。"
-        >
-          <div className="flex flex-col gap-3">
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
-              <Input
-                value={searchQuery}
-                onChange={event => setSearchQuery(event.target.value)}
-                placeholder="搜索记忆"
-                className="h-9 pl-8 text-[13px]"
-              />
+        <div ref={memorySectionRef}>
+          <UserSection
+            title="搜索记忆"
+            description="搜索已经整理出来的活动记忆，找回最近做过的事、讨论过的问题和相关上下文。"
+          >
+            <div className="flex flex-col gap-3">
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+                <Input
+                  value={searchQuery}
+                  onChange={event => setSearchQuery(event.target.value)}
+                  placeholder="搜索记忆"
+                  className="h-9 pl-8 text-[13px]"
+                />
+              </div>
+              {memoriesLoading || searchingMemories || focusedMemoryLoading
+                ? <EmptyState icon={<BrainIcon className="size-4" />} title="正在搜索记忆" />
+                : visibleMemoryEntries.length === 0
+                  ? (
+                      <EmptyState
+                        icon={<BrainIcon className="size-4" />}
+                        title={hasSearchQuery ? '没有匹配的记忆' : '还没有记忆'}
+                      />
+                    )
+                  : (
+                      <MemoryList
+                        entries={visibleMemoryEntries}
+                        focusTarget={chronicleFocusTarget}
+                      />
+                    )}
             </div>
-            {memoriesLoading || searchingMemories
-              ? <EmptyState icon={<BrainIcon className="size-4" />} title="正在搜索记忆" />
-              : visibleMemoryEntries.length === 0
-                ? (
-                    <EmptyState
-                      icon={<BrainIcon className="size-4" />}
-                      title={hasSearchQuery ? '没有匹配的记忆' : '还没有记忆'}
-                    />
-                  )
-                : <MemoryList entries={visibleMemoryEntries} />}
-          </div>
-        </UserSection>
+          </UserSection>
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <UserSection
-          title="沉淀出来的知识"
-          description="当 Cradle 认为某段活动值得长期保留时，会把它整理成决定、任务、洞察或模式。"
-        >
-          {knowledgeCardsLoading
-            ? <EmptyState icon={<BrainIcon className="size-4" />} title="正在读取知识卡片" />
-            : knowledgeCards.length === 0
-              ? <EmptyState icon={<BrainIcon className="size-4" />} title="还没有知识卡片" />
-              : <KnowledgeCardList cards={knowledgeCards} />}
-        </UserSection>
+        <div ref={knowledgeSectionRef}>
+          <UserSection
+            title="沉淀出来的知识"
+            description="当 Cradle 认为某段活动值得长期保留时，会把它整理成决定、任务、洞察或模式。"
+          >
+            {knowledgeCardsLoading || focusedKnowledgeLoading
+              ? <EmptyState icon={<BrainIcon className="size-4" />} title="正在读取知识卡片" />
+              : visibleKnowledgeCards.length === 0
+                ? <EmptyState icon={<BrainIcon className="size-4" />} title="还没有知识卡片" />
+                : <KnowledgeCardList cards={visibleKnowledgeCards} focusTarget={chronicleFocusTarget} />}
+          </UserSection>
+        </div>
 
         <UserSection
           title="会议人物"
@@ -448,6 +560,8 @@ export function ChronicleSettings() {
               lastMessageAt={status?.lastMessageAt ?? null}
               totalAccessibilitySnapshots={status?.totalAccessibilitySnapshots ?? 0}
               lastAccessibilitySnapshotAt={status?.lastAccessibilitySnapshotAt ?? null}
+              totalAccessibilityEvents={status?.totalAccessibilityEvents ?? 0}
+              lastAccessibilityEventAt={status?.lastAccessibilityEventAt ?? null}
               totalAudioTranscripts={status?.totalAudioTranscripts ?? 0}
               lastAudioTranscriptAt={status?.lastAudioTranscriptAt ?? null}
               totalAudioRawSegments={status?.totalAudioRawSegments ?? 0}
@@ -460,6 +574,10 @@ export function ChronicleSettings() {
               activityPipelineRunning={status?.activityPipelineRunning ?? false}
               activityPipelineIntervalMs={status?.activityPipelineIntervalMs ?? config?.activityPipelineIntervalMs ?? 120_000}
               activityPipelineBatchSize={status?.activityPipelineBatchSize ?? config?.activityPipelineBatchSize ?? 3}
+              dreamSchedulerEnabled={status?.dreamSchedulerEnabled ?? config?.dreamSchedulerEnabled ?? true}
+              dreamSchedulerRunning={status?.dreamSchedulerRunning ?? false}
+              dreamSchedulerIntervalMs={status?.dreamSchedulerIntervalMs ?? config?.dreamSchedulerIntervalMs ?? 86_400_000}
+              dreamSchedulerApplyMerge={status?.dreamSchedulerApplyMerge ?? config?.dreamSchedulerApplyMerge ?? false}
               audioCaptureEnabled={status?.audioCaptureEnabled ?? config?.audioCaptureEnabled ?? false}
               audioRuntimeStatus={status?.audioRuntimeStatus ?? 'disabled'}
               modelLabel={modelLabel}
@@ -469,6 +587,14 @@ export function ChronicleSettings() {
 
           <AdvancedSection title="消息来源" description="连接 Slack 频道，把重要讨论纳入活动记忆。">
             <SlackSourcePanel loading={messageSourcesLoading} sources={messageSources} />
+          </AdvancedSection>
+
+          <AdvancedSection title="隐私规则" description="配置不应被截图或写入记录的应用、窗口标题和网页地址。">
+            <PrivacyRulesPanel
+              config={config}
+              saving={saving}
+              onUpdateConfig={updateConfig}
+            />
           </AdvancedSection>
 
           <AdvancedSection title="本地能力" description="识别画面、处理音频、区分说话人和语义搜索所需的本地资源。">
@@ -481,6 +607,14 @@ export function ChronicleSettings() {
               : accessibilitySnapshots.length === 0
                 ? <EmptyState icon={<EyeIcon className="size-4" />} title="还没有窗口线索" />
                 : <AccessibilitySnapshotList snapshots={accessibilitySnapshots} />}
+          </AdvancedSection>
+
+          <AdvancedSection title="窗口事件" description="AXObserver 捕捉到的本机界面变化事件。">
+            {accessibilityEventsLoading
+              ? <EmptyState icon={<ActivityIcon className="size-4" />} title="正在读取窗口事件" />
+              : accessibilityEvents.length === 0
+                ? <EmptyState icon={<ActivityIcon className="size-4" />} title="还没有窗口事件" />
+                : <AccessibilityEventList events={accessibilityEvents} />}
           </AdvancedSection>
 
           <AdvancedSection title="音频片段" description="最近捕捉到的原始音频片段，以及 VAD、ASR 和说话人处理状态。">
@@ -715,6 +849,13 @@ function ChronicleControlPanel({
     : config?.activityPipelineEnabled ?? true
       ? '已开启'
       : '已关闭'
+  const dreamStatus = !config?.enabled
+    ? '待开启记录'
+    : config?.dreamSchedulerEnabled ?? true
+      ? config?.dreamSchedulerApplyMerge
+        ? '自动合并'
+        : '只预览'
+      : '已关闭'
   const audioStatus = !config?.enabled
     ? '待开启记录'
     : config?.audioCaptureEnabled
@@ -751,6 +892,21 @@ function ChronicleControlPanel({
           <Switch
             checked={config?.activityPipelineEnabled ?? true}
             onCheckedChange={activityPipelineEnabled => void onUpdateConfig({ activityPipelineEnabled })}
+            disabled={saving || !config?.enabled}
+          />
+        </ControlRow>
+
+        <ControlRow
+          icon={<LayersIcon className="size-3.5" />}
+          title="记忆维护"
+          description={config?.enabled ? '定期预览相似知识，并在显式允许时自动合并。' : '记录活动开启后，记忆维护才会变成可操作。'}
+          status={dreamStatus}
+          statusTone={config?.enabled && (config?.dreamSchedulerEnabled ?? true) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}
+          reason={activityDisabledReason}
+        >
+          <Switch
+            checked={config?.dreamSchedulerEnabled ?? true}
+            onCheckedChange={dreamSchedulerEnabled => void onUpdateConfig({ dreamSchedulerEnabled })}
             disabled={saving || !config?.enabled}
           />
         </ControlRow>
@@ -925,6 +1081,8 @@ interface StatusPanelProps {
   lastMessageAt: string | number | null
   totalAccessibilitySnapshots: number
   lastAccessibilitySnapshotAt: string | number | null
+  totalAccessibilityEvents: number
+  lastAccessibilityEventAt: string | number | null
   totalAudioTranscripts: number
   lastAudioTranscriptAt: string | number | null
   totalAudioRawSegments: number
@@ -937,6 +1095,10 @@ interface StatusPanelProps {
   activityPipelineRunning: boolean
   activityPipelineIntervalMs: number
   activityPipelineBatchSize: number
+  dreamSchedulerEnabled: boolean
+  dreamSchedulerRunning: boolean
+  dreamSchedulerIntervalMs: number
+  dreamSchedulerApplyMerge: boolean
   audioCaptureEnabled: boolean
   audioRuntimeStatus: ChronicleStatus['audioRuntimeStatus']
   modelLabel: string | null
@@ -956,6 +1118,8 @@ function StatusPanel({
   lastMessageAt,
   totalAccessibilitySnapshots,
   lastAccessibilitySnapshotAt,
+  totalAccessibilityEvents,
+  lastAccessibilityEventAt,
   totalAudioTranscripts,
   lastAudioTranscriptAt,
   totalAudioRawSegments,
@@ -968,6 +1132,10 @@ function StatusPanel({
   activityPipelineRunning,
   activityPipelineIntervalMs,
   activityPipelineBatchSize,
+  dreamSchedulerEnabled,
+  dreamSchedulerRunning,
+  dreamSchedulerIntervalMs,
+  dreamSchedulerApplyMerge,
   audioCaptureEnabled,
   audioRuntimeStatus,
   modelLabel,
@@ -985,7 +1153,7 @@ function StatusPanel({
         <StatusBadge running={running} available={available} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-10 xl:grid-cols-11">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-10 xl:grid-cols-12">
         <StatusItem
           icon={<EyeIcon className="size-3.5" />}
           label="记录服务"
@@ -1013,6 +1181,12 @@ function StatusPanel({
           label="窗口"
           value={String(totalAccessibilitySnapshots)}
           detail={formatRelativeTime(lastAccessibilitySnapshotAt)}
+        />
+        <StatusItem
+          icon={<ActivityIcon className="size-3.5" />}
+          label="事件"
+          value={String(totalAccessibilityEvents)}
+          detail={formatRelativeTime(lastAccessibilityEventAt)}
         />
         <StatusItem
           icon={<FileAudioIcon className="size-3.5" />}
@@ -1062,10 +1236,18 @@ function StatusPanel({
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2">
+          <LayersIcon className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {dreamSchedulerEnabled
+              ? `记忆维护${dreamSchedulerRunning ? '运行中' : '就绪'} · ${dreamSchedulerApplyMerge ? '自动合并' : '只预览'} · ${Math.round(dreamSchedulerIntervalMs / 3_600_000)} 小时`
+              : '记忆维护已关闭'}
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2 md:justify-end">
           <CpuIcon className="size-3.5 shrink-0" />
           <span className="truncate">{modelLabel ?? '还没有选择模型'}</span>
         </div>
-        <div className="flex min-w-0 items-center gap-2 md:justify-end">
+        <div className="flex min-w-0 items-center gap-2">
           <TriangleAlertIcon className="size-3.5 shrink-0" />
           <span className="truncate">
             {lastExitCode === null ? '没有异常退出记录' : `上次退出代码 ${lastExitCode}，时间 ${formatDateTime(lastExitAt)}`}
@@ -1104,6 +1286,223 @@ function StatusBadge({ running, available }: { running: boolean, available: bool
     return <Badge variant="secondary" className="ml-auto">已就绪</Badge>
   }
   return <Badge variant="outline" className="ml-auto">未配置</Badge>
+}
+
+export function PrivacyRulesPanel({
+  config,
+  saving,
+  onUpdateConfig,
+}: {
+  config: ChronicleConfig | null
+  saving: boolean
+  onUpdateConfig: (updates: Partial<ChronicleConfig>) => Promise<ChronicleConfig | null>
+}) {
+  const [draft, setDraft] = useState<PrivacyRulesDraft>({
+    appBundleText: '',
+    titlePatternText: '',
+    urlPatternText: '',
+  })
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDraft({
+      appBundleText: formatPrivacyRuleLines(config?.privacySensitiveAppBundleIds ?? []),
+      titlePatternText: formatPrivacyRuleLines(config?.privacySensitiveTitlePatterns ?? []),
+      urlPatternText: formatPrivacyRuleLines(config?.privacySensitiveUrlPatterns ?? []),
+    })
+    setSaved(false)
+  }, [
+    config?.privacySensitiveAppBundleIds,
+    config?.privacySensitiveTitlePatterns,
+    config?.privacySensitiveUrlPatterns,
+  ])
+
+  const nextAppBundleIds = parsePrivacyRuleLines(draft.appBundleText)
+  const nextTitlePatterns = parsePrivacyRuleLines(draft.titlePatternText)
+  const nextUrlPatterns = parsePrivacyRuleLines(draft.urlPatternText)
+  const ruleCount = nextAppBundleIds.length + nextTitlePatterns.length + nextUrlPatterns.length
+  const closedEyesEnabled = config?.closedEyesDiscardEnabled ?? false
+  const closedEyesMode = config?.closedEyesMode ?? 'auto'
+  const hasChanges = config
+    ? !stringListsEqual(nextAppBundleIds, config.privacySensitiveAppBundleIds)
+      || !stringListsEqual(nextTitlePatterns, config.privacySensitiveTitlePatterns)
+      || !stringListsEqual(nextUrlPatterns, config.privacySensitiveUrlPatterns)
+    : false
+
+  return (
+    <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
+      <div className="mb-3 flex min-w-0 items-center gap-2">
+        <ShieldIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate text-[13px] font-medium text-foreground">敏感内容排除</span>
+        <Badge variant="outline" className="ml-auto text-[11px]">
+          {ruleCount === 0 ? '未配置' : `${ruleCount} 条规则`}
+        </Badge>
+      </div>
+
+      <div className="mb-4 rounded-md bg-muted/35 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-[12px] font-medium text-foreground">闭眼与离席丢弃</span>
+              <Badge variant={closedEyesEnabled ? 'secondary' : 'outline'} className="text-[11px]">
+                {closedEyesEnabled ? '已启用' : '已关闭'}
+              </Badge>
+            </div>
+            <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
+              detector 上报闭眼或离席时，Server 会在写入截图、窗口线索和活动片段前丢弃该帧。
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <ToggleGroup
+              type="single"
+              value={closedEyesMode}
+              onValueChange={(value) => {
+                if (value) {
+                  void onUpdateConfig({ closedEyesMode: value as ChronicleConfig['closedEyesMode'] })
+                }
+              }}
+              disabled={!config || saving || !closedEyesEnabled}
+              className="rounded-md bg-background p-0.5 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+              size="sm"
+            >
+              <ToggleGroupItem value="auto" aria-label="自动闭眼丢弃" className="h-8 px-2 text-[12px]">
+                自动
+              </ToggleGroupItem>
+              <ToggleGroupItem value="always-record" aria-label="始终记录" className="h-8 px-2 text-[12px]">
+                始终记录
+              </ToggleGroupItem>
+              <ToggleGroupItem value="always-pause" aria-label="始终暂停" className="h-8 px-2 text-[12px]">
+                始终暂停
+              </ToggleGroupItem>
+            </ToggleGroup>
+            <Switch
+              aria-label="闭眼丢弃"
+              checked={closedEyesEnabled}
+              onCheckedChange={closedEyesDiscardEnabled => void onUpdateConfig({ closedEyesDiscardEnabled })}
+              disabled={saving || !config}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <PrivacyRuleTextarea
+          label="App bundle id"
+          placeholder="com.apple.Terminal"
+          value={draft.appBundleText}
+          onChange={appBundleText => setDraft(current => ({ ...current, appBundleText }))}
+          disabled={saving || !config}
+        />
+        <PrivacyRuleTextarea
+          label="窗口标题片段"
+          placeholder="Bank Dashboard"
+          value={draft.titlePatternText}
+          onChange={titlePatternText => setDraft(current => ({ ...current, titlePatternText }))}
+          disabled={saving || !config}
+        />
+        <PrivacyRuleTextarea
+          label="网页地址片段"
+          placeholder="admin.example.com"
+          value={draft.urlPatternText}
+          onChange={urlPatternText => setDraft(current => ({ ...current, urlPatternText }))}
+          disabled={saving || !config}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <p className="text-[12px] leading-5 text-muted-foreground text-pretty">
+          每行一条。保存后 daemon 会重启并在截图前排除匹配窗口，持久化前也会再过滤一次。
+        </p>
+        <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+          {saveError && <span className="text-[12px] text-destructive">{saveError}</span>}
+          {!saveError && saved && <span className="text-[12px] text-muted-foreground">已保存</span>}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!config || saving || !hasChanges}
+            onClick={() => {
+              setSaveError(null)
+              setSaved(false)
+              void onUpdateConfig({
+                privacySensitiveAppBundleIds: nextAppBundleIds,
+                privacySensitiveTitlePatterns: nextTitlePatterns,
+                privacySensitiveUrlPatterns: nextUrlPatterns,
+              })
+                .then((updated) => {
+                  if (updated) {
+                    setSaved(true)
+                  }
+                })
+                .catch((error: unknown) => {
+                  setSaveError(error instanceof Error ? error.message : '保存失败')
+                })
+            }}
+          >
+            保存规则
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface PrivacyRulesDraft {
+  appBundleText: string
+  titlePatternText: string
+  urlPatternText: string
+}
+
+function PrivacyRuleTextarea({
+  label,
+  placeholder,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  placeholder: string
+  value: string
+  disabled: boolean
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
+      <Textarea
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        spellCheck={false}
+        className="min-h-24 resize-y font-mono text-[12px] leading-5"
+      />
+    </label>
+  )
+}
+
+function formatPrivacyRuleLines(values: string[]): string {
+  return values.join('\n')
+}
+
+function parsePrivacyRuleLines(value: string): string[] {
+  const rules: string[] = []
+  const seen = new Set<string>()
+  for (const line of value.split(/\r?\n/)) {
+    const rule = line.trim()
+    if (!rule || seen.has(rule)) {
+      continue
+    }
+    seen.add(rule)
+    rules.push(rule)
+  }
+  return rules
+}
+
+function stringListsEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: ChronicleMessageSource[] }) {
@@ -2000,31 +2399,46 @@ function formatTranscriptStatus(status: ChronicleAudioTranscript['status']): str
   return '异常'
 }
 
-function readCandidateCount(run: ChronicleDreamRun): number {
-  const count = run.result.candidateCount
-  return typeof count === 'number' && Number.isFinite(count) ? count : run.outputCount
-}
-
-function readVectorMode(run: ChronicleDreamRun): string {
-  const mode = run.result.vectorMode ?? run.config.vectorMode
-  return typeof mode === 'string' && mode.length > 0 ? mode : 'chronicle-lexical/v1'
-}
-
-function MemoryList({ entries }: { entries: MemoryEntry[] }) {
+function MemoryList({
+  entries,
+  focusTarget,
+}: {
+  entries: MemoryEntry[]
+  focusTarget: ChronicleFocusTarget | null
+}) {
   return (
     <div className="flex flex-col gap-2">
       {entries.map(entry => (
-        <MemoryCard key={entry.id} entry={entry} />
+        <MemoryCard
+          key={entry.id}
+          entry={entry}
+          focused={focusTarget?.type === 'memory' && focusTarget.id === entry.id}
+        />
       ))}
     </div>
   )
 }
 
-function KnowledgeCardList({ cards }: { cards: ChronicleKnowledgeCard[] }) {
+function KnowledgeCardList({
+  cards,
+  focusTarget,
+}: {
+  cards: ChronicleKnowledgeCard[]
+  focusTarget: ChronicleFocusTarget | null
+}) {
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {cards.map(card => (
-        <article key={card.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
+        <article
+          key={card.id}
+          className={cn(
+            'rounded-lg bg-background p-3 shadow-sm transition-[box-shadow,background-color]',
+            focusTarget?.type === 'knowledge' && focusTarget.id === card.id
+              ? 'bg-primary/5 shadow-lg ring-2 ring-primary/40'
+              : 'shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]'
+          )}
+          data-testid={`chronicle-knowledge-card-${card.id}`}
+        >
           <div className="mb-2 flex min-w-0 items-center gap-2">
             <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">{card.title}</span>
@@ -2059,12 +2473,13 @@ function KnowledgeCardList({ cards }: { cards: ChronicleKnowledgeCard[] }) {
 }
 
 function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDreamRun[] }) {
-  const { startDreamDryRun, startingDryRun } = useChronicleDreamActions()
+  const { startDreamDryRun, startDreamMerge, startingDryRun, startingMerge } = useChronicleDreamActions()
+  const starting = startingDryRun || startingMerge
 
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate text-[13px] font-medium text-foreground">合并候选</span>
           <Button
@@ -2072,11 +2487,21 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
             variant="outline"
             size="sm"
             className="ml-auto"
-            disabled={startingDryRun}
+            disabled={starting}
             onClick={() => void startDreamDryRun()}
           >
             <RefreshCwIcon className="size-3.5" />
             生成预览
+          </Button>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            disabled={starting}
+            onClick={() => void startDreamMerge()}
+          >
+            <CheckCircle2Icon className="size-3.5" />
+            应用合并
           </Button>
         </div>
       </div>
@@ -2111,7 +2536,7 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
                       <span>
                         候选
                         {' '}
-                        {readCandidateCount(run)}
+                        {run.result.candidateCount}
                       </span>
                       <span>
                         合并
@@ -2120,7 +2545,7 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                      <span className="truncate">{readVectorMode(run)}</span>
+                      <span className="truncate">{run.result.vectorMode}</span>
                       <span className="shrink-0 font-mono">{formatRelativeTime(run.startedAt)}</span>
                     </div>
                     {run.errorMessage && <p className="mt-1 line-clamp-2 text-[11px] text-destructive">{run.errorMessage}</p>}
@@ -2135,53 +2560,56 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
 function AccessibilitySnapshotList({ snapshots }: { snapshots: ChronicleAccessibilitySnapshot[] }) {
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-      {snapshots.map(snapshot => (
-        <article key={snapshot.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
-          <div className="mb-2 flex min-w-0 items-center gap-2">
-            <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate text-[13px] font-medium text-foreground">
-              {snapshot.windowTitle ?? snapshot.appBundleId ?? '窗口线索'}
-            </span>
-            <Badge
-              variant={snapshot.status === 'ready' ? 'secondary' : 'outline'}
-              className={cn(
-                'ml-auto text-[11px]',
-                {
-                  'border-destructive/20 bg-destructive/10 text-destructive': snapshot.status === 'error',
-                  'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300': snapshot.status === 'permission-denied',
-                },
-              )}
-            >
-              {formatAccessibilityStatus(snapshot.status)}
-            </Badge>
-          </div>
-          <p className="line-clamp-4 text-[13px] leading-5 text-foreground">
-            {snapshot.text ?? '这次记录没有捕捉到可读的窗口文本。'}
-          </p>
-          <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
-            <span className="truncate font-mono">{formatDateTime(snapshot.capturedAt)}</span>
-            <span className="truncate text-right">
-              {snapshot.elementCount}
-              {' '}
-              个界面元素
-            </span>
-            <span className="truncate">{snapshot.provider}</span>
-            <span className="truncate text-right">{snapshot.appBundleId ?? '未知应用'}</span>
-          </div>
-          {typeof snapshot.metadata.artifactPath === 'string' && (
-            <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground/70">
-              {snapshot.metadata.artifactPath}
+      {snapshots.map((snapshot) => {
+        const artifactPath = AccessibilitySnapshotMetadataSchema.parse(snapshot.metadata).artifactPath
+        return (
+          <article key={snapshot.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+              <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate text-[13px] font-medium text-foreground">
+                {snapshot.windowTitle ?? snapshot.appBundleId ?? '窗口线索'}
+              </span>
+              <Badge
+                variant={snapshot.status === 'ready' ? 'secondary' : 'outline'}
+                className={cn(
+                  'ml-auto text-[11px]',
+                  {
+                    'border-destructive/20 bg-destructive/10 text-destructive': snapshot.status === 'error',
+                    'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300': snapshot.status === 'permission-denied',
+                  },
+                )}
+              >
+                {formatAccessibilityStatus(snapshot.status)}
+              </Badge>
+            </div>
+            <p className="line-clamp-4 text-[13px] leading-5 text-foreground">
+              {snapshot.text ?? '这次记录没有捕捉到可读的窗口文本。'}
             </p>
-          )}
-          <AccessibilityTreePreview tree={snapshot.tree} />
-        </article>
-      ))}
+            <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
+              <span className="truncate font-mono">{formatDateTime(snapshot.capturedAt)}</span>
+              <span className="truncate text-right">
+                {snapshot.elementCount}
+                {' '}
+                个界面元素
+              </span>
+              <span className="truncate">{snapshot.provider}</span>
+              <span className="truncate text-right">{snapshot.appBundleId ?? '未知应用'}</span>
+            </div>
+            {artifactPath && (
+              <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground/70">
+                {artifactPath}
+              </p>
+            )}
+            <AccessibilityTreePreview tree={snapshot.tree} />
+          </article>
+        )
+      })}
     </div>
   )
 }
 
 function AccessibilityTreePreview({ tree }: { tree: unknown[] }) {
-  const nodes = tree.map(readAccessibilityTreeNode).filter(node => node !== null).slice(0, 4)
+  const nodes = tree.map(node => AccessibilityTreeNodeSchema.parse(node)).slice(0, 4)
   if (nodes.length === 0) {
     return null
   }
@@ -2200,25 +2628,37 @@ function AccessibilityTreePreview({ tree }: { tree: unknown[] }) {
   )
 }
 
-function readAccessibilityTreeNode(value: unknown): {
-  role: string
-  label: string
-  value: string
-  depth: number
-  path: string
-} | null {
-  if (typeof value !== 'object' || value === null) {
-    return null
-  }
-  const record = value as Record<string, unknown>
-  const role = typeof record.role === 'string' && record.role.length > 0 ? record.role : 'AXElement'
-  const label = typeof record.label === 'string' ? record.label : ''
-  const nodeValue = typeof record.value === 'string' ? record.value : ''
-  const depth = typeof record.depth === 'number' && Number.isFinite(record.depth) ? record.depth : 0
-  const path = typeof record.path === 'string' && record.path.length > 0
-    ? record.path
-    : `${role}:${label}:${depth}`
-  return { role, label, value: nodeValue, depth, path }
+function AccessibilityEventList({ events }: { events: ChronicleAccessibilityEvent[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+      {events.map(event => (
+        <article key={event.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
+          <div className="mb-2 flex min-w-0 items-center gap-2">
+            <ActivityIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[13px] font-medium text-foreground">
+              {formatAccessibilityEventNotification(event.notification)}
+            </span>
+            <Badge variant="outline" className="ml-auto text-[11px]">
+              {event.droppedBefore > 0 ? `${event.droppedBefore} dropped` : 'captured'}
+            </Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
+            <span className="truncate font-mono">{formatDateTime(event.capturedAt)}</span>
+            <span className="truncate text-right">{event.appBundleId ?? '未知应用'}</span>
+            <span className="truncate">{event.provider}</span>
+            <span className="truncate text-right">{event.pid === null ? '未知进程' : `PID ${event.pid}`}</span>
+            <span className="truncate">
+              {event.snapshotId ? '已关联屏幕快照' : '未关联屏幕快照'}
+            </span>
+            <span className="truncate text-right">
+              {event.accessibilitySnapshotId ? '已关联窗口线索' : '未关联窗口线索'}
+            </span>
+          </div>
+          <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground/70">{event.sourceId}</p>
+        </article>
+      ))}
+    </div>
+  )
 }
 
 function getAccessibilityTreeDepthClass(depth: number): string {
@@ -2248,6 +2688,25 @@ function formatAccessibilityStatus(status: ChronicleAccessibilitySnapshot['statu
     return '异常'
   }
   return '可用'
+}
+
+function formatAccessibilityEventNotification(notification: string): string {
+  if (notification === 'AXFocusedWindowChanged') {
+    return '焦点窗口变化'
+  }
+  if (notification === 'AXFocusedUIElementChanged') {
+    return '焦点元素变化'
+  }
+  if (notification === 'AXWindowCreated') {
+    return '窗口创建'
+  }
+  if (notification === 'AXWindowMoved') {
+    return '窗口移动'
+  }
+  if (notification === 'AXWindowResized') {
+    return '窗口尺寸变化'
+  }
+  return notification
 }
 
 function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] }) {
@@ -2438,9 +2897,17 @@ function formatMemoryType(type: MemoryEntry['type']): string {
   return '长时记忆'
 }
 
-function MemoryCard({ entry }: { entry: MemoryEntry }) {
+function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }) {
   return (
-    <article className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
+    <article
+      className={cn(
+        'rounded-lg bg-background p-3 shadow-sm transition-[box-shadow,background-color]',
+        focused
+          ? 'bg-primary/5 shadow-lg ring-2 ring-primary/40'
+          : 'shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]'
+      )}
+      data-testid={`chronicle-memory-card-${entry.id}`}
+    >
       <div className="mb-2 flex min-w-0 items-center gap-2">
         <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate text-[13px] font-medium text-foreground">{entry.title ?? '活动记忆'}</span>
@@ -2456,7 +2923,7 @@ function MemoryCard({ entry }: { entry: MemoryEntry }) {
       <p className="line-clamp-4 text-[13px] leading-5 text-foreground">{entry.content}</p>
       <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
         <span className="font-mono">{formatDateTime(entry.createdAt)}</span>
-        {typeof entry.sourceCount === 'number' && (
+        {entry.sourceCount !== null && entry.sourceCount !== undefined && (
           <span>
             {entry.sourceCount}
             {' '}
@@ -2473,7 +2940,7 @@ function getMemoryMatchLabel(entry: MemoryEntry): string {
     return '混合匹配'
   }
   if (entry.matchKind === 'semantic') {
-    return typeof entry.semanticScore === 'number'
+    return entry.semanticScore !== null && entry.semanticScore !== undefined
       ? `语义 ${entry.semanticScore.toFixed(2)}`
       : '语义'
   }

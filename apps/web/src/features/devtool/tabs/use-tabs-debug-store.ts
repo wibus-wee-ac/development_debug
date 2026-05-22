@@ -5,6 +5,7 @@ import {
   DEBUG_STORAGE_KEY,
 } from '@cradle/tabs-next'
 import { create } from 'zustand'
+import { z } from 'zod'
 
 interface TabsDebugStore {
   connected: boolean
@@ -14,6 +15,57 @@ interface TabsDebugStore {
   resetMetrics: () => void
 }
 
+const DebugSnapshotSchema = z.object({
+  tabCount: z.number(),
+  contextCount: z.number(),
+  mountedTabIds: z.array(z.string()),
+  activeTabId: z.string().nullable(),
+  renderPolicy: z.object({
+    strategy: z.enum(['single', 'activity-pool']),
+    maxMountedTabs: z.number().optional(),
+    keepPinnedMounted: z.boolean().optional(),
+  }).nullable(),
+  tabs: z.array(z.object({
+    id: z.string(),
+    type: z.string(),
+    pinned: z.boolean(),
+    label: z.string(),
+  })),
+  contexts: z.array(z.object({
+    id: z.string(),
+    historyLen: z.number(),
+    index: z.number(),
+    keepAlive: z.string(),
+    viewStateKeys: z.array(z.string()),
+  })),
+})
+
+const DebugMetricsSchema = z.object({
+  createCount: z.number(),
+  openCount: z.number(),
+  activateCount: z.number(),
+  closeCount: z.number(),
+  navigateCount: z.number(),
+  rendererCommitCount: z.number(),
+  rendererDurationTotal: z.number(),
+  rendererDurationRecent: z.number(),
+})
+
+const DebugStateSchema = z.object({
+  snapshot: DebugSnapshotSchema,
+  metrics: DebugMetricsSchema,
+  updatedAt: z.number(),
+})
+
+const DebugStateJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(DebugStateSchema)
+
+const DebugStateMessageSchema = z.object({
+  type: z.literal('state'),
+  state: DebugStateSchema,
+})
+
 function readDebugApi(): DebugApi | undefined {
   if (typeof window === 'undefined') {
     return undefined
@@ -21,36 +73,16 @@ function readDebugApi(): DebugApi | undefined {
   return window.__CRADLE_TABS_DEBUG__
 }
 
-function isDebugState(value: unknown): value is DebugState {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const state = value as Partial<DebugState>
-  return (
-    !!state.snapshot
-    && typeof state.snapshot === 'object'
-    && !!state.metrics
-    && typeof state.metrics === 'object'
-    && typeof state.updatedAt === 'number'
-  )
-}
-
 function readCachedState(): DebugState | null {
   if (typeof window === 'undefined') {
     return null
   }
 
-  try {
-    const cached = window.localStorage.getItem(DEBUG_STORAGE_KEY)
-    if (!cached) {
-      return null
-    }
-    const parsed: unknown = JSON.parse(cached)
-    return isDebugState(parsed) ? parsed : null
-  }
-  catch {
+  const cached = window.localStorage.getItem(DEBUG_STORAGE_KEY)
+  if (!cached) {
     return null
   }
+  return DebugStateJsonSchema.parse(cached) satisfies DebugState
 }
 
 function publishResetCommand() {
@@ -105,9 +137,8 @@ export function startTabsDebugSync(): () => void {
 
   if (channel) {
     channel.onmessage = (event: MessageEvent) => {
-      if (event.data?.type === 'state' && isDebugState(event.data.state)) {
-        applyDebugState(event.data.state, true)
-      }
+      const message = DebugStateMessageSchema.parse(event.data)
+      applyDebugState(message.state satisfies DebugState, true)
     }
   }
 

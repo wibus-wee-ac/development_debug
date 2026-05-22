@@ -25,6 +25,14 @@ function formatError(resp: BrowserResponse): string {
   return (resp as { ok: false, error: string }).error
 }
 
+const BrowserEvalResultTextSchema = z.union([
+  z.string(),
+  z.unknown().transform((value) => {
+    const json = JSON.stringify(value, null, 2)
+    return json === undefined ? String(value) : json
+  }),
+])
+
 // ─── Socket Client ──────────────────────────────────────────────────────────
 
 class BrowserClient {
@@ -271,7 +279,7 @@ server.registerTool(
       return { content: [{ type: 'text', text: `Error: ${formatError(resp)}` }], isError: true }
     }
     const { result } = resp.data as { result: unknown }
-    return { content: [{ type: 'text', text: typeof result === 'string' ? result : JSON.stringify(result, null, 2) }] }
+    return { content: [{ type: 'text', text: BrowserEvalResultTextSchema.parse(result) }] }
   },
 )
 

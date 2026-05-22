@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createTabStore, defineTab, TabsProvider } from '@cradle/tabs-next'
 import type { TabStoreState } from '@cradle/tabs-next'
 import type { StoreApi, UseBoundStore } from 'zustand'
@@ -258,6 +258,10 @@ describe('workspaceSidebar', () => {
         updatedAt: 100,
       },
     ]
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it('opens workspace-detail tab when workspace name is clicked without collapsing sessions', () => {

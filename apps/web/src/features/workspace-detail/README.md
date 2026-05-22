@@ -2,18 +2,21 @@
 
 # Workspace Detail
 
-Project detail page for viewing and editing workspace configuration files.
-Uses Tiptap for WYSIWYG Markdown editing of AGENTS.md plus dedicated panes for workflow rules and workspace skills.
-Shiki provides syntax highlighting for code blocks with a language selector where rich text editing is used.
+Workspace configuration files 的查看与编辑页面。
+使用 Tiptap WYSIWYG Markdown editor 编辑 AGENTS.md，并提供 workflow rules 与 workspace skills 的独立 panes；Workflow Rules 与 Workspace Skills panes 都有 server-backed readiness first-render performance gate。
+在 rich text editing 场景中，Shiki 为 code blocks 提供带 language selector 的 syntax highlighting。
+保存 AGENTS.md 会写入用户 workspace directory，因此 editor 会展示 non-Cradle-owned boundary notice，API call 也会发送 explicit write confirmation。
 
 ## Files
 
-- **workspace-detail-page.tsx**: Main page component with inline workspace rename, Overview AGENTS.md content, Workflow Rules + Skills tabs with shared lazy-pane loading feedback, scroll-position-aware right outline minimap, and two-column layout; its capsule launcher now shares the chat feature's response-start command when opening a fresh chat
+- **workspace-detail-page.tsx**: Main page component，包含 inline workspace rename、Overview AGENTS.md content、non-Cradle-owned save warning、Workflow Rules + Skills tabs、shared lazy-pane loading feedback、pane first-render intent marks、scroll-position-aware right outline minimap 和 two-column layout；capsule launcher 打开 fresh chat 时复用 chat feature 的 response-start command；main column 与 sidebar 有 render-budgeted memo comparators，TOC scroll state 不应牵连这些 panes 重渲染
 - **capsule-composer.tsx**: Workspace overview composer，复用 shared persisted new-chat preference state，避免组件自己直接读写 localStorage；发送图标按钮暴露稳定英文 accessible name
 - **capsule-composer.test.tsx**: Regression tests for the capsule composer send button accessible name, disabled state, and submission payload
-- **workspace-workflow-rules.tsx**: Workflow rules editor with Agent scope selector, stable E2E anchors, and scope-safe editor remounting so async-loaded global / per-Agent rules stay aligned during switching and reopen flows
-- **markdown-editor.tsx**: Tiptap-based WYSIWYG Markdown editor with auto-save
-- **shiki-code-block.tsx**: Custom Tiptap extension using Shiki for code block highlighting
-- **code-block-view.tsx**: React NodeView for code blocks with language selector dropdown
-- **use-workspace-file.ts**: Hook for reading/writing workspace text files via IPC
+- **workspace-detail-page-loader.ts**: Workspace detail tab 的共享 lazy loader 与 route preload 入口
+- **workspace-workflow-rules-loader.ts**: Workflow rules pane 的共享 lazy loader 与 intent preload 入口，用于 tab hover/focus/click 预热 pane chunk
+- **workspace-workflow-rules.tsx**: Workflow rules editor，包含 Agent scope selector、stable E2E anchors、scope-safe editor remounting，以及等待 agents inventory 与 selected scope workflow rule query 成功后的 `workspace-workflow-rules-first-render` readiness gate
+- **markdown-editor.tsx**: 基于 Tiptap 的 WYSIWYG Markdown editor，支持 auto-save
+- **shiki-code-block.tsx**: 使用 Shiki 做 code block highlighting 的 custom Tiptap extension
+- **code-block-view.tsx**: Code blocks 的 React NodeView，包含 language selector dropdown
+- **use-workspace-file.ts**: 通过 generated workspace API 读取/写入 workspace text files 的 hook，包含 explicit non-Cradle-owned write confirmation
 - **index.ts**: Barrel exports

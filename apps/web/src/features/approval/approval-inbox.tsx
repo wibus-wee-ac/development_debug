@@ -1,4 +1,5 @@
 import { CheckSquareIcon } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 import {
   Empty,
@@ -7,15 +8,35 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '~/components/ui/empty'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 
 import { ApprovalCard } from './approval-card'
 import { useSessionApprovalRequests } from './use-approval'
 
 export function ApprovalInbox() {
+  const firstRenderedRef = useRef(false)
   const { pending, respond } = useSessionApprovalRequests(null)
 
+  useEffect(() => {
+    if (firstRenderedRef.current) {
+      return
+    }
+
+    firstRenderedRef.current = true
+    markCradlePerformance('cradle:first-approvals-rendered')
+    measureCradlePerformance(
+      'cradle:approvals-first-render',
+      'cradle:approvals-render-requested',
+      'cradle:first-approvals-rendered',
+    )
+  }, [])
+
   return (
-    <div className="flex h-full min-w-0 flex-col overflow-hidden bg-background">
+    <div
+      className="flex h-full min-w-0 flex-col overflow-hidden bg-background"
+      data-testid="approval-inbox"
+      data-approvals-ready="true"
+    >
       <div className="shrink-0 border-b border-border/50 px-5 py-4">
         <h1 className="text-base font-semibold text-foreground">Approvals</h1>
         <p className="text-xs text-muted-foreground">Pending agent permission requests</p>

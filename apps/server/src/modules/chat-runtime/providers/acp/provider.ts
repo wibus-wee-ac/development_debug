@@ -48,7 +48,7 @@ export class AcpChatProvider implements ChatRuntime {
       providerSessionId: response.sessionId,
       providerStateSnapshot: JSON.stringify({
         models: response.models ?? null,
-        configOptions: response.configOptions ?? [],
+        configOptions: response.configOptions,
       }),
     }
   }
@@ -73,7 +73,7 @@ export class AcpChatProvider implements ChatRuntime {
           ...input.runtimeSession,
           providerStateSnapshot: JSON.stringify({
             models: response.models ?? null,
-            configOptions: response.configOptions ?? [],
+            configOptions: response.configOptions,
           }),
         }
       }
@@ -89,7 +89,7 @@ export class AcpChatProvider implements ChatRuntime {
           ...input.runtimeSession,
           providerStateSnapshot: JSON.stringify({
             models: response.models ?? null,
-            configOptions: response.configOptions ?? [],
+            configOptions: response.configOptions,
           }),
         }
       }

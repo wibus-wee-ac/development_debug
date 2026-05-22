@@ -35,6 +35,11 @@ export function CitationPopover({ containerRef, citations, renderPopover }: Cita
     if (!container || citations.length === 0) {
       return
     }
+    const listeners: Array<{
+      span: HTMLSpanElement
+      handleMouseEnter: () => void
+      handleMouseLeave: () => void
+    }> = []
 
     // TreeWalker to find text nodes with citation patterns
     const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
@@ -103,10 +108,18 @@ export function CitationPopover({ containerRef, citations, renderPopover }: Cita
           const handleMouseLeave = () => setActiveCitation(null)
           span.addEventListener('mouseenter', handleMouseEnter)
           span.addEventListener('mouseleave', handleMouseLeave)
+          listeners.push({ span, handleMouseEnter, handleMouseLeave })
           fragment.appendChild(span)
         }
       }
       textNode.parentNode?.replaceChild(fragment, textNode)
+    }
+
+    return () => {
+      for (const listener of listeners) {
+        listener.span.removeEventListener('mouseenter', listener.handleMouseEnter)
+        listener.span.removeEventListener('mouseleave', listener.handleMouseLeave)
+      }
     }
   }, [containerRef, citations])
 

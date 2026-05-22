@@ -1,6 +1,6 @@
-import { TypeCompiler } from '@sinclair/typebox/compiler'
 import type { Static } from 'elysia'
 import { t } from 'elysia'
+import { z } from 'zod'
 
 export const PreferencesModel = {
   chatPreferences: t.Object({
@@ -23,57 +23,25 @@ export const PreferencesModel = {
   }),
 } as const
 
-export const defaultChatPreferences: Static<typeof PreferencesModel['chatPreferences']> = {
+export const ChatPreferencesJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.undefined(),
+]).pipe(z.object({
+  modelId: z.string().nullable().default(null),
+  configSelections: z.record(z.string(), z.union([z.string(), z.boolean()])).default({}),
+}).default({
   modelId: null,
   configSelections: {},
-}
+}))
 
-export const defaultJarvisPreferences: Static<typeof PreferencesModel['jarvisPreferences']> = {
+export const JarvisPreferencesJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.undefined(),
+]).pipe(z.object({
+  profileId: z.string().nullable().default(null),
+  model: z.string().optional(),
+  thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('medium'),
+}).default({
   profileId: null,
-  model: undefined,
   thinkingLevel: 'medium',
-}
-
-const chatPreferencesValidator = TypeCompiler.Compile(PreferencesModel.chatPreferences)
-const jarvisPreferencesValidator = TypeCompiler.Compile(PreferencesModel.jarvisPreferences)
-
-export function parseChatPreferences(value: unknown):
-  | { success: true, data: Static<typeof PreferencesModel['chatPreferences']> }
-  | { success: false, issues: Array<{ path: string, message: string }> } {
-  if (chatPreferencesValidator.Check(value)) {
-    return { success: true, data: value }
-  }
-  return {
-    success: false,
-    issues: Array.from(chatPreferencesValidator.Errors(value), issue => ({
-      path: normalizeTypeBoxPath(issue.path),
-      message: issue.message,
-    })),
-  }
-}
-
-export function parseJarvisPreferences(value: unknown):
-  | { success: true, data: Static<typeof PreferencesModel['jarvisPreferences']> }
-  | { success: false, issues: Array<{ path: string, message: string }> } {
-  if (jarvisPreferencesValidator.Check(value)) {
-    return { success: true, data: value }
-  }
-  return {
-    success: false,
-    issues: Array.from(jarvisPreferencesValidator.Errors(value), issue => ({
-      path: normalizeTypeBoxPath(issue.path),
-      message: issue.message,
-    })),
-  }
-}
-
-const RE_LEADING_SLASHES = /^\/+/
-const RE_SLASH = /\//g
-
-function normalizeTypeBoxPath(path: string | undefined): string {
-  if (!path || path === '/' || path === 'root') {
-    return 'root'
-  }
-  const normalized = path.replace(RE_LEADING_SLASHES, '').replace(RE_SLASH, '.')
-  return normalized.length > 0 ? normalized : 'root'
-}
+}))

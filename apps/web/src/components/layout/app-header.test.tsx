@@ -9,6 +9,7 @@ const mockedDeps = vi.hoisted(() => ({
   layoutState: {
     bottomPanelOpen: true,
     asideOpen: false,
+    asideActiveTab: 'files',
     sidebarCollapsed: false,
     browserPanelOpen: true,
     toggleBottomPanel: vi.fn(),
@@ -39,6 +40,23 @@ vi.mock('~/features/devtool/resources/resources-popover', () => ({
   ResourcesPopover: () => <button type="button" aria-label="Resources: 12 MB">12 MB</button>,
 }))
 
+vi.mock('~/features/devtool/resources/resources-popover-loader', () => ({
+  loadResourcesPopover: () => Promise.resolve({ default: () => <button type="button" aria-label="Resources: 12 MB">12 MB</button> }),
+  preloadResourcesPopover: vi.fn(),
+}))
+
+vi.mock('~/features/browser/browser-panel-loader', () => ({
+  preloadBrowserPanel: vi.fn(),
+}))
+
+vi.mock('~/features/tui/terminal-panel-view-loader', () => ({
+  preloadTerminalPanelView: vi.fn(),
+}))
+
+vi.mock('~/features/workspace/file-tree-loader', () => ({
+  preloadFileTree: vi.fn(),
+}))
+
 vi.mock('~/features/settings/settings-overlay-store', () => ({
   useSettingsOverlayStore: (selector: (state: typeof mockedDeps.settingsState) => unknown) => selector(mockedDeps.settingsState),
 }))
@@ -51,8 +69,16 @@ vi.mock('~/lib/electron', () => ({
   isElectron: true,
 }))
 
+vi.mock('~/lib/perf-monitor', () => ({
+  markCradlePerformance: vi.fn(),
+}))
+
 vi.mock('~/store/layout', () => ({
   useLayoutStore: () => mockedDeps.layoutState,
+}))
+
+vi.mock('~/tabs/route-preload', () => ({
+  preloadTabRoute: vi.fn(),
 }))
 
 vi.mock('~/tabs/registry', () => ({
@@ -97,6 +123,34 @@ describe('AppHeader', () => {
     expect(mockedDeps.layoutState.toggleBrowserPanel).toHaveBeenCalledTimes(1)
     expect(mockedDeps.layoutState.toggleBottomPanel).toHaveBeenCalledTimes(1)
     expect(mockedDeps.layoutState.toggleAside).toHaveBeenCalledTimes(1)
+  })
+
+  it('records bottom panel shell intent when opening the bottom panel', async () => {
+    const { markCradlePerformance } = await import('~/lib/perf-monitor')
+    const { preloadTerminalPanelView } = await import('~/features/tui/terminal-panel-view-loader')
+    mockedDeps.layoutState.bottomPanelOpen = false
+
+    render(<AppHeader hasPanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle bottom panel' }))
+
+    expect(preloadTerminalPanelView).toHaveBeenCalledTimes(1)
+    expect(markCradlePerformance).toHaveBeenCalledWith('cradle:bottom-panel-shell-open-requested')
+    expect(mockedDeps.layoutState.toggleBottomPanel).toHaveBeenCalledTimes(1)
+  })
+
+  it('records browser panel intent when opening the browser panel', async () => {
+    const { markCradlePerformance } = await import('~/lib/perf-monitor')
+    const { preloadBrowserPanel } = await import('~/features/browser/browser-panel-loader')
+    mockedDeps.layoutState.browserPanelOpen = false
+
+    render(<AppHeader />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle browser panel' }))
+
+    expect(preloadBrowserPanel).toHaveBeenCalledTimes(1)
+    expect(markCradlePerformance).toHaveBeenCalledWith('cradle:browser-panel-open-requested')
+    expect(mockedDeps.layoutState.toggleBrowserPanel).toHaveBeenCalledTimes(1)
   })
 
   it('uses the expanded sidebar label when the sidebar is collapsed', () => {

@@ -1,19 +1,28 @@
 import type { Elysia } from 'elysia'
+import { z } from 'zod'
 
 import { PtyModel } from './model'
 import * as Pty from './service'
 
-function parseSocketMessage(_ws: unknown, message: unknown) {
-  if (typeof message !== 'string') {
-    return message
-  }
+const SocketClientEventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('input'),
+    data: z.string(),
+  }),
+  z.object({
+    type: z.literal('resize'),
+    cols: z.number().int().positive(),
+    rows: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal('ping'),
+  }),
+])
 
-  try {
-    return JSON.parse(message)
-  } catch {
-    return undefined
-  }
-}
+const SocketMessageSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.unknown(),
+]).pipe(SocketClientEventSchema)
 
 export function registerPtyRoutes(app: Elysia): Elysia {
   app
@@ -45,7 +54,7 @@ export function registerPtyRoutes(app: Elysia): Elysia {
       query: PtyModel.liveChannelQuery,
       body: PtyModel.clientEvent,
       response: PtyModel.serverEvent,
-      parse: parseSocketMessage,
+      parse: (_ws, message) => SocketMessageSchema.parse(message),
       open(ws) {
         try {
           Pty.openChatSocket({
@@ -98,7 +107,7 @@ export function registerPtyRoutes(app: Elysia): Elysia {
       query: PtyModel.liveChannelQuery,
       body: PtyModel.clientEvent,
       response: PtyModel.serverEvent,
-      parse: parseSocketMessage,
+      parse: (_ws, message) => SocketMessageSchema.parse(message),
       open(ws) {
         try {
           Pty.openShellSocket({

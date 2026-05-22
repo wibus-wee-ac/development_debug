@@ -1,5 +1,4 @@
 import { Streamdown } from '@cradle/streamdown'
-import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -48,34 +47,25 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
         </span>
       </button>
 
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <m.div
-            key="content"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 420, damping: 32, mass: 0.7 }}
-            className="overflow-hidden"
+      {expanded && (
+        <div className="overflow-hidden">
+          <div
+            data-testid="chat-reasoning-content"
+            className="mt-1 pl-3 border-l border-border/30 text-[11px] text-muted-foreground/45 leading-relaxed italic"
+            style={{
+              maskImage: 'linear-gradient(to bottom, transparent 0%, black 10px)',
+            }}
           >
-            <div
-              data-testid="chat-reasoning-content"
-              className="mt-1 pl-3 border-l border-border/30 text-[11px] text-muted-foreground/45 leading-relaxed italic"
-              style={{
-                maskImage: 'linear-gradient(to bottom, transparent 0%, black 10px)',
-              }}
-            >
-              <Streamdown
-                content={text}
-                streaming={isStreaming}
-                animationPreset={animationPreset}
-                animateMode={animateMode}
-                showCursor={false}
-              />
-            </div>
-          </m.div>
-        )}
-      </AnimatePresence>
+            <Streamdown
+              content={text}
+              streaming={isStreaming}
+              animationPreset={animationPreset}
+              animateMode={animateMode}
+              showCursor={false}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

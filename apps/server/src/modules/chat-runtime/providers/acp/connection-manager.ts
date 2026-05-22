@@ -19,6 +19,7 @@ import {
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
+import { z } from 'zod'
 
 import { getRegisteredMcpServers } from '../../../../plugins'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
@@ -45,12 +46,44 @@ export interface AcpPermissionResponse {
 
 export type AcpPermissionHandler = (request: AcpPermissionRequest) => Promise<AcpPermissionResponse>
 
+const PromptResponseUsageSchema = z.object({
+  usage: z.object({
+    inputTokens: z.number().nullable().optional(),
+    outputTokens: z.number().nullable().optional(),
+    totalTokens: z.number().nullable().optional(),
+  }).nullable().default(null),
+}).passthrough()
+
+const AcpSessionStateResponseSchema = z.object({
+  models: z.custom<SessionModelState>().nullable().default(null),
+  configOptions: z.array(z.custom<SessionConfigOption>()).default([]),
+}).passthrough()
+
+const PermissionRequestOptionsSchema = z.array(z.object({
+  optionId: z.string(),
+  name: z.string(),
+  kind: z.string(),
+})).default([])
+
+const SessionConfigOptionValueSchema = z.union([
+  z.boolean().transform(value => ({ type: 'boolean' as const, value })),
+  z.string().transform(value => ({ value })),
+])
+
+const AcpArgsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(z.string()))
+
+const AcpEnvJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.record(z.string(), z.string()))
+
 export function listRegisteredAcpMcpServers(): McpServer[] {
   return Object.entries(getRegisteredMcpServers()).map(([name, config]) => ({
     name,
     command: config.command,
     args: config.args,
-    env: Object.entries(config.env ?? {}).map(([envName, value]) => ({ name: envName, value })),
+    env: Object.entries(config.env).map(([envName, value]) => ({ name: envName, value })),
   }))
 }
 
@@ -165,11 +198,12 @@ export class AcpConnectionManager {
     return promise
   }
 
-  async newSession(agentId: string, cwd: string): Promise<NewSessionResponse> {
+  async newSession(agentId: string, cwd: string): Promise<NewSessionResponse & AcpSessionState> {
     const conn = this.getConnection(agentId)
     const response = await conn.connection.newSession({ cwd, mcpServers: listRegisteredAcpMcpServers() })
-    this.cacheSessionState(conn, response.sessionId, response)
-    return response
+    const sessionState = AcpSessionStateResponseSchema.parse(response)
+    this.cacheSessionState(conn, response.sessionId, sessionState)
+    return { ...response, models: sessionState.models, configOptions: sessionState.configOptions }
   }
 
   supportsLoadSession(agentId: string): boolean {
@@ -180,7 +214,7 @@ export class AcpConnectionManager {
     return !!this.getConnection(agentId).initResult?.agentCapabilities?.sessionCapabilities?.resume
   }
 
-  async loadSession(agentId: string, sessionId: string, cwd: string): Promise<LoadSessionResponse> {
+  async loadSession(agentId: string, sessionId: string, cwd: string): Promise<LoadSessionResponse & AcpSessionState> {
     const conn = this.getConnection(agentId)
     if (!this.supportsLoadSession(agentId)) {
       throw new Error(`Agent ${agentId} does not support session/load`)
@@ -189,23 +223,25 @@ export class AcpConnectionManager {
     conn.restoringSessionLoads.add(sessionId)
     try {
       const response = await conn.connection.loadSession({ sessionId, cwd, mcpServers: listRegisteredAcpMcpServers() })
-      this.cacheSessionState(conn, sessionId, response)
-      return response
+      const sessionState = AcpSessionStateResponseSchema.parse(response)
+      this.cacheSessionState(conn, sessionId, sessionState)
+      return { ...response, models: sessionState.models, configOptions: sessionState.configOptions }
     }
     finally {
       conn.restoringSessionLoads.delete(sessionId)
     }
   }
 
-  async resumeSession(agentId: string, sessionId: string, cwd: string): Promise<ResumeSessionResponse> {
+  async resumeSession(agentId: string, sessionId: string, cwd: string): Promise<ResumeSessionResponse & AcpSessionState> {
     const conn = this.getConnection(agentId)
     if (!this.supportsResumeSession(agentId)) {
       throw new Error(`Agent ${agentId} does not support session/resume`)
     }
 
     const response = await conn.connection.unstable_resumeSession({ sessionId, cwd, mcpServers: listRegisteredAcpMcpServers() })
-    this.cacheSessionState(conn, sessionId, response)
-    return response
+    const sessionState = AcpSessionStateResponseSchema.parse(response)
+    this.cacheSessionState(conn, sessionId, sessionState)
+    return { ...response, models: sessionState.models, configOptions: sessionState.configOptions }
   }
 
   getSessionState(agentId: string, sessionId: string): AcpSessionState | null {
@@ -223,9 +259,7 @@ export class AcpConnectionManager {
 
   async setSessionConfigOption(agentId: string, sessionId: string, configId: string, value: string | boolean): Promise<void> {
     const conn = this.getConnection(agentId)
-    const params = typeof value === 'boolean'
-      ? { sessionId, configId, type: 'boolean' as const, value }
-      : { sessionId, configId, value }
+    const params = { sessionId, configId, ...SessionConfigOptionValueSchema.parse(value) }
     const response = await conn.connection.setSessionConfigOption(params)
     const state = conn.sessionStates.get(sessionId)
     if (state && response?.configOptions) {
@@ -335,8 +369,8 @@ export class AcpConnectionManager {
   }
 
   private async openConnection(agentId: string, record: AcpConnectionRecord): Promise<InitializeResponse> {
-    const args = JSON.parse(record.args || '[]') as string[]
-    const env = JSON.parse(record.env || '{}') as Record<string, string>
+    const args = AcpArgsJsonSchema.parse(record.args)
+    const env = AcpEnvJsonSchema.parse(record.env)
     const procEntry = this.processManager.spawn({
       agentId,
       cmd: record.cmd,
@@ -354,6 +388,12 @@ export class AcpConnectionManager {
     const initResult = await connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
       clientInfo: { name: 'Cradle Server', version: '1.0.0' },
+      clientCapabilities: {
+        fs: {
+          readTextFile: true,
+          writeTextFile: true,
+        },
+      },
     })
 
     const entry: ConnectionEntry = {
@@ -417,19 +457,17 @@ export class AcpConnectionManager {
   private cacheSessionState(
     conn: ConnectionEntry,
     sessionId: string,
-    response: { models?: SessionModelState | null, configOptions?: SessionConfigOption[] | null },
+    response: AcpSessionState,
   ): void {
-    conn.sessionStates.set(sessionId, {
-      models: response.models ?? null,
-      configOptions: response.configOptions ?? [],
-    })
+    conn.sessionStates.set(sessionId, response)
   }
 
   private createClient(agentId: string, _agent: Agent): Client {
     return {
       requestPermission: async (params) => {
+        const options = PermissionRequestOptionsSchema.parse(params.options)
         if (!this.permissionHandler) {
-          const firstOption = params.options?.[0]
+          const firstOption = options[0]
           return {
             outcome: {
               outcome: 'selected' as const,
@@ -442,7 +480,7 @@ export class AcpConnectionManager {
           agentId,
           sessionId: params.sessionId,
           toolTitle: params.toolCall?.title ?? 'Unknown operation',
-          options: (params.options ?? []).map(option => ({
+          options: options.map(option => ({
             optionId: option.optionId,
             name: option.name,
             kind: option.kind,
@@ -498,9 +536,34 @@ export class AcpConnectionManager {
       },
 
       writeTextFile: async (params) => {
+        await this.requestClientFileWriteApproval(agentId, params.sessionId, params.path)
         await fsp.writeFile(params.path, params.content, 'utf-8')
         return {}
       },
+    }
+  }
+
+  private async requestClientFileWriteApproval(agentId: string, sessionId: string, targetPath: string): Promise<void> {
+    if (!this.permissionHandler) {
+      throw new Error('ACP file write requires an approval handler before writing client filesystem paths')
+    }
+
+    const response = await this.permissionHandler({
+      agentId,
+      sessionId,
+      toolTitle: [
+        'ACP agent requested a non-Cradle-owned filesystem write.',
+        `Target path: ${targetPath}`,
+        'Owner boundary: client filesystem outside Cradle-owned data.',
+      ].join(' '),
+      options: [
+        { optionId: 'allow_file_write_once', name: 'Allow write once', kind: 'allow_once' },
+        { optionId: 'reject_file_write_once', name: 'Deny write', kind: 'reject_once' },
+      ],
+    })
+
+    if (response.outcome !== 'selected' || response.optionId !== 'allow_file_write_once') {
+      throw new Error('User denied ACP client filesystem write')
     }
   }
 }
@@ -526,16 +589,5 @@ function readUsage(response: PromptResponse | null): {
   outputTokens?: number | null
   totalTokens?: number | null
 } | null {
-  if (!response || typeof response !== 'object') {
-    return null
-  }
-  const usage = (response as { usage?: unknown }).usage
-  if (!usage || typeof usage !== 'object') {
-    return null
-  }
-  return usage as {
-    inputTokens?: number | null
-    outputTokens?: number | null
-    totalTokens?: number | null
-  }
+  return response === null ? null : PromptResponseUsageSchema.parse(response).usage
 }

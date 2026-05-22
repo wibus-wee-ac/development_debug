@@ -1,9 +1,14 @@
 import { Link } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'
+import { useEffect } from 'react'
 
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import { usePluginStore } from '~/lib/plugin-store'
+import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleTabStore } from '~/tabs/registry'
+
+let firstPluginsSidebarRendered = false
 
 type PluginPanelTab = {
   type: 'plugin-panel'
@@ -18,8 +23,23 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
     const tab = s.tabs.find(t => t.id === s.activeTabId)
     return tab
   })
+  const ready = panels.length > 0
 
-  if (panels.length === 0) {
+  useEffect(() => {
+    if (!ready || firstPluginsSidebarRendered) {
+      return
+    }
+
+    firstPluginsSidebarRendered = true
+    markCradlePerformance('cradle:first-plugins-sidebar-rendered')
+    measureCradlePerformance(
+      'cradle:plugins-sidebar-first-render',
+      'cradle:plugins-sidebar-render-requested',
+      'cradle:first-plugins-sidebar-rendered',
+    )
+  }, [ready])
+
+  if (!ready) {
     return null
   }
 
@@ -28,7 +48,11 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
     : undefined
 
   return (
-    <div className="flex flex-col px-2 pb-2">
+    <div
+      className="flex flex-col px-2 pb-2"
+      data-testid="plugins-sidebar"
+      data-plugins-sidebar-ready={ready ? 'true' : 'false'}
+    >
       <div
         className={cn(
           'px-2 py-1.5 text-[11px] font-medium text-muted-foreground select-none transition-opacity duration-[120ms]',
@@ -42,6 +66,8 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
           key={panel.id}
           to="plugin-panel"
           params={{ panelId: panel.id }}
+          onFocus={() => preloadTabRoute('plugin-panel')}
+          onMouseEnter={() => preloadTabRoute('plugin-panel')}
           className={cn(
             'flex h-7 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm',
             'hover:bg-fill cursor-pointer',

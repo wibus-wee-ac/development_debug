@@ -3,6 +3,7 @@ import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import yaml from 'js-yaml'
+import { z } from 'zod'
 
 import type { SkillContext, SkillScope } from './skills-paths'
 import { assertWritableScope, resolveScopeRoot } from './skills-paths'
@@ -19,6 +20,25 @@ const SCOPE_PRIORITY: Record<SkillScope, number> = {
   workspace: 3,
   agent: 4,
 }
+
+const SkillFrontmatterSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+}).passthrough()
+
+const SkillFrontmatterBaseSchema = z.record(z.string(), z.unknown()).default({})
+
+const SkillDocumentFrontmatterSchema = z.object({
+  base: SkillFrontmatterBaseSchema,
+  next: SkillFrontmatterBaseSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+}).transform(input => ({
+  ...input.base,
+  ...input.next,
+  name: input.name,
+  description: input.description,
+}))
 
 interface ParsedSkillDocument {
   frontmatter: Record<string, unknown>
@@ -136,11 +156,11 @@ export async function createSkillDocument(scope: SkillScope, input: CreateSkillI
   }
 
   await mkdir(skillDir, { recursive: true })
-  const frontmatter = {
-    ...(input.frontmatter ?? {}),
+  const frontmatter = SkillDocumentFrontmatterSchema.parse({
+    next: input.frontmatter,
     name: input.name,
     description: input.description,
-  }
+  })
   const skillPath = path.join(skillDir, 'SKILL.md')
   await writeFile(skillPath, serializeSkillDocument(frontmatter, input.body), 'utf8')
   invalidateScopeCache(scope, input)
@@ -167,12 +187,12 @@ export async function updateSkillDocument(input: UpdateSkillInput): Promise<Skil
     agentId: input.agentId,
   })
 
-  const nextFrontmatter = {
-    ...existing.frontmatter,
-    ...(input.document.frontmatter ?? {}),
+  const nextFrontmatter = SkillDocumentFrontmatterSchema.parse({
+    base: existing.frontmatter,
+    next: input.document.frontmatter,
     name: input.document.name,
     description: input.document.description,
-  }
+  })
 
   const targetSkillDir = path.join(existing.rootDir, toSkillDirName(input.document.name))
   if (targetSkillDir !== existing.skillDir && fs.existsSync(targetSkillDir)) {
@@ -382,18 +402,12 @@ function parseSkillDocument(content: string): ParsedSkillDocument {
     throw new Error('SKILL.md is missing YAML frontmatter')
   }
 
-  const raw = yaml.load(match[1]) as Record<string, unknown> | null
-  const frontmatter = raw && typeof raw === 'object' ? { ...raw } : {}
-  const name = typeof frontmatter.name === 'string' ? frontmatter.name : ''
-  const description = typeof frontmatter.description === 'string' ? frontmatter.description : ''
-  if (!name || !description) {
-    throw new Error('SKILL.md frontmatter must contain name and description')
-  }
+  const frontmatter = SkillFrontmatterSchema.parse(yaml.load(match[1]))
 
   return {
     frontmatter,
-    name,
-    description,
+    name: frontmatter.name,
+    description: frontmatter.description,
     body: content.slice(match[0].length).replace(LEADING_BLANK_LINE_RE, ''),
   }
 }

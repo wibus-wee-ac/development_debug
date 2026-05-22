@@ -193,8 +193,10 @@ async function clickSessionMenuAction(world: CradleWorld, sessionId: string, act
 async function getVisibleSessionOrder(world: CradleWorld): Promise<string[]> {
   return world.page.locator('[data-testid^="session-item-"]').evaluateAll((elements) => {
     return elements
-      .map(element => element.getAttribute('data-testid')?.replace('session-item-', ''))
-      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .flatMap((element) => {
+        const value = element.getAttribute('data-testid')?.replace('session-item-', '')
+        return value ? [value] : []
+      })
   })
 }
 

@@ -35,7 +35,7 @@ function jsonResponse(body: unknown): Response {
 
 function installGitHubFetch(routes: Record<string, unknown>): ReturnType<typeof vi.fn> {
   const mock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = typeof input === 'string' ? input : input.toString()
+    const url = new Request(input).url
     const parsed = new URL(url)
     const key = `${parsed.pathname}?${parsed.searchParams.toString()}`
     const pathKey = parsed.pathname

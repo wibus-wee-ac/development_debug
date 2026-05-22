@@ -3,100 +3,10 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { ReactNodeViewRenderer } from '@tiptap/react'
-import type { BundledLanguage, BundledTheme, HighlighterGeneric } from 'shiki'
-import { bundledLanguages, createHighlighter } from 'shiki'
+import type { BundledLanguage } from 'shiki'
 
 import { CodeBlockView } from './code-block-view'
-
-/* ─── Singleton Highlighter ──────────────────────────────── */
-
-const POPULAR_LANGS: string[] = [
-  'javascript',
-  'typescript',
-  'tsx',
-  'jsx',
-  'python',
-  'rust',
-  'go',
-  'java',
-  'cpp',
-  'c',
-  'html',
-  'css',
-  'scss',
-  'json',
-  'yaml',
-  'toml',
-  'markdown',
-  'bash',
-  'shell',
-  'sql',
-  'graphql',
-  'ruby',
-  'php',
-  'swift',
-  'kotlin',
-  'dart',
-  'dockerfile',
-  'lua',
-  'zig',
-]
-
-const LIGHT_THEME = 'github-light'
-const DARK_THEME = 'github-dark'
-const LANGUAGE_ALIASES: Record<string, string> = {
-  js: 'javascript',
-  kt: 'kotlin',
-  py: 'python',
-  rb: 'ruby',
-  rs: 'rust',
-  sh: 'bash',
-  text: 'plaintext',
-  ts: 'typescript',
-  yml: 'yaml',
-  zsh: 'bash',
-}
-
-type Highlighter = HighlighterGeneric<BundledLanguage, BundledTheme>
-
-let highlighterPromise: Promise<Highlighter> | null = null
-let highlighterInstance: Highlighter | null = null
-
-function normalizeLanguage(language: string | null | undefined): string {
-  if (!language) {
-    return 'plaintext'
-  }
-  const lower = language.toLowerCase()
-  return LANGUAGE_ALIASES[lower] ?? lower
-}
-
-function getHighlighter(): Promise<Highlighter> {
-  if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({
-      themes: [LIGHT_THEME, DARK_THEME],
-      langs: POPULAR_LANGS,
-    }).then((h) => {
-      highlighterInstance = h
-      return h
-    })
-  }
-  return highlighterPromise!
-}
-
-// Lazy-load a language if not yet loaded
-export async function ensureLanguage(lang: string): Promise<boolean> {
-  const language = normalizeLanguage(lang)
-  const h = highlighterInstance ?? await getHighlighter()
-  const loaded = h.getLoadedLanguages()
-  if (loaded.includes(language)) {
-    return true
-  }
-  if (language in bundledLanguages) {
-    await h.loadLanguage(language as keyof typeof bundledLanguages)
-    return true
-  }
-  return false
-}
+import { DARK_THEME, getHighlighter, getLoadedHighlighter, LIGHT_THEME, normalizeLanguage, type ShikiHighlighter } from './shiki-highlighter'
 
 /* ─── Decoration builder ─────────────────────────────────── */
 
@@ -117,7 +27,7 @@ function hasCodeBlock(doc: ProseMirrorNode): boolean {
   return found
 }
 
-function buildDecorations(doc: ProseMirrorNode, highlighter: Highlighter): DecorationSet {
+function buildDecorations(doc: ProseMirrorNode, highlighter: ShikiHighlighter): DecorationSet {
   const decorations: Decoration[] = []
   const theme = isDark() ? DARK_THEME : LIGHT_THEME
 
@@ -137,30 +47,25 @@ function buildDecorations(doc: ProseMirrorNode, highlighter: Highlighter): Decor
       return
     }
 
-    try {
-      const { tokens } = highlighter.codeToTokens(code, { lang: language as BundledLanguage, theme })
+    const { tokens } = highlighter.codeToTokens(code, { lang: language as BundledLanguage, theme })
 
-      let lineOffset = pos + 1
-      for (const line of tokens) {
-        let charOffset = lineOffset
-        for (const token of line) {
-          const from = charOffset
-          const to = from + token.content.length
+    let lineOffset = pos + 1
+    for (const line of tokens) {
+      let charOffset = lineOffset
+      for (const token of line) {
+        const from = charOffset
+        const to = from + token.content.length
 
-          if (token.color) {
-            decorations.push(
-              Decoration.inline(from, to, {
-                style: `color: ${token.color}`,
-              }),
-            )
-          }
-          charOffset = to
+        if (token.color) {
+          decorations.push(
+            Decoration.inline(from, to, {
+              style: `color: ${token.color}`,
+            }),
+          )
         }
-        lineOffset = charOffset + 1
+        charOffset = to
       }
-    }
-    catch {
-      // Language might not be loaded or code might be malformed
+      lineOffset = charOffset + 1
     }
   })
 
@@ -202,20 +107,17 @@ export const ShikiCodeBlock = CodeBlock.extend({
     const shikiPlugin = new Plugin({
       key: pluginKey,
       state: {
-        init: (_, { doc }) => {
-          if (highlighterInstance) {
-            return buildDecorations(doc, highlighterInstance)
-          }
+        init: () => {
           return DecorationSet.empty
         },
         apply: (tr, oldState) => {
-          if (tr.getMeta(pluginKey) === 'loaded' || tr.getMeta(pluginKey) === 'theme-changed') {
-            if (highlighterInstance) {
-              return buildDecorations(tr.doc, highlighterInstance)
-            }
+          const meta = tr.getMeta(pluginKey) as { type: 'loaded' | 'theme-changed', highlighter: ShikiHighlighter } | undefined
+          if (meta?.type === 'loaded' || meta?.type === 'theme-changed') {
+            return buildDecorations(tr.doc, meta.highlighter)
           }
-          if (tr.docChanged && highlighterInstance) {
-            return buildDecorations(tr.doc, highlighterInstance)
+          const highlighter = getLoadedHighlighter()
+          if (tr.docChanged && highlighter) {
+            return buildDecorations(tr.doc, highlighter)
           }
           if (!tr.docChanged) {
             return oldState
@@ -231,13 +133,13 @@ export const ShikiCodeBlock = CodeBlock.extend({
       view(editorView) {
         let requested = false
         const requestHighlightLoad = () => {
-          if (requested || highlighterInstance || !hasCodeBlock(editorView.state.doc)) {
+          if (requested || !hasCodeBlock(editorView.state.doc)) {
             return
           }
           requested = true
-          void getHighlighter().then(() => {
+          void getHighlighter().then((highlighter) => {
             const { state } = editorView
-            const tr = state.tr.setMeta(pluginKey, 'loaded')
+            const tr = state.tr.setMeta(pluginKey, { type: 'loaded', highlighter })
             editorView.dispatch(tr)
           })
         }

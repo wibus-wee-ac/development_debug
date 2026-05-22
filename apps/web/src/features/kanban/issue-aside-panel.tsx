@@ -1,17 +1,18 @@
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircle2Icon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '~/components/ui/combobox'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { formatIssueId } from './shared/format-issue-id'
-import { IssueLabelsJsonSchema, priorityOptions } from './shared/issue-metadata'
+import { priorityOptions } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -25,16 +26,18 @@ interface IssueAsidePanelProps {
 
 const priorityLabels = Object.fromEntries(priorityOptions.map(option => [option.value, option.label]))
 
+const issueUpdatedAtFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
 function formatTime(value: number | null | undefined): string {
   if (!value) {
     return 'Unknown'
   }
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value * 1000))
+  return issueUpdatedAtFormatter.format(new Date(value * 1000))
 }
 
 function findStatus(statuses: KanbanStatus[], issue: KanbanIssue | undefined): KanbanStatus | null {
@@ -54,7 +57,7 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
   const { openTab } = useCradleNavigation()
-  const { workspaces } = useWorkspaces()
+  const { workspaces, ready: workspacesReady } = useWorkspaces()
 
   const linkedIssue = useLinkedIssue(sessionId)
   const linkedIssueId = linkedIssue.data?.issueId ?? null
@@ -69,8 +72,12 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   const selectedIssue = issue.data
   const statusRows = statuses.data ?? []
   const status = findStatus(statusRows, selectedIssue)
-  const labels = IssueLabelsJsonSchema.parse(selectedIssue?.labels)
   const boardId = boards.data?.[0]?.id
+  const linkedIssueReady = linkedIssue.isSuccess
+  const linkedIssueDataReady = !linkedIssueId || (issue.isSuccess && comments.isSuccess)
+  const pickerDataReady = issues.isSuccess && statuses.isSuccess && boards.isSuccess
+  const ready = !!workspaceId && workspacesReady && linkedIssueReady && linkedIssueDataReady && pickerDataReady
+  const firstRenderedSessionIdRef = useRef<string | null>(null)
 
   const candidateIssues = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -88,6 +95,20 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
 
   const isInitialLoading = linkedIssue.isLoading || (linkedIssueId && issue.isLoading)
   const isPickerLoading = issues.isLoading || boards.isLoading
+
+  useEffect(() => {
+    if (!ready || firstRenderedSessionIdRef.current === sessionId) {
+      return
+    }
+
+    firstRenderedSessionIdRef.current = sessionId
+    markCradlePerformance('cradle:first-right-aside-issue-rendered')
+    measureCradlePerformance(
+      'cradle:right-aside-issue-first-render',
+      'cradle:right-aside-issue-open-requested',
+      'cradle:first-right-aside-issue-rendered',
+    )
+  }, [ready, sessionId])
 
   const openIssue = () => {
     if (!selectedIssue || !boardId) {
@@ -110,7 +131,11 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
 
   if (!workspaceId) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+      <div
+        className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
+        data-testid="right-aside-issue-panel"
+        data-right-aside-issue-ready="false"
+      >
         <CircleDotIcon className="size-7 text-muted-foreground" aria-hidden="true" />
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">No workspace context</p>
@@ -121,11 +146,23 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   }
 
   if (isInitialLoading) {
-    return <IssueAsideSkeleton />
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-issue-panel"
+        data-right-aside-issue-ready="false"
+      >
+        <IssueAsideSkeleton />
+      </div>
+    )
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div
+      className="flex flex-1 flex-col overflow-hidden"
+      data-testid="right-aside-issue-panel"
+      data-right-aside-issue-ready={ready ? 'true' : 'false'}
+    >
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <div className="min-w-0">
           <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Linked issue</p>
@@ -147,64 +184,17 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-3 py-3">
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
         {selectedIssue
           ? (
-              <>
-                <m.section
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-xs)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-2">
-                      <h2 className="text-sm font-semibold leading-5 text-foreground text-pretty">{selectedIssue.title}</h2>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <IssueStatusBadge status={status} />
-                        <span className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground">
-                          <PriorityIcon priority={selectedIssue.priority} size={13} />
-                          {priorityLabels[selectedIssue.priority] ?? selectedIssue.priority}
-                        </span>
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      aria-label="Open issue in Kanban"
-                      disabled={!boardId}
-                      onClick={openIssue}
-                    >
-                      <ArrowUpRightIcon aria-hidden="true" />
-                    </Button>
-                  </div>
-
-                  {selectedIssue.description && (
-                    <p className="mt-3 line-clamp-5 whitespace-pre-wrap text-xs leading-5 text-muted-foreground text-pretty">
-                      {selectedIssue.description}
-                    </p>
-                  )}
-                </m.section>
-
-                <section className="grid grid-cols-2 gap-2">
-                  <IssueMetric icon={MessageSquareTextIcon} label="Comments" value={String(comments.data?.length ?? 0)} />
-                  <IssueMetric icon={CheckCircle2Icon} label="Updated" value={formatTime(selectedIssue.updatedAt)} />
-                </section>
-
-                {labels.length > 0 && (
-                  <section className="space-y-2">
-                    <h3 className="text-xs font-medium text-foreground">Labels</h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {labels.map(label => <LabelChip key={label} label={label} />)}
-                    </div>
-                  </section>
-                )}
-
-                {linkIssue.isError || unlinkIssue.isError
-                  ? <IssuePanelError message="Issue link update failed." />
-                  : null}
-              </>
+              <SelectedIssuePanel
+                issue={selectedIssue}
+                status={status}
+                boardId={boardId}
+                commentCount={comments.data?.length ?? 0}
+                linkError={linkIssue.isError || unlinkIssue.isError}
+                onOpenIssue={openIssue}
+              />
             )
           : (
               <EmptyIssueState
@@ -222,6 +212,82 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
             )}
       </div>
     </div>
+  )
+}
+
+function SelectedIssuePanel({
+  issue,
+  status,
+  boardId,
+  commentCount,
+  linkError,
+  onOpenIssue,
+}: {
+  issue: KanbanIssue
+  status: KanbanStatus | null
+  boardId: string | undefined
+  commentCount: number
+  linkError: boolean
+  onOpenIssue: () => void
+}) {
+  const labels = issue.labels
+
+  return (
+    <>
+      <m.section
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+        className="rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-xs)]"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-2">
+            <h2 className="text-sm font-semibold leading-5 text-foreground text-pretty">{issue.title}</h2>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <IssueStatusBadge status={status} />
+              <span className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground">
+                <PriorityIcon priority={issue.priority} size={13} />
+                {priorityLabels[issue.priority] ?? issue.priority}
+              </span>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Open issue in Kanban"
+            disabled={!boardId}
+            onClick={onOpenIssue}
+          >
+            <ArrowUpRightIcon aria-hidden="true" />
+          </Button>
+        </div>
+
+        {issue.description && (
+          <p className="mt-3 line-clamp-5 whitespace-pre-wrap text-xs leading-5 text-muted-foreground text-pretty">
+            {issue.description}
+          </p>
+        )}
+      </m.section>
+
+      <section className="grid grid-cols-2 gap-2">
+        <IssueMetric icon={MessageSquareTextIcon} label="Comments" value={String(commentCount)} />
+        <IssueMetric icon={CheckCircle2Icon} label="Updated" value={formatTime(issue.updatedAt)} />
+      </section>
+
+      {labels.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium text-foreground">Labels</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {labels.map(label => <LabelChip key={label} label={label} />)}
+          </div>
+        </section>
+      )}
+
+      {linkError
+        ? <IssuePanelError message="Issue link update failed." />
+        : null}
+    </>
   )
 }
 
@@ -364,7 +430,7 @@ function IssueComboboxItem({
   workspaces: ReturnType<typeof useWorkspaces>['workspaces']
   disabled: boolean
 }) {
-  const labels = IssueLabelsJsonSchema.parse(issue.labels)
+  const labels = issue.labels
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const readableId = formatIssueId(issue, workspaces)
 
@@ -420,7 +486,7 @@ function IssuePanelError({ message }: { message: string }) {
 
 function IssueAsideSkeleton() {
   return (
-    <div className="flex flex-1 flex-col gap-3 px-3 py-3">
+    <div className="flex flex-1 flex-col gap-3 p-3">
       <Skeleton className="h-20 w-full" />
       <div className="grid grid-cols-2 gap-2">
         <Skeleton className="h-14 w-full" />

@@ -1,5 +1,5 @@
 import { GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { memo, useCallback, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -12,7 +12,7 @@ interface ActivityTimelineProps {
   issueId: string
 }
 
-export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
+export const ActivityTimeline = memo(function ActivityTimeline({ issueId }: ActivityTimelineProps) {
   const { data: comments = [] } = useComments(issueId)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
@@ -27,6 +27,10 @@ export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
     setCommentText('')
   }, [commentText, issueId, addComment])
 
+  const handleDeleteComment = useCallback((commentId: string) => {
+    deleteComment.mutate({ id: commentId, issueId })
+  }, [deleteComment, issueId])
+
   return (
     <div data-testid="issue-activity-timeline">
       <h3 className="text-sm font-semibold text-foreground text-balance">Activity</h3>
@@ -36,7 +40,7 @@ export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
           <CommentItem
             key={comment.id}
             comment={comment}
-            onDelete={comment.author.kind === 'user' ? () => deleteComment.mutate({ id: comment.id, issueId }) : undefined}
+            onDeleteComment={comment.author.kind === 'user' ? handleDeleteComment : undefined}
           />
         ))}
       </div>
@@ -73,7 +77,7 @@ export function ActivityTimeline({ issueId }: ActivityTimelineProps) {
       </div>
     </div>
   )
-}
+})
 
 const systemEventConfig: Record<string, { icon: React.ElementType }> = {
   'system.delegated': { icon: UserRoundCheckIcon },
@@ -81,9 +85,18 @@ const systemEventConfig: Record<string, { icon: React.ElementType }> = {
   'system': { icon: GitBranchIcon },
 }
 
-function CommentItem({ comment, onDelete }: { comment: KanbanIssueCommentView, onDelete?: () => void }) {
+const CommentItem = memo(function CommentItem({
+  comment,
+  onDeleteComment,
+}: {
+  comment: KanbanIssueCommentView
+  onDeleteComment?: (commentId: string) => void
+}) {
   const kind = comment.author.kind
   const isSystem = kind.startsWith('system')
+  const handleDelete = useCallback(() => {
+    onDeleteComment?.(comment.id)
+  }, [comment.id, onDeleteComment])
 
   if (isSystem) {
     const cfg = systemEventConfig[kind] ?? systemEventConfig.system
@@ -139,10 +152,10 @@ function CommentItem({ comment, onDelete }: { comment: KanbanIssueCommentView, o
           <span className="text-[11px] text-text-dim">
             {formatRelativeTime(comment.createdAt)}
           </span>
-          {onDelete && (
+          {onDeleteComment && (
             <button
               type="button"
-              onClick={onDelete}
+              onClick={handleDelete}
               className="ml-auto -mr-1 flex size-5 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-fill text-text-tertiary hover:text-foreground"
               aria-label="Delete comment"
             >
@@ -154,7 +167,7 @@ function CommentItem({ comment, onDelete }: { comment: KanbanIssueCommentView, o
       </div>
     </div>
   )
-}
+})
 
 function formatRelativeTime(ts: number | null | undefined): string {
   if (!ts) {

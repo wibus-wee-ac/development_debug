@@ -5,6 +5,8 @@
  * Wire format: 4-byte LE length prefix + UTF-8 JSON payload
  */
 
+import { z } from 'zod'
+
 // ─── Command Types ──────────────────────────────────────────────────────────
 
 export interface NavigateCommand {
@@ -176,6 +178,49 @@ export type DomSnapshotResult = { nodes: AXNode[] }
 export type WaitForSelectorResult = { found: true }
 export type KeyboardResult = { success: true }
 
+const BrowserCommandSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('navigate'), id: z.string(), url: z.string(), tabId: z.string().optional() }),
+  z.object({ type: z.literal('screenshot'), id: z.string(), tabId: z.string().optional(), fullPage: z.boolean().optional() }),
+  z.object({ type: z.literal('click'), id: z.string(), tabId: z.string().optional(), selector: z.string() }),
+  z.object({ type: z.literal('type'), id: z.string(), tabId: z.string().optional(), selector: z.string(), text: z.string() }),
+  z.object({ type: z.literal('get_text'), id: z.string(), tabId: z.string().optional(), selector: z.string().optional() }),
+  z.object({ type: z.literal('tabs_list'), id: z.string() }),
+  z.object({ type: z.literal('tabs_new'), id: z.string(), url: z.string().optional() }),
+  z.object({ type: z.literal('tabs_close'), id: z.string(), tabId: z.string() }),
+  z.object({ type: z.literal('tabs_go_off_screen'), id: z.string(), tabId: z.string().optional() }),
+  z.object({ type: z.literal('tabs_bring_to_front'), id: z.string(), tabId: z.string().optional() }),
+  z.object({ type: z.literal('eval'), id: z.string(), tabId: z.string().optional(), expression: z.string() }),
+  z.object({
+    type: z.literal('scroll'),
+    id: z.string(),
+    tabId: z.string().optional(),
+    selector: z.string().optional(),
+    direction: z.enum(['up', 'down', 'left', 'right']),
+    amount: z.number().optional(),
+  }),
+  z.object({ type: z.literal('hover'), id: z.string(), tabId: z.string().optional(), selector: z.string() }),
+  z.object({ type: z.literal('dom_snapshot'), id: z.string(), tabId: z.string().optional() }),
+  z.object({ type: z.literal('wait_for_selector'), id: z.string(), tabId: z.string().optional(), selector: z.string(), timeout: z.number().optional() }),
+  z.object({ type: z.literal('keyboard'), id: z.string(), tabId: z.string().optional(), key: z.string(), modifiers: z.array(z.string()).optional() }),
+])
+
+const BrowserResponseSchema = z.union([
+  z.object({
+    id: z.string(),
+    ok: z.literal(true),
+    data: z.unknown(),
+  }),
+  z.object({
+    id: z.string(),
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+])
+
+const BrowserFrameJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.union([BrowserCommandSchema, BrowserResponseSchema]))
+
 // ─── Framing ────────────────────────────────────────────────────────────────
 
 /** Encode a message into a framed buffer (4B LE length + UTF-8 JSON) */
@@ -206,7 +251,7 @@ export class FrameDecoder {
       }
       const json = this.buffer.subarray(4, 4 + length).toString('utf-8')
       this.buffer = this.buffer.subarray(4 + length)
-      messages.push(JSON.parse(json))
+      messages.push(BrowserFrameJsonSchema.parse(json))
     }
 
     return messages

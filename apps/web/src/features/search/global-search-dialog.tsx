@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  BrainIcon,
   CircleDotIcon,
   CornerDownLeftIcon,
   FileIcon,
@@ -9,35 +10,39 @@ import {
   SettingsIcon,
   SparklesIcon,
   TerminalIcon,
-  UserIcon,
+  UserIcon
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getIssuesSearch, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import {
   Command,
-  CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
+  CommandSeparator
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import type { ThreadSearchHit } from '~/lib/types'
+import { markCradlePerformance, measureCradlePerformance } from '~/lib/perf-monitor'
+import type { ChronicleSearchHit, ThreadSearchHit } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
+import { preloadTabRoute } from '~/tabs/route-preload'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { selectFileSearchResult } from './global-search-actions'
 import { HighlightedText } from './highlighted-text'
 import { groupHitsByWorkspace } from './thread-search-groups'
+import { useChronicleSearch } from './use-chronicle-search'
 import { useThreadSearch } from './use-thread-search'
 
 interface GlobalSearchDialogProps {
@@ -46,6 +51,11 @@ interface GlobalSearchDialogProps {
 }
 
 const DEBOUNCE_MS = 150
+const SessionWorkspaceSchema = z
+  .object({
+    workspaceId: z.string().nullable()
+  })
+  .passthrough()
 
 // ── Commands (static actions) ─────────────────────────────────────────────────
 
@@ -58,58 +68,95 @@ interface CommandAction {
   handler: () => void
 }
 
+interface GlobalSearchIssue {
+  id: string
+  title: string
+  priority: string
+  workspaceId?: string
+}
+
+interface GlobalSearchFile {
+  type: 'file' | 'directory'
+  name: string
+  path: string
+}
+
+const GlobalSearchIssueListSchema = z
+  .array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      priority: z.string(),
+      workspaceId: z.string().optional()
+    })
+  )
+  .default([])
+
+const GlobalSearchFileListSchema = z
+  .array(
+    z.object({
+      type: z.enum(['file', 'directory']),
+      name: z.string(),
+      path: z.string()
+    })
+  )
+  .default([])
+
 function useCommands(close: () => void): CommandAction[] {
   const { openTab } = useCradleNavigation()
-  const openSettings = useSettingsOverlayStore(s => s.openSettings)
-  const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
+  const openSettings = useSettingsOverlayStore((s) => s.openSettings)
+  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar)
 
-  return useMemo(() => [
-    {
-      id: 'new-chat',
-      label: '新建对话',
-      keywords: 'new chat session 新建',
-      icon: MessageSquareIcon,
-      handler: () => {
-        close()
-        openTab('new-chat', {})
-      },
-    },
-    {
-      id: 'open-settings',
-      label: '打开设置',
-      keywords: 'settings preferences 设置',
-      icon: SettingsIcon,
-      shortcut: '⌘,',
-      handler: () => {
-        close()
-        const activeTabId = useCradleTabStore.getState().activeTabId
-        if (activeTabId) {
-          openSettings(activeTabId)
+  return useMemo(
+    () => [
+      {
+        id: 'new-chat',
+        label: '新建对话',
+        keywords: 'new chat session 新建',
+        icon: MessageSquareIcon,
+        handler: () => {
+          close()
+          openTab('new-chat', {})
         }
       },
-    },
-    {
-      id: 'toggle-sidebar',
-      label: '切换侧栏',
-      keywords: 'sidebar toggle 侧栏',
-      icon: TerminalIcon,
-      shortcut: '⌘B',
-      handler: () => {
-        close()
-        toggleSidebar()
+      {
+        id: 'open-settings',
+        label: '打开设置',
+        keywords: 'settings preferences 设置',
+        icon: SettingsIcon,
+        shortcut: '⌘,',
+        handler: () => {
+          close()
+          const activeTabId = useCradleTabStore.getState().activeTabId
+          if (activeTabId) {
+            openSettings(activeTabId)
+          }
+        }
       },
-    },
-    {
-      id: 'open-usage',
-      label: '用量统计',
-      keywords: 'usage cost token 用量 费用',
-      icon: CircleDotIcon,
-      handler: () => {
-        close()
-        openTab('usage', {})
+      {
+        id: 'toggle-sidebar',
+        label: '切换侧栏',
+        keywords: 'sidebar toggle 侧栏',
+        icon: TerminalIcon,
+        shortcut: '⌘B',
+        handler: () => {
+          close()
+          toggleSidebar()
+        }
       },
-    },
-  ], [close, openTab, openSettings, toggleSidebar])
+      {
+        id: 'open-usage',
+        label: '用量统计',
+        keywords: 'usage cost token 用量 费用',
+        icon: CircleDotIcon,
+        handler: () => {
+          close()
+          openTab('usage', {})
+        }
+      }
+    ],
+    [close, openTab, openSettings, toggleSidebar]
+  )
 }
 
 // ── Issue search hook ─────────────────────────────────────────────────────────
@@ -122,21 +169,22 @@ function useIssueSearch(query: string, enabled: boolean) {
     return () => clearTimeout(timer)
   }, [query])
 
+  const currentTrimmed = query.trim()
   const trimmed = debouncedQuery.trim()
 
   const { data = [], isFetching } = useQuery({
     queryKey: ['search-issues', trimmed],
     queryFn: async () => {
       const { data } = await getIssuesSearch({ query: { q: trimmed, limit: '10' } })
-      return (data ?? []) as Array<{ id: string, title: string, priority: string, workspaceId?: string }>
+      return GlobalSearchIssueListSchema.parse(data) satisfies GlobalSearchIssue[]
     },
     enabled: enabled && !!trimmed,
-    staleTime: 5_000,
+    staleTime: 5_000
   })
 
   return {
     issues: data,
-    isPending: enabled && trimmed.length > 0 && (isFetching || debouncedQuery !== query),
+    isPending: enabled && currentTrimmed.length > 0 && (isFetching || debouncedQuery !== query)
   }
 }
 
@@ -145,7 +193,7 @@ function useIssueSearch(query: string, enabled: boolean) {
 function useFileSearch(query: string, enabled: boolean) {
   // Get current workspace from active tab
   const activeTab = useCradleTabStore((s) => {
-    const t = s.tabs.find(tab => tab.id === s.activeTabId)
+    const t = s.tabs.find((tab) => tab.id === s.activeTabId)
     return t?.type === 'chat' ? t.params : null
   })
 
@@ -154,11 +202,7 @@ function useFileSearch(query: string, enabled: boolean) {
     ...getSessionsByIdOptions({ path: { id: activeTab?.sessionId ?? '' } }),
     enabled: !!activeTab?.sessionId,
     staleTime: 60_000,
-    select: data => data
-      ? {
-          workspaceId: typeof data.workspaceId === 'string' ? data.workspaceId : null,
-        }
-      : undefined,
+    select: (data) => (data ? SessionWorkspaceSchema.parse(data) : undefined)
   })
 
   const workspaceId = session?.workspaceId ?? null
@@ -167,10 +211,10 @@ function useFileSearch(query: string, enabled: boolean) {
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesByIdFiles({ path: { id: workspaceId! } })
-      return (data ?? []) as Array<{ type: 'file' | 'directory', name: string, path: string }>
+      return GlobalSearchFileListSchema.parse(data) satisfies GlobalSearchFile[]
     },
     enabled: !!workspaceId,
-    staleTime: 30_000,
+    staleTime: 30_000
   })
 
   const trimmed = query.trim().toLowerCase()
@@ -180,14 +224,14 @@ function useFileSearch(query: string, enabled: boolean) {
       return []
     }
     return files
-      .filter(f => f.type === 'file' && f.path.toLowerCase().includes(trimmed))
+      .filter((f) => f.type === 'file' && f.path.toLowerCase().includes(trimmed))
       .slice(0, 10)
   }, [enabled, trimmed, files])
 
   return {
     files: filtered,
     workspaceId,
-    isPending: enabled && !!trimmed && !!workspaceId && isFetching,
+    isPending: enabled && !!trimmed && !!workspaceId && isFetching
   }
 }
 
@@ -195,23 +239,81 @@ function useFileSearch(query: string, enabled: boolean) {
 
 export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogProps) {
   const { openTab } = useCradleNavigation()
+  const openSettings = useSettingsOverlayStore((s) => s.openSettings)
+  const setSettingsSection = useSettingsOverlayStore((s) => s.setSettingsSection)
+  const setChronicleFocusTarget = useSettingsOverlayStore((s) => s.setChronicleFocusTarget)
   const [query, setQuery] = useState('')
+  const panelRef = useRef<HTMLDivElement>(null)
+  const requestedQueryRef = useRef('')
+  const measuredQueryRef = useRef('')
+  const closeFromEscape = useEffectEvent(() => {
+    onOpenChange(false)
+  })
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setQuery('')
+      requestedQueryRef.current = ''
+      measuredQueryRef.current = ''
+      return
+    }
+
+    markCradlePerformance('cradle:command-palette-opened')
+    measureCradlePerformance(
+      'cradle:command-palette-open',
+      'cradle:command-palette-open-requested',
+      'cradle:command-palette-opened'
+    )
+    panelRef.current?.querySelector<HTMLInputElement>('[data-slot="command-input"]')?.focus()
+  }, [open])
 
   useEffect(() => {
     if (!open) {
-      setQuery('')
+      return
     }
+
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeFromEscape()
+      }
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
   }, [open])
 
   const close = useCallback(() => onOpenChange(false), [onOpenChange])
+  const handleQueryChange = useCallback(
+    (nextQuery: string) => {
+      setQuery(nextQuery)
+
+      const nextTrimmed = nextQuery.trim()
+      if (!open || !nextTrimmed) {
+        requestedQueryRef.current = ''
+        measuredQueryRef.current = ''
+        return
+      }
+
+      requestedQueryRef.current = nextTrimmed
+      measuredQueryRef.current = ''
+      markCradlePerformance('cradle:command-palette-query-requested')
+    },
+    [open]
+  )
   const commands = useCommands(close)
   const trimmed = query.trim()
   const hasQuery = trimmed.length > 0
 
   // Search sources
   const { hits: threadHits, isPending: threadsPending } = useThreadSearch({ query, enabled: open })
+  const { hits: chronicleHits, isPending: chroniclePending } = useChronicleSearch({ query, enabled: open })
   const { issues, isPending: issuesPending } = useIssueSearch(query, open)
-  const { files, workspaceId: fileWorkspaceId, isPending: filesPending } = useFileSearch(query, open)
+  const {
+    files,
+    workspaceId: fileWorkspaceId,
+    isPending: filesPending
+  } = useFileSearch(query, open)
 
   const threadGroups = useMemo(() => groupHitsByWorkspace(threadHits), [threadHits])
 
@@ -221,197 +323,380 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
       return commands
     }
     const q = trimmed.toLowerCase()
-    return commands.filter(c =>
-      c.label.toLowerCase().includes(q) || c.keywords.toLowerCase().includes(q))
+    return commands.filter(
+      (c) => c.label.toLowerCase().includes(q) || c.keywords.toLowerCase().includes(q)
+    )
   }, [commands, hasQuery, trimmed])
 
-  const isPending = threadsPending || issuesPending || filesPending
-  const hasResults = threadHits.length > 0 || issues.length > 0 || files.length > 0 || filteredCommands.length > 0
+  const isPending = threadsPending || chroniclePending || issuesPending || filesPending
+  const hasResults =
+    threadHits.length > 0
+    || chronicleHits.length > 0
+    || issues.length > 0
+    || files.length > 0
+    || filteredCommands.length > 0
 
-  const handleSelectFile = useCallback((filePath: string) => {
-    if (!fileWorkspaceId) {
+  useEffect(() => {
+    if (
+      !open ||
+      !hasQuery ||
+      isPending ||
+      requestedQueryRef.current !== trimmed ||
+      measuredQueryRef.current === trimmed
+    ) {
       return
     }
 
-    void selectFileSearchResult({
-      workspaceId: fileWorkspaceId,
-      filePath,
-      openTab,
-      close,
-      writeText: navigator.clipboard?.writeText?.bind(navigator.clipboard),
-      notify: notification => toastManager.add(notification),
+    const measuredQuery = trimmed
+    requestAnimationFrame(() => {
+      if (requestedQueryRef.current !== measuredQuery) {
+        return
+      }
+
+      markCradlePerformance('cradle:command-palette-query-settled')
+      measureCradlePerformance(
+        'cradle:command-palette-query-settle',
+        'cradle:command-palette-query-requested',
+        'cradle:command-palette-query-settled'
+      )
+      measuredQueryRef.current = measuredQuery
     })
-  }, [close, fileWorkspaceId, openTab])
+  }, [hasQuery, isPending, open, trimmed])
 
-  return (
-    <CommandDialog open={open} onOpenChange={onOpenChange} className="max-w-2xl">
-      <Command shouldFilter={false} data-testid="global-search-dialog">
-        <div className="overflow-hidden rounded-xl!">
-          <CommandInput
-            placeholder="搜索对话、文件、Issue、命令..."
-            value={query}
-            onValueChange={setQuery}
-            aria-label="全局搜索"
-            data-testid="global-search-input"
-          />
-          <div>
-            <CommandEmpty className="not-empty:py-12">
-              {hasQuery
-                ? isPending
-                  ? <LoadingState />
-                  : <NoResults />
-                : <IdleState />}
-            </CommandEmpty>
-            <CommandList>
-              {/* Commands (always show when idle or matching) */}
-              {filteredCommands.length > 0 && !hasQuery && (
-                <>
+  const handleSelectFile = useCallback(
+    (filePath: string) => {
+      if (!fileWorkspaceId) {
+        return
+      }
+
+      void selectFileSearchResult({
+        workspaceId: fileWorkspaceId,
+        filePath,
+        openTab,
+        close,
+        writeText: navigator.clipboard?.writeText?.bind(navigator.clipboard),
+        notify: (notification) => toastManager.add(notification)
+      })
+    },
+    [close, fileWorkspaceId, openTab]
+  )
+
+  const handleSelectThread = useCallback(
+    (sessionId: string) => {
+      close()
+      openTab('chat', { sessionId })
+    },
+    [close, openTab]
+  )
+
+  const handleSelectChronicle = useCallback((hit: ChronicleSearchHit) => {
+    const tabStore = useCradleTabStore.getState()
+    const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
+      ? tabStore.activeTabId
+      : (() => {
+          preloadTabRoute('home')
+          return tabStore.openTab('home', {}, { pinned: true })
+        })()
+    close()
+    tabStore.setActiveTab(activeTabId)
+    setSettingsSection('chronicle')
+    setChronicleFocusTarget({ type: hit.type, id: hit.id })
+    openSettings(activeTabId)
+  }, [close, openSettings, setChronicleFocusTarget, setSettingsSection])
+
+  const handleSelectIssue = useCallback(
+    (workspaceId: string | undefined) => {
+      close()
+      openTab('kanban-board', { workspaceId })
+    },
+    [close, openTab]
+  )
+
+  return createPortal(
+    <div
+      role="presentation"
+      className={cn(
+        'fixed inset-0 isolate z-50 flex items-start justify-center bg-black/10 px-4 pt-[18vh] supports-backdrop-filter:backdrop-blur-xs',
+        open ? 'visible pointer-events-auto opacity-100' : 'invisible pointer-events-none opacity-0'
+      )}
+      aria-hidden={open ? undefined : 'true'}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onOpenChange(false)
+        }
+      }}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command Palette"
+        className="w-full max-w-2xl overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-[0_20px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ring-1 ring-foreground/10 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]"
+      >
+        <Command shouldFilter={false} data-testid="global-search-dialog">
+          <div className="overflow-hidden rounded-xl!">
+            <CommandInput
+              placeholder="搜索对话、文件、Issue、命令..."
+              value={query}
+              onValueChange={handleQueryChange}
+              aria-label="全局搜索"
+              data-testid="global-search-input"
+            />
+            <div>
+              <CommandEmpty className="not-empty:py-12">
+                {hasQuery ? isPending ? <LoadingState /> : <NoResults /> : <IdleState />}
+              </CommandEmpty>
+              <CommandList>
+                {/* Commands (always show when idle or matching) */}
+                {filteredCommands.length > 0 && !hasQuery && (
+                  <>
+                    <CommandGroup>
+                      <GroupHeader label="命令" count={filteredCommands.length} />
+                      {filteredCommands.map((cmd) => (
+                        <CommandActionRow key={cmd.id} command={cmd} />
+                      ))}
+                    </CommandGroup>
+                    {hasResults && <CommandSeparator />}
+                  </>
+                )}
+
+                {/* Commands matching query */}
+                {filteredCommands.length > 0 && hasQuery && (
+                  <>
+                    <CommandGroup>
+                      <GroupHeader label="命令" count={filteredCommands.length} />
+                      {filteredCommands.map((cmd) => (
+                        <CommandActionRow key={cmd.id} command={cmd} />
+                      ))}
+                    </CommandGroup>
+                    {(threadHits.length > 0 || chronicleHits.length > 0 || issues.length > 0 || files.length > 0) && (
+                      <CommandSeparator />
+                    )}
+                  </>
+                )}
+
+                {/* Thread results */}
+                {threadHits.length > 0 && (
+                  <>
+                    <CommandGroup>
+                      <GroupHeader label="对话" count={threadHits.length} />
+                      {threadGroups.map((group) =>
+                        group.items
+                          .slice(0, 5)
+                          .map((hit: ThreadSearchHit) => (
+                            <ThreadSearchCommandRow
+                              key={hit.sessionId}
+                              hit={hit}
+                              workspaceLabel={group.label}
+                              onSelect={handleSelectThread}
+                            />
+                          ))
+                      )}
+                    </CommandGroup>
+                    {(chronicleHits.length > 0 || issues.length > 0 || files.length > 0) && <CommandSeparator />}
+                  </>
+                )}
+
+                {/* Chronicle results */}
+                {chronicleHits.length > 0 && (
+                  <>
+                    <CommandGroup>
+                      <GroupHeader label="记忆" count={chronicleHits.length} />
+                      {chronicleHits.slice(0, 8).map((hit) => (
+                        <ChronicleSearchCommandRow
+                          key={`${hit.type}-${hit.id}`}
+                          hit={hit}
+                          onSelect={handleSelectChronicle}
+                        />
+                      ))}
+                    </CommandGroup>
+                    {(issues.length > 0 || files.length > 0) && <CommandSeparator />}
+                  </>
+                )}
+
+                {/* Issue results */}
+                {issues.length > 0 && (
+                  <>
+                    <CommandGroup>
+                      <GroupHeader label="Issue" count={issues.length} />
+                      {issues.slice(0, 8).map((issue) => (
+                        <IssueSearchCommandRow
+                          key={issue.id}
+                          issue={issue}
+                          onSelect={handleSelectIssue}
+                        />
+                      ))}
+                    </CommandGroup>
+                    {files.length > 0 && <CommandSeparator />}
+                  </>
+                )}
+
+                {/* File results */}
+                {files.length > 0 && (
                   <CommandGroup>
-                    <GroupHeader label="命令" count={filteredCommands.length} />
-                    {filteredCommands.map(cmd => (
-                      <CommandItem
-                        key={cmd.id}
-                        value={cmd.id}
-                        onSelect={cmd.handler}
-                        className="flex items-center gap-2.5 px-2.5 py-1.5"
-                      >
-                        <cmd.icon className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="flex-1 text-sm">{cmd.label}</span>
-                        {cmd.shortcut && (
-                          <span className="text-[10px] text-muted-foreground">{cmd.shortcut}</span>
-                        )}
-                      </CommandItem>
+                    <GroupHeader label="文件" count={files.length} />
+                    {files.map((file) => (
+                      <FileSearchCommandRow
+                        key={file.path}
+                        file={file}
+                        onSelect={handleSelectFile}
+                      />
                     ))}
                   </CommandGroup>
-                  {hasResults && <CommandSeparator />}
-                </>
-              )}
-
-              {/* Commands matching query */}
-              {filteredCommands.length > 0 && hasQuery && (
-                <>
-                  <CommandGroup>
-                    <GroupHeader label="命令" count={filteredCommands.length} />
-                    {filteredCommands.map(cmd => (
-                      <CommandItem
-                        key={cmd.id}
-                        value={cmd.id}
-                        onSelect={cmd.handler}
-                        className="flex items-center gap-2.5 px-2.5 py-1.5"
-                      >
-                        <cmd.icon className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="flex-1 text-sm">{cmd.label}</span>
-                        {cmd.shortcut && (
-                          <span className="text-[10px] text-muted-foreground">{cmd.shortcut}</span>
-                        )}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                  {(threadHits.length > 0 || issues.length > 0 || files.length > 0) && <CommandSeparator />}
-                </>
-              )}
-
-              {/* Thread results */}
-              {threadHits.length > 0 && (
-                <>
-                  <CommandGroup>
-                    <GroupHeader label="对话" count={threadHits.length} />
-                    {threadGroups.map(group =>
-                      group.items.slice(0, 5).map((hit: ThreadSearchHit) => (
-                        <CommandItem
-                          key={hit.sessionId}
-                          value={`thread-${hit.sessionId}`}
-                          onSelect={() => {
-                            close()
-                            openTab('chat', { sessionId: hit.sessionId })
-                          }}
-                          className="flex-col items-stretch gap-1.5 px-2.5 py-2"
-                          data-testid={`global-search-thread-result-${hit.sessionId}`}
-                        >
-                          <ThreadSearchResultRow hit={hit} workspaceLabel={group.label} />
-                        </CommandItem>
-                      )))}
-                  </CommandGroup>
-                  {(issues.length > 0 || files.length > 0) && <CommandSeparator />}
-                </>
-              )}
-
-              {/* Issue results */}
-              {issues.length > 0 && (
-                <>
-                  <CommandGroup>
-                    <GroupHeader label="Issue" count={issues.length} />
-                    {issues.slice(0, 8).map(issue => (
-                      <CommandItem
-                        key={issue.id}
-                        value={`issue-${issue.id}`}
-                        onSelect={() => {
-                          close()
-                          openTab('kanban-board', { workspaceId: issue.workspaceId })
-                        }}
-                        className="flex items-center gap-2.5 px-2.5 py-1.5"
-                      >
-                        <CircleDotIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
-                        <PriorityBadge priority={issue.priority} />
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                  {files.length > 0 && <CommandSeparator />}
-                </>
-              )}
-
-              {/* File results */}
-              {files.length > 0 && (
-                <CommandGroup>
-                  <GroupHeader label="文件" count={files.length} />
-                  {files.map(file => (
-                    <CommandItem
-                      key={file.path}
-                      value={`file-${file.path}`}
-                      onSelect={() => handleSelectFile(file.path)}
-                      className="flex items-center gap-2.5 px-2.5 py-1.5"
-                      data-testid={`global-search-file-result-${file.path}`}
-                    >
-                      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              )}
-            </CommandList>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between border-t border-border px-3 py-2 text-muted-foreground text-xs">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <KbdGroup>
-                  <Kbd><ArrowUpIcon /></Kbd>
-                  <Kbd><ArrowDownIcon /></Kbd>
-                </KbdGroup>
-                <span>选择</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Kbd><CornerDownLeftIcon /></Kbd>
-                <span>打开</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Kbd>Esc</Kbd>
-                <span>关闭</span>
-              </div>
+                )}
+              </CommandList>
             </div>
-            {isPending && <Spinner className="size-3" />}
+
+            {/* Footer */}
+            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-muted-foreground text-xs">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <KbdGroup>
+                    <Kbd>
+                      <ArrowUpIcon />
+                    </Kbd>
+                    <Kbd>
+                      <ArrowDownIcon />
+                    </Kbd>
+                  </KbdGroup>
+                  <span>选择</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Kbd>
+                    <CornerDownLeftIcon />
+                  </Kbd>
+                  <span>打开</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Kbd>Esc</Kbd>
+                  <span>关闭</span>
+                </div>
+              </div>
+              {isPending && <Spinner className="size-3" />}
+            </div>
           </div>
-        </div>
-      </Command>
-    </CommandDialog>
+        </Command>
+      </div>
+    </div>,
+    document.body
   )
 }
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-function GroupHeader({ label, count }: { label: string, count: number }) {
+const CommandActionRow = memo(function CommandActionRow({ command }: { command: CommandAction }) {
+  return (
+    <CommandItem
+      value={command.id}
+      onSelect={command.handler}
+      className="flex items-center gap-2.5 px-2.5 py-1.5"
+    >
+      <command.icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="flex-1 text-sm">{command.label}</span>
+      {command.shortcut && (
+        <span className="text-[10px] text-muted-foreground">{command.shortcut}</span>
+      )}
+    </CommandItem>
+  )
+})
+
+const ThreadSearchCommandRow = memo(function ThreadSearchCommandRow({
+  hit,
+  workspaceLabel,
+  onSelect
+}: {
+  hit: ThreadSearchHit
+  workspaceLabel: string
+  onSelect: (sessionId: string) => void
+}) {
+  const selectThread = useCallback(() => {
+    onSelect(hit.sessionId)
+  }, [hit.sessionId, onSelect])
+
+  return (
+    <CommandItem
+      value={`thread-${hit.sessionId}`}
+      onSelect={selectThread}
+      className="flex-col items-stretch gap-1.5 px-2.5 py-2"
+      data-testid={`global-search-thread-result-${hit.sessionId}`}
+    >
+      <ThreadSearchResultRow hit={hit} workspaceLabel={workspaceLabel} />
+    </CommandItem>
+  )
+})
+
+const ChronicleSearchCommandRow = memo(function ChronicleSearchCommandRow({
+  hit,
+  onSelect
+}: {
+  hit: ChronicleSearchHit
+  onSelect: (hit: ChronicleSearchHit) => void
+}) {
+  const selectChronicleHit = useCallback(() => {
+    onSelect(hit)
+  }, [hit, onSelect])
+
+  return (
+    <CommandItem
+      value={`chronicle-${hit.type}-${hit.id}`}
+      onSelect={selectChronicleHit}
+      className="flex-col items-stretch gap-1.5 px-2.5 py-2"
+      data-testid={`global-search-chronicle-result-${hit.id}`}
+    >
+      <ChronicleSearchResultRow hit={hit} />
+    </CommandItem>
+  )
+})
+
+const IssueSearchCommandRow = memo(function IssueSearchCommandRow({
+  issue,
+  onSelect
+}: {
+  issue: GlobalSearchIssue
+  onSelect: (workspaceId: string | undefined) => void
+}) {
+  const selectIssue = useCallback(() => {
+    onSelect(issue.workspaceId)
+  }, [issue.workspaceId, onSelect])
+
+  return (
+    <CommandItem
+      value={`issue-${issue.id}`}
+      onSelect={selectIssue}
+      className="flex items-center gap-2.5 px-2.5 py-1.5"
+    >
+      <CircleDotIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
+      <PriorityBadge priority={issue.priority} />
+    </CommandItem>
+  )
+})
+
+const FileSearchCommandRow = memo(function FileSearchCommandRow({
+  file,
+  onSelect
+}: {
+  file: GlobalSearchFile
+  onSelect: (filePath: string) => void
+}) {
+  const selectFile = useCallback(() => {
+    onSelect(file.path)
+  }, [file.path, onSelect])
+
+  return (
+    <CommandItem
+      value={`file-${file.path}`}
+      onSelect={selectFile}
+      className="flex items-center gap-2.5 px-2.5 py-1.5"
+      data-testid={`global-search-file-result-${file.path}`}
+    >
+      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
+    </CommandItem>
+  )
+})
+
+function GroupHeader({ label, count }: { label: string; count: number }) {
   return (
     <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
       <span className="font-medium">{label}</span>
@@ -425,7 +710,7 @@ function GroupHeader({ label, count }: { label: string, count: number }) {
 
 function ThreadSearchResultRow({
   hit,
-  workspaceLabel,
+  workspaceLabel
 }: {
   hit: ThreadSearchHit
   workspaceLabel: string
@@ -442,24 +727,18 @@ function ThreadSearchResultRow({
         >
           <HighlightedText text={hit.sessionTitle} ranges={hit.titleRanges ?? []} />
         </span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          {workspaceLabel}
-        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">{workspaceLabel}</span>
       </div>
 
-      {snippets.length > 0
-        ? (
-          <div className="flex flex-col gap-1 pl-6">
-            {snippets.slice(0, 2).map(snippet => (
-              <ThreadSearchSnippetRow key={snippet.messageId} snippet={snippet} />
-            ))}
-          </div>
-        )
-        : (
-          <div className="pl-6 text-[11px] text-muted-foreground">
-            仅标题匹配
-          </div>
-        )}
+      {snippets.length > 0 ? (
+        <div className="flex flex-col gap-1 pl-6">
+          {snippets.slice(0, 2).map((snippet) => (
+            <ThreadSearchSnippetRow key={snippet.messageId} snippet={snippet} />
+          ))}
+        </div>
+      ) : (
+        <div className="pl-6 text-[11px] text-muted-foreground">仅标题匹配</div>
+      )}
     </>
   )
 }
@@ -475,16 +754,12 @@ function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippet
       <span
         className={cn(
           'mt-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm',
-          isUser
-            ? 'bg-primary/10 text-primary'
-            : 'bg-foreground/10 text-foreground/70',
+          isUser ? 'bg-primary/10 text-primary' : 'bg-foreground/10 text-foreground/70'
         )}
         title={isUser ? '用户' : '助手'}
         aria-hidden="true"
       >
-        {isUser
-          ? <UserIcon className="size-2.5" />
-          : <SparklesIcon className="size-2.5" />}
+        {isUser ? <UserIcon className="size-2.5" /> : <SparklesIcon className="size-2.5" />}
       </span>
       <span className="min-w-0 line-clamp-2 wrap-break-word">
         <HighlightedText text={snippet.text} ranges={snippet.ranges ?? []} />
@@ -493,17 +768,69 @@ function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippet
   )
 }
 
+function ChronicleSearchResultRow({ hit }: { hit: ChronicleSearchHit }) {
+  const workspaceLabel = hit.workspaceName ?? 'No workspace'
+  const typeLabel = hit.type === 'memory' ? formatMemorySearchType(hit) : formatKnowledgeSearchType(hit)
+
+  return (
+    <>
+      <div className="flex items-center gap-2.5">
+        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span
+          className="min-w-0 flex-1 truncate text-sm"
+          data-testid={`global-search-chronicle-title-${hit.id}`}
+        >
+          <HighlightedText text={hit.title} ranges={hit.titleRanges ?? []} />
+        </span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">{workspaceLabel}</span>
+      </div>
+      <div className="flex items-start gap-2 pl-6 text-xs leading-relaxed text-muted-foreground">
+        <span className="mt-0.5 shrink-0 rounded-sm bg-foreground/8 px-1.5 py-0.5 text-[10px] text-foreground/70">
+          {typeLabel}
+        </span>
+        <span className="min-w-0 line-clamp-2 wrap-break-word">
+          <HighlightedText text={hit.snippet.text} ranges={hit.snippet.ranges ?? []} />
+        </span>
+      </div>
+    </>
+  )
+}
+
+function formatMemorySearchType(hit: ChronicleSearchHit): string {
+  if (hit.memorySource === 'imported') {
+    return 'Imported'
+  }
+  return hit.memoryType === '6h' ? '6h Memory' : 'Memory'
+}
+
+function formatKnowledgeSearchType(hit: ChronicleSearchHit): string {
+  switch (hit.cardType) {
+    case 'decision':
+      return 'Decision'
+    case 'insight':
+      return 'Insight'
+    case 'task':
+      return 'Task'
+    case 'pattern':
+      return 'Pattern'
+    default:
+      return 'Knowledge'
+  }
+}
+
 const PRIORITY_CLASSES: Record<string, string> = {
   urgent: 'text-red-500',
   high: 'text-orange-500',
   medium: 'text-yellow-600',
   low: 'text-muted-foreground',
-  none: 'text-muted-foreground',
+  none: 'text-muted-foreground'
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
   return (
-    <span className={cn('text-[10px] shrink-0', PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES.none)}>
+    <span
+      className={cn('text-[10px] shrink-0', PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES.none)}
+    >
       {priority === 'none' ? '' : priority.charAt(0).toUpperCase() + priority.slice(1)}
     </span>
   )

@@ -12,6 +12,10 @@ use crate::audio::wav::{AudioArtifactMetadata, WavArtifact, write_audio_diagnost
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::time::Timestamp;
 
+#[cfg(target_os = "macos")]
+#[path = "screen_capture_kit_audio.rs"]
+mod screen_capture_kit_audio;
+
 const DEFAULT_AUDIO_SAMPLE_LIMIT: usize = 960_000;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +44,37 @@ pub struct MicrophoneCaptureReport {
 
 pub fn capture_system_audio_samples(duration_ms: u64) -> ChronicleResult<MicrophoneCaptureReport> {
     let duration_ms = duration_ms.clamp(100, 30_000);
+    #[cfg(target_os = "macos")]
+    if std::env::var("CRADLE_CHRONICLE_SYSTEM_AUDIO_BACKEND")
+        .map(|backend| backend.trim().eq_ignore_ascii_case("cpal"))
+        .unwrap_or(false)
+    {
+        return capture_system_audio_samples_with_cpal(duration_ms);
+    }
+    #[cfg(target_os = "macos")]
+    return match screen_capture_kit_audio::capture_system_audio_samples(duration_ms) {
+        Ok(report) => return Ok(report),
+        Err(screen_capture_error) => match capture_system_audio_samples_with_cpal(duration_ms) {
+            Ok(mut report) => {
+                report.source_sample_format = format!(
+                    "{}; fallback_after_screencapturekit_error={}",
+                    report.source_sample_format, screen_capture_error
+                );
+                return Ok(report);
+            }
+            Err(cpal_error) => Err(ChronicleError::Process(format!(
+                "ScreenCaptureKit system audio failed: {screen_capture_error}; CPAL loopback fallback failed: {cpal_error}"
+            ))),
+        },
+    };
+
+    #[cfg(not(target_os = "macos"))]
+    capture_system_audio_samples_with_cpal(duration_ms)
+}
+
+fn capture_system_audio_samples_with_cpal(
+    duration_ms: u64,
+) -> ChronicleResult<MicrophoneCaptureReport> {
     let host = cpal::default_host();
     let device = select_system_audio_input_device(&host)?;
     capture_from_input_device(device, duration_ms, "system-audio")
@@ -81,6 +116,7 @@ pub fn record_microphone_diagnostics(
     let recorded_at = Timestamp::now()?;
     let artifact_metadata = AudioArtifactMetadata {
         recorded_at,
+        source: "microphone".to_string(),
         sample_rate: capture.sample_rate,
         channels: capture.channels,
         source_sample_format: capture.source_sample_format.clone(),

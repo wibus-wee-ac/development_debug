@@ -1,5 +1,6 @@
 import { providerModelCache } from '@cradle/db'
 import { eq, lt } from 'drizzle-orm'
+import { z } from 'zod'
 
 import { db } from '../../infra'
 import type { ModelDescriptor } from './types'
@@ -12,18 +13,47 @@ export interface CachedModelsResult {
   cached: boolean
 }
 
+const ModelCapabilitiesSchema = z.object({
+  contextWindow: z.number().finite().optional(),
+  maxOutput: z.number().finite().optional(),
+  inputModalities: z.array(z.string()).optional(),
+  outputModalities: z.array(z.string()).optional(),
+  reasoning: z.boolean().optional(),
+  toolCall: z.boolean().optional(),
+  temperature: z.boolean().optional(),
+  structuredOutput: z.boolean().optional(),
+  cost: z.object({
+    input: z.number().finite().optional(),
+    output: z.number().finite().optional(),
+    cacheRead: z.number().finite().optional(),
+    cacheWrite: z.number().finite().optional(),
+  }).optional(),
+  family: z.string().optional(),
+  knowledgeCutoff: z.string().optional(),
+  releaseDate: z.string().optional(),
+  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+  registryModelId: z.string().optional(),
+  registryModelLabel: z.string().optional(),
+})
+
+const ModelDescriptorSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  capabilities: ModelCapabilitiesSchema,
+})
+
+const CachedModelsJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.array(ModelDescriptorSchema))
+
 export function getCachedModels(profileId: string): CachedModelsResult | null {
   const row = db().select().from(providerModelCache).where(eq(providerModelCache.profileId, profileId)).get()
   if (!row) {
     return null
   }
-  try {
-    const models = JSON.parse(row.modelsJson) as ModelDescriptor[]
-    return { models, fetchedAt: row.fetchedAt, cached: true }
-  }
-  catch {
-    return null
-  }
+  const models = CachedModelsJsonSchema.parse(row.modelsJson)
+  return { models, fetchedAt: row.fetchedAt, cached: true }
 }
 
 export function setCachedModels(profileId: string, models: ModelDescriptor[]): void {

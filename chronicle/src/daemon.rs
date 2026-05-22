@@ -6,20 +6,21 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crate::audio::{
     AudioArtifactMetadata, AudioTranscriptionPipeline, LocalTranscriptionPipeline, RmsActivityGate,
-    TranscriptionResult, capture_microphone_samples, capture_mixed_audio_samples,
-    capture_system_audio_samples, write_audio_segment_artifact,
+    TranscriptionResult, TranscriptionRuntime, capture_microphone_samples,
+    capture_mixed_audio_samples, capture_system_audio_samples, write_audio_segment_artifact,
 };
 use crate::config::{AudioCaptureSource, CaptureProvider, ChronicleConfig};
 use crate::cradle_client::{
-    ChronicleAudioProcessingStatus, ChronicleAudioRawSegmentProcessingResultReport,
-    ChronicleAudioRawSegmentReport, ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus,
-    ChronicleAudioTranscriptReport, ChronicleAudioTranscriptSegmentReport,
-    ChronicleAudioTranscriptSource, ChronicleAudioTranscriptStatus, ChronicleMemoryReport,
-    ChronicleSnapshotReport, ChronicleTranscriptConfidence, CradleClient,
+    ChronicleAccessibilityEventReport, ChronicleAudioProcessingStatus,
+    ChronicleAudioRawSegmentProcessingResultReport, ChronicleAudioRawSegmentReport,
+    ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus, ChronicleAudioTranscriptReport,
+    ChronicleAudioTranscriptSegmentReport, ChronicleAudioTranscriptSource,
+    ChronicleAudioTranscriptStatus, ChronicleMemoryReport, ChronicleSnapshotReport,
+    ChronicleSpeakerProfileReport, ChronicleTranscriptConfidence, CradleClient,
 };
 use crate::cron::{CronScheduler, CronTickResult, TaskKind, default_jobs};
 use crate::dream::{DreamConfig, DreamEngine, DreamMode};
@@ -34,6 +35,7 @@ use crate::recorder::fingerprint::FrameFingerprint;
 use crate::recorder::sampler::AdaptiveSampler;
 use crate::screen::BrowserWindowObservation;
 use crate::screen::inbox::InboxCaptureSource;
+use crate::screen::privacy_filter::{PrivacyFilter, PrivacyFilterRules};
 use crate::slack::SlackScanner;
 use crate::time::Timestamp;
 use crate::transcript_inbox::process_transcript_inbox_tick;
@@ -352,6 +354,8 @@ fn process_ax_observer_events(
         return;
     };
     for event in observer.drain(4) {
+        let captured_at = Timestamp::now().unwrap_or_else(|_| Timestamp::from_seconds(0));
+        report_accessibility_event(client, &event, captured_at);
         let accessibility = read_ax_observer_accessibility_capture(&event);
         match capture_macos_with_accessibility(config, *frame_index, accessibility) {
             Ok(report) => {
@@ -377,6 +381,71 @@ fn process_ax_observer_events(
     }
 }
 
+#[cfg(target_os = "macos")]
+fn report_accessibility_event(
+    client: &CradleClient,
+    event: &crate::screen::macos::AxObserverNotification,
+    captured_at: Timestamp,
+) {
+    let report = ChronicleAccessibilityEventReport {
+        source_id: accessibility_event_source_id(event, captured_at),
+        captured_at: captured_at.filesystem(),
+        provider: "macos-ax-observer".to_string(),
+        app_bundle_id: Some(event.app_bundle_identifier.clone()),
+        pid: event.pid,
+        notification: event.notification.clone(),
+        dropped_before: event.dropped_before,
+        snapshot_id: None,
+        accessibility_snapshot_id: None,
+        metadata: serde_json::json!({
+            "runtime": "macos-ax-observer",
+            "targetBundleIdentifier": event.app_bundle_identifier,
+            "targetPid": event.pid
+        }),
+    };
+    if let Err(error) = client.record_accessibility_event(&report) {
+        eprintln!(
+            "cradle chronicle AXObserver event report failed, keeping local capture path: {error}"
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn accessibility_event_source_id(
+    event: &crate::screen::macos::AxObserverNotification,
+    captured_at: Timestamp,
+) -> String {
+    format!(
+        "accessibility-event:{}:{}:{}:{}:{}",
+        sanitize_source_id_part(&event.app_bundle_identifier),
+        event.pid,
+        sanitize_source_id_part(&event.notification),
+        captured_at.compact(),
+        event.dropped_before
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn sanitize_source_id_part(value: &str) -> String {
+    let normalized = value
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let normalized = normalized.trim_matches('-');
+    if normalized.is_empty() {
+        "unknown".to_string()
+    } else {
+        normalized.to_string()
+    }
+}
+
 fn capture_once(
     config: &ChronicleConfig,
     frame_index: u64,
@@ -391,7 +460,12 @@ fn capture_inbox(config: &ChronicleConfig) -> ChronicleResult<crate::RecorderRep
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let source = InboxCaptureSource::new(&config.inbox_root)?;
-    let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
+    let mut manager = RecorderManager::with_privacy_filter(
+        source,
+        ObservedTextExtractor,
+        store,
+        privacy_filter_from_config(config),
+    );
     manager.run_until_exhausted()
 }
 
@@ -402,11 +476,17 @@ fn capture_macos(
 ) -> ChronicleResult<crate::RecorderReport> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
+    let privacy_filter = privacy_filter_from_config(config);
     let source = match config.display_id {
-        Some(display_id) => MacosCaptureSource::capture(display_id, frame_index)?,
-        None => MacosCaptureSource::capture_all(frame_index)?,
+        Some(display_id) => MacosCaptureSource::capture_with_privacy_filter(
+            display_id,
+            frame_index,
+            &privacy_filter,
+        )?,
+        None => MacosCaptureSource::capture_all_with_privacy_filter(frame_index, &privacy_filter)?,
     };
-    let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
+    let mut manager =
+        RecorderManager::with_privacy_filter(source, ObservedTextExtractor, store, privacy_filter);
     manager.run_until_exhausted()
 }
 
@@ -418,14 +498,31 @@ fn capture_macos_with_accessibility(
 ) -> ChronicleResult<crate::RecorderReport> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
+    let privacy_filter = privacy_filter_from_config(config);
     let source = match config.display_id {
-        Some(display_id) => {
-            MacosCaptureSource::capture_with_accessibility(display_id, frame_index, accessibility)?
-        }
-        None => MacosCaptureSource::capture_all_with_accessibility(frame_index, accessibility)?,
+        Some(display_id) => MacosCaptureSource::capture_with_accessibility_and_privacy_filter(
+            display_id,
+            frame_index,
+            accessibility,
+            &privacy_filter,
+        )?,
+        None => MacosCaptureSource::capture_all_with_accessibility_and_privacy_filter(
+            frame_index,
+            accessibility,
+            &privacy_filter,
+        )?,
     };
-    let mut manager = RecorderManager::new(source, ObservedTextExtractor, store);
+    let mut manager =
+        RecorderManager::with_privacy_filter(source, ObservedTextExtractor, store, privacy_filter);
     manager.run_until_exhausted()
+}
+
+fn privacy_filter_from_config(config: &ChronicleConfig) -> PrivacyFilter {
+    PrivacyFilter::new(PrivacyFilterRules {
+        app_bundle_ids: config.privacy_sensitive_app_bundle_ids.clone(),
+        title_patterns: config.privacy_sensitive_title_patterns.clone(),
+        url_patterns: config.privacy_sensitive_url_patterns.clone(),
+    })
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -581,7 +678,7 @@ fn process_cron_jobs(
     cron: &mut CronScheduler,
     pipeline: &mut Pipeline,
     frames: &[PersistedFrame],
-    _storage_root: &Path,
+    storage_root: &Path,
 ) {
     let now = match Timestamp::now() {
         Ok(t) => t,
@@ -606,6 +703,7 @@ fn process_cron_jobs(
                     let chunks = pipeline.drain_chunks();
                     engine.load_chunks(chunks);
                     let report = engine.run(DreamMode::Archive, now);
+                    pipeline.replace_chunks(engine.take_chunks());
                     eprintln!(
                         "cradle chronicle dream-archive: archived={}",
                         report.archived_count
@@ -618,6 +716,7 @@ fn process_cron_jobs(
                     let chunks = pipeline.drain_chunks();
                     engine.load_chunks(chunks);
                     let report = engine.run(DreamMode::Merge, now);
+                    pipeline.replace_chunks(engine.take_chunks());
                     eprintln!(
                         "cradle chronicle dream-merge: merged={}",
                         report.merged_count
@@ -630,6 +729,7 @@ fn process_cron_jobs(
                     let chunks = pipeline.drain_chunks();
                     engine.load_chunks(chunks);
                     let report = engine.run(DreamMode::Prune, now);
+                    pipeline.replace_chunks(engine.take_chunks());
                     eprintln!(
                         "cradle chronicle dream-prune: pruned={}",
                         report.pruned_count
@@ -640,10 +740,19 @@ fn process_cron_jobs(
                     eprintln!("cradle chronicle cron: health check ok");
                     cron.mark_completed(&job_id, now, "ok");
                 }
-                Some(TaskKind::Cleanup) => {
-                    eprintln!("cradle chronicle cron: cleanup (not yet fully implemented)");
-                    cron.mark_completed(&job_id, now, "ok");
-                }
+                Some(TaskKind::Cleanup) => match cleanup_runtime_storage(storage_root, now) {
+                    Ok(report) => {
+                        eprintln!(
+                            "cradle chronicle cron: cleanup removed_files={} removed_dirs={} kept_files={}",
+                            report.removed_files, report.removed_dirs, report.kept_files
+                        );
+                        cron.mark_completed(&job_id, now, "ok");
+                    }
+                    Err(error) => {
+                        eprintln!("cradle chronicle cron cleanup error: {error}");
+                        cron.mark_completed(&job_id, now, "error");
+                    }
+                },
                 None => {}
             }
         }
@@ -762,14 +871,14 @@ fn report_audio_raw_segment(client: &CradleClient, report: &AudioSegmentArtifact
         active: report.active,
         vad_implemented: true,
         asr_implemented: true,
-        speaker_labeling_implemented: false,
+        speaker_labeling_implemented: true,
         metadata: serde_json::json!({
             "runtime": "local-audio-segment",
             "source": report.source.as_str(),
             "sourceSampleFormat": report.source_sample_format,
             "vadImplemented": true,
             "asrImplemented": true,
-            "speakerLabelingImplemented": false
+            "speakerLabelingImplemented": true
         }),
     };
     if let Err(error) = client.record_audio_raw_segment(&payload) {
@@ -791,24 +900,38 @@ fn process_audio_transcription(
             &source_id,
             ChronicleAudioRawSegmentStatus::Ignored,
             None,
+            Vec::new(),
+            None,
             None,
         );
         return;
     }
 
-    match local_transcription.process(&report.samples, report.sample_rate) {
-        Ok(result) if result.text.trim().is_empty() => {
+    match local_transcription.process_wav_with_fallback(
+        &report.samples,
+        report.sample_rate,
+        &report.wav_path,
+    ) {
+        Ok(output) if output.result.text.trim().is_empty() => {
             report_audio_processing_result(
                 client,
                 &source_id,
                 ChronicleAudioRawSegmentStatus::Ignored,
                 None,
+                Vec::new(),
                 None,
+                Some(output.runtime),
             );
         }
-        Ok(result) => {
+        Ok(output) => {
             let transcript_source_id = format!("transcript:{source_id}");
-            let transcript = build_audio_transcript_report(&transcript_source_id, report, &result);
+            let transcript = build_audio_transcript_report(
+                &transcript_source_id,
+                report,
+                &output.result,
+                output.runtime,
+            );
+            let speaker_profile_ids = report_speaker_profiles(client, &output.result);
             match client.record_audio_transcript(&transcript) {
                 Ok(()) => {
                     report_audio_processing_result(
@@ -816,7 +939,9 @@ fn process_audio_transcription(
                         &source_id,
                         ChronicleAudioRawSegmentStatus::Processed,
                         Some(transcript_source_id),
+                        speaker_profile_ids,
                         None,
+                        Some(output.runtime),
                     );
                 }
                 Err(error) => {
@@ -825,7 +950,9 @@ fn process_audio_transcription(
                         &source_id,
                         ChronicleAudioRawSegmentStatus::Error,
                         Some(transcript_source_id),
+                        speaker_profile_ids,
                         Some(error.to_string()),
+                        Some(output.runtime),
                     );
                 }
             }
@@ -836,7 +963,9 @@ fn process_audio_transcription(
                 &source_id,
                 ChronicleAudioRawSegmentStatus::Error,
                 None,
+                Vec::new(),
                 Some(error.to_string()),
+                None,
             );
         }
     }
@@ -846,7 +975,9 @@ fn build_audio_transcript_report(
     source_id: &str,
     report: &AudioSegmentArtifactReport,
     result: &TranscriptionResult,
+    runtime: TranscriptionRuntime,
 ) -> ChronicleAudioTranscriptReport {
+    let runtime_name = runtime.as_str();
     let fallback_segment = ChronicleAudioTranscriptSegmentReport {
         start_ms: 0,
         end_ms: Some(result.duration_ms.max(report.duration_ms)),
@@ -854,7 +985,7 @@ fn build_audio_transcript_report(
         text: result.text.clone(),
         confidence: ChronicleTranscriptConfidence::new(result.confidence as f32).ok(),
         language: result.language.clone(),
-        metadata: serde_json::json!({ "runtime": "local-onnx-asr", "source": report.source.as_str() }),
+        metadata: serde_json::json!({ "runtime": runtime_name, "source": report.source.as_str() }),
     };
     let segments = if result.segments.is_empty() {
         vec![fallback_segment]
@@ -869,7 +1000,7 @@ fn build_audio_transcript_report(
                 text: segment.text.clone(),
                 confidence: ChronicleTranscriptConfidence::new(segment.confidence as f32).ok(),
                 language: result.language.clone(),
-                metadata: serde_json::json!({ "runtime": "local-onnx-asr", "source": report.source.as_str() }),
+                metadata: serde_json::json!({ "runtime": runtime_name, "source": report.source.as_str() }),
             })
             .collect()
     };
@@ -888,7 +1019,7 @@ fn build_audio_transcript_report(
         transcript_path: None,
         segments,
         metadata: serde_json::json!({
-            "runtime": "local-onnx-asr",
+            "runtime": runtime_name,
             "source": report.source.as_str(),
             "rawSourceId": audio_segment_source_id(report.source, &report.metadata_path),
             "sampleRate": report.sample_rate,
@@ -903,8 +1034,13 @@ fn report_audio_processing_result(
     source_id: &str,
     status: ChronicleAudioRawSegmentStatus,
     transcript_source_id: Option<String>,
+    speaker_profile_ids: Vec<String>,
     error_message: Option<String>,
+    runtime: Option<TranscriptionRuntime>,
 ) {
+    let runtime_name = runtime
+        .map(TranscriptionRuntime::as_str)
+        .unwrap_or("sensevoice-onnx");
     let result = ChronicleAudioRawSegmentProcessingResultReport {
         status: Some(status),
         vad_status: Some(ChronicleAudioProcessingStatus::Ready),
@@ -913,15 +1049,42 @@ fn report_audio_processing_result(
         } else {
             ChronicleAudioProcessingStatus::Ready
         }),
-        speaker_status: Some(ChronicleAudioProcessingStatus::NotImplemented),
+        speaker_status: Some(if error_message.is_some() {
+            ChronicleAudioProcessingStatus::Error
+        } else {
+            ChronicleAudioProcessingStatus::Ready
+        }),
         transcript_source_id,
-        speaker_profile_ids: Vec::new(),
+        speaker_profile_ids,
         error_message,
-        metadata: serde_json::json!({ "runtime": "local-onnx-asr" }),
+        metadata: serde_json::json!({ "runtime": runtime_name, "speakerRuntime": "local-onnx-speaker" }),
     };
     if let Err(error) = client.record_audio_raw_segment_processing_result(source_id, &result) {
         eprintln!("cradle chronicle raw audio processing result report failed: {error}");
     }
+}
+
+fn report_speaker_profiles(client: &CradleClient, result: &TranscriptionResult) -> Vec<String> {
+    let mut profile_ids = Vec::new();
+    for profile in &result.speaker_profiles {
+        let payload = ChronicleSpeakerProfileReport {
+            display_name: profile.display_name.clone(),
+            aliases: Vec::new(),
+            embedding: Some(profile.embedding.clone()),
+            embedding_model_id: Some(profile.embedding_model_id.clone()),
+            sample_count: profile.sample_count,
+            last_seen_at: None,
+            metadata: serde_json::json!({
+                "runtime": "local-onnx-speaker",
+                "source": "audio-transcription"
+            }),
+        };
+        match client.record_speaker_profile(&payload) {
+            Ok(()) => profile_ids.push(profile.display_name.clone()),
+            Err(error) => eprintln!("cradle chronicle speaker profile report failed: {error}"),
+        }
+    }
+    profile_ids
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -952,6 +1115,7 @@ fn write_audio_segment(config: &ChronicleConfig) -> ChronicleResult<AudioSegment
     let activity = gate.analyze(&capture.samples);
     let metadata = AudioArtifactMetadata {
         recorded_at: Timestamp::now()?,
+        source: config.audio_source.as_str().to_string(),
         sample_rate: capture.sample_rate,
         channels: capture.channels,
         source_sample_format: capture.source_sample_format,
@@ -1122,9 +1286,171 @@ fn cleanup_pid_file(storage_root: &Path) {
     let _ = fs::remove_file(pid_path);
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct CleanupReport {
+    removed_files: usize,
+    removed_dirs: usize,
+    kept_files: usize,
+}
+
+const CLEANUP_PROCESSED_INBOX_RETENTION_SECS: u64 = 7 * 24 * 60 * 60;
+
+fn cleanup_runtime_storage(storage_root: &Path, now: Timestamp) -> ChronicleResult<CleanupReport> {
+    let mut report = CleanupReport::default();
+    cleanup_stale_runtime_files(storage_root, &mut report)?;
+    cleanup_processed_inbox(storage_root, now, &mut report)?;
+    cleanup_empty_dirs(storage_root, &mut report)?;
+    Ok(report)
+}
+
+fn cleanup_stale_runtime_files(
+    storage_root: &Path,
+    report: &mut CleanupReport,
+) -> ChronicleResult<()> {
+    let pid_path = storage_root.join("chronicle-started.pid");
+    if !pid_path.exists() {
+        return Ok(());
+    }
+    let content =
+        fs::read_to_string(&pid_path).map_err(|error| ChronicleError::io_at(&pid_path, error))?;
+    let stale = content
+        .trim()
+        .parse::<u32>()
+        .map(|pid| pid != std::process::id() && !process_is_running(pid))
+        .unwrap_or(true);
+    if stale {
+        match fs::remove_file(&pid_path) {
+            Ok(()) => report.removed_files += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(ChronicleError::io_at(pid_path, error)),
+        }
+    } else {
+        report.kept_files += 1;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn process_is_running(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+#[cfg(not(unix))]
+fn process_is_running(pid: u32) -> bool {
+    pid == std::process::id()
+}
+
+fn cleanup_processed_inbox(
+    storage_root: &Path,
+    now: Timestamp,
+    report: &mut CleanupReport,
+) -> ChronicleResult<()> {
+    let cutoff = now
+        .seconds_since_epoch()
+        .saturating_sub(CLEANUP_PROCESSED_INBOX_RETENTION_SECS);
+    for relative in [
+        Path::new("inbox/processed"),
+        Path::new("inbox/audio-transcripts/processed"),
+    ] {
+        remove_processed_files_older_than(&storage_root.join(relative), cutoff, report)?;
+    }
+    Ok(())
+}
+
+fn remove_processed_files_older_than(
+    dir: &Path,
+    cutoff_secs: u64,
+    report: &mut CleanupReport,
+) -> ChronicleResult<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir).map_err(|error| ChronicleError::io_at(dir, error))? {
+        let entry = entry.map_err(|error| ChronicleError::io_at(dir, error))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| ChronicleError::io_at(&path, error))?;
+        if file_type.is_dir() {
+            remove_processed_files_older_than(&path, cutoff_secs, report)?;
+            continue;
+        }
+        if !file_type.is_file() {
+            report.kept_files += 1;
+            continue;
+        }
+        let modified = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(system_time_to_unix_secs);
+        if modified.is_some_and(|modified_secs| modified_secs <= cutoff_secs) {
+            fs::remove_file(&path).map_err(|error| ChronicleError::io_at(&path, error))?;
+            report.removed_files += 1;
+        } else {
+            report.kept_files += 1;
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_empty_dirs(storage_root: &Path, report: &mut CleanupReport) -> ChronicleResult<()> {
+    for relative in [
+        Path::new("inbox/processed"),
+        Path::new("inbox/audio-transcripts/processed"),
+    ] {
+        remove_empty_dirs(&storage_root.join(relative), report)?;
+    }
+    Ok(())
+}
+
+fn remove_empty_dirs(dir: &Path, report: &mut CleanupReport) -> ChronicleResult<bool> {
+    if !dir.exists() {
+        return Ok(false);
+    }
+    let mut is_empty = true;
+    for entry in fs::read_dir(dir).map_err(|error| ChronicleError::io_at(dir, error))? {
+        let entry = entry.map_err(|error| ChronicleError::io_at(dir, error))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|error| ChronicleError::io_at(&path, error))?;
+        if file_type.is_dir() {
+            if !remove_empty_dirs(&path, report)? {
+                is_empty = false;
+            }
+        } else {
+            is_empty = false;
+        }
+    }
+    if is_empty {
+        match fs::remove_dir(dir) {
+            Ok(()) => {
+                report.removed_dirs += 1;
+                Ok(true)
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty => Ok(false),
+            Err(error) => Err(ChronicleError::io_at(dir, error)),
+        }
+    } else {
+        Ok(false)
+    }
+}
+
+fn system_time_to_unix_secs(time: SystemTime) -> Option<u64> {
+    time.duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::time::SystemTime;
     use std::time::{Duration, Instant};
 
     use super::InstanceLock;
@@ -1191,4 +1517,77 @@ mod tests {
         assert!(super::audio_segment_due(older, interval));
         assert!(super::audio_segment_due(None, interval));
     }
+
+    #[test]
+    fn cleanup_runtime_storage_keeps_evidence_and_removes_old_processed_inbox() {
+        let root = std::env::temp_dir().join(format!(
+            "cradle-chronicle-cleanup-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+
+        let processed = root.join("inbox/audio-transcripts/processed");
+        fs::create_dir_all(&processed).unwrap();
+        let old_processed = processed.join("old.json");
+        let current_processed = processed.join("current.json");
+        fs::write(&old_processed, b"old").unwrap();
+        fs::write(&current_processed, b"current").unwrap();
+
+        set_file_mtime(
+            &old_processed,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(100),
+        );
+        set_file_mtime(
+            &current_processed,
+            SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+        );
+
+        let evidence_dir = root.join("1/2026-05-21T10-00-00Z");
+        fs::create_dir_all(&evidence_dir).unwrap();
+        let snapshot = evidence_dir.join("snapshot.json");
+        fs::write(&snapshot, b"{}").unwrap();
+
+        let stale_pid = root.join("chronicle-started.pid");
+        fs::write(&stale_pid, b"999999").unwrap();
+
+        let report =
+            super::cleanup_runtime_storage(&root, crate::time::Timestamp::from_seconds(1_000_000))
+                .expect("cleanup should succeed");
+
+        assert!(report.removed_files >= 2);
+        assert!(!old_processed.exists());
+        assert!(!stale_pid.exists());
+        assert!(current_processed.exists());
+        assert!(snapshot.exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    fn set_file_mtime(path: &std::path::Path, time: SystemTime) {
+        use std::os::unix::ffi::OsStrExt;
+
+        let secs = time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("mtime should be after epoch")
+            .as_secs() as libc::time_t;
+        let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
+            .expect("test path should not contain nul");
+        let times = [
+            libc::timespec {
+                tv_sec: secs,
+                tv_nsec: 0,
+            },
+            libc::timespec {
+                tv_sec: secs,
+                tv_nsec: 0,
+            },
+        ];
+        let result = unsafe { libc::utimensat(libc::AT_FDCWD, c_path.as_ptr(), times.as_ptr(), 0) };
+        assert_eq!(result, 0);
+    }
+
+    #[cfg(not(unix))]
+    fn set_file_mtime(_path: &std::path::Path, _time: SystemTime) {}
 }

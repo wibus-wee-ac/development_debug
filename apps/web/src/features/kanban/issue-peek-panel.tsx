@@ -3,9 +3,9 @@ import { XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
+import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 
 import { formatIssueId } from './shared/format-issue-id'
-import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -53,7 +53,6 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
   const { data: statuses = [] } = useStatuses(workspaceId)
 
   const status = issue?.statusId ? statuses.find(s => s.id === issue.statusId) : undefined
-  const labels = IssueLabelsJsonSchema.parse(issue?.labels)
 
   return (
     <m.div
@@ -69,71 +68,93 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
           Loading…
         </div>
       ) : (
-        <div className="flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 pt-2.5">
-            <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
-              {formatIssueId(issue, workspaces)}
-            </span>
-            <button
-              type="button"
-              onClick={onClose}
-              className="size-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              aria-label="Close peek"
-            >
-              <XIcon className="size-3.5" />
-            </button>
-          </div>
+        <IssuePeekContent
+          issue={issue}
+          status={status}
+          issueId={issueId}
+          workspaces={workspaces}
+          onClose={onClose}
+          onOpenDetail={onOpenDetail}
+        />
+      )}
+    </m.div>
+  )
+}
 
-          {/* Title */}
-          <div className="px-4 py-1">
-            <button
-              type="button"
-              onClick={() => onOpenDetail(issueId)}
-              className="text-left text-lg font-medium text-foreground leading-snug hover:text-foreground/80 transition-colors"
-            >
-              {issue.title}
-            </button>
-          </div>
+function IssuePeekContent({
+  issue,
+  status,
+  issueId,
+  workspaces,
+  onClose,
+  onOpenDetail,
+}: {
+  issue: KanbanIssue
+  status: KanbanStatus | undefined
+  issueId: string
+  workspaces: ReturnType<typeof useWorkspaces>['workspaces']
+  onClose: () => void
+  onOpenDetail: (id: string) => void
+}) {
+  const labels = issue.labels
 
-          {/* Description */}
-          {issue.description && (
-            <div className="px-4 py-1 max-h-80 overflow-y-auto mask-[linear-gradient(to_bottom,transparent_0,black_8px,black_calc(100%-12px),transparent_100%)] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-              <div className="py-1 h-full text-muted-foreground leading-relaxed **:text-sm **:leading-relaxed">
-                <StaticRender content={issue.description} />
-              </div>
-            </div>
-          )}
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between px-4 pt-2.5">
+        <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
+          {formatIssueId(issue, workspaces)}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="size-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Close peek"
+        >
+          <XIcon className="size-3.5" />
+        </button>
+      </div>
 
-          {/* Properties */}
-          <div className="px-4 py-2.5 flex flex-col gap-2.5">
-            <div className="flex items-center gap-4">
-              {/* Status */}
-              {status && (
-                <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                  <StatusIcon category={status.category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={13} />
-                  <span>{status.name}</span>
-                </span>
-              )}
+      <div className="px-4 py-1">
+        <button
+          type="button"
+          onClick={() => onOpenDetail(issueId)}
+          className="text-left text-lg font-medium text-foreground leading-snug hover:text-foreground/80 transition-colors"
+        >
+          {issue.title}
+        </button>
+      </div>
 
-              {/* Priority */}
-              {issue.priority && issue.priority !== 'none' && (
-                <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
-                  <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
-                  <span>{priorityLabel[issue.priority] ?? ''}</span>
-                </span>
-              )}
-            </div>
-
-            {/* Labels */}
-            {labels.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {labels.map(l => <LabelChip key={l} label={l} />)}
-              </div>
-            )}
+      {issue.description && (
+        <div className="px-4 py-1 max-h-80 overflow-y-auto mask-[linear-gradient(to_bottom,transparent_0,black_8px,black_calc(100%-12px),transparent_100%)] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+          <div className="py-1 h-full text-muted-foreground leading-relaxed **:text-sm **:leading-relaxed">
+            <StaticRender content={issue.description} />
           </div>
         </div>
       )}
-    </m.div>
+
+      <div className="px-4 py-2.5 flex flex-col gap-2.5">
+        <div className="flex items-center gap-4">
+          {status && (
+            <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <StatusIcon category={status.category as 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'} size={13} />
+              <span>{status.name}</span>
+            </span>
+          )}
+
+          {issue.priority && issue.priority !== 'none' && (
+            <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
+              <span>{priorityLabel[issue.priority] ?? ''}</span>
+            </span>
+          )}
+        </div>
+
+        {labels.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {labels.map(label => <LabelChip key={label} label={label} />)}
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

@@ -7,6 +7,7 @@ import type {
   ObservabilitySeverity,
   ObservabilitySource,
 } from '@cradle/ipc'
+import { z } from 'zod'
 
 export type {
   ObservabilityCategory,
@@ -42,8 +43,43 @@ export interface CreateEventInput {
   recordedAt?: number
 }
 
-export function createObservabilityEvent(input: CreateEventInput): ObservabilityEvent {
+const CreateEventInputSchema = z.object({
+  source: z.custom<ObservabilitySource>(),
+  code: z.string(),
+  severity: z.custom<ObservabilitySeverity>(),
+  category: z.custom<ObservabilityCategory>(),
+  message: z.string(),
+  attrs: z.record(z.string(), z.unknown()).optional(),
+  chatSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  messageId: z.string().optional(),
+  traceId: z.string().optional(),
+  dedupeKey: z.string().optional(),
+  parentEventId: z.string().optional(),
+  occurredAt: z.number().optional(),
+  recordedAt: z.number().optional(),
+})
+
+const DedupeKeyPartSchema = z.string().nullish().transform((value) => {
+  if (value == null) {
+    return '-'
+  }
+  return value
+})
+
+const DedupeKeyInputSchema = z.object({
+  code: z.string(),
+  chatSessionId: DedupeKeyPartSchema,
+  runId: DedupeKeyPartSchema,
+  handlerName: DedupeKeyPartSchema,
+})
+
+export function createObservabilityEvent(rawInput: CreateEventInput): ObservabilityEvent {
   const now = Date.now()
+  const input = CreateEventInputSchema.extend({
+    occurredAt: z.number().default(now),
+    recordedAt: z.number().default(now),
+  }).parse(rawInput)
   return {
     id: randomUUID(),
     schemaVersion: OBSERVABILITY_SCHEMA_VERSION,
@@ -59,8 +95,8 @@ export function createObservabilityEvent(input: CreateEventInput): Observability
     traceId: input.traceId,
     dedupeKey: input.dedupeKey,
     parentEventId: input.parentEventId,
-    occurredAt: input.occurredAt ?? now,
-    recordedAt: input.recordedAt ?? now,
+    occurredAt: input.occurredAt,
+    recordedAt: input.recordedAt,
   }
 }
 
@@ -71,8 +107,9 @@ export interface DedupeKeyInput {
   handlerName?: string | null
 }
 
-export function createDedupeKey(input: DedupeKeyInput): string {
-  return `${input.code}:${input.chatSessionId ?? '-'}:${input.runId ?? '-'}:${input.handlerName ?? '-'}`
+export function createDedupeKey(rawInput: DedupeKeyInput): string {
+  const input = DedupeKeyInputSchema.parse(rawInput)
+  return `${input.code}:${input.chatSessionId}:${input.runId}:${input.handlerName}`
 }
 
 export interface IncidentRowInput {

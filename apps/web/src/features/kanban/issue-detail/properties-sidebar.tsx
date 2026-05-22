@@ -1,5 +1,5 @@
 import { BotIcon, PlusIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   DropdownMenu,
@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
-import { IssueLabelsJsonSchema, priorityOptions } from '../shared/issue-metadata'
+import { priorityOptions } from '../shared/issue-metadata'
 import { LabelChip } from '../shared/label-chip'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
@@ -43,10 +43,10 @@ interface PropertiesSidebarProps {
   onUpdate: (patch: IssuePatch) => void
 }
 
-export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) {
+export const PropertiesSidebar = memo(function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) {
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
-  const labels = IssueLabelsJsonSchema.parse(issue.labels)
+  const labels = issue.labels
 
   return (
     <div className="flex flex-col gap-1">
@@ -137,7 +137,7 @@ export function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _w
       </div>
     </div>
   )
-}
+})
 
 function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (

@@ -1,4 +1,4 @@
-import type { KanbanIssueComment as DbKanbanIssueComment } from '@cradle/db'
+import type { Issue as DbIssue, KanbanIssueComment as DbKanbanIssueComment } from '@cradle/db'
 
 // ── DB entity types (from @cradle/db — import type only, erased by bundler) ──
 
@@ -13,7 +13,6 @@ export type {
   IssueRelation,
   IssueStatus,
   KanbanBoard,
-  KanbanIssue,
   KanbanIssueComment,
   KanbanIssueRelation,
   KanbanMilestone,
@@ -21,6 +20,8 @@ export type {
   Session,
   Workspace,
 } from '@cradle/db'
+
+export type KanbanIssue = Omit<DbIssue, 'labels'> & { labels: string[] }
 
 export interface IssueCommentAuthor {
   kind: 'user' | 'agent' | 'system'
@@ -209,6 +210,29 @@ interface _ThreadSearchParams {
   workspaceId?: string
   limit?: number
   snippetsPerHit?: number
+}
+
+export interface ChronicleSearchSnippet {
+  text: string
+  ranges: MatchRange[]
+}
+
+export interface ChronicleSearchHit {
+  type: 'memory' | 'knowledge'
+  id: string
+  workspaceId: string | null
+  workspaceName: string | null
+  title: string
+  titleRanges: MatchRange[]
+  snippet: ChronicleSearchSnippet
+  matchCount: number
+  score: number
+  updatedAt: number
+  memoryType?: '10min' | '6h'
+  memorySource?: 'llm' | 'local' | 'imported'
+  cardType?: 'fact' | 'insight' | 'decision' | 'task' | 'pattern'
+  dimension?: 'technical' | 'business' | 'personal' | 'project' | 'general'
+  status?: 'active' | 'merged' | 'archived' | 'deleted'
 }
 
 // ── Skills types ────────────────────────────────────────────────────────────

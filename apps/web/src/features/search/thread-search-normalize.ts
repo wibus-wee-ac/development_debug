@@ -1,66 +1,36 @@
-import type { MatchRange, ThreadSearchHit, ThreadSearchSnippet } from '~/lib/types'
+import { z } from 'zod'
 
-const FALLBACK_WORKSPACE_ID = 'unknown-workspace'
-const FALLBACK_SESSION_ID = 'unknown-session'
 const FTS_MARK_TAG_RE = /<\/?mark>/g
 
-type PartialThreadSearchSnippet = Partial<ThreadSearchSnippet>
+const MatchRangeSchema = z.object({
+  start: z.number(),
+  end: z.number(),
+})
 
-export interface ThreadSearchHitPayload extends Omit<Partial<ThreadSearchHit>, 'snippets'> {
-  snippets?: Array<PartialThreadSearchSnippet | undefined>
-}
+const ThreadSearchSnippetSchema = z.object({
+  text: z.string().default(''),
+  ranges: z.array(MatchRangeSchema).default([]),
+  messageRole: z.enum(['user', 'assistant']).default('user'),
+  messageId: z.string().min(1),
+  createdAt: z.number().default(0),
+}).transform(snippet => ({
+  ...snippet,
+  text: snippet.ranges.length > 0 ? snippet.text.replace(FTS_MARK_TAG_RE, '') : snippet.text,
+}))
 
-function normalizeRanges(ranges: MatchRange[] | undefined): MatchRange[] {
-  return Array.isArray(ranges) ? ranges : []
-}
+export const ThreadSearchHitSchema = z.object({
+  sessionId: z.string().min(1),
+  workspaceId: z.string().min(1),
+  workspaceName: z.string().nullable().default(null),
+  sessionTitle: z.string().default(''),
+  titleRanges: z.array(MatchRangeSchema).default([]),
+  snippets: z.array(ThreadSearchSnippetSchema).default([]),
+  matchCount: z.number().optional(),
+  score: z.number().default(0),
+  updatedAt: z.number().default(0),
+}).transform(hit => ({
+  ...hit,
+  matchCount: hit.matchCount ?? hit.snippets.length,
+}))
 
-function normalizeSnippet(
-  snippet: Partial<ThreadSearchSnippet> | undefined,
-  index: number,
-): ThreadSearchSnippet {
-  const ranges = normalizeRanges(snippet?.ranges)
-  const rawText = typeof snippet?.text === 'string' ? snippet.text : ''
-
-  return {
-    text: ranges.length > 0 ? rawText.replace(FTS_MARK_TAG_RE, '') : rawText,
-    ranges,
-    messageRole: snippet?.messageRole === 'assistant' ? 'assistant' : 'user',
-    messageId:
-      typeof snippet?.messageId === 'string' && snippet.messageId.length > 0
-        ? snippet.messageId
-        : `missing-message-${index}`,
-    createdAt: typeof snippet?.createdAt === 'number' ? snippet.createdAt : 0,
-  }
-}
-
-export function normalizeThreadSearchHit(hit: ThreadSearchHitPayload): ThreadSearchHit {
-  const snippets = Array.isArray(hit.snippets)
-    ? hit.snippets.map((snippet, index) => normalizeSnippet(snippet, index))
-    : []
-
-  return {
-    sessionId:
-      typeof hit.sessionId === 'string' && hit.sessionId.length > 0
-        ? hit.sessionId
-        : FALLBACK_SESSION_ID,
-    workspaceId:
-      typeof hit.workspaceId === 'string' && hit.workspaceId.length > 0
-        ? hit.workspaceId
-        : FALLBACK_WORKSPACE_ID,
-    workspaceName: typeof hit.workspaceName === 'string' ? hit.workspaceName : null,
-    sessionTitle: typeof hit.sessionTitle === 'string' ? hit.sessionTitle : '',
-    titleRanges: normalizeRanges(hit.titleRanges),
-    snippets,
-    matchCount: typeof hit.matchCount === 'number' ? hit.matchCount : snippets.length,
-    score: typeof hit.score === 'number' ? hit.score : 0,
-    updatedAt: typeof hit.updatedAt === 'number' ? hit.updatedAt : 0,
-  }
-}
-
-export function normalizeThreadSearchHits(hits: ThreadSearchHitPayload[] | undefined): ThreadSearchHit[] {
-  if (!Array.isArray(hits)) {
-    return []
-  }
-
-  return hits.map(normalizeThreadSearchHit)
-}
+export const ThreadSearchHitsSchema = z.array(ThreadSearchHitSchema).default([])

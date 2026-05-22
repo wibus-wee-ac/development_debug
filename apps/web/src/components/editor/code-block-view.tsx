@@ -42,6 +42,8 @@ import {
 } from '~/components/ui/combobox'
 import { cn } from '~/lib/cn'
 
+import { loadLanguage } from './shiki-highlighter'
+
 interface LanguageOption {
   value: string
   label: string
@@ -89,13 +91,12 @@ const LANGUAGE_OPTIONS: LanguageOption[] = [
 ]
 const ALL_LANGUAGE_OPTIONS = [AUTO_LANGUAGE, ...LANGUAGE_OPTIONS]
 
-// Lazy-load a language — calls the parent module's ensureLanguage
+// Lazy-loads a language when the user picks it from the code block menu.
 async function lazyLoadLang(lang: string): Promise<void> {
   if (!lang) {
     return
   }
-  const mod = await import('./shiki-code-block')
-  await mod.ensureLanguage(lang)
+  await loadLanguage(lang)
 }
 
 function getLanguageOption(value: string): LanguageOption {

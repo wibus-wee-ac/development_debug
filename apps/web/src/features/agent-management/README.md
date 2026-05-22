@@ -10,8 +10,8 @@ Agent 专属 Skills 基于文件系统表达，存储在 `~/.cradle/agents/{agen
 
 - **agent-detail.tsx**: Agent 详情页，提供内联编辑 identity、provider/model/thinking 统一选择器、system prompt、Claude Agent SDK haiku / sonnet / opus alias、CLI TUI env 输入反馈与 agent-private Skills 管理；alias 清空后直接映射主模型并打开当前 profile 的模型列表，并确保 provider 切换时默认模型与 thinking 能力会同步到 state
 - **agent-detail.test.ts**: Agent detail 的纯函数契约测试，覆盖 CLI TUI env 解析反馈、Claude Agent SDK alias config 序列化与创建按钮禁用原因
-- **agent-list.tsx**: Agent 列表，显示所有 Agent 卡片；点击行导航到 agent-detail；列表行现在展示绑定的 provider 名称，避免多个同类 provider 时无法分辨归属
-- **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持编辑 / 删除 / 启停；external provider source profile 使用固定 badge，不接受 plugin UI contribution
+- **agent-list.tsx**: Agent 列表，显示所有 Agent 卡片；点击行导航到 agent-detail；列表行现在展示绑定的 provider 名称，避免多个同类 provider 时无法分辨归属；draft row 使用即时布局挂载，避免列表高度动画；Settings Agents 首屏在 agents 与 profiles 两条 server-backed query 成功后记录 performance gate
+- **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持编辑 / 删除 / 启停；external provider source profile 使用固定 badge，不接受 plugin UI contribution；draft provider row 使用即时布局挂载，避免列表高度动画；Settings Providers 首屏在 profiles 与 external provider records 两条 server-backed query 成功后记录 performance gate
 - **avatar-url.ts**: 统一生成 Agent DiceBear avatar URL，避免列表与详情页重复编码规则
 - **custom-models-editor.tsx**: Provider 自定义模型编辑器，支持手动添加模型、models.dev 匹配补全与可访问的模型操作按钮
 - **custom-models-editor.test.tsx**: Custom models editor 的交互回归测试，覆盖 icon-only action label 与手动模型添加 fallback

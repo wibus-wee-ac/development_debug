@@ -167,7 +167,7 @@ describe('chatStreamingHandler', () => {
               toolName: 'Edit File',
               toolCallId: 'tool-edit',
               state: 'input-streaming',
-              input: undefined,
+              input: { input: '' },
             },
           },
           {

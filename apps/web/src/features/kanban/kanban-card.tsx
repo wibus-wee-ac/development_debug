@@ -1,7 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
@@ -10,10 +10,9 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
-import { IssueLabelsJsonSchema } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
-import { normalizeStatusCategory, StatusIcon } from './shared/status-icon'
+import { StatusCategorySchema, StatusIcon } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
 interface CardProps {
@@ -21,7 +20,7 @@ interface CardProps {
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   displayProperties: ViewConfig['displayProperties']
-  onClick: () => void
+  onOpenIssue: (id: string) => void
   onSelectionGesture?: (id: string, mode: 'toggle' | 'range') => void
   onHover?: (id: string | null) => void
   category?: string
@@ -36,12 +35,12 @@ const priorityLabel: Record<string, string> = {
   low: 'Low',
 }
 
-export function KanbanCard({
+function KanbanCardView({
   issue,
   statuses,
   milestones,
   displayProperties,
-  onClick,
+  onOpenIssue,
   onSelectionGesture,
   onHover,
   category,
@@ -62,9 +61,9 @@ export function KanbanCard({
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined
 
-  const labels = IssueLabelsJsonSchema.parse(issue.labels)
+  const labels = issue.labels
   const issueStatus = statuses.find(status => status.id === issue.statusId)
-  const statusCategory = normalizeStatusCategory(issueStatus?.category ?? category)
+  const statusCategory = StatusCategorySchema.parse(issueStatus?.category ?? category)
 
   useEffect(() => {
     return () => {
@@ -74,17 +73,21 @@ export function KanbanCard({
     }
   }, [])
 
+  const handleOpenIssue = useCallback(() => {
+    onOpenIssue(issue.id)
+  }, [issue.id, onOpenIssue])
+
   const openIssue = (delayMs: number) => {
     if (openTimerRef.current !== null) {
       window.clearTimeout(openTimerRef.current)
     }
     if (delayMs <= 0) {
-      onClick()
+      handleOpenIssue()
       return
     }
     openTimerRef.current = window.setTimeout(() => {
       openTimerRef.current = null
-      onClick()
+      handleOpenIssue()
     }, delayMs)
   }
 
@@ -118,7 +121,7 @@ export function KanbanCard({
       onMouseEnter={() => onHover?.(issue.id)}
       onMouseLeave={() => onHover?.(null)}
     >
-      <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={onClick}>
+      <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={handleOpenIssue}>
         <button
           type="button"
           ref={setNodeRef}
@@ -214,3 +217,5 @@ export function KanbanCard({
     </div>
   )
 }
+
+export const KanbanCard = memo(KanbanCardView)

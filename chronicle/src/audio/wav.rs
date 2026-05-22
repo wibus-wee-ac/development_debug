@@ -26,25 +26,12 @@ impl AudioArtifactKind {
             Self::Segment => "segments",
         }
     }
-
-    fn filename_suffix(self) -> &'static str {
-        match self {
-            Self::Diagnostics => "microphone-diagnostic",
-            Self::Segment => "microphone-segment",
-        }
-    }
-
-    fn runtime(self) -> &'static str {
-        match self {
-            Self::Diagnostics => "microphone-diagnostics",
-            Self::Segment => "microphone-segment",
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioArtifactMetadata {
     pub recorded_at: Timestamp,
+    pub source: String,
     pub sample_rate: u32,
     pub channels: u16,
     pub source_sample_format: String,
@@ -98,7 +85,10 @@ fn write_unique_artifact(
     let pid = std::process::id();
     let metadata_body = metadata_json(metadata, kind);
     for sequence in 0..10_000_u32 {
-        let base_name = format!("{timestamp}-{pid}-{sequence:04}-{}", kind.filename_suffix());
+        let base_name = format!(
+            "{timestamp}-{pid}-{sequence:04}-{}",
+            artifact_filename_suffix(metadata, kind)
+        );
         let wav_path = audio_root.join(format!("{base_name}.wav"));
         let metadata_path = audio_root.join(format!("{base_name}.json"));
         match write_mono_i16_wav_exclusive(&wav_path, samples, metadata.sample_rate) {
@@ -188,6 +178,7 @@ fn float_to_i16(sample: f32) -> i16 {
 }
 
 fn metadata_json(metadata: &AudioArtifactMetadata, kind: AudioArtifactKind) -> String {
+    let pipeline_implemented = matches!(kind, AudioArtifactKind::Segment);
     serde_json::json!({
         "version": 1,
         "recordedAt": metadata.recorded_at.filesystem(),
@@ -199,13 +190,51 @@ fn metadata_json(metadata: &AudioArtifactMetadata, kind: AudioArtifactKind) -> S
         "rms": metadata.rms,
         "peak": metadata.peak,
         "active": metadata.active,
-        "runtime": kind.runtime(),
-        "source": "microphone",
-        "vadImplemented": false,
-        "asrImplemented": false,
-        "speakerLabelingImplemented": false
+        "runtime": artifact_runtime(metadata, kind),
+        "source": metadata.source,
+        "vadImplemented": pipeline_implemented,
+        "asrImplemented": pipeline_implemented,
+        "speakerLabelingImplemented": pipeline_implemented
     })
     .to_string()
+}
+
+fn artifact_filename_suffix(metadata: &AudioArtifactMetadata, kind: AudioArtifactKind) -> String {
+    match kind {
+        AudioArtifactKind::Diagnostics => "microphone-diagnostic".to_string(),
+        AudioArtifactKind::Segment => {
+            format!("{}-segment", sanitize_artifact_source(&metadata.source))
+        }
+    }
+}
+
+fn artifact_runtime(metadata: &AudioArtifactMetadata, kind: AudioArtifactKind) -> String {
+    match kind {
+        AudioArtifactKind::Diagnostics => "microphone-diagnostics".to_string(),
+        AudioArtifactKind::Segment => {
+            format!("{}-segment", sanitize_artifact_source(&metadata.source))
+        }
+    }
+}
+
+fn sanitize_artifact_source(source: &str) -> String {
+    let normalized = source
+        .trim()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let normalized = normalized.trim_matches('-');
+    if normalized.is_empty() {
+        "audio".to_string()
+    } else {
+        normalized.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +255,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let metadata = AudioArtifactMetadata {
             recorded_at: Timestamp::from_seconds(1_779_125_791),
+            source: "microphone".to_string(),
             sample_rate: 16_000,
             channels: 1,
             source_sample_format: "f32".to_string(),
@@ -257,6 +287,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let metadata = AudioArtifactMetadata {
             recorded_at: Timestamp::from_seconds(1_779_125_791),
+            source: "system".to_string(),
             sample_rate: 16_000,
             channels: 1,
             source_sample_format: "f32".to_string(),
@@ -275,12 +306,14 @@ mod tests {
             artifact
                 .wav_path
                 .to_string_lossy()
-                .contains("microphone-segment")
+                .contains("system-segment")
         );
         let json = fs::read_to_string(artifact.metadata_path).expect("metadata should read");
-        assert!(json.contains("\"runtime\":\"microphone-segment\""));
-        assert!(json.contains("\"source\":\"microphone\""));
-        assert!(json.contains("\"vadImplemented\":false"));
+        assert!(json.contains("\"runtime\":\"system-segment\""));
+        assert!(json.contains("\"source\":\"system\""));
+        assert!(json.contains("\"vadImplemented\":true"));
+        assert!(json.contains("\"asrImplemented\":true"));
+        assert!(json.contains("\"speakerLabelingImplemented\":true"));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -294,6 +327,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         let metadata = AudioArtifactMetadata {
             recorded_at: Timestamp::from_seconds(1_779_125_791),
+            source: "microphone".to_string(),
             sample_rate: 16_000,
             channels: 1,
             source_sample_format: "f32".to_string(),

@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { z } from 'zod'
 
 import {
   getWorkspacesByIdGitBranchesOptions,
@@ -17,6 +18,38 @@ interface GitRemote {
   pushUrl: string | null
 }
 
+const GitStatusSchema = z.object({
+  branch: z.string(),
+  tracking: z.string().nullable(),
+  ahead: z.number(),
+  behind: z.number(),
+  isDetached: z.boolean(),
+})
+
+const GitBranchesSchema = z.object({
+  local: z.array(z.object({
+    name: z.string(),
+    isCurrent: z.boolean(),
+    tracking: z.string().optional(),
+  })),
+  remote: z.array(z.object({
+    name: z.string(),
+  })),
+})
+
+const GitGraphCommitListSchema = z.array(z.object({
+  sha: z.string(),
+  shortSha: z.string(),
+  parents: z.array(z.string()),
+  refs: z.array(z.string()),
+  subject: z.string(),
+  authorName: z.string(),
+  authorEmail: z.string(),
+  gravatarHash: z.string(),
+  date: z.string(),
+  timestamp: z.number(),
+})).default([])
+
 // ─── Re-export generated query key builders so callers don't import from api-gen ──
 
 export { getWorkspacesByIdGitStatusQueryKey as gitStatusQueryKey }
@@ -31,7 +64,7 @@ export function useGitStatus(workspaceId: string | null | undefined) {
     enabled: !!workspaceId,
     staleTime: 10_000,
     retry: false,
-    select: data => data as GitStatus,
+    select: data => GitStatusSchema.parse(data) satisfies GitStatus,
   })
 }
 
@@ -41,7 +74,7 @@ export function useGitBranches(workspaceId: string | null | undefined) {
     enabled: !!workspaceId,
     staleTime: 30_000,
     retry: false,
-    select: data => data as GitBranches,
+    select: data => GitBranchesSchema.parse(data) satisfies GitBranches,
   })
 }
 
@@ -69,6 +102,6 @@ export function useGitGraph(workspaceId: string | null | undefined, limit: numbe
     staleTime: 30_000,
     retry: false,
     placeholderData: keepPreviousData,
-    select: data => (data ?? []) as GitGraphCommit[],
+    select: data => GitGraphCommitListSchema.parse(data) satisfies GitGraphCommit[],
   })
 }

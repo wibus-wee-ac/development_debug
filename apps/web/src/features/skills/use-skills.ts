@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { z } from 'zod'
 
 import {
   deleteSkillsDocument,
@@ -29,6 +30,63 @@ const skillsInventoryQueryKey = (context?: SkillQueryContext) =>
   ['skills', 'inventory', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent'] as const
 const skillDocumentQueryKey = (context: SkillQueryContext | undefined, scope: SkillScope, name: string | null) =>
   ['skills', 'document', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent', scope, name ?? ''] as const
+const SkillScopeSchema = z.enum(['builtin', 'legacy', 'global', 'workspace', 'agent'])
+const SkillDocumentSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  body: z.string(),
+  frontmatter: z.record(z.string(), z.unknown()),
+  location: z.string(),
+  scope: SkillScopeSchema,
+  rootDir: z.string(),
+  skillDir: z.string(),
+})
+const SkillInventoryListSchema = z.array(z.object({
+  name: z.string(),
+  description: z.string(),
+  location: z.string(),
+  scope: SkillScopeSchema,
+  rootDir: z.string(),
+  skillDir: z.string(),
+  active: z.boolean(),
+  shadowedBy: SkillScopeSchema.nullable(),
+})).default([])
+const SkillExportResponseSchema = z.object({
+  destinationDir: z.string(),
+  ownerBoundary: z.object({
+    classification: z.literal('non-cradle-owned'),
+    owner: z.literal('user-selected-export-directory'),
+    consentRequired: z.literal(true),
+    consentConfirmed: z.literal(true),
+    destinationDir: z.string(),
+    targetPath: z.string(),
+  }),
+})
+const ParsedSkillSourceSchema = z.object({
+  type: z.enum(['github', 'gitlab', 'git', 'local']),
+  url: z.string(),
+  ref: z.string().optional(),
+  subpath: z.string().optional(),
+  label: z.string(),
+})
+const DiscoveredSkillSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  skillDir: z.string(),
+  relativePath: z.string(),
+})
+const SkillFetchSourceResponseSchema = z.object({
+  sessionId: z.string(),
+  source: ParsedSkillSourceSchema,
+  skills: z.array(DiscoveredSkillSchema),
+})
+const SkillImportFromFetchResponseSchema = z.object({
+  imported: z.array(SkillDocumentSchema),
+  errors: z.array(z.object({
+    dir: z.string(),
+    error: z.string(),
+  })),
+})
 
 function toIpcContext(context?: SkillQueryContext): { workspaceId?: string | null, agentId?: string | null } {
   return {
@@ -41,14 +99,14 @@ export function useSkills(context?: SkillQueryContext) {
   const queryClient = useQueryClient()
   const inventoryQueryKey = skillsInventoryQueryKey(context)
 
-  const { data: inventory = [], isLoading } = useQuery({
+  const { data: inventory = [], isLoading, isSuccess } = useQuery({
     queryKey: inventoryQueryKey,
     queryFn: async (): Promise<SkillInventoryEntry[]> => {
       const ctx = toIpcContext(context)
       const { data } = await getSkills({
         query: { workspaceId: ctx.workspaceId ?? undefined, agentId: ctx.agentId ?? undefined },
       })
-      return (data ?? []) as SkillInventoryEntry[]
+      return SkillInventoryListSchema.parse(data) satisfies SkillInventoryEntry[]
     },
   })
 
@@ -70,7 +128,7 @@ export function useSkills(context?: SkillQueryContext) {
           frontmatter: params.frontmatter,
         },
       })
-      return data as SkillDocument
+      return SkillDocumentSchema.parse(data) satisfies SkillDocument
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
@@ -97,7 +155,7 @@ export function useSkills(context?: SkillQueryContext) {
           },
         },
       })
-      return data as SkillDocument
+      return SkillDocumentSchema.parse(data) satisfies SkillDocument
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
@@ -126,7 +184,7 @@ export function useSkills(context?: SkillQueryContext) {
           overwrite: false,
         },
       })
-      return data as SkillDocument
+      return SkillDocumentSchema.parse(data) satisfies SkillDocument
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
@@ -139,6 +197,7 @@ export function useSkills(context?: SkillQueryContext) {
           scope: params.scope,
           name: params.name,
           destinationDir: params.destinationDir,
+          confirmedNonCradleOwnedWrite: true,
           overwrite: false,
           workspaceId: ctx.workspaceId ?? null,
           agentId: ctx.agentId ?? null,
@@ -147,7 +206,7 @@ export function useSkills(context?: SkillQueryContext) {
       if (error) {
         throw new Error(String(error))
       }
-      return (data as { destinationDir: string }).destinationDir
+      return SkillExportResponseSchema.parse(data).destinationDir
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
@@ -155,6 +214,7 @@ export function useSkills(context?: SkillQueryContext) {
   return {
     inventory,
     isLoading,
+    isSuccess,
     createSkill,
     updateSkill,
     deleteSkill,
@@ -182,7 +242,7 @@ export function useSkillDocument(
           agentId: toIpcContext(context).agentId ?? undefined,
         },
       })
-      return (data as SkillDocument | null | undefined) ?? null
+      return data === undefined || data === null ? null : SkillDocumentSchema.parse(data) satisfies SkillDocument
     },
     enabled: !!scope && !!name,
   })
@@ -202,7 +262,7 @@ export function useSkillSourceImport(context?: SkillQueryContext) {
       skills: DiscoveredSkill[]
     }> => {
       const { data } = await postSkillsFetchSource({ body: { source } })
-      return data as unknown as { sessionId: string, source: ParsedSkillSource, skills: DiscoveredSkill[] }
+      return SkillFetchSourceResponseSchema.parse(data) satisfies { sessionId: string, source: ParsedSkillSource, skills: DiscoveredSkill[] }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
@@ -223,7 +283,7 @@ export function useSkillSourceImport(context?: SkillQueryContext) {
           overwrite: params.overwrite,
         },
       })
-      return data as { imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }
+      return SkillImportFromFetchResponseSchema.parse(data) satisfies { imported: SkillDocument[], errors: Array<{ dir: string, error: string }> }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['skills'] }),
   })
