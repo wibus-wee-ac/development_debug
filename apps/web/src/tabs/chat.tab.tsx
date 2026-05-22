@@ -3,7 +3,7 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useReducer, useRef } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef } from 'react'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
@@ -15,10 +15,9 @@ import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/
 import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
 import { WorkspaceSchema } from '~/features/workspace/use-workspace'
 import type { RuntimeKind } from '~/lib/types'
-import { useLayoutStore } from '~/store/layout'
 
 const ChatView = lazy(loadChatView)
-const ShellView = lazy(loadTerminalPanelView)
+const BottomTerminalPanel = lazy(loadTerminalPanelView)
 const TuiView = lazy(loadTuiView)
 
 export const CHAT_TAB_FALLBACK_LABEL = 'Chat'
@@ -52,34 +51,27 @@ function ChatTabLayoutSlots({
   sessionId,
   workspaceId,
   workspacePath,
+  enabled,
 }: {
   sessionId: string
   workspaceId: string | null
   workspacePath: string | null
+  enabled: boolean
 }) {
-  const [shellGen, bumpShellGen] = useReducer((value: number) => value + 1, 0)
-  const hasWorkspace = !!(workspaceId && workspacePath)
-  const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
-  const closeBottomPanel = useLayoutStore(s => s.setBottomPanelOpen)
+  const hasWorkspace = enabled && !!(workspaceId && workspacePath)
 
   const panel = useMemo(
     () => hasWorkspace
       ? (
         <Suspense fallback={null}>
-          <ShellView
-            key={`${sessionId}:${shellGen}`}
-            ptyId={`shell:${sessionId}:${shellGen}`}
+          <BottomTerminalPanel
+            ownerId={`chat:${sessionId}`}
             cwd={workspacePath!}
-            active={bottomPanelOpen}
-            onExited={() => {
-              closeBottomPanel(false)
-              bumpShellGen()
-            }}
           />
         </Suspense>
       )
       : undefined,
-    [bottomPanelOpen, closeBottomPanel, hasWorkspace, workspacePath, sessionId, shellGen],
+    [hasWorkspace, workspacePath, sessionId],
   )
 
   useRegisterLayoutSlots(sessionId, useMemo(() => ({
@@ -218,7 +210,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   if (isCliTui) {
     return (
       <>
-        <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
+        <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} enabled={false} />
         <Suspense fallback={null}>
           <TuiView sessionId={sessionId} />
         </Suspense>
@@ -228,7 +220,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   return (
     <>
-      <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
+      <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} enabled />
       <ChatRuntimeView
         sessionId={sessionId}
         sessionAgentProfileId={sessionAgentProfileId}

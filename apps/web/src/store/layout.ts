@@ -28,6 +28,16 @@ interface LayoutState {
   setBrowserPanelRatio: (r: number) => void
 }
 
+interface PersistedLayoutState {
+  sidebarWidth?: number
+  sidebarCollapsed?: boolean
+  asideWidth?: number
+  bottomPanelHeight?: number
+  asideOpen?: boolean
+  bottomPanelOpen?: boolean
+  browserPanelRatio?: number
+}
+
 export const useLayoutStore = create<LayoutState>()(
   persist(
     set => ({
@@ -37,7 +47,7 @@ export const useLayoutStore = create<LayoutState>()(
       bottomPanelHeight: 200,
       asideOpen: false,
       asideActiveTab: 'files',
-      bottomPanelOpen: false,
+      bottomPanelOpen: true,
       browserPanelOpen: false,
       browserPanelRatio: 0.4,
       setSidebarWidth: sidebarWidth => set({ sidebarWidth }),
@@ -57,7 +67,17 @@ export const useLayoutStore = create<LayoutState>()(
     {
       name: 'cradle:layout:v1',
       storage: persistStorage,
-      version: 1,
+      version: 2,
+      migrate: (persistedState, version) => {
+        const state = persistedState as PersistedLayoutState
+        if (version < 2) {
+          return {
+            ...state,
+            bottomPanelOpen: true,
+          }
+        }
+        return state
+      },
       partialize: state => ({
         sidebarWidth: state.sidebarWidth,
         sidebarCollapsed: state.sidebarCollapsed,

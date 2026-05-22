@@ -1,7 +1,6 @@
 import type { Workspace } from '@cradle/db'
 import { sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
-import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import {
@@ -19,14 +18,9 @@ import type { PtyLiveSocket } from './pty.socket'
 import { PtySocketHub } from './pty.socket'
 import { ptyTimeline } from './pty.timeline'
 
-const shellLeaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const codexCaptureTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const CODEX_CAPTURE_ATTEMPTS = 12
 const CODEX_CAPTURE_RETRY_MS = 500
-const ShellLeaseMsSchema = z.string()
-  .prefault('15000')
-  .transform(value => Number.parseInt(value, 10))
-  .pipe(z.number().int().positive())
 const CODEX_VALUE_OPTIONS = new Set([
   '-a',
   '-c',
@@ -56,7 +50,6 @@ const ptyRuntime = new PtyRuntimeRegistry({
     ptyTimeline.appendExit(sessionId, exit)
   },
   onRelease: (sessionId) => {
-    cancelShellLeaseExpiry(sessionId)
     ptyTimeline.delete(sessionId)
   }
 })
@@ -64,7 +57,6 @@ const ptyRuntime = new PtyRuntimeRegistry({
 const ptySocketHub = new PtySocketHub(ptyRuntime, ptyTimeline)
 
 SessionService.onSessionCleanup((sessionId) => {
-  cancelShellLeaseExpiry(sessionId)
   cancelCodexSessionCapture(sessionId)
   ptyRuntime.destroy(sessionId)
 })
@@ -310,7 +302,6 @@ export function startShell(input: { ptyId: string; cwd: string; cols: number; ro
     rows: input.rows
   })
 
-  scheduleShellLeaseExpiry(input.ptyId)
   return { ptyId: input.ptyId, running: ptyRuntime.isRunning(input.ptyId) }
 }
 
@@ -320,32 +311,22 @@ export function openShellSocket(input: {
   ws: PtyLiveSocket
 }): void {
   requireTimelineSession(input.ptyId, 'Shell session not found')
-  cancelShellLeaseExpiry(input.ptyId)
   ptySocketHub.open(input.ws, {
     channelId: input.ptyId,
     fromSeq: input.fromSeq,
-    onClose: () => {
-      scheduleShellLeaseExpiry(input.ptyId)
-    }
   })
 }
 
 export function shellStop(ptyId: string): void {
-  cancelShellLeaseExpiry(ptyId)
   ptyRuntime.destroy(ptyId)
 }
 
 export function destroyPtySession(sessionId: string): void {
-  cancelShellLeaseExpiry(sessionId)
   cancelCodexSessionCapture(sessionId)
   ptyRuntime.destroy(sessionId)
 }
 
 export function shutdownPtyModule(): void {
-  for (const timer of shellLeaseTimers.values()) {
-    clearTimeout(timer)
-  }
-  shellLeaseTimers.clear()
   for (const timer of codexCaptureTimers.values()) {
     clearTimeout(timer)
   }
@@ -395,29 +376,6 @@ export async function listResources() {
     },
     timestamp: Date.now(),
   }
-}
-
-function scheduleShellLeaseExpiry(ptyId: string): void {
-  cancelShellLeaseExpiry(ptyId)
-  if (!ptyTimeline.hasSession(ptyId)) {
-    return
-  }
-
-  const timer = setTimeout(() => {
-    shellLeaseTimers.delete(ptyId)
-    ptyRuntime.destroy(ptyId)
-  }, getShellLeaseMs())
-  shellLeaseTimers.set(ptyId, timer)
-}
-
-function cancelShellLeaseExpiry(ptyId: string): void {
-  const timer = shellLeaseTimers.get(ptyId)
-  if (!timer) {
-    return
-  }
-
-  clearTimeout(timer)
-  shellLeaseTimers.delete(ptyId)
 }
 
 function scheduleCodexSessionCapture(input: {
@@ -492,8 +450,4 @@ function persistCodexSessionBinding(
     })
     .where(eq(sessions.id, sessionId))
     .run()
-}
-
-function getShellLeaseMs(): number {
-  return ShellLeaseMsSchema.parse(process.env.CRADLE_PTY_SHELL_LEASE_MS)
 }

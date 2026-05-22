@@ -9,15 +9,17 @@ import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
 import { startShell, stopShell } from './shell-api'
+import { mergeTerminalMetadata, readTerminalMetadata, type TerminalMetadata } from './terminal-metadata'
 
 const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
 const MAX_TRANSCRIPT_CHARS = 8_000
+const MAX_OSC_LOOKBEHIND_CHARS = 1_000
 
 // eslint-disable-next-line no-control-regex
 const RE_OSC = /\u001B\][^\u0007]*(\u0007|\u001B\\)/g
@@ -35,26 +37,71 @@ function toPlainTerminalText(value: string): string {
 }
 
 interface ShellViewProps {
-  /** Stable ID for this shell PTY — typically `shell:<sessionId>:<generation>` */
+  /** Stable ID for this shell PTY. */
   ptyId: string
   /** Working directory for the shell. Must be an absolute path. */
   cwd: string
-  /** Whether the owning bottom panel is currently open. */
-  active?: boolean
+  /** Whether this terminal is the selected panel tab. Hidden terminals stay mounted. */
+  visible?: boolean
   /** Called when the shell process exits, so the parent can reset the key. */
   onExited?: () => void
+  /** Called when OSC title/path metadata is observed in the terminal stream. */
+  onMetadata?: (metadata: TerminalMetadata) => void
+  /** Whether unmounting this view should stop the backing PTY process. */
+  stopOnUnmount?: boolean
 }
 
-export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProps) {
+export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, stopOnUnmount = true }: ShellViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const transcriptRef = useRef<HTMLPreElement>(null)
+  const terminalRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
+  const metadataRef = useRef<TerminalMetadata>({ title: null, cwd: null })
+  const onExitedRef = useRef(onExited)
+  const onMetadataRef = useRef(onMetadata)
+  const visibleRef = useRef(visible)
+  const focusFrameRef = useRef<number | null>(null)
+  const stopOnUnmountRef = useRef(stopOnUnmount)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!active) {
+    onExitedRef.current = onExited
+    onMetadataRef.current = onMetadata
+    stopOnUnmountRef.current = stopOnUnmount
+  }, [onExited, onMetadata, stopOnUnmount])
+
+  useLayoutEffect(() => {
+    visibleRef.current = visible
+    const terminal = terminalRef.current
+    if (!terminal) {
       return
     }
 
+    if (focusFrameRef.current !== null) {
+      cancelAnimationFrame(focusFrameRef.current)
+      focusFrameRef.current = null
+    }
+
+    terminal.options.disableStdin = !visible
+    if (!visible) {
+      terminal.clearSelection()
+      terminal.blur()
+      return
+    }
+
+    focusFrameRef.current = requestAnimationFrame(() => {
+      focusFrameRef.current = null
+      if (!visibleRef.current || terminalRef.current !== terminal) {
+        return
+      }
+
+      terminal.options.disableStdin = false
+      fitAddonRef.current?.fit()
+      terminal.focus()
+    })
+  }, [visible])
+
+  useEffect(() => {
     if (!containerRef.current) {
       return
     }
@@ -69,11 +116,33 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
       cursorBlink: true,
       allowTransparency: false,
       allowProposedApi: true,
+      disableStdin: !visibleRef.current,
     })
 
     const fitAddon = new FitAddon()
     terminal.loadAddon(fitAddon)
     terminal.open(el)
+    terminalRef.current = terminal
+    fitAddonRef.current = fitAddon
+    if (visibleRef.current) {
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current)
+      }
+      focusFrameRef.current = requestAnimationFrame(() => {
+        focusFrameRef.current = null
+        if (!visibleRef.current || terminalRef.current !== terminal) {
+          return
+        }
+
+        try {
+          fitAddon.fit()
+        }
+        catch {
+          // xterm may not be measurable during the first hidden layout pass.
+        }
+        terminal.focus()
+      })
+    }
 
     // ── Always-on addons ──────────────────────────────────────────────────────
     terminal.loadAddon(new Unicode11Addon())
@@ -112,8 +181,16 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
     let shellStarted = false
     let initDebounceTimer: ReturnType<typeof setTimeout> | null = null
     let exitShown = false
+    let pendingOscBuffer = ''
+    let pendingTranscript = ''
+    let transcriptFrame: number | null = null
 
     function setTranscript(next: string) {
+      pendingTranscript = ''
+      if (transcriptFrame !== null) {
+        cancelAnimationFrame(transcriptFrame)
+        transcriptFrame = null
+      }
       const transcript = transcriptRef.current
       if (!transcript) {
         return
@@ -126,14 +203,60 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
       if (!transcript) {
         return
       }
-      const current = transcript.textContent ?? ''
-      transcript.textContent = `${current}${next}`.slice(-MAX_TRANSCRIPT_CHARS)
+      pendingTranscript += next
+      if (transcriptFrame !== null) {
+        return
+      }
+
+      transcriptFrame = requestAnimationFrame(() => {
+        transcriptFrame = null
+        const current = transcript.textContent ?? ''
+        transcript.textContent = `${current}${pendingTranscript}`.slice(-MAX_TRANSCRIPT_CHARS)
+        pendingTranscript = ''
+      })
+    }
+
+    function publishMetadata(data: string) {
+      if (!pendingOscBuffer && !data.includes('\u001B]')) {
+        return
+      }
+
+      const input = `${pendingOscBuffer}${data}`
+      pendingOscBuffer = getPendingOscSuffix(input)
+
+      const nextMetadata = readTerminalMetadata(input)
+      if (!nextMetadata.title && !nextMetadata.cwd) {
+        return
+      }
+
+      const merged = mergeTerminalMetadata(metadataRef.current, nextMetadata)
+      if (merged.title === metadataRef.current.title && merged.cwd === metadataRef.current.cwd) {
+        return
+      }
+
+      metadataRef.current = merged
+      onMetadataRef.current?.(merged)
+    }
+
+    function getPendingOscSuffix(data: string): string {
+      const oscStart = data.lastIndexOf('\u001B]')
+      if (oscStart === -1) {
+        return ''
+      }
+
+      const suffix = data.slice(oscStart)
+      if (suffix.includes('\u0007') || suffix.includes('\u001B\\')) {
+        return ''
+      }
+
+      return suffix.slice(-MAX_OSC_LOOKBEHIND_CHARS)
     }
 
     function writeSnapshot(buffer: string, running: boolean) {
       terminal.reset()
       setTranscript(toPlainTerminalText(buffer))
       if (buffer) {
+        publishMetadata(buffer)
         terminal.write(buffer)
       }
       if (!running && !exitShown) {
@@ -150,7 +273,7 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
       },
       onOutput(event) {
         if (event.data) {
-          appendTranscript(toPlainTerminalText(event.data))
+          publishMetadata(event.data)
           terminal.write(event.data)
         }
       },
@@ -160,7 +283,7 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
           appendTranscript(toPlainTerminalText(EXIT_BANNER))
           terminal.write(EXIT_BANNER)
         }
-        onExited?.()
+        onExitedRef.current?.()
       },
     })
 
@@ -249,6 +372,9 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
     darkMq.addEventListener('change', onColorSchemeChange)
 
     const dataDisposable = terminal.onData((data) => {
+      if (!visibleRef.current) {
+        return
+      }
       channel.sendInput(data)
     })
 
@@ -264,20 +390,32 @@ export function ShellView({ ptyId, cwd, active = true, onExited }: ShellViewProp
       if (initDebounceTimer) {
         clearTimeout(initDebounceTimer)
       }
-      void stopShell(ptyId).catch(() => {})
+      if (transcriptFrame !== null) {
+        cancelAnimationFrame(transcriptFrame)
+      }
+      if (focusFrameRef.current !== null) {
+        cancelAnimationFrame(focusFrameRef.current)
+        focusFrameRef.current = null
+      }
+      if (stopOnUnmountRef.current) {
+        void stopShell(ptyId).catch(() => {})
+      }
       channel.close()
       dataDisposable.dispose()
       resizeObserver.disconnect()
       darkMq.removeEventListener('change', onColorSchemeChange)
       terminal.dispose()
+      terminalRef.current = null
+      fitAddonRef.current = null
     }
-  }, [ptyId, cwd, active, onExited])
+  }, [ptyId, cwd])
 
   return (
     <div
       className="h-full w-full overflow-hidden bg-background"
       data-testid="shell-view"
       data-shell-view="true"
+      data-shell-visible={visible ? 'true' : 'false'}
       data-shell-ready={ready ? 'true' : 'false'}
     >
       <div

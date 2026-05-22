@@ -3,12 +3,45 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { FolderOpenIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
+import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
+import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
 import type { Workspace } from '~/lib/types'
 
 const WorkspaceDetailPage = lazy(() => import('~/features/workspace-detail/workspace-detail-page').then(m => ({ default: m.WorkspaceDetailPage })))
+const BottomTerminalPanel = lazy(loadTerminalPanelView)
+
+function WorkspaceDetailLayoutSlots({
+  workspaceId,
+  workspacePath,
+}: {
+  workspaceId: string
+  workspacePath: string | null
+}) {
+  const hasWorkspace = !!workspacePath
+  const panel = useMemo(
+    () => hasWorkspace
+      ? (
+        <Suspense fallback={null}>
+          <BottomTerminalPanel
+            ownerId={`workspace:${workspaceId}`}
+            cwd={workspacePath!}
+          />
+        </Suspense>
+      )
+      : undefined,
+    [hasWorkspace, workspaceId, workspacePath],
+  )
+
+  useRegisterLayoutSlots(`workspace-detail:${workspaceId}`, useMemo(() => ({
+    hasPanel: hasWorkspace,
+    panel,
+  }), [hasWorkspace, panel]))
+
+  return null
+}
 
 function WorkspaceDetailTabContent({ params }: { params: { workspaceId: string } }) {
   const { store } = useTabsContext()
@@ -36,10 +69,19 @@ function WorkspaceDetailTabContent({ params }: { params: { workspaceId: string }
     }
   }, [params.workspaceId, store, workspace?.name])
 
+  useEffect(() => {
+    if (workspace?.path) {
+      preloadTerminalPanelView()
+    }
+  }, [workspace?.path])
+
   return (
-    <Suspense fallback={null}>
-      <WorkspaceDetailPage workspaceId={params.workspaceId} />
-    </Suspense>
+    <>
+      <WorkspaceDetailLayoutSlots workspaceId={params.workspaceId} workspacePath={workspace?.path ?? null} />
+      <Suspense fallback={null}>
+        <WorkspaceDetailPage workspaceId={params.workspaceId} />
+      </Suspense>
+    </>
   )
 }
 
