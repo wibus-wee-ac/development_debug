@@ -13,6 +13,7 @@ This documentation set is written for two audiences:
 - [CLI Reference](./cli-reference.md): Full `cradle` CLI command reference with practical examples.
 - [IPC API Reference](./ipc-api-reference.md): Renderer-facing IPC namespaces and methods exposed by Cradle.
 - [Data Model & Storage](./data-model-and-storage.md): Core entities, persistence boundaries, and local data ownership.
+- [Preview Release Notes](./preview-release-notes.md): v0.0.1 preview user-visible scope, data ownership notes, support/share/uninstall boundaries, and distribution gate requirements.
 - [Troubleshooting](./troubleshooting.md): Operational issues, diagnostics, and recovery paths.
 
 ## Product Scope Covered By This Docs Set
@@ -23,6 +24,7 @@ This documentation set is written for two audiences:
   - Native terminal sessions for `cli-tui` providers.
 - Lifecycle controls for providers, agent identities, sessions, and issue delegation.
 - Local observability (IPC, ACP, Agent Context, and observability buffers) via Devtool.
+- Settings 中的手动支持生命周期，包括 diagnostics export、feedback template copy、data directory reveal 和 uninstall data-retention guidance。
 - Integrations through:
   - Renderer preload bridge (`window.ipc`, `window.cradle`, `window.ipcDevtool`).
   - Socket-based JSON-RPC CLI (`cradle` command).

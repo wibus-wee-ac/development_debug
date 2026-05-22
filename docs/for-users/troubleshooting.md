@@ -163,3 +163,28 @@ When behavior is unclear:
 3. Inspect Devtool traces.
 4. Export observability bundle for offline analysis.
 5. Keep operations within Cradle-owned APIs and namespaces.
+
+## 11. Export a Diagnostics Bundle
+
+预览版的 diagnostics export 是手动、本地优先流程。
+
+1. 打开 `Settings > Support`。
+2. 点击 `Export`。Cradle 会先调用 observability flush，再下载 `cradle-diagnostics-*.json`。
+3. 打开 JSON 文件并检查其中的 `events`、`incidents` 和 `timeline`。
+4. 删除不想分享的本地路径、workspace 名称、provider 错误上下文或其他敏感内容。
+5. 点击 `Copy` 复制反馈模板，或者点击 `Open` 打开 GitHub issue 页面。
+6. 只在确认内容可分享后，手动附加 diagnostics JSON。
+
+如果 `Export` 返回空 bundle，先复现一次问题，再重新点击 `Export`。如果按钮报错，重启 Cradle 后再次执行；仍失败时，把错误文案和复现步骤写进反馈模板。
+
+## 12. Reveal Cradle Data Directory
+
+在 Electron desktop 中，`Settings > Support > Reveal` 会打开 Cradle-owned data directory。这个目录通常包含 local database、server log、plugin/runtime state 和 observability buffer。Web preview 没有 native filesystem reveal 能力，所以该按钮会保持不可用。
+
+Reveal 动作不会上传、删除或迁移数据。它只是帮助用户检查、备份或定位本地文件。删除这些文件可能会移除 workspaces metadata、sessions、provider profiles、Kanban records 和 diagnostics history；删除前应先退出 Cradle 并自行备份。
+
+## 13. Uninstall and Retained Data
+
+使用操作系统的正常 uninstall flow 可以移除 Cradle app binary。预览版默认保留 Cradle-owned user data，避免误卸载导致 work history 丢失。
+
+如果用户想彻底清理 retained data，先从 `Settings > Support > Reveal` 打开 data directory，退出 Cradle，然后再按需删除该目录。不要删除 repository workspace 本身，除非用户明确想删除自己的项目文件；workspace path 是 non-Cradle-owned 数据边界。

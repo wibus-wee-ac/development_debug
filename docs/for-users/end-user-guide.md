@@ -56,6 +56,8 @@ Workspace detail includes:
 - Workflow rules editing (global and agent-scoped).
 - Workspace-scoped skill context tools.
 
+保存 AGENTS/workspace overview content 会写入已注册 workspace 对应的 project directory。Cradle 将它视为 non-Cradle-owned data boundary：UI 会展示保存提示，server write API 也要求 explicit confirmation 后才写入文件。
+
 Session actions inside a workspace group:
 
 - Open session.
@@ -145,6 +147,16 @@ Current settings sections:
 - Providers: Runtime profiles and connectivity.
 - Agents: Agent identities and behavior binding.
 - Skills: Global skill inventory and import/export lifecycle.
+- Desktop：基于 Velopack 的 desktop update 检查、下载和 restart-to-apply flow。
+- Support：manual diagnostics export、feedback template copy、issue link、Cradle data directory reveal 和 uninstall data-retention notes。
+
+### 8.1 Support and Feedback
+
+`Settings > Support` 是预览版的主要支持入口。预览版不会自动上传 diagnostics，也不会在用户不知情时提交 telemetry。用户需要先点击 `Export`，Cradle 会 flush local observability buffer，然后下载一个 `cradle-diagnostics-*.json` 文件。这个文件包含 export timestamp、observability events、incidents 和 timeline；分享前应先人工检查其中的路径、workspace 名称、provider 错误和其他上下文。
+
+`Copy` 会把反馈模板写入 clipboard。模板包含 Cradle version、runtime、server URL、复现步骤占位符，以及提醒用户附加 diagnostics export。`Open` 会打开 GitHub issue 页面。Electron desktop 中这个链接通过 native `openExternal` 打开；Web preview 中通过 browser tab 打开。
+
+`Reveal` 只在 Electron desktop 中可用，它打开 Cradle-owned data directory。这个目录是 Cradle 自己的 lifecycle 边界，通常包含 local database、server log、plugin/runtime 文件和其他 app-owned state。不要把这个动作理解成 uninstall；它只是帮助用户检查或备份数据。
 
 ## 9. Devtool for Diagnostics
 
@@ -167,3 +179,7 @@ Cradle updates unread markers when:
 - Chat session activity updates arrive in inactive sessions.
 
 Desktop notifications are shown only when browser notification permission is granted.
+
+## 11. Share and Export
+
+Session actions 提供 `Copy session as Markdown`，用于在 Cradle 外分享 conversation。Diagnostics export 可从 `Settings > Support` 导出 JSON。两条路径都是手动的：Cradle 只创建 local clipboard 或 download artifact，用户决定是否 paste、attach 或 discard。

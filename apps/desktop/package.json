@@ -1,7 +1,7 @@
 {
   "name": "@cradle/desktop",
   "type": "module",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "private": true,
   "author": {
     "email": "wibus_wee@outlook.com",
@@ -15,6 +15,12 @@
     "rebuild:server-native": "node scripts/rebuild-server-native.mjs",
     "postinstall": "electron-builder install-app-deps",
     "pack": "pnpm build && electron-builder --dir",
+    "record:preview-installer-smoke": "node scripts/record-preview-installer-smoke.mjs",
+    "release:preview": "node scripts/release-preview.mjs",
+    "release:preview-distribution": "node scripts/release-preview-distribution.mjs",
+    "verify:macos-distribution-credentials": "node scripts/verify-macos-distribution-credentials.mjs",
+    "verify:preview-distribution": "node scripts/verify-preview-distribution.mjs",
+    "verify:preview-update": "node scripts/verify-preview-update.mjs",
     "dist": "pnpm build && electron-builder",
     "dist:mac": "pnpm build && electron-builder --mac",
     "dist:win": "pnpm build && electron-builder --win",
