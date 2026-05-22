@@ -75,12 +75,15 @@ const ToolContentBlockSchema = z.object({
   uri: NullableStringSchema,
 }).passthrough()
 
+function emptyToolContentValue(): { text: string | null, blocks: ToolContentBlock[] } {
+  return { text: null, blocks: [] }
+}
+
 const ToolContentValueSchema = z.union([
   z.string().transform(value => ({ text: value, blocks: [] as ToolContentBlock[] })),
   z.array(ToolContentBlockSchema).transform(value => ({ text: null, blocks: value })),
   z.null().transform(() => ({ text: null, blocks: [] as ToolContentBlock[] })),
-  z.undefined().transform(() => ({ text: null, blocks: [] as ToolContentBlock[] })),
-])
+]).optional().transform(value => value ?? emptyToolContentValue())
 
 const ToolFileSchema = z.object({
   filePath: NullableStringSchema,
@@ -98,8 +101,7 @@ const ToolFileValueSchema = z.union([
   z.string().transform(value => ({ path: value, file: null as ToolFile | null })),
   ToolFileSchema.transform(value => ({ path: value.filePath, file: value })),
   z.null().transform(() => ({ path: null, file: null as ToolFile | null })),
-  z.undefined().transform(() => ({ path: null, file: null as ToolFile | null })),
-])
+]).optional().transform(value => value ?? ({ path: null, file: null as ToolFile | null }))
 
 const ToolGitDiffSchema = z.object({
   additions: z.number().default(0),
@@ -199,7 +201,7 @@ const ToolObjectPayloadSchema = z.object({
   todos: z.array(ToolTodoSchema).optional().default([]),
   questions: z.array(z.unknown()).optional().default([]),
   allowedPrompts: z.array(z.unknown()).optional().default([]),
-  answers: z.record(z.unknown()).nullable().optional().default(null),
+  answers: z.record(z.string(), z.unknown()).nullable().optional().default(null),
   mode: NullableStringSchema,
 }).passthrough()
 
