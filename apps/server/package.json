@@ -10,7 +10,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon",
-    "build": "vite build && node scripts/sync-runtime-deps.mjs",
+    "build": "vite build && node scripts/install-runtime-deps.mjs",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

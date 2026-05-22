@@ -59,7 +59,7 @@ The server follows the repository convention of **technical primitives + busines
 - `pnpm dev`: start nodemon development server
 - `pnpm test`: run Vitest suite
 - `pnpm typecheck`: run TypeScript type-check
-- `pnpm build`: build the server bundle, copy external runtime packages into `dist/node_modules`, and write the runtime manifest used by desktop native rebuilds
+- `pnpm build`: build the server bundle, write the minimal runtime manifest, and let pnpm install production runtime dependencies into `dist/node_modules` for desktop packaging
 
 ## Elysia migration status
 

@@ -149,7 +149,8 @@
       "better-sqlite3",
       "electron",
       "esbuild",
-      "node-pty"
+      "node-pty",
+      "sharp"
     ],
     "patchedDependencies": {
       "@elysiajs/node@1.4.5": "patches/@elysiajs__node@1.4.5.patch"
