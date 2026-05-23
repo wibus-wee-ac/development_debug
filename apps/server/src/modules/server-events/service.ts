@@ -22,6 +22,10 @@ class ServerEventBus {
       this.subscribers.delete(callback)
     }
   }
+
+  getSubscriberCount(): number {
+    return this.subscribers.size
+  }
 }
 
 export const serverEventBus = new ServerEventBus()

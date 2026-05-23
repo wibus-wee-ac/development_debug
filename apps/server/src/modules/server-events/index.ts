@@ -7,37 +7,50 @@ export const serverEvents = new Elysia({
 })
   .get('/server/events', () => {
     const encoder = new TextEncoder()
+    let cleanup = () => {}
+
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const unsubscribe = serverEventBus.subscribe((event) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-        })
+        let isClosed = false
+        let unsubscribe = () => {}
 
-        const heartbeat = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode(`:heartbeat\n\n`))
+        const closeConnection = () => {
+          if (isClosed) {
+            return
           }
-          catch {
-            clearInterval(heartbeat)
-          }
-        }, 30_000)
-
-        const cleanup = () => {
+          isClosed = true
           unsubscribe()
           clearInterval(heartbeat)
         }
 
-        // Return cleanup via request abort signal
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (typeof globalThis.addEventListener === 'function') {
-          // The stream will be closed when the client disconnects
+        const sendFrame = (frame: string): boolean => {
+          if (isClosed) {
+            return false
+          }
+
+          try {
+            controller.enqueue(encoder.encode(frame))
+            return true
+          }
+          catch {
+            closeConnection()
+            return false
+          }
         }
 
-        // Store cleanup for onStop
-        ;(stream as unknown as { _cleanup?: () => void })._cleanup = cleanup
+        const heartbeat = setInterval(() => {
+          sendFrame(': heartbeat\n\n')
+        }, 30_000)
+
+        unsubscribe = serverEventBus.subscribe((event) => {
+          sendFrame(`data: ${JSON.stringify(event)}\n\n`)
+        })
+
+        cleanup = closeConnection
+        sendFrame(': connected\n\n')
       },
       cancel() {
-        ;(stream as unknown as { _cleanup?: () => void })._cleanup?.()
+        cleanup()
       },
     })
 
@@ -46,6 +59,7 @@ export const serverEvents = new Elysia({
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
         'connection': 'keep-alive',
+        'x-accel-buffering': 'no',
       },
     })
   }, {

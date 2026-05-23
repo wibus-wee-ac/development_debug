@@ -25,6 +25,8 @@ es.onmessage = (e) => {
 }
 ```
 
+The stream sends an initial SSE comment frame to confirm the connection, then heartbeat comment frames every 30 seconds. Disconnect cleanup is owned by the stream cancellation path and removes the subscriber from `serverEventBus`.
+
 ## Owner
 
 `server-events` module owns this namespace. Other modules publish events via `serverEventBus.publish()`.
