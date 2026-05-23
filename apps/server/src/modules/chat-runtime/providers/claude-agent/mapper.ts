@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { BetaContentBlock, BetaRawContentBlockDeltaEvent, BetaRawContentBlockStartEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { UIMessageChunk } from 'ai'
-import { z } from 'zod'
 
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 
@@ -25,75 +24,6 @@ export interface ClaudeAgentChunkMapperResult {
   usage: TokenUsage | null
 }
 
-const ChunkProviderMetadataSchema = z.object({
-  cradle: z.record(z.string(), z.unknown()).default({}),
-}).passthrough().default({ cradle: {} })
-const ChunkProviderMetadataCarrierSchema = z.object({
-  providerMetadata: z.unknown().optional(),
-}).passthrough()
-const UiMessageChunkSchema = z.custom<UIMessageChunk>()
-
-const ParentToolUseMessageSchema = z.object({
-  parent_tool_use_id: z.string().nullable().default(null),
-}).passthrough()
-
-const SessionCarrierMessageSchema = z.object({
-  session_id: z.string().nullable().default(null),
-}).passthrough()
-
-const TaskStartedMessageSchema = z.object({
-  type: z.literal('system/task_started'),
-  task_id: z.string().optional(),
-  agent_name: z.string().default('Subagent'),
-}).passthrough()
-
-const TaskNotificationMessageSchema = z.object({
-  type: z.literal('system/task_notification'),
-  task_id: z.string().optional(),
-  status: z.string().default('completed'),
-}).passthrough()
-
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
-
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-)
-
-const ToolResultContentTextSchema = z.union([
-  z.string(),
-  z.null().transform(() => ''),
-  JsonValueSchema.transform(value => JSON.stringify(value)),
-])
-
-const ToolProgressMessageSchema = z.object({
-  type: z.literal('tool_progress'),
-  tool_use_id: z.string().min(1),
-  content: z.string().min(1),
-}).passthrough()
-
-const UserToolResultBlockSchema = z.object({
-  type: z.literal('tool_result'),
-  tool_use_id: z.string().min(1),
-  content: ToolResultContentTextSchema,
-  is_error: z.boolean().default(false),
-}).passthrough()
-
-const UserToolResultContentSchema = z.array(UserToolResultBlockSchema)
-
-const UserMessageToolResultContentSchema = z.object({
-  message: z.object({
-    content: UserToolResultContentSchema,
-  }).passthrough(),
-  session_id: z.string().nullable().default(null),
-}).passthrough()
-
 /**
  * Attach parentToolUseId metadata to a chunk when inside a subagent context.
  */
@@ -101,20 +31,21 @@ function withParentMeta(chunk: UIMessageChunk, parentToolUseId: string | null): 
   if (!parentToolUseId) {
     return chunk
   }
-  const providerMetadata = ChunkProviderMetadataSchema.parse(
-    ChunkProviderMetadataCarrierSchema.parse(chunk).providerMetadata,
-  )
+  const providerMetadata = (chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata ?? {}
+  const cradleMetadata = typeof providerMetadata.cradle === 'object' && providerMetadata.cradle !== null
+    ? providerMetadata.cradle as Record<string, unknown>
+    : {}
 
-  return UiMessageChunkSchema.parse({
+  return {
     ...(chunk as object),
     providerMetadata: {
       ...providerMetadata,
       cradle: {
-        ...providerMetadata.cradle,
+        ...cradleMetadata,
         parentToolUseId,
       },
     },
-  })
+  } as unknown as UIMessageChunk
 }
 
 export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
@@ -126,7 +57,7 @@ export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgen
   }
 
   // Track parent context for subagent messages
-  const parentToolUseId = ParentToolUseMessageSchema.parse(msg).parent_tool_use_id
+  const parentToolUseId = 'parent_tool_use_id' in msg ? (msg as { parent_tool_use_id: string | null }).parent_tool_use_id : null
   state.currentParentToolUseId = parentToolUseId
 
   switch (msg.type) {
@@ -147,38 +78,52 @@ export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgen
  * Handle system lifecycle events (task_started, task_progress, task_notification, tool_progress, etc.)
  */
 function mapSystemOrUnknown(msg: SDKMessage, state: ClaudeAgentChunkMapperState, base: ClaudeAgentChunkMapperResult): ClaudeAgentChunkMapperResult {
+  // Extract session_id from any message that carries it
+  const sessionId = 'session_id' in msg && typeof (msg as { session_id?: unknown }).session_id === 'string'
+    ? (msg as { session_id: string }).session_id
+    : null
+
   const msgType = msg.type as string
   const chunks: UIMessageChunk[] = []
 
-  // Handle task lifecycle events as text parts with provider metadata.
+  // Handle task lifecycle events — emit as step markers with metadata
   if (msgType === 'system/task_started') {
-    const taskMsg = TaskStartedMessageSchema.parse(msg)
+    const taskMsg = msg as { type: string, task_id?: string, agent_name?: string, prompt?: string }
+    chunks.push({
+      type: 'start-step',
+    })
+    // Emit a text segment to announce the subagent
+    const agentName = taskMsg.agent_name ?? 'Subagent'
     const textId = randomUUID()
     chunks.push(
-      { type: 'text-start', id: textId, providerMetadata: { cradle: { systemEvent: 'task_started', taskId: taskMsg.task_id, agentName: taskMsg.agent_name } } },
-      { type: 'text-delta', id: textId, delta: `[${taskMsg.agent_name} started]` },
+      { type: 'text-start', id: textId, providerMetadata: { cradle: { systemEvent: 'task_started', taskId: taskMsg.task_id, agentName } } },
+      { type: 'text-delta', id: textId, delta: `[${agentName} started]` },
       { type: 'text-end', id: textId },
     )
   }
   else if (msgType === 'system/task_notification') {
-    const taskMsg = TaskNotificationMessageSchema.parse(msg)
+    const taskMsg = msg as { type: string, task_id?: string, status?: string, result?: string }
     const textId = randomUUID()
+    const status = taskMsg.status ?? 'completed'
     chunks.push(
-      { type: 'text-start', id: textId, providerMetadata: { cradle: { systemEvent: 'task_notification', taskId: taskMsg.task_id, status: taskMsg.status } } },
-      { type: 'text-delta', id: textId, delta: `[Task ${taskMsg.status}]` },
+      { type: 'text-start', id: textId, providerMetadata: { cradle: { systemEvent: 'task_notification', taskId: taskMsg.task_id, status } } },
+      { type: 'text-delta', id: textId, delta: `[Task ${status}]` },
       { type: 'text-end', id: textId },
+      { type: 'finish-step' },
     )
   }
   else if (msgType === 'tool_progress') {
-    const progressMsg = ToolProgressMessageSchema.parse(msg)
-    chunks.push({
-      type: 'tool-input-delta',
-      toolCallId: progressMsg.tool_use_id,
-      inputTextDelta: progressMsg.content,
-    })
+    const progressMsg = msg as { type: string, tool_use_id?: string, tool_name?: string, content?: string, parent_tool_use_id?: string | null }
+    if (progressMsg.content && progressMsg.tool_use_id) {
+      chunks.push({
+        type: 'tool-input-delta',
+        toolCallId: progressMsg.tool_use_id,
+        inputTextDelta: progressMsg.content,
+      })
+    }
   }
 
-  return { ...base, chunks: chunks.map(chunk => withParentMeta(chunk, state.currentParentToolUseId)), sessionId: SessionCarrierMessageSchema.parse(msg).session_id }
+  return { ...base, chunks: chunks.map(chunk => withParentMeta(chunk, state.currentParentToolUseId)), sessionId }
 }
 
 function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState, parentToolUseId: string | null): ClaudeAgentChunkMapperResult {
@@ -213,18 +158,31 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
 
 function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState, parentToolUseId: string | null): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
-  const parsedMsg = UserMessageToolResultContentSchema.parse(msg)
+  const content = msg.message.content
 
-  for (const block of parsedMsg.message.content) {
-    if (block.is_error) {
-      chunks.push(withParentMeta({ type: 'tool-output-error', toolCallId: block.tool_use_id, errorText: block.content }, parentToolUseId))
-    }
-    else {
-      chunks.push(withParentMeta({ type: 'tool-output-available', toolCallId: block.tool_use_id, output: block.content }, parentToolUseId))
+  // Extract tool_result blocks from user message content
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (typeof block === 'object' && block !== null && 'type' in block) {
+        const b = block as { type: string, tool_use_id?: string, content?: unknown, is_error?: boolean }
+        if (b.type === 'tool_result' && b.tool_use_id) {
+          const output = typeof b.content === 'string'
+            ? b.content
+            : b.content != null
+              ? JSON.stringify(b.content)
+              : ''
+          if (b.is_error) {
+            chunks.push(withParentMeta({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: output || 'Tool execution failed' }, parentToolUseId))
+          }
+          else {
+            chunks.push(withParentMeta({ type: 'tool-output-available', toolCallId: b.tool_use_id, output }, parentToolUseId))
+          }
+        }
+      }
     }
   }
 
-  return { chunks, assistantStarted: state.assistantStarted, sessionId: parsedMsg.session_id, usage: null }
+  return { chunks, assistantStarted: state.assistantStarted, sessionId: msg.session_id ?? null, usage: null }
 }
 
 function mapContentBlock(
