@@ -24,6 +24,16 @@ export const GitModel = {
     ahead: t.Number(),
     behind: t.Number(),
     isDetached: t.Boolean(),
+    files: t.Array(t.Object({
+      path: t.String(),
+      status: t.Union([
+        t.Literal('added'),
+        t.Literal('modified'),
+        t.Literal('deleted'),
+        t.Literal('renamed'),
+        t.Literal('untracked'),
+      ]),
+    })),
   }),
 
   branchesView: t.Object({

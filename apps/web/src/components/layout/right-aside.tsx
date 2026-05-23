@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { CircleDotIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
+import { CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useState } from 'react'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
-import { GitPanel } from '~/features/git'
+import { ChangesPanel, GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { AwaitPanel } from '~/features/session-await/await-panel'
@@ -22,6 +22,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'files', label: '文件', icon: FolderTreeIcon },
+  { id: 'changes', label: 'Changes', icon: FileDiffIcon },
   { id: 'git', label: 'Git', icon: GitBranchIcon },
   { id: 'issue', label: 'Issue', icon: CircleDotIcon },
   { id: 'await', label: 'Feed', icon: RssIcon },
@@ -126,6 +127,11 @@ export function RightAside({ sessionId }: RightAsideProps) {
         {activeTab === 'git' && (
           <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-git">
             <GitPanel workspaceId={workspaceId} />
+          </div>
+        )}
+        {activeTab === 'changes' && (
+          <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-changes">
+            <ChangesPanel workspaceId={workspaceId} />
           </div>
         )}
         {activeTab === 'issue' && sessionId && (

@@ -129,12 +129,20 @@ export interface UpdateAgentInput {
 
 // ── Git types ───────────────────────────────────────────────────────────────
 
+type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+
+export interface GitFileStatus {
+  path: string
+  status: GitFileStatusKind
+}
+
 export interface GitStatus {
   branch: string
   tracking: string | null
   ahead: number
   behind: number
   isDetached: boolean
+  files: GitFileStatus[]
 }
 
 interface GitLocalBranch {
@@ -169,13 +177,6 @@ export interface GitGraphCommit {
   gravatarHash: string
   date: string
   timestamp: number
-}
-
-type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
-
-export interface GitFileStatus {
-  path: string
-  status: GitFileStatusKind
 }
 
 // ── Thread search types ─────────────────────────────────────────────────────

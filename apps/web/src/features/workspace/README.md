@@ -10,7 +10,7 @@ Also owns the sidebar interaction contract between workspace groups and the laun
 
 - **index.ts**: Barrel re-exports for the workspace feature
 - **file-tree-loader.ts**: Workspace file tree 的共享 lazy loader 与 intent preload 入口，供 right aside Files tab 使用
-- **file-tree.tsx**: Right-aside workspace file tree using `@pierre/trees`, with persistent model-backed search, Git status annotations, context actions, Pack handoff, workspace file drag payloads for chat/TUI drops, and a first-render performance completion mark once workspace files and Git status are ready.
+- **file-tree.tsx**: Right-aside workspace file tree using `@pierre/trees`, with persistent model-backed search, Git status annotations sourced from the shared Git status hook, context actions, Pack handoff, workspace file drag payloads for chat/TUI drops, and a first-render performance completion mark once workspace files and Git status are ready.
 - **workspace-sidebar.test.tsx**: Regression tests locking workspace header navigation, folder-only collapse behavior, accessible session menu triggers, long-title sidebar truncation classes, and shared session actions across button/context menus
 - **use-workspace-files.ts**: Hook for listing workspace files for composer mentions
 - **use-workspace.ts**: Hooks for listing, adding (via native directory picker), and deleting workspaces; exposes list readiness for interaction-level performance gates that depend on workspace names.

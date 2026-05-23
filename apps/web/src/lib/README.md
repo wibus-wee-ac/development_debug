@@ -22,7 +22,7 @@ Used across features and components in the renderer.
 - **shortcut-provider.tsx**: Provider component for shortcut context
 - **shortcut-utils.ts**: Keyboard shortcut parsing and matching utilities
 - **spring.ts**: Spring animation configuration constants
-- **types.ts**: Shared renderer type surface, including provider model capabilities and models.dev registry match metadata.
+- **types.ts**: Shared renderer type surface, including Git status/file-change data, provider model capabilities, and models.dev registry match metadata.
 - **utils.ts**: Re-exports from cn.ts
 - **workspace-drag-data.ts**: Shared DataTransfer protocol helpers for dragging workspace file paths from the file tree into chat and TUI targets.
 - **workspace-drag-data.test.ts**: Regression coverage for workspace file drag payload serialization, terminal-safe quoting, and text/plain fallback.

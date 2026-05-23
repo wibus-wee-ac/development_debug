@@ -5,9 +5,10 @@ import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { z } from 'zod'
 
-import { getWorkspacesByIdFiles, getWorkspacesByIdGitStatus } from '~/api-gen/sdk.gen'
-import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
+import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { useGitFileStatuses } from '~/features/git/use-git'
 import type { GitFileStatus } from '~/lib/types'
+import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 
 // ── Git status mapper ─────────────────────────────────────────────────────────
 
@@ -17,14 +18,6 @@ const WorkspaceFileListSchema = z.array(z.object({
   name: z.string(),
   path: z.string(),
 })).default([])
-const GitFileStatusListSchema = z.array(z.object({
-  path: z.string(),
-  status: z.enum(['added', 'modified', 'deleted', 'renamed', 'untracked']),
-})).default([])
-const GitStatusFileListSchema = z.object({
-  files: GitFileStatusListSchema,
-}).default({ files: [] })
-
 function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
   return statuses.map(s => ({ path: s.path, status: s.status }))
 }
@@ -65,22 +58,12 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
     staleTime: 30_000,
   })
 
-  const gitStatusQuery = useQuery({
-    queryKey: ['git-file-statuses', workspaceId],
-    queryFn: async () => {
-      const { data } = await getWorkspacesByIdGitStatus({ path: { id: workspaceId! } })
-      return GitStatusFileListSchema.parse(data).files satisfies GitFileStatus[]
-    },
-    enabled: !!workspaceId,
-    staleTime: 10_000,
-    refetchInterval: 15_000,
-  })
+  const gitStatusQuery = useGitFileStatuses(workspaceId)
 
-  const files = filesQuery.data ?? []
   const gitStatuses = gitStatusQuery.data
 
   // Only pass file paths — @pierre/trees auto-creates directory nodes from path hierarchy
-  const paths = useMemo(() => files.flatMap(f => f.type === 'file' ? [f.path] : []), [files])
+  const paths = useMemo(() => (filesQuery.data ?? []).flatMap(f => f.type === 'file' ? [f.path] : []), [filesQuery.data])
 
   const preparedInput = useMemo(
     () => paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null,
@@ -118,7 +101,6 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 
   return (
     <FileTreeInner
-      workspaceId={workspaceId}
       preparedInput={preparedInput}
       ready={filesQuery.isSuccess && gitStatusQuery.isSuccess}
       gitStatus={treeGitStatus}
@@ -131,7 +113,6 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 // ── Inner tree (mounted once model exists) ────────────────────────────────────
 
 interface FileTreeInnerProps {
-  workspaceId: string
   preparedInput: ReturnType<typeof prepareFileTreeInput>
   ready: boolean
   gitStatus?: TreeGitStatus[]
@@ -139,7 +120,7 @@ interface FileTreeInnerProps {
   onPackRequested?: (paths: string[]) => void
 }
 
-function FileTreeInner({ workspaceId, preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
+function FileTreeInner({ preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
   const { model } = useFileTree({
     preparedInput,
     initialSearchQuery: '',

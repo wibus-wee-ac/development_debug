@@ -15,6 +15,12 @@ interface GitStatus {
   ahead: number
   behind: number
   isDetached: boolean
+  files: GitFileStatus[]
+}
+
+interface GitFileStatus {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
 }
 
 interface GitBranches {
@@ -87,7 +93,19 @@ describe('git capability', () => {
       expect(await statusRes.json()).toEqual(expect.objectContaining<Partial<GitStatus>>({
         branch: 'main',
         isDetached: false,
+        files: [],
       }))
+
+      writeFileSync(join(workspaceRoot, 'src.test.ts'), 'test file\n', 'utf8')
+      writeFileSync(join(workspaceRoot, 'notes.txt'), 'changed notes\n', 'utf8')
+
+      const statusWithChangesRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
+      expect(statusWithChangesRes.status).toBe(200)
+      const statusWithChanges = await statusWithChangesRes.json() as GitStatus
+      expect(statusWithChanges.files).toEqual(expect.arrayContaining([
+        { path: 'notes.txt', status: 'modified' },
+        { path: 'src.test.ts', status: 'untracked' },
+      ]))
 
       const branchesRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/branches'))
       expect(branchesRes.status).toBe(200)

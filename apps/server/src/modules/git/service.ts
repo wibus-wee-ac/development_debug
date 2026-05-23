@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import type { StatusResult } from 'simple-git'
 import simpleGit from 'simple-git'
 
 import { AppError } from '../../errors/app-error'
@@ -11,6 +12,14 @@ export interface GitStatusView {
   ahead: number
   behind: number
   isDetached: boolean
+  files: GitFileStatusView[]
+}
+
+export type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+
+export interface GitFileStatusView {
+  path: string
+  status: GitFileStatusKind
 }
 
 export interface GitLocalBranchView {
@@ -50,6 +59,13 @@ export interface GitGraphCommitView {
 const FIELD_SEP = '\x1F'
 const RE_REMOTE_PREFIX = /^remotes\//
 const RE_REMOTE_BRANCH = /^[^/]+\/(.+)$/
+const STATUS_RANK: Record<GitFileStatusKind, number> = {
+  deleted: 5,
+  renamed: 4,
+  added: 3,
+  modified: 2,
+  untracked: 1,
+}
 
 function getGit(workspaceId: string) {
   const workspace = Workspace.get(workspaceId)
@@ -84,11 +100,42 @@ export async function getStatus(workspaceId: string): Promise<GitStatusView> {
       ahead: status.ahead,
       behind: status.behind,
       isDetached: status.detached,
+      files: collectFileStatuses(status),
     }
   }
   catch (error) {
     throw mapGitError(workspaceId, error)
   }
+}
+
+function collectFileStatuses(status: StatusResult): GitFileStatusView[] {
+  const byPath = new Map<string, GitFileStatusKind>()
+
+  function add(path: string, kind: GitFileStatusKind) {
+    const existing = byPath.get(path)
+    if (!existing || STATUS_RANK[kind] > STATUS_RANK[existing]) {
+      byPath.set(path, kind)
+    }
+  }
+
+  for (const path of status.not_added) {
+    add(path, 'untracked')
+  }
+  for (const path of status.created) {
+    add(path, 'added')
+  }
+  for (const path of status.modified) {
+    add(path, 'modified')
+  }
+  for (const path of status.deleted) {
+    add(path, 'deleted')
+  }
+  for (const file of status.renamed) {
+    add(file.to, 'renamed')
+  }
+
+  return Array.from(byPath.entries(), ([path, fileStatus]) => ({ path, status: fileStatus }))
+    .sort((left, right) => left.path.localeCompare(right.path))
 }
 
 export async function getBranches(workspaceId: string): Promise<GitBranchesView> {

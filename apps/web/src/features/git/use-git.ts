@@ -10,7 +10,7 @@ import {
   getWorkspacesByIdGitStatusQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { client } from '~/lib/client.config'
-import type { GitBranches, GitGraphCommit, GitStatus } from '~/lib/types'
+import type { GitBranches, GitFileStatus, GitGraphCommit, GitStatus } from '~/lib/types'
 
 interface GitRemote {
   name: string
@@ -24,6 +24,10 @@ const GitStatusSchema = z.object({
   ahead: z.number(),
   behind: z.number(),
   isDetached: z.boolean(),
+  files: z.array(z.object({
+    path: z.string(),
+    status: z.enum(['added', 'modified', 'deleted', 'renamed', 'untracked']),
+  })).default([]),
 })
 
 const GitBranchesSchema = z.object({
@@ -65,6 +69,17 @@ export function useGitStatus(workspaceId: string | null | undefined) {
     staleTime: 10_000,
     retry: false,
     select: data => GitStatusSchema.parse(data) satisfies GitStatus,
+  })
+}
+
+export function useGitFileStatuses(workspaceId: string | null | undefined) {
+  return useQuery({
+    ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId! } }),
+    enabled: !!workspaceId,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+    retry: false,
+    select: data => GitStatusSchema.parse(data).files satisfies GitFileStatus[],
   })
 }
 
