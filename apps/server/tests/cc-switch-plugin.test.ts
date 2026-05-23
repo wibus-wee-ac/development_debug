@@ -84,6 +84,7 @@ describe('CC Switch external provider plugin', () => {
       CRADLE_CREDENTIAL_SECRET: process.env.CRADLE_CREDENTIAL_SECRET,
       CRADLE_PLUGINS_DIR: process.env.CRADLE_PLUGINS_DIR,
       CRADLE_EXTERNAL_PLUGINS_DIRS: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
+      CRADLE_PLUGIN_ALLOWED_CC_SWITCH_PERMISSIONS: process.env.CRADLE_PLUGIN_ALLOWED_CC_SWITCH_PERMISSIONS,
       CRADLE_CC_SWITCH_DB_PATH: process.env.CRADLE_CC_SWITCH_DB_PATH,
       CRADLE_CC_SWITCH_SETTINGS_PATH: process.env.CRADLE_CC_SWITCH_SETTINGS_PATH,
     }
@@ -93,6 +94,7 @@ describe('CC Switch external provider plugin', () => {
       process.env.CRADLE_CREDENTIAL_SECRET = 'cc-switch-plugin-host-secret'
       process.env.CRADLE_PLUGINS_DIR = repoPluginsDir()
       process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
+      process.env.CRADLE_PLUGIN_ALLOWED_CC_SWITCH_PERMISSIONS = 'filesystem.cc-switch.read'
       process.env.CRADLE_CC_SWITCH_DB_PATH = dbPath
       process.env.CRADLE_CC_SWITCH_SETTINGS_PATH = settingsPath
 

@@ -19,36 +19,45 @@ import type {
 type JsonObject = Record<string, unknown>
 
 const NonEmptyStringSchema = z.string().trim().min(1)
+const OptionalExternalStringSchema = z.preprocess((value) => {
+  if (value === null) return undefined
+  if (typeof value === 'string' && value.trim().length === 0) return undefined
+  return value
+}, NonEmptyStringSchema.optional())
 const NullableStringSchema = NonEmptyStringSchema.nullable().optional().default(null)
 const NullableNumberSchema = z.number().finite().nullable().optional().default(null)
 const SqlBooleanSchema = z.union([z.boolean(), z.literal(0), z.literal(1)])
   .transform(value => value === true || value === 1)
 
-const ProviderEnvSchema = z.object({
-  ANTHROPIC_BASE_URL: NonEmptyStringSchema.optional(),
-  ANTHROPIC_MODEL: NonEmptyStringSchema.optional(),
-  ANTHROPIC_DEFAULT_SONNET_MODEL: NonEmptyStringSchema.optional(),
-  ANTHROPIC_DEFAULT_OPUS_MODEL: NonEmptyStringSchema.optional(),
-  ANTHROPIC_DEFAULT_HAIKU_MODEL: NonEmptyStringSchema.optional(),
-  ANTHROPIC_AUTH_TOKEN: NonEmptyStringSchema.optional(),
-  ANTHROPIC_API_KEY: NonEmptyStringSchema.optional(),
-  GOOGLE_GEMINI_BASE_URL: NonEmptyStringSchema.optional(),
-  GEMINI_MODEL: NonEmptyStringSchema.optional(),
-  GEMINI_API_KEY: NonEmptyStringSchema.optional(),
+const ProviderEnvFieldsSchema = z.object({
+  ANTHROPIC_BASE_URL: OptionalExternalStringSchema,
+  ANTHROPIC_MODEL: OptionalExternalStringSchema,
+  ANTHROPIC_DEFAULT_SONNET_MODEL: OptionalExternalStringSchema,
+  ANTHROPIC_DEFAULT_OPUS_MODEL: OptionalExternalStringSchema,
+  ANTHROPIC_DEFAULT_HAIKU_MODEL: OptionalExternalStringSchema,
+  ANTHROPIC_AUTH_TOKEN: OptionalExternalStringSchema,
+  ANTHROPIC_API_KEY: OptionalExternalStringSchema,
+  GOOGLE_GEMINI_BASE_URL: OptionalExternalStringSchema,
+  GEMINI_MODEL: OptionalExternalStringSchema,
+  GEMINI_API_KEY: OptionalExternalStringSchema,
 }).catchall(z.unknown())
 
-const ProviderAuthSchema = z.object({
-  OPENAI_API_KEY: NonEmptyStringSchema.optional(),
+const ProviderEnvSchema = z.preprocess(value => value === null ? undefined : value, ProviderEnvFieldsSchema.optional().default({}))
+
+const ProviderAuthFieldsSchema = z.object({
+  OPENAI_API_KEY: OptionalExternalStringSchema,
 }).catchall(z.unknown())
+
+const ProviderAuthSchema = z.preprocess(value => value === null ? undefined : value, ProviderAuthFieldsSchema.optional().default({}))
 
 const ProviderSettingsConfigSchema = z.object({
-  env: ProviderEnvSchema.default({}),
-  auth: ProviderAuthSchema.default({}),
-  config: NonEmptyStringSchema.optional(),
+  env: ProviderEnvSchema,
+  auth: ProviderAuthSchema,
+  config: z.unknown().optional(),
 }).passthrough()
 
 const ProviderMetaSchema = z.object({
-  apiFormat: NonEmptyStringSchema.optional(),
+  apiFormat: OptionalExternalStringSchema,
 }).passthrough()
 
 const ProviderSettingsConfigTextSchema = z.string()
@@ -90,14 +99,14 @@ const ProviderDbRowSchema = z.object({
 })
 
 const CodexTomlModelProviderSchema = z.object({
-  base_url: NonEmptyStringSchema.optional(),
-  wire_api: NonEmptyStringSchema.optional(),
+  base_url: OptionalExternalStringSchema,
+  wire_api: OptionalExternalStringSchema,
 }).passthrough()
 
 const CodexTomlConfigSchema = z.object({
-  model_provider: NonEmptyStringSchema.optional(),
-  model: NonEmptyStringSchema.optional(),
-  model_reasoning_effort: NonEmptyStringSchema.optional(),
+  model_provider: OptionalExternalStringSchema,
+  model: OptionalExternalStringSchema,
+  model_reasoning_effort: OptionalExternalStringSchema,
   model_providers: z.record(z.string(), CodexTomlModelProviderSchema).default({}),
 }).passthrough()
 
@@ -141,13 +150,13 @@ interface CcSwitchSnapshotReadResult {
 }
 
 const LocalSettingsSchema = z.object({
-  currentProviderClaude: NonEmptyStringSchema.optional(),
-  currentProviderClaudeDesktop: NonEmptyStringSchema.optional(),
-  currentProviderCodex: NonEmptyStringSchema.optional(),
-  currentProviderGemini: NonEmptyStringSchema.optional(),
-  currentProviderOpenCode: NonEmptyStringSchema.optional(),
-  currentProviderOpenClaw: NonEmptyStringSchema.optional(),
-  currentProviderHermes: NonEmptyStringSchema.optional(),
+  currentProviderClaude: OptionalExternalStringSchema,
+  currentProviderClaudeDesktop: OptionalExternalStringSchema,
+  currentProviderCodex: OptionalExternalStringSchema,
+  currentProviderGemini: OptionalExternalStringSchema,
+  currentProviderOpenCode: OptionalExternalStringSchema,
+  currentProviderOpenClaw: OptionalExternalStringSchema,
+  currentProviderHermes: OptionalExternalStringSchema,
 })
 
 type LocalSettings = z.infer<typeof LocalSettingsSchema>
@@ -168,12 +177,44 @@ function textHash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }
 
-function readLocalSettings(path: string): LocalSettings {
-  if (!existsSync(path)) return {}
-  return z.string()
-    .transform(raw => JSON.parse(raw))
-    .pipe(LocalSettingsSchema)
-    .parse(readFileSync(path, 'utf8'))
+function warningMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function compactJsonObject(value: JsonObject): JsonObject {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined))
+}
+
+function compactInventory(inventory: CcSwitchSnapshotReadResult['inventory']): CcSwitchSnapshotReadResult['inventory'] {
+  return Object.fromEntries(Object.entries(inventory).filter(([, entry]) => entry !== undefined)) as CcSwitchSnapshotReadResult['inventory']
+}
+
+function providerLabel(row: z.infer<typeof ProviderDbRowSchema> | null, index: number): string {
+  if (!row) return `row ${index + 1}`
+  return `${row.app_type}/${row.id} (${row.name})`
+}
+
+function readLocalSettings(path: string): { settings: LocalSettings, warnings: ExternalProviderWarning[] } {
+  if (!existsSync(path)) return { settings: {}, warnings: [] }
+  try {
+    return {
+      settings: z.string()
+        .transform(raw => JSON.parse(raw))
+        .pipe(LocalSettingsSchema)
+        .parse(readFileSync(path, 'utf8')),
+      warnings: [],
+    }
+  }
+  catch (error) {
+    return {
+      settings: {},
+      warnings: [{
+        code: 'cc-switch-settings-invalid',
+        message: `CC Switch local settings could not be parsed; database current flags were used instead. ${warningMessage(error)}`,
+        severity: 'warning',
+      }],
+    }
+  }
 }
 
 function configValue(ctx: ExternalProviderSourceReadContext | null, key: string, fallback: string): string {
@@ -259,7 +300,7 @@ function effectiveCurrentIds(providers: CcSwitchProviderRow[], localSettings: Lo
   return currentIds
 }
 
-function readProviderRows(db: Database.Database, settingsPath: string): CcSwitchProviderRow[] {
+function readProviderRows(db: Database.Database, settingsPath: string): { providers: CcSwitchProviderRow[], warnings: ExternalProviderWarning[] } {
   if (!tableExists(db, 'providers')) {
     throw new Error('CC Switch database is missing providers table')
   }
@@ -293,32 +334,70 @@ function readProviderRows(db: Database.Database, settingsPath: string): CcSwitch
     ORDER BY app_type ASC, COALESCE(sort_index, 999999), created_at ASC, id ASC
   `).all()
 
-  const providers = z.array(ProviderDbRowSchema).parse(rows).map(row => ({
-    id: row.id,
-    appType: row.app_type,
-    name: row.name,
-    settingsConfig: ProviderSettingsConfigTextSchema.parse(row.settings_config),
-    settingsConfigRaw: row.settings_config,
-    websiteUrl: row.website_url,
-    category: row.category,
-    createdAt: row.created_at,
-    sortIndex: row.sort_index,
-    notes: row.notes,
-    icon: row.icon,
-    iconColor: row.icon_color,
-    meta: ProviderMetaTextSchema.parse(row.meta),
-    metaRaw: row.meta,
-    isCurrent: row.is_current,
-    inFailoverQueue: row.in_failover_queue,
-    endpoints: endpoints.get(`${row.app_type}\0${row.id}`) ?? [],
-    health: health.get(`${row.app_type}\0${row.id}`) ?? 'unknown',
-  }))
+  const providers: CcSwitchProviderRow[] = []
+  const warnings: ExternalProviderWarning[] = []
+  for (const [index, rawRow] of rows.entries()) {
+    const row = ProviderDbRowSchema.safeParse(rawRow)
+    if (!row.success) {
+      warnings.push({
+        code: 'cc-switch-provider-row-invalid',
+        message: `Skipped CC Switch provider row ${index + 1} because its database columns are invalid. ${warningMessage(row.error)}`,
+        severity: 'warning',
+      })
+      continue
+    }
 
-  const currentIds = effectiveCurrentIds(providers, readLocalSettings(settingsPath))
-  return providers.map(provider => ({
-    ...provider,
-    isCurrent: currentIds.get(provider.appType) === provider.id,
-  }))
+    const settingsConfig = ProviderSettingsConfigTextSchema.safeParse(row.data.settings_config)
+    if (!settingsConfig.success) {
+      warnings.push({
+        code: 'cc-switch-provider-settings-invalid',
+        message: `Skipped CC Switch provider ${providerLabel(row.data, index)} because settings_config could not be parsed. ${warningMessage(settingsConfig.error)}`,
+        severity: 'warning',
+      })
+      continue
+    }
+
+    const meta = ProviderMetaTextSchema.safeParse(row.data.meta)
+    if (!meta.success) {
+      warnings.push({
+        code: 'cc-switch-provider-meta-invalid',
+        message: `Used empty metadata for CC Switch provider ${providerLabel(row.data, index)} because meta could not be parsed. ${warningMessage(meta.error)}`,
+        severity: 'warning',
+      })
+    }
+
+    providers.push({
+      id: row.data.id,
+      appType: row.data.app_type,
+      name: row.data.name,
+      settingsConfig: settingsConfig.data,
+      settingsConfigRaw: row.data.settings_config,
+      websiteUrl: row.data.website_url,
+      category: row.data.category,
+      createdAt: row.data.created_at,
+      sortIndex: row.data.sort_index,
+      notes: row.data.notes,
+      icon: row.data.icon,
+      iconColor: row.data.icon_color,
+      meta: meta.success ? meta.data : {},
+      metaRaw: row.data.meta,
+      isCurrent: row.data.is_current,
+      inFailoverQueue: row.data.in_failover_queue,
+      endpoints: endpoints.get(`${row.data.app_type}\0${row.data.id}`) ?? [],
+      health: health.get(`${row.data.app_type}\0${row.data.id}`) ?? 'unknown',
+    })
+  }
+
+  const localSettings = readLocalSettings(settingsPath)
+  warnings.push(...localSettings.warnings)
+  const currentIds = effectiveCurrentIds(providers, localSettings.settings)
+  return {
+    providers: providers.map(provider => ({
+      ...provider,
+      isCurrent: currentIds.get(provider.appType) === provider.id,
+    })),
+    warnings,
+  }
 }
 
 export function readCcSwitchSnapshot(config: CcSwitchSourceConfig): CcSwitchSnapshotReadResult {
@@ -330,17 +409,17 @@ export function readCcSwitchSnapshot(config: CcSwitchSourceConfig): CcSwitchSnap
   try {
     db.pragma('query_only = ON')
     db.pragma('busy_timeout = 1000')
-    const providers = readProviderRows(db, config.settingsPath)
+    const providerRows = readProviderRows(db, config.settingsPath)
     return {
-      providers,
-      inventory: {
+      providers: providerRows.providers,
+      inventory: compactInventory({
         mcpServers: countRows(db, 'mcp_servers'),
         prompts: countRows(db, 'prompts'),
         skills: countRows(db, 'skills'),
         usageRollups: countRows(db, 'usage_daily_rollups'),
         modelPricingEntries: countRows(db, 'model_pricing'),
-      },
-      warnings: [],
+      }),
+      warnings: providerRows.warnings,
     }
   }
   finally {
@@ -375,34 +454,30 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     ?? env.ANTHROPIC_DEFAULT_OPUS_MODEL
     ?? env.ANTHROPIC_DEFAULT_HAIKU_MODEL
   const credential = env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY
-  const modelAliases = {
-    haiku: env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
-    sonnet: env.ANTHROPIC_DEFAULT_SONNET_MODEL,
-    opus: env.ANTHROPIC_DEFAULT_OPUS_MODEL,
-  }
-
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
     name: `CC Switch / Claude / ${provider.name}`,
     providerKind: 'anthropic',
-    config: {
+    config: compactJsonObject({
       baseUrl,
-    },
+    }),
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
-    metadata: {
+    metadata: compactJsonObject({
       ...metadataBase(provider),
       baseUrl,
       model,
       apiFormat: provider.meta.apiFormat ?? 'anthropic',
-    },
+    }),
   }
 }
 
 function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
   const auth = provider.settingsConfig.auth
-  const configText = provider.settingsConfig.config
+  const configText = typeof provider.settingsConfig.config === 'string' && provider.settingsConfig.config.trim().length > 0
+    ? provider.settingsConfig.config
+    : undefined
   if (!configText) return null
 
   const parsedToml = CodexTomlConfigSchema.parse(parseToml(configText))
@@ -420,17 +495,18 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
     app: provider.appType,
     name: `CC Switch / Codex / ${provider.name}`,
     providerKind: 'openai-compatible',
-    config: {
+    config: compactJsonObject({
       baseUrl,
-    },
+    }),
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
-    metadata: {
+    metadata: compactJsonObject({
       ...metadataBase(provider),
       baseUrl,
       model,
+      reasoningEffort,
       apiFormat: wireApi === 'responses' ? 'openai_responses' : 'openai_chat',
-    },
+    }),
   }
 }
 
@@ -449,17 +525,17 @@ function mapGeminiProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     app: provider.appType,
     name: `CC Switch / Gemini / ${provider.name}`,
     providerKind: 'openai-compatible',
-    config: {
+    config: compactJsonObject({
       baseUrl,
-    },
+    }),
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
-    metadata: {
+    metadata: compactJsonObject({
       ...metadataBase(provider),
       baseUrl,
       model,
       apiFormat: apiFormat ?? 'openai_chat',
-    },
+    }),
   }
 }
 
@@ -492,7 +568,18 @@ export async function readCcSwitchExternalProviderSnapshot(ctx: ExternalProvider
   const snapshot = readCcSwitchSnapshot(config)
   const skippedWarnings: ExternalProviderWarning[] = []
   const providers = snapshot.providers.flatMap(provider => {
-    const record = mapProvider(provider)
+    let record: ExternalProviderRecord | null
+    try {
+      record = mapProvider(provider)
+    }
+    catch (error) {
+      skippedWarnings.push({
+        code: 'cc-switch-provider-map-failed',
+        message: `Skipped CC Switch provider ${provider.appType}/${provider.id} (${provider.name}) because it could not be mapped. ${warningMessage(error)}`,
+        severity: 'warning',
+      })
+      return []
+    }
     if (!record && SUPPORTED_APPS.has(provider.appType)) {
       skippedWarnings.push({
         code: 'cc-switch-provider-unsupported-runtime',

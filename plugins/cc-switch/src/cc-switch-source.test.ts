@@ -302,4 +302,87 @@ describe('CC Switch external provider source', () => {
       else process.env.CRADLE_CC_SWITCH_SETTINGS_PATH = previousSettingsPath
     }
   })
+
+  it('tolerates nullable external fields and skips only malformed provider rows', async () => {
+    const dir = createTempWorkspace()
+    const dbPath = join(dir, 'cc-switch.db')
+    const settingsPath = join(dir, 'settings.json')
+    writeFixtureDatabase(dbPath)
+    writeFileSync(settingsPath, JSON.stringify({ currentProviderCodex: null }))
+
+    const db = new Database(dbPath)
+    try {
+      const insertProvider = db.prepare(`
+        INSERT INTO providers (id, app_type, name, settings_config, meta)
+        VALUES (?, ?, ?, ?, ?)
+      `)
+      insertProvider.run(
+        'codex-null-key',
+        'codex',
+        'Codex Null Key',
+        JSON.stringify({
+          env: null,
+          auth: { OPENAI_API_KEY: null },
+          config: [
+            'model_provider = "fixture"',
+            'model = "gpt-null-key"',
+            '',
+            '[model_providers.fixture]',
+            'base_url = "https://null-key.example.test/v1"',
+            'wire_api = "responses"',
+          ].join('\n'),
+        }),
+        JSON.stringify({ apiFormat: null }),
+      )
+      insertProvider.run(
+        'codex-bad-settings',
+        'codex',
+        'Codex Bad Settings',
+        JSON.stringify({
+          auth: { OPENAI_API_KEY: 123 },
+          config: [
+            'model_provider = "fixture"',
+            'model = "gpt-bad-settings"',
+            '',
+            '[model_providers.fixture]',
+            'base_url = "https://bad-settings.example.test/v1"',
+          ].join('\n'),
+        }),
+        '{}',
+      )
+    }
+    finally {
+      db.close()
+    }
+
+    const snapshot = await readCcSwitchExternalProviderSnapshot({
+      signal: new AbortController().signal,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+      },
+      sharedConfig: new Map([
+        ['CC_SWITCH_DB_PATH', dbPath],
+        ['CC_SWITCH_SETTINGS_PATH', settingsPath],
+      ]),
+    })
+
+    const nullableProvider = snapshot.providers.find(provider => provider.externalId === 'cc-switch:codex:codex-null-key')
+    expect(snapshot.source.status).toBe('warning')
+    expect(nullableProvider).toEqual(expect.objectContaining({
+      providerKind: 'openai-compatible',
+      config: { baseUrl: 'https://null-key.example.test/v1' },
+      metadata: expect.objectContaining({ model: 'gpt-null-key' }),
+    }))
+    expect(nullableProvider?.credential).toBeUndefined()
+    expect(snapshot.providers.some(provider => provider.externalId === 'cc-switch:codex:codex-bad-settings')).toBe(false)
+    expect(snapshot.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'cc-switch-provider-settings-invalid',
+        severity: 'warning',
+      }),
+    ]))
+  })
 })

@@ -6,6 +6,8 @@ The plugin never writes to `~/.cc-switch`, never owns Cradle Provider UI, and ne
 
 CC Switch is treated as a connection source. Snapshot records project base URLs and API keys into Cradle, while available model lists, custom models, visibility, models.dev mappings, and cost metadata stay owned by Cradle provider/profile modules.
 
+External CC Switch data is parsed defensively. Nullable optional fields such as missing API keys are treated as absent values, and malformed provider rows are reported as source warnings instead of failing the whole refresh.
+
 ## Files
 
 - `package.json`: Declares the Cradle plugin manifest and build scripts.
