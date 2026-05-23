@@ -9,6 +9,8 @@ and the single React Query boundary used to read/write Jarvis preferences.
 ## Files
 
 - **context-schema.ts**: Shared types describing the client-side workspace/context snapshot fed into Jarvis
+- **display-context.ts**: Display-only projection helpers that hide Jarvis `<cradle_context>` blocks while preserving the full prompt sent to the agent
+- **display-context.test.ts**: Unit coverage for closed, historical, and streaming cradle context redaction in Jarvis display text
 - **format-context.ts**: Formats the collected snapshot into the `<cradle_context>` block injected into Jarvis prompts
 - **format-context.test.ts**: Unit coverage for active view, params, chat summary, layout, unread, profile, and no-active-tab formatting
 - **jarvis-popover.tsx**: Jarvis chat popover UI — creates / resumes the Jarvis session, renders the local chat surface only while open, positions itself from the explicit layout geometry contract instead of DOM selectors, applies resize and window bounds through refs plus `requestAnimationFrame` style writes, persists drag size only at pointer-up, labels the message input for accessibility, and avoids resize-driven React renders.

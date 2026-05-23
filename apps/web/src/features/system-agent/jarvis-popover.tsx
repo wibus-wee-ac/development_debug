@@ -17,6 +17,7 @@ import { MessageBubble } from '~/features/chat/message-bubble'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
 
+import { projectJarvisMessageForDisplay } from './display-context'
 import { formatContextForAgent } from './format-context'
 import { useJarvisUiStore } from './jarvis-ui-store'
 import { collectContextSnapshot } from './use-context-snapshot'
@@ -68,6 +69,10 @@ export function JarvisPopover({
   } = useChatSession(activeSessionId)
   const isStreaming = status === 'streaming'
   const jarvisReady = preferencesReady && (!activeSessionId || chatReady)
+  const displayMessages = React.useMemo(
+    () => messages.map(projectJarvisMessageForDisplay),
+    [messages],
+  )
 
   // Collapse when popover closes
   React.useEffect(() => {
@@ -263,13 +268,13 @@ export function JarvisPopover({
 
   // Determine which messages are streaming (only the last assistant one)
   const lastAssistantId = React.useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
-        return messages[i].id
+    for (let i = displayMessages.length - 1; i >= 0; i--) {
+      if (displayMessages[i].role === 'assistant') {
+        return displayMessages[i].id
       }
     }
     return null
-  }, [messages])
+  }, [displayMessages])
 
   const emptyState = (
     <div className="flex flex-col items-center justify-center h-full min-h-72 px-8">
@@ -299,7 +304,7 @@ export function JarvisPopover({
 
   const messageList = (
     <div className="flex flex-col gap-5 px-4 py-3">
-      {messages.map(msg => (
+      {displayMessages.map(msg => (
         <MessageBubble
           key={msg.id}
           message={msg}
@@ -395,7 +400,7 @@ export function JarvisPopover({
 
         {/* Messages — uses the same MessageBubble as the Chat page */}
         <ScrollArea className="flex-1 min-h-0" viewportRef={viewportRef}>
-          {messages.length === 0 ? emptyState : messageList}
+          {displayMessages.length === 0 ? emptyState : messageList}
         </ScrollArea>
 
         {/* Input */}
