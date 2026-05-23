@@ -11,6 +11,9 @@ interface JarvisUiState {
   expanded: boolean
   setExpanded: (expanded: boolean) => void
 
+  includeContext: boolean
+  setIncludeContext: (includeContext: boolean) => void
+
   // Window dimensions (persisted)
   panelWidth: number
   panelHeight: number
@@ -30,6 +33,9 @@ export const useJarvisUiStore = create<JarvisUiState>()(
       expanded: false,
       setExpanded: expanded => set({ expanded }),
 
+      includeContext: true,
+      setIncludeContext: includeContext => set({ includeContext }),
+
       panelWidth: 420,
       panelHeight: 520,
       setPanelSize: (panelWidth, panelHeight) => set({ panelWidth, panelHeight }),
@@ -46,6 +52,7 @@ export const useJarvisUiStore = create<JarvisUiState>()(
     {
       name: 'jarvis-ui',
       partialize: state => ({
+        includeContext: state.includeContext,
         panelWidth: state.panelWidth,
         panelHeight: state.panelHeight,
         sessions: state.sessions,

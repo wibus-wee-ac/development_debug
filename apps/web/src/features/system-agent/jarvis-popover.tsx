@@ -13,6 +13,7 @@ import { postSessions } from '~/api-gen/sdk.gen'
 import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { Switch } from '~/components/ui/switch'
 import { MessageBubble } from '~/features/chat/message-bubble'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
@@ -33,7 +34,7 @@ export function JarvisPopover({
   open,
   onOpenChange,
   anchorRef,
-  anchorKey,
+  anchorKey: _anchorKey,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -46,6 +47,7 @@ export function JarvisPopover({
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const panelRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
+  const includeContextSwitchId = React.useId()
 
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
   const setJarvisExpanded = useJarvisUiStore(s => s.setExpanded)
@@ -55,6 +57,8 @@ export function JarvisPopover({
   const activeSessionId = useJarvisUiStore(s => s.activeSessionId)
   const setActiveSessionId = useJarvisUiStore(s => s.setActiveSessionId)
   const addSession = useJarvisUiStore(s => s.addSession)
+  const includeContext = useJarvisUiStore(s => s.includeContext)
+  const setIncludeContext = useJarvisUiStore(s => s.setIncludeContext)
 
   const { centerColumnRect, footerRect } = useLayoutGeometry()
   const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
@@ -98,7 +102,8 @@ export function JarvisPopover({
       if (e.key === 'Escape') {
         if (jarvisExpanded) {
           setJarvisExpanded(false)
-        } else {
+        }
+        else {
           onOpenChange(false)
         }
       }
@@ -137,8 +142,9 @@ export function JarvisPopover({
       textareaRef.current.style.height = 'auto'
     }
 
-    const ctx = collectContextSnapshot()
-    const contextBlock = formatContextForAgent(ctx)
+    const contextBlock = includeContext
+      ? formatContextForAgent(collectContextSnapshot())
+      : ''
     const fullText = contextBlock ? `${contextBlock}\n\n${text}` : text
 
     // Lazy-create session on first message (or when no active session)
@@ -167,10 +173,12 @@ export function JarvisPopover({
         setActiveSessionId(sessionId)
         setPendingInitialText(fullText)
         return
-      } catch (e) {
+      }
+      catch (e) {
         setSendError(e instanceof Error ? e.message : 'Failed to create session')
         return
-      } finally {
+      }
+      finally {
         setCreating(false)
       }
     }
@@ -185,6 +193,7 @@ export function JarvisPopover({
     sendMessage,
     addSession,
     setActiveSessionId,
+    includeContext,
   ])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -309,6 +318,7 @@ export function JarvisPopover({
           key={msg.id}
           message={msg}
           isStreaming={isStreaming && msg.id === lastAssistantId}
+          executionDetailsDefaultOpen
         />
       ))}
       {error && <div className="text-xs text-destructive/80 p-1">{error}</div>}
@@ -424,7 +434,22 @@ export function JarvisPopover({
               disabled={!prefs?.profileId}
               className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none min-h-9 max-h-30 rounded-t-xl disabled:opacity-50"
             />
-            <div className="flex items-center justify-end px-2.5 pb-2">
+            <div className="flex items-center justify-between gap-3 px-2.5 pb-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Switch
+                  id={includeContextSwitchId}
+                  size="sm"
+                  checked={includeContext}
+                  onCheckedChange={setIncludeContext}
+                  disabled={!prefs?.profileId}
+                />
+                <label
+                  htmlFor={includeContextSwitchId}
+                  className="truncate text-[11px] text-muted-foreground"
+                >
+                  Include context
+                </label>
+              </div>
               {sendButton}
             </div>
           </div>
@@ -435,7 +460,7 @@ export function JarvisPopover({
       {!jarvisExpanded && (
         <div
           onPointerDown={handleResizeStart}
-          className="absolute top-0 left-0 w-3 h-3 cursor-nw-resize z-10"
+          className="absolute top-0 left-0 size-3 cursor-nw-resize z-10"
         />
       )}
     </m.div>

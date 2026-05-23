@@ -9,7 +9,9 @@ import { cn } from '~/lib/cn'
 import { useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
-import { ReasoningBlock, ToolCallBlock, GroupedToolCallBlock } from './blocks'
+import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
+import { ReasoningBlock } from './blocks/reasoning-block'
+import { ToolCallBlock } from './blocks/tool-call-block'
 import type { ChatRenderItem } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
 
@@ -59,8 +61,14 @@ function renderSubagentItem(
 
 /* ─── Execution Phase Fold ──────────────────────────────────────── */
 
-function ExecutionPhaseFold({ children }: { children: React.ReactNode }) {
-  const [expanded, setExpanded] = useState(false)
+function ExecutionPhaseFold({
+  children,
+  defaultOpen = false,
+}: {
+  children: React.ReactNode
+  defaultOpen?: boolean
+}) {
+  const [expanded, setExpanded] = useState(defaultOpen)
 
   return (
     <div className="my-1">
@@ -91,9 +99,10 @@ const seenMessageIds = new Set<string>()
 interface MessageBubbleProps {
   message: UIMessage
   isStreaming: boolean
+  executionDetailsDefaultOpen?: boolean
 }
 
-function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
+function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const [copied, setCopied] = useState(false)
@@ -189,7 +198,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
             output={item.part.output}
             errorText={item.part.errorText}
           >
-            {item.subagentMessages.flatMap(subMsg => {
+            {item.subagentMessages.flatMap((subMsg) => {
               const groupedParts = groupMessageParts(subMsg.parts, subMsg.id, undefined)
               return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, { animationPreset, animateMode, showCursor }))
             })}
@@ -217,7 +226,7 @@ function MessageBubbleView({ message, isStreaming }: MessageBubbleProps) {
 
     return (
       <>
-        <ExecutionPhaseFold>
+        <ExecutionPhaseFold defaultOpen={executionDetailsDefaultOpen}>
           {executionPhaseSplit.executionItems.map(renderItem)}
         </ExecutionPhaseFold>
         {executionPhaseSplit.finalItems.map(renderItem)}
@@ -287,5 +296,6 @@ export const MessageBubble = memo(
   MessageBubbleView,
   (prevProps, nextProps) =>
     prevProps.message === nextProps.message
-    && prevProps.isStreaming === nextProps.isStreaming,
+    && prevProps.isStreaming === nextProps.isStreaming
+    && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen,
 )
