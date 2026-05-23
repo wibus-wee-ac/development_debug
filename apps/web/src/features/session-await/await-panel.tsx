@@ -151,6 +151,14 @@ interface LiveReviewStatus {
 
 type LiveAwaitStatus = LiveCIStatus | LiveReviewStatus
 
+interface UnsupportedLiveAwaitStatus {
+  supported: false
+  error?: {
+    code: string
+    message: string
+  }
+}
+
 // ── Hooks ──
 
 function useSessionAwaits(sessionId: string | null) {
@@ -581,19 +589,51 @@ function TreeItem({
 // ── Card ──
 
 function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
-  const { data: rawData } = useLiveCIStatus(awaitRow.source === 'github-ci' || awaitRow.source === 'github-review' ? awaitRow.id : null)
-  const data = rawData as (LiveAwaitStatus | { supported: false }) | undefined
+  const queryClient = useQueryClient()
+  const invalidatedRef = useRef(false)
+  const supportsLiveStatus = awaitRow.status === 'pending' && (awaitRow.source === 'github-ci' || awaitRow.source === 'github-review')
+  const { data: rawData } = useLiveCIStatus(supportsLiveStatus ? awaitRow.id : null)
+  const data = rawData as (LiveAwaitStatus | UnsupportedLiveAwaitStatus) | undefined
+
+  useEffect(() => {
+    if (
+      data?.supported === false
+      && data.error?.code === 'github_await_target_invalid'
+      && !invalidatedRef.current
+    ) {
+      invalidatedRef.current = true
+      void queryClient.invalidateQueries({ queryKey: getSessionAwaitsQueryKey({ query: { sessionId: awaitRow.chatSessionId } }) })
+      void queryClient.invalidateQueries({ queryKey: getSessionAwaitsSummaryQueryKey({ query: { sessionId: awaitRow.chatSessionId } }) })
+    }
+  }, [awaitRow.chatSessionId, data, queryClient])
 
   if (!data || !data.supported) {
+    const errorText = data?.error?.message ?? (awaitRow.lastErrorText as string | null) ?? null
+    const statusText = errorText ?? (awaitRow.reason as string | null) ?? 'Waiting...'
+    const hasError = !!errorText || awaitRow.status === 'failed'
+
     return (
-      <div className="rounded-md border border-border p-3">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="capitalize">{awaitRow.source}</span>
-          <span>·</span>
-          <span
-            className="min-w-0 flex-1 truncate"
+      <div className={cn(
+        'rounded-md border p-3',
+        hasError ? 'border-red-500/35 bg-red-500/[0.04]' : 'border-border',
+      )}
+      >
+        <div className="space-y-1.5 text-xs">
+          <div className={cn(
+            'flex items-center gap-2',
+            hasError ? 'text-red-500' : 'text-muted-foreground',
+          )}
           >
-{(awaitRow.reason as string) ?? 'Waiting...'}
+            {hasError && <XIcon className="size-3 shrink-0" aria-hidden />}
+            <span className="capitalize">{awaitRow.source}</span>
+          </div>
+          <span
+            className={cn(
+              'block min-w-0 whitespace-normal break-words leading-5',
+              hasError ? 'text-red-500' : 'text-muted-foreground',
+            )}
+          >
+            {statusText}
           </span>
         </div>
       </div>

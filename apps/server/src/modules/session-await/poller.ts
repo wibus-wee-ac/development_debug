@@ -113,7 +113,10 @@ async function tick() {
 
       const toTrigger: { awaitId: string, resumeText: string, resumePayloadJson?: string }[] = []
       for (const result of results) {
-        if (result.transientError) {
+        if (result.permanentError) {
+          service.markFailed(result.awaitId, result.permanentError)
+        }
+        else if (result.transientError) {
           service.updateLastChecked(result.awaitId, result.transientError)
         }
         else if (result.matched) {

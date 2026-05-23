@@ -2,7 +2,9 @@ import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
 import {
   fetchPullRequest,
   fetchPullRequestReviews,
+  GitHubTargetValidationError,
   hasGitHubToken,
+  isGitHubMissingTarget,
   isGitHubRateLimited,
   type GitHubPullRequestReview,
 } from './github-api'
@@ -88,6 +90,10 @@ async function resolveTarget(filter: GitHubReviewFilter): Promise<ResolvedReview
     mode: filter.mode,
     headSha: filter.headSha ?? prData.head.sha,
   }
+}
+
+function buildMissingTargetMessage(filter: GitHubReviewFilter): string {
+  return `GitHub review target not found or inaccessible: ${filter.owner}/${filter.repo} PR #${filter.pr}.`
 }
 
 function latestSubmittedReviewsForHead(reviews: GitHubPullRequestReview[], headSha: string): LiveReview[] {
@@ -176,13 +182,35 @@ export const githubReviewSource: SessionAwaitSource = {
     for (const row of awaits) {
       const filter = GitHubReviewFilterJsonSchema.parse(row.filterJson)
 
-      const target = await resolveTarget(filter)
+      let target: ResolvedReviewTarget | null
+      try {
+        target = await resolveTarget(filter)
+      }
+      catch (err) {
+        if (isGitHubMissingTarget(err)) {
+          results.push({ awaitId: row.id, matched: false, permanentError: buildMissingTargetMessage(filter) })
+          continue
+        }
+        results.push({ awaitId: row.id, matched: false, transientError: 'Unable to resolve GitHub review target' })
+        continue
+      }
       if (!target) {
         results.push({ awaitId: row.id, matched: false, transientError: 'Unable to resolve GitHub review target' })
         continue
       }
 
-      const reviews = await fetchPullRequestReviews(target.owner, target.repo, target.prNumber)
+      let reviews: GitHubPullRequestReview[] | null
+      try {
+        reviews = await fetchPullRequestReviews(target.owner, target.repo, target.prNumber)
+      }
+      catch (err) {
+        if (isGitHubMissingTarget(err)) {
+          results.push({ awaitId: row.id, matched: false, permanentError: buildMissingTargetMessage(filter) })
+          continue
+        }
+        results.push({ awaitId: row.id, matched: false, transientError: 'GitHub review API unavailable' })
+        continue
+      }
       if (!reviews) {
         results.push({ awaitId: row.id, matched: false, transientError: 'GitHub review API unavailable' })
         continue
@@ -206,6 +234,30 @@ export const githubReviewSource: SessionAwaitSource = {
   },
 }
 
+export async function validateGitHubReviewTarget(filterJson: string): Promise<void> {
+  const filter = GitHubReviewFilterJsonSchema.parse(filterJson)
+  let target: ResolvedReviewTarget | null
+  try {
+    target = await resolveTarget(filter)
+    const reviews = target ? await fetchPullRequestReviews(target.owner, target.repo, target.prNumber) : null
+    if (!target || !reviews) {
+      throw new GitHubTargetValidationError({
+        category: 'unavailable',
+        message: 'Unable to validate GitHub review target right now.',
+      })
+    }
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new GitHubTargetValidationError({
+        category: 'invalid',
+        message: buildMissingTargetMessage(filter),
+      })
+    }
+    throw err
+  }
+}
+
 export async function fetchLiveReviewStatus(filterJson: string): Promise<LiveReviewStatus | null> {
   const filter = GitHubReviewFilterJsonSchema.parse(filterJson)
 
@@ -226,12 +278,36 @@ export async function fetchLiveReviewStatus(filterJson: string): Promise<LiveRev
     }
   }
 
-  const target = await resolveTarget(filter)
+  let target: ResolvedReviewTarget | null
+  try {
+    target = await resolveTarget(filter)
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new GitHubTargetValidationError({
+        category: 'invalid',
+        message: buildMissingTargetMessage(filter),
+      })
+    }
+    throw err
+  }
   if (!target) {
     return null
   }
 
-  const reviews = await fetchPullRequestReviews(target.owner, target.repo, target.prNumber)
+  let reviews: GitHubPullRequestReview[] | null
+  try {
+    reviews = await fetchPullRequestReviews(target.owner, target.repo, target.prNumber)
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new GitHubTargetValidationError({
+        category: 'invalid',
+        message: buildMissingTargetMessage(filter),
+      })
+    }
+    throw err
+  }
   if (!reviews) {
     return {
       kind: 'github-review',

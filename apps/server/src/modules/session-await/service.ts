@@ -7,8 +7,9 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { createRun } from '../chat-runtime/service'
-import { GitHubCIFilterJsonSchema } from './sources/github-ci'
-import { GitHubReviewFilterJsonSchema } from './sources/github-review'
+import { GitHubTargetValidationError } from './sources/github-api'
+import { GitHubCIFilterJsonSchema, validateGitHubCITarget } from './sources/github-ci'
+import { GitHubReviewFilterJsonSchema, validateGitHubReviewTarget } from './sources/github-review'
 import type {
   RegisterAwaitInput,
   SessionAwait,
@@ -41,7 +42,32 @@ const LastCheckedInputSchema = z.object({
 
 // ── write operations ──
 
-export function register(rawInput: RegisterAwaitInput): SessionAwait {
+async function validateGitHubAwaitSource(source: string, filterJson: string): Promise<void> {
+  try {
+    if (source === 'github-ci') {
+      await validateGitHubCITarget(filterJson)
+    }
+    else if (source === 'github-review') {
+      await validateGitHubReviewTarget(filterJson)
+    }
+  }
+  catch (err) {
+    if (err instanceof GitHubTargetValidationError) {
+      throw new AppError({
+        code: err.category === 'invalid' ? 'github_await_target_invalid' : 'github_await_validation_unavailable',
+        status: err.category === 'invalid' ? 400 : 503,
+        message: err.message,
+      })
+    }
+    throw new AppError({
+      code: 'github_await_validation_unavailable',
+      status: 503,
+      message: 'Unable to validate GitHub await target right now.',
+    })
+  }
+}
+
+export async function register(rawInput: RegisterAwaitInput): Promise<SessionAwait> {
   const input = RegisterAwaitInputSchema.parse(rawInput)
   if (input.source === 'github-ci') {
     GitHubCIFilterJsonSchema.parse(input.filterJson)
@@ -64,6 +90,8 @@ export function register(rawInput: RegisterAwaitInput): SessionAwait {
   if (!workspaceExists) {
     throw new AppError({ code: 'workspace_not_found', status: 404, message: 'Workspace not found' })
   }
+
+  await validateGitHubAwaitSource(input.source, input.filterJson)
 
   const id = randomUUID()
   return db()

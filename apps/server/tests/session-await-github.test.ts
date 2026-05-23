@@ -33,7 +33,7 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
-function installGitHubFetch(routes: Record<string, unknown>): ReturnType<typeof vi.fn> {
+function installGitHubFetch(routes: Record<string, unknown | Response>): ReturnType<typeof vi.fn> {
   const mock = vi.fn(async (input: RequestInfo | URL) => {
     const url = new Request(input).url
     const parsed = new URL(url)
@@ -42,6 +42,9 @@ function installGitHubFetch(routes: Record<string, unknown>): ReturnType<typeof 
     const body = routes[key] ?? routes[pathKey]
     if (body === undefined) {
       return new Response('not found', { status: 404 })
+    }
+    if (body instanceof Response) {
+      return body
     }
     return jsonResponse(body)
   })
@@ -144,6 +147,25 @@ describe('GitHub session-await sources', () => {
     ])
 
     expect(result).toEqual({ awaitId: 'await-1', matched: false })
+  })
+
+  it('fails a CI await permanently when the repo or commit is not found', async () => {
+    installGitHubFetch({
+      '/repos/acme/app/commits/missing-sha/check-runs?per_page=100&page=1': new Response(JSON.stringify({ message: 'Not Found' }), {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      }),
+    })
+
+    const [result] = await githubCISource.checkPending([
+      awaitRow({ repo: 'acme/app', sha: 'missing-sha' }),
+    ])
+
+    expect(result).toEqual({
+      awaitId: 'await-1',
+      matched: false,
+      permanentError: 'GitHub CI target not found or inaccessible: acme/app commit missing-sha.',
+    })
   })
 
   it('projects GitHub Actions workflow jobs and steps for live CI status', async () => {

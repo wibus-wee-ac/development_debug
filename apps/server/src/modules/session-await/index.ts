@@ -4,6 +4,7 @@ import { AppError } from '../../errors/app-error'
 import { SessionAwaitModel } from './model'
 import * as Poller from './poller'
 import * as SessionAwait from './service'
+import { GitHubTargetValidationError } from './sources/github-api'
 import { fetchLiveCIStatus, githubCISource } from './sources/github-ci'
 import { fetchLiveReviewStatus, githubReviewSource } from './sources/github-review'
 
@@ -17,7 +18,7 @@ export const sessionAwait = new Elysia({
     Poller.start()
   })
   .onStop(() => { Poller.stop() })
-  .post('/', ({ body }) => SessionAwait.register(body), {
+  .post('/', async ({ body }) => SessionAwait.register(body), {
     detail: {
       'summary': 'Register a new session await',
       'x-cradle-cli': {
@@ -105,13 +106,28 @@ export const sessionAwait = new Elysia({
     if (!row) {
       throw new AppError({ code: 'session_await_not_found', status: 404, message: 'Session await not found' })
     }
-    if (row.source === 'github-ci') {
-      const status = await fetchLiveCIStatus(row.filterJson)
-      return status ? { supported: true as const, ...status } : { supported: false as const }
+    try {
+      if (row.source === 'github-ci') {
+        const status = await fetchLiveCIStatus(row.filterJson)
+        return status ? { supported: true as const, ...status } : { supported: false as const }
+      }
+      if (row.source === 'github-review') {
+        const status = await fetchLiveReviewStatus(row.filterJson)
+        return status ? { supported: true as const, ...status } : { supported: false as const }
+      }
     }
-    if (row.source === 'github-review') {
-      const status = await fetchLiveReviewStatus(row.filterJson)
-      return status ? { supported: true as const, ...status } : { supported: false as const }
+    catch (err) {
+      if (err instanceof GitHubTargetValidationError && err.category === 'invalid') {
+        SessionAwait.markFailed(row.id, err.message)
+        return {
+          supported: false as const,
+          error: {
+            code: 'github_await_target_invalid',
+            message: err.message,
+          },
+        }
+      }
+      throw err
     }
     return { supported: false as const }
   }, {

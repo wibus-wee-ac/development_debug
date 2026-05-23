@@ -5,7 +5,9 @@ import {
   fetchPullRequest,
   fetchWorkflowRunJobs,
   fetchWorkflowRunsForHead,
+  GitHubTargetValidationError,
   hasGitHubToken,
+  isGitHubMissingTarget,
   isGitHubRateLimited,
   resetTokenCache,
   type GitHubCheckRun,
@@ -170,6 +172,11 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
     prTitle,
     ref,
   }
+}
+
+function buildMissingTargetMessage(filter: GitHubCIFilter): string {
+  const target = filter.pr ? `PR #${filter.pr}` : `commit ${filter.sha}`
+  return `GitHub CI target not found or inaccessible: ${filter.owner}/${filter.repo} ${target}.`
 }
 
 function aggregateCI(checkRuns: GitHubCheckRun[], statuses: GitHubCommitStatus[]): AggregatedCI {
@@ -367,13 +374,35 @@ export const githubCISource: SessionAwaitSource = {
     for (const row of awaits) {
       const filter = GitHubCIFilterJsonSchema.parse(row.filterJson)
 
-      const target = await resolveTarget(filter)
+      let target: ResolvedCITarget | null
+      try {
+        target = await resolveTarget(filter)
+      }
+      catch (err) {
+        if (isGitHubMissingTarget(err)) {
+          results.push({ awaitId: row.id, matched: false, permanentError: buildMissingTargetMessage(filter) })
+          continue
+        }
+        results.push({ awaitId: row.id, matched: false, transientError: 'Unable to resolve GitHub CI target' })
+        continue
+      }
       if (!target) {
         results.push({ awaitId: row.id, matched: false, transientError: 'Unable to resolve GitHub CI target' })
         continue
       }
 
-      const aggregate = await fetchAggregatedCI(target)
+      let aggregate: AggregatedCI | null
+      try {
+        aggregate = await fetchAggregatedCI(target)
+      }
+      catch (err) {
+        if (isGitHubMissingTarget(err)) {
+          results.push({ awaitId: row.id, matched: false, permanentError: buildMissingTargetMessage(filter) })
+          continue
+        }
+        results.push({ awaitId: row.id, matched: false, transientError: 'GitHub CI API unavailable' })
+        continue
+      }
       if (!aggregate) {
         results.push({ awaitId: row.id, matched: false, transientError: 'GitHub CI API unavailable' })
         continue
@@ -415,6 +444,30 @@ export const githubCISource: SessionAwaitSource = {
   },
 }
 
+export async function validateGitHubCITarget(filterJson: string): Promise<void> {
+  const filter = GitHubCIFilterJsonSchema.parse(filterJson)
+  let target: ResolvedCITarget | null
+  try {
+    target = await resolveTarget(filter)
+    const aggregate = target ? await fetchAggregatedCI(target) : null
+    if (!target || !aggregate) {
+      throw new GitHubTargetValidationError({
+        category: 'unavailable',
+        message: 'Unable to validate GitHub CI target right now.',
+      })
+    }
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new GitHubTargetValidationError({
+        category: 'invalid',
+        message: buildMissingTargetMessage(filter),
+      })
+    }
+    throw err
+  }
+}
+
 export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatus | null> {
   const filter = GitHubCIFilterJsonSchema.parse(filterJson)
 
@@ -439,12 +492,36 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
     }
   }
 
-  const target = await resolveTarget(filter)
+  let target: ResolvedCITarget | null
+  try {
+    target = await resolveTarget(filter)
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new GitHubTargetValidationError({
+        category: 'invalid',
+        message: buildMissingTargetMessage(filter),
+      })
+    }
+    throw err
+  }
   if (!target) {
     return null
   }
 
-  const aggregate = await fetchAggregatedCI(target)
+  let aggregate: AggregatedCI | null
+  try {
+    aggregate = await fetchAggregatedCI(target)
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new GitHubTargetValidationError({
+        category: 'invalid',
+        message: buildMissingTargetMessage(filter),
+      })
+    }
+    throw err
+  }
   if (!aggregate) {
     return {
       kind: 'github-ci',

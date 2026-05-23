@@ -4,6 +4,26 @@ import { z } from 'zod'
 
 let cachedToken: string | null | undefined
 
+export class GitHubApiError extends Error {
+  readonly status: number
+  readonly path: string
+
+  constructor(options: { status: number, path: string, message: string }) {
+    super(options.message)
+    this.status = options.status
+    this.path = options.path
+  }
+}
+
+export class GitHubTargetValidationError extends Error {
+  readonly category: 'invalid' | 'unavailable'
+
+  constructor(options: { category: 'invalid' | 'unavailable', message: string }) {
+    super(options.message)
+    this.category = options.category
+  }
+}
+
 export function resolveGitHubToken(): string | null {
   if (cachedToken !== undefined) {
     return cachedToken
@@ -65,6 +85,22 @@ function recordRateLimit(headers: Headers): void {
   }
 }
 
+async function readGitHubErrorMessage(res: Response): Promise<string> {
+  try {
+    const data = await res.json() as { message?: unknown }
+    return typeof data.message === 'string' && data.message.trim().length > 0
+      ? data.message
+      : `GitHub API returned ${res.status}`
+  }
+  catch {
+    return `GitHub API returned ${res.status}`
+  }
+}
+
+export function isGitHubMissingTarget(err: unknown): boolean {
+  return err instanceof GitHubApiError && (err.status === 404 || err.status === 422)
+}
+
 async function githubGet<T>(path: string, schema: JsonSchema<T>): Promise<T | null> {
   const token = resolveGitHubToken()
   const url = `https://api.github.com${path}`
@@ -88,6 +124,13 @@ async function githubGet<T>(path: string, schema: JsonSchema<T>): Promise<T | nu
     return cached ? schema.parse(cached.data) : null
   }
   if (!res.ok) {
+    if (res.status === 404 || res.status === 422) {
+      throw new GitHubApiError({
+        status: res.status,
+        path,
+        message: await readGitHubErrorMessage(res),
+      })
+    }
     return null
   }
 

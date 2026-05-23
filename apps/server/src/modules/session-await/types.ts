@@ -33,6 +33,7 @@ export interface CheckResult {
   resumeText?: string
   resumePayloadJson?: string
   transientError?: string
+  permanentError?: string
 }
 
 export interface SessionAwaitSource {
