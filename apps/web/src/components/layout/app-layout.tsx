@@ -49,14 +49,17 @@ function installBrowserUseBridge(openBrowserPanel: () => void): BrowserBridgeCle
   }
   const activateBrowserTab = (tabId: string) => {
     const state = useBrowserPanelStore.getState()
-    if (!state.tabs.some(tab => tab.id === tabId)) {
+    if (!state.tabs.some(tab => tab.kind === 'browser' && tab.id === tabId)) {
       return false
     }
     openBrowserPanel()
     state.setActiveTab(tabId)
     return true
   }
-  const getActiveBrowserTab = () => useBrowserPanelStore.getState().activeTabId ?? undefined
+  const getActiveBrowserTab = () => {
+    const state = useBrowserPanelStore.getState()
+    return state.tabs.find(tab => tab.kind === 'browser' && tab.id === state.activeTabId)?.id
+  }
 
   window.__cradleBrowserUseCreateTab = createBrowserTab
   window.__cradleBrowserUseActivateTab = activateBrowserTab
@@ -167,7 +170,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">{children}</div>
 
             {/* Browser panel split — reveal animation */}
-            {isElectron && activeTab?.type === 'chat' && (
+            {isElectron && (
               <>
                 {browserPanelOpen && (
                   <ResizeHandle

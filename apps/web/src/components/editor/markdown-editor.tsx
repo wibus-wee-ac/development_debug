@@ -15,6 +15,8 @@ import { EditorBubbleMenu } from './editor-bubble-menu'
 import { HeadingWithId } from './heading-with-id'
 import { ShikiCodeBlock } from './shiki-code-block'
 import { SlashCommand } from './slash-command'
+import { SmartMention } from './smart-mention'
+import type { SmartMentionAttrs, SmartMentionItem } from './smart-mention-utils'
 
 function getMarkdownContent(storage: unknown): string {
   const s = storage as { markdown: { getMarkdown: () => string } }
@@ -27,6 +29,10 @@ interface MarkdownEditorProps {
   readonly?: boolean
   placeholder?: string
   className?: string
+  smartMentions?: {
+    getItems: (query: string) => SmartMentionItem[] | Promise<SmartMentionItem[]>
+    onOpen?: (attrs: SmartMentionAttrs) => void
+  }
 }
 
 export function MarkdownEditor({
@@ -35,12 +41,15 @@ export function MarkdownEditor({
   readonly = false,
   placeholder = '开始编写...',
   className,
+  smartMentions,
 }: MarkdownEditorProps) {
   const onSaveRef = useRef(onSave)
 
   useEffect(() => {
     onSaveRef.current = onSave
   }, [onSave])
+
+  const smartMentionsEnabled = !!smartMentions
 
   const editor = useEditor({
     extensions: [
@@ -69,6 +78,14 @@ export function MarkdownEditor({
       }),
       Image,
       SlashCommand,
+      ...(smartMentionsEnabled
+        ? [
+            SmartMention.configure({
+              getItems: smartMentions.getItems,
+              onOpen: smartMentions.onOpen,
+            }),
+          ]
+        : []),
     ],
     content: content ?? '',
     editable: !readonly,
@@ -84,7 +101,7 @@ export function MarkdownEditor({
         onSaveRef.current(md)
       }
     },
-  }, [readonly])
+  }, [readonly, smartMentionsEnabled, smartMentions?.getItems, smartMentions?.onOpen])
 
   // Update content when external content changes (initial load)
   const initialSetRef = useRef(false)

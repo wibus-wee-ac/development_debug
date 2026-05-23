@@ -16,6 +16,7 @@ import { Separator } from '~/components/ui/separator'
 import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import type { Agent, AgentProfile, CliTuiLaunchConfig } from '~/lib/types'
 
@@ -109,6 +110,8 @@ export function AgentList() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isDrafting, setIsDrafting] = useState(false)
   const [filter, setFilter] = useState('')
+  const agentFocusTargetId = useSettingsOverlayStore(state => state.agentFocusTarget?.id ?? null)
+  const clearAgentFocusTarget = useSettingsOverlayStore(state => state.clearAgentFocusTarget)
   const settingsAgentsReady = agentsReady && profilesReady
 
   const visibleAgents = useMemo(() => {
@@ -135,6 +138,25 @@ export function AgentList() {
       setSelectedId(null)
     }
   }, [agents, selectedId])
+
+  useEffect(() => {
+    if (!agentFocusTargetId) {
+      return
+    }
+
+    const focusedAgent = agents.find(agent => agent.id === agentFocusTargetId)
+    if (focusedAgent) {
+      setSelectedId(focusedAgent.id)
+      setIsDrafting(false)
+      setFilter('')
+      clearAgentFocusTarget()
+      return
+    }
+
+    if (agentsReady) {
+      clearAgentFocusTarget()
+    }
+  }, [agentFocusTargetId, agents, agentsReady, clearAgentFocusTarget])
 
   const startDraft = useCallback(() => {
     setIsDrafting(true)

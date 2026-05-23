@@ -11,6 +11,10 @@ Also owns the sidebar interaction contract between workspace groups and the laun
 - **index.ts**: Barrel re-exports for the workspace feature
 - **file-tree-loader.ts**: Workspace file tree 的共享 lazy loader 与 intent preload 入口，供 right aside Files tab 使用
 - **file-tree.tsx**: Right-aside workspace file tree using `@pierre/trees`, with persistent model-backed search, Git status annotations sourced from the shared Git status hook, active refresh for external file changes, context actions, Pack handoff, workspace file drag payloads for chat/TUI drops, and a first-render performance completion mark once workspace files and Git status are ready.
+- **workspace-file-preview.tsx**: Embedded workspace file preview content for BrowserPanel tabs; reads text through the workspace file content API, renders Markdown with Streamdown, renders code previews with Shiki, and supports Enter/double-click editor opening.
+- **workspace-file-editor.tsx**: Monaco-backed workspace file editor content for workspace-relative files, with language mapping, line numbers, folding, and read-only text loading feedback.
+- **workspace-file-language.ts**: Shared workspace file language helpers mapping file names/extensions to Monaco and Shiki language ids.
+- **use-workspace-file-content.ts**: Hook for reading one workspace file as text through the workspace-owned file content API.
 - **workspace-sidebar.test.tsx**: Regression tests locking workspace header navigation, folder-only collapse behavior, accessible session menu triggers, long-title sidebar truncation classes, and shared session actions across button/context menus
 - **use-workspace-files.ts**: Hook for listing workspace files for composer mentions, using the shared active query refresh policy.
 - **use-workspace.ts**: Hooks for listing, adding (via native directory picker), and deleting workspaces; exposes list readiness for interaction-level performance gates that depend on workspace names.

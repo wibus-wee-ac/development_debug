@@ -21,9 +21,9 @@ The registry exports the store instance consumed by the rest of the app.
 - **awaits.tab.tsx**: Pending external-await overview tab opened by Desktop tray actions.
 - **automation.tab.tsx**: Automation dashboard tab opened by Desktop tray actions.
 - **plugin-panel.tab.tsx**: Plugin panel tab，按 owner-scoped panel id 渲染 web plugin 注册的 panel，并兼容旧 local id 的单匹配恢复；同时提供 panel id hash serialize/deserialize 契约与 plugin panel first-render performance gate。
-- **kanban-board.tab.tsx**: Kanban board tab (params: `boardId`, optional `issue`)
+- **kanban-board.tab.tsx**: Kanban board tab (params: `boardId`, optional `issue`, optional `milestoneId` for focused milestone filters)
 - **kanban-board-tab-content-loader.ts**: Kanban board tab wrapper 的共享 lazy loader 与 route preload 入口。
-- **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel
+- **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel plus optional milestone focus
 - **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name and registers the workspace-scoped bottom terminal panel
 - **workspace-detail.tab.test.tsx**: Regression test covering workspace-detail runtime tab label updates
 - **usage.tab.tsx**: Usage/cost dashboard tab (no params)

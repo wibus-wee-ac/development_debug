@@ -1,12 +1,391 @@
+// Output: Editable issue description with Smart Mention resource references.
+// Input: Issue record plus Issue-owned metadata and workspace resources.
+// Position: Issue Detail owns description editing and resource navigation semantics.
+
+import { useQueries, useQuery } from '@tanstack/react-query'
+import { useCallback, useMemo } from 'react'
+import { z } from 'zod'
+
+import { getIssuesSearch, getSessionsByIdMessages, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
-import type { KanbanIssue } from '~/lib/types'
+import type { SmartMentionAttrs, SmartMentionItem, SmartMentionKind } from '~/components/editor/smart-mention-utils'
+import { useAgents } from '~/features/agent-runtime/use-agents'
+import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSessions } from '~/features/workspace/use-session'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
+import type { KanbanBoard, KanbanIssue } from '~/lib/types'
+import { useBrowserPanelStore } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
+import { useCradleTabStore } from '~/tabs/registry'
+import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
+
+import { formatIssueId } from '../shared/format-issue-id'
+import { useAllBoards, useIssues, useMilestones, useStatuses } from '../use-kanban'
 
 interface IssueDescriptionProps {
   issue: KanbanIssue
   onUpdate: (patch: { description: string | null }) => void
 }
 
+interface WorkspaceFile {
+  type: 'file' | 'directory'
+  name: string
+  path: string
+}
+
+const WorkspaceFileListSchema = z.array(z.object({
+  type: z.enum(['file', 'directory']),
+  name: z.string(),
+  path: z.string(),
+})).default([])
+
+const SessionMessageListSchema = z.array(z.object({
+  id: z.string(),
+})).default([])
+
+const IssueSearchListSchema = z.array(z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  number: z.number(),
+  statusId: z.string().nullable(),
+  milestoneId: z.string().nullable(),
+  parentIssueId: z.string().nullable(),
+  title: z.string(),
+  description: z.string().nullable(),
+  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
+  labels: z.array(z.string()),
+  assigneeKind: z.string().nullable(),
+  assigneeId: z.string().nullable(),
+  createdByKind: z.enum(['user', 'agent', 'system']),
+  createdById: z.string(),
+  delegateAgentId: z.string().nullable(),
+  delegateAgentProfileId: z.string().nullable(),
+  contextRefs: z.string(),
+  order: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+}).passthrough()).default([])
+
+const MENTION_KIND_ORDER: SmartMentionKind[] = ['issue', 'session', 'workspace', 'agent', 'milestone', 'file']
+
+const MENTION_KIND_PREFIX: Record<string, SmartMentionKind> = {
+  issue: 'issue',
+  session: 'session',
+  workspace: 'workspace',
+  agent: 'agent',
+  milestone: 'milestone',
+  file: 'file',
+}
+
+const MENTION_QUERY_PREFIX_PATTERN = /^(issue|session|workspace|agent|milestone|file)\s+/i
+
+function parseMentionQuery(query: string): { kind: SmartMentionKind | null, text: string } {
+  const trimmed = query.trim()
+  const match = trimmed.match(MENTION_QUERY_PREFIX_PATTERN)
+  if (!match) {
+    return { kind: null, text: trimmed.toLowerCase() }
+  }
+
+  return {
+    kind: MENTION_KIND_PREFIX[match[1].toLowerCase()] ?? null,
+    text: trimmed.slice(match[0].length).trim().toLowerCase(),
+  }
+}
+
+function itemMatches(item: SmartMentionItem, query: string) {
+  const parsed = parseMentionQuery(query)
+  if (parsed.kind && item.kind !== parsed.kind) {
+    return false
+  }
+  if (!parsed.text) {
+    return true
+  }
+
+  const searchText = [
+    item.kind,
+    item.id,
+    item.label,
+    item.title ?? '',
+    item.detail ?? '',
+    item.searchText ?? '',
+  ].join(' ').toLowerCase()
+
+  return searchText.includes(parsed.text)
+}
+
+function limitItems(items: SmartMentionItem[], query: string, limit: number) {
+  return items.filter(item => itemMatches(item, query)).slice(0, limit)
+}
+
+function balancedItems(items: SmartMentionItem[], query: string, limit: number) {
+  const matches = items.filter(item => itemMatches(item, query))
+  const selected: SmartMentionItem[] = []
+  const selectedKeys = new Set<string>()
+
+  for (const kind of MENTION_KIND_ORDER) {
+    const item = matches.find(candidate => candidate.kind === kind)
+    if (!item) {
+      continue
+    }
+
+    selected.push(item)
+    selectedKeys.add(`${item.kind}:${item.id}`)
+  }
+
+  for (const item of matches) {
+    if (selected.length >= limit) {
+      break
+    }
+    const key = `${item.kind}:${item.id}`
+    if (selectedKeys.has(key)) {
+      continue
+    }
+
+    selected.push(item)
+    selectedKeys.add(key)
+  }
+
+  return selected
+}
+
+function getFirstBoardForWorkspace(boards: KanbanBoard[] | undefined, workspaceId: string | null | undefined) {
+  if (!workspaceId) {
+    return null
+  }
+  return boards?.find(board => board.workspaceId === workspaceId) ?? null
+}
+
 export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
+  const { openTab } = useCradleNavigation()
+  const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
+  const { workspaces } = useWorkspaces()
+  const { agents } = useAgents()
+  const { sessions } = useSessions(issue.workspaceId)
+  const { data: statuses = [] } = useStatuses(issue.workspaceId)
+  const { data: milestones = [] } = useMilestones(issue.workspaceId)
+  const { data: workspaceIssues = [] } = useIssues({ workspaceId: issue.workspaceId })
+  const { data: boards = [] } = useAllBoards()
+  const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
+  const setAgentFocusTarget = useSettingsOverlayStore(s => s.setAgentFocusTarget)
+  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+
+  const { data: workspaceFiles = [] } = useQuery({
+    queryKey: ['workspace-files', issue.workspaceId],
+    queryFn: async () => {
+      const { data } = await getWorkspacesByIdFiles({ path: { id: issue.workspaceId } })
+      return WorkspaceFileListSchema.parse(data) satisfies WorkspaceFile[]
+    },
+    enabled: !!issue.workspaceId,
+    staleTime: 30_000,
+  })
+
+  const sessionMessageCounts = useQueries({
+    queries: sessions.slice(0, 20).map(session => ({
+      queryKey: ['session-message-count', session.id] as const,
+      queryFn: async () => {
+        const { data } = await getSessionsByIdMessages({ path: { id: session.id } })
+        return SessionMessageListSchema.parse(data).length
+      },
+      staleTime: 30_000,
+    })),
+  })
+
+  const sessionMessageCountById = useMemo(() => {
+    const counts = new Map<string, number>()
+    sessions.slice(0, 20).forEach((session, index) => {
+      const count = sessionMessageCounts[index]?.data
+      if (typeof count === 'number') {
+        counts.set(session.id, count)
+      }
+    })
+    return counts
+  }, [sessionMessageCounts, sessions])
+
+  const staticItems = useMemo<SmartMentionItem[]>(() => {
+    const workspaceById = new Map(workspaces.map(workspace => [workspace.id, workspace]))
+    const statusById = new Map(statuses.map(status => [status.id, status]))
+
+    const sessionItems = sessions.map((session): SmartMentionItem => {
+      const count = sessionMessageCountById.get(session.id)
+      return {
+        kind: 'session',
+        id: session.id,
+        label: session.title || session.id.slice(0, 8),
+        title: session.title || 'Untitled session',
+        detail: typeof count === 'number' ? `${count} messages` : 'Message count loading',
+        workspaceId: session.workspaceId,
+        searchText: `${session.title ?? ''} ${session.runtimeKind}`,
+      }
+    })
+
+    const workspaceItems = workspaces.map((workspace): SmartMentionItem => ({
+      kind: 'workspace',
+      id: workspace.id,
+      label: workspace.name,
+      title: workspace.name,
+      detail: workspace.path,
+      workspaceId: workspace.id,
+      searchText: `${workspace.identifier} ${workspace.path}`,
+    }))
+
+    const agentItems = agents.map((agent): SmartMentionItem => ({
+      kind: 'agent',
+      id: agent.id,
+      label: agent.name,
+      title: agent.name,
+      detail: agent.enabled ? 'Enabled' : 'Disabled',
+      searchText: `${agent.description ?? ''} ${agent.runtimeKind}`,
+    }))
+
+    const completedStatusIds = new Set(
+      statuses
+        .filter(status => status.category === 'completed')
+        .map(status => status.id),
+    )
+
+    const milestoneItems = milestones.map((milestone): SmartMentionItem => {
+      const milestoneIssues = workspaceIssues.filter(candidate => candidate.milestoneId === milestone.id)
+      const completedCount = milestoneIssues.filter(candidate => candidate.statusId && completedStatusIds.has(candidate.statusId)).length
+      const progress = milestoneIssues.length > 0
+        ? `${completedCount}/${milestoneIssues.length} completed`
+        : 'No issues'
+      return {
+        kind: 'milestone',
+        id: milestone.id,
+        label: milestone.title,
+        title: milestone.title,
+        detail: `${milestone.status} · ${progress}`,
+        workspaceId: milestone.workspaceId,
+        searchText: milestone.description ?? '',
+      }
+    })
+
+    const fileItems = workspaceFiles
+      .filter(file => file.type === 'file')
+      .slice(0, 100)
+      .map((file): SmartMentionItem => ({
+        kind: 'file',
+        id: file.path,
+        label: file.name,
+        title: file.path,
+        detail: file.path,
+        workspaceId: issue.workspaceId,
+        searchText: file.path,
+      }))
+
+    const currentIssueStatus = issue.statusId ? statusById.get(issue.statusId) : null
+    const currentWorkspace = workspaceById.get(issue.workspaceId)
+    const currentIssueItem: SmartMentionItem = {
+      kind: 'issue',
+      id: issue.id,
+      label: formatIssueId(issue, workspaces),
+      title: issue.title,
+      detail: `${currentIssueStatus?.name ?? 'No status'} · ${issue.priority}`,
+      workspaceId: issue.workspaceId,
+      searchText: `${currentWorkspace?.identifier ?? ''} ${issue.description ?? ''}`,
+    }
+
+    return [
+      currentIssueItem,
+      ...sessionItems,
+      ...workspaceItems,
+      ...agentItems,
+      ...milestoneItems,
+      ...fileItems,
+    ]
+  }, [agents, issue, milestones, sessionMessageCountById, sessions, statuses, workspaceFiles, workspaceIssues, workspaces])
+
+  const getMentionItems = useCallback(async (query: string): Promise<SmartMentionItem[]> => {
+    const parsed = parseMentionQuery(query)
+    const localItems = limitItems(staticItems, query, 12)
+
+    if (!parsed.text) {
+      return balancedItems(staticItems, query, 20)
+    }
+
+    let issueItems: SmartMentionItem[] = []
+    try {
+      if (parsed.kind && parsed.kind !== 'issue') {
+        return localItems.slice(0, 20)
+      }
+
+      const { data } = await getIssuesSearch({ query: { q: parsed.text, limit: '8' } })
+      const searchResults = IssueSearchListSchema.parse(data) satisfies KanbanIssue[]
+      issueItems = searchResults.map((result): SmartMentionItem => {
+        const status = result.statusId ? statuses.find(s => s.id === result.statusId) : null
+        return {
+          kind: 'issue',
+          id: result.id,
+          label: formatIssueId(result, workspaces),
+          title: result.title,
+          detail: `${status?.name ?? 'No status'} · ${result.priority}`,
+          workspaceId: result.workspaceId,
+          searchText: result.description ?? '',
+        }
+      })
+    }
+    catch (error) {
+      console.error('[IssueDescription] failed to search issue mentions:', error)
+    }
+
+    const seen = new Set<string>()
+    return [...issueItems, ...localItems]
+      .filter((item) => {
+        const key = `${item.kind}:${item.id}`
+        if (seen.has(key)) {
+          return false
+        }
+        seen.add(key)
+        return true
+      })
+      .slice(0, 20)
+  }, [staticItems, statuses, workspaces])
+
+  const handleMentionOpen = useCallback((attrs: SmartMentionAttrs) => {
+    if (attrs.kind === 'issue') {
+      const board = getFirstBoardForWorkspace(boards, attrs.workspaceId ?? issue.workspaceId)
+      openTab('kanban-board', board ? { boardId: board.id, issue: attrs.id } : {})
+      return
+    }
+
+    if (attrs.kind === 'session') {
+      openTab('chat', { sessionId: attrs.id })
+      return
+    }
+
+    if (attrs.kind === 'workspace') {
+      openTab('workspace-detail', { workspaceId: attrs.id })
+      return
+    }
+
+    if (attrs.kind === 'file') {
+      openWorkspaceFileTab({
+        workspaceId: attrs.workspaceId ?? issue.workspaceId,
+        path: attrs.id,
+        view: 'preview',
+      })
+      setBrowserPanelOpen(true)
+      return
+    }
+
+    if (attrs.kind === 'agent') {
+      const tabStore = useCradleTabStore.getState()
+      const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
+        ? tabStore.activeTabId
+        : tabStore.openTab('home', {}, { pinned: true })
+      setSettingsSection('agents')
+      setAgentFocusTarget({ id: attrs.id })
+      openSettings(activeTabId)
+      return
+    }
+
+    if (attrs.kind === 'milestone') {
+      const board = getFirstBoardForWorkspace(boards, attrs.workspaceId ?? issue.workspaceId)
+      openTab('kanban-board', board ? { boardId: board.id, milestoneId: attrs.id } : {})
+    }
+  }, [boards, issue.workspaceId, openSettings, openTab, openWorkspaceFileTab, setAgentFocusTarget, setBrowserPanelOpen, setSettingsSection])
+
   return (
     <MarkdownEditor
       content={issue.description ?? ''}
@@ -16,6 +395,10 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
         }
       }}
       placeholder="Add description..."
+      smartMentions={{
+        getItems: getMentionItems,
+        onOpen: handleMentionOpen,
+      }}
     />
   )
 }

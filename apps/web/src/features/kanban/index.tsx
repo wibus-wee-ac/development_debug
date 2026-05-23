@@ -21,10 +21,12 @@ interface KanbanViewProps {
   boardId: string
   workspaceId: string
   selectedIssueId?: string | null
+  initialMilestoneId?: string | null
   onSelectIssue?: (id: string | null) => void
+  onOpenMilestone?: (id: string) => void
 }
 
-export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, onSelectIssue }: KanbanViewProps) {
+export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, initialMilestoneId, onSelectIssue, onOpenMilestone }: KanbanViewProps) {
   const { config, setConfig, filter, setFilter, resetFilter } = useViewConfig(workspaceId)
   const { workspaces } = useWorkspaces()
   const [searchQuery, setSearchQuery] = useState('')
@@ -75,6 +77,12 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const { data: milestones = [], isSuccess: _milestonesReady } = useMilestones(workspaceId)
   const { data: allIssues = [], isSuccess: _issuesReady } = useIssues({ workspaceId })
   const moveIssue = useMoveIssue()
+
+  useEffect(() => {
+    if (initialMilestoneId) {
+      setFilter({ milestoneId: initialMilestoneId })
+    }
+  }, [initialMilestoneId, setFilter])
 
   const parentIssueRefs = useMemo(() => {
     const issuesById = new Map(allIssues.map(issue => [issue.id, issue]))
@@ -144,6 +152,12 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
   const handleIssueClick = useCallback((id: string) => {
     onSelectIssue?.(id)
   }, [onSelectIssue])
+
+  const handleOpenMilestone = useCallback((id: string) => {
+    setFilter({ milestoneId: id })
+    onOpenMilestone?.(id)
+    onSelectIssue?.(null)
+  }, [onOpenMilestone, onSelectIssue, setFilter])
 
   const handleMoveIssue = useCallback((issueId: string, targetGroupId: string) => {
     if (config.groupBy === 'status') {
@@ -431,6 +445,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
           workspaceId={workspaceId}
           issues={allIssues}
           onOpenIssue={handleIssueClick}
+          onOpenMilestone={handleOpenMilestone}
           onBack={() => onSelectIssue?.(null)}
         />
       ) : (

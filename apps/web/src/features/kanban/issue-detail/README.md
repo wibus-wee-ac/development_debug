@@ -13,7 +13,7 @@ Issue detail owns focused subviews for editing issue metadata, reading activity,
 - **agent-session-panel.tsx**: Agent session status, activity feed, stop/rerun/open-chat controls with decorative action icons, and prompt input composition; active-session rendering is split into a memoized inner panel with stable stop/rerun handlers.
 - **agent-session-panel.test.tsx**: Regression tests for session action accessible names, decorative action icons, and stop mutation wiring.
 - **index.tsx**: Issue detail composition entrypoint.
-- **issue-description.tsx**: Editable issue description surface.
+- **issue-description.tsx**: Editable issue description surface with Smart Mention candidate aggregation for Issue, Session, Workspace, Agent, Milestone, and File references plus owner-scoped navigation behavior.
 - **issue-header.tsx**: Issue header content, named navigation/action controls, and high-level destructive issue actions; header rendering keeps a memo boundary.
 - **issue-header.test.tsx**: Regression tests for header action accessible names, decorative icons, and back/delete callback wiring.
 - **issue-title.tsx**: Editable issue title surface.

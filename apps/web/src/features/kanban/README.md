@@ -5,7 +5,7 @@ Kanban renders board/list/detail views over Issue-owned workspace data. Issue me
 ## Files
 
 - **create-issue-dialog.tsx**: Floating create-issue panel with status and priority metadata controls.
-- **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring while list view remains read/select/create focused.
+- **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring, accepts tab-provided milestone focus filters, and keeps list view read/select/create focused.
 - **issue-aside-panel.tsx**: Right-aside linked issue panel for chat sessions, including linked issue summary, unlink/open actions, and a searchable combobox picker with status icons and issue badges; records the right-aside Issue first-render mark after linked issue state, workspace list, statuses, board list, comments, and picker issues are ready.
 - **issue-aside-panel-loader.ts**: Issue aside panel 的共享 lazy loader 与 intent preload 入口，供 right aside Issue tab 使用
 - **issue-aside-panel.test.tsx**: Regression tests for linked issue rendering, Kanban navigation, unlink actions, and combobox-based issue linking.

@@ -6,7 +6,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { KanbanView } from '~/features/kanban/index'
 import { useBoard, useIssue } from '~/features/kanban/use-kanban'
 
-export function KanbanBoardTabContent({ params }: { params: { boardId?: string, issue?: string } }) {
+export function KanbanBoardTabContent({ params }: { params: { boardId?: string, issue?: string, milestoneId?: string } }) {
   const { store } = useTabsContext()
   const { data: board, isLoading } = useBoard(params.boardId ?? '')
   const { data: issue } = useIssue(params.issue ?? '')
@@ -32,6 +32,13 @@ export function KanbanBoardTabContent({ params }: { params: { boardId?: string, 
     }
   }, [store])
 
+  const handleOpenMilestone = useCallback((milestoneId: string) => {
+    const activeTab = store.getState().getActiveTab()
+    if (activeTab) {
+      store.getState().updateTabParams(activeTab.id, { issue: undefined, milestoneId })
+    }
+  }, [store])
+
   if (!params.boardId) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
@@ -54,7 +61,9 @@ export function KanbanBoardTabContent({ params }: { params: { boardId?: string, 
       boardId={params.boardId}
       workspaceId={board.workspaceId}
       selectedIssueId={params.issue}
+      initialMilestoneId={params.milestoneId}
       onSelectIssue={handleSelectIssue}
+      onOpenMilestone={handleOpenMilestone}
     />
   )
 }

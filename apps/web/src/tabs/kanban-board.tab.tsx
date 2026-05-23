@@ -15,8 +15,15 @@ export const kanbanBoardTab = defineTab({
     if (!params.boardId) {
       return ''
     }
-    const base = params.boardId
-    return params.issue ? `${base}?issue=${params.issue}` : base
+    const searchParams = new URLSearchParams()
+    if (params.issue) {
+      searchParams.set('issue', params.issue)
+    }
+    if (params.milestoneId) {
+      searchParams.set('milestoneId', params.milestoneId)
+    }
+    const query = searchParams.toString()
+    return query ? `${params.boardId}?${query}` : params.boardId
   },
   deserialize: (path) => {
     if (!path) {
@@ -26,7 +33,9 @@ export const kanbanBoardTab = defineTab({
     if (!boardId) {
       return null
     }
-    const issue = new URLSearchParams(query).get('issue') ?? undefined
-    return { boardId, issue }
+    const searchParams = new URLSearchParams(query)
+    const issue = searchParams.get('issue') ?? undefined
+    const milestoneId = searchParams.get('milestoneId') ?? undefined
+    return { boardId, issue, milestoneId }
   },
 })
