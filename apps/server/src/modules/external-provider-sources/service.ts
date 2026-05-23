@@ -6,15 +6,14 @@ import {
   externalProviderRecords,
   externalProviderSources,
 } from '@cradle/db'
+import type { ExternalProviderWarning } from '@cradle/plugin-sdk/server'
 import { and, eq, inArray } from 'drizzle-orm'
 import stringify from 'safe-stable-stringify'
 import { z } from 'zod'
 
-import type { ExternalProviderWarning } from '@cradle/plugin-sdk/server'
-
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
-import { listExternalProviderSources as listRegisteredExternalProviderSources, getExternalProviderSource } from '../../plugins/external-provider-source-registry'
+import { getExternalProviderSource, listExternalProviderSources as listRegisteredExternalProviderSources } from '../../plugins/external-provider-source-registry'
 import { upsertMirroredProfile } from '../profiles/service'
 import { upsertSecretInDb } from '../secrets/service'
 import { getExternalProfileLinkRow } from './profile-link-store'
@@ -106,7 +105,6 @@ const ExternalProviderRecordSchema = z.object({
   config: JsonRecordSchema,
   credential: ExternalProviderCredentialSchema.optional(),
   current: z.boolean().default(false),
-  enabled: z.boolean().default(true),
   readonly: z.boolean().default(false),
   metadata: JsonRecordSchema.default({}),
   warnings: ExternalProviderWarningsSchema,
@@ -139,7 +137,6 @@ const ExternalProviderRecordFingerprintSchema = z.object({
   config: JsonRecordSchema,
   credential: ExternalProviderCredentialSchema.optional(),
   current: z.boolean(),
-  enabled: z.boolean(),
   readonly: z.boolean(),
   metadata: JsonRecordSchema,
   warnings: ExternalProviderWarningsSchema,
@@ -195,7 +192,6 @@ function recordFingerprint(record: ParsedExternalProviderRecord): string {
     config: record.config,
     credential: record.credential,
     current: record.current,
-    enabled: record.enabled,
     readonly: record.readonly,
     metadata: record.metadata,
     warnings: record.warnings,
@@ -374,7 +370,7 @@ function syncRecordRow(database: Tx, sourceKey: string, record: ParsedExternalPr
 function syncProfileProjection(database: Tx, sourceKey: string, record: ParsedExternalProviderRecord): void {
   const profileId = deriveProfileId(sourceKey, record.externalId)
   const existingProfile = database.select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()
-  const enabled = existingProfile?.enabled ?? record.enabled
+  const enabled = existingProfile?.enabled ?? true
   const existingModelConfig = existingProfile ? AgentProfileModelConfigJsonSchema.parse(existingProfile.configJson) : {}
   const projectedConfig = {
     ...record.config,

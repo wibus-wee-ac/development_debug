@@ -72,6 +72,14 @@ export function providerVisuals(presetId: string | null) {
   }
 }
 
+function parseProfileConfigForUpdate(configJson: string): Record<string, unknown> {
+  const parsed = JSON.parse(configJson) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {}
+  }
+  return parsed as Record<string, unknown>
+}
+
 // ─── Root component ───────────────────────────────────────────────────────────
 
 export function AgentRuntimeSettings() {
@@ -176,7 +184,7 @@ export function AgentRuntimeSettings() {
         name: profile.name,
         providerKind: profile.providerKind,
         enabled,
-        config: ProfileConfigJsonSchema.parse(profile.configJson),
+        config: parseProfileConfigForUpdate(profile.configJson),
         credentialRef: profile.credentialRef ?? null,
       },
     })

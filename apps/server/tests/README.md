@@ -34,7 +34,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.
 - **workflow-rules.test.ts**: workflow-rules HTTP CRUD + filesystem ownership.
 - **profiles.test.ts**: profile CRUD, secret masking, provider metadata endpoints, and Available Model registry mapping persistence.
-- **external-provider-sources.test.ts**: host-owned external provider source refresh, record/profile projection, secret storage, missing-record handling, and source error persistence.
+- **external-provider-sources.test.ts**: host-owned external provider source refresh, record/profile projection, secret storage, missing-record handling, Cradle-owned provider enabled state, and source error persistence.
 - **cc-switch-plugin.test.ts**: CC Switch plugin discovery through the host plugin loader, permission grant setup, and fake provider projection into external provider profiles.
 - **sdk-providers.test.ts**: unified Claude Agent / Codex metadata probing, model listing, `/chat` execution flows, and subagent delta routing contracts.
 - **acp.test.ts**: ACP registry browsing, install lifecycle, installed-agent inventory, and audit queries.

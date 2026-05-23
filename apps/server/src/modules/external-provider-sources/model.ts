@@ -50,7 +50,6 @@ const providerRecordSchema = t.Object({
   config: t.Record(t.String(), t.Any()),
   credential: t.Optional(credentialSchema),
   current: t.Optional(t.Boolean()),
-  enabled: t.Optional(t.Boolean()),
   readonly: t.Optional(t.Boolean()),
   metadata: t.Optional(recordMetadataSchema),
   warnings: t.Optional(t.Array(warningSchema)),

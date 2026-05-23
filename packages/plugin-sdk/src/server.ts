@@ -164,7 +164,6 @@ export interface ExternalProviderRecord {
   config: Record<string, unknown>
   credential?: ExternalProviderCredential
   current?: boolean
-  enabled?: boolean
   readonly?: boolean
   metadata?: ExternalProviderRecordMetadata
   warnings?: ExternalProviderWarning[]

@@ -344,6 +344,7 @@ Provider source contract 的边界是：
 - 插件读取外部 namespace，例如本地配置文件、SQLite DB 或远端 registry。
 - 插件返回 `ExternalProviderSourceSnapshot`，其中 provider record 使用稳定 `externalId`。
 - 插件不得把 plaintext secret 放进 `config`；如需提供 API key，只能放在 `credential.value`。
+- 插件不拥有 provider profile 的 enabled/disabled 状态；Cradle host 负责初始启用策略和用户开关。
 - 插件不贡献 badge、button、React component、surface descriptor 或 action ref。
 - Cradle host 固定渲染 external source UI，并负责 profile read-only guard。
 

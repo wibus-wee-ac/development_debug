@@ -76,7 +76,7 @@ describe('external provider sources capability', () => {
     process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
     process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
 
-    let providers: ExternalProviderRecord[] = [
+    let providers: Array<ExternalProviderRecord & { enabled?: boolean }> = [
       {
         externalId: 'claude:test-anthropic',
         app: 'claude',
@@ -84,6 +84,7 @@ describe('external provider sources capability', () => {
         providerKind: 'anthropic',
         config: { baseUrl: 'https://anthropic.example.test', model: 'claude-test' },
         credential: { kind: 'api-key', value: 'test-secret-value', label: 'Fixture Anthropic' },
+        enabled: false,
         metadata: { baseUrl: 'https://anthropic.example.test', model: 'claude-test', health: 'unknown' },
       },
       {
@@ -148,6 +149,7 @@ describe('external provider sources capability', () => {
       const openAiProfile = profiles.find(profile => profile.name === 'Fixture OpenAI')
       expect(anthropicProfile).toBeTruthy()
       expect(openAiProfile).toBeTruthy()
+      expect(anthropicProfile?.enabled).toBe(true)
       expect(JSON.stringify(profiles)).not.toContain('test-secret-value')
       expect(anthropicProfile?.credentialRef).toMatch(/^external_credential_/)
 
@@ -159,6 +161,26 @@ describe('external provider sources capability', () => {
         profileId: anthropicProfile!.id,
         credentialRef: anthropicProfile!.credentialRef,
       }))
+
+      const disableExternalProfile = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Fixture Anthropic',
+          providerKind: 'anthropic',
+          enabled: false,
+          config: JSON.parse(anthropicProfile!.configJson),
+          credentialRef: anthropicProfile!.credentialRef,
+        }),
+      }))
+      expect(disableExternalProfile.status).toBe(200)
+      expect(await disableExternalProfile.json()).toEqual(expect.objectContaining({ enabled: false }))
+
+      const refreshAfterDisable = await app.handle(new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, { method: 'POST' }))
+      expect(refreshAfterDisable.status).toBe(200)
+      const profileAfterDisableRefresh = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`))
+      expect(profileAfterDisableRefresh.status).toBe(200)
+      expect(await profileAfterDisableRefresh.json()).toEqual(expect.objectContaining({ enabled: false }))
 
       const updateCradleOwnedModelConfig = await app.handle(new Request(`http://localhost/profiles/${anthropicProfile!.id}`, {
         method: 'PUT',
