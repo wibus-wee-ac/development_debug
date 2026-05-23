@@ -1,13 +1,10 @@
 /* Reads CC Switch local provider data and maps it into Cradle external provider snapshots. */
 
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { createHash } from 'node:crypto'
 
-import Database from 'better-sqlite3'
-import { parse as parseToml } from 'smol-toml'
-import { z } from 'zod'
 import type {
   ExternalProviderRecord,
   ExternalProviderSource,
@@ -15,13 +12,16 @@ import type {
   ExternalProviderSourceSnapshot,
   ExternalProviderWarning,
 } from '@cradle/plugin-sdk/server'
+import Database from 'better-sqlite3'
+import { parse as parseToml } from 'smol-toml'
+import { z } from 'zod'
 
 type JsonObject = Record<string, unknown>
 
 const NonEmptyStringSchema = z.string().trim().min(1)
 const OptionalExternalStringSchema = z.preprocess((value) => {
-  if (value === null) return undefined
-  if (typeof value === 'string' && value.trim().length === 0) return undefined
+  if (value === null) { return undefined }
+  if (typeof value === 'string' && value.trim().length === 0) { return undefined }
   return value
 }, NonEmptyStringSchema.optional())
 const NullableStringSchema = NonEmptyStringSchema.nullable().optional().default(null)
@@ -162,13 +162,13 @@ const LocalSettingsSchema = z.object({
 type LocalSettings = z.infer<typeof LocalSettingsSchema>
 
 const CURRENT_PROVIDER_KEYS: Record<string, keyof LocalSettings> = {
-  claude: 'currentProviderClaude',
+  'claude': 'currentProviderClaude',
   'claude-desktop': 'currentProviderClaudeDesktop',
-  codex: 'currentProviderCodex',
-  gemini: 'currentProviderGemini',
-  opencode: 'currentProviderOpenCode',
-  openclaw: 'currentProviderOpenClaw',
-  hermes: 'currentProviderHermes',
+  'codex': 'currentProviderCodex',
+  'gemini': 'currentProviderGemini',
+  'opencode': 'currentProviderOpenCode',
+  'openclaw': 'currentProviderOpenClaw',
+  'hermes': 'currentProviderHermes',
 }
 
 const SUPPORTED_APPS = new Set(['claude', 'codex', 'gemini'])
@@ -190,12 +190,12 @@ function compactInventory(inventory: CcSwitchSnapshotReadResult['inventory']): C
 }
 
 function providerLabel(row: z.infer<typeof ProviderDbRowSchema> | null, index: number): string {
-  if (!row) return `row ${index + 1}`
+  if (!row) { return `row ${index + 1}` }
   return `${row.app_type}/${row.id} (${row.name})`
 }
 
 function readLocalSettings(path: string): { settings: LocalSettings, warnings: ExternalProviderWarning[] } {
-  if (!existsSync(path)) return { settings: {}, warnings: [] }
+  if (!existsSync(path)) { return { settings: {}, warnings: [] } }
   try {
     return {
       settings: z.string()
@@ -232,7 +232,7 @@ export function resolveCcSwitchSourceConfig(ctx: ExternalProviderSourceReadConte
 }
 
 function tableExists(db: Database.Database, tableName: string): boolean {
-  const row = db.prepare("SELECT 1 AS exists_flag FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1").get(tableName)
+  const row = db.prepare('SELECT 1 AS exists_flag FROM sqlite_master WHERE type = \'table\' AND name = ? LIMIT 1').get(tableName)
   return Boolean(row)
 }
 
@@ -246,13 +246,13 @@ function columnSelect(columns: Set<string>, name: string, fallback: string): str
 }
 
 function countRows(db: Database.Database, tableName: string): number | undefined {
-  if (!tableExists(db, tableName)) return undefined
+  if (!tableExists(db, tableName)) { return undefined }
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get() as { count: number }
   return row.count
 }
 
 function readEndpoints(db: Database.Database): Map<string, Array<{ url: string, addedAt: number | null }>> {
-  if (!tableExists(db, 'provider_endpoints')) return new Map()
+  if (!tableExists(db, 'provider_endpoints')) { return new Map() }
   const rows = db.prepare('SELECT provider_id, app_type, url, added_at FROM provider_endpoints ORDER BY added_at ASC, url ASC').all() as Array<{
     provider_id: string
     app_type: string
@@ -270,7 +270,7 @@ function readEndpoints(db: Database.Database): Map<string, Array<{ url: string, 
 }
 
 function readHealth(db: Database.Database): Map<string, 'healthy' | 'unhealthy' | 'unknown'> {
-  if (!tableExists(db, 'provider_health')) return new Map()
+  if (!tableExists(db, 'provider_health')) { return new Map() }
   const rows = db.prepare('SELECT provider_id, app_type, is_healthy FROM provider_health').all() as Array<{
     provider_id: string
     app_type: string
@@ -327,7 +327,7 @@ function readProviderRows(db: Database.Database, settingsPath: string): { provid
       ${columnSelect(columns, 'notes', 'NULL')},
       ${columnSelect(columns, 'icon', 'NULL')},
       ${columnSelect(columns, 'icon_color', 'NULL')},
-      ${columnSelect(columns, 'meta', "'{}'")},
+      ${columnSelect(columns, 'meta', '\'{}\'')},
       ${columnSelect(columns, 'is_current', '0')},
       ${columnSelect(columns, 'in_failover_queue', '0')}
     FROM providers
@@ -457,7 +457,7 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
-    name: `CC Switch / Claude / ${provider.name}`,
+    name: `CC Switch / ${provider.name}`,
     providerKind: 'anthropic',
     config: compactJsonObject({
       baseUrl,
@@ -478,7 +478,7 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
   const configText = typeof provider.settingsConfig.config === 'string' && provider.settingsConfig.config.trim().length > 0
     ? provider.settingsConfig.config
     : undefined
-  if (!configText) return null
+  if (!configText) { return null }
 
   const parsedToml = CodexTomlConfigSchema.parse(parseToml(configText))
 
@@ -493,7 +493,7 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
-    name: `CC Switch / Codex / ${provider.name}`,
+    name: `CC Switch / ${provider.name}`,
     providerKind: 'openai-compatible',
     config: compactJsonObject({
       baseUrl,
@@ -518,12 +518,12 @@ function mapGeminiProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
   const apiFormat = provider.meta.apiFormat
   const isNativeGoogle = baseUrl ? /generativelanguage\.googleapis\.com/i.test(baseUrl) : true
   const isOpenAiCompatible = apiFormat === 'openai_chat' || apiFormat === 'openai_responses' || !isNativeGoogle
-  if (!isOpenAiCompatible) return null
+  if (!isOpenAiCompatible) { return null }
 
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
-    name: `CC Switch / Gemini / ${provider.name}`,
+    name: `CC Switch / ${provider.name}`,
     providerKind: 'openai-compatible',
     config: compactJsonObject({
       baseUrl,
@@ -540,9 +540,9 @@ function mapGeminiProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
 }
 
 function mapProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
-  if (provider.appType === 'claude') return mapClaudeProvider(provider)
-  if (provider.appType === 'codex') return mapCodexProvider(provider)
-  if (provider.appType === 'gemini') return mapGeminiProvider(provider)
+  if (provider.appType === 'claude') { return mapClaudeProvider(provider) }
+  if (provider.appType === 'codex') { return mapCodexProvider(provider) }
+  if (provider.appType === 'gemini') { return mapGeminiProvider(provider) }
   return null
 }
 
@@ -550,7 +550,7 @@ function unsupportedWarnings(providers: CcSwitchProviderRow[]): ExternalProvider
   const warnings: ExternalProviderWarning[] = []
   const unsupportedApps = new Map<string, number>()
   for (const provider of providers) {
-    if (SUPPORTED_APPS.has(provider.appType)) continue
+    if (SUPPORTED_APPS.has(provider.appType)) { continue }
     unsupportedApps.set(provider.appType, (unsupportedApps.get(provider.appType) ?? 0) + 1)
   }
   for (const [appType, count] of unsupportedApps) {
@@ -567,7 +567,7 @@ export async function readCcSwitchExternalProviderSnapshot(ctx: ExternalProvider
   const config = resolveCcSwitchSourceConfig(ctx)
   const snapshot = readCcSwitchSnapshot(config)
   const skippedWarnings: ExternalProviderWarning[] = []
-  const providers = snapshot.providers.flatMap(provider => {
+  const providers = snapshot.providers.flatMap((provider) => {
     let record: ExternalProviderRecord | null
     try {
       record = mapProvider(provider)
