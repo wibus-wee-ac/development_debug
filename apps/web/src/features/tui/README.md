@@ -20,4 +20,4 @@ Uses HTTP only for PTY resource lifecycle (`start-or-attach`, `delete`) and a sh
 - **terminal-panel-view-loader.ts**: Bottom-panel terminal view 的共享 lazy loader 与 workspace panel preload 入口。
 - **terminal-metadata.ts**: Pure helpers for parsing OSC terminal title/current-directory metadata and formatting workspace-relative path labels.
 - **terminal-panel-store.ts**: Runtime-only Zustand state for bottom-panel terminal sessions scoped by chat/workspace owner; the session tab list is discarded when the app exits.
-- **shell-view.tsx**: ShellView component — bottom-panel interactive shell terminal view. It owns one xterm instance at a time, can detach without stopping the backing PTY when switching panel sessions, and reports OSC title/current-directory metadata for the panel chrome.
+- **shell-view.tsx**: ShellView component — bottom-panel interactive shell terminal view. It owns one xterm instance at a time, mirrors PTY snapshots/output into a hidden transcript for behavior assertions, can detach without stopping the backing PTY when switching panel sessions, and reports OSC title/current-directory metadata for the panel chrome.

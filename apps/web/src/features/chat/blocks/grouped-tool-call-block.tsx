@@ -132,10 +132,10 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
     >
       {/* Group header card */}
       <div className={cn(
-        'overflow-hidden mx-1 -px-1 rounded-lg bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
+        'overflow-hidden mx-1 -px-1 rounded-lg bg-card ring-1 ring-border',
         (overallState === 'output-error' || overallState === 'output-denied') && 'ring-1 ring-destructive/30',
       )}>
-        <div className="flex h-9 items-center gap-2 px-3">
+        <div className="flex h-8 items-center gap-2 px-3">
           <Icon
             className={cn(
               'size-3.5 shrink-0 text-muted-foreground/60',

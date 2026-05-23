@@ -50,6 +50,7 @@ import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigatio
 import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
+import { toastManager } from '~/components/ui/toast'
 
 function SessionRenameInput({
   initialTitle,
@@ -671,6 +672,13 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
                 size="icon-xs"
                 className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
                 title="筛选"
+                onClick={() => {
+                  toastManager.add({
+                    type: 'error',
+                    title: '敬请期待',
+                    description: '筛选功能正在开发中，敬请期待！',
+                  })
+                }}
               >
                 <GitBranchIcon className="size-3" />
               </Button>

@@ -171,10 +171,10 @@ function ChangesTreeView({ files }: { files: GitFileStatus[] }) {
   }, [model, paths, preparedInput, gitStatus])
 
   return (
-    <div className="min-h-0 flex-1 px-2 py-2" data-testid="changes-panel-tree">
+    <div className="min-h-0 flex-1" data-testid="changes-panel-tree">
       <PierreFileTree
         model={model}
-        className="h-full rounded-md border border-border/35 bg-background/30"
+        className="h-full"
         style={{
           '--trees-theme-list-active-selection-bg': 'color-mix(in oklab, var(--color-accent) 30%, transparent)',
           '--trees-theme-list-hover-bg': 'color-mix(in oklab, var(--color-accent) 30%, transparent)',
@@ -183,6 +183,7 @@ function ChangesTreeView({ files }: { files: GitFileStatus[] }) {
           '--trees-theme-foreground': 'var(--color-sidebar-foreground)',
           '--trees-bg': 'transparent',
           '--trees-search-bg': 'transparent',
+          '--trees-padding-inline': '0px',
         } as React.CSSProperties}
       />
     </div>

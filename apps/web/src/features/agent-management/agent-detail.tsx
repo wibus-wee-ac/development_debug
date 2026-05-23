@@ -72,9 +72,9 @@ const RUNTIME_OPTIONS: { value: RuntimeKind, label: string, description: string,
 ]
 
 const CLI_TUI_PRESETS = [
-  { id: 'claude-code', label: 'Claude Code', executable: 'claude' },
-  { id: 'codex', label: 'Codex', executable: 'codex' },
-  { id: 'custom', label: 'Custom', executable: '' },
+  { id: 'claude-code', label: 'Claude Code', executable: 'claude', args: '--dangerously-skip-permissions' },
+  { id: 'codex', label: 'Codex', executable: 'codex', args: '' },
+  { id: 'custom', label: 'Custom', executable: '', args: '' },
 ] as const
 
 const AVATAR_STYLES = [
@@ -845,9 +845,14 @@ function AgentIdentitySection({
                   value={draft.cliTuiPreset}
                   onValueChange={(value) => {
                     form.setValue('cliTuiPreset', value, { shouldDirty: true })
-                    const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === value)?.executable ?? ''
+                    // const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === value)?.executable ?? ''
+                    // const presetArgs = CLI_TUI_PRESETS.find(preset => preset.id === value)?.args ?? ''
+                    const preset = CLI_TUI_PRESETS.find(preset => preset.id === value)
+                     const presetExecutable = preset?.executable ?? ''
+                     const presetArgs = preset?.args ?? []
                     if (value !== 'custom') {
                       form.setValue('cliTuiExecutable', presetExecutable, { shouldDirty: true })
+                      form.setValue('cliTuiArguments', presetArgs.join(' '), { shouldDirty: true })
                     }
                   }}
                 >

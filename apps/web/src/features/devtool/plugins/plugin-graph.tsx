@@ -4,9 +4,9 @@ import { useCallback, useMemo, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
-  Controls,
+  // Controls,
   Handle,
-  MiniMap,
+  // MiniMap,
   Panel,
   Position,
   ReactFlow,
@@ -654,14 +654,14 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
             size={1}
             color="var(--color-border)"
           />
-          <Controls showInteractive={false} />
-          <MiniMap
+          {/* <Controls showInteractive={false} /> */}
+          {/* <MiniMap
             pannable
             zoomable
             nodeColor={getNodeColor}
             nodeStrokeWidth={2}
             className="!bg-background/90"
-          />
+          /> */}
           <Panel position="top-right" className="w-[292px]">
             <NodeInspector node={selectedNode} />
           </Panel>

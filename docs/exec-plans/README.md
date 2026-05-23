@@ -58,3 +58,4 @@ Current canonical backend implementation for active product work lives under `ap
 - **20260521-09-plugin-sdk-v1-architecture.md**: Plugin SDK v1 架构收敛计划，覆盖 VS Code-like lifecycle、server/web/desktop 三层 host、disposable cleanup、manifest/runtime registration 契约和验证路径。
 - **20260522-01-plugin-provided-chat-runtimes.md**: Bub 作为 plugin-provided ChatRuntime 替换 `jar-core` 的执行计划，覆盖 open runtime id、plugin runtime registration、Jarvis runtime selection、Bub transport semantics 和 `jar-core` compatibility。
 - **20260522-02-v001-preview-release-readiness.md**: v0.0.1 preview 发布准备计划，覆盖首次进入、非 Cradle-owned 写入提示、Velopack 增量更新、日常使用、反馈报错、分享、卸载和五轮 reviewer 验收门禁。
+- **20260523-02-boxsh-integration-research.md**: Boxsh 集成调研与执行计划，覆盖 MCP 插件接入、copy-on-write workspace、Cradle-owned 写入边界、binary 生命周期、license 风险和验证路径。

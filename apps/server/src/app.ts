@@ -38,6 +38,8 @@ import { profiles } from './modules/profiles'
 import { providers } from './modules/providers'
 import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
+import { serverEvents } from './modules/server-events'
+import { serverEventBus } from './modules/server-events/service'
 import { secrets } from './modules/secrets'
 import { session } from './modules/session'
 import { sessionAwait } from './modules/session-await'
@@ -107,6 +109,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(chronicleApi)
   app.use(chronicleMemoryApi)
   app.use(desktop)
+  app.use(serverEvents)
   registerPtyRoutes(app)
   app.use(observability)
   app.use(issueAgent)
@@ -120,9 +123,24 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {
-    void refreshAllExternalProviderSources().catch((error) => {
-      console.error('[external-provider-sources] Refresh failed:', error)
-    })
+    void refreshAllExternalProviderSources()
+      .then((results) => {
+        for (const result of results) {
+          if (result.status === 'error') {
+            serverEventBus.publish({
+              type: 'source_sync_error',
+              data: {
+                sourceKey: result.sourceKey,
+                label: result.sourceKey,
+                error: result.message ?? 'Unknown sync error',
+              },
+            })
+          }
+        }
+      })
+      .catch((error) => {
+        console.error('[external-provider-sources] Refresh failed:', error)
+      })
     void chronicleInitDaemon().catch((error) => {
       console.error('[chronicle] Daemon initialization failed:', error)
     })

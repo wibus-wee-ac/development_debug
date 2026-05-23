@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
+import { toastManager } from '~/components/ui/toast'
 import {
   CheckIcon,
   CircleAlertIcon,
@@ -6,6 +7,7 @@ import {
   CircleDashedIcon,
   ExternalLinkIcon,
   Trash2Icon,
+  TriangleAlertIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
@@ -874,12 +876,25 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
 
       <div className="grid gap-3">
         <SettingsRow label="Source" description="The plugin-owned reader that supplies this provider">
-          <div className="flex flex-col gap-1 text-[12px] text-foreground">
-            <span>{source.label}</span>
-            <span className="text-muted-foreground">
-              {source.lastSyncStatus}
-              {source.lastSyncError ? ` · ${source.lastSyncError}` : ''}
+          <div className="flex flex-col gap-1 text-[12px]">
+            <span className="text-foreground">{source.label}</span>
+            <span className="flex items-center gap-1.5">
+              {source.lastSyncStatus === 'error' && (
+                <CircleAlertIcon className="size-3.5 shrink-0 text-destructive" />
+              )}
+              {source.lastSyncStatus === 'warning' && (
+                <TriangleAlertIcon className="size-3.5 shrink-0 text-warning" />
+              )}
+              {source.lastSyncStatus === 'ok' && (
+                <CircleCheckIcon className="size-3.5 shrink-0 text-success" />
+              )}
+              <span className={source.lastSyncStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
+                {source.lastSyncStatus}
+              </span>
             </span>
+            {source.lastSyncError && (
+              <span className="text-xs text-destructive/80">{source.lastSyncError}</span>
+            )}
           </div>
         </SettingsRow>
 
@@ -1098,7 +1113,13 @@ function ProfileCustomModelsSection({
         onSaved()
       }
     }
-    catch { /* ignore — optimistic update stays */ }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: 'Save failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
   }, [profileId, queryClient, onSaved])
 
   return (

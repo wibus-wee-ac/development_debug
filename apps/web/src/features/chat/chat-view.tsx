@@ -108,7 +108,7 @@ function ChatMessageListPane({
           {messages.length === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
               <p className="select-none text-sm text-muted-foreground">
-                发送消息开始对话
+                Send a message to start the conversation
               </p>
             </div>
           )}
@@ -139,7 +139,7 @@ function ChatMessageListPane({
             >
               <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
               <span className="text-xs text-destructive/70">
-                {error ?? '发送失败，请重试'}
+                {error ?? 'Failed to load messages. (Unknown error)'}
               </span>
             </m.div>
           )}
@@ -154,7 +154,7 @@ function ChatMessageListPane({
               className="flex items-center gap-2 pl-1 pt-4"
             >
               <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" aria-hidden="true" />
-              <span className="text-xs text-muted-foreground">正在思考...</span>
+              <span className="text-xs text-muted-foreground">Thinking...</span>
             </m.div>
           )}
 

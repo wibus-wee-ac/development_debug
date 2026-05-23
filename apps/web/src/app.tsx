@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
 import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
-import { AnchoredToastProvider, ToastProvider } from '~/components/ui/toast'
+import { ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
@@ -18,6 +18,7 @@ import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-st
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
+import { connectServerEvents } from '~/lib/server-events'
 import { useThemeStore } from '~/store/theme'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
@@ -36,15 +37,13 @@ function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
   return (
     <LazyMotion features={domAnimation}>
       <ToastProvider>
-        <AnchoredToastProvider>
-          <TooltipProvider>
-            <ShortcutProvider>
-              <DirectoryPickerProvider>
-                {children}
-              </DirectoryPickerProvider>
-            </ShortcutProvider>
-          </TooltipProvider>
-        </AnchoredToastProvider>
+        <TooltipProvider>
+          <ShortcutProvider>
+            <DirectoryPickerProvider>
+              {children}
+            </DirectoryPickerProvider>
+          </ShortcutProvider>
+        </TooltipProvider>
       </ToastProvider>
     </LazyMotion>
   )
@@ -52,6 +51,8 @@ function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
 
 export function App() {
   'use no memo'
+
+  useEffect(() => connectServerEvents(), [])
 
   return <AppRuntime />
 }

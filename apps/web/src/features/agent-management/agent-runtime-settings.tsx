@@ -91,9 +91,23 @@ export function AgentRuntimeSettings() {
 
   const refreshExternalSources = useMutation({
     ...postExternalProviderSourcesRefreshMutation(),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await Promise.all([refetch(), refetchExternalRecords()])
-      toastManager.add({ type: 'success', title: 'External sources refreshed' })
+
+      const results = Array.isArray(data) ? data : [data]
+      const errors = results.filter((r) => r.status === 'error')
+      const ok = results.filter((r) => r.status !== 'error')
+
+      if (errors.length > 0) {
+        toastManager.add({
+          type: 'error',
+          title: `${errors.length} source(s) failed to sync`,
+          description: errors.map((e) => e.message ?? e.sourceKey).join(', ') || undefined,
+        })
+      }
+      if (ok.length > 0) {
+        toastManager.add({ type: 'success', title: `${ok.length} source(s) refreshed` })
+      }
     },
     onError: (error) => {
       toastManager.add({

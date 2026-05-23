@@ -930,13 +930,13 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
     >
       <div
         className={cn(
-          'overflow-hidden rounded-lg mx-1 -px-1 bg-card shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_10px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]',
+          'overflow-hidden rounded-lg mx-1 -px-1 bg-card border-border border',
           errored && 'ring-1 ring-destructive/30',
           expandable && 'select-none',
         )}
       >
         <div
-          className={cn('flex h-9 items-center gap-2 px-3', expandable && 'cursor-pointer')}
+          className={cn('flex h-8 items-center gap-2 px-3', expandable && 'cursor-pointer')}
           role={expandable ? 'button' : undefined}
           tabIndex={expandable ? 0 : undefined}
           aria-expanded={expandable ? expanded : undefined}

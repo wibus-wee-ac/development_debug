@@ -12,3 +12,4 @@ Position: docs/specs/README.md
 
 - **README.md**: 本目录说明。
 - **alma-inspired/**: 从 Alma packaged app 证据和 Cradle 当前能力对比中拆出的 Alma-inspired 功能规格。
+- **multi-agent-collaboration.md**: Cradle 多 Agent 协作架构规格，记录 single-writer、clean-context reviewer、smart friend、manager delegation 和结构化通信的设计约束。

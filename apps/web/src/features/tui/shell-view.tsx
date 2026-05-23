@@ -1,5 +1,9 @@
 import '@xterm/xterm/css/xterm.css'
 
+// Output: Interactive bottom-panel shell terminal backed by a PTY WebSocket.
+// Input: A stable PTY id, working directory, panel visibility, and metadata callbacks.
+// Position: Owned by TUI; chat/workspace panels mount it as the visible shell surface.
+
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
 import { ImageAddon } from '@xterm/addon-image'
@@ -274,6 +278,7 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
       onOutput(event) {
         if (event.data) {
           publishMetadata(event.data)
+          appendTranscript(toPlainTerminalText(event.data))
           terminal.write(event.data)
         }
       },

@@ -8,23 +8,13 @@
       type="font/woff2"
       crossorigin
     />
+    <script
+      crossOrigin="anonymous"
+      src="//unpkg.com/react-scan/dist/auto.global.js"
+    ></script>
     <script type="module">
       if (import.meta.env.DEV) {
-        const params = new URLSearchParams(window.location.search);
-        const isElectron = window.cradle?.env?.isElectron === true;
-        const reactDiagnosticsEnabled =
-          !isElectron ||
-          params.has("react-diagnostics") ||
-          localStorage.getItem("cradle:debug:react-diagnostics") === "true";
-
-        if (reactDiagnosticsEnabled) {
-          import("react-grab");
-
-          const reactScanScript = document.createElement("script");
-          reactScanScript.crossOrigin = "anonymous";
-          reactScanScript.src = "https://unpkg.com/react-scan/dist/auto.global.js";
-          document.head.appendChild(reactScanScript);
-        }
+        import("react-grab");
       }
     </script>
     <script>
