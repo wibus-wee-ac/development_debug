@@ -223,9 +223,10 @@ function TearoffAppRuntime() {
         <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
           <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
             <AppLayout>
+              {/* Single-policy TabRenderer adds one key wrapper; let the retained tab frame own layout. */}
               <TabRenderer
                 fallback={null}
-                className="h-full flex overflow-hidden w-full"
+                className="h-full flex overflow-hidden w-full [&>div]:contents"
                 policy={TEAROFF_TAB_POLICY}
               />
             </AppLayout>
