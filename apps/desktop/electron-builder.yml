@@ -25,6 +25,10 @@ extraResources:
     filter:
       - package.json
       - dist/**/*
+  - from: native/macos/mac-bridge/.build/cradle-dist
+    to: mac-bridge
+    filter:
+      - '**/*'
 asar: true
 asarUnpack:
   - '**/*.node'

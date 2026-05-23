@@ -7,6 +7,7 @@ Desktop-owned release and native-runtime helper scripts.
 ## Files
 
 - **rebuild-server-native.mjs**: Rebuilds server native dependencies for the Electron runtime after the server build has installed runtime dependencies.
+- **build-mac-bridge.mjs**: Builds the Swift `cradle-mac-bridge` executable on macOS and atomically replaces the deterministic desktop packaging binary. Non-macOS hosts skip this step so shared CI can continue to build non-macOS slices.
 - **record-preview-installer-smoke.mjs**: Records machine-readable evidence from a real `/Applications` preview installer smoke test, without marking first-run, delta-update, or support lifecycle checks as passed unless explicit evidence files are provided.
 - **release-preview.mjs**: Builds the desktop app, packages the current-platform unpacked app, and invokes Velopack `vpk pack` for preview release feeds without deleting previous packages needed for delta generation. On macOS, it post-processes the generated setup package so the installer seeds the installed version's full `.nupkg` into the user Velopack package cache and keeps a versioned setup package copy for release evidence.
 - **release-preview-distribution.mjs**: Runs the macOS release-machine pipeline up to the non-installing distribution gate: credential preflight, signed/notarized preview release packaging, published update feed verification, and `verify-preview-distribution`.

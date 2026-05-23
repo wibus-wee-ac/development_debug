@@ -2,8 +2,34 @@ import { createServices, IpcMethod, IpcService } from '@cradle/ipc'
 import { app, dialog, shell } from 'electron'
 import { join } from 'node:path'
 
+import type { MacBridgeManager } from './mac-bridge-manager'
+import type {
+  MacCaptureFrontmostWindowResult,
+  MacPermissionSettingsRequest,
+  MacPermissionSettingsResult,
+  MacPermissionsRequest,
+  MacPermissionsRequestResult,
+  MacPermissionsStatus,
+} from './mac-bridge-protocol'
+import type { MacScreenshotSinkId, MacScreenshotSinkResult } from './mac-screenshot-sinks'
+import { runMacScreenshotSink } from './mac-screenshot-sinks'
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
+
+const DEFAULT_PRIVACY_SENSITIVE_APP_BUNDLE_IDS = [
+  'com.apple.keychainaccess',
+  'com.1password.1password',
+  'com.agilebits.onepassword7',
+  'com.bitwarden.desktop',
+]
+
+const DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS = [
+  'password',
+  'passkey',
+  'secret',
+  'recovery key',
+  'one-time code',
+]
 
 // ── Native File System Service ────────────────────────────────────────────────
 
@@ -77,6 +103,7 @@ class NativeService extends IpcService {
 interface NativeServicesContext {
   getWindowManager: () => WindowManager | undefined
   getUpdateManager: () => DesktopUpdateManager | null
+  getMacBridgeManager: () => MacBridgeManager | null
 }
 
 let nativeServicesContext: NativeServicesContext | null = null
@@ -87,6 +114,10 @@ function getWindowManager(): WindowManager | undefined {
 
 function getUpdateManager(): DesktopUpdateManager | null {
   return nativeServicesContext?.getUpdateManager() ?? null
+}
+
+function getMacBridgeManager(): MacBridgeManager | null {
+  return nativeServicesContext?.getMacBridgeManager() ?? null
 }
 
 class WindowService extends IpcService {
@@ -191,9 +222,106 @@ class DesktopUpdateService extends IpcService {
   }
 }
 
+// ── Mac Capture Service ──────────────────────────────────────────────────────
+
+export interface MacCaptureRequest {
+  sink?: MacScreenshotSinkId
+  privacySensitiveAppBundleIds?: string[]
+  privacySensitiveTitlePatterns?: string[]
+}
+
+export interface MacCaptureResponse {
+  capture: MacCaptureFrontmostWindowResult
+  sink: MacScreenshotSinkResult
+}
+
+class MacCaptureService extends IpcService {
+  static readonly groupName = 'macCapture'
+
+  @IpcMethod()
+  async getStatus() {
+    return getMacBridgeManager()?.getStatus() ?? {
+      available: false,
+      running: false,
+      platform: process.platform,
+      binaryPath: null,
+      pid: null,
+      startedAt: null,
+      lastError: 'Mac Bridge manager is not initialized',
+    }
+  }
+
+  @IpcMethod()
+  async getPermissions(): Promise<MacPermissionsStatus> {
+    const manager = this.readManager()
+    return manager.readPermissions()
+  }
+
+  @IpcMethod()
+  async requestPermissions(options: MacPermissionsRequest = {}): Promise<MacPermissionsRequestResult> {
+    const manager = this.readManager()
+    return manager.requestPermissions(options)
+  }
+
+  @IpcMethod()
+  async openPermissionSettings(options: MacPermissionSettingsRequest = {}): Promise<MacPermissionSettingsResult> {
+    const manager = this.readManager()
+    return manager.openPermissionSettings(options)
+  }
+
+  @IpcMethod()
+  async configureBothCommandHotkey(enabled: boolean) {
+    const manager = this.readManager()
+    return manager.configureInput({
+      trigger: 'bothCommand',
+      enabled,
+    })
+  }
+
+  @IpcMethod()
+  async captureFrontmostWindow(options: MacCaptureRequest = {}): Promise<MacCaptureResponse> {
+    return captureFrontmostWindowWithMacBridge(options)
+  }
+
+  private readManager(): MacBridgeManager {
+    const manager = getMacBridgeManager()
+    if (!manager) {
+      throw new Error('Mac Bridge manager is not initialized')
+    }
+    return manager
+  }
+}
+
+export async function captureFrontmostWindowWithMacBridge(options: MacCaptureRequest = {}): Promise<MacCaptureResponse> {
+  const manager = getMacBridgeManager()
+  if (!manager) {
+    throw new Error('Mac Bridge manager is not initialized')
+  }
+  const outputDir = join(app.getPath('userData'), 'mac-captures')
+  const capture = await manager.captureFrontmostWindow({
+    outputDir,
+    privacySensitiveAppBundleIds: [
+      ...DEFAULT_PRIVACY_SENSITIVE_APP_BUNDLE_IDS,
+      ...(options.privacySensitiveAppBundleIds ?? []),
+    ],
+    privacySensitiveTitlePatterns: [
+      ...DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS,
+      ...(options.privacySensitiveTitlePatterns ?? []),
+    ],
+  })
+  const sink = await runMacScreenshotSink({
+    sink: options.sink ?? 'file',
+    capture,
+  })
+  return {
+    capture,
+    sink,
+  }
+}
+
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 export function createNativeServices(context: NativeServicesContext) {
   nativeServicesContext = context
-  return createServices([NativeService, WindowService, DesktopUpdateService] as const)
+  return createServices([NativeService, WindowService, DesktopUpdateService, MacCaptureService] as const)
 }

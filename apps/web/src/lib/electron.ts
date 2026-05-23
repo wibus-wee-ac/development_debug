@@ -121,10 +121,85 @@ interface DesktopUpdateServiceMethods {
   applyUpdate: () => Promise<void>
 }
 
+export interface MacBridgeRuntimeStatus {
+  available: boolean
+  running: boolean
+  platform: 'darwin' | 'win32' | 'linux' | string
+  binaryPath: string | null
+  pid: number | null
+  startedAt: string | null
+  lastError: string | null
+}
+
+export interface MacPermissionsStatus {
+  accessibility: 'granted' | 'denied' | 'notDetermined' | 'unsupported' | 'unknown'
+  screenRecording: 'granted' | 'denied' | 'notDetermined' | 'unsupported' | 'unknown'
+  inputMonitoring: 'granted' | 'denied' | 'notDetermined' | 'unsupported' | 'unknown'
+}
+
+export type MacPermissionKind = 'accessibility' | 'screenRecording' | 'inputMonitoring'
+
+export type MacPermissionSettingsTarget
+  = | 'privacy'
+    | 'accessibility'
+    | 'screenRecording'
+    | 'inputMonitoring'
+
+export interface MacPermissionsRequestResult {
+  requested: MacPermissionKind[]
+  status: MacPermissionsStatus
+}
+
+export interface MacPermissionSettingsResult {
+  target: MacPermissionSettingsTarget
+  url: string
+  opened: boolean
+}
+
+export interface MacCaptureResponse {
+  capture: {
+    filePath: string
+    metadataPath: string
+    capturedAt: string
+    window: {
+      windowId: number
+      appName: string | null
+      bundleId: string | null
+      processId: number
+      title: string | null
+      bounds: {
+        x: number
+        y: number
+        width: number
+        height: number
+      } | null
+    }
+  }
+  sink: {
+    sink: 'file' | 'clipboard' | 'cleanshot'
+    ok: boolean
+    message: string | null
+  }
+}
+
+interface MacCaptureServiceMethods {
+  getStatus: () => Promise<MacBridgeRuntimeStatus>
+  getPermissions: () => Promise<MacPermissionsStatus>
+  requestPermissions: (options?: { permissions?: MacPermissionKind[] }) => Promise<MacPermissionsRequestResult>
+  openPermissionSettings: (options?: { target?: MacPermissionSettingsTarget }) => Promise<MacPermissionSettingsResult>
+  configureBothCommandHotkey: (enabled: boolean) => Promise<{ trigger: 'bothCommand', enabled: boolean }>
+  captureFrontmostWindow: (options?: {
+    sink?: 'file' | 'clipboard' | 'cleanshot'
+    privacySensitiveAppBundleIds?: string[]
+    privacySensitiveTitlePatterns?: string[]
+  }) => Promise<MacCaptureResponse>
+}
+
 interface CradleIpcServices {
   native: NativeServiceMethods
   window: WindowServiceMethods
   desktopUpdate: DesktopUpdateServiceMethods
+  macCapture: MacCaptureServiceMethods
 }
 
 /**

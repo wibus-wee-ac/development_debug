@@ -3,7 +3,8 @@ import { join, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
-import { createNativeServices } from './native-services'
+import { MacBridgeManager } from './mac-bridge-manager'
+import { captureFrontmostWindowWithMacBridge, createNativeServices } from './native-services'
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import {
   collectPluginInstallUrls,
@@ -25,6 +26,7 @@ let mainWindow: BrowserWindow | null = null
 let windowManager: WindowManager | undefined
 let updateManager: DesktopUpdateManager | null = null
 let trayManager: TrayManager | null = null
+let macBridgeManager: MacBridgeManager | null = null
 let isQuitting = false
 
 const MAIN_WINDOW_DEFAULT_WIDTH = 1280
@@ -274,6 +276,8 @@ async function shutdownDesktopRuntime(): Promise<void> {
   updateManager?.stopBackgroundChecks()
   trayManager?.destroy()
   trayManager = null
+  await macBridgeManager?.stop()
+  macBridgeManager = null
   await deactivateDesktopPlugins()
   await stopServer()
 }
@@ -289,9 +293,18 @@ export async function startDesktopApp(): Promise<void> {
   updateManager = new DesktopUpdateManager({
     beforeApplyUpdate: shutdownDesktopRuntime,
   })
+  macBridgeManager = new MacBridgeManager({
+    moduleDir: __dirname,
+  })
+  macBridgeManager.on('hotkeyTriggered', () => {
+    captureFrontmostWindowWithMacBridge({ sink: 'file' }).catch((error) => {
+      console.error('[mac-bridge] hotkey capture failed:', error)
+    })
+  })
   createNativeServices({
     getWindowManager: () => windowManager,
     getUpdateManager: () => updateManager,
+    getMacBridgeManager: () => macBridgeManager,
   })
   updateManager.on('statusChanged', broadcastUpdateStatus)
 
@@ -301,6 +314,13 @@ export async function startDesktopApp(): Promise<void> {
   })
 
   app.whenReady().then(async () => {
+    if (process.platform === 'darwin') {
+      await macBridgeManager?.start()
+      await macBridgeManager?.configureInput({ trigger: 'bothCommand', enabled: true }).catch((error) => {
+        console.warn('[mac-bridge] both-command hotkey unavailable:', error)
+      })
+    }
+
     await activateDesktopPlugins()
 
     const serverUrl = await startServer()
