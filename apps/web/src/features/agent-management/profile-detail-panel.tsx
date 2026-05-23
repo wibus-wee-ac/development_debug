@@ -7,11 +7,20 @@ import {
   CircleDashedIcon,
   ExternalLinkIcon,
   Trash2Icon,
-  TriangleAlertIcon,
+  TriangleAlertIcon
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
-import { memo, useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useReducer,
+  useRef,
+  useState
+} from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -19,7 +28,7 @@ import {
   postProvidersHealthCheck,
   postProvidersModels,
   postSecrets,
-  putProfilesById,
+  putProfilesById
 } from '~/api-gen/sdk.gen'
 import {
   AlertDialog,
@@ -30,13 +39,19 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogMedia,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from '~/components/ui/alert-dialog'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { IconPicker } from '~/components/ui/icon-picker'
 import { Input } from '~/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
@@ -48,7 +63,11 @@ import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ModelCapabilities, ModelDescriptor } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { ALL_DISABLED_SENTINEL, presetForProfile, PROVIDER_KIND_LABELS } from './agent-runtime-settings'
+import {
+  ALL_DISABLED_SENTINEL,
+  presetForProfile,
+  PROVIDER_KIND_LABELS
+} from './provider-settings-utils'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
 import { ProviderIcon } from './provider-icons'
@@ -82,7 +101,7 @@ interface ProfileDetailUiState {
 }
 
 const SecretCreateResponseSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1)
 })
 
 interface ExternalProviderSourceView {
@@ -93,7 +112,7 @@ interface ExternalProviderSourceView {
   lastSyncError: string | null
   lastSyncAt: number | null
   inventory: Record<string, unknown>
-  warnings: Array<{ code: string, message: string, severity: 'info' | 'warning' | 'error' }>
+  warnings: Array<{ code: string; message: string; severity: 'info' | 'warning' | 'error' }>
 }
 
 interface ExternalProviderRecordView {
@@ -103,7 +122,7 @@ interface ExternalProviderRecordView {
   app: string
   status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
   metadata: Record<string, unknown>
-  warnings: Array<{ code: string, message: string, severity: 'info' | 'warning' | 'error' }>
+  warnings: Array<{ code: string; message: string; severity: 'info' | 'warning' | 'error' }>
 }
 
 interface ExternalProfileLinkView {
@@ -123,7 +142,7 @@ interface ExternalProfileMetadata {
 const ExternalProviderWarningSchema = z.object({
   code: z.string(),
   message: z.string(),
-  severity: z.enum(['info', 'warning', 'error']),
+  severity: z.enum(['info', 'warning', 'error'])
 })
 
 const ExternalProviderSourceViewSchema = z.object({
@@ -134,7 +153,7 @@ const ExternalProviderSourceViewSchema = z.object({
   lastSyncError: z.string().nullable(),
   lastSyncAt: z.number().finite().nullable(),
   inventory: z.record(z.string(), z.unknown()),
-  warnings: z.array(ExternalProviderWarningSchema),
+  warnings: z.array(ExternalProviderWarningSchema)
 })
 
 const ExternalProviderRecordViewSchema = z.object({
@@ -144,7 +163,7 @@ const ExternalProviderRecordViewSchema = z.object({
   app: z.string(),
   status: z.enum(['active', 'stale', 'missing', 'unsupported', 'error']),
   metadata: z.record(z.string(), z.unknown()),
-  warnings: z.array(ExternalProviderWarningSchema),
+  warnings: z.array(ExternalProviderWarningSchema)
 })
 
 const ExternalProfileLinkViewSchema = z.object({
@@ -152,20 +171,21 @@ const ExternalProfileLinkViewSchema = z.object({
   externalRecordId: z.string(),
   profileId: z.string(),
   credentialRef: z.string().nullable(),
-  sourceOwnedFields: z.array(z.string()),
+  sourceOwnedFields: z.array(z.string())
 })
 
 const ExternalProviderSourcesSchema = z.array(ExternalProviderSourceViewSchema)
 const ExternalProviderRecordsSchema = z.array(ExternalProviderRecordViewSchema)
 
-type ProfileDetailUiAction = { type: 'reset' }
+type ProfileDetailUiAction =
+  | { type: 'reset' }
   | { type: 'models/loading' }
-  | { type: 'models/loaded', models: ModelDescriptor[], cachedAt?: number | null }
+  | { type: 'models/loaded'; models: ModelDescriptor[]; cachedAt?: number | null }
   | { type: 'models/failed' }
-  | { type: 'models/update-one', model: ModelDescriptor }
-  | { type: 'health/set', status: HealthStatus }
-  | { type: 'save/set', state: SaveState }
-  | { type: 'remove/set', open: boolean }
+  | { type: 'models/update-one'; model: ModelDescriptor }
+  | { type: 'health/set'; status: HealthStatus }
+  | { type: 'save/set'; state: SaveState }
+  | { type: 'remove/set'; open: boolean }
 
 const INITIAL_UI_STATE: ProfileDetailUiState = {
   availableModels: [],
@@ -173,94 +193,125 @@ const INITIAL_UI_STATE: ProfileDetailUiState = {
   modelsCachedAt: null,
   health: 'unknown',
   saveState: 'idle',
-  confirmRemove: false,
+  confirmRemove: false
 }
 
 const EMPTY_ENABLED_MODELS: string[] = []
 
-const ModelCapabilitiesSchema = z.object({
-  contextWindow: z.number().optional(),
-}).passthrough()
+const ModelCapabilitiesSchema = z
+  .object({
+    contextWindow: z.number().optional()
+  })
+  .passthrough()
 
 const ModelDescriptorSchema = z.object({
   id: z.string(),
   label: z.string(),
   providerKind: z.enum(['openai-compatible', 'anthropic']),
-  capabilities: ModelCapabilitiesSchema.default({}),
+  capabilities: ModelCapabilitiesSchema.default({})
 })
 
 const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
 
-const ProviderModelsCacheSchema = z.object({
-  models: ModelDescriptorListSchema,
-  cached: z.boolean(),
-  stale: z.boolean(),
-}).nullable()
+const ProviderModelsCacheSchema = z
+  .object({
+    models: ModelDescriptorListSchema,
+    cached: z.boolean(),
+    stale: z.boolean()
+  })
+  .nullable()
 
-const EditableCustomModelSchema = z.object({
-  id: z.string().trim().min(1),
-  label: z.string().trim().optional(),
-  capabilities: ModelCapabilitiesSchema.default({}),
-  contextWindow: z.number().optional(),
-}).transform(item => ({
-  id: item.id,
-  label: item.label || item.id,
-  capabilities: item.capabilities.contextWindow == null && item.contextWindow !== undefined
-    ? { ...item.capabilities, contextWindow: item.contextWindow }
-    : item.capabilities,
-}))
+const EditableCustomModelSchema = z
+  .object({
+    id: z.string().trim().min(1),
+    label: z.string().trim().optional(),
+    capabilities: ModelCapabilitiesSchema.default({}),
+    contextWindow: z.number().optional()
+  })
+  .transform((item) => ({
+    id: item.id,
+    label: item.label || item.id,
+    capabilities:
+      item.capabilities.contextWindow == null && item.contextWindow !== undefined
+        ? { ...item.capabilities, contextWindow: item.contextWindow }
+        : item.capabilities
+  }))
 
-const CustomModelsJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
+const CustomModelsJsonSchema = z
+  .string()
+  .transform((raw) => JSON.parse(raw))
   .pipe(z.array(EditableCustomModelSchema))
 
-const ExternalRecordMetadataSchema = z.object({
-  baseUrl: z.string().nullable().default(null),
-  model: z.string().nullable().default(null),
-}).passthrough()
+const ExternalRecordMetadataSchema = z
+  .object({
+    baseUrl: z.string().nullable().default(null),
+    model: z.string().nullable().default(null)
+  })
+  .passthrough()
 
 const ExternalWarningSchema = z.object({
   code: z.string(),
   message: z.string(),
-  severity: z.enum(['info', 'warning', 'error']),
+  severity: z.enum(['info', 'warning', 'error'])
 })
 
-const ExternalSourceSectionSchema = z.object({
-  link: z.object({
-    externalRecordId: z.string(),
-    profileId: z.string(),
-  }).passthrough(),
-  source: z.object({
-    label: z.string().default('External source'),
-    lastSyncStatus: z.enum(['never', 'ok', 'warning', 'error']).default('never'),
-    lastSyncError: z.string().nullable().default(null),
-    inventory: z.record(z.string(), z.unknown()).default({}),
-    warnings: z.array(ExternalWarningSchema).default([]),
-  }).passthrough().nullable().transform(source => source ?? {
-    label: 'External source',
-    lastSyncStatus: 'never' as const,
-    lastSyncError: null,
-    inventory: {},
-    warnings: [],
-  }),
-  record: z.object({
-    app: z.string().default('unknown'),
-    metadata: ExternalRecordMetadataSchema.default({ baseUrl: null, model: null }),
-    warnings: z.array(ExternalWarningSchema).default([]),
-  }).passthrough().nullable().transform(record => record ?? {
-    app: 'unknown',
-    metadata: { baseUrl: null, model: null },
-    warnings: [],
-  }),
-}).transform(({ link, source, record }) => ({
-  link,
-  source,
-  record,
-  warnings: source.warnings.length > 0 ? source.warnings : record.warnings,
-  inventoryEntries: Object.entries(source.inventory),
-}))
+const ExternalSourceSectionSchema = z
+  .object({
+    link: z
+      .object({
+        externalRecordId: z.string(),
+        profileId: z.string()
+      })
+      .passthrough(),
+    source: z
+      .object({
+        label: z.string().default('External source'),
+        lastSyncStatus: z.enum(['never', 'ok', 'warning', 'error']).default('never'),
+        lastSyncError: z.string().nullable().default(null),
+        inventory: z.record(z.string(), z.unknown()).default({}),
+        warnings: z.array(ExternalWarningSchema).default([])
+      })
+      .passthrough()
+      .nullable()
+      .transform(
+        (source) =>
+          source ?? {
+            label: 'External source',
+            lastSyncStatus: 'never' as const,
+            lastSyncError: null,
+            inventory: {},
+            warnings: []
+          }
+      ),
+    record: z
+      .object({
+        app: z.string().default('unknown'),
+        metadata: ExternalRecordMetadataSchema.default({ baseUrl: null, model: null }),
+        warnings: z.array(ExternalWarningSchema).default([])
+      })
+      .passthrough()
+      .nullable()
+      .transform(
+        (record) =>
+          record ?? {
+            app: 'unknown',
+            metadata: { baseUrl: null, model: null },
+            warnings: []
+          }
+      )
+  })
+  .transform(({ link, source, record }) => ({
+    link,
+    source,
+    record,
+    warnings: source.warnings.length > 0 ? source.warnings : record.warnings,
+    inventoryEntries: Object.entries(source.inventory)
+  }))
 
-function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDetailUiAction): ProfileDetailUiState {
+function profileDetailUiReducer(
+  state: ProfileDetailUiState,
+  action: ProfileDetailUiAction
+): ProfileDetailUiState {
   switch (action.type) {
     case 'reset':
       return INITIAL_UI_STATE
@@ -271,14 +322,16 @@ function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDeta
         ...state,
         availableModels: action.models,
         modelsLoading: false,
-        modelsCachedAt: 'cachedAt' in action ? action.cachedAt ?? null : Date.now(),
+        modelsCachedAt: 'cachedAt' in action ? (action.cachedAt ?? null) : Date.now()
       }
     case 'models/failed':
       return { ...state, availableModels: [], modelsLoading: false }
     case 'models/update-one':
       return {
         ...state,
-        availableModels: state.availableModels.map(model => model.id === action.model.id ? action.model : model),
+        availableModels: state.availableModels.map((model) =>
+          model.id === action.model.id ? action.model : model
+        )
       }
     case 'health/set':
       return { ...state, health: action.status }
@@ -303,7 +356,7 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     baseUrl: config.baseUrl,
     model: config.model,
     api: config.api,
-    enabledModels: getInitialEnabledModels(config.enabledModels),
+    enabledModels: getInitialEnabledModels(config.enabledModels)
   }
 }
 
@@ -313,23 +366,22 @@ function buildProviderRequestBody(profile: AgentProfile) {
     label: profile.name,
     config: ProfileConfigJsonSchema.parse(profile.configJson),
     secretRef: profile.credentialRef ?? null,
-    profileId: profile.id,
+    profileId: profile.id
   }
 }
 
-function buildProfileConfig(values: ProfileDetailFormValues, currentConfig: Record<string, unknown>): Record<string, unknown> {
-  const cleanEnabled = values.enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
+function buildProfileConfig(
+  values: ProfileDetailFormValues,
+  currentConfig: Record<string, unknown>
+): Record<string, unknown> {
+  const cleanEnabled = values.enabledModels.filter((id) => id !== ALL_DISABLED_SENTINEL)
   const allDisabledNow = values.enabledModels[0] === ALL_DISABLED_SENTINEL
   return {
     ...currentConfig,
     baseUrl: values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
-    enabledModels: cleanEnabled.length > 0
-      ? cleanEnabled
-      : allDisabledNow
-        ? []
-        : undefined,
+    enabledModels: cleanEnabled.length > 0 ? cleanEnabled : allDisabledNow ? [] : undefined
   }
 }
 
@@ -340,7 +392,7 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     baseUrl: values.baseUrl,
     model: values.model,
     api: values.api,
-    enabledModels: values.enabledModels,
+    enabledModels: values.enabledModels
   })
 }
 
@@ -353,9 +405,13 @@ function clearTimer(timerRef: MutableRefObject<ReturnType<typeof setTimeout> | n
   timerRef.current = null
 }
 
-async function loadExternalProfileMetadata(profileId: string): Promise<ExternalProfileMetadata | null> {
+async function loadExternalProfileMetadata(
+  profileId: string
+): Promise<ExternalProfileMetadata | null> {
   const baseUrl = getServerUrl()
-  const linkRes = await fetch(`${baseUrl}/profiles/${encodeURIComponent(profileId)}/external-source`)
+  const linkRes = await fetch(
+    `${baseUrl}/profiles/${encodeURIComponent(profileId)}/external-source`
+  )
   if (linkRes.status === 404) {
     return null
   }
@@ -366,7 +422,7 @@ async function loadExternalProfileMetadata(profileId: string): Promise<ExternalP
   const link = ExternalProfileLinkViewSchema.parse(await linkRes.json())
   const [sourcesRes, recordsRes] = await Promise.all([
     fetch(`${baseUrl}/external-provider-sources`),
-    fetch(`${baseUrl}/external-provider-sources/records`),
+    fetch(`${baseUrl}/external-provider-sources/records`)
   ])
   if (!sourcesRes.ok || !recordsRes.ok) {
     throw new Error('Failed to load external provider metadata')
@@ -376,8 +432,8 @@ async function loadExternalProfileMetadata(profileId: string): Promise<ExternalP
   const records = ExternalProviderRecordsSchema.parse(await recordsRes.json())
   return {
     link,
-    source: sources.find(source => source.id === link.sourceKey) ?? null,
-    record: records.find(record => record.id === profileId) ?? null,
+    source: sources.find((source) => source.id === link.sourceKey) ?? null,
+    record: records.find((record) => record.id === profileId) ?? null
   }
 }
 
@@ -385,7 +441,7 @@ export function ProfileDetailPanel({
   profile,
   onRemove,
   onToggle,
-  onSaved,
+  onSaved
 }: {
   profile: AgentProfile
   onRemove: () => void
@@ -398,25 +454,20 @@ export function ProfileDetailPanel({
   const supportsModels = true
 
   const form = useForm<ProfileDetailFormValues>({
-    defaultValues: getProfileFormValues(profile),
+    defaultValues: getProfileFormValues(profile)
   })
   const name = useWatch({ control: form.control, name: 'name' }) ?? ''
   const apiKey = useWatch({ control: form.control, name: 'apiKey' }) ?? ''
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
-  const enabledModels = useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
+  const enabledModels =
+    useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
   const [externalMetadata, setExternalMetadata] = useState<ExternalProfileMetadata | null>(null)
-  const {
-    availableModels,
-    modelsLoading,
-    modelsCachedAt,
-    health,
-    saveState,
-    confirmRemove,
-  } = uiState
+  const { availableModels, modelsLoading, modelsCachedAt, health, saveState, confirmRemove } =
+    uiState
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -430,19 +481,28 @@ export function ProfileDetailPanel({
   const createProviderRequestBodyRef = useRef(createProviderRequestBody)
   createProviderRequestBodyRef.current = createProviderRequestBody
 
-  const setTextField = useCallback((field: ProfileTextField, value: string) => {
-    form.setValue(field, value, { shouldDirty: true })
-  }, [form])
+  const setTextField = useCallback(
+    (field: ProfileTextField, value: string) => {
+      form.setValue(field, value, { shouldDirty: true })
+    },
+    [form]
+  )
 
-  const handleEnabledModelsChange = useCallback((next: string[]) => {
-    form.setValue('enabledModels', next, { shouldDirty: true })
-  }, [form])
+  const handleEnabledModelsChange = useCallback(
+    (next: string[]) => {
+      form.setValue('enabledModels', next, { shouldDirty: true })
+    },
+    [form]
+  )
 
-  const handleModelRegistryMapped = useCallback((next: ModelDescriptor) => {
-    dispatch({ type: 'models/update-one', model: next })
-    void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
-    onSaved()
-  }, [queryClient, onSaved])
+  const handleModelRegistryMapped = useCallback(
+    (next: ModelDescriptor) => {
+      dispatch({ type: 'models/update-one', model: next })
+      void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+      onSaved()
+    },
+    [queryClient, onSaved]
+  )
 
   const clearAutoSaveTimer = useCallback(() => {
     clearTimer(autoSaveTimerRef)
@@ -475,7 +535,7 @@ export function ProfileDetailPanel({
     void loadExternalProfileMetadata(profile.id)
       .then(setExternalMetadata)
       .catch(() => setExternalMetadata(null))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId])
 
   useEffect(() => {
@@ -489,7 +549,7 @@ export function ProfileDetailPanel({
 
     const cacheUrl = `${getServerUrl()}/providers/${encodeURIComponent(profile.id)}/models-cache`
     fetch(cacheUrl)
-      .then(res => res.ok ? res.json() : null)
+      .then((res) => (res.ok ? res.json() : null))
       .then((rawCache) => {
         const cache = ProviderModelsCacheSchema.parse(rawCache)
         if (requestId !== modelsRequestRef.current) {
@@ -520,7 +580,11 @@ export function ProfileDetailPanel({
         if (requestId !== modelsRequestRef.current) {
           return
         }
-        dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
+        dispatch({
+          type: 'models/loaded',
+          models: ModelDescriptorListSchema.parse(data),
+          cachedAt: Date.now()
+        })
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       })
       .catch(() => {
@@ -538,7 +602,7 @@ export function ProfileDetailPanel({
 
     try {
       const { data } = await postProvidersHealthCheck({
-        body: createProviderRequestBody(),
+        body: createProviderRequestBody()
       })
 
       if (requestId !== healthRequestRef.current) {
@@ -547,8 +611,7 @@ export function ProfileDetailPanel({
 
       const hc = data as { ok: boolean } | null
       dispatch({ type: 'health/set', status: hc?.ok ? 'connected' : 'failed' })
-    }
-    catch {
+    } catch {
       if (requestId !== healthRequestRef.current) {
         return
       }
@@ -575,7 +638,11 @@ export function ProfileDetailPanel({
       let credentialRef = profile.credentialRef ?? null
       if (currentValues.apiKey && supportsModels) {
         const { data: meta } = await postSecrets({
-          body: { kind: profile.providerKind, label: currentValues.name, secret: currentValues.apiKey },
+          body: {
+            kind: profile.providerKind,
+            label: currentValues.name,
+            secret: currentValues.apiKey
+          }
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
@@ -589,8 +656,8 @@ export function ProfileDetailPanel({
           config: supportsModels
             ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson))
             : ProfileConfigJsonSchema.parse(profile.configJson),
-          credentialRef,
-        },
+          credentialRef
+        }
       })
 
       if (requestId !== saveRequestRef.current) {
@@ -600,7 +667,7 @@ export function ProfileDetailPanel({
       dispatch({ type: 'save/set', state: 'saved' })
       const savedValues = {
         ...currentValues,
-        apiKey: '',
+        apiKey: ''
       }
       savedSignatureRef.current = createProfileSignature(savedValues)
       form.reset(savedValues)
@@ -611,8 +678,7 @@ export function ProfileDetailPanel({
         }
       }, 1600)
       onSaved()
-    }
-    catch (err) {
+    } catch (err) {
       if (requestId !== saveRequestRef.current) {
         return
       }
@@ -622,14 +688,18 @@ export function ProfileDetailPanel({
     }
   })
 
-  const watchedSignature = useMemo(() => JSON.stringify({
-    name,
-    apiKey,
-    baseUrl,
-    model,
-    api,
-    enabledModels,
-  }), [name, apiKey, baseUrl, model, api, enabledModels])
+  const watchedSignature = useMemo(
+    () =>
+      JSON.stringify({
+        name,
+        apiKey,
+        baseUrl,
+        model,
+        api,
+        enabledModels
+      }),
+    [name, apiKey, baseUrl, model, api, enabledModels]
+  )
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
@@ -654,18 +724,23 @@ export function ProfileDetailPanel({
   }, [watchedSignature, saveState, clearAutoSaveTimer])
 
   // ── Icon change handler ──
-  const handleIconChange = useCallback((slug: string | null) => {
-    if (isExternalProfile) {
-      return
-    }
-    fetch(`${getServerUrl()}/profiles/${encodeURIComponent(profile.id)}/icon`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ iconSlug: slug }),
-    }).then(() => {
-      onSaved()
-    }).catch(() => {})
-  }, [isExternalProfile, profile.id, onSaved])
+  const handleIconChange = useCallback(
+    (slug: string | null) => {
+      if (isExternalProfile) {
+        return
+      }
+      fetch(`${getServerUrl()}/profiles/${encodeURIComponent(profile.id)}/icon`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ iconSlug: slug })
+      })
+        .then(() => {
+          onSaved()
+        })
+        .catch(() => {})
+    },
+    [isExternalProfile, profile.id, onSaved]
+  )
 
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
 
@@ -674,21 +749,26 @@ export function ProfileDetailPanel({
       <ProfileDetailHeader
         profile={profile}
         kindLabel={kindLabel}
-        icon={(
-          isExternalProfile
-            ? (
-              <button type="button" className="mt-1 shrink-0 rounded-md p-0.5 text-muted-foreground" disabled>
+        icon={
+          isExternalProfile ? (
+            <button
+              type="button"
+              className="mt-1 shrink-0 rounded-md p-0.5 text-muted-foreground"
+              disabled
+            >
+              <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-6" />
+            </button>
+          ) : (
+            <IconPicker value={profile.iconSlug ?? null} onChange={handleIconChange}>
+              <button
+                type="button"
+                className="mt-1 shrink-0 cursor-pointer rounded-md p-0.5 transition-colors hover:bg-fill"
+              >
                 <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-6" />
               </button>
-            )
-            : (
-              <IconPicker value={profile.iconSlug ?? null} onChange={handleIconChange}>
-                <button type="button" className="mt-1 shrink-0 cursor-pointer rounded-md p-0.5 transition-colors hover:bg-fill">
-                  <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-6" />
-                </button>
-              </IconPicker>
-            )
-        )}
+            </IconPicker>
+          )
+        }
         health={health}
         saveState={saveState}
         isExternalProfile={isExternalProfile}
@@ -730,14 +810,18 @@ export function ProfileDetailPanel({
 
         {supportsModels && (
           // eslint-disable-next-line ts/no-use-before-define
-          <MemoizedProfileCustomModelsSection profileId={profile.id} customModelsJson={profile.customModels} onSaved={onSaved} />
+          <MemoizedProfileCustomModelsSection
+            profileId={profile.id}
+            customModelsJson={profile.customModels}
+            onSaved={onSaved}
+          />
         )}
       </div>
 
       <RemoveProfileDialog
         open={confirmRemove}
         profileName={profile.name}
-        onOpenChange={open => dispatch({ type: 'remove/set', open })}
+        onOpenChange={(open) => dispatch({ type: 'remove/set', open })}
         onConfirm={() => {
           dispatch({ type: 'remove/set', open: false })
           onRemove()
@@ -756,7 +840,7 @@ function ProfileDetailHeader({
   isExternalProfile,
   onRefreshHealth,
   onToggle,
-  onOpenRemove,
+  onOpenRemove
 }: {
   profile: AgentProfile
   kindLabel: string
@@ -782,20 +866,14 @@ function ProfileDetailHeader({
           </Badge>
           <HealthBadge status={health} onRefresh={onRefreshHealth} disabled={!profile.enabled} />
         </div>
-        <p className="mt-1 truncate text-[11.5px] text-muted-foreground/80">
-          {profile.id}
-        </p>
+        <p className="mt-1 truncate text-[11.5px] text-muted-foreground/80">{profile.id}</p>
       </div>
 
       <div className="flex items-center gap-3 pt-0.5">
         <SaveIndicator state={saveState} />
 
         <div className="flex items-center gap-2 rounded-full bg-muted/40 px-2.5 py-1 ring-1 ring-foreground/4">
-          <Switch
-            size="sm"
-            checked={profile.enabled}
-            onCheckedChange={onToggle}
-          />
+          <Switch size="sm" checked={profile.enabled} onCheckedChange={onToggle} />
           <span className="text-[11px] font-medium text-muted-foreground">
             {profile.enabled ? 'Active' : 'Off'}
           </span>
@@ -814,7 +892,9 @@ function ProfileDetailHeader({
               <Trash2Icon className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="top">{isExternalProfile ? 'Managed by external source' : 'Remove provider'}</TooltipContent>
+          <TooltipContent side="top">
+            {isExternalProfile ? 'Managed by external source' : 'Remove provider'}
+          </TooltipContent>
         </Tooltip>
       </div>
     </header>
@@ -822,7 +902,8 @@ function ProfileDetailHeader({
 }
 
 function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata }) {
-  const { source, record, link, warnings, inventoryEntries } = ExternalSourceSectionSchema.parse(metadata)
+  const { source, record, link, warnings, inventoryEntries } =
+    ExternalSourceSectionSchema.parse(metadata)
   const { baseUrl, model } = record.metadata
 
   return (
@@ -836,7 +917,10 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
       </div>
 
       <div className="grid gap-3">
-        <SettingsRow label="Source" description="The plugin-owned reader that supplies this provider">
+        <SettingsRow
+          label="Source"
+          description="The plugin-owned reader that supplies this provider"
+        >
           <div className="flex flex-col gap-1 text-[12px]">
             <span className="text-foreground">{source.label}</span>
             <span className="flex items-center gap-1.5">
@@ -849,7 +933,11 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
               {source.lastSyncStatus === 'ok' && (
                 <CircleCheckIcon className="size-3.5 shrink-0 text-success" />
               )}
-              <span className={source.lastSyncStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'}>
+              <span
+                className={
+                  source.lastSyncStatus === 'error' ? 'text-destructive' : 'text-muted-foreground'
+                }
+              >
                 {source.lastSyncStatus}
               </span>
             </span>
@@ -884,29 +972,33 @@ function ExternalSourceSection({ metadata }: { metadata: ExternalProfileMetadata
 
         <SettingsRow label="Warnings" description="Snapshot warnings reported by the source">
           <div className="flex flex-col gap-1">
-            {warnings.length > 0
-              ? warnings.map((warning, index) => (
+            {warnings.length > 0 ? (
+              warnings.map((warning, index) => (
                 <div key={`${warning.code}-${index}`} className="text-[12px] text-muted-foreground">
                   {warning.severity}
                   {': '}
                   {warning.message}
                 </div>
               ))
-              : <span className="text-[12px] text-muted-foreground">None</span>}
+            ) : (
+              <span className="text-[12px] text-muted-foreground">None</span>
+            )}
           </div>
         </SettingsRow>
 
         <SettingsRow label="Inventory" description="What else the source detected">
           <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground">
-            {inventoryEntries.length === 0
-              ? <span>None</span>
-              : inventoryEntries.map(([key, value]) => (
+            {inventoryEntries.length === 0 ? (
+              <span>None</span>
+            ) : (
+              inventoryEntries.map(([key, value]) => (
                 <span key={key} className="rounded-full bg-muted px-2 py-0.5">
                   {key}
                   {': '}
                   {String(value)}
                 </span>
-              ))}
+              ))
+            )}
           </div>
         </SettingsRow>
       </div>
@@ -919,7 +1011,7 @@ function ProfileGeneralSettings({
   values,
   onTextFieldChange,
   supportsModels,
-  readOnly,
+  readOnly
 }: {
   profile: AgentProfile
   values: Pick<ProfileDetailFormValues, ProfileTextField>
@@ -933,7 +1025,7 @@ function ProfileGeneralSettings({
         <Input
           data-testid="provider-edit-name"
           value={values.name}
-          onChange={e => onTextFieldChange('name', e.target.value)}
+          onChange={(e) => onTextFieldChange('name', e.target.value)}
           disabled={readOnly}
           className="h-9 w-56 text-[13px]"
         />
@@ -946,7 +1038,7 @@ function ProfileGeneralSettings({
             <Input
               data-testid="provider-edit-baseurl"
               value={values.baseUrl}
-              onChange={e => onTextFieldChange('baseUrl', e.target.value)}
+              onChange={(e) => onTextFieldChange('baseUrl', e.target.value)}
               disabled={readOnly}
               className="h-9 w-56 text-[12.5px] font-mono"
               placeholder="https://api.openai.com/v1"
@@ -955,7 +1047,11 @@ function ProfileGeneralSettings({
 
           <SettingsDivider />
           <SettingsRow label="API protocol" description="Communication protocol for this endpoint">
-            <Select value={values.api || 'auto'} onValueChange={v => onTextFieldChange('api', v === 'auto' ? '' : v)} disabled={readOnly}>
+            <Select
+              value={values.api || 'auto'}
+              onValueChange={(v) => onTextFieldChange('api', v === 'auto' ? '' : v)}
+              disabled={readOnly}
+            >
               <SelectTrigger className="h-9 w-56 text-[12.5px]">
                 <SelectValue />
               </SelectTrigger>
@@ -974,15 +1070,17 @@ function ProfileGeneralSettings({
           <SettingsDivider />
           <SettingsRow
             label="API key"
-            description={profile.credentialRef
-              ? 'A credential is already stored. Leave empty to keep it.'
-              : 'Stored locally and encrypted.'}
+            description={
+              profile.credentialRef
+                ? 'A credential is already stored. Leave empty to keep it.'
+                : 'Stored locally and encrypted.'
+            }
           >
             <Input
               data-testid="provider-edit-apikey"
               type="password"
               value={values.apiKey}
-              onChange={e => onTextFieldChange('apiKey', e.target.value)}
+              onChange={(e) => onTextFieldChange('apiKey', e.target.value)}
               disabled={readOnly}
               placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
               className="h-9 w-56 text-[12.5px] font-mono"
@@ -990,7 +1088,6 @@ function ProfileGeneralSettings({
           </SettingsRow>
         </>
       )}
-
     </>
   )
 }
@@ -1003,7 +1100,7 @@ function ProfileModelsSection({
   onChange,
   onModelRegistryMapped,
   onRefresh,
-  cachedAt,
+  cachedAt
 }: {
   loading: boolean
   profileId: string
@@ -1038,7 +1135,7 @@ const MemoizedProfileModelsSection = memo(ProfileModelsSection)
 function ProfileCustomModelsSection({
   profileId,
   customModelsJson,
-  onSaved,
+  onSaved
 }: {
   profileId: string
   customModelsJson: string
@@ -1052,46 +1149,44 @@ function ProfileCustomModelsSection({
     setModels(CustomModelsJsonSchema.parse(customModelsJson))
   }, [customModelsJson])
 
-  const saveCustomModels = useCallback(async (next: EditableCustomModel[]) => {
-    const sanitized = z.array(EditableCustomModelSchema).parse(next)
+  const saveCustomModels = useCallback(
+    async (next: EditableCustomModel[]) => {
+      const sanitized = z.array(EditableCustomModelSchema).parse(next)
 
-    setModels(sanitized)
-    try {
-      const res = await fetch(`${getServerUrl()}/profiles/${profileId}/custom-models`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          models: sanitized.map(m => ({
-            id: m.id,
-            label: m.label !== m.id ? m.label : undefined,
-            capabilities: m.capabilities,
-          })),
-        }),
-      })
-      if (res.ok) {
-        setModels(z.array(EditableCustomModelSchema).parse(await res.json()))
-        void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
-        onSaved()
+      setModels(sanitized)
+      try {
+        const res = await fetch(`${getServerUrl()}/profiles/${profileId}/custom-models`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            models: sanitized.map((m) => ({
+              id: m.id,
+              label: m.label !== m.id ? m.label : undefined,
+              capabilities: m.capabilities
+            }))
+          })
+        })
+        if (res.ok) {
+          setModels(z.array(EditableCustomModelSchema).parse(await res.json()))
+          void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+          onSaved()
+        }
+      } catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: 'Save failed',
+          description: error instanceof Error ? error.message : 'Unknown error'
+        })
       }
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: 'Save failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
-      })
-    }
-  }, [profileId, queryClient, onSaved])
+    },
+    [profileId, queryClient, onSaved]
+  )
 
   return (
     <>
       <Separator className="bg-foreground/6" />
       <section className="mt-4 flex flex-col gap-4">
-        <CustomModelsEditor
-          profileId={profileId}
-          models={models}
-          onChange={saveCustomModels}
-        />
+        <CustomModelsEditor profileId={profileId} models={models} onChange={saveCustomModels} />
       </section>
     </>
   )
@@ -1103,7 +1198,7 @@ function RemoveProfileDialog({
   open,
   profileName,
   onOpenChange,
-  onConfirm,
+  onConfirm
 }: {
   open: boolean
   profileName: string
@@ -1119,19 +1214,14 @@ function RemoveProfileDialog({
           </AlertDialogMedia>
           <AlertDialogTitle>Remove provider?</AlertDialogTitle>
           <AlertDialogDescription>
-            <strong className="text-foreground">{profileName}</strong>
-            {' '}
-            will be disconnected from every agent that uses it. Stored credentials
-            will be deleted from this machine. You can always add it back later.
+            <strong className="text-foreground">{profileName}</strong> will be disconnected from
+            every agent that uses it. Stored credentials will be deleted from this machine. You can
+            always add it back later.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel size="sm">Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            size="sm"
-            variant="destructive"
-            onClick={onConfirm}
-          >
+          <AlertDialogAction size="sm" variant="destructive" onClick={onConfirm}>
             Remove
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -1142,7 +1232,13 @@ function RemoveProfileDialog({
 
 // ─── Health badge ─────────────────────────────────────────────────────────────
 
-function HealthPill({ tone, label, icon, onRefresh, disabled }: {
+function HealthPill({
+  tone,
+  label,
+  icon,
+  onRefresh,
+  disabled
+}: {
   tone: 'active' | 'muted' | 'warning' | 'destructive'
   label: string
   icon: ReactNode
@@ -1158,12 +1254,15 @@ function HealthPill({ tone, label, icon, onRefresh, disabled }: {
           disabled={disabled}
           className={cn(
             'group/health inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition-colors',
-            tone === 'active' && 'bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400',
+            tone === 'active' &&
+              'bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400',
             tone === 'muted' && 'bg-muted/60 text-muted-foreground ring-1 ring-foreground/4',
-            tone === 'warning' && 'bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400',
-            tone === 'destructive' && 'bg-destructive/10 text-destructive ring-1 ring-destructive/15',
+            tone === 'warning' &&
+              'bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400',
+            tone === 'destructive' &&
+              'bg-destructive/10 text-destructive ring-1 ring-destructive/15',
             'disabled:opacity-60 disabled:cursor-not-allowed',
-            !disabled && 'hover:brightness-105 cursor-pointer',
+            !disabled && 'hover:brightness-105 cursor-pointer'
           )}
         >
           {icon}
@@ -1180,25 +1279,65 @@ function HealthPill({ tone, label, icon, onRefresh, disabled }: {
 function HealthBadge({
   status,
   onRefresh,
-  disabled,
+  disabled
 }: {
   status: HealthStatus
   onRefresh: () => void
   disabled: boolean
 }) {
   if (disabled) {
-    return <HealthPill tone="muted" label="Disabled" icon={<CircleDashedIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
+    return (
+      <HealthPill
+        tone="muted"
+        label="Disabled"
+        icon={<CircleDashedIcon className="size-3" />}
+        onRefresh={onRefresh}
+        disabled={disabled}
+      />
+    )
   }
   if (status === 'verifying') {
-    return <HealthPill tone="muted" label="Verifying" icon={<Spinner className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
+    return (
+      <HealthPill
+        tone="muted"
+        label="Verifying"
+        icon={<Spinner className="size-3" />}
+        onRefresh={onRefresh}
+        disabled={disabled}
+      />
+    )
   }
   if (status === 'connected') {
-    return <HealthPill tone="active" label="Connected" icon={<CircleCheckIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
+    return (
+      <HealthPill
+        tone="active"
+        label="Connected"
+        icon={<CircleCheckIcon className="size-3" />}
+        onRefresh={onRefresh}
+        disabled={disabled}
+      />
+    )
   }
   if (status === 'failed') {
-    return <HealthPill tone="destructive" label="Disconnected" icon={<CircleAlertIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
+    return (
+      <HealthPill
+        tone="destructive"
+        label="Disconnected"
+        icon={<CircleAlertIcon className="size-3" />}
+        onRefresh={onRefresh}
+        disabled={disabled}
+      />
+    )
   }
-  return <HealthPill tone="muted" label="Idle" icon={<CircleDashedIcon className="size-3" />} onRefresh={onRefresh} disabled={disabled} />
+  return (
+    <HealthPill
+      tone="muted"
+      label="Idle"
+      icon={<CircleDashedIcon className="size-3" />}
+      onRefresh={onRefresh}
+      disabled={disabled}
+    />
+  )
 }
 
 // ─── Save indicator ───────────────────────────────────────────────────────────
@@ -1216,7 +1355,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
             'flex items-center gap-1 text-[11px] font-medium',
             state === 'saving' || state === 'pending' ? 'text-muted-foreground' : '',
             state === 'saved' ? 'text-emerald-600 dark:text-emerald-400' : '',
-            state === 'error' ? 'text-destructive' : '',
+            state === 'error' ? 'text-destructive' : ''
           )}
         >
           {(state === 'saving' || state === 'pending') && <Spinner className="size-2.5" />}
