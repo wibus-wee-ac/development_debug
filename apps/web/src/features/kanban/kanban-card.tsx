@@ -1,5 +1,5 @@
 import { useDraggable } from '@dnd-kit/core'
-import { CheckIcon } from 'lucide-react'
+import { BotIcon, CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
@@ -71,8 +71,9 @@ function KanbanCardView({
 
   useEffect(() => {
     return () => {
-      if (openTimerRef.current !== null) {
-        window.clearTimeout(openTimerRef.current)
+      const openTimer = openTimerRef.current
+      if (openTimer !== null) {
+        window.clearTimeout(openTimer)
       }
     }
   }, [])
@@ -183,7 +184,13 @@ function KanbanCardView({
 
             {displayProperties.assignee && (
               issue.assigneeId
-                ? <AssigneeAvatar name={issue.assigneeId} size={18} />
+                ? issue.assigneeKind === 'agent'
+                  ? (
+                      <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
+                        <BotIcon className="size-3" aria-hidden="true" />
+                      </span>
+                    )
+                  : <AssigneeAvatar name={issue.assigneeId} size={18} />
                 : <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground" />
             )}
           </span>

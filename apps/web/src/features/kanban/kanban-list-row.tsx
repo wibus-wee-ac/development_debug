@@ -64,8 +64,9 @@ function KanbanListRowView({
 
   useEffect(() => {
     return () => {
-      if (openTimerRef.current !== null) {
-        window.clearTimeout(openTimerRef.current)
+      const openTimer = openTimerRef.current
+      if (openTimer !== null) {
+        window.clearTimeout(openTimer)
       }
     }
   }, [])
@@ -215,7 +216,13 @@ function KanbanListRowView({
           )}
 
           {displayProperties.assignee && issue.assigneeId && (
-            <AssigneeAvatar name={issue.assigneeId} size={16} />
+            issue.assigneeKind === 'agent'
+              ? (
+                  <span className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
+                    <BotIcon className="size-2.5" aria-hidden="true" />
+                  </span>
+                )
+              : <AssigneeAvatar name={issue.assigneeId} size={16} />
           )}
 
           {displayProperties.createdAt && issue.createdAt && (

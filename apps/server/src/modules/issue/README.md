@@ -7,4 +7,4 @@ Comment responses include a server-resolved author projection; clients should no
 
 - `index.ts`: Elysia `/issues` routes, OpenAPI metadata, generated CLI descriptors, and the Agent-facing issue move route that accepts status name slugs.
 - `model.ts`: TypeBox schemas for issue requests and responses, including comment author projections and `statusName` request aliases for Agent workflows.
-- `service.ts`: Issue workflow, key generation, default status assignment, status name/slug resolution, actor provenance, comment author projection, relations, context refs, and session link semantics.
+- `service.ts`: Issue workflow, key generation, default status assignment, status name/slug resolution, actor provenance, unified assignee/delegation markers, comment author projection, relations, context refs, and session link semantics.

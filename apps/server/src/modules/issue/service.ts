@@ -502,6 +502,8 @@ export function moveIssueToStatusName(id: string, statusName: string): IssueView
 
 export function updateIssueDelegation(id: string, delegation: { agentId: string, agentProfileId: string } | null): IssueView {
   db().update(issues).set({
+    assigneeKind: delegation ? 'agent' : null,
+    assigneeId: delegation?.agentId ?? null,
     delegateAgentId: delegation?.agentId ?? null,
     delegateAgentProfileId: delegation?.agentProfileId ?? null,
     updatedAt: currentUnixSeconds(),

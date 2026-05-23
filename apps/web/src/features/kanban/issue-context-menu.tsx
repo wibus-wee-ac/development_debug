@@ -8,6 +8,7 @@ import {
   FlagIcon,
   MilestoneIcon,
   Trash2Icon,
+  UserIcon,
   UserRoundXIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -42,6 +43,7 @@ import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
+import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
@@ -56,6 +58,13 @@ interface IssueContextMenuProps {
   onOpen: () => void
   children: ReactNode
 }
+
+type AssigneeKind = 'user' | 'agent'
+
+const CURRENT_USER_ASSIGNEE = {
+  id: '__self__',
+  name: 'Me',
+} as const
 
 const priorityOptions: Array<{ value: IssuePriority, label: string }> = [
   { value: 'urgent', label: 'Urgent' },
@@ -86,9 +95,21 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const undelegateIssue = useUndelegateIssue()
   const issueKey = formatIssueId(issue, workspaces)
   const delegateAgents = agents.filter(agent => !!agent.agentProfileId)
-  const delegatedAgent = delegateAgents.find(agent =>
-    agent.id === issue.delegateAgentId || agent.agentProfileId === issue.delegateAgentProfileId,
-  ) ?? null
+  const assignedAgent = delegateAgents.find(agent => (
+    (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
+    || agent.id === issue.delegateAgentId
+    || agent.agentProfileId === issue.delegateAgentProfileId
+  )) ?? null
+  const assignedHuman = issue.assigneeKind === 'user'
+    ? issue.assigneeId === CURRENT_USER_ASSIGNEE.id
+      ? CURRENT_USER_ASSIGNEE
+      : { id: issue.assigneeId ?? '', name: issue.assigneeId ?? 'Unknown user' }
+    : null
+  const assigneeValue = assignedAgent
+    ? `agent:${assignedAgent.id}`
+    : assignedHuman?.id
+      ? `user:${assignedHuman.id}`
+      : ''
 
   const isMutating = updateIssue.isPending || delegateIssue.isPending || deleteIssue.isPending || undelegateIssue.isPending
   const currentStatusValue = issue.statusId ?? ''
@@ -97,6 +118,42 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const handleDelete = () => {
     setDeleteDialogOpen(false)
     deleteIssue.mutate(issue.id)
+  }
+
+  const handleAssigneeChange = (value: string) => {
+    if (value === '') {
+      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+        undelegateIssue.mutate({ issueId: issue.id })
+        return
+      }
+      updateIssue.mutate({ id: issue.id, patch: { assigneeKind: null, assigneeId: null } })
+      return
+    }
+
+    const [kind, id] = value.split(':', 2) as [AssigneeKind, string]
+    if (kind === 'agent') {
+      const agent = delegateAgents.find(candidate => candidate.id === id)
+      if (!agent?.agentProfileId) {
+        return
+      }
+      delegateIssue.mutate({
+        issueId: issue.id,
+        agentProfileId: agent.agentProfileId,
+        agentId: agent.id,
+      })
+      return
+    }
+
+    if (kind === 'user') {
+      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+        undelegateIssue.mutate(
+          { issueId: issue.id },
+          { onSuccess: () => updateIssue.mutate({ id: issue.id, patch: { assigneeKind: 'user', assigneeId: id } }) },
+        )
+        return
+      }
+      updateIssue.mutate({ id: issue.id, patch: { assigneeKind: 'user', assigneeId: id } })
+    }
   }
 
   return (
@@ -198,72 +255,60 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
 
         <ContextMenuSub>
           <ContextMenuSubTrigger disabled={isMutating}>
-            <BotIcon className="size-4" />
-            Agent
+            {assignedAgent
+              ? <BotIcon className="size-4" />
+              : assignedHuman
+                ? <UserIcon className="size-4" />
+                : <UserRoundXIcon className="size-4" />}
+            Assignee
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-56">
-            {delegatedAgent && (
-              <>
-                <ContextMenuLabel className="truncate">
-                  <span>Assigned to </span>
-                  <span>{delegatedAgent.name}</span>
-                </ContextMenuLabel>
-                <ContextMenuItem disabled={isMutating} onSelect={() => undelegateIssue.mutate({ issueId: issue.id })}>
-                  <CircleDashedIcon className="size-4" />
-                  Unassigned
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-              </>
-            )}
-            {delegateAgents.length === 0
-              ? (
-                  <ContextMenuItem disabled>
-                    <BotIcon className="size-4" />
-                    No agents configured
-                  </ContextMenuItem>
-                )
-              : delegateAgents.map(agent => (
-                  <ContextMenuItem
-                    key={agent.id}
-                    disabled={isMutating || agent.id === issue.delegateAgentId}
-                    onSelect={() => delegateIssue.mutate({
-                      issueId: issue.id,
-                      agentProfileId: agent.agentProfileId!,
-                      agentId: agent.id,
-                    })}
-                  >
-                    <BotIcon className="size-4" />
-                    <span className="truncate">{agent.name}</span>
-                  </ContextMenuItem>
-                ))}
+            <ContextMenuRadioGroup value={assigneeValue} onValueChange={handleAssigneeChange}>
+              <ContextMenuRadioItem value="" disabled={isMutating}>
+                <UserRoundXIcon className="size-4" />
+                Unassigned
+              </ContextMenuRadioItem>
+              <ContextMenuSeparator />
+              <ContextMenuLabel>Team members</ContextMenuLabel>
+              <ContextMenuRadioItem value={`user:${CURRENT_USER_ASSIGNEE.id}`} disabled={isMutating}>
+                <AssigneeAvatar name={CURRENT_USER_ASSIGNEE.name} size={18} />
+                <span className="truncate">{CURRENT_USER_ASSIGNEE.name}</span>
+              </ContextMenuRadioItem>
+              <ContextMenuSeparator />
+              <ContextMenuLabel>AI Agents</ContextMenuLabel>
+              {delegateAgents.length === 0
+                ? (
+                    <ContextMenuItem disabled>
+                      <BotIcon className="size-4" />
+                      No agents configured
+                    </ContextMenuItem>
+                  )
+                : delegateAgents.map(agent => (
+                    <ContextMenuRadioItem
+                      key={agent.id}
+                      value={`agent:${agent.id}`}
+                      disabled={isMutating}
+                    >
+                      <BotIcon className="size-4" />
+                      <span className="truncate">{agent.name}</span>
+                    </ContextMenuRadioItem>
+                  ))}
+            </ContextMenuRadioGroup>
           </ContextMenuSubContent>
         </ContextMenuSub>
 
-        {issue.assigneeId && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              disabled={isMutating}
-              onSelect={() => updateIssue.mutate({ id: issue.id, patch: { assigneeId: null, assigneeKind: null } })}
-            >
-              <UserRoundXIcon className="size-4" />
-              Clear assignee
-            </ContextMenuItem>
-          </>
-        )}
-
         <ContextMenuSeparator />
 
-          <ContextMenuItem disabled={isMutating} variant="destructive" onSelect={() => setDeleteDialogOpen(true)}>
-            <Trash2Icon className="size-4" />
-            Delete issue
+        <ContextMenuItem disabled={isMutating} variant="destructive" onSelect={() => setDeleteDialogOpen(true)}>
+          <Trash2Icon className="size-4" />
+          Delete issue
+        </ContextMenuItem>
+        {isMutating && (
+          <ContextMenuItem disabled>
+            <CheckIcon className="size-4" />
+            Applying changes
           </ContextMenuItem>
-          {isMutating && (
-            <ContextMenuItem disabled>
-              <CheckIcon className="size-4" />
-              Applying changes
-            </ContextMenuItem>
-          )}
+        )}
         </ContextMenuContent>
       </ContextMenu>
 

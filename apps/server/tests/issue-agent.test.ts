@@ -202,6 +202,15 @@ describe('issue-agent capability', () => {
       }))
       expect(delegationState.chatSessionId).toBeTruthy()
 
+      const assignedIssueRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}`))
+      expect(assignedIssueRes.status).toBe(200)
+      expect(await assignedIssueRes.json()).toEqual(expect.objectContaining({
+        assigneeKind: 'agent',
+        assigneeId: agent.id,
+        delegateAgentId: agent.id,
+        delegateAgentProfileId: 'profile-issue-agent',
+      }))
+
       const commentsRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`))
       expect(commentsRes.status).toBe(200)
       expect(await commentsRes.json()).toEqual(expect.arrayContaining([
@@ -258,6 +267,15 @@ describe('issue-agent capability', () => {
         agentId: null,
         agentSessionId: null,
         chatSessionId: null,
+      }))
+
+      const unassignedIssueRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}`))
+      expect(unassignedIssueRes.status).toBe(200)
+      expect(await unassignedIssueRes.json()).toEqual(expect.objectContaining({
+        assigneeKind: null,
+        assigneeId: null,
+        delegateAgentId: null,
+        delegateAgentProfileId: null,
       }))
 
       const activitiesAfterDeleteRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/activities`))

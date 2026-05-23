@@ -1,10 +1,11 @@
-import { BotIcon, PlusIcon } from 'lucide-react'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { BotIcon, PlusIcon, UserRoundXIcon } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -12,8 +13,10 @@ import {
 } from '~/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
+import { AssigneeAvatar } from '../shared/assignee-avatar'
 import { priorityOptions } from '../shared/issue-metadata'
 import { LabelChip } from '../shared/label-chip'
 import { PriorityIcon } from '../shared/priority-icon'
@@ -34,6 +37,18 @@ type IssuePatch = Partial<{
   assigneeKind: string | null
   assigneeId: string | null
 }>
+
+type AssigneeKind = 'user' | 'agent'
+
+interface HumanAssignee {
+  id: string
+  name: string
+}
+
+const CURRENT_USER_ASSIGNEE: HumanAssignee = {
+  id: '__self__',
+  name: 'Me',
+}
 
 interface PropertiesSidebarProps {
   issue: KanbanIssue
@@ -96,11 +111,8 @@ export const PropertiesSidebar = memo(({ issue, statuses, milestones, workspaceI
 
         {/* Assignee */}
         <PropertyRow label="Assignee">
-          <span className="text-[13px] text-muted-foreground px-1.5 py-0.5">Unassigned</span>
+          <AssigneePicker issue={issue} onUpdate={onUpdate} />
         </PropertyRow>
-
-        {/* Agent Delegate */}
-        <AgentDelegateRow issue={issue} />
 
         {/* Labels */}
         <PropertyRow label="Labels">
@@ -144,9 +156,123 @@ PropertiesSidebar.displayName = 'PropertiesSidebar'
 function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between py-1.5">
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-      <div className="flex items-center">{children}</div>
+      <span className="shrink-0 text-[12px] text-muted-foreground">{label}</span>
+      <div className="flex min-w-0 items-center">{children}</div>
     </div>
+  )
+}
+
+function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (patch: IssuePatch) => void }) {
+  const { agents } = useAgents()
+  const delegateIssue = useDelegateIssue()
+  const undelegateIssue = useUndelegateIssue()
+  const agentCandidates = useMemo(
+    () => agents.filter(agent => !!agent.agentProfileId),
+    [agents],
+  )
+  const humanCandidates = useMemo(() => [CURRENT_USER_ASSIGNEE], [])
+  const assignedAgent = agentCandidates.find(agent => (
+    (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
+    || agent.id === issue.delegateAgentId
+    || agent.agentProfileId === issue.delegateAgentProfileId
+  )) ?? null
+  const assignedHuman = issue.assigneeKind === 'user'
+    ? humanCandidates.find(candidate => candidate.id === issue.assigneeId) ?? {
+        id: issue.assigneeId ?? '',
+        name: issue.assigneeId ?? 'Unknown user',
+      }
+    : null
+  const selectedValue = assignedAgent
+    ? `agent:${assignedAgent.id}`
+    : assignedHuman?.id
+      ? `user:${assignedHuman.id}`
+      : ''
+  const isMutating = delegateIssue.isPending || undelegateIssue.isPending
+
+  const handleAssigneeChange = useCallback((value: string) => {
+    if (value === '') {
+      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+        undelegateIssue.mutate({ issueId: issue.id })
+        return
+      }
+      onUpdate({ assigneeKind: null, assigneeId: null })
+      return
+    }
+
+    const [kind, id] = value.split(':', 2) as [AssigneeKind, string]
+    if (kind === 'agent') {
+      const agent = agentCandidates.find(candidate => candidate.id === id)
+      if (!agent?.agentProfileId) {
+        return
+      }
+      delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, agentProfileId: agent.agentProfileId })
+      return
+    }
+
+    if (kind === 'user') {
+      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+        undelegateIssue.mutate(
+          { issueId: issue.id },
+          { onSuccess: () => onUpdate({ assigneeKind: 'user', assigneeId: id }) },
+        )
+        return
+      }
+      onUpdate({ assigneeKind: 'user', assigneeId: id })
+    }
+  }, [agentCandidates, delegateIssue, issue.delegateAgentId, issue.delegateAgentProfileId, issue.id, onUpdate, undelegateIssue])
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          'flex max-w-40 items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px]',
+          'transition-[background-color,color] hover:bg-fill',
+          selectedValue ? 'text-foreground' : 'border border-dashed border-border text-muted-foreground hover:text-foreground',
+        )}
+        disabled={isMutating}
+        data-testid="issue-assignee-trigger"
+      >
+        {assignedAgent
+          ? <BotIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          : assignedHuman
+            ? <AssigneeAvatar name={assignedHuman.name} size={16} />
+            : <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/60" aria-hidden="true" />}
+        <span className="truncate">
+          {assignedAgent?.name ?? assignedHuman?.name ?? 'Unassigned'}
+        </span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuRadioGroup value={selectedValue} onValueChange={handleAssigneeChange}>
+          <DropdownMenuRadioItem value="" data-testid="issue-assignee-option-unassigned">
+            <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            <span>Unassigned</span>
+          </DropdownMenuRadioItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Team members</DropdownMenuLabel>
+          {humanCandidates.map(candidate => (
+            <DropdownMenuRadioItem key={candidate.id} value={`user:${candidate.id}`} data-testid={`issue-assignee-option-user-${candidate.id}`}>
+              <AssigneeAvatar name={candidate.name} size={18} />
+              <span className="truncate">{candidate.name}</span>
+            </DropdownMenuRadioItem>
+          ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>AI Agents</DropdownMenuLabel>
+          {agentCandidates.length === 0
+            ? (
+                <DropdownMenuItem disabled>
+                  <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  No agents configured
+                </DropdownMenuItem>
+              )
+            : agentCandidates.map(agent => (
+                <DropdownMenuRadioItem key={agent.id} value={`agent:${agent.id}`} data-testid={`issue-assignee-option-agent-${agent.id}`}>
+                  <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  <span className="truncate">{agent.name}</span>
+                </DropdownMenuRadioItem>
+              ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -213,58 +339,5 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
         </PopoverContent>
       </Popover>
     </div>
-  )
-}
-
-function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
-  const { agents } = useAgents()
-  const delegateIssue = useDelegateIssue()
-  const undelegateIssue = useUndelegateIssue()
-  const delegateCandidates = agents.reduce<typeof agents>((candidates, agent) => {
-    if (agent.agentProfileId) {
-      candidates.push(agent)
-    }
-    return candidates
-  }, [])
-
-  const delegatedAgent = delegateCandidates.find(agent => agent.id === issue.delegateAgentId || agent.agentProfileId === issue.delegateAgentProfileId) ?? null
-
-  return (
-    <PropertyRow label="Agent">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-muted-foreground hover:text-foreground hover:bg-fill transition-colors"
-          data-testid="issue-agent-delegate-trigger"
-        >
-          <BotIcon className="size-3" />
-          <span>{delegatedAgent ? delegatedAgent.name : 'Unassigned'}</span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-44">
-          {delegatedAgent && (
-            <>
-              <DropdownMenuItem
-                onClick={() => undelegateIssue.mutate({ issueId: issue.id })}
-                data-testid="issue-agent-option-unassigned"
-              >
-                Unassigned
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
-          {delegateCandidates.length === 0 && !delegatedAgent
-            ? <p className="px-2 py-1.5 text-[12px] text-muted-foreground">No agents configured</p>
-            : delegateCandidates.map(a => (
-              <DropdownMenuItem
-                key={a.id}
-                onClick={() => delegateIssue.mutate({ issueId: issue.id, agentId: a.id, agentProfileId: a.agentProfileId })}
-                data-testid={`issue-agent-option-${a.id}`}
-              >
-                <BotIcon className="size-3 text-muted-foreground" />
-                {a.name}
-              </DropdownMenuItem>
-            ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </PropertyRow>
   )
 }
