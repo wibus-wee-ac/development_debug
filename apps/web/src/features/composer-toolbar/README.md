@@ -16,5 +16,5 @@ Shared composer controls for selecting runtime, provider profile, provider-owned
 - **provider-model-selector.test.tsx**: Regression coverage for provider-owned model lists in the menu.
 - **runtime-selector.tsx**: Runtime kind selector for new chat and capsule composers.
 - **types.ts**: Toolbar selection and model-map type definitions.
-- **use-composer-state.ts**: Unified composer state hook that resolves provider profiles, per-profile model maps, selected model, CLI TUI agent, thinking effort, and persisted composer choices.
+- **use-composer-state.ts**: Unified composer state hook that resolves provider profiles, the currently selected profile's cached model map, selected model, CLI TUI agent, thinking effort, and persisted composer choices.
 - **use-composer-state.test.tsx**: Regression coverage for persisted composer choices and direct model-to-profile selection.

@@ -371,7 +371,8 @@ function AgentProviderModelPicker({
   thinkingEffort: ThinkingEffort
 }) {
   const form = useFormContext<AgentDetailFormValues>()
-  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
+  const initialModelProfileIds = useMemo(() => [profileId], [profileId])
+  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(profiles, initialModelProfileIds)
   const models = profileId ? modelsByProfileId[profileId] ?? [] : []
   const selectedModel = models.find(model => model.id === modelId) ?? null
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
@@ -408,7 +409,9 @@ function AgentProviderModelPicker({
       menuAlign="end"
       triggerTestId="agent-provider-model-selector"
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, AGENT_THINKING_OPTIONS)}
+      onRequestProfileModels={requestProfileModels}
       onSelectProfile={(nextProfileId) => {
+        requestProfileModels(nextProfileId)
         const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
         form.setValue('agentProfileId', nextProfileId, { shouldDirty: true })
         form.setValue('modelId', nextModel?.id ?? null, { shouldDirty: true })
@@ -523,7 +526,8 @@ function ClaudeAgentSdkSettings({
 }) {
   const selectedProfile = profileId ? profiles.find(profile => profile.id === profileId) ?? null : null
   const pickerProfiles = useMemo(() => selectedProfile ? [selectedProfile] : [], [selectedProfile])
-  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(pickerProfiles)
+  const initialModelProfileIds = useMemo(() => [profileId], [profileId])
+  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(pickerProfiles, initialModelProfileIds)
 
   return (
     <>

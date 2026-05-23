@@ -13,6 +13,7 @@ interface ProviderModelSelectorProps {
   loadingProfileIds: Set<string>
   thinkingEffort: ThinkingEffort
   isLoadingModels: boolean
+  requestProfileModels: (id: string) => void
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string, profileId: string) => void
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
@@ -27,6 +28,7 @@ export function ProviderModelSelector({
   loadingProfileIds,
   thinkingEffort,
   isLoadingModels,
+  requestProfileModels,
   onSelectProfile,
   onSelectModel,
   onSelectThinkingEffort,
@@ -48,7 +50,9 @@ export function ProviderModelSelector({
       isLoadingSelectedModels={isLoadingModels}
       emptyProfilesLabel="No providers available"
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, THINKING_EFFORTS)}
+      onRequestProfileModels={requestProfileModels}
       onSelectProfile={(id) => {
+        requestProfileModels(id)
         onSelectProfile(id)
         const nextModels = modelsByProfileId[id] ?? []
         onSelectThinkingEffort(selectThinkingForModel(nextModels[0] ?? null))

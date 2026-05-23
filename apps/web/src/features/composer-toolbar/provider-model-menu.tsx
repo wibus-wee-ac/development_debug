@@ -26,6 +26,7 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   emptyProfilesLabel?: string
   isProfileSelectionDisabled?: boolean
+  onRequestProfileModels?: (id: string) => void
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string | null, profileId: string) => void
   onSelectThinking: (value: TThinking) => void
@@ -40,6 +41,7 @@ interface ProviderGroupProps<TThinking extends string | null> {
   getThinkingOptionsForModel: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   isLoadingModels: boolean
   isProfileSelectionDisabled: boolean
+  onRequestProfileModels?: (id: string) => void
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string | null, profileId: string) => void
   onSelectThinking: (value: TThinking) => void
@@ -164,6 +166,7 @@ function ProviderGroup<TThinking extends string | null>({
   getThinkingOptionsForModel,
   isLoadingModels,
   isProfileSelectionDisabled,
+  onRequestProfileModels,
   onSelectProfile,
   onSelectModel,
   onSelectThinking,
@@ -171,13 +174,16 @@ function ProviderGroup<TThinking extends string | null>({
   const preset = presetForProfile(profile)
 
   return (
-    <MenuSub>
+    <MenuSub onOpenChange={open => open && onRequestProfileModels?.(profile.id)}>
       <MenuSubTrigger
         onClick={() => {
+          onRequestProfileModels?.(profile.id)
           if (!isProfileSelectionDisabled) {
             onSelectProfile(profile.id)
           }
         }}
+        onFocus={() => onRequestProfileModels?.(profile.id)}
+        onPointerEnter={() => onRequestProfileModels?.(profile.id)}
         className={cn(isActive && 'font-medium')}
       >
         <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
@@ -306,6 +312,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
   getThinkingOptionsForModel,
   emptyProfilesLabel = 'No providers available',
   isProfileSelectionDisabled = false,
+  onRequestProfileModels,
   onSelectProfile,
   onSelectModel,
   onSelectThinking,
@@ -325,6 +332,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
           getThinkingOptionsForModel={resolveThinkingOptions}
           isLoadingModels={loadingProfileIds.has(profile.id)}
           isProfileSelectionDisabled={isProfileSelectionDisabled}
+          onRequestProfileModels={onRequestProfileModels}
           onSelectProfile={onSelectProfile}
           onSelectModel={onSelectModel}
           onSelectThinking={onSelectThinking}

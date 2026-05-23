@@ -29,6 +29,7 @@ export interface ComposerStateResult {
   models: ModelDescriptor[]
   modelsByProfileId: ModelsByProfileId
   loadingProfileIds: Set<string>
+  requestProfileModels: (id: string) => void
   isLoadingAgents: boolean
   isLoadingModels: boolean
   isLoadingProfiles: boolean
@@ -103,7 +104,8 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     return persisted ?? profiles[0]?.id ?? null
   }, [runtimeKind, context, boundProfileId, lastProfileId, profiles])
 
-  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
+  const initialModelProfileIds = useMemo(() => [profileId], [profileId])
+  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(profiles, initialModelProfileIds)
   const models = profileId ? modelsByProfileId[profileId] ?? EMPTY_MODELS : EMPTY_MODELS
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
 
@@ -202,6 +204,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     models,
     modelsByProfileId,
     loadingProfileIds,
+    requestProfileModels,
     isLoadingAgents,
     isLoadingModels,
     isLoadingProfiles,

@@ -234,7 +234,7 @@ const ExternalSourceSectionSchema = z.object({
     label: z.string().default('External source'),
     lastSyncStatus: z.enum(['never', 'ok', 'warning', 'error']).default('never'),
     lastSyncError: z.string().nullable().default(null),
-    inventory: z.record(z.unknown()).default({}),
+    inventory: z.record(z.string(), z.unknown()).default({}),
     warnings: z.array(ExternalWarningSchema).default([]),
   }).passthrough().nullable().transform(source => source ?? {
     label: 'External source',
@@ -245,7 +245,7 @@ const ExternalSourceSectionSchema = z.object({
   }),
   record: z.object({
     app: z.string().default('unknown'),
-    metadata: ExternalRecordMetadataSchema.default({}),
+    metadata: ExternalRecordMetadataSchema.default({ baseUrl: null, model: null }),
     warnings: z.array(ExternalWarningSchema).default([]),
   }).passthrough().nullable().transform(record => record ?? {
     app: 'unknown',
@@ -267,7 +267,12 @@ function profileDetailUiReducer(state: ProfileDetailUiState, action: ProfileDeta
     case 'models/loading':
       return { ...state, modelsLoading: true }
     case 'models/loaded':
-      return { ...state, availableModels: action.models, modelsLoading: false, modelsCachedAt: action.cachedAt ?? Date.now() }
+      return {
+        ...state,
+        availableModels: action.models,
+        modelsLoading: false,
+        modelsCachedAt: 'cachedAt' in action ? action.cachedAt ?? null : Date.now(),
+      }
     case 'models/failed':
       return { ...state, availableModels: [], modelsLoading: false }
     case 'models/update-one':
@@ -473,26 +478,15 @@ export function ProfileDetailPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId])
 
-  // Fetch available models (only when provider connection details change, not enabledModels)
-  const modelFetchKey = useMemo(() => {
-    const config = ProfileConfigJsonSchema.parse(profile.configJson)
-    return JSON.stringify({
-      providerKind: profile.providerKind,
-      baseUrl: config.baseUrl,
-      credentialRef: profile.credentialRef,
-    })
-  }, [profile.providerKind, profile.configJson, profile.credentialRef])
-
   useEffect(() => {
     if (!supportsModels) {
-      dispatch({ type: 'models/loaded', models: [] })
+      dispatch({ type: 'models/loaded', models: [], cachedAt: null })
       return
     }
 
     const requestId = ++modelsRequestRef.current
     dispatch({ type: 'models/loading' })
 
-    // Try cache first, then fresh fetch
     const cacheUrl = `${getServerUrl()}/providers/${encodeURIComponent(profile.id)}/models-cache`
     fetch(cacheUrl)
       .then(res => res.ok ? res.json() : null)
@@ -503,53 +497,19 @@ export function ProfileDetailPanel({
         }
 
         if (cache?.cached && cache.models.length > 0) {
-          dispatch({ type: 'models/loaded', models: cache.models })
-          // If stale, also trigger a background refresh
-          if (cache.stale) {
-            postProvidersModels({ body: createProviderRequestBodyRef.current() })
-              .then(({ data }) => {
-                if (requestId !== modelsRequestRef.current) {
-                  return
-                }
-                dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
-              })
-              .catch(() => {})
-          }
+          dispatch({ type: 'models/loaded', models: cache.models, cachedAt: null })
           return
         }
 
-        // No cache or empty — do a fresh fetch
-        postProvidersModels({ body: createProviderRequestBodyRef.current() })
-          .then(({ data }) => {
-            if (requestId !== modelsRequestRef.current) {
-              return
-            }
-            dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
-          })
-          .catch(() => {
-            if (requestId !== modelsRequestRef.current) {
-              return
-            }
-            dispatch({ type: 'models/failed' })
-          })
+        dispatch({ type: 'models/loaded', models: [], cachedAt: null })
       })
       .catch(() => {
-        // Cache fetch failed — fallback to direct fetch
-        postProvidersModels({ body: createProviderRequestBodyRef.current() })
-          .then(({ data }) => {
-            if (requestId !== modelsRequestRef.current) {
-              return
-            }
-            dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
-          })
-          .catch(() => {
-            if (requestId !== modelsRequestRef.current) {
-              return
-            }
-            dispatch({ type: 'models/failed' })
-          })
+        if (requestId !== modelsRequestRef.current) {
+          return
+        }
+        dispatch({ type: 'models/failed' })
       })
-  }, [supportsModels, profile.id, modelFetchKey])
+  }, [supportsModels, profile.id])
 
   const handleRefreshModels = useCallback(() => {
     const requestId = ++modelsRequestRef.current
@@ -561,6 +521,7 @@ export function ProfileDetailPanel({
           return
         }
         dispatch({ type: 'models/loaded', models: ModelDescriptorListSchema.parse(data), cachedAt: Date.now() })
+        void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       })
       .catch(() => {
         if (requestId !== modelsRequestRef.current) {
@@ -568,7 +529,7 @@ export function ProfileDetailPanel({
         }
         dispatch({ type: 'models/failed' })
       })
-  }, [])
+  }, [queryClient])
 
   // Health check on load + when key fields change
   const runHealthCheck = useCallback(async () => {

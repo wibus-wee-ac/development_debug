@@ -273,7 +273,6 @@ export function ChronicleSettings() {
   } = useChronicleMemorySearch(searchQuery, MEMORY_SEARCH_LIMIT)
   const refreshChronicle = useRefreshChronicleQueries()
   const { profiles, isLoading: profilesLoading } = useAgentProfiles()
-  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(profiles)
   const setSettingsSection = useSettingsOverlayStore(state => state.setSettingsSection)
   const chronicleFocusTarget = useSettingsOverlayStore(state => state.chronicleFocusTarget)
   const clearChronicleFocusTarget = useSettingsOverlayStore(state => state.clearChronicleFocusTarget)
@@ -289,6 +288,11 @@ export function ChronicleSettings() {
   const selectedProfile = useMemo(
     () => profiles.find(profile => profile.id === config?.profileId) ?? null,
     [config?.profileId, profiles],
+  )
+  const initialModelProfileIds = useMemo(() => [config?.profileId ?? null], [config?.profileId])
+  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(
+    profiles,
+    initialModelProfileIds,
   )
   const selectedModels = selectedProfile ? modelsByProfileId[selectedProfile.id] ?? [] : []
   const selectedModel = selectedModels.find(model => model.id === config?.modelId) ?? null
@@ -438,6 +442,7 @@ export function ChronicleSettings() {
           selectedModel={selectedModel}
           modelsByProfileId={modelsByProfileId}
           loadingProfileIds={loadingProfileIds}
+          requestProfileModels={requestProfileModels}
           onUpdateConfig={updateConfig}
         />
         <CaptureSourceOverview
@@ -810,6 +815,7 @@ function ChronicleControlPanel({
   selectedModel,
   modelsByProfileId,
   loadingProfileIds,
+  requestProfileModels,
   onUpdateConfig,
 }: {
   config: ChronicleConfig | null
@@ -825,6 +831,7 @@ function ChronicleControlPanel({
   selectedModel: Parameters<typeof ProviderModelPicker>[0]['selectedModel']
   modelsByProfileId: ReturnType<typeof useAgentModelMap>['modelsByProfileId']
   loadingProfileIds: ReturnType<typeof useAgentModelMap>['loadingProfileIds']
+  requestProfileModels: ReturnType<typeof useAgentModelMap>['requestProfileModels']
   onUpdateConfig: (updates: Partial<ChronicleConfig>) => Promise<ChronicleConfig | null>
 }) {
   const captureStatus = !canEnable ? '待选择模型' : config?.enabled ? '已开启' : '未开启'
@@ -945,9 +952,15 @@ function ChronicleControlPanel({
             menuAlign="end"
             triggerTestId="chronicle-provider-model-selector"
             disabled={saving}
+            onRequestProfileModels={requestProfileModels}
             onSelectProfile={(profileId) => {
+              requestProfileModels(profileId)
               const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
-              void onUpdateConfig({ profileId, modelId: nextModel?.id ?? '' })
+              if (!nextModel) {
+                void onUpdateConfig({ profileId, modelId: '' })
+                return
+              }
+              void onUpdateConfig({ profileId, modelId: nextModel.id })
             }}
             onSelectModel={(model, profileId) => {
               if (!model) {

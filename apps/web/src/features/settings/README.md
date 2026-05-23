@@ -9,9 +9,9 @@
 ## Files
 
 - **appearance-settings.tsx**: 外观设置页，负责主题切换；Settings Appearance 首屏在 theme options 与 stream animation controls ready 后记录 performance gate；主题选项暴露稳定 E2E selection anchors。
-- **chronicle-settings.tsx**: 由 `features/chronicle` 拥有的 Settings > 记录页面；Settings Chronicle 首屏在 Chronicle config、status、resources、message sources、evidence、activity、knowledge、timeline、memories 和 Agent Runtime model selection 首轮数据 ready 后记录 performance gate。
+- **chronicle-settings.tsx**: 由 `features/chronicle` 拥有的 Settings > 记录页面；Settings Chronicle 首屏在 Chronicle config、status、resources、message sources、evidence、activity、knowledge、timeline、memories 和当前 profile 的 Agent Runtime model cache 首轮数据 ready 后记录 performance gate。
 - **desktop-update-settings.tsx**: Desktop 更新设置页，通过 Electron preload / IPC 管理 Velopack 更新状态、检查、下载与应用；Settings Desktop 首屏在 update status 初始化完成后记录 performance gate。
-- **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型；Settings Jarvis 首屏在 preferences、profiles 与当前 profile models 查询成功后记录 performance gate
+- **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型；Settings Jarvis 首屏在 preferences、profiles 与当前 profile cached models 查询成功后记录 performance gate
 - **settings-overlay-store.ts**: Settings feature-owned overlay state — records which tab currently hosts the settings overlay plus the active section selection; also carries one-shot Chronicle memory/knowledge focus targets from global search into Settings > Chronicle; replaces layout-store ownership for settings UI state; emits Settings Agents, Settings Appearance, Settings Chronicle, Settings Desktop, Settings Jarvis, Settings Providers, Settings Skills, and Settings Support render-requested performance marks when those sections are requested
 - **settings-overlay-store.test.ts**: Store-level regression coverage for Chronicle focus target write/clear behavior
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面

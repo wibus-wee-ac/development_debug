@@ -14,7 +14,6 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { isExternalProfile } from '../external-provider-sources/profile-link-store'
-import { deleteCachedModels } from '../providers/model-cache'
 import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
 import { enrichModelsFromRegistry, lookupModelRawExact } from '../providers/model-info-registry'
 import { serializeProfileConfigWithMapping } from '../providers/model-registry-mappings'
@@ -317,7 +316,6 @@ export async function updateModelRegistryMapping(
       configJson: next.configJson,
       updatedAt: Math.floor(Date.now() / 1000),
     }).where(eq(agentProfiles.id, profileId)).run()
-  deleteCachedModels(profileId)
 
   return next.mappings
 }

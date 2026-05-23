@@ -21,11 +21,14 @@ const JARVIS_THINKING_OPTIONS: Array<ThinkingOption<JarvisPreferences['thinkingL
 export function JarvisSettings() {
   const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { profiles, isSuccess: profilesReady } = useAgentProfiles()
-  const { modelsByProfileId, loadingProfileIds, successfulProfileIds } = useAgentModelMap(profiles)
-
   const selectedProfile = useMemo(
     () => profiles.find(profile => profile.id === prefs?.profileId) ?? null,
     [prefs?.profileId, profiles],
+  )
+  const initialModelProfileIds = useMemo(() => [prefs?.profileId ?? null], [prefs?.profileId])
+  const { modelsByProfileId, loadingProfileIds, successfulProfileIds, requestProfileModels } = useAgentModelMap(
+    profiles,
+    initialModelProfileIds,
   )
   const selectedModels = selectedProfile ? modelsByProfileId[selectedProfile.id] ?? [] : []
   const selectedModel = selectedModels.find(model => model.id === prefs?.model) ?? null
@@ -67,9 +70,15 @@ export function JarvisSettings() {
           triggerTestId="jarvis-provider-model-selector"
           disabled={saving}
           getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, JARVIS_THINKING_OPTIONS)}
+          onRequestProfileModels={requestProfileModels}
           onSelectProfile={(profileId) => {
+            requestProfileModels(profileId)
             const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
-            void save({ profileId, model: nextModel?.id, thinkingLevel: selectThinkingForModel(nextModel) })
+            if (!nextModel) {
+              void save({ profileId, model: undefined })
+              return
+            }
+            void save({ profileId, model: nextModel.id, thinkingLevel: selectThinkingForModel(nextModel) })
           }}
           onSelectModel={(model, profileId) => {
             if (!model) {

@@ -16,5 +16,5 @@ Agent 专属 Skills 基于文件系统表达，存储在 `~/.cradle/agents/{agen
 - **custom-models-editor.tsx**: Provider 自定义模型编辑器，支持手动添加模型、models.dev 匹配补全与可访问的模型操作按钮
 - **custom-models-editor.test.tsx**: Custom models editor 的交互回归测试，覆盖 icon-only action label 与手动模型添加 fallback
 - **index.ts**: Agent Management 功能模块的 barrel export
-- **models-panel.tsx**: Provider 模型可见性面板，复用 Agent Runtime 的模型可见性语义，显示 models.dev exact / fuzzy / manual / unmatched 状态，并支持按 Available Model 行保存 registry 映射或手工 registry 条目
-- **profile-detail-panel.tsx**: Provider 详情面板，继续以 RHF 作为表单 owner，并把模型加载 / registry 映射 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联；external provider source profile 显示固定 Source 区块并禁用 source-owned 编辑，但继续显示 Cradle-owned Available Models、custom models 与 models.dev/cost mapping 设置
+- **models-panel.tsx**: Provider 模型可见性面板，复用 Agent Runtime 的模型可见性语义，显示 models.dev exact / fuzzy / manual / unmatched 状态，并支持按 Available Model 行保存 registry 映射或手工 registry 条目；空列表表示没有本地缓存，用户可显式点击 Fetch Models 刷新 provider inventory
+- **profile-detail-panel.tsx**: Provider 详情面板，继续以 RHF 作为表单 owner，并把模型缓存读取 / 手动 inventory refresh / registry 映射 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联；external provider source profile 显示固定 Source 区块并禁用 source-owned 编辑，但继续显示 Cradle-owned Available Models、custom models 与 models.dev/cost mapping 设置

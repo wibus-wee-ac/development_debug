@@ -1,13 +1,30 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 
-import { getProfilesById, getProvidersByProfileIdModelsCache, postProvidersModels } from '~/api-gen/sdk.gen'
+import { getProfilesById, getProvidersByProfileIdModelsCache } from '~/api-gen/sdk.gen'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import { ModelVisibilitySchema, filterVisibleModels } from './model-visibility'
 import { ProfileConfigJsonSchema } from './profile-config-schema'
 
 export const AGENT_MODELS_QUERY_KEY = ['agent-models'] as const
+const MODEL_INVENTORY_GC_TIME_MS = 1_800_000
+const MODEL_INVENTORY_QUERY_OPTIONS = {
+  staleTime: Infinity,
+  gcTime: MODEL_INVENTORY_GC_TIME_MS,
+  refetchOnMount: false,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  retry: false,
+} as const
+
+export function agentModelsQueryKey(profileId: string | null) {
+  return [...AGENT_MODELS_QUERY_KEY, profileId ?? 'no-profile'] as const
+}
+
+const EMPTY_INITIAL_PROFILE_IDS: ReadonlyArray<string | null> = []
+
 const AgentProfileSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -49,43 +66,25 @@ const ModelDescriptorSchema = z.object({
 })
 const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
 
-async function fetchVisibleModelsForProfile(profile: AgentProfile): Promise<ModelDescriptor[]> {
+async function fetchCachedVisibleModelsForProfile(profile: AgentProfile): Promise<ModelDescriptor[]> {
   const config = ProfileConfigJsonSchema.parse(profile.configJson)
   const visibility = ModelVisibilitySchema.parse(config.enabledModels)
-  const requestBody = {
-    providerKind: profile.providerKind,
-    label: profile.name,
-    config,
-    secretRef: profile.credentialRef ?? null,
-    profileId: profile.id,
-  } as const
 
-  let allModels: ModelDescriptor[]
-  try {
-    const { data } = await postProvidersModels({
-      body: requestBody,
-      throwOnError: true,
-    })
-    allModels = ModelDescriptorListSchema.parse(data) satisfies ModelDescriptor[]
+  const { data: cache } = await getProvidersByProfileIdModelsCache({
+    path: { profileId: profile.id },
+    throwOnError: true,
+  })
+  if (!cache.cached || cache.models.length === 0) {
+    return []
   }
-  catch (error) {
-    const { data: cache } = await getProvidersByProfileIdModelsCache({
-      path: { profileId: profile.id },
-      throwOnError: true,
-    })
-    if (cache.cached && cache.models.length > 0) {
-      allModels = ModelDescriptorListSchema.parse(cache.models) satisfies ModelDescriptor[]
-    }
-    else {
-      throw error
-    }
-  }
-  return filterVisibleModels(allModels, visibility)
+
+  const models = ModelDescriptorListSchema.parse(cache.models) satisfies ModelDescriptor[]
+  return filterVisibleModels(models, visibility)
 }
 
 export function useAgentModels(profileId: string | null) {
   const { data: models = [], isLoading } = useQuery({
-    queryKey: [...AGENT_MODELS_QUERY_KEY, profileId] as const,
+    queryKey: agentModelsQueryKey(profileId),
     enabled: profileId !== null,
     queryFn: async (): Promise<ModelDescriptor[]> => {
       if (!profileId) {
@@ -93,33 +92,66 @@ export function useAgentModels(profileId: string | null) {
       }
       const { data: profileData } = await getProfilesById({ path: { id: profileId } })
       const profile = AgentProfileSchema.parse(profileData) satisfies AgentProfile
-      return fetchVisibleModelsForProfile(profile)
+      return fetchCachedVisibleModelsForProfile(profile)
     },
-    staleTime: 60_000,
-    retry: 2,
-    retryDelay: 1000,
+    ...MODEL_INVENTORY_QUERY_OPTIONS,
   })
 
   return { models, isLoading }
 }
 
-export function useAgentModelMap(profiles: AgentProfile[]) {
+export function useAgentModelMap(
+  profiles: AgentProfile[],
+  initialProfileIds: ReadonlyArray<string | null> = EMPTY_INITIAL_PROFILE_IDS,
+) {
+  const [requestedProfileIds, setRequestedProfileIds] = useState<Set<string>>(
+    () => new Set(initialProfileIds.flatMap(profileId => profileId ? [profileId] : [])),
+  )
+
+  useEffect(() => {
+    setRequestedProfileIds((current) => {
+      let changed = false
+      const next = new Set(current)
+      for (const profileId of initialProfileIds) {
+        if (profileId && !next.has(profileId)) {
+          next.add(profileId)
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [initialProfileIds])
+
+  const requestedProfiles = useMemo(
+    () => profiles.filter(profile => requestedProfileIds.has(profile.id)),
+    [profiles, requestedProfileIds],
+  )
+
   const queries = useQueries({
-    queries: profiles.map(profile => ({
-      queryKey: [...AGENT_MODELS_QUERY_KEY, profile.id, profile.updatedAt] as const,
-      queryFn: () => fetchVisibleModelsForProfile(profile),
+    queries: requestedProfiles.map(profile => ({
+      queryKey: agentModelsQueryKey(profile.id),
+      queryFn: () => fetchCachedVisibleModelsForProfile(profile),
       enabled: profile.enabled,
-      staleTime: 60_000,
-      retry: 2,
-      retryDelay: 1000,
+      ...MODEL_INVENTORY_QUERY_OPTIONS,
     })),
   })
+
+  const requestProfileModels = useCallback((profileId: string) => {
+    setRequestedProfileIds((current) => {
+      if (current.has(profileId)) {
+        return current
+      }
+      const next = new Set(current)
+      next.add(profileId)
+      return next
+    })
+  }, [])
 
   const modelsByProfileId: Record<string, ModelDescriptor[]> = {}
   const loadingProfileIds = new Set<string>()
   const successfulProfileIds = new Set<string>()
 
-  profiles.forEach((profile, index) => {
+  requestedProfiles.forEach((profile, index) => {
     const query = queries[index]
     modelsByProfileId[profile.id] = ModelDescriptorListSchema.parse(query?.data) satisfies ModelDescriptor[]
     if (query?.isLoading || query?.isFetching) {
@@ -134,5 +166,6 @@ export function useAgentModelMap(profiles: AgentProfile[]) {
     modelsByProfileId,
     loadingProfileIds,
     successfulProfileIds,
+    requestProfileModels,
   }
 }

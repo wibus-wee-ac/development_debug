@@ -29,6 +29,7 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
   triggerTestId?: string
   disabled?: boolean
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
+  onRequestProfileModels?: (id: string) => void
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string | null, profileId: string) => void
   onSelectThinking: (value: TThinking) => void
@@ -52,6 +53,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   triggerTestId = 'provider-model-selector',
   disabled = false,
   getThinkingOptionsForModel,
+  onRequestProfileModels,
   onSelectProfile,
   onSelectModel,
   onSelectThinking,
@@ -105,6 +107,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
           thinkingOptions={thinkingOptions}
           getThinkingOptionsForModel={getThinkingOptionsForModel}
           emptyProfilesLabel={emptyProfilesLabel}
+          onRequestProfileModels={onRequestProfileModels}
           onSelectProfile={onSelectProfile}
           onSelectModel={onSelectModel}
           onSelectThinking={onSelectThinking}
