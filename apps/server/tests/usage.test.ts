@@ -106,8 +106,8 @@ describe('usage capability', () => {
         totalTokens: 60,
         totalTurns: 3,
         byAgent: [
-          { agentProfileId: profileOneId, totalTokens: 45, count: 2 },
-          { agentProfileId: profileTwoId, totalTokens: 15, count: 1 },
+          { agentProfileId: profileOneId, agentProfileName: 'Profile One', totalTokens: 45, count: 2 },
+          { agentProfileId: profileTwoId, agentProfileName: 'Profile Two', totalTokens: 15, count: 1 },
         ],
         byModel: [
           { modelId: 'gpt-4o', totalTokens: 45, count: 2 },

@@ -1,4 +1,4 @@
-import { stepUsage, usageLogs } from '@cradle/db'
+import { agentProfiles, stepUsage, usageLogs } from '@cradle/db'
 import { sql } from 'drizzle-orm'
 
 import { db } from '../../infra'
@@ -16,7 +16,7 @@ export interface UsageSummary {
   totalCompletionTokens: number
   totalTokens: number
   totalTurns: number
-  byAgent: Array<{ agentProfileId: string, totalTokens: number, count: number }>
+  byAgent: Array<{ agentProfileId: string, agentProfileName: string | null, totalTokens: number, count: number }>
   byModel: Array<{ modelId: string, totalTokens: number, count: number }>
 }
 
@@ -66,16 +66,19 @@ export function getUsageSummary(): UsageSummary {
 
   const byAgent = db().all<{
     agent_profile_id: string
+    agent_profile_name: string | null
     total_tokens: number
     count: number
   }>(sql`
     SELECT
       ${usageLogs.agentProfileId} AS agent_profile_id,
+      ${agentProfiles.name} AS agent_profile_name,
       SUM(${usageLogs.totalTokens}) AS total_tokens,
       COUNT(*) AS count
     FROM ${usageLogs}
+    LEFT JOIN ${agentProfiles} ON ${agentProfiles.id} = ${usageLogs.agentProfileId}
     WHERE ${usageLogs.agentProfileId} IS NOT NULL
-    GROUP BY ${usageLogs.agentProfileId}
+    GROUP BY ${usageLogs.agentProfileId}, ${agentProfiles.name}
     ORDER BY total_tokens DESC
   `)
 
@@ -101,6 +104,7 @@ export function getUsageSummary(): UsageSummary {
     totalTurns: totals?.count ?? 0,
     byAgent: byAgent.map(row => ({
       agentProfileId: row.agent_profile_id,
+      agentProfileName: row.agent_profile_name,
       totalTokens: row.total_tokens,
       count: row.count,
     })),

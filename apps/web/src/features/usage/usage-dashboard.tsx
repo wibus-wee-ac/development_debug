@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
 import { z } from 'zod'
 
 import {
@@ -29,6 +28,7 @@ const UsageSummarySchema = z.object({
   totalTurns: z.number(),
   byAgent: z.array(z.object({
     agentProfileId: z.string(),
+    agentProfileName: z.string().nullable(),
     totalTokens: z.number(),
     count: z.number(),
   })),
@@ -79,9 +79,6 @@ const DailyUsageListSchema = z.array(DailyUsageSchema)
 const DailyCostListSchema = z.array(DailyCostSchema)
 
 type DailyUsage = z.infer<typeof DailyUsageSchema>
-type UsageSummary = z.infer<typeof UsageSummarySchema>
-type UsageStats = z.infer<typeof UsageStatsSchema>
-type CostSummary = z.infer<typeof CostSummarySchema>
 type DailyCost = z.infer<typeof DailyCostSchema>
 
 /** Tiny SVG sparkline for the last 30 days */
@@ -138,12 +135,12 @@ export function UsageDashboard() {
     select: DailyCostListSchema.parse,
   })
 
-  const usageReady =
-    dailyQuery.isSuccess &&
-    summaryQuery.isSuccess &&
-    statsQuery.isSuccess &&
-    costSummaryQuery.isSuccess &&
-    dailyCostQuery.isSuccess
+  const usageReady
+    = dailyQuery.isSuccess
+      && summaryQuery.isSuccess
+      && statsQuery.isSuccess
+      && costSummaryQuery.isSuccess
+      && dailyCostQuery.isSuccess
 
   const daily = dailyQuery.data ?? []
   const summary = summaryQuery.data ?? null
@@ -265,7 +262,7 @@ export function UsageDashboard() {
                 <p className="text-[11px] font-medium text-muted-foreground mb-3">By Agent</p>
                 <div className="space-y-2.5">
                   {summary!.byAgent.map(a => (
-                    <BarRow key={a.agentProfileId} label={a.agentProfileId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
+                    <BarRow key={a.agentProfileId} label={a.agentProfileName ?? a.agentProfileId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
                   ))}
                 </div>
               </div>
