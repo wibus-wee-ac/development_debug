@@ -105,6 +105,32 @@ describe('kanban capability', () => {
       expect(issueWithoutStatus).toEqual(expect.objectContaining({ id: 'KAN-002', number: 2 }))
       expect(issueWithoutStatus).toEqual(expect.objectContaining({ statusId: statuses[0].id }))
 
+      const createIssueWithStatusName = await app.handle(new Request('http://localhost/issues', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: 'workspace-kanban',
+          title: 'Server issue with status name',
+          statusName: 'to_do',
+        }),
+      }))
+      expect(createIssueWithStatusName.status).toBe(200)
+      const issueWithStatusName = await createIssueWithStatusName.json() as Issue
+      expect(issueWithStatusName).toEqual(expect.objectContaining({ id: 'KAN-003', number: 3 }))
+      expect(issueWithStatusName).toEqual(expect.objectContaining({ statusId: todoStatusId }))
+
+      const createIssueWithConflictingStatusRefs = await app.handle(new Request('http://localhost/issues', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: 'workspace-kanban',
+          title: 'Server issue with conflicting status refs',
+          statusId: todoStatusId,
+          statusName: 'in_progress',
+        }),
+      }))
+      expect(createIssueWithConflictingStatusRefs.status).toBe(400)
+
       const updateIssue = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -121,11 +147,18 @@ describe('kanban capability', () => {
       expect(moveIssue.status).toBe(200)
       expect(await moveIssue.json()).toEqual(expect.objectContaining({ statusId: inProgressStatusId }))
 
+      const moveIssueByStatusName = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issueWithStatusName.id)}/status/in_progress`, {
+        method: 'PATCH',
+      }))
+      expect(moveIssueByStatusName.status).toBe(200)
+      expect(await moveIssueByStatusName.json()).toEqual(expect.objectContaining({ statusId: inProgressStatusId }))
+
       const listIssues = await app.handle(new Request('http://localhost/issues?workspaceId=workspace-kanban'))
       expect(listIssues.status).toBe(200)
       expect(await listIssues.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: issue.id, statusId: inProgressStatusId }),
         expect.objectContaining({ id: issueWithoutStatus.id, statusId: statuses[0].id }),
+        expect.objectContaining({ id: issueWithStatusName.id, statusId: inProgressStatusId }),
       ]))
 
       const addComment = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`, {
@@ -154,6 +187,10 @@ describe('kanban capability', () => {
       const deleteIssueWithoutStatus = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issueWithoutStatus.id)}`, { method: 'DELETE' }))
       expect(deleteIssueWithoutStatus.status).toBe(200)
       expect(await deleteIssueWithoutStatus.json()).toEqual({ ok: true })
+
+      const deleteIssueWithStatusName = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issueWithStatusName.id)}`, { method: 'DELETE' }))
+      expect(deleteIssueWithStatusName.status).toBe(200)
+      expect(await deleteIssueWithStatusName.json()).toEqual({ ok: true })
 
       const issuesAfterDelete = await app.handle(new Request('http://localhost/issues?workspaceId=workspace-kanban'))
       expect(issuesAfterDelete.status).toBe(200)

@@ -109,6 +109,14 @@ export const IssueModel = {
     id: t.String({ minLength: 1 }),
   }),
 
+  moveIssueByStatusNameParams: t.Object({
+    id: t.String({ minLength: 1 }),
+    statusName: t.String({
+      minLength: 1,
+      description: 'Issue status name or slug, for example "In Progress" or "in_progress".',
+    }),
+  }),
+
   createStatusBody: t.Object({
     workspaceId: t.String({ minLength: 1 }),
     name: t.String({ minLength: 1 }),
@@ -135,6 +143,10 @@ export const IssueModel = {
     milestoneId: t.Optional(t.Nullable(t.String())),
     parentIssueId: t.Optional(t.Nullable(t.String())),
     statusId: t.Optional(t.Nullable(t.String())),
+    statusName: t.Optional(t.Nullable(t.String({
+      minLength: 1,
+      description: 'Issue status name or slug, for example "In Progress" or "in_progress".',
+    }))),
   }),
 
   updateIssueBody: t.Object({
@@ -145,6 +157,10 @@ export const IssueModel = {
     milestoneId: t.Optional(t.Nullable(t.String())),
     parentIssueId: t.Optional(t.Nullable(t.String())),
     statusId: t.Optional(t.Nullable(t.String())),
+    statusName: t.Optional(t.Nullable(t.String({
+      minLength: 1,
+      description: 'Issue status name or slug, for example "In Progress" or "in_progress".',
+    }))),
     assigneeKind: t.Optional(t.Nullable(t.String())),
     assigneeId: t.Optional(t.Nullable(t.String())),
     order: t.Optional(t.Number()),

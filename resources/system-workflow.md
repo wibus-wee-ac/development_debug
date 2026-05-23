@@ -13,12 +13,12 @@ When the user asks you to manage tasks, create issues, update statuses, or check
 Key operations:
 
 - List issues: `cradle issue list`
-- Create issues: `cradle issue create -t "title"`
-- Move issues between statuses: `cradle issue move <id> <statusId>`
-- Delegate to other agents: `cradle issue delegate <issueId> <agentProfileId>`
-- Add comments: `cradle issue comment add <issueId> "message"`
+- Create issues: `cradle issue create --workspace-id "$CRADLE_WORKSPACE_ID" --title "title"`
+- Move issues between statuses: `cradle issue move <id> <status-name>` (for example, `in_progress`)
+- Delegate to other agents: `cradle issue delegate <issueId> --agent-profile-id <agentProfileId>`
+- Add comments: `cradle issue comment add <issueId> --content "message"`
 
-Always look up IDs first (`cradle status list`, `cradle agent list`) rather than guessing.
+Use status names for issue status changes. Status names are matched as lower-case slugs with spaces converted to underscores, so `In Progress` can be passed as `in_progress`.
 
 ## How to Wait for External Events
 
@@ -60,4 +60,3 @@ Supported sources:
 6. Use `--json <fields>` for structured output when you need to parse CLI results programmatically.
 
 ## Your Environment
-

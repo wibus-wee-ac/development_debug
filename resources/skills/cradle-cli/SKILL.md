@@ -12,7 +12,7 @@ Use `cradle` to manage Cradle or query its state from the terminal. You can use 
 - `cradle man` prints the full generated command manual. Use `cradle man <module>` or `cradle man <command...>` to narrow it.
 - This skill is not the full route list. It gives operating patterns and an auto-generated module index; exact commands come from `cradle man`.
 - Default output is human-readable. Use `--json <fields>` for Agent workflows and `--format json` for compact pipeline output.
-- Most relationships use IDs, not names. Query the relevant list command first, then pass the ID to create/update/delegate commands.
+- Most relationships use IDs, but issue statuses are Agent-facing names/slugs. Use status names like `triage`, `to_do`, or `in_progress` instead of status IDs when creating or moving issues.
 - Use `--server <url>` only when the default `CRADLE_SERVER_URL` / `http://localhost:21423` is not the intended server.
 
 ## Environment Variables
@@ -35,7 +35,7 @@ cradle man issue
 cradle man issue create
 cradle man workspace git status
 cradle workspace list --json id,name,path
-cradle status list --workspace-id <workspaceId> --json id,name
+cradle issue status list --workspace-id <workspaceId> --json id,name
 cradle profile list --json id,name,providerKind,enabled
 cradle agent list --json id,name,agentProfileId,enabled
 ```
@@ -43,14 +43,15 @@ cradle agent list --json id,name,agentProfileId,enabled
 ## Issue Workflow
 
 ```bash
-cradle issue list --workspace-id <workspaceId> --json id,title,statusId,priority,assigneeKind,assigneeId
-cradle issue create --workspace-id <workspaceId> --title "Fix login redirect" --description "Describe the failure mode"
-cradle issue update <issueId> --status-id <statusId>
+cradle issue list --workspace-id "$CRADLE_WORKSPACE_ID" --json id,title,statusId,priority,assigneeKind,assigneeId
+cradle issue create --workspace-id "$CRADLE_WORKSPACE_ID" --title "Fix login redirect" --description "Describe the failure mode"
+cradle issue create --workspace-id "$CRADLE_WORKSPACE_ID" --title "Triage build failure" --status-name triage
+cradle issue move <issueId> in_progress
 cradle issue update <issueId> --priority high --labels bug,agent
 cradle issue get <issueId> --json id,title,description,statusId,priority
 ```
 
-Use `status list`, `milestone list`, and `profile list` to resolve IDs before mutating an issue.
+Omit `--status-name` to let the server attach the default workspace status. Use `cradle issue status list` only when you need to inspect available status names; status names are matched as lower-case slugs with spaces converted to underscores.
 
 ## Comments And Delegation
 
@@ -138,7 +139,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `chat` | 2 | Control chat runtime commands. | `cradle man chat` |
 | `chronicle` | 49 | Generated Cradle CLI module. | `cradle man chronicle` |
 | `health` | 1 | Check server health. | `cradle man health` |
-| `issue` | 27 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
+| `issue` | 28 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
 | `observability` | 3 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
 | `preferences` | 4 | Read and update server preferences. | `cradle man preferences` |
@@ -153,4 +154,3 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `workspace` | 17 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
-

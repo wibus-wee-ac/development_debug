@@ -100,6 +100,7 @@ import { register as registerIssueMilestoneCreate } from './issue/milestone/crea
 import { register as registerIssueMilestoneDelete } from './issue/milestone/delete'
 import { register as registerIssueMilestoneList } from './issue/milestone/list'
 import { register as registerIssueMilestoneUpdate } from './issue/milestone/update'
+import { register as registerIssueMove } from './issue/move'
 import { register as registerIssueRelationCreate } from './issue/relation/create'
 import { register as registerIssueRelationDelete } from './issue/relation/delete'
 import { register as registerIssueRelationList } from './issue/relation/list'
@@ -289,6 +290,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerIssueMilestoneDelete(program)
   registerIssueMilestoneList(program)
   registerIssueMilestoneUpdate(program)
+  registerIssueMove(program)
   registerIssueRelationCreate(program)
   registerIssueRelationDelete(program)
   registerIssueRelationList(program)

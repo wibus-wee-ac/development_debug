@@ -259,10 +259,12 @@ export class SystemAgentProvider implements ChatRuntime {
       runtimeConfigOptions.models = { [model]: modelConfig }
     }
 
-    // Inject session ID so bash subprocesses spawned by skills can call Cradle
-    // APIs with the correct identity (e.g. `cradle issue comment add` sets the
-    // x-cradle-chat-session-id header from this env var).
-    runtimeConfigOptions.extraShellEnv = { CRADLE_CHAT_SESSION_ID: sessionId }
+    // Inject Cradle context so bash subprocesses spawned by skills can call
+    // Cradle APIs with the correct identity and workspace.
+    runtimeConfigOptions.extraShellEnv = {
+      CRADLE_CHAT_SESSION_ID: sessionId,
+      ...(input.workspaceId ? { CRADLE_WORKSPACE_ID: input.workspaceId } : {}),
+    }
 
     const jarConfig = await defaultRuntimeConfig(runtimeConfigOptions)
 

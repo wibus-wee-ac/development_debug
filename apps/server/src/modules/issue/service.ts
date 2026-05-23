@@ -36,6 +36,7 @@ const CreateIssueInputSchema = z.object({
   milestoneId: z.string().nullable().default(null),
   parentIssueId: z.string().nullable().default(null),
   statusId: z.string().nullable().default(null),
+  statusName: z.string().nullable().default(null),
 })
 
 const CreateStatusInputSchema = z.object({
@@ -133,6 +134,80 @@ function createStatusRow(input: { workspaceId: string, name: string, color: stri
   }).returning().get()
 }
 
+function normalizeStatusName(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s-]+/g, '_')
+}
+
+function readWorkspaceStatuses(workspaceId: string): IssueStatus[] {
+  return db().select().from(issueStatuses).where(eq(issueStatuses.workspaceId, workspaceId)).orderBy(issueStatuses.order).all()
+}
+
+function resolveStatusId(workspaceId: string, reference: {
+  statusId?: string | null
+  statusName?: string | null
+}, options: { useDefaultWhenMissing: boolean }): string | null {
+  if (reference.statusId != null && reference.statusName != null) {
+    throw new AppError({
+      code: 'issue_status_reference_conflict',
+      status: 400,
+      message: 'Use either statusId or statusName, not both',
+      details: { statusId: reference.statusId, statusName: reference.statusName },
+    })
+  }
+
+  if (reference.statusId == null && reference.statusName == null && !options.useDefaultWhenMissing) {
+    return null
+  }
+
+  seedDefaultStatuses(workspaceId)
+
+  if (reference.statusId != null) {
+    const status = db()
+      .select({ id: issueStatuses.id })
+      .from(issueStatuses)
+      .where(sql`${issueStatuses.workspaceId} = ${workspaceId} AND ${issueStatuses.id} = ${reference.statusId}`)
+      .get()
+    if (!status) {
+      throw new AppError({
+        code: 'issue_status_not_found',
+        status: 404,
+        message: 'Status not found',
+        details: { workspaceId, statusId: reference.statusId },
+      })
+    }
+    return status.id
+  }
+
+  if (reference.statusName != null) {
+    const normalizedName = normalizeStatusName(reference.statusName)
+    if (!normalizedName) {
+      throw new AppError({
+        code: 'issue_status_name_empty',
+        status: 400,
+        message: 'Status name must not be empty',
+        details: { workspaceId },
+      })
+    }
+    const status = readWorkspaceStatuses(workspaceId)
+      .find(candidate => normalizeStatusName(candidate.name) === normalizedName)
+    if (!status) {
+      throw new AppError({
+        code: 'issue_status_not_found',
+        status: 404,
+        message: 'Status not found',
+        details: { workspaceId, statusName: reference.statusName, normalizedStatusName: normalizedName },
+      })
+    }
+    return status.id
+  }
+
+  if (!options.useDefaultWhenMissing) {
+    return null
+  }
+
+  return readWorkspaceStatuses(workspaceId)[0]?.id ?? null
+}
+
 export function seedDefaultStatuses(workspaceId: string): void {
   requireWorkspace(workspaceId)
   if (countStatuses(workspaceId) > 0) {
@@ -175,7 +250,7 @@ function nextIssueIdentity(workspace: Workspace): { id: string, number: number }
 export function listStatuses(workspaceId: string): IssueStatus[] {
   requireWorkspace(workspaceId)
   seedDefaultStatuses(workspaceId)
-  return db().select().from(issueStatuses).where(eq(issueStatuses.workspaceId, workspaceId)).orderBy(issueStatuses.order).all()
+  return readWorkspaceStatuses(workspaceId)
 }
 
 export function createStatus(rawInput: { workspaceId: string, name: string, color?: string | null, category?: StatusCategory }): IssueStatus {
@@ -337,17 +412,15 @@ export function createIssue(rawInput: {
   milestoneId?: string | null
   parentIssueId?: string | null
   statusId?: string | null
+  statusName?: string | null
 }, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user' }): IssueView {
   const input = CreateIssueInputSchema.parse(rawInput)
   const workspace = requireWorkspace(input.workspaceId)
-  seedDefaultStatuses(input.workspaceId)
   const now = currentUnixSeconds()
   const identity = nextIssueIdentity(workspace)
   const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${issues.order}), 0)` }).from(issues).where(eq(issues.workspaceId, input.workspaceId)).get()
   const order = (maxOrderRow?.maxOrder ?? 0) + 1024
-  const statusId = input.statusId
-    ?? db().select({ id: issueStatuses.id }).from(issueStatuses).where(eq(issueStatuses.workspaceId, input.workspaceId)).orderBy(issueStatuses.order).get()?.id
-    ?? null
+  const statusId = resolveStatusId(input.workspaceId, input, { useDefaultWhenMissing: true })
   const issue = db().insert(issues).values({
     id: identity.id,
     workspaceId: input.workspaceId,
@@ -381,10 +454,12 @@ export function updateIssue(id: string, patch: Partial<{
   milestoneId: string | null
   parentIssueId: string | null
   statusId: string | null
+  statusName: string | null
   assigneeKind: string | null
   assigneeId: string | null
   order: number
 }>): IssueView {
+  const issue = getIssueRow(id)
   const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if (patch.title !== undefined) {
     updates.title = patch.title
@@ -404,8 +479,8 @@ export function updateIssue(id: string, patch: Partial<{
   if ('parentIssueId' in patch) {
     updates.parentIssueId = patch.parentIssueId ?? null
   }
-  if ('statusId' in patch) {
-    updates.statusId = patch.statusId ?? null
+  if ('statusId' in patch || 'statusName' in patch) {
+    updates.statusId = resolveStatusId(issue.workspaceId, patch, { useDefaultWhenMissing: false })
   }
   if ('assigneeKind' in patch) {
     updates.assigneeKind = patch.assigneeKind ?? null
@@ -419,6 +494,10 @@ export function updateIssue(id: string, patch: Partial<{
 
   db().update(issues).set(updates).where(eq(issues.id, id)).run()
   return getIssue(id)
+}
+
+export function moveIssueToStatusName(id: string, statusName: string): IssueView {
+  return updateIssue(id, { statusName })
 }
 
 export function updateIssueDelegation(id: string, delegation: { agentId: string, agentProfileId: string } | null): IssueView {

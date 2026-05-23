@@ -64,6 +64,12 @@ const spec = {
       "required": false,
       "target": "body.statusId",
       "type": "string"
+    },
+    {
+      "name": "statusName",
+      "required": false,
+      "target": "body.statusName",
+      "type": "string"
     }
   ],
   "method": "post",

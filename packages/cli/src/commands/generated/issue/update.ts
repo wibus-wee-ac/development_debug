@@ -67,6 +67,12 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "statusName",
+      "required": false,
+      "target": "body.statusName",
+      "type": "string"
+    },
+    {
       "name": "assigneeKind",
       "required": false,
       "target": "body.assigneeKind",

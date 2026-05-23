@@ -18,7 +18,8 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **session-await.test.ts**: session await/resume lifecycle, pending states, and resume semantics.
 - **session-await-github.test.ts**: GitHub session-await source behavior for check runs, legacy commit statuses, no-signal grace, and PR review modes.
 - **chat-runtime.test.ts**: chat run execution, strict snapshot hydration, SSE `message_delta` sequencing, usage writes, active abort flow, and persisted streaming cleanup when an in-memory active run is missing.
-- **kanban.test.ts**: Kanban board shell plus Issue-owned status, issue, ID generation, and comment core loops.
+- **kanban.test.ts**: Kanban board shell plus Issue-owned status, status-name movement, default status assignment, issue, ID generation, and comment core loops.
+- **system-agent-provider.test.ts**: Jarvis `jar-core` provider integration, including Cradle chat/workspace environment injection for shell commands.
 - **issue-agent.test.ts**: issue delegation, activity timeline, rerun, and undelegation flows.
 - **git.test.ts**: workspace-owned git status, branches, commit graph, checkout, and create-branch flows against real local repositories.
 - **observability.test.ts**: observability event persistence, incident rules, empty-output failure semantics, and bundle export.

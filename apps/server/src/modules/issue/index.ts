@@ -144,6 +144,14 @@ export const issue = new Elysia({
     body: IssueModel.bulkUpdateBody,
     response: { 200: t.Object({ updated: t.Number() }) },
   })
+  .patch('/:id/status/:statusName', ({ params }) => Issue.moveIssueToStatusName(params.id, params.statusName), {
+    detail: {
+      'summary': 'Move issue to status by name',
+      'x-cradle-cli': { command: ['issue', 'move'] },
+    },
+    params: IssueModel.moveIssueByStatusNameParams,
+    response: { 200: IssueModel.issue },
+  })
   .patch('/:id', ({ params, body }) => Issue.updateIssue(params.id, body), {
     detail: {
       'summary': 'Update issue',
