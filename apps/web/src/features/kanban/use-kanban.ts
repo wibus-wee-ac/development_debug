@@ -442,8 +442,7 @@ export function useIssues(params: IssueFilterParams) {
   })
 }
 
-// eslint-disable-next-line unused-imports/no-unused-vars
-function useSearchIssues(query: string, limit = 20, enabled = true) {
+export function useSearchIssues(query: string, limit = 20, enabled = true) {
   const trimmed = query.trim()
 
   return useQuery({
@@ -591,8 +590,7 @@ export function useRelations(issueId: string) {
   })
 }
 
-// eslint-disable-next-line unused-imports/no-unused-vars
-function useAddRelation() {
+export function useAddRelation() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: AddRelationInput) => {

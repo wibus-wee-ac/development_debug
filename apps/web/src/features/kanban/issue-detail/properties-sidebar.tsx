@@ -145,7 +145,7 @@ export const PropertiesSidebar = memo(({ issue, statuses, milestones, workspaceI
       <div className="my-3" />
 
       <div className="bg-card rounded-lg px-3 py-2 shadow-xs text-sm font-medium text-muted-foreground border border-border">
-        <RelationManager issueId={issue.id} />
+        <RelationManager issueId={issue.id} workspaceId={issue.workspaceId} />
       </div>
     </div>
   )

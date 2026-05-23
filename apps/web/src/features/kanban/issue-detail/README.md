@@ -19,7 +19,7 @@ Issue detail owns focused subviews for editing issue metadata, reading activity,
 - **issue-title.tsx**: Editable issue title surface.
 - **properties-sidebar.tsx**: Issue metadata property editor with unified human/AI Agent assignee selection, explicit unassigned state, named label add controls, and stable E2E anchors; properties rendering keeps a memo boundary.
 - **properties-sidebar.test.tsx**: Regression tests for the label add trigger accessible name, decorative icon state, and label update payload.
-- **relation-manager.tsx**: Issue relation management controls with named add/remove relation actions.
-- **relation-manager.test.tsx**: Regression tests for relation add/remove accessible names, decorative icons, and delete mutation payloads.
+- **relation-manager.tsx**: Issue relation management controls split into Blocks, Blocked by, Duplicates, Duplicated by, and Related to sections, each with target issue autocomplete and direction-aware add/remove actions.
+- **relation-manager.test.tsx**: Regression tests for semantic relation sections, direction-aware labels, autocomplete selection, and typed issue ID resolution.
 - **sub-issues-list.tsx**: Sub-issue list and creation controls with decorative icon/shortcut semantics plus stable E2E anchors for creating and verifying child issues.
 - **sub-issues-list.test.tsx**: Regression tests for Add sub-issue action icon semantics and child issue create payload wiring.
