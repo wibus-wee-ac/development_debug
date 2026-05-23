@@ -23,6 +23,7 @@ interface TerminalPanelState {
   addSession: (ownerId: string, cwd: string) => TerminalPanelSession
   activateSession: (ownerId: string, sessionId: string) => void
   removeSession: (ownerId: string, sessionId: string) => void
+  removeOwner: (ownerId: string) => TerminalPanelSession[]
   updateSessionTitle: (ownerId: string, sessionId: string, title: string) => void
 }
 
@@ -126,6 +127,23 @@ export const useTerminalPanelStore = create<TerminalPanelState>()(
           },
         }
       })
+    },
+    removeOwner: (ownerId) => {
+      const owner = get().owners[ownerId]
+      if (!owner) {
+        return []
+      }
+
+      set((state) => {
+        if (!(ownerId in state.owners)) {
+          return state
+        }
+
+        const { [ownerId]: _removed, ...owners } = state.owners
+        return { owners }
+      })
+
+      return owner.sessions
     },
     updateSessionTitle: (ownerId, sessionId, title) => {
       set((state) => {

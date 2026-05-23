@@ -12,6 +12,7 @@ import { newChatTab } from './new-chat.tab'
 import { pluginPanelTab } from './plugin-panel.tab'
 import { usageTab } from './usage.tab'
 import { workspaceDetailTab } from './workspace-detail.tab'
+import { installTerminalPanelTabLifecycle } from './terminal-panel-tab-lifecycle'
 
 export const cradleRegistry = {
   'home': homeTab,
@@ -34,3 +35,5 @@ export const useCradleTabStore = createTabStore(
   cradleRegistry,
   tabPersistKey ? { persistKey: tabPersistKey } : undefined,
 )
+
+installTerminalPanelTabLifecycle(useCradleTabStore)
