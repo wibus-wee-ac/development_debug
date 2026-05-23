@@ -11,6 +11,8 @@ import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
 import { LabelChip } from './shared/label-chip'
+import { ParentIssueLink } from './shared/parent-issue-link'
+import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusCategorySchema, StatusIcon } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
@@ -19,6 +21,7 @@ interface CardProps {
   issue: KanbanIssue
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
+  parentIssueRef?: ParentIssueRef | null
   displayProperties: ViewConfig['displayProperties']
   onOpenIssue: (id: string) => void
   onSelectionGesture?: (id: string, mode: 'toggle' | 'range') => void
@@ -39,6 +42,7 @@ function KanbanCardView({
   issue,
   statuses,
   milestones,
+  parentIssueRef,
   displayProperties,
   onOpenIssue,
   onSelectionGesture,
@@ -91,7 +95,7 @@ function KanbanCardView({
     }, delayMs)
   }
 
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+  const openCurrentIssueFromCard = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation()
     setPressed(false)
 
@@ -104,7 +108,7 @@ function KanbanCardView({
     openIssue(event.detail > 0 ? 90 : 0)
   }
 
-  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     onDragPointerDown?.(event)
     if (event.button === 0) {
       setPressed(true)
@@ -122,16 +126,12 @@ function KanbanCardView({
       onMouseLeave={() => onHover?.(null)}
     >
       <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={handleOpenIssue}>
-        <button
-          type="button"
+        <div
           ref={setNodeRef}
           style={style}
           {...draggableAttributes}
           {...dragListeners}
-          aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
-          aria-pressed={selected ? true : undefined}
           data-pressed={pressed ? 'true' : undefined}
-          onClick={handleClick}
           onPointerDown={handlePointerDown}
           onPointerUp={releasePress}
           onPointerCancel={releasePress}
@@ -139,7 +139,7 @@ function KanbanCardView({
           onBlur={releasePress}
           data-testid={`issue-card-${issue.id}`}
           className={cn(
-            'w-full bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border/80 text-left',
+            'group/card relative w-full bg-card rounded-md px-3.5 py-3 pb-2.5 cursor-pointer border border-border/80 text-left',
             'flex flex-col gap-1',
             'shadow-[var(--shadow-xs)]',
             'transition-[scale,transform,box-shadow,border-color,background-color] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
@@ -150,14 +150,21 @@ function KanbanCardView({
             isDragging && 'opacity-50',
           )}
         >
+          <button
+            type="button"
+            aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
+            aria-pressed={selected ? true : undefined}
+            onClick={openCurrentIssueFromCard}
+            className="absolute inset-0 z-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
 
-          <span className="flex justify-between">
+          <span className="pointer-events-none relative z-10 flex justify-between">
             <span className="flex items-center gap-1.5">
               <span
                 className={cn(
                   'pointer-events-none flex size-4 items-center justify-center rounded border text-primary',
                   'transition-[opacity,background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
-                  selected ? 'border-primary bg-primary/10 opacity-100' : 'border-border bg-background opacity-0 group-hover/button:opacity-100',
+                  selected ? 'border-primary bg-primary/10 opacity-100' : 'border-border bg-background opacity-0 group-hover/card:opacity-100',
                 )}
                 aria-hidden="true"
               >
@@ -181,7 +188,17 @@ function KanbanCardView({
             )}
           </span>
 
-          <span className="flex items-start gap-2">
+          {parentIssueRef && (
+            <span className="relative z-10 flex items-center">
+              <ParentIssueLink
+                parentIssueKey={parentIssueRef.key}
+                variant="card"
+                onOpen={() => onOpenIssue(parentIssueRef.id)}
+              />
+            </span>
+          )}
+
+          <span className="pointer-events-none relative z-10 flex items-start gap-2">
             {displayProperties.status && (
               <span className="mt-1 shrink-0">
                 <StatusIcon category={statusCategory} size={16} />
@@ -192,7 +209,7 @@ function KanbanCardView({
             </span>
           </span>
 
-          <span className="flex items-center gap-2 mt-2.5 text-muted-foreground">
+          <span className="pointer-events-none relative z-10 flex items-center gap-2 mt-2.5 text-muted-foreground">
             {displayProperties.priority && issue.priority !== 'none' && (
               <span className="flex items-center gap-1 text-[11px]">
                 <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
@@ -212,7 +229,7 @@ function KanbanCardView({
               </span>
             )}
           </span>
-        </button>
+        </div>
       </IssueContextMenu>
     </div>
   )

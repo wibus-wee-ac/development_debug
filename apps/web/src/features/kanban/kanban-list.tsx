@@ -6,6 +6,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
 import type { IssueSelectionMode } from './kanban-selection'
+import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { StatusCategorySchema } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
@@ -13,6 +14,7 @@ interface ListProps {
   issues: KanbanIssue[]
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
+  parentIssueRefs: Map<string, ParentIssueRef>
   config: ViewConfig
   highlightedIssueId?: string | null
   selectedIssueIds?: Set<string>
@@ -32,6 +34,7 @@ export function KanbanList({
   issues,
   statuses,
   milestones,
+  parentIssueRefs,
   config,
   highlightedIssueId,
   selectedIssueIds,
@@ -135,6 +138,7 @@ export function KanbanList({
                     issue={issue}
                     statuses={statuses}
                     milestones={milestones}
+                    parentIssueRef={parentIssueRefs.get(issue.id) ?? null}
                     displayProperties={config.displayProperties}
                     onOpenIssue={onIssueClick}
                     onSelectionGesture={onIssueSelectionGesture}

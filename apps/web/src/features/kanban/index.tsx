@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { useWorkspaces } from '~/features/workspace/use-workspace'
+
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
 import { IssuePeekPanel } from './issue-peek-panel'
@@ -9,6 +11,8 @@ import type { IssueSelectionMode } from './kanban-selection'
 import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
 import { KanbanSelectionBar } from './kanban-selection-bar'
 import { KanbanToolbar } from './kanban-toolbar'
+import { formatIssueId } from './shared/format-issue-id'
+import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
 import type { FilterState } from './use-view-config'
 import { useViewConfig } from './use-view-config'
@@ -22,6 +26,7 @@ interface KanbanViewProps {
 
 export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, onSelectIssue }: KanbanViewProps) {
   const { config, setConfig, filter, setFilter, resetFilter } = useViewConfig(workspaceId)
+  const { workspaces } = useWorkspaces()
   const [searchQuery, setSearchQuery] = useState('')
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [createDefaultStatusId, setCreateDefaultStatusId] = useState<string | undefined>()
@@ -66,10 +71,29 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
     onSelectIssueRef.current = onSelectIssue
   }, [onSelectIssue])
 
-  const { data: statuses = [], isSuccess: statusesReady } = useStatuses(workspaceId)
-  const { data: milestones = [], isSuccess: milestonesReady } = useMilestones(workspaceId)
-  const { data: allIssues = [], isSuccess: issuesReady } = useIssues({ workspaceId })
+  const { data: statuses = [], isSuccess: _statusesReady } = useStatuses(workspaceId)
+  const { data: milestones = [], isSuccess: _milestonesReady } = useMilestones(workspaceId)
+  const { data: allIssues = [], isSuccess: _issuesReady } = useIssues({ workspaceId })
   const moveIssue = useMoveIssue()
+
+  const parentIssueRefs = useMemo(() => {
+    const issuesById = new Map(allIssues.map(issue => [issue.id, issue]))
+    const refs = new Map<string, ParentIssueRef>()
+
+    for (const issue of allIssues) {
+      if (!issue.parentIssueId) {
+        continue
+      }
+
+      const parentIssue = issuesById.get(issue.parentIssueId)
+      refs.set(issue.id, {
+        id: issue.parentIssueId,
+        key: parentIssue ? formatIssueId(parentIssue, workspaces) : issue.parentIssueId.slice(0, 6).toUpperCase(),
+      })
+    }
+
+    return refs
+  }, [allIssues, workspaces])
 
   // Apply filters
   const filteredIssues = useMemo(() => {
@@ -429,6 +453,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               issues={filteredIssues}
               statuses={statuses}
               milestones={milestones}
+              parentIssueRefs={parentIssueRefs}
               config={config}
               onIssueClick={handleIssueClick}
               onIssueSelectionGesture={handleIssueSelectionGesture}
@@ -444,6 +469,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
               issues={filteredIssues}
               statuses={statuses}
               milestones={milestones}
+              parentIssueRefs={parentIssueRefs}
               config={config}
               highlightedIssueId={focusedIssueId}
               selectedIssueIds={selectedIssueIds}

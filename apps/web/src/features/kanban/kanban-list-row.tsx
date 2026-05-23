@@ -10,6 +10,8 @@ import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
 import { LabelChip } from './shared/label-chip'
+import { ParentIssueLink } from './shared/parent-issue-link'
+import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import type { StatusCategory, ViewConfig } from './use-view-config'
@@ -18,6 +20,7 @@ interface ListRowProps {
   issue: KanbanIssue
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
+  parentIssueRef?: ParentIssueRef | null
   displayProperties: ViewConfig['displayProperties']
   onOpenIssue: (id: string) => void
   onSelectionGesture?: (id: string, mode: 'toggle' | 'range') => void
@@ -44,6 +47,7 @@ function KanbanListRowView({
   issue,
   statuses,
   milestones,
+  parentIssueRef,
   displayProperties,
   onOpenIssue,
   onSelectionGesture,
@@ -84,7 +88,7 @@ function KanbanListRowView({
     }, delayMs)
   }
 
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+  const openCurrentIssueFromRow = (event: MouseEvent<HTMLButtonElement>) => {
     setPressed(false)
     if (onSelectionGesture && (event.shiftKey || event.metaKey || event.ctrlKey)) {
       event.preventDefault()
@@ -95,7 +99,7 @@ function KanbanListRowView({
     openIssue(event.detail > 0 ? 70 : 0)
   }
 
-  const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button === 0) {
       setPressed(true)
     }
@@ -107,12 +111,8 @@ function KanbanListRowView({
 
   return (
     <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={handleOpenIssue}>
-      <button
-        type="button"
-        aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
-        aria-pressed={selected ? true : undefined}
+      <div
         data-pressed={pressed ? 'true' : undefined}
-        onClick={handleClick}
         onPointerDown={handlePointerDown}
         onPointerUp={releasePress}
         onPointerCancel={releasePress}
@@ -124,10 +124,19 @@ function KanbanListRowView({
           'group/row relative flex w-full items-center gap-2 px-3 h-9 text-left text-[13px] cursor-pointer rounded-md',
           'transition-[scale,background-color,color,box-shadow] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
           'first:mt-1',
+          parentIssueRef && 'pl-6',
           'active:scale-[0.995] data-[pressed=true]:scale-[0.995]',
           selected ? 'bg-primary/10 text-primary' : highlighted ? 'bg-muted' : 'hover:bg-muted',
         )}
       >
+        <button
+          type="button"
+          aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
+          aria-pressed={selected ? true : undefined}
+          onClick={openCurrentIssueFromRow}
+          className="absolute inset-0 z-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+
         {/* Selected indicator */}
         <span className={cn(
           'absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full',
@@ -138,7 +147,7 @@ function KanbanListRowView({
 
         <span
           className={cn(
-            'pointer-events-none flex size-4 shrink-0 items-center justify-center rounded border text-primary',
+            'pointer-events-none relative z-10 flex size-4 shrink-0 items-center justify-center rounded border text-primary',
             'transition-[opacity,background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
             selected ? 'border-primary bg-primary/10 opacity-100' : 'border-border bg-background opacity-0 group-hover/row:opacity-100',
           )}
@@ -151,7 +160,7 @@ function KanbanListRowView({
         </span>
 
         {/* Left: status + priority icons — fixed width so titles align */}
-        <span className="flex items-center gap-1.5 shrink-0">
+        <span className="pointer-events-none relative z-10 flex items-center gap-1.5 shrink-0">
           {displayProperties.status && (
             <StatusIcon category={category} size={14} />
           )}
@@ -162,19 +171,29 @@ function KanbanListRowView({
 
         {/* ID — mono, fixed width */}
         {displayProperties.id && (
-          <span className="text-[11px] font-mono text-muted-foreground shrink-0 tabular-nums">
+          <span className="pointer-events-none relative z-10 text-[11px] font-mono text-muted-foreground shrink-0 tabular-nums">
             {formatIssueId(issue, workspaces)}
           </span>
         )}
 
+        {parentIssueRef && (
+          <span className="relative z-10 flex shrink-0 items-center">
+            <ParentIssueLink
+              parentIssueKey={parentIssueRef.key}
+              variant="row"
+              onOpen={() => onOpenIssue(parentIssueRef.id)}
+            />
+          </span>
+        )}
+
         {/* Title */}
-        <span className="flex-1 truncate text-foreground">
+        <span className="pointer-events-none relative z-10 flex-1 truncate text-foreground">
           {issue.title}
         </span>
 
         {/* Right: metadata — only visible on hover or when selected */}
         <span className={cn(
-          'flex items-center gap-2 shrink-0',
+          'pointer-events-none relative z-10 flex items-center gap-2 shrink-0',
           'transition-opacity duration-100',
           selected || highlighted ? 'opacity-100' : 'opacity-50 group-hover/row:opacity-100',
         )}
@@ -205,7 +224,7 @@ function KanbanListRowView({
             </span>
           )}
         </span>
-      </button>
+      </div>
     </IssueContextMenu>
   )
 }

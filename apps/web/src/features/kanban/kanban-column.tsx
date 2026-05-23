@@ -7,6 +7,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanCard } from './kanban-card'
 import type { IssueSelectionMode } from './kanban-selection'
+import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { StatusIcon } from './shared/status-icon'
 import { useCreateIssue } from './use-kanban'
 import type { StatusCategory, ViewConfig } from './use-view-config'
@@ -19,6 +20,7 @@ interface ColumnProps {
   issues: KanbanIssue[]
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
+  parentIssueRefs: Map<string, ParentIssueRef>
   displayProperties: ViewConfig['displayProperties']
   onIssueClick: (id: string) => void
   onIssueSelectionGesture?: (id: string, mode: IssueSelectionMode) => void
@@ -36,6 +38,7 @@ export function KanbanColumn({
   issues,
   statuses,
   milestones,
+  parentIssueRefs,
   displayProperties,
   onIssueClick,
   onIssueSelectionGesture,
@@ -103,6 +106,7 @@ export function KanbanColumn({
             issue={issue}
             statuses={statuses}
             milestones={milestones}
+            parentIssueRef={parentIssueRefs.get(issue.id) ?? null}
             displayProperties={displayProperties}
             category={category}
             onOpenIssue={onIssueClick}
@@ -140,6 +144,7 @@ export function KanbanColumn({
 
         {/* Quick create button */}
         <button
+          type="button"
           onClick={handleStartInlineCreate}
           data-testid={`kanban-column-add-${groupId}`}
           className={cn(

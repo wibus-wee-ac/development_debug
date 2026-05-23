@@ -14,6 +14,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { KanbanCard } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
 import type { IssueSelectionMode } from './kanban-selection'
+import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { StatusCategorySchema } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
@@ -22,6 +23,7 @@ interface BoardProps {
   issues: KanbanIssue[]
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
+  parentIssueRefs: Map<string, ParentIssueRef>
   config: ViewConfig
   onIssueClick: (id: string) => void
   onIssueSelectionGesture?: (id: string, mode: IssueSelectionMode) => void
@@ -43,6 +45,7 @@ export function KanbanBoard({
   issues,
   statuses,
   milestones,
+  parentIssueRefs,
   config,
   onIssueClick,
   onIssueSelectionGesture,
@@ -152,6 +155,7 @@ export function KanbanBoard({
             issues={groupedIssues[group.id] ?? []}
             statuses={statuses}
             milestones={milestones}
+            parentIssueRefs={parentIssueRefs}
             displayProperties={config.displayProperties}
             onIssueClick={onIssueClick}
             onIssueSelectionGesture={onIssueSelectionGesture}
@@ -178,6 +182,7 @@ export function KanbanBoard({
               issue={activeIssue}
               statuses={statuses}
               milestones={milestones}
+              parentIssueRef={parentIssueRefs.get(activeIssue.id) ?? null}
               displayProperties={config.displayProperties}
               onOpenIssue={() => {}}
               selected={selectedIssueIds?.has(activeIssue.id)}
