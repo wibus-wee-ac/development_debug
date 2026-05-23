@@ -1,37 +1,77 @@
 import * as React from 'react'
 
+type LayoutRect = {
+  top: number
+  left: number
+  right: number
+  bottom: number
+  width: number
+  height: number
+}
+
 interface LayoutGeometryContextValue {
-  getCenterColumnElement: () => HTMLDivElement | null
-  getFooterElement: () => HTMLElement | null
+  centerColumnRect: LayoutRect | null
+  footerRect: LayoutRect | null
   registerCenterColumn: (node: HTMLDivElement | null) => void
   registerFooter: (node: HTMLElement | null) => void
 }
 
 const LayoutGeometryContext = React.createContext<LayoutGeometryContextValue | null>(null)
 
+function toLayoutRect(element: Element | null): LayoutRect | null {
+  if (!element) {
+    return null
+  }
+
+  const rect = element.getBoundingClientRect()
+  return {
+    top: rect.top,
+    left: rect.left,
+    right: rect.right,
+    bottom: rect.bottom,
+    width: rect.width,
+    height: rect.height,
+  }
+}
+
 export function LayoutGeometryProvider({ children }: { children: React.ReactNode }) {
-  const centerColumnElementRef = React.useRef<HTMLDivElement | null>(null)
-  const footerElementRef = React.useRef<HTMLElement | null>(null)
+  const [centerColumnElement, setCenterColumnElement] = React.useState<HTMLDivElement | null>(null)
+  const [footerElement, setFooterElement] = React.useState<HTMLElement | null>(null)
+  const [centerColumnRect, setCenterColumnRect] = React.useState<LayoutRect | null>(null)
+  const [footerRect, setFooterRect] = React.useState<LayoutRect | null>(null)
 
-  const registerCenterColumn = React.useCallback((node: HTMLDivElement | null) => {
-    centerColumnElementRef.current = node
-  }, [])
+  const measure = React.useCallback(() => {
+    setCenterColumnRect(toLayoutRect(centerColumnElement))
+    setFooterRect(toLayoutRect(footerElement))
+  }, [centerColumnElement, footerElement])
 
-  const registerFooter = React.useCallback((node: HTMLElement | null) => {
-    footerElementRef.current = node
-  }, [])
+  React.useEffect(() => {
+    measure()
 
-  const getCenterColumnElement = React.useCallback(() => centerColumnElementRef.current, [])
-  const getFooterElement = React.useCallback(() => footerElementRef.current, [])
+    const observer = new ResizeObserver(() => measure())
+    if (centerColumnElement) {
+      observer.observe(centerColumnElement)
+    }
+    if (footerElement) {
+      observer.observe(footerElement)
+    }
+
+    window.addEventListener('resize', measure)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [centerColumnElement, footerElement, measure])
 
   const value = React.useMemo<LayoutGeometryContextValue>(
     () => ({
-      getCenterColumnElement,
-      getFooterElement,
-      registerCenterColumn,
-      registerFooter,
+      centerColumnRect,
+      footerRect,
+      registerCenterColumn: setCenterColumnElement,
+      registerFooter: setFooterElement,
     }),
-    [getCenterColumnElement, getFooterElement, registerCenterColumn, registerFooter],
+    [centerColumnRect, footerRect],
   )
 
   return <LayoutGeometryContext.Provider value={value}>{children}</LayoutGeometryContext.Provider>

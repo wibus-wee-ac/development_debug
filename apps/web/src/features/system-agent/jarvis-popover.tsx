@@ -22,15 +22,7 @@ import { useJarvisUiStore } from './jarvis-ui-store'
 import { collectContextSnapshot } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
 
-type Bounds = {
-  top: number
-  left: number
-  width: number
-  height: number
-}
-
-const FALLBACK_EXPANDED_BOUNDS: Bounds = { top: 44, left: 268, width: 800, height: 600 }
-const FALLBACK_PANEL_BOUNDS: Bounds = { top: 0, left: 0, width: 420, height: 520 }
+const FALLBACK_EXPANDED_BOUNDS = { top: 44, left: 268, width: 800, height: 600 }
 const PANEL_MIN_WIDTH = 320
 const PANEL_MAX_WIDTH = 900
 const PANEL_MIN_HEIGHT = 300
@@ -43,29 +35,6 @@ export function JarvisPopover({
   anchorKey,
 }: {
   open: boolean
-  onOpenChange: (open: boolean) => void
-  anchorRef: React.RefObject<HTMLElement | null>
-  anchorKey: string
-}) {
-  React.useEffect(() => {
-    const { expanded, setExpanded } = useJarvisUiStore.getState()
-    if (!open && expanded) {
-      setExpanded(false)
-    }
-  }, [open])
-
-  if (!open) {
-    return null
-  }
-
-  return <JarvisPopoverPanel onOpenChange={onOpenChange} anchorRef={anchorRef} anchorKey={anchorKey} />
-}
-
-function JarvisPopoverPanel({
-  onOpenChange,
-  anchorRef,
-  anchorKey,
-}: {
   onOpenChange: (open: boolean) => void
   anchorRef: React.RefObject<HTMLElement | null>
   anchorKey: string
@@ -86,7 +55,7 @@ function JarvisPopoverPanel({
   const setActiveSessionId = useJarvisUiStore(s => s.setActiveSessionId)
   const addSession = useJarvisUiStore(s => s.addSession)
 
-  const { getCenterColumnElement, getFooterElement } = useLayoutGeometry()
+  const { centerColumnRect, footerRect } = useLayoutGeometry()
   const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
 
   const {
@@ -99,8 +68,13 @@ function JarvisPopoverPanel({
   } = useChatSession(activeSessionId)
   const isStreaming = status === 'streaming'
   const jarvisReady = preferencesReady && (!activeSessionId || chatReady)
-  const panelSizeRef = React.useRef({ width: panelWidth, height: panelHeight })
-  const resizeFrameRef = React.useRef<number | null>(null)
+
+  // Collapse when popover closes
+  React.useEffect(() => {
+    if (!open && jarvisExpanded) {
+      setJarvisExpanded(false)
+    }
+  }, [open, jarvisExpanded, setJarvisExpanded])
 
   // Send the initial message once the session ID becomes available
   React.useEffect(() => {
@@ -112,19 +86,21 @@ function JarvisPopoverPanel({
 
   // Escape to close/collapse
   React.useEffect(() => {
+    if (!open) {
+      return
+    }
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (jarvisExpanded) {
           setJarvisExpanded(false)
-        }
-        else {
+        } else {
           onOpenChange(false)
         }
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onOpenChange, jarvisExpanded, setJarvisExpanded])
+  }, [open, onOpenChange, jarvisExpanded, setJarvisExpanded])
 
   // Auto-scroll on new messages
   const messageCount = messages.length
@@ -137,9 +113,10 @@ function JarvisPopoverPanel({
 
   // Auto-focus textarea when popover opens
   React.useEffect(() => {
-    const frame = requestAnimationFrame(() => textareaRef.current?.focus())
-    return () => cancelAnimationFrame(frame)
-  }, [])
+    if (open) {
+      requestAnimationFrame(() => textareaRef.current?.focus())
+    }
+  }, [open])
 
   const [sendError, setSendError] = React.useState<string | null>(null)
 
@@ -185,12 +162,10 @@ function JarvisPopoverPanel({
         setActiveSessionId(sessionId)
         setPendingInitialText(fullText)
         return
-      }
-      catch (e) {
+      } catch (e) {
         setSendError(e instanceof Error ? e.message : 'Failed to create session')
         return
-      }
-      finally {
+      } finally {
         setCreating(false)
       }
     }
@@ -220,111 +195,14 @@ function JarvisPopoverPanel({
   // Resize logic
   const resizingRef = React.useRef(false)
   const resizeStartRef = React.useRef({ x: 0, y: 0, w: 0, h: 0 })
-
-  const applyPanelBounds = React.useCallback((bounds: Bounds) => {
-    const panel = panelRef.current
-    if (!panel) {
-      return
-    }
-    panel.style.top = `${bounds.top}px`
-    panel.style.left = `${bounds.left}px`
-    panel.style.width = `${bounds.width}px`
-    panel.style.height = `${bounds.height}px`
-  }, [])
-
-  const readPanelBounds = React.useCallback((): Bounds => {
-    if (jarvisExpanded) {
-      const centerColumn = getCenterColumnElement()
-      if (!centerColumn) {
-        return FALLBACK_EXPANDED_BOUNDS
-      }
-      const rect = centerColumn.getBoundingClientRect()
-      return {
-        top: rect.top + 12,
-        left: rect.left - 8,
-        width: rect.width + 16,
-        height: rect.height + 4,
-      }
-    }
-
-    const footer = getFooterElement()
-    const { width, height } = panelSizeRef.current
-    if (!footer) {
-      return { ...FALLBACK_PANEL_BOUNDS, width, height }
-    }
-
-    const footerRect = footer.getBoundingClientRect()
-    const anchorRect = anchorRef.current?.getBoundingClientRect()
-    const centerX = anchorRect
-      ? anchorRect.left + anchorRect.width / 2
-      : footerRect.right - 12 - width / 2
-    const left = Math.max(8, Math.min(window.innerWidth - width - 8, centerX - width / 2))
-
-    return {
-      top: footerRect.top - 8 - height,
-      left,
-      width,
-      height,
-    }
-  }, [anchorRef, getCenterColumnElement, getFooterElement, jarvisExpanded])
-
-  const schedulePanelBoundsUpdate = React.useCallback(() => {
-    if (resizeFrameRef.current !== null) {
-      return
-    }
-
-    resizeFrameRef.current = requestAnimationFrame(() => {
-      resizeFrameRef.current = null
-      applyPanelBounds(readPanelBounds())
-    })
-  }, [applyPanelBounds, readPanelBounds])
-
-  React.useLayoutEffect(() => {
-    panelSizeRef.current = { width: panelWidth, height: panelHeight }
-    applyPanelBounds(readPanelBounds())
-  }, [anchorKey, applyPanelBounds, panelHeight, panelWidth, readPanelBounds])
-
-  React.useEffect(() => {
-    const observer = new ResizeObserver(() => schedulePanelBoundsUpdate())
-    const centerColumn = getCenterColumnElement()
-    const footer = getFooterElement()
-    const anchor = anchorRef.current
-
-    if (centerColumn) {
-      observer.observe(centerColumn)
-    }
-    if (footer) {
-      observer.observe(footer)
-    }
-    if (anchor) {
-      observer.observe(anchor)
-    }
-
-    window.addEventListener('resize', schedulePanelBoundsUpdate)
-
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', schedulePanelBoundsUpdate)
-      if (resizeFrameRef.current !== null) {
-        cancelAnimationFrame(resizeFrameRef.current)
-        resizeFrameRef.current = null
-      }
-    }
-  }, [anchorKey, anchorRef, getCenterColumnElement, getFooterElement, schedulePanelBoundsUpdate])
+  const [isResizing, setIsResizing] = React.useState(false)
 
   const handleResizeStart = React.useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault()
-      if (jarvisExpanded) {
-        return
-      }
       resizingRef.current = true
-      resizeStartRef.current = {
-        x: e.clientX,
-        y: e.clientY,
-        w: panelSizeRef.current.width,
-        h: panelSizeRef.current.height,
-      }
+      setIsResizing(true)
+      resizeStartRef.current = { x: e.clientX, y: e.clientY, w: panelWidth, h: panelHeight }
 
       const handleMove = (ev: PointerEvent) => {
         if (!resizingRef.current) {
@@ -332,21 +210,14 @@ function JarvisPopoverPanel({
         }
         const dx = resizeStartRef.current.x - ev.clientX
         const dy = resizeStartRef.current.y - ev.clientY
-        const width = Math.max(
-          PANEL_MIN_WIDTH,
-          Math.min(PANEL_MAX_WIDTH, resizeStartRef.current.w + dx),
-        )
-        const height = Math.max(
-          PANEL_MIN_HEIGHT,
-          Math.min(PANEL_MAX_HEIGHT, resizeStartRef.current.h + dy),
-        )
-        panelSizeRef.current = { width, height }
-        schedulePanelBoundsUpdate()
+        const newW = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, resizeStartRef.current.w + dx))
+        const newH = Math.max(PANEL_MIN_HEIGHT, Math.min(PANEL_MAX_HEIGHT, resizeStartRef.current.h + dy))
+        setPanelSize(newW, newH)
       }
 
       const handleUp = () => {
         resizingRef.current = false
-        setPanelSize(panelSizeRef.current.width, panelSizeRef.current.height)
+        setIsResizing(false)
         document.removeEventListener('pointermove', handleMove)
         document.removeEventListener('pointerup', handleUp)
       }
@@ -354,8 +225,41 @@ function JarvisPopoverPanel({
       document.addEventListener('pointermove', handleMove)
       document.addEventListener('pointerup', handleUp)
     },
-    [jarvisExpanded, schedulePanelBoundsUpdate, setPanelSize],
+    [panelWidth, panelHeight, setPanelSize],
   )
+
+  // Calculate expanded bounds
+  const expandedBounds = React.useMemo(() => {
+    if (!centerColumnRect) {
+      return FALLBACK_EXPANDED_BOUNDS
+    }
+    return {
+      top: centerColumnRect.top + 12,
+      left: centerColumnRect.left - 8,
+      width: centerColumnRect.width + 16,
+      height: centerColumnRect.height + 4,
+    }
+  }, [centerColumnRect])
+
+  // Calculate popover bounds
+  const popoverBounds = React.useMemo(() => {
+    if (!footerRect) {
+      return { top: 0, left: 0, width: panelWidth, height: panelHeight }
+    }
+    const anchorRect = anchorRef.current?.getBoundingClientRect()
+    const centerX = anchorRect
+      ? anchorRect.left + anchorRect.width / 2
+      : footerRect.right - 12 - panelWidth / 2
+    const left = Math.max(8, Math.min(window.innerWidth - panelWidth - 8, centerX - panelWidth / 2))
+    return {
+      top: footerRect.top - 8 - panelHeight,
+      left,
+      width: panelWidth,
+      height: panelHeight,
+    }
+  }, [footerRect, panelWidth, panelHeight, anchorRef])
+
+  const targetBounds = jarvisExpanded ? expandedBounds : popoverBounds
 
   // Determine which messages are streaming (only the last assistant one)
   const lastAssistantId = React.useMemo(() => {
@@ -375,9 +279,7 @@ function JarvisPopoverPanel({
       {!prefs?.profileId
         ? (
             <>
-              <p className="text-[13px] font-medium text-foreground mb-1.5">
-                No profile configured
-              </p>
+              <p className="text-[13px] font-medium text-foreground mb-1.5">No profile configured</p>
               <p className="text-xs text-muted-foreground text-center leading-relaxed">
                 Go to Settings → Jarvis and select a provider profile and model.
               </p>
@@ -385,16 +287,11 @@ function JarvisPopoverPanel({
           )
         : (
             <>
-              <p className="text-[13px] font-medium text-foreground mb-1.5">
-                What can I help with?
-              </p>
+              <p className="text-[13px] font-medium text-foreground mb-1.5">What can I help with?</p>
               <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                I have full awareness of your workspace, active tabs, chat sessions, and current
-                layout.
+                I have full awareness of your workspace, active tabs, chat sessions, and current layout.
               </p>
-              {sendError && (
-                <p className="text-xs text-destructive/80 text-center mt-3">{sendError}</p>
-              )}
+              {sendError && <p className="text-xs text-destructive/80 text-center mt-3">{sendError}</p>}
             </>
           )}
     </div>
@@ -437,19 +334,26 @@ function JarvisPopoverPanel({
       ref={panelRef}
       data-testid="jarvis-popover"
       data-jarvis-ready={jarvisReady ? 'true' : 'false'}
-      initial={{ opacity: 0, y: 8 }}
+      initial={false}
       animate={{
-        opacity: 1,
-        y: 0,
+        opacity: open ? 1 : 0,
+        y: open ? 0 : 8,
+        ...targetBounds,
       }}
-      transition={{ opacity: { duration: 0.15 }, y: { duration: 0.2 } }}
-      style={{
-        pointerEvents: 'auto',
-        top: FALLBACK_PANEL_BOUNDS.top,
-        left: FALLBACK_PANEL_BOUNDS.left,
-        width: panelWidth,
-        height: panelHeight,
-      }}
+      exit={{ opacity: 0, y: 8 }}
+      transition={
+        isResizing
+          ? { duration: 0 }
+          : {
+              opacity: { duration: 0.15 },
+              y: { duration: 0.2 },
+              top: { type: 'spring', duration: 0.4, bounce: 0 },
+              left: { type: 'spring', duration: 0.4, bounce: 0 },
+              width: { type: 'spring', duration: 0.35, bounce: 0 },
+              height: { type: 'spring', duration: 0.35, bounce: 0 },
+            }
+      }
+      style={{ pointerEvents: open ? 'auto' : 'none' }}
       className={cn(
         'fixed z-50 flex flex-col',
         'rounded-xl bg-popover text-popover-foreground',
