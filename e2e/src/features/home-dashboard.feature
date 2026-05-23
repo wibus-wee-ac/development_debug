@@ -27,5 +27,8 @@
     当 我从首页打开 Automation Dashboard
     那么 我应该看到 Automation Dashboard
     而且 Automation Dashboard 应显示空状态
+    当 我刷新 Automation Dashboard
+    那么 我应该看到 Automation Dashboard
+    而且 Automation Dashboard 应显示空状态
     当 我从 Automation Dashboard 返回首页
     那么 我应该看到首页仪表盘

@@ -32,6 +32,17 @@ When('我刷新资源诊断弹层', async function (this: CradleWorld) {
   await refreshButton.click()
 })
 
+When('我关闭资源诊断弹层', async function (this: CradleWorld) {
+  console.warn('[step] close resources popover')
+  await this.page.keyboard.press('Escape')
+  await expect(resourcesPopover(this)).toBeHidden({ timeout: RESOURCES_TIMEOUT })
+})
+
+When('我再次打开资源诊断弹层', async function (this: CradleWorld) {
+  console.warn('[step] reopen resources popover')
+  await openResourcesPopover(this)
+})
+
 Then('资源诊断弹层应显示核心资源分组', async function (this: CradleWorld) {
   console.warn('[step] assert resources popover groups')
   const popover = resourcesPopover(this)
@@ -46,4 +57,18 @@ Then('资源诊断弹层应显示核心资源分组', async function (this: Crad
   await expect(popover).toContainText('CLI TUI', { timeout: RESOURCES_TIMEOUT })
   await expect(popover).toContainText('Bottom Panel', { timeout: RESOURCES_TIMEOUT })
   await expect(popover.getByRole('button', { name: 'Refresh resources' })).toBeVisible({ timeout: RESOURCES_TIMEOUT })
+})
+
+Then('资源诊断弹层应显示已准备好状态', async function (this: CradleWorld) {
+  const popover = resourcesPopover(this)
+  await expect(popover).toHaveAttribute('data-resources-ready', 'true', { timeout: RESOURCES_TIMEOUT })
+})
+
+Then('资源诊断弹层应显示 Live 状态', async function (this: CradleWorld) {
+  const popover = resourcesPopover(this)
+  await expect(popover).toContainText('Live', { timeout: RESOURCES_TIMEOUT })
+})
+
+Then('资源诊断弹层应处于关闭状态', async function (this: CradleWorld) {
+  await expect(resourcesPopover(this)).toBeHidden({ timeout: RESOURCES_TIMEOUT })
 })

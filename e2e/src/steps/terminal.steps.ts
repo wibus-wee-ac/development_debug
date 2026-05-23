@@ -16,6 +16,10 @@ function getShellView(world: CradleWorld) {
   return world.page.locator('[data-testid="shell-view"]')
 }
 
+function getShellTextArea(world: CradleWorld) {
+  return getShellView(world).locator('textarea.xterm-helper-textarea')
+}
+
 function getTerminalTabs(world: CradleWorld) {
   return world.page.locator('[data-testid="bottom-terminal-tab"]')
 }
@@ -26,6 +30,15 @@ async function readShellVisibleText(world: CradleWorld): Promise<string> {
 
 function normalizeTerminalAssertionText(value: string): string {
   return value.replace(WHITESPACE_DOTS_RE, '')
+}
+
+async function waitForBottomShellReady(world: CradleWorld) {
+  const shellView = getShellView(world)
+  const textArea = getShellTextArea(world)
+
+  await expect(shellView).toBeVisible({ timeout: TERMINAL_TIMEOUT })
+  await expect(shellView).toHaveAttribute('data-shell-ready', 'true', { timeout: TERMINAL_TIMEOUT })
+  await expect(textArea).toBeAttached({ timeout: TERMINAL_TIMEOUT })
 }
 
 async function getActiveChatWorkspacePath(world: CradleWorld): Promise<string> {
@@ -73,6 +86,19 @@ When('我打开底部终端面板', async function (this: CradleWorld) {
   await expect(panel).toHaveAttribute('data-panel-open', 'true', { timeout: 10_000 })
 })
 
+When('我关闭底部终端面板', async function (this: CradleWorld) {
+  console.warn('[step] close bottom terminal panel')
+  const toggle = this.page.locator('[data-testid="app-header-panel-toggle"]')
+  const panel = getBottomPanel(this)
+
+  await expect(toggle).toBeVisible({ timeout: 10_000 })
+  if ((await panel.getAttribute('data-panel-open')) !== 'false') {
+    await toggle.click()
+  }
+
+  await expect(panel).toHaveAttribute('data-panel-open', 'false', { timeout: 10_000 })
+})
+
 Then('我应该看到底部终端面板', async function (this: CradleWorld) {
   console.warn('[step] assert bottom terminal panel visible')
   const panel = getBottomPanel(this)
@@ -82,13 +108,20 @@ Then('我应该看到底部终端面板', async function (this: CradleWorld) {
   await expect(shellView).toBeVisible({ timeout: TERMINAL_TIMEOUT })
 })
 
+Then('底部终端面板应处于关闭状态', async function (this: CradleWorld) {
+  console.warn('[step] assert bottom terminal panel closed')
+  await expect(getBottomPanel(this)).toHaveAttribute('data-panel-open', 'false', { timeout: 10_000 })
+})
+
 When('我在底部终端中执行命令{string}', async function (this: CradleWorld, command: string) {
   console.warn(`[step] run command in bottom terminal: ${command}`)
   const shellView = getShellView(this)
+  const textArea = getShellTextArea(this)
 
-  await expect(shellView).toBeVisible({ timeout: TERMINAL_TIMEOUT })
-  await shellView.click({ position: { x: 24, y: 24 } })
-  await this.page.keyboard.type(command)
+  await waitForBottomShellReady(this)
+  await shellView.click()
+  await textArea.focus()
+  await this.page.keyboard.insertText(command)
   await this.page.keyboard.press('Enter')
 })
 
@@ -134,4 +167,12 @@ Then('底部终端应显示当前工作区路径哈希', async function (this: C
     async () => normalizeTerminalAssertionText(await readShellVisibleText(this)),
     { timeout: TERMINAL_TIMEOUT },
   ).toContain(expectedHash)
+})
+
+Then('底部终端应显示文本{string}', async function (this: CradleWorld, text: string) {
+  console.warn(`[step] assert bottom terminal contains text: ${text}`)
+  await expect.poll(
+    async () => await readShellVisibleText(this),
+    { timeout: TERMINAL_TIMEOUT },
+  ).toContain(text)
 })

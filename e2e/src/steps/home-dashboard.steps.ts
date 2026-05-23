@@ -70,6 +70,13 @@ When('我从 Automation Dashboard 返回首页', async function (this: CradleWor
   await dashboard.getByRole('button', { name: 'Back to home' }).click()
 })
 
+When('我刷新 Automation Dashboard', async function (this: CradleWorld) {
+  const dashboard = this.page.locator('[data-testid="automation-dashboard"]')
+  await expect(dashboard).toBeVisible({ timeout: DASHBOARD_TIMEOUT })
+  await dashboard.getByRole('button', { name: 'Refresh' }).click()
+  await expect(dashboard).toHaveAttribute('data-automation-ready', 'true', { timeout: DASHBOARD_TIMEOUT })
+})
+
 Then('我应该看到首页仪表盘', async function (this: CradleWorld) {
   const dashboard = visibleHomeDashboard(this)
   await expect(dashboard).toBeVisible({ timeout: DASHBOARD_TIMEOUT })

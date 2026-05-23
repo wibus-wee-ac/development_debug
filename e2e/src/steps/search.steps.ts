@@ -107,12 +107,23 @@ When('我从全局搜索执行命令{string}', async function (this: CradleWorld
   await expect(globalSearchInput(this)).toBeHidden({ timeout: GLOBAL_SEARCH_TIMEOUT })
 })
 
+When('我按下 Escape 关闭全局搜索', async function (this: CradleWorld) {
+  console.warn('[step] close global search with Escape')
+  await expect(globalSearchInput(this)).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
+  await this.page.keyboard.press('Escape')
+})
+
 Then('全局搜索命令{string}应可见', async function (this: CradleWorld, label: string) {
   console.warn(`[step] assert global search command visible: ${label}`)
   const row = commandRow(this, label)
 
   await expect(row).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
   await expect(row).toContainText(label, { timeout: GLOBAL_SEARCH_TIMEOUT })
+})
+
+Then('全局搜索对话框应关闭', async function (this: CradleWorld) {
+  console.warn('[step] assert global search dialog closed')
+  await expect(globalSearchInput(this)).toBeHidden({ timeout: GLOBAL_SEARCH_TIMEOUT })
 })
 
 Then('全局搜索中应该显示 Issue 结果{string}', async function (this: CradleWorld, title: string) {

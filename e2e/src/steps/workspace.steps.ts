@@ -194,6 +194,14 @@ When('我将复制代码库范围设置为{string}', async function (this: Cradl
   await scopeInput.fill(scopePath)
 })
 
+When('我将复制代码库忽略规则设置为{string}', async function (this: CradleWorld, ignorePattern: string) {
+  const dialog = this.page.locator('[data-testid="pack-codebase-dialog"]')
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+  const ignoreInput = dialog.locator('[data-testid="pack-codebase-ignore-input"]')
+  await expect(ignoreInput).toBeVisible({ timeout: 10_000 })
+  await ignoreInput.fill(ignorePattern)
+})
+
 When('我点击打包并复制', async function (this: CradleWorld) {
   const dialog = this.page.locator('[data-testid="pack-codebase-dialog"]')
   const submitButton = dialog.locator('[data-testid="pack-codebase-submit-btn"]')
@@ -335,6 +343,12 @@ Then('剪贴板应包含当前工作区的 AGENTS.md 内容', async function (th
   expect(clipboardText).toContain('AGENTS.md')
   expect(clipboardText).toContain(fixture.agentsHeading)
   expect(clipboardText).toContain(fixture.agentsBody)
+})
+
+Then('剪贴板中不应包含文本{string}', async function (this: CradleWorld, text: string) {
+  const clipboardText = await this.page.evaluate(() => navigator.clipboard.readText())
+
+  expect(clipboardText).not.toContain(text)
 })
 
 Then('工作区详情页最近会话应显示{string}', async function (this: CradleWorld, title: string) {

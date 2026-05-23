@@ -9,6 +9,7 @@ const RIGHT_ASIDE_TOGGLE = '[data-testid="app-header-aside-toggle"]'
 const RIGHT_ASIDE_ROOT = '[data-testid="right-aside"]'
 
 const ASIDE_TAB_LABEL_TO_ID: Record<string, string> = {
+  Changes: 'changes',
   Feed: 'await',
   Issue: 'issue',
   Git: 'git',
