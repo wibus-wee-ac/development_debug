@@ -71,6 +71,10 @@ export class WindowManager {
 
     win.on('closed', () => {
       this.sessionWindows.delete(sessionId)
+      const mainWindow = this.mainWindow
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('window:tearoff-session-closed', sessionId)
+      }
     })
 
     return win

@@ -41,6 +41,13 @@ const cradleElectron = {
     minimize: () => ipcRenderer.invoke('window.minimize'),
     maximize: () => ipcRenderer.invoke('window.maximize'),
     close: () => ipcRenderer.invoke('window.close'),
+    onTearoffSessionClosed: (handler: (sessionId: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, sessionId: string) => handler(sessionId)
+      ipcRenderer.on('window:tearoff-session-closed', listener)
+      return () => {
+        ipcRenderer.removeListener('window:tearoff-session-closed', listener)
+      }
+    },
   },
 
   /** Desktop update status events pushed by the main process */

@@ -11,6 +11,7 @@ import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, platform } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+import { detachTearoffSessionTab } from '~/tabs/tearoff-tabs'
 
 interface AppHeaderProps {
   hasAside?: boolean
@@ -42,7 +43,13 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
     if (window.cradle?.env?.isElectron && tab.type === 'chat') {
       const sessionId = (tab.params as { sessionId?: string })?.sessionId
       if (sessionId) {
-        window.cradle.ipc.invoke('window.tearOffSession', sessionId, screenX, screenY)
+        void window.cradle.ipc.invoke('window.tearOffSession', sessionId, screenX, screenY)
+          .then(() => {
+            if (!isTearoffWindow) {
+              detachTearoffSessionTab(useCradleTabStore, sessionId)
+            }
+          })
+          .catch(() => {})
       }
     }
   }, [])

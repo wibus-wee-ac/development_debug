@@ -9,6 +9,8 @@ The registry exports the store instance consumed by the rest of the app.
 - **registry.ts**: Central registry mapping type strings to tab definitions; exports `useCradleTabStore` with main-window persistence by default and session-scoped persistence for Electron tear-off windows.
 - **route-preload.ts**: Route-level tab preload registry; maps tab type strings to feature-owned preload functions so navigation intent can warm deferred route chunks without eager importing page implementations.
 - **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates inside the current tab with tab-local history, while `openNewTab()` keeps explicit fresh-tab behavior and both paths preload the target route chunk before navigation.
+- **tearoff-tabs.ts**: Main-window tear-off lifecycle helpers; detach a chat tab from the main tab bar after the Electron tear-off opens, and restore it when the tear-off window reports closed.
+- **tearoff-tabs.test.ts**: Unit coverage for detaching torn-off chat tabs, restoring them on close, and keeping the main tab bar non-empty.
 - **reconcile-persisted-tabs.ts**: 启动时清理 dangling chat/workspace tabs 的纯函数，防止 localStorage 里的旧 session/workspace 引用继续污染 UI
 - **reconcile-persisted-tabs.test.ts**: 验证无效 chat/workspace tabs 会被剔除并修复 active tab
 - **home.tab.tsx**: Home/dashboard tab (pinned, no params)

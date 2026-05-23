@@ -10,7 +10,7 @@
 - `desktop-assets.test.ts`：覆盖 dev preload 路径从 `dist/main/chunks` 回溯到 `dist/preload/index.js`，以及 packaged preload 路径解析。
 - `tray-manager.ts`：拥有 Electron native tray icon、native tray menu、tray action IPC，以及主窗口聚焦/转发流程。
 - `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑；在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置。
-- `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接。
+- `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接；session tear-off window 关闭时通知 main renderer 恢复对应 main-window chat tab。
 - `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
 - `native-services.ts`：拥有 main-process native IPC service 注册。
 - `update-manager.ts`：拥有 Velopack update feed URL 解析、后台检查、下载进度、应用更新、macOS packaged `UpdateMac` handoff、restart argument handoff，以及 renderer 状态事件。

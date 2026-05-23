@@ -33,6 +33,7 @@ interface Window {
       minimize: () => Promise<unknown>
       maximize: () => Promise<unknown>
       close: () => Promise<unknown>
+      onTearoffSessionClosed: (handler: (sessionId: string) => void) => () => void
     }
     desktopUpdate: {
       onStatusChanged: (handler: (status: unknown) => void) => () => void

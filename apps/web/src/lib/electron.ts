@@ -217,3 +217,9 @@ export function subscribeDesktopUpdateStatus(
     handler(status as DesktopUpdateStatus)
   }) ?? (() => {})
 }
+
+export function subscribeTearoffSessionClosed(
+  handler: (sessionId: string) => void,
+): () => void {
+  return window.cradle?.window.onTearoffSessionClosed(handler) ?? (() => {})
+}

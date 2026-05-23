@@ -22,6 +22,7 @@ import { connectServerEvents } from '~/lib/server-events'
 import { useThemeStore } from '~/store/theme'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+import { installTearoffSessionRestore } from '~/tabs/tearoff-tabs'
 
 const PERSONAL_WORKSPACE_TAB_POLICY: TabRenderPolicy = {
   strategy: 'activity-pool',
@@ -112,6 +113,8 @@ function MainAppRuntime() {
   useThemeClass()
 
   useDesktopTrayActionBridge({ onOpenGlobalSearch: openGlobalSearch })
+
+  useEffect(() => installTearoffSessionRestore(useCradleTabStore), [])
 
   useEffect(() => {
     if (settingsTabId !== null && !settingsTabExists) {
@@ -223,7 +226,7 @@ function TearoffAppRuntime() {
       <LayoutSlotsProvider activeSlotId={activeSlotId}>
         <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
           <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-            <AppLayout>
+            <AppLayout showFooter={false}>
               {/* Single-policy TabRenderer adds one key wrapper; let the retained tab frame own layout. */}
               <TabRenderer
                 fallback={null}

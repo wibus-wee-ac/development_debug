@@ -83,19 +83,21 @@ interface AppLayoutProps {
   hasPanel?: boolean
   /** Bottom panel content */
   panel?: ReactNode
+  /** Show the main-window footer surface. */
+  showFooter?: boolean
 }
 
-export function AppLayout({ children, hasPanel, panel }: AppLayoutProps) {
+export function AppLayout({ children, hasPanel, panel, showFooter = true }: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
-      <AppLayoutContent hasPanel={hasPanel} panel={panel}>
+      <AppLayoutContent hasPanel={hasPanel} panel={panel} showFooter={showFooter}>
         {children}
       </AppLayoutContent>
     </LayoutGeometryProvider>
   )
 }
 
-function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
+function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
@@ -269,8 +271,8 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
       </div>
 
       {/* Footer */}
-      <AppFooter />
-      {import.meta.env.DEV && <DevBottomBar />}
+      {showFooter && <AppFooter />}
+      {showFooter && import.meta.env.DEV && <DevBottomBar />}
     </div>
   )
 }
